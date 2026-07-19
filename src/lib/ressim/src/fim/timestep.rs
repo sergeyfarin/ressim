@@ -840,9 +840,9 @@ fn globally_extrapolated_state(prev: &FimState, curr: &FimState, dt_ratio: f64) 
         .map(|(p, c)| linear_extrapolate_scalar(*p, *c, dt_ratio))
         .collect();
     let perforation_primaries = prev
-        .perforation_primaries
+        .perforation_primaries()
         .iter()
-        .zip(curr.perforation_primaries.iter())
+        .zip(curr.perforation_primaries().iter())
         .map(|(p, c)| {
             assert_eq!(
                 p.kind, c.kind,
@@ -1375,7 +1375,7 @@ impl ReservoirSimulator {
                             report.final_residual_inf_norm,
                             report.final_material_balance_inf_norm,
                             report.accepted_state.well_bhp,
-                            report.accepted_state.perforation_primaries,
+                            report.accepted_state.perforation_primaries(),
                         ));
                     }
 
@@ -1617,7 +1617,7 @@ impl ReservoirSimulator {
                             report.final_residual_inf_norm,
                             report.final_material_balance_inf_norm,
                             report.accepted_state.well_bhp,
-                            report.accepted_state.perforation_primaries,
+                            report.accepted_state.perforation_primaries(),
                         ));
                     }
                     match failure_diagnostics.class {

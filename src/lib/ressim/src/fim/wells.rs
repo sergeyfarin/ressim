@@ -1077,6 +1077,24 @@ pub(crate) fn connection_rate_for_bhp(
     })
 }
 
+/// Resolve reservoir-condition connection q without treating a Flow RESV surface-rate primary
+/// as q. For the RESV route the connection law remains state-dependent and is re-evaluated.
+pub(crate) fn current_reservoir_connection_rate(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    perf_idx: usize,
+) -> Option<f64> {
+    state.reservoir_connection_q(perf_idx).or_else(|| {
+        let primary = state.perforation_primary(perf_idx);
+        if primary.kind != crate::fim::state::FimPerforationPrimaryKind::FlowResvGasSurfaceU {
+            return None;
+        }
+        let well_idx = topology.perforations[perf_idx].physical_well_index;
+        connection_rate_for_bhp(sim, state, topology, perf_idx, state.well_bhp[well_idx])
+    })
+}
+
 fn perforation_surface_rate_sc_day(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -1179,7 +1197,9 @@ pub(crate) fn perforation_source_pressure_derivatives_sc_day(
             let id = perforation.cell_index;
             let bg = state.derive_cell(sim, id).bg.max(1e-9);
             let dbg_dp = sim.get_d_bg_d_p_for_state(state.cell(id).pressure_bar);
-            let q_m3_day = state.perforation_primaries[perf_idx].value;
+            let q_m3_day = state
+                .reservoir_connection_q(perf_idx)
+                .expect("historical well path requires a reservoir-q primary");
             [0.0, 0.0, -q_m3_day * dbg_dp / (bg * bg)]
         }
     }
@@ -1205,7 +1225,9 @@ pub(crate) fn perforation_surface_rate_pressure_derivative(
             let id = perforation.cell_index;
             let bg = state.derive_cell(sim, id).bg.max(1e-9);
             let dbg_dp = sim.get_d_bg_d_p_for_state(state.cell(id).pressure_bar);
-            let q_m3_day = state.perforation_primaries[perf_idx].value;
+            let q_m3_day = state
+                .reservoir_connection_q(perf_idx)
+                .expect("historical well path requires a reservoir-q primary");
             q_m3_day * dbg_dp / (bg * bg)
         }
     }
@@ -1354,7 +1376,9 @@ pub(crate) fn perforation_component_rate_cell_derivatives_sc_day_by_var(
         return match effective_injected_fluid(sim) {
             InjectedFluid::Water => [[0.0; 3]; 3],
             InjectedFluid::Gas => {
-                let q_m3_day = state.perforation_primaries[perf_idx].value;
+                let q_m3_day = state
+                    .reservoir_connection_q(perf_idx)
+                    .expect("historical well path requires a reservoir-q primary");
                 let local = local_phase_sensitivity(sim, state, cell_idx);
                 [
                     [
@@ -1369,7 +1393,8 @@ pub(crate) fn perforation_component_rate_cell_derivatives_sc_day_by_var(
         };
     }
 
-    let q_m3_day = state.perforation_primaries[perf_idx].value;
+    let q_m3_day = current_reservoir_connection_rate(sim, state, topology, perf_idx)
+        .expect("perforation component rates require a finite connection rate");
     let producer = producer_rate_sensitivity(sim, state, perforation, cell_idx);
     let bw = sim.b_w.max(1e-9);
     let bo = producer.oil_fvf.max(1e-9);
@@ -1410,7 +1435,9 @@ pub(crate) fn perforation_surface_rate_cell_derivatives_sc_day(
         return match effective_injected_fluid(sim) {
             InjectedFluid::Water => [0.0; 3],
             InjectedFluid::Gas => {
-                let q_m3_day = state.perforation_primaries[perf_idx].value;
+                let q_m3_day = state
+                    .reservoir_connection_q(perf_idx)
+                    .expect("historical well path requires a reservoir-q primary");
                 let local = local_phase_sensitivity(sim, state, cell_idx);
                 [
                     q_m3_day * local.bg_derivatives[0] / (local.bg * local.bg),
@@ -1423,7 +1450,9 @@ pub(crate) fn perforation_surface_rate_cell_derivatives_sc_day(
 
     let producer = producer_rate_sensitivity(sim, state, perforation, cell_idx);
     let bo = producer.oil_fvf.max(1e-9);
-    let q_m3_day = state.perforation_primaries[perf_idx].value;
+    let q_m3_day = state
+        .reservoir_connection_q(perf_idx)
+        .expect("historical well path requires a reservoir-q primary");
     let mut derivatives = [0.0; 3];
     for local_var in 0..3 {
         derivatives[local_var] = q_m3_day
@@ -1528,7 +1557,9 @@ pub(crate) fn perforation_component_rates_sc_day(
 ) -> [f64; 3] {
     let perforation = &topology.perforations[perf_idx];
     let well = perforation_well(sim, perforation);
-    let q_m3_day = state.perforation_primaries[perf_idx].value;
+    let q_m3_day = state
+        .reservoir_connection_q(perf_idx)
+        .expect("historical well path requires a reservoir-q primary");
     let id = perforation.cell_index;
     if well.injector {
         return match effective_injected_fluid(sim) {

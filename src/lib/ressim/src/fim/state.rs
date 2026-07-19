@@ -239,9 +239,23 @@ impl FimState {
         self.perforation_primary(perf_idx).value
     }
 
+    pub(crate) fn perforation_primaries(&self) -> &[FimPerforationPrimary] {
+        &self.perforation_primaries
+    }
+
+    pub(crate) fn perforation_primary_value_mut(&mut self, perf_idx: usize) -> &mut f64 {
+        &mut self.perforation_primaries[perf_idx].value
+    }
+
     pub(crate) fn reservoir_connection_q(&self, perf_idx: usize) -> Option<f64> {
         (self.perforation_primary(perf_idx).kind == FimPerforationPrimaryKind::ReservoirConnectionQ)
             .then(|| self.perforation_primary_value(perf_idx))
+    }
+
+    pub(crate) fn reservoir_connection_q_mut(&mut self, perf_idx: usize) -> Option<&mut f64> {
+        (self.perforation_primaries[perf_idx].kind
+            == FimPerforationPrimaryKind::ReservoirConnectionQ)
+            .then(|| &mut self.perforation_primaries[perf_idx].value)
     }
 
     pub(crate) fn flow_resv_surface_u(&self, perf_idx: usize) -> Option<f64> {

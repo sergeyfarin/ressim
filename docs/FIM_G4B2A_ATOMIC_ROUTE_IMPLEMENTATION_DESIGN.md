@@ -9,6 +9,14 @@ and numerical-vector adapters preserve the primary kind while reading or updatin
 This is a representation checkpoint only: S2 must still replace route-sensitive direct value
 reads with the explicit q/u accessors before the atomic route can be called complete.
 
+Implementation checkpoint (2026-07-19): **G4b2b S2 COMPLETE.** Historical AD assembly and the
+nested/local well solver now require `reservoir_connection_q`; RESV assembly/scaling already
+require `flow_resv_surface_u`. Generic Newton/scaling/timestep diagnostics use meaning-neutral
+primary accessors. Reporting and component-rate accounting resolve the current reservoir
+connection law for a typed RESV `u`, rather than reporting `u` as q. Focused RESV, nested-well,
+and AD/legacy parity gates pass. S3 remains responsible for the independent legacy derivative
+and the complete selected-row/update/trace contract.
+
 This is the implementation contract for the next G4 code slice. It turns the G4b2 readiness
 inventory into one default-off, one-perforation route. It is deliberately more prescriptive than
 the G4a lifecycle design: an implementation is acceptable only if it follows the data model,

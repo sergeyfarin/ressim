@@ -173,7 +173,7 @@ pub(crate) fn build_equation_scaling(
         };
         well_constraint.push(well_constraint_scale(bhp_bar, control_slacks));
     }
-    for primary in &state.perforation_primaries {
+    for primary in state.perforation_primaries() {
         perforation_flow.push(perforation_flow_scale(primary.value));
     }
 
@@ -209,7 +209,7 @@ pub(crate) fn build_variable_scaling(
     for bhp_bar in &state.well_bhp {
         well_bhp.push(bhp_bar.abs().max(1.0));
     }
-    for primary in &state.perforation_primaries {
+    for primary in state.perforation_primaries() {
         perforation_rate.push(primary.value.abs().max(1.0));
     }
 

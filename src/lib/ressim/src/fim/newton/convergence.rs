@@ -205,9 +205,9 @@ pub(super) fn scaled_applied_update_peak(
     }
     offset += state.well_bhp.len();
     for (idx, (current, next)) in state
-        .perforation_primaries
+        .perforation_primaries()
         .iter()
-        .zip(candidate.perforation_primaries.iter())
+        .zip(candidate.perforation_primaries().iter())
         .enumerate()
     {
         update_variable_peak(
@@ -255,9 +255,9 @@ pub(crate) fn iterate_has_material_change(previous_state: &FimState, state: &Fim
             .zip(state.well_bhp.iter())
             .any(|(previous, current)| (current - previous).abs() > WELL_BHP_EPS)
         || previous_state
-            .perforation_primaries
+            .perforation_primaries()
             .iter()
-            .zip(state.perforation_primaries.iter())
+            .zip(state.perforation_primaries().iter())
             .any(|(previous, current)| {
                 (current.value - previous.value).abs() > PERF_RATE_EPS
                     || current.kind != previous.kind

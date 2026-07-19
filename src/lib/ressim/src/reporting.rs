@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::fim::state::FimState;
 use crate::fim::wells::{
-    build_well_topology, perforation_component_rates_sc_day, physical_well_control,
-    producer_control_state,
+    build_well_topology, current_reservoir_connection_rate, perforation_component_rates_sc_day,
+    physical_well_control, producer_control_state,
 };
 use crate::well_control::ResolvedWellControl;
 use crate::{InjectedFluid, ReservoirSimulator};
@@ -522,7 +522,8 @@ impl ReservoirSimulator {
         }
 
         for (perf_idx, perforation) in topology.perforations.iter().enumerate() {
-            let q_m3_day = state.perforation_primaries[perf_idx].value;
+            let q_m3_day =
+                current_reservoir_connection_rate(self, state, &topology, perf_idx).unwrap_or(0.0);
             let components_sc_day =
                 perforation_component_rates_sc_day(self, state, &topology, perf_idx);
 

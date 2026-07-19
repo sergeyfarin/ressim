@@ -251,7 +251,9 @@ fn add_well_residual_terms(
         let injector = topology.wells[well_idx].injector;
         let cell = well_cell_input(sim, state, perforation.cell_index);
         let bhp = state.well_bhp[well_idx];
-        let q = state.perforation_primaries[perf_idx].value;
+        let q = state
+            .reservoir_connection_q(perf_idx)
+            .expect("historical assembly requires a reservoir-q primary");
 
         let neighborhood_cells =
             perforation_local_block(topology, state, perf_idx).control_influence_cells(sim);
@@ -359,7 +361,9 @@ fn add_well_jacobian_terms(
         let injector = topology.wells[well_idx].injector;
         let cell = well_cell_input(sim, state, perforation.cell_index);
         let bhp = state.well_bhp[well_idx];
-        let q = state.perforation_primaries[perf_idx].value;
+        let q = state
+            .reservoir_connection_q(perf_idx)
+            .expect("historical assembly requires a reservoir-q primary");
 
         let neighborhood_cells =
             perforation_local_block(topology, state, perf_idx).control_influence_cells(sim);
@@ -479,7 +483,9 @@ fn add_well_jacobian_terms(
         for &perf_idx in &topology.wells[well_idx].perforation_indices {
             let perforation = &topology.perforations[perf_idx];
             let cell = well_cell_input(sim, state, perforation.cell_index);
-            let q = state.perforation_primaries[perf_idx].value;
+            let q = state
+                .reservoir_connection_q(perf_idx)
+                .expect("historical assembly requires a reservoir-q primary");
             let q_col = state.perforation_rate_unknown_offset(perf_idx);
 
             let neighborhood_cells =

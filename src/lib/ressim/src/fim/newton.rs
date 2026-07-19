@@ -99,7 +99,7 @@ fn y2b2_state_checksum(state: &FimState) -> u64 {
     for value in &state.well_bhp {
         add(value.to_bits());
     }
-    for primary in &state.perforation_primaries {
+    for primary in state.perforation_primaries() {
         add(primary.value.to_bits());
     }
     hash
@@ -727,7 +727,7 @@ fn y2a_finite_difference_step(state: &FimState, unknown_idx: usize) -> f64 {
         return 1e-4 * state.well_bhp[well_idx].abs().max(1.0);
     }
     let perf_idx = unknown_idx - state.n_cell_unknowns() - state.n_well_unknowns();
-    1e-4 * state.perforation_primaries[perf_idx].value.abs().max(1.0)
+    1e-4 * state.perforation_primary_value(perf_idx).abs().max(1.0)
 }
 
 #[cfg(test)]
@@ -745,7 +745,7 @@ fn y2a_perturb_unknown(state: &mut FimState, unknown_idx: usize, delta: f64) {
         state.well_bhp[well_idx] += delta;
     } else {
         let perf_idx = unknown_idx - state.n_cell_unknowns() - state.n_well_unknowns();
-        state.perforation_primaries[perf_idx].value += delta;
+        *state.perforation_primary_value_mut(perf_idx) += delta;
     }
 }
 
@@ -2528,8 +2528,8 @@ pub(crate) fn run_fim_timestep(
                 .collect();
             let relax_dq_approx: Vec<f64> = (0..state.n_perforation_unknowns())
                 .map(|perf_idx| {
-                    candidate.perforation_primaries[perf_idx].value
-                        - (state.perforation_primaries[perf_idx].value + raw_dq[perf_idx])
+                    candidate.perforation_primary_value(perf_idx)
+                        - (state.perforation_primary_value(perf_idx) + raw_dq[perf_idx])
                 })
                 .collect();
             crate::fim::trace_sink::write_line(&format!(
@@ -2537,8 +2537,8 @@ pub(crate) fn run_fim_timestep(
                 iteration,
                 state.well_bhp,
                 candidate.well_bhp,
-                state.perforation_primaries,
-                candidate.perforation_primaries,
+                state.perforation_primaries(),
+                candidate.perforation_primaries(),
                 raw_dbhp,
                 raw_dq,
                 relax_dbhp_approx,
@@ -2711,7 +2711,9 @@ pub(crate) fn run_fim_timestep(
                 } else {
                     let component_rates =
                         perforation_component_rates_sc_day(sim, &state, &topology, perf_idx);
-                    let q = state.perforation_primaries[perf_idx].value;
+                    let q = state
+                        .reservoir_connection_q(perf_idx)
+                        .expect("historical source trace requires a reservoir-q primary");
                     let source_residual: [f64; 3] = component_rates.map(|rate| rate * dt_days);
                     let source_dq: [f64; 3] = [
                         assembly
