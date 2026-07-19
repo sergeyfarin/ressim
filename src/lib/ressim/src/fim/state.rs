@@ -75,12 +75,27 @@ pub(crate) struct FimPerforationPrimary {
     pub(crate) value: f64,
 }
 
+impl FimPerforationPrimary {
+    pub(crate) fn reservoir_connection_q(value: f64) -> Self {
+        Self {
+            kind: FimPerforationPrimaryKind::ReservoirConnectionQ,
+            value,
+        }
+    }
+
+    pub(crate) fn flow_resv_gas_surface_u(value: f64) -> Self {
+        Self {
+            kind: FimPerforationPrimaryKind::FlowResvGasSurfaceU,
+            value,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct FimState {
     pub(crate) cells: Vec<FimCellState>,
     pub(crate) well_bhp: Vec<f64>,
-    pub(crate) perforation_rates_m3_day: Vec<f64>,
-    pub(crate) perforation_primary_kinds: Vec<FimPerforationPrimaryKind>,
+    pub(crate) perforation_primaries: Vec<FimPerforationPrimary>,
 }
 
 impl FimState {
@@ -125,9 +140,8 @@ impl FimState {
                 .enumerate()
                 .map(|(well_idx, _)| physical_well_control(sim, &topology, well_idx).bhp_target)
                 .collect(),
-            perforation_rates_m3_day: vec![0.0; topology.perforations.len()],
-            perforation_primary_kinds: vec![
-                FimPerforationPrimaryKind::ReservoirConnectionQ;
+            perforation_primaries: vec![
+                FimPerforationPrimary::reservoir_connection_q(0.0);
                 topology.perforations.len()
             ],
         };
@@ -144,7 +158,7 @@ impl FimState {
             let perf = perforation_local_block(&topology, &state, perf_idx);
             let well_idx = perf.physical_well_idx();
             let bhp_bar = state.well_bhp[well_idx];
-            state.perforation_rates_m3_day[perf_idx] =
+            state.perforation_primaries[perf_idx].value =
                 if !physical_well_control(sim, &topology, well_idx).enabled {
                     0.0
                 } else {
@@ -212,16 +226,13 @@ impl FimState {
             }
         }
         self.well_bhp[well_idx] = 0.5 * (low + high);
-        self.perforation_rates_m3_day[perf_idx] = target / bg_ref;
-        self.perforation_primary_kinds[perf_idx] = FimPerforationPrimaryKind::FlowResvGasSurfaceU;
+        self.perforation_primaries[perf_idx] =
+            FimPerforationPrimary::flow_resv_gas_surface_u(target / bg_ref);
         Ok(())
     }
 
     pub(crate) fn perforation_primary(&self, perf_idx: usize) -> FimPerforationPrimary {
-        FimPerforationPrimary {
-            kind: self.perforation_primary_kinds[perf_idx],
-            value: self.perforation_rates_m3_day[perf_idx],
-        }
+        self.perforation_primaries[perf_idx]
     }
 
     pub(crate) fn perforation_primary_value(&self, perf_idx: usize) -> f64 {
@@ -247,7 +258,7 @@ impl FimState {
     }
 
     pub(crate) fn n_perforation_unknowns(&self) -> usize {
-        self.perforation_rates_m3_day.len()
+        self.perforation_primaries.len()
     }
 
     pub(crate) fn cell(&self, idx: usize) -> &FimCellState {
@@ -466,13 +477,13 @@ impl FimState {
                         .connection_rate_for_bhp(sim, self.well_bhp[well_idx])
                         .unwrap_or(0.0)
                 };
-                let proposed_q = self.perforation_rates_m3_day[perf_idx];
+                let proposed_q = self.perforation_primaries[perf_idx].value;
                 let blended_q = proposed_q + WELL_RATE_MANIFOLD_BLEND * (consistent_q - proposed_q);
                 let trust_radius = (WELL_RATE_TRUST_RADIUS_FRAC * consistent_q.abs())
                     .max(WELL_RATE_TRUST_RADIUS_MIN_M3_DAY);
                 let q =
                     consistent_q + (blended_q - consistent_q).clamp(-trust_radius, trust_radius);
-                self.perforation_rates_m3_day[perf_idx] = if !control.enabled {
+                self.perforation_primaries[perf_idx].value = if !control.enabled {
                     0.0
                 } else if topology.wells[well_idx].injector {
                     q.min(0.0)
@@ -594,7 +605,7 @@ impl FimState {
         }
         for perf_idx in 0..self.n_perforation_unknowns() {
             let offset = self.perforation_rate_unknown_offset(perf_idx);
-            next.perforation_rates_m3_day[perf_idx] += damping * update[offset];
+            next.perforation_primaries[perf_idx].value += damping * update[offset];
         }
 
         next
@@ -639,7 +650,7 @@ impl FimState {
         }
         for perf_idx in 0..self.n_perforation_unknowns() {
             let offset = self.perforation_rate_unknown_offset(perf_idx);
-            next.perforation_rates_m3_day[perf_idx] += damping * update[offset];
+            next.perforation_primaries[perf_idx].value += damping * update[offset];
         }
 
         next
@@ -671,8 +682,10 @@ impl FimState {
                 // The selected slot is surface u, not the historical signed connection q.
                 // Preserve normal BHP finite bounds but do not apply q relaxation or FB/BHP
                 // control handling to this route.
-                self.perforation_rates_m3_day[context.perforation_idx] =
-                    self.perforation_rates_m3_day[context.perforation_idx].max(0.0);
+                self.perforation_primaries[context.perforation_idx].value = self
+                    .perforation_primaries[context.perforation_idx]
+                    .value
+                    .max(0.0);
             }
         }
     }
@@ -761,9 +774,9 @@ impl FimState {
             cell.pressure_bar.is_finite() && cell.sw.is_finite() && cell.hydrocarbon_var.is_finite()
         }) && self.well_bhp.iter().all(|bhp_bar| bhp_bar.is_finite())
             && self
-                .perforation_rates_m3_day
+                .perforation_primaries
                 .iter()
-                .all(|rate| rate.is_finite())
+                .all(|primary| primary.value.is_finite())
     }
 
     pub(crate) fn respects_basic_bounds(&self, sim: &ReservoirSimulator) -> bool {
@@ -1072,8 +1085,7 @@ mod tests {
                 regime: HydrocarbonState::Saturated,
             }],
             well_bhp: Vec::new(),
-            perforation_rates_m3_day: Vec::new(),
-            perforation_primary_kinds: Vec::new(),
+            perforation_primaries: Vec::new(),
         };
 
         let derived = state.derive_cell(&sim, 0);
@@ -1116,8 +1128,7 @@ mod tests {
                 regime: HydrocarbonState::Undersaturated,
             }],
             well_bhp: Vec::new(),
-            perforation_rates_m3_day: Vec::new(),
-            perforation_primary_kinds: Vec::new(),
+            perforation_primaries: Vec::new(),
         };
 
         let pore_volume_m3 = sim.pore_volume_m3(0);
@@ -1172,8 +1183,7 @@ mod tests {
                 regime: HydrocarbonState::Saturated,
             }],
             well_bhp: Vec::new(),
-            perforation_rates_m3_day: Vec::new(),
-            perforation_primary_kinds: Vec::new(),
+            perforation_primaries: Vec::new(),
         };
         state.classify_regimes(&sim);
         assert_eq!(state.cells[0].regime, HydrocarbonState::Saturated);
@@ -1275,8 +1285,10 @@ mod tests {
             .max(WELL_RATE_TRUST_RADIUS_MIN_M3_DAY);
 
         assert!((updated.well_bhp[0] - 500.0).abs() <= WELL_BHP_TRUST_RADIUS_BAR + 1e-9);
-        assert!(updated.perforation_rates_m3_day[0] <= 0.0);
-        assert!((updated.perforation_rates_m3_day[0] - consistent_q).abs() <= trust_radius + 1e-9);
+        assert!(updated.perforation_primaries[0].value <= 0.0);
+        assert!(
+            (updated.perforation_primaries[0].value - consistent_q).abs() <= trust_radius + 1e-9
+        );
     }
 
     #[test]
@@ -1317,8 +1329,7 @@ mod tests {
                 regime: HydrocarbonState::Undersaturated,
             }],
             well_bhp: Vec::new(),
-            perforation_rates_m3_day: Vec::new(),
-            perforation_primary_kinds: Vec::new(),
+            perforation_primaries: Vec::new(),
         };
         state.classify_regimes(&sim);
         assert_eq!(state.cells[0].regime, HydrocarbonState::Undersaturated);

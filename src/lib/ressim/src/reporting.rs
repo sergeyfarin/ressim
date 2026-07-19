@@ -522,7 +522,7 @@ impl ReservoirSimulator {
         }
 
         for (perf_idx, perforation) in topology.perforations.iter().enumerate() {
-            let q_m3_day = state.perforation_rates_m3_day[perf_idx];
+            let q_m3_day = state.perforation_primaries[perf_idx].value;
             let components_sc_day =
                 perforation_component_rates_sc_day(self, state, &topology, perf_idx);
 

@@ -173,8 +173,8 @@ pub(crate) fn build_equation_scaling(
         };
         well_constraint.push(well_constraint_scale(bhp_bar, control_slacks));
     }
-    for rate in &state.perforation_rates_m3_day {
-        perforation_flow.push(perforation_flow_scale(*rate));
+    for primary in &state.perforation_primaries {
+        perforation_flow.push(perforation_flow_scale(primary.value));
     }
 
     EquationScaling {
@@ -209,8 +209,8 @@ pub(crate) fn build_variable_scaling(
     for bhp_bar in &state.well_bhp {
         well_bhp.push(bhp_bar.abs().max(1.0));
     }
-    for rate in &state.perforation_rates_m3_day {
-        perforation_rate.push(rate.abs().max(1.0));
+    for primary in &state.perforation_primaries {
+        perforation_rate.push(primary.value.abs().max(1.0));
     }
 
     VariableScaling {
@@ -300,9 +300,8 @@ mod tests {
                 },
             ],
             well_bhp: vec![350.0],
-            perforation_rates_m3_day: vec![-25.0],
-            perforation_primary_kinds: vec![
-                crate::fim::state::FimPerforationPrimaryKind::ReservoirConnectionQ,
+            perforation_primaries: vec![
+                crate::fim::state::FimPerforationPrimary::reservoir_connection_q(-25.0),
             ],
         };
 

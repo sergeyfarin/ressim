@@ -1179,7 +1179,7 @@ pub(crate) fn perforation_source_pressure_derivatives_sc_day(
             let id = perforation.cell_index;
             let bg = state.derive_cell(sim, id).bg.max(1e-9);
             let dbg_dp = sim.get_d_bg_d_p_for_state(state.cell(id).pressure_bar);
-            let q_m3_day = state.perforation_rates_m3_day[perf_idx];
+            let q_m3_day = state.perforation_primaries[perf_idx].value;
             [0.0, 0.0, -q_m3_day * dbg_dp / (bg * bg)]
         }
     }
@@ -1205,7 +1205,7 @@ pub(crate) fn perforation_surface_rate_pressure_derivative(
             let id = perforation.cell_index;
             let bg = state.derive_cell(sim, id).bg.max(1e-9);
             let dbg_dp = sim.get_d_bg_d_p_for_state(state.cell(id).pressure_bar);
-            let q_m3_day = state.perforation_rates_m3_day[perf_idx];
+            let q_m3_day = state.perforation_primaries[perf_idx].value;
             q_m3_day * dbg_dp / (bg * bg)
         }
     }
@@ -1354,7 +1354,7 @@ pub(crate) fn perforation_component_rate_cell_derivatives_sc_day_by_var(
         return match effective_injected_fluid(sim) {
             InjectedFluid::Water => [[0.0; 3]; 3],
             InjectedFluid::Gas => {
-                let q_m3_day = state.perforation_rates_m3_day[perf_idx];
+                let q_m3_day = state.perforation_primaries[perf_idx].value;
                 let local = local_phase_sensitivity(sim, state, cell_idx);
                 [
                     [
@@ -1369,7 +1369,7 @@ pub(crate) fn perforation_component_rate_cell_derivatives_sc_day_by_var(
         };
     }
 
-    let q_m3_day = state.perforation_rates_m3_day[perf_idx];
+    let q_m3_day = state.perforation_primaries[perf_idx].value;
     let producer = producer_rate_sensitivity(sim, state, perforation, cell_idx);
     let bw = sim.b_w.max(1e-9);
     let bo = producer.oil_fvf.max(1e-9);
@@ -1410,7 +1410,7 @@ pub(crate) fn perforation_surface_rate_cell_derivatives_sc_day(
         return match effective_injected_fluid(sim) {
             InjectedFluid::Water => [0.0; 3],
             InjectedFluid::Gas => {
-                let q_m3_day = state.perforation_rates_m3_day[perf_idx];
+                let q_m3_day = state.perforation_primaries[perf_idx].value;
                 let local = local_phase_sensitivity(sim, state, cell_idx);
                 [
                     q_m3_day * local.bg_derivatives[0] / (local.bg * local.bg),
@@ -1423,7 +1423,7 @@ pub(crate) fn perforation_surface_rate_cell_derivatives_sc_day(
 
     let producer = producer_rate_sensitivity(sim, state, perforation, cell_idx);
     let bo = producer.oil_fvf.max(1e-9);
-    let q_m3_day = state.perforation_rates_m3_day[perf_idx];
+    let q_m3_day = state.perforation_primaries[perf_idx].value;
     let mut derivatives = [0.0; 3];
     for local_var in 0..3 {
         derivatives[local_var] = q_m3_day
@@ -1528,7 +1528,7 @@ pub(crate) fn perforation_component_rates_sc_day(
 ) -> [f64; 3] {
     let perforation = &topology.perforations[perf_idx];
     let well = perforation_well(sim, perforation);
-    let q_m3_day = state.perforation_rates_m3_day[perf_idx];
+    let q_m3_day = state.perforation_primaries[perf_idx].value;
     let id = perforation.cell_index;
     if well.injector {
         return match effective_injected_fluid(sim) {
@@ -1953,7 +1953,7 @@ mod tests {
         sim.target_injector_surface_rate_m3_day = Some(200.0);
 
         let mut state = FimState::from_simulator(&sim);
-        state.perforation_rates_m3_day[0] = -120.0;
+        state.perforation_primaries[0].value = -120.0;
         let topology = build_well_topology(&sim);
 
         let source_exact =

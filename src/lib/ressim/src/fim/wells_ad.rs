@@ -1073,7 +1073,7 @@ mod tests {
         // Perturb off the auto-initialized consistent rate so the rate-
         // consistency and constraint rows are genuinely exercised, not
         // trivially zero.
-        state.perforation_rates_m3_day[0] += if injector { -15.0 } else { 12.0 };
+        state.perforation_primaries[0].value += if injector { -15.0 } else { 12.0 };
 
         let perforation = &topology.perforations[0];
         let well_idx = perforation.physical_well_index;
@@ -1083,7 +1083,7 @@ mod tests {
         let injected_fluid = wells::effective_injected_fluid(&sim);
         let control = physical_well_control(&sim, &topology, well_idx);
         let bhp = state.well_bhp[well_idx];
-        let q = state.perforation_rates_m3_day[0];
+        let q = state.perforation_primaries[0].value;
 
         let cell = WellCellInput {
             p: cell_state.pressure_bar,

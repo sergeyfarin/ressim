@@ -65,8 +65,8 @@ fn build_rate_controlled_waterflood_fd_fixture() -> (ReservoirSimulator, FimStat
     state.cells[0].pressure_bar = 310.0;
     state.cells[1].pressure_bar = 280.0;
     state.cells[0].sw = 0.35;
-    state.perforation_rates_m3_day[0] = -5.0;
-    state.perforation_rates_m3_day[1] = 8.0;
+    state.perforation_primaries[0].value = -5.0;
+    state.perforation_primaries[1].value = 8.0;
 
     (sim, previous_state, state)
 }
@@ -126,7 +126,7 @@ fn build_closed_depletion_fd_fixture() -> (ReservoirSimulator, FimState, FimStat
     state.cells[0].regime = HydrocarbonState::Saturated;
     state.cells[0].hydrocarbon_var = 0.72;
     state.well_bhp[0] = 120.0;
-    state.perforation_rates_m3_day[0] = 10.0;
+    state.perforation_primaries[0].value = 10.0;
 
     (sim, previous_state, state)
 }
@@ -185,8 +185,8 @@ fn build_mixed_regime_fd_fixture() -> (ReservoirSimulator, FimState, FimState) {
     state.cells[1].hydrocarbon_var = 0.08;
     state.well_bhp[0] = 360.0;
     state.well_bhp[1] = 120.0;
-    state.perforation_rates_m3_day[0] = -7.0;
-    state.perforation_rates_m3_day[1] = 6.5;
+    state.perforation_primaries[0].value = -7.0;
+    state.perforation_primaries[1].value = 6.5;
 
     (sim, previous_state, state)
 }
@@ -243,9 +243,9 @@ fn assert_full_system_fd_matches_for_fixture(
             step
         } else {
             let perf_idx = col - n_cells * 3 - n_wells;
-            let step = 1e-4 * state.perforation_rates_m3_day[perf_idx].abs().max(0.1);
-            state_plus.perforation_rates_m3_day[perf_idx] += step;
-            state_minus.perforation_rates_m3_day[perf_idx] -= step;
+            let step = 1e-4 * state.perforation_primaries[perf_idx].value.abs().max(0.1);
+            state_plus.perforation_primaries[perf_idx].value += step;
+            state_minus.perforation_primaries[perf_idx].value -= step;
             step
         };
 
@@ -305,8 +305,8 @@ fn residual_only_assembly_matches_full_residual_for_rate_controlled_waterflood()
     state.cells[1].pressure_bar = 180.0;
     state.cells[0].sw = 0.35;
     state.cells[1].sw = 0.45;
-    state.perforation_rates_m3_day[0] = -15.0;
-    state.perforation_rates_m3_day[1] = 12.0;
+    state.perforation_primaries[0].value = -15.0;
+    state.perforation_primaries[1].value = 12.0;
 
     let full_options = FimAssemblyOptions {
         dt_days: 1.0,
@@ -372,8 +372,7 @@ fn assembly_scaffold_matches_state_size() {
             },
         ],
         well_bhp: Vec::new(),
-        perforation_rates_m3_day: Vec::new(),
-        perforation_primary_kinds: Vec::new(),
+        perforation_primaries: Vec::new(),
     };
 
     let assembly = assemble_fim_system(
@@ -1095,7 +1094,7 @@ fn producer_source_row_matches_exact_neighborhood_derivative() {
     state.cells[sim.idx(1, 1, 0)].pressure_bar = 220.0;
     state.cells[sim.idx(1, 1, 0)].sw = 0.25;
     state.cells[sim.idx(1, 1, 0)].hydrocarbon_var = 0.15;
-    state.perforation_rates_m3_day[0] = 40.0;
+    state.perforation_primaries[0].value = 40.0;
 
     let topology = build_well_topology(&sim);
     let expected = crate::fim::wells::perforation_component_rate_cell_derivatives_sc_day_by_var(
@@ -1161,7 +1160,7 @@ fn producer_control_row_matches_exact_surface_rate_derivative() {
     state.cells[sim.idx(1, 1, 0)].pressure_bar = 220.0;
     state.cells[sim.idx(1, 1, 0)].sw = 0.25;
     state.cells[sim.idx(1, 1, 0)].hydrocarbon_var = 0.15;
-    state.perforation_rates_m3_day[0] = 40.0;
+    state.perforation_primaries[0].value = 40.0;
 
     let topology = build_well_topology(&sim);
     let control = crate::fim::wells::physical_well_control(&sim, &topology, 0);
@@ -1213,7 +1212,7 @@ fn gas_injector_source_row_has_exact_pressure_conversion_derivative() {
     sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
 
     let mut state = FimState::from_simulator(&sim);
-    state.perforation_rates_m3_day[0] = -120.0;
+    state.perforation_primaries[0].value = -120.0;
     let topology = build_well_topology(&sim);
     let expected = crate::fim::wells::perforation_source_pressure_derivatives_sc_day(
         &sim, &state, &topology, 0,

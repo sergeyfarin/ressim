@@ -462,7 +462,7 @@ fn rate_controlled_well_bhp_unknown_is_solved_implicitly() {
 
     assert!(report.converged);
     assert_eq!(report.accepted_state.well_bhp.len(), 2);
-    assert_eq!(report.accepted_state.perforation_rates_m3_day.len(), 2);
+    assert_eq!(report.accepted_state.perforation_primaries.len(), 2);
 }
 
 #[test]
@@ -518,9 +518,8 @@ fn iterate_has_material_change_detects_well_and_perforation_updates() {
             regime: crate::fim::state::HydrocarbonState::Saturated,
         }],
         well_bhp: vec![300.0],
-        perforation_rates_m3_day: vec![-150.0],
-        perforation_primary_kinds: vec![
-            crate::fim::state::FimPerforationPrimaryKind::ReservoirConnectionQ,
+        perforation_primaries: vec![
+            crate::fim::state::FimPerforationPrimary::reservoir_connection_q(-150.0),
         ],
     };
 
@@ -529,7 +528,7 @@ fn iterate_has_material_change_detects_well_and_perforation_updates() {
     assert!(iterate_has_material_change(&previous_state, &bhp_changed));
 
     let mut perf_changed = previous_state.clone();
-    perf_changed.perforation_rates_m3_day[0] += 1.0;
+    perf_changed.perforation_primaries[0].value += 1.0;
     assert!(iterate_has_material_change(&previous_state, &perf_changed));
 }
 
@@ -670,8 +669,7 @@ fn accepted_state_convergence_rejects_guard_band_material_balance_violation() {
         state: FimState {
             cells: Vec::new(),
             well_bhp: Vec::new(),
-            perforation_rates_m3_day: Vec::new(),
-            perforation_primary_kinds: Vec::new(),
+            perforation_primaries: Vec::new(),
         },
         residual_inf_norm: 1.5e-5,
         residual_diagnostics: ResidualFamilyDiagnostics {
@@ -753,9 +751,8 @@ fn scaled_applied_update_peak_reports_effective_family() {
             regime: crate::fim::state::HydrocarbonState::Undersaturated,
         }],
         well_bhp: vec![150.0],
-        perforation_rates_m3_day: vec![10.0],
-        perforation_primary_kinds: vec![
-            crate::fim::state::FimPerforationPrimaryKind::ReservoirConnectionQ,
+        perforation_primaries: vec![
+            crate::fim::state::FimPerforationPrimary::reservoir_connection_q(10.0),
         ],
     };
 
@@ -767,9 +764,8 @@ fn scaled_applied_update_peak_reports_effective_family() {
             regime: crate::fim::state::HydrocarbonState::Undersaturated,
         }],
         well_bhp: vec![150.0],
-        perforation_rates_m3_day: vec![10.2],
-        perforation_primary_kinds: vec![
-            crate::fim::state::FimPerforationPrimaryKind::ReservoirConnectionQ,
+        perforation_primaries: vec![
+            crate::fim::state::FimPerforationPrimary::reservoir_connection_q(10.2),
         ],
     };
 
@@ -1784,8 +1780,7 @@ fn appleyard_damping_limits_combined_oil_saturation_change() {
             regime: crate::fim::state::HydrocarbonState::Saturated,
         }],
         well_bhp: Vec::new(),
-        perforation_rates_m3_day: Vec::new(),
-        perforation_primary_kinds: Vec::new(),
+        perforation_primaries: Vec::new(),
     };
     let mut update = DVector::zeros(state.n_unknowns());
     update[1] = 0.15;
@@ -1821,8 +1816,7 @@ fn local_cell_move_deltas_tracks_pressure_and_phase_changes() {
             regime: crate::fim::state::HydrocarbonState::Saturated,
         }],
         well_bhp: Vec::new(),
-        perforation_rates_m3_day: Vec::new(),
-        perforation_primary_kinds: Vec::new(),
+        perforation_primaries: Vec::new(),
     };
     let candidate_state = FimState {
         cells: vec![crate::fim::state::FimCellState {
@@ -1832,8 +1826,7 @@ fn local_cell_move_deltas_tracks_pressure_and_phase_changes() {
             regime: crate::fim::state::HydrocarbonState::Saturated,
         }],
         well_bhp: Vec::new(),
-        perforation_rates_m3_day: Vec::new(),
-        perforation_primary_kinds: Vec::new(),
+        perforation_primaries: Vec::new(),
     };
 
     let (pressure_delta_bar, water_delta, oil_delta, gas_delta) =
@@ -1855,8 +1848,7 @@ fn candidate_update_bounds_include_oil_saturation_change() {
             regime: crate::fim::state::HydrocarbonState::Saturated,
         }],
         well_bhp: Vec::new(),
-        perforation_rates_m3_day: Vec::new(),
-        perforation_primary_kinds: Vec::new(),
+        perforation_primaries: Vec::new(),
     };
     let candidate_state = FimState {
         cells: vec![crate::fim::state::FimCellState {
@@ -1866,8 +1858,7 @@ fn candidate_update_bounds_include_oil_saturation_change() {
             regime: crate::fim::state::HydrocarbonState::Saturated,
         }],
         well_bhp: Vec::new(),
-        perforation_rates_m3_day: Vec::new(),
-        perforation_primary_kinds: Vec::new(),
+        perforation_primaries: Vec::new(),
     };
 
     let (max_pressure_change, max_saturation_change) =

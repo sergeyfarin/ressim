@@ -77,7 +77,7 @@ pub(crate) fn assemble_well_local_system(
     for &perf_idx in &perforation_indices {
         let perforation = &topology.perforations[perf_idx];
         let cell = well_cell_input(sim, state, perforation.cell_index);
-        let q = state.perforation_rates_m3_day[perf_idx];
+        let q = state.perforation_primaries[perf_idx].value;
 
         let neighborhood_cells =
             perforation_local_block(topology, state, perf_idx).control_influence_cells(sim);
@@ -129,7 +129,7 @@ pub(crate) fn assemble_well_local_system(
         jacobian[(0, 0)] = bhp_col_value;
         let factor = -dphi_db / rate_scale;
         for (local_perf, &perf_idx) in perforation_indices.iter().enumerate() {
-            let q = state.perforation_rates_m3_day[perf_idx];
+            let q = state.perforation_primaries[perf_idx].value;
             let producer_neighborhood = (!injector).then_some((
                 neighborhoods[local_perf].as_slice(),
                 connected_indices[local_perf],
@@ -163,7 +163,7 @@ pub(crate) fn assemble_well_local_system(
         let Some(wi_geom) = wi_geoms[local_perf] else {
             continue;
         };
-        let q = state.perforation_rates_m3_day[perf_idx];
+        let q = state.perforation_primaries[perf_idx].value;
         let connection = connection_rate_generic(sim, wi_geom, injector, &cells[local_perf], bhp);
         residual[row] = q - connection;
         jacobian[(row, row)] = 1.0;
@@ -276,14 +276,15 @@ fn well_convergence_status(
     let well_scale = well_constraint_scale_for(sim, state, topology, well_idx, control_real);
     let mut scaled_peak = local.residual[0].abs() / well_scale;
     for (local_perf, &perf_idx) in local.perforation_indices.iter().enumerate() {
-        let perf_scale =
-            crate::fim::scaling::perforation_flow_scale(state.perforation_rates_m3_day[perf_idx]);
+        let perf_scale = crate::fim::scaling::perforation_flow_scale(
+            state.perforation_primaries[perf_idx].value,
+        );
         scaled_peak = scaled_peak.max(local.residual[1 + local_perf].abs() / perf_scale);
     }
 
     let direction_ok = !pressure_controlled
         || local.perforation_indices.iter().all(|&perf_idx| {
-            perforation_flow_direction_ok(injector, state.perforation_rates_m3_day[perf_idx])
+            perforation_flow_direction_ok(injector, state.perforation_primaries[perf_idx].value)
         });
 
     FimWellConvergenceStatus {
@@ -293,7 +294,7 @@ fn well_convergence_status(
 }
 
 /// Converges one physical well's local system (`assemble_well_local_system`) via a bounded,
-/// chopped Newton loop, mutating `state.well_bhp[well_idx]` / `state.perforation_rates_m3_day`
+/// chopped Newton loop, mutating `state.well_bhp[well_idx]` / `state.perforation_primaries`
 /// in place — same call shape as `relax_well_state_toward_local_consistency`, so this is a
 /// drop-in replacement at that call site (`docs/FIM_BUNDLE_W_PLAN.md` §5 item 1). Convergence
 /// uses the identical `EquationScaling` family-scale formulas (`fim/scaling.rs`) the global
@@ -344,7 +345,7 @@ pub(crate) fn solve_well_locally(
             chop_bhp_update(state.well_bhp[well_idx], delta[0], options.dbhp_max_rel);
         for (local_perf, &perf_idx) in local.perforation_indices.iter().enumerate() {
             // No magnitude clamp on q, matching OPM's WQTotal update (W0 appendix D).
-            state.perforation_rates_m3_day[perf_idx] += delta[1 + local_perf];
+            state.perforation_primaries[perf_idx].value += delta[1 + local_perf];
         }
 
         iterations += 1;
@@ -567,8 +568,8 @@ mod tests {
         sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
 
         let mut state = FimState::from_simulator(&sim);
-        for q in state.perforation_rates_m3_day.iter_mut() {
-            *q += 500.0;
+        for primary in state.perforation_primaries.iter_mut() {
+            primary.value += 500.0;
         }
         let topology = build_well_topology(&sim);
         for well_idx in 0..topology.wells.len() {
@@ -645,8 +646,8 @@ mod tests {
         sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
 
         let mut state = FimState::from_simulator(&sim);
-        for q in state.perforation_rates_m3_day.iter_mut() {
-            *q += 800.0;
+        for primary in state.perforation_primaries.iter_mut() {
+            primary.value += 800.0;
         }
         let topology = build_well_topology(&sim);
         let options = FimWellInnerSolveOptions::default();
@@ -699,8 +700,8 @@ mod tests {
         sim.well_bhp_max = 500.0;
 
         let mut state = FimState::from_simulator(&sim);
-        for q in state.perforation_rates_m3_day.iter_mut() {
-            *q *= 0.3;
+        for primary in state.perforation_primaries.iter_mut() {
+            primary.value *= 0.3;
         }
         let topology = build_well_topology(&sim);
         let options = FimWellInnerSolveOptions::default();
@@ -738,8 +739,8 @@ mod tests {
         sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
 
         let mut state = FimState::from_simulator(&sim);
-        for q in state.perforation_rates_m3_day.iter_mut() {
-            *q += 800.0;
+        for primary in state.perforation_primaries.iter_mut() {
+            primary.value += 800.0;
         }
         let topology = build_well_topology(&sim);
         let options = FimWellInnerSolveOptions {
@@ -761,8 +762,8 @@ mod tests {
         sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
 
         let mut state = FimState::from_simulator(&sim);
-        for q in state.perforation_rates_m3_day.iter_mut() {
-            *q += 800.0;
+        for primary in state.perforation_primaries.iter_mut() {
+            primary.value += 800.0;
         }
         let topology = build_well_topology(&sim);
         let options = FimWellInnerSolveOptions::default();
@@ -786,8 +787,8 @@ mod tests {
         sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
 
         let mut state = FimState::from_simulator(&sim);
-        for q in state.perforation_rates_m3_day.iter_mut() {
-            *q += 800.0;
+        for primary in state.perforation_primaries.iter_mut() {
+            primary.value += 800.0;
         }
         let topology = build_well_topology(&sim);
         let options = FimWellInnerSolveOptions::default();
@@ -822,8 +823,8 @@ mod tests {
         sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
 
         let mut state = FimState::from_simulator(&sim);
-        for q in state.perforation_rates_m3_day.iter_mut() {
-            *q += 800.0;
+        for primary in state.perforation_primaries.iter_mut() {
+            primary.value += 800.0;
         }
         let topology = build_well_topology(&sim);
         let options = FimWellInnerSolveOptions::default();

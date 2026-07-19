@@ -839,17 +839,25 @@ fn globally_extrapolated_state(prev: &FimState, curr: &FimState, dt_ratio: f64) 
         .zip(curr.well_bhp.iter())
         .map(|(p, c)| linear_extrapolate_scalar(*p, *c, dt_ratio))
         .collect();
-    let perforation_rates_m3_day: Vec<f64> = prev
-        .perforation_rates_m3_day
+    let perforation_primaries = prev
+        .perforation_primaries
         .iter()
-        .zip(curr.perforation_rates_m3_day.iter())
-        .map(|(p, c)| linear_extrapolate_scalar(*p, *c, dt_ratio))
+        .zip(curr.perforation_primaries.iter())
+        .map(|(p, c)| {
+            assert_eq!(
+                p.kind, c.kind,
+                "cannot extrapolate across a primary-kind change"
+            );
+            crate::fim::state::FimPerforationPrimary {
+                kind: c.kind,
+                value: linear_extrapolate_scalar(p.value, c.value, dt_ratio),
+            }
+        })
         .collect();
     FimState {
         cells,
         well_bhp,
-        perforation_rates_m3_day,
-        perforation_primary_kinds: prev.perforation_primary_kinds.clone(),
+        perforation_primaries,
     }
 }
 
@@ -1367,7 +1375,7 @@ impl ReservoirSimulator {
                             report.final_residual_inf_norm,
                             report.final_material_balance_inf_norm,
                             report.accepted_state.well_bhp,
-                            report.accepted_state.perforation_rates_m3_day,
+                            report.accepted_state.perforation_primaries,
                         ));
                     }
 
@@ -1609,7 +1617,7 @@ impl ReservoirSimulator {
                             report.final_residual_inf_norm,
                             report.final_material_balance_inf_norm,
                             report.accepted_state.well_bhp,
-                            report.accepted_state.perforation_rates_m3_day,
+                            report.accepted_state.perforation_primaries,
                         ));
                     }
                     match failure_diagnostics.class {
@@ -1988,8 +1996,7 @@ mod tests {
         let previous = FimState {
             cells: vec![cell(200.0, 0.3, 0.1, HydrocarbonState::Saturated)],
             well_bhp: vec![],
-            perforation_rates_m3_day: vec![],
-            perforation_primary_kinds: vec![],
+            perforation_primaries: vec![],
         };
         let mut current = previous.clone();
         current.cells[0].pressure_bar = 220.0; // dp = 20
@@ -2849,9 +2856,10 @@ mod tests {
                 },
             ],
             well_bhp: vec![200.0],
-            perforation_rates_m3_day: vec![10.0, -5.0],
-            perforation_primary_kinds:
-                vec![crate::fim::state::FimPerforationPrimaryKind::ReservoirConnectionQ; 2],
+            perforation_primaries: vec![
+                crate::fim::state::FimPerforationPrimary::reservoir_connection_q(10.0),
+                crate::fim::state::FimPerforationPrimary::reservoir_connection_q(-5.0),
+            ],
         };
         let curr = FimState {
             cells: vec![
@@ -2869,9 +2877,10 @@ mod tests {
                 },
             ],
             well_bhp: vec![198.0],
-            perforation_rates_m3_day: vec![12.0, -6.0],
-            perforation_primary_kinds:
-                vec![crate::fim::state::FimPerforationPrimaryKind::ReservoirConnectionQ; 2],
+            perforation_primaries: vec![
+                crate::fim::state::FimPerforationPrimary::reservoir_connection_q(12.0),
+                crate::fim::state::FimPerforationPrimary::reservoir_connection_q(-6.0),
+            ],
         };
         let dt_ratio = 0.5;
         let extrapolated = globally_extrapolated_state(&prev, &curr, dt_ratio);
@@ -2884,7 +2893,7 @@ mod tests {
         assert!((extrapolated.cells[0].pressure_bar - expected_p0).abs() < 1e-12);
         assert!((extrapolated.cells[1].sw - expected_sw1).abs() < 1e-12);
         assert!((extrapolated.well_bhp[0] - expected_bhp).abs() < 1e-12);
-        assert!((extrapolated.perforation_rates_m3_day[1] - expected_rate1).abs() < 1e-12);
+        assert!((extrapolated.perforation_primaries[1].value - expected_rate1).abs() < 1e-12);
         // Regime is inherited from curr, not re-classified.
         assert_eq!(extrapolated.cells[0].regime, HydrocarbonState::Saturated);
         assert_eq!(
@@ -2906,8 +2915,7 @@ mod tests {
                 regime: HydrocarbonState::Undersaturated,
             }],
             well_bhp: vec![],
-            perforation_rates_m3_day: vec![],
-            perforation_primary_kinds: vec![],
+            perforation_primaries: vec![],
         };
         let curr = FimState {
             cells: vec![FimCellState {
@@ -2917,8 +2925,7 @@ mod tests {
                 regime: HydrocarbonState::Undersaturated,
             }],
             well_bhp: vec![],
-            perforation_rates_m3_day: vec![],
-            perforation_primary_kinds: vec![],
+            perforation_primaries: vec![],
         };
         // dt_ratio=2 would extrapolate sw to 0.98 + (0.98-0.90)*2 = 1.14,
         // which must clamp to 1.0.

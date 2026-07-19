@@ -441,8 +441,8 @@ mod tests {
         for (column, step) in [(u_col, 1e-2)] {
             let mut lower = state.clone();
             let mut upper = state.clone();
-            lower.perforation_rates_m3_day[0] -= step;
-            upper.perforation_rates_m3_day[0] += step;
+            lower.perforation_primaries[0].value -= step;
+            upper.perforation_primaries[0].value += step;
             let lower_residual = assemble_fim_system_ad(&sim, &state, &lower, &options).residual;
             let upper_residual = assemble_fim_system_ad(&sim, &state, &upper, &options).residual;
             for row in [gas_row, perf_row, control_row] {

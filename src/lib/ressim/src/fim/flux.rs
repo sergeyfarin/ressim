@@ -370,8 +370,7 @@ mod tests {
                 },
             ],
             well_bhp: Vec::new(),
-            perforation_rates_m3_day: Vec::new(),
-            perforation_primary_kinds: Vec::new(),
+            perforation_primaries: Vec::new(),
         };
 
         let derived_0 = state.derive_cell(&sim, 0);

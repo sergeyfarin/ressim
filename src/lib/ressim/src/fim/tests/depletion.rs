@@ -178,7 +178,7 @@ fn run_dep_pss_like_sim_with_step_diagnostics(
             producer_cell_pressure_bar: sim.pressure[perf.cell_index],
             producer_cell_sw: sim.sat_water[perf.cell_index],
             producer_bhp_bar: state.well_bhp[0],
-            producer_perf_rate_m3_day: state.perforation_rates_m3_day[perf_idx],
+            producer_perf_rate_m3_day: state.perforation_primaries[perf_idx].value,
             accepted_substep_count: accepted_substep_dts.len(),
             accepted_substep_dts,
         });
@@ -260,7 +260,7 @@ fn run_single_cell_local_newton(dt_days: f64, options: FimNewtonOptions) -> Loca
         },
     );
     let perf_idx = topology.wells[0].perforation_indices[0];
-    let oil_rate_sc_day = report.accepted_state.perforation_rates_m3_day[perf_idx]
+    let oil_rate_sc_day = report.accepted_state.perforation_primaries[perf_idx].value
         / report.accepted_state.derive_cell(&sim, 0).bo.max(1e-9);
 
     LocalNewtonDiagnostics {

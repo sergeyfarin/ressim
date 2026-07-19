@@ -99,8 +99,8 @@ fn y2b2_state_checksum(state: &FimState) -> u64 {
     for value in &state.well_bhp {
         add(value.to_bits());
     }
-    for value in &state.perforation_rates_m3_day {
-        add(value.to_bits());
+    for primary in &state.perforation_primaries {
+        add(primary.value.to_bits());
     }
     hash
 }
@@ -727,7 +727,7 @@ fn y2a_finite_difference_step(state: &FimState, unknown_idx: usize) -> f64 {
         return 1e-4 * state.well_bhp[well_idx].abs().max(1.0);
     }
     let perf_idx = unknown_idx - state.n_cell_unknowns() - state.n_well_unknowns();
-    1e-4 * state.perforation_rates_m3_day[perf_idx].abs().max(1.0)
+    1e-4 * state.perforation_primaries[perf_idx].value.abs().max(1.0)
 }
 
 #[cfg(test)]
@@ -745,7 +745,7 @@ fn y2a_perturb_unknown(state: &mut FimState, unknown_idx: usize, delta: f64) {
         state.well_bhp[well_idx] += delta;
     } else {
         let perf_idx = unknown_idx - state.n_cell_unknowns() - state.n_well_unknowns();
-        state.perforation_rates_m3_day[perf_idx] += delta;
+        state.perforation_primaries[perf_idx].value += delta;
     }
 }
 
@@ -2528,8 +2528,8 @@ pub(crate) fn run_fim_timestep(
                 .collect();
             let relax_dq_approx: Vec<f64> = (0..state.n_perforation_unknowns())
                 .map(|perf_idx| {
-                    candidate.perforation_rates_m3_day[perf_idx]
-                        - (state.perforation_rates_m3_day[perf_idx] + raw_dq[perf_idx])
+                    candidate.perforation_primaries[perf_idx].value
+                        - (state.perforation_primaries[perf_idx].value + raw_dq[perf_idx])
                 })
                 .collect();
             crate::fim::trace_sink::write_line(&format!(
@@ -2537,8 +2537,8 @@ pub(crate) fn run_fim_timestep(
                 iteration,
                 state.well_bhp,
                 candidate.well_bhp,
-                state.perforation_rates_m3_day,
-                candidate.perforation_rates_m3_day,
+                state.perforation_primaries,
+                candidate.perforation_primaries,
                 raw_dbhp,
                 raw_dq,
                 relax_dbhp_approx,
@@ -2553,7 +2553,7 @@ pub(crate) fn run_fim_timestep(
             // FIM-BUNDLE-X X0 (`docs/FIM_BUNDLE_X_PLAN.md`): stage-by-stage first-order-
             // consistency forensics. `enforce_cell_bounds`/`enforce_control_bounds` never touch
             // perforation rates (verified by inspection: neither function references
-            // `perforation_rates_m3_day`) and `opm_per_cell_chopped_update` never chops
+            // `perforation_primaries`) and `opm_per_cell_chopped_update` never chops
             // perforation-rate entries either — so `raw_dq` above (post relaxation-scalar,
             // post chop) is the coupled linear system's dq unmodified by anything except the
             // `NestedSolve` override that follows. This line answers X0's "why does the coupled
@@ -2711,7 +2711,7 @@ pub(crate) fn run_fim_timestep(
                 } else {
                     let component_rates =
                         perforation_component_rates_sc_day(sim, &state, &topology, perf_idx);
-                    let q = state.perforation_rates_m3_day[perf_idx];
+                    let q = state.perforation_primaries[perf_idx].value;
                     let source_residual: [f64; 3] = component_rates.map(|rate| rate * dt_days);
                     let source_dq: [f64; 3] = [
                         assembly

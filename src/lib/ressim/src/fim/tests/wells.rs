@@ -84,7 +84,7 @@ fn single_cell_producer_reporting_matches_local_source_state() {
     );
     assert!(
         (latest.total_production_liquid_reservoir
-            - report.accepted_state.perforation_rates_m3_day[perf_idx])
+            - report.accepted_state.perforation_primaries[perf_idx].value)
             .abs()
             < 1e-10
     );
@@ -325,13 +325,13 @@ fn multi_layer_well_shares_bhp_and_splits_rate_by_mobility() {
 
     assert!(perf_residual0.abs() < 1e-6);
     assert!(perf_residual1.abs() < 1e-6);
-    assert!((state.perforation_rates_m3_day[perf0] - q0).abs() < 1e-8);
-    assert!((state.perforation_rates_m3_day[perf1] - q1).abs() < 1e-8);
+    assert!((state.perforation_primaries[perf0].value - q0).abs() < 1e-8);
+    assert!((state.perforation_primaries[perf1].value - q1).abs() < 1e-8);
     assert!((q0 - q1).abs() > 1e-6);
 
     let total_connection_rate = q0 + q1;
     let total_perforation_rate =
-        state.perforation_rates_m3_day[perf0] + state.perforation_rates_m3_day[perf1];
+        state.perforation_primaries[perf0].value + state.perforation_primaries[perf1].value;
 
     assert!((total_perforation_rate - total_connection_rate).abs() < 1e-8);
     assert!(

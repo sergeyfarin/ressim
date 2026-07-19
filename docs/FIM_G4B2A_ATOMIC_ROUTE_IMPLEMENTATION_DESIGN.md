@@ -2,6 +2,13 @@
 
 Status: **COMPLETE — CODE ROUTE SPECIFIED; EXECUTION BLOCK REMAINS (2026-07-15)**
 
+Implementation checkpoint (2026-07-19): **G4b2b S1 COMPLETE.** `FimState` now stores the
+perforation tail as `Vec<FimPerforationPrimary>`; the former parallel numeric-value and kind
+vectors are removed. Tail count, ordering, and matrix offsets are unchanged. All Rust fixtures
+and numerical-vector adapters preserve the primary kind while reading or updating `.value`.
+This is a representation checkpoint only: S2 must still replace route-sensitive direct value
+reads with the explicit q/u accessors before the atomic route can be called complete.
+
 This is the implementation contract for the next G4 code slice. It turns the G4b2 readiness
 inventory into one default-off, one-perforation route. It is deliberately more prescriptive than
 the G4a lifecycle design: an implementation is acceptable only if it follows the data model,

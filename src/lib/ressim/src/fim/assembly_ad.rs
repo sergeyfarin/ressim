@@ -251,7 +251,7 @@ fn add_well_residual_terms(
         let injector = topology.wells[well_idx].injector;
         let cell = well_cell_input(sim, state, perforation.cell_index);
         let bhp = state.well_bhp[well_idx];
-        let q = state.perforation_rates_m3_day[perf_idx];
+        let q = state.perforation_primaries[perf_idx].value;
 
         let neighborhood_cells =
             perforation_local_block(topology, state, perf_idx).control_influence_cells(sim);
@@ -359,7 +359,7 @@ fn add_well_jacobian_terms(
         let injector = topology.wells[well_idx].injector;
         let cell = well_cell_input(sim, state, perforation.cell_index);
         let bhp = state.well_bhp[well_idx];
-        let q = state.perforation_rates_m3_day[perf_idx];
+        let q = state.perforation_primaries[perf_idx].value;
 
         let neighborhood_cells =
             perforation_local_block(topology, state, perf_idx).control_influence_cells(sim);
@@ -479,7 +479,7 @@ fn add_well_jacobian_terms(
         for &perf_idx in &topology.wells[well_idx].perforation_indices {
             let perforation = &topology.perforations[perf_idx];
             let cell = well_cell_input(sim, state, perforation.cell_index);
-            let q = state.perforation_rates_m3_day[perf_idx];
+            let q = state.perforation_primaries[perf_idx].value;
             let q_col = state.perforation_rate_unknown_offset(perf_idx);
 
             let neighborhood_cells =
@@ -1023,8 +1023,8 @@ mod tests {
         }
         state.well_bhp[0] = 230.0;
         state.well_bhp[1] = 90.0;
-        state.perforation_rates_m3_day[0] = -25.0;
-        state.perforation_rates_m3_day[1] = 20.0;
+        state.perforation_primaries[0].value = -25.0;
+        state.perforation_primaries[1].value = 20.0;
 
         (sim, previous_state, state)
     }
@@ -1226,7 +1226,7 @@ mod tests {
             cell.hydrocarbon_var = hydrocarbon_var;
         }
         pre_adaptation.well_bhp[0] = 230.0;
-        pre_adaptation.perforation_rates_m3_day[0] = -100.0;
+        pre_adaptation.perforation_primaries[0].value = -100.0;
 
         // Adapt the perforated cell from Rs to newly appeared Sg=0. Cell 2 represents the
         // opposite edge: previous-switch hysteresis retains its slightly negative Sg meaning.
@@ -1311,7 +1311,12 @@ mod tests {
             .flat_map(|c| [c.pressure_bar, c.sw, c.hydrocarbon_var])
             .collect();
         x0.extend_from_slice(&state.well_bhp);
-        x0.extend_from_slice(&state.perforation_rates_m3_day);
+        x0.extend(
+            state
+                .perforation_primaries
+                .iter()
+                .map(|primary| primary.value),
+        );
 
         let residual = |x: &[f64]| {
             let mut perturbed = state.clone();
@@ -1323,8 +1328,8 @@ mod tests {
             for (idx, bhp) in perturbed.well_bhp.iter_mut().enumerate() {
                 *bhp = x[3 * n_cells + idx];
             }
-            for (idx, rate) in perturbed.perforation_rates_m3_day.iter_mut().enumerate() {
-                *rate = x[3 * n_cells + n_wells + idx];
+            for (idx, primary) in perturbed.perforation_primaries.iter_mut().enumerate() {
+                primary.value = x[3 * n_cells + n_wells + idx];
             }
             assemble_fim_system(&sim, &previous_state, &perturbed, &options)
                 .residual
