@@ -957,6 +957,26 @@ is not independently analytic, and a full source-row FD must first isolate accum
 this as non-live infrastructure, not a partial Flow port. The next work is typed-state migration
 plus independent legacy/source-FD and Schur/trace gates; no live diagnostic is authorized.
 
+### G4b2b closeout (2026-07-19): atomic typed route is executable; parity remains unmeasured
+
+The selected perforation tail is now a typed `FlowResvGasSurfaceU`, while all historical
+assembly and nested-well consumers explicitly require `ReservoirConnectionQ`. AD and independent
+analytic legacy assembly agree with complete central finite differences over
+`[p, Sw, hc, bhp, u]`; direct and well-Schur corrections agree on the complete selected matrix.
+The update path excludes historical FB control, q relaxation, and nested q solve. Scaling,
+diagnostics, reporting, Newton accepted-state checks, and the basin-escape residual probe retain
+the selected route and its units. The pre-Newton execution block is removed behind the existing
+default-off option.
+
+The implementation pass exposed two masked defects rather than treating their symptoms as a
+convergence verdict: the legacy PVT derivative selected a different table-knot slope from AD,
+and residual-only reassembly sites discarded the RESV context. It also now rejects a non-finite
+Legacy direct fallback before state mutation while preserving finite historical fallback
+corrections. These are route/oracle correctness
+repairs, not evidence of fewer exact-deck Newton iterations. The next authorized action is only
+the committed-tree, capped first report-step trace in G4b2a §8; no acceptance, damping,
+controller, or linear-policy change may be combined with it.
+
 ## 8. Y3 and Y4 end gates
 
 Y3 controller parity starts only after full-target Newton convergence is plausible. Its target is

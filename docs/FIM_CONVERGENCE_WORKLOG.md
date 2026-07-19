@@ -4266,3 +4266,34 @@ well row. OPM source confirms the different `StandardWell` per-well `WQTotal`/BH
 but with one perforation the local unknown count matches ResSim and the observed failure is more
 immediately an AD boundary-convention inconsistency. Next: scope and test one coherent
 active-bound derivative convention before a G4 restructure or acceptance change.
+
+### G4b2b: atomic typed RESV route closeout (2026-07-19)
+
+Implemented the G4b2a contract in four reviewable commits. State now stores
+`Vec<FimPerforationPrimary>` rather than parallel value/kind vectors. Historical assembly and
+nested-well paths require reservoir q; the selected RESV route requires positive surface u.
+The legacy selected route is independently analytic and uses the explicit quotient derivative
+for `-q/B_g`; complete `[p, Sw, hc, bhp, u]` central finite differences cover gas, perforation,
+and control rows, and full direct versus well-Schur corrections agree.
+
+Two independent defects were uncovered by those gates. First, `PvtTable::d_bg_d_p` used a
+centered finite difference across table knots while generic AD interpolation used one active
+segment; it now uses the exact interpolation segment (and retains the Boyle-law end branch).
+Second, Newton accepted-state and timestep basin-escape residual-only probes omitted the RESV
+context, which would reinterpret typed u as historical q after the main assembly succeeded. Both
+now carry the immutable report-step context. Route-aware diagnostics/reporting derive current
+connection q rather than relabeling u. A non-finite Legacy direct fallback is rejected before
+update diagnostics or state mutation instead of allowing NaN/Inf corrections through; finite
+historical fallback corrections remain usable even when the debug backend's convergence flag is
+false.
+
+Focused validation: `flow_resv` 8/8, `assembly_ad::tests` 6/6, `wells_inner::tests` 12/12,
+`pvt::tests` 3/3, the production RESV timestep smoke 1/1, and `cargo check --tests` pass. The
+curated shared bucket again reaches its documented pre-existing closed-system assertion
+(`rate_history` length 2 versus 1), after its preceding three controls pass; it is not attributed
+to G4b2b. The locked FIM coverage is green: SPE1 3/3, wells 5/5, and the three depletion/PSS
+checks 3/3. IMPES transport 3/3 and timestep 2/2 are also green. The shared PVT correction changes
+only `dB_g/dp`, which is consumed by FIM Jacobian construction; IMPES has no typed perforation
+primary or analogous derivative route, so no IMPES implementation change is warranted. No
+exact-deck performance metric is claimed here. Next is the capped committed-tree first
+report-step trace, held to the no-retry/comparable-field oracle in the G4b2a design.

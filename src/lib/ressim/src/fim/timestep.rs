@@ -904,6 +904,7 @@ pub(crate) fn evaluate_basin_escape_residual(
     previous_state: &FimState,
     state: &FimState,
     dt_days: f64,
+    flow_resv_context: Option<crate::fim::flow_resv::FlowResvReportStepContext>,
 ) -> BasinEscapeProbeResult {
     let assembly = assemble_fim_system(
         sim,
@@ -914,7 +915,7 @@ pub(crate) fn evaluate_basin_escape_residual(
             include_wells: true,
             assemble_residual_only: true,
             topology: None,
-            flow_resv_context: None,
+            flow_resv_context,
         },
     );
     let n_cells = state.cells.len();
@@ -1070,16 +1071,6 @@ impl ReservoirSimulator {
         } else {
             None
         };
-        // The implementation is assembled and parity-gated below, but the first live rung has
-        // its own trace/no-retry oracle. Keep the structural block until that non-live route is
-        // promoted to an executable G4b2 closeout; this prevents a test-incomplete lifecycle
-        // from being mistaken for a Flow result.
-        if flow_resv_context.is_some() {
-            self.last_solver_warning =
-                "FIM Flow RESV injector assembled but not executable until G4b2 non-live gates close"
-                    .to_string();
-            return;
-        }
         // FIM-DIAG-003 D0/D1: forced-direct-linear switch. Off unless the native repro driver
         // set it from FIM_FORCE_DIRECT_LINEAR; no-op elsewhere including all wasm paths.
         if self.fim_force_direct_linear {
@@ -1401,12 +1392,14 @@ impl ReservoirSimulator {
                                 &previous_state,
                                 prev_state,
                                 trial_dt,
+                                flow_resv_context,
                             );
                             let probe = evaluate_basin_escape_residual(
                                 self,
                                 &previous_state,
                                 &extrapolated,
                                 trial_dt,
+                                flow_resv_context,
                             );
                             let baseline_norm = baseline.total_inf_norm();
                             let probe_norm = probe.total_inf_norm();
@@ -1871,9 +1864,14 @@ mod tests {
         replayable_unchanged_cooldown_accepts, replayable_unchanged_hotspot_plateau_accepts,
         seed_gas_outer_step_trial_carryover,
     };
+    use crate::fim::flow_resv::begin_flow_resv_report_step_context;
     use crate::fim::newton::FimStepReport;
-    use crate::fim::newton::{FimHotspotSite, FimRetryFailureClass, FimRetryFailureDiagnostics};
+    use crate::fim::newton::{
+        FimHotspotSite, FimNewtonOptions, FimRetryFailureClass, FimRetryFailureDiagnostics,
+        run_fim_timestep,
+    };
     use crate::fim::state::{FimCellState, FimState, HydrocarbonState};
+    use crate::fim::wells::build_well_topology;
     use crate::pvt::{PvtRow, PvtTable};
     use crate::well::WellSchedule;
     use crate::{InjectedFluid, ReservoirSimulator};
@@ -1956,16 +1954,54 @@ mod tests {
     }
 
     #[test]
-    fn valid_resv_context_is_blocked_before_historical_bhp_q_execution() {
+    fn valid_resv_context_reaches_and_completes_typed_newton_route() {
         let mut sim = scoped_resv_sim();
+        sim.set_fim_opm_aligned_nonlinear(true);
         let initial_time_days = sim.time_days;
 
         sim.step_internal_fim(0.25);
 
-        assert_eq!(sim.time_days, initial_time_days);
+        assert!(sim.time_days > initial_time_days);
+        assert!(!sim.last_solver_warning.contains("unsupported"));
+        let stats = sim
+            .last_fim_step_stats_ref()
+            .expect("typed RESV execution must record step stats");
+        assert!(stats.accepted_substeps > 0);
+    }
+
+    #[test]
+    fn legacy_resv_failed_direct_fallback_is_rejected_before_state_update() {
+        let mut sim = scoped_resv_sim();
+        let previous_state = FimState::from_simulator(&sim);
+        let context = begin_flow_resv_report_step_context(&sim, &previous_state, false)
+            .unwrap()
+            .expect("scoped RESV fixture must produce a route context");
+        let topology = build_well_topology(&sim);
+        let mut initial_iterate = previous_state.clone();
+        initial_iterate
+            .initialize_flow_resv_gas_primary(&sim, &topology, context)
+            .unwrap();
+        let mut options = FimNewtonOptions::default();
+        options.flow_resv_context = Some(context);
+
+        let report = run_fim_timestep(&mut sim, &previous_state, &initial_iterate, 0.25, &options);
+
+        assert!(!report.converged);
+        let linear = report
+            .last_linear_report
+            .expect("failed fallback must be retained for retry classification");
+        assert!(!linear.converged);
         assert!(
-            sim.last_solver_warning
-                .contains("assembled but not executable until G4b2 non-live gates close")
+            !linear.solution.iter().all(|value| value.is_finite()),
+            "fixture is intended to exercise the non-finite direct fallback"
+        );
+        assert!(
+            report.accepted_state.cells.iter().all(|cell| {
+                cell.pressure_bar.is_finite()
+                    && cell.sw.is_finite()
+                    && cell.hydrocarbon_var.is_finite()
+            }),
+            "the rejected correction must not contaminate the returned retry state"
         );
     }
 
@@ -2946,7 +2982,7 @@ mod tests {
         let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
         sim.set_fim_enabled(true);
         let state = FimState::from_simulator(&sim);
-        let result = evaluate_basin_escape_residual(&sim, &state, &state, 1.0);
+        let result = evaluate_basin_escape_residual(&sim, &state, &state, 1.0, None);
         // A closed 2-cell system at its initial state with matching previous
         // state should have near-zero residual across all three families.
         assert!(result.water.inf_norm < 1e-8);

@@ -177,8 +177,6 @@ impl<'a> FimPerforationLocalBlock<'a> {
         sim: &ReservoirSimulator,
     ) -> Option<PerforationResidualDiagnostics> {
         let perforation = self.perforation();
-        let well_block = well_local_block(self.topology, self.state, self.physical_well_idx());
-        let control = well_block.control(sim);
         let well = perforation_well(sim, perforation);
         let cell = self.state.cell(perforation.cell_index);
         let derived = self.state.derive_cell(sim, perforation.cell_index);
@@ -186,12 +184,42 @@ impl<'a> FimPerforationLocalBlock<'a> {
             sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
         let well_index = geometric_well_index(sim, perforation)?;
         let connection_mobility = (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
-        let bhp_bar = well_block.bhp_bar();
+        let bhp_bar = self.state.well_bhp[self.physical_well_idx()];
         let drawdown_bar = cell.pressure_bar - bhp_bar;
         let raw_connection_m3_day = well_index * connection_mobility * drawdown_bar;
         if !raw_connection_m3_day.is_finite() {
             return None;
         }
+
+        if let Some(u_sm3_day) = self.state.flow_resv_surface_u(self.perf_idx) {
+            let q_connection_m3_day = raw_connection_m3_day.min(0.0);
+            return Some(PerforationResidualDiagnostics {
+                perf_idx: self.perf_idx,
+                physical_well_idx: self.physical_well_idx(),
+                enabled: true,
+                injector: true,
+                q_unknown_m3_day: q_connection_m3_day,
+                q_connection_m3_day,
+                raw_connection_m3_day,
+                drawdown_bar,
+                well_index,
+                connection_mobility,
+                bhp_bar,
+                cell_pressure_bar: cell.pressure_bar,
+                surface_rate_unknown_sc_day: Some(u_sm3_day),
+                target_rate_sc_day: None,
+                actual_well_rate_sc_day: Some((-q_connection_m3_day) / derived.bg.max(1e-9)),
+                bhp_slack: None,
+                rate_slack: None,
+                frozen_consistent_bhp_bar: None,
+                frozen_consistent_perf_rate_m3_day: None,
+                frozen_consistent_well_rate_sc_day: None,
+                frozen_consistent_bhp_limited: None,
+            });
+        }
+
+        let well_block = well_local_block(self.topology, self.state, self.physical_well_idx());
+        let control = well_block.control(sim);
 
         let q_connection_m3_day = if !control.enabled {
             0.0
@@ -1557,9 +1585,8 @@ pub(crate) fn perforation_component_rates_sc_day(
 ) -> [f64; 3] {
     let perforation = &topology.perforations[perf_idx];
     let well = perforation_well(sim, perforation);
-    let q_m3_day = state
-        .reservoir_connection_q(perf_idx)
-        .expect("historical well path requires a reservoir-q primary");
+    let q_m3_day = current_reservoir_connection_rate(sim, state, topology, perf_idx)
+        .expect("perforation component rates require a finite connection rate");
     let id = perforation.cell_index;
     if well.injector {
         return match effective_injected_fluid(sim) {

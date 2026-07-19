@@ -1165,6 +1165,7 @@ pub(super) fn evaluate_accepted_state_convergence(
     candidate_state: &FimState,
     topology: &crate::fim::wells::FimWellTopology,
     dt_days: f64,
+    flow_resv_context: Option<FlowResvReportStepContext>,
 ) -> AcceptedStateConvergenceDiagnostics {
     let mut state = candidate_state.clone();
     state.classify_regimes(sim);
@@ -1178,7 +1179,7 @@ pub(super) fn evaluate_accepted_state_convergence(
             include_wells: true,
             assemble_residual_only: true,
             topology: Some(topology),
-            flow_resv_context: None,
+            flow_resv_context,
         },
     );
     let residual_inf_norm =

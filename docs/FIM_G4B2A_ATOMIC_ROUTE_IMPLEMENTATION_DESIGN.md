@@ -1,6 +1,15 @@
 # G4b2a — Flow RESV Atomic-Route Implementation Design
 
-Status: **COMPLETE — CODE ROUTE SPECIFIED; EXECUTION BLOCK REMAINS (2026-07-15)**
+Status: **IMPLEMENTED — G4B2B ATOMIC ROUTE COMPLETE (2026-07-19)**
+
+Implementation checkpoint (2026-07-19): **G4b2b S4 COMPLETE.** The pre-Newton safety block is
+removed after the typed route's non-live gates. Every residual-only reassembly used by Newton
+acceptance and the basin-escape diagnostic now carries the immutable report-step RESV context;
+neither path can reinterpret the typed surface `u` as historical reservoir `q`. Route-aware
+perforation diagnostics and component-rate reporting derive the current connection rate from
+the connection law. A valid default-off RESV fixture reaches and completes the production
+OpmAligned Newton/timestep path. The first live exact-deck comparison remains a separate evidence
+slice under §8 and is not implied by this structural closeout.
 
 Implementation checkpoint (2026-07-19): **G4b2b S1 COMPLETE.** `FimState` now stores the
 perforation tail as `Vec<FimPerforationPrimary>`; the former parallel numeric-value and kind
@@ -31,10 +40,9 @@ inventory into one default-off, one-perforation route. It is deliberately more p
 the G4a lifecycle design: an implementation is acceptable only if it follows the data model,
 row/column contract, and gates below as a single change.
 
-It does **not** authorize a live RESV convergence comparison. The pre-Newton execution block in
-`fim/timestep.rs` remains until the atomic route and its non-live gates have landed. The first
-live rung is a separate slice and is valid only if it has no retry and has the complete trace in
-§9.
+The atomic route is now executable behind its default-off native option. This implementation
+closeout does **not** itself establish Flow trajectory parity. The first live rung remains a
+separate slice and is valid only if it has no retry and has the complete trace in §9.
 
 ## 1. Decision record
 

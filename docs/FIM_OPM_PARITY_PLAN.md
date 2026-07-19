@@ -1839,3 +1839,19 @@ timestep. The temporary state representation still stores u in the historical q-
 the legacy Jacobian has not yet gained its independent analytic source linearization; therefore
 this does not satisfy §15.29 and cannot be used for a Flow comparison. Next is the typed-state
 and oracle closeout, not a live run.
+
+### 15.31 G4b2b result: atomic typed RESV lifecycle reaches production Newton
+
+The selected state slot is now physically typed surface `u`; historical q-only consumers cannot
+read it. The selected AD route and an independent analytic legacy route scatter the same current-
+`B_g` gas source/connection and frozen-`B_g,ref` control, with complete central-FD coverage and
+exact direct/Schur correction equality. Selected updates bypass historical FB/q postprocessing,
+and all residual-only reassembly, diagnostics, and reporting sites preserve or derive the route's
+actual meaning. The former pre-Newton block is removed behind the default-off native flag, and a
+valid fixture completes the OpmAligned timestep path.
+
+This closes implementation completeness only. It does not upgrade the earlier Flow comparison:
+the exact `gas-rate-10x10x3` first report step must now be replayed from the committed tree with
+evaluation-0/1 fields and no retry. A retry, missing trace field, or route fall-through is
+`INCONCLUSIVE`, not a refutation of the coherent Flow lifecycle and not authorization to tune
+Newton acceptance or timestep control.

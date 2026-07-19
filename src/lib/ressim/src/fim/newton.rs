@@ -1236,6 +1236,7 @@ pub(crate) fn run_fim_timestep(
                 &state,
                 &topology,
                 dt_days,
+                options.flow_resv_context,
             );
             let unchanged_entry_is_effectively_exact = iteration != 0
                 || materially_changed
@@ -1463,6 +1464,7 @@ pub(crate) fn run_fim_timestep(
                     &state,
                     &topology,
                     dt_days,
+                    options.flow_resv_context,
                 );
                 let gate_status = stagnation_acceptance_gate_status(
                     materially_changed,
@@ -2156,6 +2158,37 @@ pub(crate) fn run_fim_timestep(
                 }
             }
         }
+        // A Legacy direct fallback is still a linear solve, not an unconditional rescue. Do not
+        // pass a non-finite fallback correction into update diagnostics/state mutation; besides
+        // producing invalid states, `f64::max` in the historical norm can hide NaNs. Preserve the
+        // historical use of finite direct corrections whose debug-backend convergence flag is
+        // false: locked rate-controlled well tests rely on those usable corrections.
+        if !linear_report.solution.iter().all(|value| value.is_finite()) {
+            let failure_diagnostics = classify_retry_failure_with_site(
+                Some(&linear_report),
+                &residual_diagnostics,
+                current_hotspot_site,
+            );
+            let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
+            return FimStepReport {
+                accepted_state: state,
+                converged: false,
+                newton_iterations: iteration + 1,
+                final_residual_inf_norm: current_norm,
+                final_material_balance_inf_norm,
+                final_update_inf_norm,
+                last_linear_report: Some(linear_report),
+                accepted_hotspot_site: None,
+                failure_diagnostics: Some(failure_diagnostics),
+                retry_factor,
+                total_time_ms: total_timer.elapsed_ms(),
+                assembly_ms,
+                property_eval_ms,
+                linear_solve_time_ms,
+                linear_preconditioner_build_time_ms,
+                state_update_ms,
+            };
+        }
         iterative_failed_last_iter = used_fallback && !any_preexisting_bypass;
 
         let update_peak = scaled_update_peak(&linear_report.solution, &assembly.variable_scaling);
@@ -2183,6 +2216,7 @@ pub(crate) fn run_fim_timestep(
                 &state,
                 &topology,
                 dt_days,
+                options.flow_resv_context,
             );
             if accepted_state_meets_convergence(
                 &accepted_diagnostics,
@@ -2871,6 +2905,7 @@ pub(crate) fn run_fim_timestep(
                 &state,
                 &topology,
                 dt_days,
+                options.flow_resv_context,
             );
             // Bundle N checkpoint 3: this Legacy rescue has no OPM analog and uses
             // Legacy-scaled thresholds (`NOOP_ENTRY_EXACT_FACTOR`/`ENTRY_RESIDUAL_GUARD_FACTOR`)
