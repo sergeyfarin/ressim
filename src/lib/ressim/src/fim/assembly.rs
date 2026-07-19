@@ -4,18 +4,12 @@ use sprs::CsMat;
 use sprs::TriMatI;
 
 use crate::ReservoirSimulator;
-#[cfg(test)]
-use crate::fim::ad::Ad;
-#[cfg(test)]
-use crate::fim::assembly_ad::well_cell_input;
 use crate::fim::flow_resv::FlowResvReportStepContext;
 #[cfg(test)]
 use crate::fim::flow_resv::{
     FimWellRoute, FlowResvInjectorResidual, fim_well_route, flow_resv_context_for_perforation,
     flow_resv_injector_residual,
 };
-#[cfg(test)]
-use crate::fim::properties::cell_props_generic;
 use crate::fim::scaling::{EquationScaling, VariableScaling, apply_flow_resv_scaling};
 #[cfg(test)]
 use crate::fim::scaling::{build_equation_scaling, build_variable_scaling};
@@ -25,11 +19,8 @@ use crate::fim::state::{FimCellDerived, FimState};
 use crate::fim::wells::{FimWellTopology, perforation_component_rates_sc_day};
 #[cfg(test)]
 use crate::fim::wells::{
-    build_well_topology, fischer_burmeister_gradient, geometric_well_index,
-    perforation_local_block, well_local_block,
+    build_well_topology, fischer_burmeister_gradient, perforation_local_block, well_local_block,
 };
-#[cfg(test)]
-use crate::fim::wells_ad::{WellCellInput, connection_rate_generic};
 #[cfg(test)]
 use crate::timing::PerfTimer;
 
@@ -115,49 +106,55 @@ pub(crate) fn equation_offset(cell_idx: usize, local_eq: usize) -> usize {
 }
 
 #[cfg(test)]
-fn legacy_flow_resv_terms_ad(
+struct FlowResvLocalLinearization {
+    residual: FlowResvInjectorResidual<f64>,
+    d_connection_sc_day_d_cell: [f64; 3],
+    d_connection_sc_day_dbhp: f64,
+}
+
+#[cfg(test)]
+fn legacy_flow_resv_local_linearization(
     sim: &ReservoirSimulator,
     state: &FimState,
     topology: &FimWellTopology,
     perf_idx: usize,
     context: FlowResvReportStepContext,
-) -> Option<FlowResvInjectorResidual<Ad<5>>> {
-    let perforation = &topology.perforations[perf_idx];
-    let cell = well_cell_input(sim, state, perforation.cell_index);
-    let seeded = WellCellInput {
-        p: Ad::variable(cell.p, 0),
-        sw: Ad::variable(cell.sw, 1),
-        hydrocarbon_var: Ad::variable(cell.hydrocarbon_var, 2),
-        regime: cell.regime,
-        drsdt0_base_rs: cell.drsdt0_base_rs,
-    };
-    let q = connection_rate_generic(
-        sim,
-        geometric_well_index(sim, perforation)?,
-        true,
-        &seeded,
-        Ad::variable(state.well_bhp[perforation.physical_well_index], 3),
-    );
-    let props = cell_props_generic(
-        sim,
-        seeded.regime,
-        seeded.p,
-        seeded.sw,
-        seeded.hydrocarbon_var,
-        seeded.drsdt0_base_rs,
-    );
-    Some(flow_resv_injector_residual(
+) -> Option<FlowResvLocalLinearization> {
+    let perf = perforation_local_block(topology, state, perf_idx);
+    let cell_idx = perf.cell_idx();
+    let bhp = state.well_bhp[perf.physical_well_idx()];
+    let q = perf.connection_rate_for_bhp(sim, bhp)?;
+    let dq_cell = perf.connection_cell_derivatives(sim, bhp)?;
+    let dq_bhp = perf.connection_bhp_derivative(sim, bhp)?;
+    let bg = state.derive_cell(sim, cell_idx).bg;
+    if !bg.is_finite() || bg.abs() <= f64::EPSILON {
+        return None;
+    }
+    let dbg_cell = [
+        sim.get_d_bg_d_p_for_state(state.cell(cell_idx).pressure_bar),
+        0.0,
+        0.0,
+    ];
+    let bg_squared = bg * bg;
+    let d_connection_sc_day_d_cell = std::array::from_fn(|local_var| {
+        -(dq_cell[local_var] * bg - q * dbg_cell[local_var]) / bg_squared
+    });
+    let d_connection_sc_day_dbhp = -dq_bhp / bg;
+    let u = state
+        .flow_resv_surface_u(perf_idx)
+        .expect("RESV route requires a typed surface-u primary");
+    let residual = flow_resv_injector_residual(
         q,
-        props.bg,
-        Ad::variable(
-            state
-                .flow_resv_surface_u(perf_idx)
-                .expect("RESV route requires a typed surface-u primary"),
-            4,
-        ),
+        bg,
+        u,
         context.reference.bg_rm3_per_sm3,
         context.reservoir_target_rm3_day,
-    ))
+    );
+    Some(FlowResvLocalLinearization {
+        residual,
+        d_connection_sc_day_d_cell,
+        d_connection_sc_day_dbhp,
+    })
 }
 
 #[cfg(test)]
@@ -310,17 +307,18 @@ fn add_exact_well_source_jacobian(
             flow_resv_context_for_perforation(flow_resv_context, topology, perf_idx)
         {
             let perf = perforation_local_block(topology, state, perf_idx);
-            let terms = legacy_flow_resv_terms_ad(sim, state, topology, perf_idx, context)
-                .expect("validated RESV perforation has a finite connection");
+            let linearization =
+                legacy_flow_resv_local_linearization(sim, state, topology, perf_idx, context)
+                    .expect("validated RESV perforation has a finite connection");
             let row = equation_offset(perf.cell_idx(), 2);
             let bhp_col = state.well_bhp_unknown_offset(perf.physical_well_idx());
             for local_var in 0..3 {
-                let value = terms.gas_source_sc_day.deriv()[local_var] * dt_days;
+                let value = -linearization.d_connection_sc_day_d_cell[local_var] * dt_days;
                 if value.abs() > 1e-14 {
                     tri.add_triplet(row, unknown_offset(perf.cell_idx(), local_var), value);
                 }
             }
-            let value = terms.gas_source_sc_day.deriv()[3] * dt_days;
+            let value = -linearization.d_connection_sc_day_dbhp * dt_days;
             if value.abs() > 1e-14 {
                 tri.add_triplet(row, bhp_col, value);
             }
@@ -482,22 +480,23 @@ fn add_exact_perforation_jacobian(
             flow_resv_context_for_perforation(flow_resv_context, topology, perf_idx)
         {
             let perf = perforation_local_block(topology, state, perf_idx);
-            let terms = legacy_flow_resv_terms_ad(sim, state, topology, perf_idx, context)
-                .expect("validated RESV perforation has a finite connection");
+            let linearization =
+                legacy_flow_resv_local_linearization(sim, state, topology, perf_idx, context)
+                    .expect("validated RESV perforation has a finite connection");
             let row = perf.equation_offset();
             let bhp_col = state.well_bhp_unknown_offset(perf.physical_well_idx());
             let primary_col = perf.rate_unknown_offset();
             for local_var in 0..3 {
-                let value = terms.perforation.deriv()[local_var];
+                let value = linearization.d_connection_sc_day_d_cell[local_var];
                 if value.abs() > 1e-14 {
                     tri.add_triplet(row, unknown_offset(perf.cell_idx(), local_var), value);
                 }
             }
-            let bhp = terms.perforation.deriv()[3];
+            let bhp = linearization.d_connection_sc_day_dbhp;
             if bhp.abs() > 1e-14 {
                 tri.add_triplet(row, bhp_col, bhp);
             }
-            tri.add_triplet(row, primary_col, terms.perforation.deriv()[4]);
+            tri.add_triplet(row, primary_col, -1.0);
             continue;
         }
         let perf = perforation_local_block(topology, state, perf_idx);
@@ -1808,10 +1807,11 @@ fn add_well_source_terms(
         if let Some(context) =
             flow_resv_context_for_perforation(flow_resv_context, topology, perf_idx)
         {
-            let terms = legacy_flow_resv_terms_ad(sim, state, topology, perf_idx, context)
-                .expect("validated RESV perforation has a finite connection");
+            let linearization =
+                legacy_flow_resv_local_linearization(sim, state, topology, perf_idx, context)
+                    .expect("validated RESV perforation has a finite connection");
             residual[equation_offset(perforation.cell_index, 2)] +=
-                terms.gas_source_sc_day.value() * dt_days;
+                linearization.residual.gas_source_sc_day * dt_days;
             continue;
         }
         let id = perforation.cell_index;
@@ -1834,10 +1834,15 @@ fn add_well_constraint_equations(
         if let FimWellRoute::FlowResvGasInjector(context) =
             fim_well_route(flow_resv_context, topology, well_idx)
         {
-            let terms =
-                legacy_flow_resv_terms_ad(sim, state, topology, context.perforation_idx, context)
-                    .expect("validated RESV perforation has a finite connection");
-            residual[state.well_equation_offset(well_idx)] += terms.control.value();
+            let linearization = legacy_flow_resv_local_linearization(
+                sim,
+                state,
+                topology,
+                context.perforation_idx,
+                context,
+            )
+            .expect("validated RESV perforation has a finite connection");
+            residual[state.well_equation_offset(well_idx)] += linearization.residual.control;
             continue;
         }
         let block = well_local_block(topology, state, well_idx);
@@ -1859,9 +1864,11 @@ fn add_perforation_equations(
         if let Some(context) =
             flow_resv_context_for_perforation(flow_resv_context, topology, perf_idx)
         {
-            let terms = legacy_flow_resv_terms_ad(sim, state, topology, perf_idx, context)
-                .expect("validated RESV perforation has a finite connection");
-            residual[state.perforation_equation_offset(perf_idx)] += terms.perforation.value();
+            let linearization =
+                legacy_flow_resv_local_linearization(sim, state, topology, perf_idx, context)
+                    .expect("validated RESV perforation has a finite connection");
+            residual[state.perforation_equation_offset(perf_idx)] +=
+                linearization.residual.perforation;
             continue;
         }
         let perf = perforation_local_block(topology, state, perf_idx);

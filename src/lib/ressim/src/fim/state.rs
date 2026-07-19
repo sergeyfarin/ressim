@@ -451,6 +451,39 @@ impl FimState {
         }
     }
 
+    fn enforce_flow_resv_bhp_bounds(
+        &mut self,
+        sim: &ReservoirSimulator,
+        topology: &crate::fim::wells::FimWellTopology,
+        context: FlowResvReportStepContext,
+    ) {
+        let pressure_upper = self
+            .cells
+            .iter()
+            .map(|cell| cell.pressure_bar)
+            .fold(sim.well_bhp_max.max(1.0), f64::max)
+            + 500.0;
+
+        for (well_idx, bhp_bar) in self.well_bhp.iter_mut().enumerate() {
+            if well_idx == context.physical_well_idx {
+                *bhp_bar = bhp_bar.clamp(1e-6, pressure_upper.max(sim.well_bhp_max));
+                continue;
+            }
+            let control = physical_well_control(sim, topology, well_idx);
+            if topology.wells[well_idx].injector {
+                *bhp_bar = bhp_bar.clamp(
+                    1e-6,
+                    pressure_upper.max(control.bhp_limit.max(sim.well_bhp_max)),
+                );
+            } else {
+                *bhp_bar = bhp_bar.clamp(
+                    control.bhp_limit.min(sim.well_bhp_min).max(1e-6),
+                    pressure_upper,
+                );
+            }
+        }
+    }
+
     fn relax_well_state_toward_local_consistency(
         &mut self,
         sim: &ReservoirSimulator,
@@ -676,14 +709,15 @@ impl FimState {
         topology: &crate::fim::wells::FimWellTopology,
         well_update_mode: WellStateUpdateMode,
     ) {
-        self.enforce_control_bounds(sim, topology);
         match well_update_mode {
-            WellStateUpdateMode::None => {}
+            WellStateUpdateMode::None => self.enforce_control_bounds(sim, topology),
             WellStateUpdateMode::Relax => {
+                self.enforce_control_bounds(sim, topology);
                 self.relax_well_state_toward_local_consistency(sim, topology);
                 self.enforce_control_bounds(sim, topology);
             }
             WellStateUpdateMode::NestedSolve => {
+                self.enforce_control_bounds(sim, topology);
                 crate::fim::wells_inner::solve_wells_locally(
                     sim,
                     self,
@@ -696,10 +730,11 @@ impl FimState {
                 // The selected slot is surface u, not the historical signed connection q.
                 // Preserve normal BHP finite bounds but do not apply q relaxation or FB/BHP
                 // control handling to this route.
-                self.perforation_primaries[context.perforation_idx].value = self
-                    .perforation_primaries[context.perforation_idx]
-                    .value
-                    .max(0.0);
+                self.enforce_flow_resv_bhp_bounds(sim, topology, context);
+                let u = self
+                    .flow_resv_surface_u(context.perforation_idx)
+                    .expect("Flow RESV update requires a typed surface-u primary");
+                *self.perforation_primary_value_mut(context.perforation_idx) = u.max(0.0);
             }
         }
     }

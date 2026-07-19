@@ -493,11 +493,27 @@ impl PvtTable {
 
     #[cfg(test)]
     pub(crate) fn d_bg_d_p(&self, p: f64) -> f64 {
-        let dp = 1.0;
-        let p_lo = (p - dp).max(0.0);
-        let row_lo = self.interpolate(p_lo);
-        let row_hi = self.interpolate(p + dp);
-        (row_hi.bg_m3m3 - row_lo.bg_m3m3) / (2.0 * dp)
+        let rows = &self.saturated_rows;
+        if rows.is_empty() || p <= rows[0].p_bar {
+            return 0.0;
+        }
+        let last = &rows[rows.len() - 1];
+        if p >= last.p_bar {
+            return -last.bg_m3m3 * last.p_bar / (p * p);
+        }
+        for pair in rows.windows(2) {
+            let low = &pair[0];
+            let high = &pair[1];
+            if p >= low.p_bar && p <= high.p_bar {
+                let pressure_span = high.p_bar - low.p_bar;
+                return if pressure_span.abs() <= f64::EPSILON {
+                    0.0
+                } else {
+                    (high.bg_m3m3 - low.bg_m3m3) / pressure_span
+                };
+            }
+        }
+        0.0
     }
 
     #[cfg(test)]
@@ -966,5 +982,42 @@ mod tests {
 
         assert!((sim.get_b_g(250.0) - 1.0).abs() < 1e-12);
         assert!(sim.get_d_bg_d_p_for_state(250.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn table_bg_derivative_uses_the_same_active_segment_as_generic_interpolation() {
+        let table = PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 10.0,
+                    bo_m3m3: 1.2,
+                    mu_o_cp: 1.0,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.02,
+                },
+                PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.1,
+                    mu_o_cp: 1.0,
+                    bg_m3m3: 0.0065,
+                    mu_g_cp: 0.02,
+                },
+                PvtRow {
+                    p_bar: 300.0,
+                    rs_m3m3: 30.0,
+                    bo_m3m3: 1.0,
+                    mu_o_cp: 1.0,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.02,
+                },
+            ],
+            1.0e-5,
+        );
+
+        assert!((table.d_bg_d_p(200.0) + 3.5e-5).abs() < 1e-15);
+        assert!((table.d_bg_d_p(250.0) + 1.5e-5).abs() < 1e-15);
+        assert!((table.d_bg_d_p(300.0) + 0.005 / 300.0).abs() < 1e-15);
     }
 }

@@ -235,10 +235,16 @@ fn capture_reference(
 
 #[cfg(test)]
 mod tests {
+    use nalgebra::DVector;
+
     use super::*;
     use crate::fim::ad::Ad;
     use crate::fim::assembly::{FimAssemblyOptions, assemble_fim_system};
     use crate::fim::assembly_ad::assemble_fim_system_ad;
+    use crate::fim::linear::{
+        FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolverKind, solve_linearized_system,
+    };
+    use crate::fim::state::WellStateUpdateMode;
     use crate::fim::wells::build_well_topology;
     use crate::pvt::{PvtRow, PvtTable};
     use crate::well::WellSchedule;
@@ -397,6 +403,14 @@ mod tests {
         .unwrap();
         assert!((-q / context.reference.bg_rm3_per_sm3 - u).abs() < 1e-6);
 
+        // Exercise the routed Jacobian away from PVT/relperm endpoints and away from the
+        // report-step reference pressure. Initialization was checked above at the report-start
+        // state; this is an arbitrary Newton evaluation state.
+        state.cells[0].pressure_bar = 205.0;
+        state.cells[0].sw = 0.20;
+        state.cells[0].hydrocarbon_var = 0.08;
+        state.cells[0].regime = crate::fim::state::HydrocarbonState::Saturated;
+
         let options = FimAssemblyOptions {
             dt_days: 0.25,
             include_wells: true,
@@ -435,25 +449,143 @@ mod tests {
         assert!((ad.equation_scaling.perforation_flow[0] - u).abs() < 1e-8);
         assert!((ad.variable_scaling.perforation_rate[0] - u).abs() < 1e-8);
 
-        // The p/source central-FD contract is already owned by G4b1's two-current-Bg fixtures.
-        // Here exercise the newly routed primary column: it must affect only the perforation and
-        // RESV control rows, never the gas source.
-        for (column, step) in [(u_col, 1e-2)] {
+        let p_col = crate::fim::assembly::unknown_offset(0, 0);
+        let sw_col = crate::fim::assembly::unknown_offset(0, 1);
+        let hc_col = crate::fim::assembly::unknown_offset(0, 2);
+        let bhp_col = state.well_bhp_unknown_offset(context.physical_well_idx);
+        for (column, step) in [
+            (p_col, 1e-4),
+            (sw_col, 1e-6),
+            (hc_col, 1e-6),
+            (bhp_col, 1e-4),
+            (u_col, 1e-2),
+        ] {
             let mut lower = state.clone();
             let mut upper = state.clone();
-            lower.perforation_primaries[0].value -= step;
-            upper.perforation_primaries[0].value += step;
+            match column {
+                c if c == p_col => {
+                    lower.cells[0].pressure_bar -= step;
+                    upper.cells[0].pressure_bar += step;
+                }
+                c if c == sw_col => {
+                    lower.cells[0].sw -= step;
+                    upper.cells[0].sw += step;
+                }
+                c if c == hc_col => {
+                    lower.cells[0].hydrocarbon_var -= step;
+                    upper.cells[0].hydrocarbon_var += step;
+                }
+                c if c == bhp_col => {
+                    lower.well_bhp[0] -= step;
+                    upper.well_bhp[0] += step;
+                }
+                c if c == u_col => {
+                    *lower.perforation_primary_value_mut(0) -= step;
+                    *upper.perforation_primary_value_mut(0) += step;
+                }
+                _ => unreachable!(),
+            }
             let lower_residual = assemble_fim_system_ad(&sim, &state, &lower, &options).residual;
             let upper_residual = assemble_fim_system_ad(&sim, &state, &upper, &options).residual;
             for row in [gas_row, perf_row, control_row] {
                 let fd = (upper_residual[row] - lower_residual[row]) / (2.0 * step);
                 let analytic = ad.jacobian.get(row, column).copied().unwrap_or(0.0);
+                let tolerance = 2e-5 * analytic.abs().max(fd.abs()).max(1.0);
                 assert!(
-                    (analytic - fd).abs() < 1e-5,
+                    (analytic - fd).abs() < tolerance,
                     "FD mismatch row={row} col={column}: {analytic} vs {fd}"
                 );
             }
         }
+
+        let rhs = -ad.residual.clone();
+        let layout = FimLinearBlockLayout {
+            cell_block_count: 1,
+            cell_block_size: 3,
+            well_bhp_count: 1,
+            perforation_tail_start: 4,
+        };
+        let direct_options = FimLinearSolveOptions {
+            kind: FimLinearSolverKind::SparseLuDebug,
+            relative_tolerance: 1e-12,
+            absolute_tolerance: 1e-14,
+            ..FimLinearSolveOptions::default()
+        };
+        let direct = solve_linearized_system(
+            &ad.jacobian,
+            &rhs,
+            &direct_options,
+            Some(layout),
+            Some(&ad.equation_scaling),
+        );
+        assert!(
+            direct.converged,
+            "direct RESV fixture must factorize: {direct:?}"
+        );
+        let schur_options = FimLinearSolveOptions {
+            kind: FimLinearSolverKind::GmresIlu0,
+            eliminate_wells: true,
+            max_iterations: 100,
+            relative_tolerance: 1e-12,
+            absolute_tolerance: 1e-14,
+            ..FimLinearSolveOptions::default()
+        };
+        let schur = solve_linearized_system(
+            &ad.jacobian,
+            &rhs,
+            &schur_options,
+            Some(layout),
+            Some(&ad.equation_scaling),
+        );
+        assert!(
+            schur.converged,
+            "RESV well-Schur solve must converge: {schur:?}"
+        );
+        for row in 0..rhs.len() {
+            assert!(
+                (schur.solution[row] - direct.solution[row]).abs() < 1e-9,
+                "RESV Schur/direct correction mismatch row={row}: {} vs {}",
+                schur.solution[row],
+                direct.solution[row]
+            );
+        }
+    }
+
+    #[test]
+    fn flow_resv_update_applies_bhp_and_u_without_historical_q_postprocessing() {
+        let sim = gas_resv_sim();
+        let mut state = FimState::from_simulator(&sim);
+        let context = begin_flow_resv_report_step_context(&sim, &state, false)
+            .unwrap()
+            .unwrap();
+        let topology = build_well_topology(&sim);
+        state
+            .initialize_flow_resv_gas_primary(&sim, &topology, context)
+            .unwrap();
+        state.well_bhp[context.physical_well_idx] = 220.0;
+        *state.perforation_primary_value_mut(context.perforation_idx) = 10.0;
+
+        let mut update = DVector::zeros(state.n_unknowns());
+        update[state.well_bhp_unknown_offset(context.physical_well_idx)] = 5.0;
+        update[state.perforation_rate_unknown_offset(context.perforation_idx)] = -20.0;
+        let candidate = state.apply_newton_update_frozen(
+            &sim,
+            &update,
+            1.0,
+            &topology,
+            WellStateUpdateMode::FlowResv(context),
+        );
+
+        assert!((candidate.well_bhp[context.physical_well_idx] - 225.0).abs() < 1e-12);
+        assert_eq!(
+            candidate.flow_resv_surface_u(context.perforation_idx),
+            Some(0.0)
+        );
+        assert!(
+            candidate
+                .reservoir_connection_q(context.perforation_idx)
+                .is_none()
+        );
     }
 
     #[derive(Clone, Copy)]

@@ -17,6 +17,15 @@ connection law for a typed RESV `u`, rather than reporting `u` as q. Focused RES
 and AD/legacy parity gates pass. S3 remains responsible for the independent legacy derivative
 and the complete selected-row/update/trace contract.
 
+Implementation checkpoint (2026-07-19): **G4b2b S3 COMPLETE.** The legacy route no longer calls
+local AD: it obtains analytic connection derivatives from the legacy well primitive and applies
+the explicit quotient rule for `-q/B_g`. That independence exposed and fixed a masked PVT-oracle
+defect at table knots, where centered-FD `dB_g/dp` disagreed with the interpolation segment used
+by AD. Complete `[p,Sw,hc,bhp,u]` FD checks now cover gas-source, perforation, and control rows;
+the RESV matrix matches direct and well-Schur corrections; and the update path bypasses the
+historical control resolver/q relaxation while applying only the u floor and normal BHP domain
+bounds. The focused RESV, PVT, nested-well, and full AD/legacy parity gates pass.
+
 This is the implementation contract for the next G4 code slice. It turns the G4b2 readiness
 inventory into one default-off, one-perforation route. It is deliberately more prescriptive than
 the G4a lifecycle design: an implementation is acceptable only if it follows the data model,
