@@ -1,3 +1,40 @@
+// Type definitions previously defined here now live in
+// `../scenario/referenceTypes.ts` (ROADMAP Priority 3.1 / frontend execution
+// plan Wave 3 W3.1) — this file re-exports them for existing consumers.
+// New code should import from `../scenario/referenceTypes` directly.
+export type {
+    BenchmarkEntry,
+    BenchmarkSensitivityAxisKey,
+    BenchmarkReferenceKind,
+    BenchmarkXAxisKey,
+    BenchmarkPanelKey,
+    BenchmarkRunPolicy,
+    BenchmarkReferenceDefinition,
+    BenchmarkBreakthroughCriterion,
+    BenchmarkComparisonMetric,
+    BenchmarkDisplayDefaults,
+    BenchmarkStylePolicy,
+    BenchmarkVariantAnalyticalValidity,
+    BenchmarkFamily,
+    BenchmarkVariant,
+    BenchmarkDimensionOption,
+} from '../scenario/referenceTypes';
+
+import type {
+    BenchmarkEntry,
+    BenchmarkSensitivityAxisKey,
+    BenchmarkReferenceDefinition,
+    BenchmarkBreakthroughCriterion,
+    BenchmarkComparisonMetric,
+    BenchmarkDisplayDefaults,
+    BenchmarkStylePolicy,
+    BenchmarkVariantAnalyticalValidity,
+    BenchmarkFamily,
+    BenchmarkVariant,
+    BenchmarkDimensionOption,
+    BenchmarkRunPolicy,
+} from '../scenario/referenceTypes';
+
 type SourceBenchmarkCaseFile = {
     key: string;
     category: string;
@@ -7,65 +44,6 @@ type SourceBenchmarkCaseFile = {
     benchmarkOrder?: number;
     params: Record<string, any>;
 };
-
-export type BenchmarkEntry = {
-    key: string;
-    label: string;
-    description: string;
-    params: Record<string, any>;
-};
-
-export type BenchmarkSensitivityAxisKey =
-    | 'grid-refinement'
-    | '2d-grid-refinement'
-    | 'timestep-refinement'
-    | 'heterogeneity';
-
-export type BenchmarkReferenceKind = 'analytical' | 'numerical-refined';
-
-export type BenchmarkXAxisKey = 'time' | 'pvi' | 'tD';
-
-export type BenchmarkPanelKey =
-    | 'watercut-breakthrough'
-    | 'recovery'
-    | 'pressure'
-    | 'rates'
-    | 'oil-rate'
-    | 'cumulative-oil'
-    | 'decline-diagnostics';
-
-export type BenchmarkRunPolicy = 'single' | 'sweep' | 'compare-to-reference';
-
-export type BenchmarkReferenceDefinition = {
-    kind: BenchmarkReferenceKind;
-    source: string;
-};
-
-export type BenchmarkBreakthroughCriterion = {
-    kind: 'watercut-threshold';
-    value: number;
-};
-
-export type BenchmarkComparisonMetric = {
-    kind: 'breakthrough-pv-relative-error';
-    target: 'analytical-reference' | 'numerical-reference';
-    tolerance: number;
-};
-
-export type BenchmarkDisplayDefaults = {
-    xAxis: BenchmarkXAxisKey;
-    panels: BenchmarkPanelKey[];
-};
-
-export type BenchmarkStylePolicy = {
-    colorBy: 'case';
-    lineStyleBy: 'quantity-or-reference';
-    separatePressurePanel: boolean;
-};
-
-export type BenchmarkVariantAnalyticalValidity =
-    | 'same-reference'
-    | 'numerical-reference-required';
 
 type BenchmarkFamilyDefinition = {
     key: string;
@@ -81,20 +59,6 @@ type BenchmarkFamilyDefinition = {
     runPolicy: BenchmarkRunPolicy;
 };
 
-export type BenchmarkFamily = BenchmarkFamilyDefinition & {
-    label: string;
-    description: string;
-    baseCase: BenchmarkEntry;
-    suppressPrimaryAnalyticalOverlays?: boolean;
-    /** True only for sweep-domain scenarios where E_A/E_V/E_vol panels are physically meaningful. */
-    showSweepPanel?: boolean;
-    sweepGeometry?: import('../analytical/sweepEfficiency').SweepGeometry | null;
-    sweepAnalyticalMethod?: import('../analytical/sweepEfficiency').SweepAnalyticalMethod;
-    analyticalOverlayMode?: import('../catalog/scenarios').AnalyticalOverlayMode;
-    /** Static published-benchmark reference series to overlay on charts. */
-    publishedReferenceSeries?: import('../catalog/scenarios').PublishedReferenceSeries[];
-};
-
 type BenchmarkVariantTemplate = {
     variantKey: string;
     axis: BenchmarkSensitivityAxisKey;
@@ -105,28 +69,6 @@ type BenchmarkVariantTemplate = {
     analyticalValidity: BenchmarkVariantAnalyticalValidity;
     reference?: BenchmarkReferenceDefinition;
     comparisonMetric?: BenchmarkComparisonMetric;
-};
-
-export type BenchmarkVariant = {
-    key: string;
-    familyKey: string;
-    variantKey: string;
-    axis: BenchmarkSensitivityAxisKey;
-    label: string;
-    description: string;
-    params: Record<string, any>;
-    paramsDelta: Record<string, any>;
-    baseCaseKey: string;
-    reference: BenchmarkReferenceDefinition;
-    comparisonMetric: BenchmarkComparisonMetric | null;
-    comparisonMeaning: string;
-    analyticalValidity: BenchmarkVariantAnalyticalValidity;
-};
-
-export type BenchmarkDimensionOption = {
-    value: string;
-    label: string;
-    default?: boolean;
 };
 
 const BENCHMARK_SENSITIVITY_AXIS_LABELS: Record<BenchmarkSensitivityAxisKey, string> = {

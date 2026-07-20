@@ -33,6 +33,9 @@ jobs:
         with:
           shared-key: "ressim-benchmark-cache"
 
+      - name: Run Rust engine regression gate (IMPES)
+        run: bash scripts/validate-solver-coverage.sh impes
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
