@@ -4355,3 +4355,16 @@ reproduces the existing closed-system `rate_history` length mismatch (`2` versus
 the clean committed-tree, one-step exact trace with `FIM_FLOW_RESV_INJECTOR=1`,
 `FIM_NESTED_WELL_SOLVE=1`, and the held Y2 raw lifecycle. Do not run six steps unless evaluation
 1 has `c_s≈u`, converged control/connection rows, and no retry.
+
+### G4b3 committed-tree oracle: mechanism passes (2026-07-20)
+
+From `4cdea38`, the exact 10x10x3 first step with Y2 raw primary variables, RESV, nested solve,
+and one-substep cap accepted the full `0.25 day` with no retry. Seven applied updates precede the
+converged entry (driver count eight), the same applied count as Flow's first step and G4b2c.
+
+Evaluation 1 now has `u=76,923.07692`, `c_s=76,923.07692`,
+`R_perf=-1.164e-10`, `R_ctrl=5.684e-14`, and source `-76,923.07692`. This closes the G4b2c
+incomparability (`c_s=133,639.380`, `R_perf=56,716.303`). Oil MB remains `3.493e-3` versus Flow
+`1.8375e-3`; gas MB moves from G4b2c `4.526e-3` to `1.737e-3` versus Flow `2.8814e-3`.
+Therefore G4b3 passes its mechanism gate and improves gas-MB distance, but has not demonstrated
+a six-step iteration improvement. G4b4 is now authorized with no solver-policy changes.

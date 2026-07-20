@@ -1876,3 +1876,18 @@ linear changes remain unauthorized.
 Comparison scope remains narrower than the Flow deck's complete well lifecycle: G4b2b selects
 only the injector, has no BHP switching, and leaves ResSim's producer historical. Grid, fluids,
 targets, and report timing are mapped; full two-well formulation parity is still open.
+
+### 15.33 G4b3 result: route-aware inner solve restores the comparable source state
+
+Commit `4cdea38` adds the selected frozen-reservoir local system in `(bhp,u)` using the exact
+global f64/AD residual evaluations. Local/global row-column agreement, perturbed convergence,
+and mixed selected/historical well gates pass. The route-aware Newton update also preserves the
+historical producer's Relax/NestedSolve behavior instead of bypassing all well post-processing.
+
+The capped exact first step accepts `0.25 day` with no retry. At evaluation 1,
+`u=c_s=76,923.07692`, `R_perf=-1.16e-10`, `R_ctrl=5.68e-14`, and the selected source is
+`-76,923.07692`; G4b2c's `c_s/u=1.737` mismatch is gone. Gas MB moves from `4.526e-3` to
+`1.737e-3` against Flow `2.8814e-3`, while oil MB remains `3.493e-3` against Flow
+`1.8375e-3`. Seven applied updates match both Flow's first step and the prior route, so this is a
+mechanism pass, not an iteration-count promotion. G4b4 may now run the six-step comparison with
+all solver policy, BHP switching, multi-perf allocation, and G5 held fixed.

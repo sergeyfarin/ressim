@@ -129,14 +129,15 @@ an explicit mode tag are both wrong.
    The historical FB rate branch is not reused for RESV; the RESV control row is explicitly
    `B_g,ref*u-Q_resv` with its own equality/FD gate.
    otherwise use an explicit rate-only test row.
-4. **G4b3: local/global coupling — IMPLEMENTED, LIVE ORACLE PENDING 2026-07-20.** The selected
+4. **G4b3: local/global coupling — COMPLETE 2026-07-20.** The selected
    frozen-reservoir local system uses rows `[R_ctrl,R_perf]` and columns `[bhp,u]` sliced from
    the same f64/AD evaluation as global assembly. Its bounded Newton loop reuses Bundle W's
    `dbhp-max-rel` chop, the global RESV row scales, and no u magnitude clamp. A bit-exact
    residual / `1e-12` Jacobian agreement gate passes away from convergence; a perturbed state
    restores both rows below `1e-7`. Mixed-route coverage proves the held producer continues to
-   use its historical q-coordinate local system. Capture evaluation 0/1 partitions from the
-   committed implementation before a six-step run.
+   use its historical q-coordinate local system. The committed one-step oracle passes with no
+   retry: evaluation 1 has `u=c_s=76,923.07692`, `R_perf=-1.16e-10`, and
+   `R_ctrl=5.68e-14`. G4b4's six-step comparison is authorized separately.
 5. **G4b4: live gates.** First run one capped no-retry rung; only then run six steps and compare
    cuts, applied updates versus Flow `7,5,4,3,4,3`, row partitions, and wall time. This remains a
    default-off behavior result, not promotion.

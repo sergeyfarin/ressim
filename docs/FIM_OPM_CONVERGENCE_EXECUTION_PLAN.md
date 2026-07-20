@@ -1042,6 +1042,32 @@ commit the implementation, then run the capped one-step trace with both
 `FIM_FLOW_RESV_INJECTOR=1` and `FIM_NESTED_WELL_SOLVE=1`; require evaluation-1 `c_s≈u`, zero
 control/connection rows, and no retry before authorizing the six-step G4b4 comparison.
 
+### G4b3 committed-tree result (2026-07-20): missing connection enforcement is closed
+
+Committed implementation `4cdea38` passed the capped exact 10x10x3 first report step with the
+held Y2 raw-primary lifecycle, RESV route, and nested solve all enabled. It accepted the full
+`0.25 day` trial with zero retries. There are seven applied reservoir Newton updates (the driver
+reports eight residual evaluations including the converged entry), matching Flow's first-step
+applied count and the prior G4b2c count; no iteration-count improvement is claimed yet.
+
+At evaluation 1, the selected well is now comparable:
+
+| Quantity | Flow | G4b2c without u inner solve | G4b3 |
+| --- | ---: | ---: | ---: |
+| oil MB | `1.8375e-3` | `3.493e-3` | `3.493e-3` |
+| gas MB | `2.8814e-3` | `4.526e-3` | `1.737e-3` |
+| `u` | Flow well `CONV` | `76,923.077` | `76,923.07692` |
+| `c_s` | Flow well `CONV` | `133,639.380` | `76,923.07692` |
+| `R_perf` | converged | `56,716.303` | `-1.16e-10` |
+| `R_ctrl` | converged | approximately zero | `5.68e-14` |
+| selected gas source | comparable at converged well | `-133,639.380` | `-76,923.07692` |
+
+This is a **PASS for the G4b3 mechanism**: the masked source comparison is removed, and gas-MB
+absolute distance to Flow improves from about `1.645e-3` to `1.144e-3`. Oil MB is unchanged and
+the one-step applied count was already seven, so this is not a full convergence promotion.
+Proceed to G4b4's six-step same-commit comparison; keep acceptance, damping, controller, linear
+lifecycle, BHP switching, multi-perf allocation, and G5 fixed.
+
 ## 8. Y3 and Y4 end gates
 
 Y3 controller parity starts only after full-target Newton convergence is plausible. Its target is
