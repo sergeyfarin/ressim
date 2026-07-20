@@ -4368,3 +4368,32 @@ incomparability (`c_s=133,639.380`, `R_perf=56,716.303`). Oil MB remains `3.493e
 `1.8375e-3`; gas MB moves from G4b2c `4.526e-3` to `1.737e-3` versus Flow `2.8814e-3`.
 Therefore G4b3 passes its mechanism gate and improves gas-MB distance, but has not demonstrated
 a six-step iteration improvement. G4b4 is now authorized with no solver-policy changes.
+
+### G4b4 clean six-step closeout (2026-07-20)
+
+The main workspace was not a valid committed-tree oracle because unrelated user edits include
+FIM linear/frontend files. Created a clean detached worktree at `653868e` and ran:
+
+```text
+FIM_TRACE_FILE=/tmp/ressim-g4b4.trace FIM_TRACE_DT_BELOW=1 \
+FIM_Y1J_GRID=10 FIM_Y1J_FLAVOR=opm FIM_Y1J_STEPS=6 \
+FIM_Y2B_RAW_SATURATION=1 FIM_FLOW_RESV_INJECTOR=1 FIM_NESTED_WELL_SOLVE=1 \
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+  fim::timestep::phase5_repro::repro_gas_rate_10x10x3_y1j \
+  -- --ignored --nocapture --exact
+```
+
+All six `0.25 day` trials accept with zero retry. Applied updates are `7,3,3,4,3,3` (23 total)
+and linear iterations `18,9,9,10,8,7` (61 total). Flow is `7,5,4,3,4,3` (26) and
+`8,5,4,3,4,3` (27). G4b2c was `7,4,3,3,3,3` (23) and 64 linear iterations. Therefore G4b4
+recovers three linear iterations but worsens the nonlinear sequence's L1 distance from Flow
+`3 -> 5`; it does not change the total.
+
+The well lifecycle itself remains exact across reference refreshes: every report's evaluation 1
+has `c_s=u`, `|R_perf|<=2.01e-9`, `|R_ctrl|<=5.69e-14`, and source `=-u`. Two single-run elapsed
+observations are `0.528/0.559 s`, indistinguishable from G4b2c `0.545 s` and still roughly
+`6.6-7.0x` Flow's `0.08 s`. Verdict: scoped structural mechanism passes and stays default-off;
+standalone convergence improvement is not supported. Next build a comparable OPM-side
+injector-cell reservoir-row partition oracle, then audit oil/gas accumulation, face flux, and
+the now-matched well source at evaluation 1. Do not start G5 while the tracked cell remains
+saturated with `Sg` active, and do not tune acceptance, damping, linear routing, or controller.

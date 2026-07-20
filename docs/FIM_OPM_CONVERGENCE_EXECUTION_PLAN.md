@@ -1,7 +1,7 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **G4b2b atomic typed RESV route complete; first live oracle is INCONCLUSIVE because the
-u-coordinate inner well solve is still absent (2026-07-19)**. This document turns the evidence in
+Status: **G4b4 complete: the scoped Flow RESV well lifecycle is now source-comparable and stable
+for six uncut steps, but it does not reduce the nonlinear-count gap (2026-07-20)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -19,6 +19,7 @@ Primary oracle: tracked `gas-rate-10x10x3` deck, six 0.25-day report steps.
 | OPM Flow 2026.04 | 6 | `7,5,4,3,4,3` | `8,6,5,4,5,4` | 0 |
 | ResSim lifecycle candidate (default-off) | 6 | `7,4,3,3,3,3` | `8,5,4,4,4,4` | 0 |
 | ResSim + G4b2b typed RESV injector | 6 | `7,4,3,3,3,3` | `8,5,4,4,4,4` | 0 |
+| ResSim + G4b4 typed RESV + route-aware inner solve | 6 | `7,3,3,4,3,3` | `8,4,4,5,4,4` | 0 |
 | ResSim + D6d Flow linear lifecycle | 6 | `9,4,4,3,3,3` | `10,5,5,4,4,4` | 0 |
 
 Flow `INFOSTEP.NewtIt` counts applied updates; `INFOITER` includes the initial evaluation and
@@ -49,6 +50,10 @@ The established causal chain is:
    `20x20x3`, validating that mechanism. It is not the complete OPM stack: one bounded water
    control regresses against Legacy and the heavy-water case still takes seven substeps to Flow's
    one.
+7. G4b4 closes the selected gas-RESV well/source lifecycle: `c_s=u` after every update and all
+   six report steps remain uncut. It leaves total applied updates at `23` and moves their
+   per-step L1 distance from Flow from `3` to `5`; the remaining first divergence is therefore
+   reservoir-row trajectory, not an unconverged selected well row.
 
 This evidence supersedes the older claims that the gas failure was primarily CPR quality, that
 OPM itself grinds through the same stagnation, or that AMG is the next convergence lever.
@@ -1067,6 +1072,40 @@ absolute distance to Flow improves from about `1.645e-3` to `1.144e-3`. Oil MB i
 the one-step applied count was already seven, so this is not a full convergence promotion.
 Proceed to G4b4's six-step same-commit comparison; keep acceptance, damping, controller, linear
 lifecycle, BHP switching, multi-perf allocation, and G5 fixed.
+
+### G4b4 six-step result (2026-07-20): structural parity holds; convergence gap does not close
+
+The run was isolated in a clean detached worktree at `653868e`; this matters because the main
+workspace contains unrelated uncommitted FIM linear/frontend edits. Exact command:
+
+```text
+FIM_TRACE_FILE=/tmp/ressim-g4b4.trace FIM_TRACE_DT_BELOW=1 \
+FIM_Y1J_GRID=10 FIM_Y1J_FLAVOR=opm FIM_Y1J_STEPS=6 \
+FIM_Y2B_RAW_SATURATION=1 FIM_FLOW_RESV_INJECTOR=1 FIM_NESTED_WELL_SOLVE=1 \
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+  fim::timestep::phase5_repro::repro_gas_rate_10x10x3_y1j \
+  -- --ignored --nocapture --exact
+```
+
+| Route | Accepted / retries | Applied updates | Linear iterations | Time |
+| --- | --- | --- | --- | --- |
+| Flow 2026.04 | `6 / 0` | `26` (`7,5,4,3,4,3`) | `27` (`8,5,4,3,4,3`) | `0.08 s` |
+| historical q + Y2 | `6 / 0` | `23` (`7,4,3,3,3,3`) | `61` (`15,12,9,8,9,8`) | `0.576 s` |
+| G4b2c typed u, no u inner solve | `6 / 0` | `23` (`7,4,3,3,3,3`) | `64` (`18,12,9,9,8,8`) | `0.545 s` |
+| G4b4 typed u + route-aware inner solve | `6 / 0` | `23` (`7,3,3,4,3,3`) | `61` (`18,9,9,10,8,7`) | `0.528-0.559 s` |
+
+The selected connection remains converged at each report's evaluation 1; across the six traces,
+`|R_perf| <= 2.01e-9`, `|R_ctrl| <= 5.69e-14`, and the source is `-u`. Thus the mechanism does
+not decay or compound forward. Linear work recovers the historical total (`64 -> 61`) but remains
+`2.26x` Flow. Nonlinear total remains `23`; its per-step L1 distance from Flow worsens `3 -> 5`.
+Runtime is unchanged within single-run noise and remains roughly `6.6-7.0x` Flow.
+
+**Verdict:** G4b4 is complete and validates the scoped well formulation, but it is not a
+convergence promotion. Keep it default-off as required OPM-aligned infrastructure. Before G5 or
+any solver-policy change, execute a source-comparable evaluation-1 reservoir partition audit:
+compare injector-cell oil/gas accumulation, face flux, and well-source contributions against an
+OPM-side observable. If OPM does not expose comparable partitions, build that oracle first. The
+cell is still saturated with `Sg` active, so current evidence does not authorize G5 substitution.
 
 ## 8. Y3 and Y4 end gates
 

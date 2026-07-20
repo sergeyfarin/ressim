@@ -1891,3 +1891,23 @@ The capped exact first step accepts `0.25 day` with no retry. At evaluation 1,
 `1.8375e-3`. Seven applied updates match both Flow's first step and the prior route, so this is a
 mechanism pass, not an iteration-count promotion. G4b4 may now run the six-step comparison with
 all solver policy, BHP switching, multi-perf allocation, and G5 held fixed.
+
+### 15.34 G4b4 result: selected well parity persists, nonlinear trajectory does not improve
+
+A clean detached replay at `653868e` avoids the main workspace's unrelated FIM edits. Six full
+`0.25 day` steps accept with zero retry. The selected well remains locally converged after each
+report-step reference refresh: `c_s=u`, `|R_perf|<=2.01e-9`, `|R_ctrl|<=5.69e-14`, source `=-u`.
+This validates the complete scoped G4 mechanism beyond the first rung.
+
+Applied updates are `7,3,3,4,3,3` (23) versus G4b2c `7,4,3,3,3,3` (23) and Flow
+`7,5,4,3,4,3` (26). The per-step L1 gap therefore worsens `3 -> 5`, not closes. Linear work
+improves `64 -> 61`, matching the historical-q total but remaining `2.26x` Flow's 27. Runtime is
+unchanged within noise (`0.528-0.559 s` versus prior `0.545 s`, Flow `0.08 s`). G4 is a required,
+validated well-semantic alignment, not a standalone convergence promotion; keep it default-off.
+
+The next valid discriminator is now outside the selected well rows: obtain comparable OPM
+injector-cell reservoir residual partitions, then compare oil/gas accumulation, face flux, and
+the matched source at evaluation 1. If OPM lacks those observables, add diagnostic
+infrastructure before interpreting a difference. G5 remains unauthorized because the binding
+cell is saturated and continues to use `Sg`; acceptance, damping, linear policy, and controller
+also remain fixed.

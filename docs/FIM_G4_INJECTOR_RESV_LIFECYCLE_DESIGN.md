@@ -138,9 +138,11 @@ an explicit mode tag are both wrong.
    use its historical q-coordinate local system. The committed one-step oracle passes with no
    retry: evaluation 1 has `u=c_s=76,923.07692`, `R_perf=-1.16e-10`, and
    `R_ctrl=5.68e-14`. G4b4's six-step comparison is authorized separately.
-5. **G4b4: live gates.** First run one capped no-retry rung; only then run six steps and compare
-   cuts, applied updates versus Flow `7,5,4,3,4,3`, row partitions, and wall time. This remains a
-   default-off behavior result, not promotion.
+5. **G4b4: live gates — COMPLETE 2026-07-20.** From clean `653868e`, six full steps take zero
+   retries. Applied updates are `7,3,3,4,3,3` and linear iterations `18,9,9,10,8,7`, versus
+   Flow `7,5,4,3,4,3` and `8,5,4,3,4,3`. Every evaluation-1 selected row remains converged
+   (`|R_perf|<=2.01e-9`, `|R_ctrl|<=5.69e-14`). The well mechanism is validated but does not
+   improve nonlinear-count parity, so it remains default-off and is not promoted broadly.
 
 ## 6. Mandatory oracle and commands
 
