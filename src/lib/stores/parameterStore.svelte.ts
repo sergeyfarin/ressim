@@ -5,7 +5,6 @@ import type {
 } from '../simulator-types';
 import { generateBlackOilTable } from '../physics/pvt';
 import { buildCreatePayloadFromState } from '../buildCreatePayload';
-import { catalog } from '../catalog/caseCatalog';
 import {
     validateInputs as validateSimulationInputs,
     type SimulationInputs,
@@ -367,7 +366,7 @@ class ParameterStoreImpl {
      * Callers are responsible for triggering any needed runtime reset.
      */
     applyParamValues(params: Record<string, any>) {
-        const resolved = { ...catalog.defaults, ...params };
+        const resolved = params;
         /** Return `v` when it's a real number, otherwise `fallback`. */
         const fin = (v: unknown, fallback: number): number => {
             const n = Number(v);

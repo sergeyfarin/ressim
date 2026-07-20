@@ -60,7 +60,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 - Worker-based execution to keep the UI responsive.
 - 3D scalar visualization for pressure, water saturation, gas saturation, permeability, and porosity.
 - Shared chart layout system for runtime and comparison views.
-- Compact custom mode with grouped parameter sections and preset starting points.
+- Scenario-first case selection with scenario-owned parameters, sensitivities, and references.
 
 ## Validation Status
 

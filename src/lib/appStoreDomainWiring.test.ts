@@ -13,16 +13,8 @@ describe('App store domain wiring', () => {
     expect(appSource).toMatch(/const \{ params, runtime, nav: scenario \} = createSimulationStore\(\)/);
   });
 
-  it('routes clone flow via domain API', () => {
-    expect(appSource).toMatch(/scenario\.cloneActiveReferenceToCustom\(\)/);
-  });
-
-  it('passes preset-customize domain state into ModePanel', () => {
-    expect(appSource).toMatch(/onParamEdit=\{\(\) =\> scenario\.handleParamEdit\(\)\}/);
-    expect(appSource).toMatch(/basePreset=\{scenario\.basePreset\}/);
-    expect(appSource).toMatch(/navigationState=\{scenario\.navigationState\}/);
-    expect(appSource).toMatch(/onActivateLibraryEntry=\{\(key\) =\> scenario\.activateLibraryEntry\(key\)\}/);
-    expect(appSource).toMatch(/referenceProvenance=\{scenario\.referenceProvenance\}/);
+  it('does not route legacy custom-mode controls into the picker', () => {
+    expect(appSource).not.toMatch(/cloneActiveReferenceToCustom|enterCustomMode|activateLibraryEntry/);
     expect(appSource).toMatch(/referenceSweepRunning=\{runtime\.runSetRunning\}/);
     expect(appSource).toMatch(/warningPolicy=\{runtime\.warningPolicy\}/);
     expect(appSource).not.toMatch(/<ModePanel[^>]*referenceSweepProgressLabel=/);
@@ -83,8 +75,7 @@ describe('App store domain wiring', () => {
     expect(appSource).toMatch(/warningPolicy=\{runtime\.warningPolicy\}/);
     expect(appSource).toMatch(/<ScenarioPicker/);
     expect(appSource).toMatch(/<RunControls/);
-    expect(appSource).toMatch(/showStepsInput=\{scenario\.isCustomMode\}/);
-    expect(appSource).toMatch(/onStepsEdit=\{\(\) =\> params\.markStepsOverride\(\)\}/);
+    expect(appSource).toMatch(/showStepsInput=\{false\}/);
     expect(appSource).not.toMatch(/<WarningPolicyPanel/);
   });
 

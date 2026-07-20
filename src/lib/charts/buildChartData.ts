@@ -149,6 +149,7 @@ function appendPublishedReferenceSeries(
         appendSeries(targetPanel, {
             label: series.label,
             curveKey: series.curveKey,
+            referenceSourceType: series.sourceType ?? 'published-reference',
             toggleGroupKey: isOpmFlow ? `opm-flow-${series.sourceArtifactKey ?? 'reference'}` : 'published-reference',
             toggleLabel: isOpmFlow ? 'OPM Flow reference' : 'Published reference',
             legendSection: 'published',

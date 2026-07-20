@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { buildScenarioComparisonFamily } from './scenarioChartModel';
-import { getScenario } from '../catalog/scenarios';
+import { getScenario, getScenarioChartLayout } from '../catalog/scenarios';
+import { buildReferenceComparisonModel } from './buildChartData';
+import { resolveChartPanelDefinition } from './chartPanelSelection';
+import { PANEL_DEFS } from './panelDefs';
+import type { RateChartPanelKey } from './rateChartLayoutConfig';
 
 describe('buildScenarioComparisonFamily', () => {
     it('merges real parsed OPM Flow series into publishedReferenceSeries for wf_bl1d', () => {
@@ -65,5 +69,33 @@ describe('buildScenarioComparisonFamily', () => {
         const oilRate = opmSeries.find((s) => s.curveKey === 'opm-oil-rate');
         expect(oilRate).toBeDefined();
         expect(oilRate!.data.length).toBeGreaterThan(0);
+    });
+
+    it('retains E7 OPM artifact curves after the production panel layout resolution', () => {
+        const scenario = getScenario('wf_bl1d_opm')!;
+        const family = buildScenarioComparisonFamily({ scenario })!;
+        const model = buildReferenceComparisonModel({ family, results: [], xAxisMode: 'time' });
+        const layout = getScenarioChartLayout(scenario);
+
+        const resolvedCurveKeys = (panelKey: RateChartPanelKey) => resolveChartPanelDefinition({
+            override: layout.rateChart?.panels?.[panelKey],
+            fallback: PANEL_DEFS[panelKey],
+            entries: model.panels[panelKey].curves.map((curve, index) => ({
+                curve,
+                series: model.panels[panelKey].series[index] ?? [],
+            })),
+            getScalePresetConfig: () => ({}),
+        }).curves.map((curve) => curve.curveKey);
+
+        expect(resolvedCurveKeys('rates')).toEqual(expect.arrayContaining([
+            'opm-oil-rate',
+            'opm-water-rate',
+            'opm-injection-rate',
+        ]));
+        expect(resolvedCurveKeys('cumulative')).toEqual(expect.arrayContaining([
+            'opm-cum-oil',
+            'opm-cum-water',
+        ]));
+        expect(resolvedCurveKeys('diagnostics')).toContain('opm-avg-pressure');
     });
 });

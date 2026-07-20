@@ -3,74 +3,39 @@
   import Card from "../controls/Card.svelte";
   import ToggleGroup from "../controls/ToggleGroup.svelte";
   import WarningPolicyPanel from "../feedback/WarningPolicyPanel.svelte";
-  import ScenarioSectionsPanel from "../sections/ScenarioSectionsPanel.svelte";
   import { SCENARIOS, getScenario, getScenarioGroup, type Scenario, type ScenarioGroup } from "../../catalog/scenarios";
-  import { ROCK_PRESETS } from "../../catalog/reservoirPresets";
-  import type { CaseMode, ToggleState } from "../../catalog/caseCatalog";
-  import type { ModePanelParameterBindings } from "../modePanelTypes";
   import type { WarningPolicy } from "../../warningPolicy";
-  import type {
-    BasePresetProfile,
-    ScenarioNavigationState,
-    ReferenceProvenance,
-  } from "../../stores/phase2PresetContract";
 
   let {
     activeScenarioKey = null,
     activeSensitivityDimensionKey = null,
     activeAnalyticalOptionKey = null,
     activeVariantKeys = [],
-    isCustom = false,
-    activeMode = "wf",
-    params,
-    toggles,
-    disabledOptions,
     validationErrors = {},
     warningPolicy = undefined,
-    basePreset = null,
-    navigationState = null,
-    referenceProvenance = null,
     referenceSweepRunning = false,
     onSelectScenario = () => {},
     onSelectSensitivityDimension = () => {},
     onToggleVariant = () => {},
     onSelectAnalyticalOption = () => {},
-    onEnterCustomMode = () => {},
-    onCloneReferenceToCustom = () => {},
-    onActivateLibraryEntry = () => false,
-    onToggleChange = () => {},
-    onParamEdit = () => {},
   }: {
     activeScenarioKey?: string | null;
     activeSensitivityDimensionKey?: string | null;
     activeAnalyticalOptionKey?: string | null;
     activeVariantKeys?: string[];
-    isCustom?: boolean;
-    activeMode?: CaseMode;
-    params: ModePanelParameterBindings;
-    toggles: ToggleState;
-    disabledOptions: Record<string, Record<string, string>>;
     validationErrors?: Record<string, string>;
     warningPolicy?: WarningPolicy;
-    basePreset?: BasePresetProfile | null;
-    navigationState?: ScenarioNavigationState | null;
-    referenceProvenance?: ReferenceProvenance | null;
     referenceSweepRunning?: boolean;
     onSelectScenario?: (key: string) => void;
     onSelectSensitivityDimension?: (key: string) => void;
     onToggleVariant?: (variantKey: string) => void;
     onSelectAnalyticalOption?: (optionKey: string) => void;
-    onEnterCustomMode?: () => void;
-    onCloneReferenceToCustom?: () => void;
-    onActivateLibraryEntry?: (entryKey: string) => boolean;
-    onToggleChange?: (key: string, value: string) => void;
-    onParamEdit?: () => void;
   } = $props();
 
   // ── Derived scenario state ──────────────────────────────────────────────────
 
   const activeScenario = $derived(
-    !isCustom && activeScenarioKey ? getScenario(activeScenarioKey) : null,
+    activeScenarioKey ? getScenario(activeScenarioKey) : null,
   );
 
   // Active sensitivity dimension, resolved from the scenario's sensitivities array.
@@ -164,7 +129,7 @@
           {#each groupScenarios as scenario}
             <Button
               size="sm"
-              variant={!isCustom && activeScenarioKey === scenario.key ? "default" : "outline"}
+              variant={activeScenarioKey === scenario.key ? "default" : "outline"}
               onclick={() => onSelectScenario(scenario.key)}
             >
               {scenario.label}
@@ -176,18 +141,10 @@
         {/if}
       {/each}
 
-      <!-- Custom (simulation only — no analytical reference) -->
-      <Button
-        size="sm"
-        variant={isCustom ? "default" : "outline"}
-        onclick={onEnterCustomMode}
-      >
-        Custom (Simulation only)
-      </Button>
     </div>
   </div>
 
-  {#if !isCustom && activeScenario}
+  {#if activeScenario}
     <!-- ── Concise parameter summary ── -->
     <div class="border-t border-border/50 px-3 py-2">
       <div class="flex items-start justify-between gap-2">
@@ -214,9 +171,6 @@
         
       </div>
       
-      <Button size="sm" variant="ghost" onclick={onEnterCustomMode} class="h-6 shrink-0 px-2 text-[10px]">
-          Customize →
-        </Button>
     </div>
 
     <!-- ── Sensitivity panel ── -->
@@ -287,41 +241,6 @@
       />
     {/if}
   </div>
-  {/if}
-  {#if isCustom}
-    <!-- ── Custom mode: presets + full parameter form ── -->
-    <div class="border-t border-border/50">
-      <div class="flex items-center gap-1.5 px-3 py-1 pb-2 flex-wrap mt-1 border-b border-border/50">
-        <span class="text-[10px] w-20 font-medium text-muted-foreground uppercase tracking-wide">Rock Profile</span>
-        {#each ROCK_PRESETS as preset}
-          <button
-            type="button"
-            class="ui-chip cursor-pointer border-border/60 bg-muted/20 text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors"
-            title={preset.description}
-            onclick={() => {
-              const p = preset.params;
-              for (const [key, value] of Object.entries(p)) {
-                if (key in params && typeof value !== 'function') {
-                  (params as any)[key] = value;
-                }
-              }
-              onParamEdit();
-            }}
-          >
-            {preset.label}
-          </button>
-        {/each}
-      </div>
-      <ScenarioSectionsPanel
-        {activeMode}
-        {toggles}
-        {disabledOptions}
-        {onToggleChange}
-        {onParamEdit}
-        {params}
-        {validationErrors}
-      />
-    </div>
   {/if}
     
   

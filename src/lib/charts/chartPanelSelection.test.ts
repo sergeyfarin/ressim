@@ -10,6 +10,7 @@ import {
 type TestCurve = {
     label: string;
     curveKey?: string;
+    referenceSourceType?: 'published-reference' | 'opm-flow-precomputed';
 };
 
 describe('chartPanelSelection', () => {
@@ -90,6 +91,30 @@ describe('chartPanelSelection', () => {
 
         expect(panel.curves.map((curve) => curve.label)).toEqual(['Pressure']);
         expect(panel.series).toEqual([[2]]);
+    });
+
+    it('retains additive published and OPM artifact curves outside the configured curve keys', () => {
+        const entries: Array<ChartPanelEntry<TestCurve, number[]>> = [
+            { curve: { label: 'Oil Rate', curveKey: 'oil-rate-sim' }, series: [1] },
+            { curve: { label: 'Published Oil Rate', curveKey: 'published-oil-rate', referenceSourceType: 'published-reference' }, series: [2] },
+            { curve: { label: 'OPM Oil Rate', curveKey: 'opm-oil-rate', referenceSourceType: 'opm-flow-precomputed' }, series: [3] },
+        ];
+
+        const panel = resolveChartPanelDefinition({
+            fallback: {
+                title: 'Oil Rate',
+                curveKeys: ['oil-rate-sim'],
+                scalePreset: 'rates',
+            },
+            entries,
+            getScalePresetConfig: () => ({}),
+        });
+
+        expect(panel.curves.map((curve) => curve.curveKey)).toEqual([
+            'oil-rate-sim',
+            'published-oil-rate',
+            'opm-oil-rate',
+        ]);
     });
 
     it('merges visibility and expansion metadata from the panel layout override', () => {

@@ -3,6 +3,17 @@
 Code and data moved out of the active tree but kept for reference / possible
 re-implementation, rather than deleted outright.
 
+## `src/lib/catalog/custom-mode/`
+
+Archived 2026-07-20 when Custom Mode was removed from the production UI. The
+scenario picker is now the only live case-selection path, and all production
+case definitions live in `src/lib/catalog/scenarios/` (one module per
+scenario). This archive preserves the former JSON facet catalog and its named
+starter presets for a future, separately designed custom-workflow effort.
+
+The small live `caseCatalog.ts` compatibility surface intentionally contains no
+case definitions or selectable presets.
+
 ## `src/lib/catalog/benchmarkCases.ts` + `src/lib/catalog/benchmark-case-data/*.json`
 
 Archived 2026-07 (frontend execution plan, Wave 3 W3.3) as part of retiring

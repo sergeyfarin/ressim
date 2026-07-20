@@ -15,12 +15,11 @@ describe('scenario picker flows', () => {
     expect(scenarioPickerSource).toMatch(/advisory: \["validation"\]/);
   });
 
-  it('shows scenario description and customize shortcut when a preset scenario is active', () => {
+  it('shows scenario description without a custom-mode handoff', () => {
     expect(scenarioPickerSource).toMatch(/activeScenario\.description/);
     expect(scenarioPickerSource).toMatch(/activeScenario\.analyticalMethodSummary/);
     expect(scenarioPickerSource).toMatch(/activeScenario\.analyticalMethodReference/);
-    expect(scenarioPickerSource).toMatch(/Customize/);
-    expect(scenarioPickerSource).toMatch(/onEnterCustomMode/);
+    expect(scenarioPickerSource).not.toMatch(/Customize|onEnterCustomMode/);
   });
 
   it('shows sensitivity variant chips when the scenario has a sensitivity axis', () => {

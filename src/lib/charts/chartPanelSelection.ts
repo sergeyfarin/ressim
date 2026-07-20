@@ -37,6 +37,7 @@ export type ChartPanelFallback = {
 type SelectableCurve = {
     label: string;
     curveKey?: string | null;
+    referenceSourceType?: 'simulation' | 'analytical' | 'published-reference' | 'opm-flow-precomputed';
 };
 
 function selectPanelEntries<TCurve extends SelectableCurve, TSeries>(input: {
@@ -49,7 +50,9 @@ function selectPanelEntries<TCurve extends SelectableCurve, TSeries>(input: {
     if (Array.isArray(curveKeys) && curveKeys.length > 0) {
         const allowedCurveKeys = new Set(curveKeys);
         return entries.filter((entry) => (
-            Boolean(entry.curve.curveKey) && allowedCurveKeys.has(entry.curve.curveKey as string)
+            entry.curve.referenceSourceType === 'published-reference'
+            || entry.curve.referenceSourceType === 'opm-flow-precomputed'
+            || (Boolean(entry.curve.curveKey) && allowedCurveKeys.has(entry.curve.curveKey as string))
         ));
     }
 

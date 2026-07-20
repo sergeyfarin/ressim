@@ -1,9 +1,3 @@
-import catalogDataRaw from './catalog.json';
-import {
-    getPresetEntry,
-    presetCases,
-    type PresetEntry,
-} from './presetCases';
 import {
     caseLibraryEntries,
     getCaseLibraryEntries,
@@ -18,6 +12,23 @@ import {
 // --- Type Definitions ---
 export type CaseMode = 'dep' | 'wf' | 'sim' | '3p';
 type CatalogModeKey = CaseMode | 'benchmark';
+
+/** Archived Custom Mode compatibility types; no production case definitions live here. */
+export type PresetEntry = {
+    key: string;
+    category: string;
+    mode: CaseMode;
+    label: string;
+    description: string;
+    params: Record<string, any>;
+    layoutConfig?: Record<string, unknown>;
+};
+
+export function getPresetEntry(_key: string | null | undefined): PresetEntry | null {
+    return null;
+}
+
+export const presetCases: PresetEntry[] = [];
 
 export type DimensionOption = {
     value: string;
@@ -58,24 +69,20 @@ type CatalogSourceSchema = Omit<CatalogSchema, 'modes' | 'presets' | 'caseLibrar
     presets?: PresetEntry[];
 };
 
-const rawCatalog = catalogDataRaw as unknown as CatalogSourceSchema;
-
 export const catalog: CatalogSchema = {
-    ...rawCatalog,
+    version: 1,
+    defaults: {},
     modes: {
-        dep: rawCatalog.modes.dep,
-        wf: rawCatalog.modes.wf,
-        sim: rawCatalog.modes.sim,
-        // Three-phase mode reuses the sim base params; scenarios are added separately
-        '3p': rawCatalog.modes['3p'] ?? rawCatalog.modes.sim,
+        dep: { baseParams: {}, dimensions: [], disabilityRules: [] },
+        wf: { baseParams: {}, dimensions: [], disabilityRules: [] },
+        sim: { baseParams: {}, dimensions: [], disabilityRules: [] },
+        '3p': { baseParams: {}, dimensions: [], disabilityRules: [] },
     },
-    presets: presetCases,
+    presets: [],
     caseLibrary: caseLibraryEntries,
 };
 
 export {
-    presetCases,
-    getPresetEntry,
     caseLibraryEntries,
     getCaseLibraryEntry,
     getCaseLibraryEntries,

@@ -26,7 +26,7 @@
     function handleRun() {
         const scenarioKey = scenario.activeScenarioKey;
         const dimensionKey = scenario.activeSensitivityDimensionKey;
-        if (scenarioKey && dimensionKey && !scenario.isCustomMode && scenario.activeVariantKeys.length > 0) {
+        if (scenarioKey && dimensionKey && scenario.activeVariantKeys.length > 0) {
             runtime.runScenarioSet(scenarioKey, dimensionKey, scenario.activeVariantKeys);
         } else {
             runtime.runSteps();
@@ -148,26 +148,13 @@
                 activeSensitivityDimensionKey={scenario.activeSensitivityDimensionKey}
                 activeAnalyticalOptionKey={scenario.activeAnalyticalOptionKey}
                 activeVariantKeys={scenario.activeVariantKeys}
-                isCustom={scenario.isCustomMode}
-                activeMode={scenario.activeMode}
-                {params}
-                toggles={scenario.toggles}
-                disabledOptions={scenario.disabledOptions}
                 validationErrors={params.validationErrors}
                 warningPolicy={runtime.warningPolicy}
-                basePreset={scenario.basePreset}
-                navigationState={scenario.navigationState}
-                referenceProvenance={scenario.referenceProvenance}
                 referenceSweepRunning={runtime.runSetRunning}
                 onSelectScenario={(key) => scenario.selectScenario(key)}
                 onSelectSensitivityDimension={(key) => scenario.selectSensitivityDimension(key)}
                 onToggleVariant={(key) => scenario.toggleScenarioVariant(key)}
                 onSelectAnalyticalOption={(key) => scenario.selectAnalyticalOption(key)}
-                onEnterCustomMode={() => scenario.enterCustomMode()}
-                onCloneReferenceToCustom={() => scenario.cloneActiveReferenceToCustom()}
-                onActivateLibraryEntry={(key) => scenario.activateLibraryEntry(key)}
-                onToggleChange={(dimKey, value) => scenario.handleToggleChange(dimKey, value)}
-                onParamEdit={() => scenario.handleParamEdit()}
             />
         </section>
 
@@ -185,14 +172,14 @@
                     historyLength={runtime.history.length}
                     totalStepsRun={runtime.rateHistory.length}
                     hasValidationErrors={params.hasValidationErrors}
-                    numSensitivities={!scenario.isCustomMode ? scenario.activeVariantKeys.length : 0}
+                    numSensitivities={scenario.activeVariantKeys.length}
                     runProgress={runtime.runSetRunning
                         ? runtime.runSetProgressLabel
                         : runtime.workerRunning && runtime.currentRunTotalSteps > 0
                             ? `${runtime.currentRunStepsCompleted}/${runtime.currentRunTotalSteps} steps`
                             : ""}
                     bind:steps={params.steps}
-                    showStepsInput={scenario.isCustomMode}
+                    showStepsInput={false}
                     stopPending={runtime.stopPending}
                     onStepsEdit={() => params.markStepsOverride()}
                     onRunSteps={handleRun}
@@ -224,7 +211,6 @@
                         {#if ScenarioChartComponent}
                             <ScenarioChartComponent
                                 scenario={scenario.activeScenarioObject}
-                                isCustom={scenario.isCustomMode}
                                 activeDimensionKey={scenario.activeSensitivityDimensionKey}
                                 analyticalOption={scenario.activeAnalyticalOption}
                                 runResults={scenario.activeRunResults}
@@ -239,7 +225,6 @@
                                 avgWaterSaturationSeries={runtime.avgWaterSaturationSeries}
                                 ooipM3={params.ooipM3}
                                 poreVolumeM3={params.poreVolumeM3}
-                                activeMode={scenario.activeMode}
                                 activeCase={scenario.activeCase}
                                 {theme}
                                 analyticalMeta={scenario.liveAnalyticalOutput.meta}

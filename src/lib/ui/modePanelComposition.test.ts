@@ -18,11 +18,8 @@ const geometrySectionPath = path.join(__dirname, "sections", "GeometrySection.sv
 const geometrySectionSource = fs.readFileSync(geometrySectionPath, "utf8");
 
 describe("Scenario picker composition", () => {
-  it("keeps the customize flow inside the scenario picker via ScenarioSectionsPanel", () => {
-    expect(scenarioPickerSource).toMatch(/import\s+ScenarioSectionsPanel\s+from\s+"\.\.\/sections\/ScenarioSectionsPanel\.svelte"/);
-    expect(scenarioPickerSource).toMatch(/<ScenarioSectionsPanel/);
-    expect(scenarioPickerSource).toMatch(/Customize/);
-    expect(scenarioPickerSource).toMatch(/onEnterCustomMode/);
+  it("keeps the picker scenario-first without a custom-mode form", () => {
+    expect(scenarioPickerSource).not.toMatch(/ScenarioSectionsPanel|Customize|onEnterCustomMode/);
     expect(scenarioPickerSource).not.toMatch(/BenchmarkPanel/);
     expect(scenarioPickerSource).not.toMatch(/ScenarioModePanel|DepletionPanel|WaterfloodPanel|SimulationPanel/);
   });
@@ -32,7 +29,7 @@ describe("Scenario picker composition", () => {
     expect(scenarioPickerSource).not.toMatch(/Execution Set/);
   });
 
-  it("keeps the shared scenario renderer focused on section composition", () => {
+  it.skip("keeps the archived custom-mode renderer focused on section composition", () => {
     expect(scenarioSectionsSource).toMatch(/getModePanelSections\(\)/);
     expect(scenarioSectionsSource).toMatch(/<GeometrySection/);
     expect(scenarioSectionsSource).toMatch(/<ReservoirSection/);
@@ -44,14 +41,14 @@ describe("Scenario picker composition", () => {
     expect(scenarioSectionsSource).toMatch(/section.key === "scal"/);
   });
 
-  it("keeps geometry grid editing behind a focused section component", () => {
+  it.skip("keeps archived geometry grid editing behind a focused section component", () => {
     expect(geometrySectionSource).toMatch(/<Collapsible title="Grid"/);
     expect(geometrySectionSource).not.toMatch(/geometryGridQuickEditor/);
     expect(geometrySectionSource).toMatch(/function setInt\(param: "nx" \| "ny" \| "nz", raw: string\)/);
     expect(geometrySectionSource).toMatch(/function setFloat\(param: "cellDx" \| "cellDy" \| "cellDz", raw: string\)/);
   });
 
-  it("binds section components directly instead of routing through wrapper-only field panels", () => {
+  it.skip("binds archived section components directly instead of routing through wrapper-only field panels", () => {
     expect(scenarioSectionsSource).toMatch(/bind:well_radius=\{params\.well_radius\}/);
     expect(scenarioSectionsSource).toMatch(/bind:delta_t_days=\{params\.delta_t_days\}/);
     expect(scenarioSectionsSource).toMatch(/bindings=\{params\}/);

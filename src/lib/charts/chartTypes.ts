@@ -13,6 +13,11 @@ export type CurveConfig = {
     disabled?: boolean;
     legendSection?: string;
     legendSectionLabel?: string;
+    /**
+     * Identifies an additive reference curve that must remain visible even when
+     * a scenario panel's curveKeys selects its live/analytical curves.
+     */
+    referenceSourceType?: 'simulation' | 'analytical' | 'published-reference' | 'opm-flow-precomputed';
     /** Override point radius for scatter-style markers (default 0 = no markers). */
     pointRadius?: number;
 };

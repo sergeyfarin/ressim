@@ -19,11 +19,12 @@ import {
 } from './benchmarkCases';
 import {
     presetCases,
-    type PresetCategory,
     type PresetEntry,
-    type PresetLayoutConfig,
-    type PresetMode,
-} from './presetCases';
+} from './caseCatalog';
+
+type PresetCategory = string;
+type PresetLayoutConfig = Record<string, unknown>;
+type PresetMode = 'dep' | 'wf' | 'sim';
 
 export type CaseLibraryEntryKind = 'benchmark-family' | 'preset';
 
@@ -266,7 +267,7 @@ function buildPresetLibraryEntry(entry: PresetEntry): CaseLibraryEntry {
         group: 'curated-starter',
         caseSource: CASE_LIBRARY_SOURCE,
         activation: {
-            activeMode: entry.mode,
+            activeMode: entry.mode === '3p' ? 'sim' : entry.mode,
             benchmarkId: null,
             presetKey: entry.key,
         },
