@@ -122,12 +122,9 @@ pub(crate) fn begin_flow_resv_report_step_context(
     if !sim.fim_flow_resv_injector {
         return Ok(None);
     }
-    if nested_well_solve {
-        return Err(
-            "FIM_NESTED_WELL_SOLVE is q-coordinate only; G4b3 must re-derive it for surface u"
-                .to_string(),
-        );
-    }
+    // G4b3 supplies a route-aware `(bhp,u)` inner solve. The flag is accepted here and carried
+    // by Newton state update; historical wells still use their q-coordinate local systems.
+    let _ = nested_well_solve;
     if !sim.three_phase_mode || sim.injected_fluid != InjectedFluid::Gas {
         return Err("requires a three-phase gas injector".to_string());
     }
@@ -355,8 +352,12 @@ mod tests {
     fn rejects_incompatible_scope_before_newton_assembly() {
         let mut sim = gas_resv_sim();
         let state = FimState::from_simulator(&sim);
-        let nested = begin_flow_resv_report_step_context(&sim, &state, true).unwrap_err();
-        assert!(nested.contains("q-coordinate"));
+        assert!(
+            begin_flow_resv_report_step_context(&sim, &state, true)
+                .unwrap()
+                .is_some(),
+            "G4b3 must accept nested solve for the selected u-coordinate route"
+        );
 
         sim.wells[0].schedule.bhp_limit = Some(350.0);
         let bhp_limited = begin_flow_resv_report_step_context(&sim, &state, false).unwrap_err();
@@ -573,7 +574,10 @@ mod tests {
             &update,
             1.0,
             &topology,
-            WellStateUpdateMode::FlowResv(context),
+            WellStateUpdateMode::FlowResv {
+                context,
+                nested_well_solve: false,
+            },
         );
 
         assert!((candidate.well_bhp[context.physical_well_idx] - 225.0).abs() < 1e-12);
@@ -586,6 +590,163 @@ mod tests {
                 .reservoir_connection_q(context.perforation_idx)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn g4b3_local_rows_and_columns_match_selected_global_assembly() {
+        let sim = gas_resv_sim();
+        let mut state = FimState::from_simulator(&sim);
+        let context = begin_flow_resv_report_step_context(&sim, &state, true)
+            .unwrap()
+            .unwrap();
+        let topology = build_well_topology(&sim);
+        state
+            .initialize_flow_resv_gas_primary(&sim, &topology, context)
+            .unwrap();
+        state.cells[0].pressure_bar = 205.0;
+        state.cells[0].sw = 0.20;
+        state.cells[0].hydrocarbon_var = 0.08;
+        state.well_bhp[context.physical_well_idx] = 220.0;
+        *state.perforation_primary_value_mut(context.perforation_idx) = 10.0;
+
+        let local = crate::fim::wells_inner::assemble_flow_resv_well_local_system(
+            &sim, &state, &topology, context,
+        );
+        let options = FimAssemblyOptions {
+            dt_days: 0.25,
+            include_wells: true,
+            assemble_residual_only: false,
+            topology: Some(&topology),
+            flow_resv_context: Some(context),
+        };
+        let global = assemble_fim_system_ad(&sim, &state, &state, &options);
+        let global_rows = [
+            state.well_equation_offset(context.physical_well_idx),
+            state.perforation_equation_offset(context.perforation_idx),
+        ];
+        let global_cols = [
+            state.well_bhp_unknown_offset(context.physical_well_idx),
+            state.perforation_rate_unknown_offset(context.perforation_idx),
+        ];
+        for local_row in 0..2 {
+            assert_eq!(
+                local.residual[local_row],
+                global.residual[global_rows[local_row]]
+            );
+            for local_col in 0..2 {
+                let global_value = global
+                    .jacobian
+                    .get(global_rows[local_row], global_cols[local_col])
+                    .copied()
+                    .unwrap_or(0.0);
+                assert!(
+                    (local.jacobian[(local_row, local_col)] - global_value).abs() < 1e-12,
+                    "local/global mismatch at ({local_row},{local_col}): {} vs {global_value}",
+                    local.jacobian[(local_row, local_col)]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn g4b3_nested_update_restores_control_and_connection_rows() {
+        let sim = gas_resv_sim();
+        let mut state = FimState::from_simulator(&sim);
+        let context = begin_flow_resv_report_step_context(&sim, &state, true)
+            .unwrap()
+            .unwrap();
+        let topology = build_well_topology(&sim);
+        state
+            .initialize_flow_resv_gas_primary(&sim, &topology, context)
+            .unwrap();
+        state.cells[0].pressure_bar = 205.0;
+        state.cells[0].sw = 0.20;
+        state.cells[0].hydrocarbon_var = 0.08;
+        state.well_bhp[context.physical_well_idx] = 220.0;
+        *state.perforation_primary_value_mut(context.perforation_idx) = 10.0;
+
+        let candidate = state.apply_newton_update_frozen(
+            &sim,
+            &DVector::zeros(state.n_unknowns()),
+            1.0,
+            &topology,
+            WellStateUpdateMode::FlowResv {
+                context,
+                nested_well_solve: true,
+            },
+        );
+        let expected_u = context.reservoir_target_rm3_day / context.reference.bg_rm3_per_sm3;
+        assert!(
+            (candidate
+                .flow_resv_surface_u(context.perforation_idx)
+                .unwrap()
+                - expected_u)
+                .abs()
+                < 1e-8
+        );
+        let local = crate::fim::wells_inner::assemble_flow_resv_well_local_system(
+            &sim, &candidate, &topology, context,
+        );
+        assert!(
+            local.residual.iter().all(|value| value.abs() < 1e-7),
+            "selected local rows not restored: {:?}",
+            local.residual
+        );
+        assert!(crate::fim::wells_inner::flow_resv_well_is_converged(
+            &sim,
+            &candidate,
+            &topology,
+            context,
+            &crate::fim::wells_inner::FimWellInnerSolveOptions::default(),
+        ));
+    }
+
+    #[test]
+    fn g4b3_mixed_route_preserves_historical_well_inner_solve() {
+        let mut sim = gas_resv_sim();
+        sim.add_well_with_id(0, 0, 0, 150.0, 0.1, 0.0, false, "prod".to_string())
+            .unwrap();
+        let mut state = FimState::from_simulator(&sim);
+        let context = begin_flow_resv_report_step_context(&sim, &state, true)
+            .unwrap()
+            .unwrap();
+        let topology = build_well_topology(&sim);
+        state
+            .initialize_flow_resv_gas_primary(&sim, &topology, context)
+            .unwrap();
+        let historical_well = (0..topology.wells.len())
+            .find(|&well_idx| well_idx != context.physical_well_idx)
+            .unwrap();
+        let historical_perf = topology.wells[historical_well].perforation_indices[0];
+        state.well_bhp[historical_well] += 25.0;
+        *state
+            .reservoir_connection_q_mut(historical_perf)
+            .expect("non-selected producer remains a reservoir-q route") += 500.0;
+
+        let candidate = state.apply_newton_update_frozen(
+            &sim,
+            &DVector::zeros(state.n_unknowns()),
+            1.0,
+            &topology,
+            WellStateUpdateMode::FlowResv {
+                context,
+                nested_well_solve: true,
+            },
+        );
+        let options = crate::fim::wells_inner::FimWellInnerSolveOptions::default();
+        assert!(crate::fim::wells_inner::flow_resv_well_is_converged(
+            &sim, &candidate, &topology, context, &options,
+        ));
+        assert!(crate::fim::wells_inner::well_is_converged(
+            &sim,
+            &candidate,
+            &topology,
+            historical_well,
+            &options,
+        ));
+        assert!(crate::fim::wells_inner::all_wells_converged_with_flow_resv(
+            &sim, &candidate, &topology, context, &options,
+        ));
     }
 
     #[derive(Clone, Copy)]

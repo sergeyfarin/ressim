@@ -1159,14 +1159,24 @@ pub(crate) fn run_fim_timestep(
         // AND in OPM's own well-convergence analog (`getWellConvergence`, W0 appendix G) —
         // closes N1's recorded fidelity gap (reservoir-only acceptance had no well check at
         // all). No-op when the flag is off: `wells_ok` is trivially `true`.
-        let wells_ok = !opm_aligned
-            || !options.nested_well_solve
-            || crate::fim::wells_inner::all_wells_converged(
+        let wells_ok = if !opm_aligned || !options.nested_well_solve {
+            true
+        } else if let Some(context) = options.flow_resv_context {
+            crate::fim::wells_inner::all_wells_converged_with_flow_resv(
+                sim,
+                &state,
+                &topology,
+                context,
+                &crate::fim::wells_inner::FimWellInnerSolveOptions::default(),
+            )
+        } else {
+            crate::fim::wells_inner::all_wells_converged(
                 sim,
                 &state,
                 &topology,
                 &crate::fim::wells_inner::FimWellInnerSolveOptions::default(),
-            );
+            )
+        };
         let converged_on_entry = if opm_aligned {
             iteration >= OPM_NEWTON_MIN_ITERATION_INDEX && opm_conv.would_accept && wells_ok
         } else if iteration == 0 && !materially_changed {
@@ -2493,7 +2503,10 @@ pub(crate) fn run_fim_timestep(
         // Bundle W (`docs/FIM_BUNDLE_W_PLAN.md` §5 item 1): independent flag, evaluable under
         // either `nonlinear_flavor` — default false selects `Relax`, bit-identical to before.
         let well_update_mode = if let Some(context) = options.flow_resv_context {
-            crate::fim::state::WellStateUpdateMode::FlowResv(context)
+            crate::fim::state::WellStateUpdateMode::FlowResv {
+                context,
+                nested_well_solve: options.nested_well_solve,
+            }
         } else if options.nested_well_solve {
             crate::fim::state::WellStateUpdateMode::NestedSolve
         } else {

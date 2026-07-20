@@ -19,9 +19,13 @@ pub(crate) enum WellStateUpdateMode {
     Relax,
     /// Bundle W: converged per-well inner Newton solve (`fim/wells_inner.rs`).
     NestedSolve,
-    /// G4b2's one-perf Flow RESV route: update the selected surface-rate primary directly and
-    /// never feed it to the historical q-coordinate relaxer/inner solve.
-    FlowResv(FlowResvReportStepContext),
+    /// G4's one-perf Flow RESV route. The selected surface-rate primary never enters a
+    /// q-coordinate post-processor; G4b3 optionally applies its own `(bhp,u)` inner solve while
+    /// non-selected wells retain the configured historical Relax/NestedSolve behavior.
+    FlowResv {
+        context: FlowResvReportStepContext,
+        nested_well_solve: bool,
+    },
 }
 
 const WELL_BHP_MANIFOLD_BLEND: f64 = 0.9;
@@ -488,8 +492,12 @@ impl FimState {
         &mut self,
         sim: &ReservoirSimulator,
         topology: &crate::fim::wells::FimWellTopology,
+        excluded_well_idx: Option<usize>,
     ) {
         for well_idx in 0..topology.wells.len() {
+            if excluded_well_idx == Some(well_idx) {
+                continue;
+            }
             let (control, consistent_bhp, perforation_indices) = {
                 let block = well_local_block(topology, self, well_idx);
                 let control = block.control(sim);
@@ -713,7 +721,7 @@ impl FimState {
             WellStateUpdateMode::None => self.enforce_control_bounds(sim, topology),
             WellStateUpdateMode::Relax => {
                 self.enforce_control_bounds(sim, topology);
-                self.relax_well_state_toward_local_consistency(sim, topology);
+                self.relax_well_state_toward_local_consistency(sim, topology, None);
                 self.enforce_control_bounds(sim, topology);
             }
             WellStateUpdateMode::NestedSolve => {
@@ -726,15 +734,38 @@ impl FimState {
                 );
                 self.enforce_control_bounds(sim, topology);
             }
-            WellStateUpdateMode::FlowResv(context) => {
+            WellStateUpdateMode::FlowResv {
+                context,
+                nested_well_solve,
+            } => {
                 // The selected slot is surface u, not the historical signed connection q.
-                // Preserve normal BHP finite bounds but do not apply q relaxation or FB/BHP
-                // control handling to this route.
+                // Preserve the configured behavior for every historical well, but never apply
+                // its q-coordinate formulas to the selected route.
                 self.enforce_flow_resv_bhp_bounds(sim, topology, context);
                 let u = self
                     .flow_resv_surface_u(context.perforation_idx)
                     .expect("Flow RESV update requires a typed surface-u primary");
                 *self.perforation_primary_value_mut(context.perforation_idx) = u.max(0.0);
+                if nested_well_solve {
+                    let options = crate::fim::wells_inner::FimWellInnerSolveOptions::default();
+                    for well_idx in 0..topology.wells.len() {
+                        if well_idx != context.physical_well_idx {
+                            crate::fim::wells_inner::solve_well_locally(
+                                sim, self, topology, well_idx, &options,
+                            );
+                        }
+                    }
+                    crate::fim::wells_inner::solve_flow_resv_well_locally(
+                        sim, self, topology, context, &options,
+                    );
+                } else {
+                    self.relax_well_state_toward_local_consistency(
+                        sim,
+                        topology,
+                        Some(context.physical_well_idx),
+                    );
+                }
+                self.enforce_flow_resv_bhp_bounds(sim, topology, context);
             }
         }
     }

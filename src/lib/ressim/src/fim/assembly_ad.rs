@@ -129,7 +129,11 @@ fn add_if_nonzero(tri: &mut TriMatI<f64, usize>, row: usize, col: usize, value: 
     }
 }
 
-fn flow_resv_terms_ad(
+/// Shared selected-route evaluation used by both the global scatter below and G4b3's
+/// frozen-reservoir inner well solve. Derivative slots are `[p, sw, hc, bhp, u]`; keeping this
+/// as the single producer is the local/global agreement invariant, not merely a duplicated
+/// formula checked after the fact.
+pub(crate) fn flow_resv_terms_ad(
     sim: &ReservoirSimulator,
     state: &FimState,
     topology: &FimWellTopology,
@@ -171,7 +175,7 @@ fn flow_resv_terms_ad(
     ))
 }
 
-fn flow_resv_terms_f64(
+pub(crate) fn flow_resv_terms_f64(
     sim: &ReservoirSimulator,
     state: &FimState,
     topology: &FimWellTopology,

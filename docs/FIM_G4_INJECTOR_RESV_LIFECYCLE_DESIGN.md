@@ -129,9 +129,14 @@ an explicit mode tag are both wrong.
    The historical FB rate branch is not reused for RESV; the RESV control row is explicitly
    `B_g,ref*u-Q_resv` with its own equality/FD gate.
    otherwise use an explicit rate-only test row.
-4. **G4b3: local/global coupling.** Re-derive a u-coordinate local solve before supporting nested
-   mode. Prove its rows/columns equal global assembly (Bundle W invariant). Capture evaluation 0/1
-   source/control/connection partitions before a six-step run.
+4. **G4b3: local/global coupling — IMPLEMENTED, LIVE ORACLE PENDING 2026-07-20.** The selected
+   frozen-reservoir local system uses rows `[R_ctrl,R_perf]` and columns `[bhp,u]` sliced from
+   the same f64/AD evaluation as global assembly. Its bounded Newton loop reuses Bundle W's
+   `dbhp-max-rel` chop, the global RESV row scales, and no u magnitude clamp. A bit-exact
+   residual / `1e-12` Jacobian agreement gate passes away from convergence; a perturbed state
+   restores both rows below `1e-7`. Mixed-route coverage proves the held producer continues to
+   use its historical q-coordinate local system. Capture evaluation 0/1 partitions from the
+   committed implementation before a six-step run.
 5. **G4b4: live gates.** First run one capped no-retry rung; only then run six steps and compare
    cuts, applied updates versus Flow `7,5,4,3,4,3`, row partitions, and wall time. This remains a
    default-off behavior result, not promotion.
@@ -170,7 +175,8 @@ cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
   fim::timestep::phase5_repro::repro_gas_rate_10x10x3_y1j -- --ignored --nocapture --exact
 ```
 
-The command must not set `FIM_NESTED_WELL_SOLVE` until G4b3 makes it u-coordinate compatible.
+G4b3 has made the scoped route u-coordinate compatible. Its committed-tree oracle must add
+`FIM_NESTED_WELL_SOLVE=1`; omitting it intentionally reproduces the G4b2c no-inner-solve control.
 
 ## 7. Scope, promotion, and IMPES
 

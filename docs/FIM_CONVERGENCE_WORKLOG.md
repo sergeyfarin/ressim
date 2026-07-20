@@ -4334,3 +4334,24 @@ The source is therefore not yet comparable. **Verdict: G4b2b route COMPLETE; liv
 INCONCLUSIVE due to the deliberately missing u-coordinate inner well solve.** Next is G4b3 with
 `c_s≈u` after update 1 as the primary gate. No IMPES port applies; the typed tail/inner well
 system is FIM-only, and the IMPES 5/5 gate already passes.
+
+### G4b3 implementation: route-aware u-coordinate inner solve (2026-07-20)
+
+Implemented the missing selected-well local system without a second physics formula. Its f64
+residual values and `[p,Sw,hc,bhp,u]` AD derivatives are the same evaluations global assembly
+scatters; the local restriction is rows `[control,connection]` by columns `[bhp,u]`. A perturbed
+one-cell state confirms exact control and connection restoration. The solve uses Bundle W's
+bounded Newton budget, well tolerance, and relative BHP chop, with no u magnitude clamp.
+
+The update seam is route-aware rather than globally bypassing well recovery. The selected well
+uses `(bhp,u)` only when nested solve is enabled; every non-selected well retains historical
+Relax or `(bhp,q...)` NestedSolve behavior. The OPM-aligned acceptance well check uses the same
+route dispatch. This also corrects the G4b2 FlowResv branch's accidental omission of producer
+post-processing.
+
+Non-live evidence: `flow_resv` 11/11 and `wells_inner` 12/12 pass; locked FIM coverage passes all
+11 curated cases; IMPES 5/5 passes unchanged. Shared coverage passes its first three cases and
+reproduces the existing closed-system `rate_history` length mismatch (`2` versus `1`). Next is
+the clean committed-tree, one-step exact trace with `FIM_FLOW_RESV_INJECTOR=1`,
+`FIM_NESTED_WELL_SOLVE=1`, and the held Y2 raw lifecycle. Do not run six steps unless evaluation
+1 has `c_s≈u`, converged control/connection rows, and no retry.

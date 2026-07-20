@@ -1018,6 +1018,30 @@ linear iterations in `0.510 s`; fresh Flow takes one step, zero cuts, 11 Newton 
 iterations in `0.04 s`. Preserve it as the cross-physics promotion gate, not as evidence against
 the gas-only G4 mechanism.
 
+### G4b3 implementation checkpoint (2026-07-20): selected inner system is route-correct
+
+The selected well now has a frozen-reservoir `(bhp,u)` inner Newton system whose control and
+connection residual values come from the exact f64 helper used by global assembly and whose
+two well columns come from the exact `[p,Sw,hc,bhp,u]` AD evaluation. The agreement test compares
+`[R_ctrl,R_perf] x [bhp,u]` to the full sparse assembly away from convergence: residuals are
+bit-identical and Jacobian entries agree within `1e-12`. From a perturbed state the local solve
+restores both raw rows below `1e-7`, using Bundle W's 50-iteration/`1e-4` tolerance and BHP chop.
+
+The route is compositional: with nested solve enabled, non-selected wells still use their
+historical `(bhp,q...)` systems and the OPM-aligned well-acceptance check dispatches each well by
+route. With nested solve disabled, non-selected wells retain historical relaxation while the
+selected u slot remains excluded. This fixes a G4b2 branch-level omission that had bypassed the
+producer post-processing as well as the selected injector.
+
+Focused `flow_resv` (`11/11`, including the mixed-route gate), `wells_inner` (`12/12`), locked
+FIM coverage, and IMPES (`5/5`) pass.
+Shared coverage again passes its first three controls and stops at the documented pre-existing
+closed-system `rate_history` length `2` versus `1`. No IMPES code changed because the typed tail
+and inner solve are FIM-only. This is a mechanism checkpoint, not a convergence result. Next:
+commit the implementation, then run the capped one-step trace with both
+`FIM_FLOW_RESV_INJECTOR=1` and `FIM_NESTED_WELL_SOLVE=1`; require evaluation-1 `c_s≈u`, zero
+control/connection rows, and no retry before authorizing the six-step G4b4 comparison.
+
 ## 8. Y3 and Y4 end gates
 
 Y3 controller parity starts only after full-target Newton convergence is plausible. Its target is

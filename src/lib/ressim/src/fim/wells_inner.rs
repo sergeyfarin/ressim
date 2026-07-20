@@ -14,7 +14,10 @@
 use nalgebra::{DMatrix, DVector};
 
 use crate::ReservoirSimulator;
-use crate::fim::assembly_ad::{well_cell_input, well_control_generic};
+use crate::fim::assembly_ad::{
+    flow_resv_terms_ad, flow_resv_terms_f64, well_cell_input, well_control_generic,
+};
+use crate::fim::flow_resv::FlowResvReportStepContext;
 use crate::fim::state::FimState;
 use crate::fim::wells::{
     FimWellTopology, effective_injected_fluid, geometric_well_index, perforation_local_block,
@@ -45,6 +48,38 @@ impl FimWellLocalSystem {
     pub(crate) fn dim(&self) -> usize {
         1 + self.perforation_indices.len()
     }
+}
+
+/// G4b3's selected one-perforation RESV local system. Row ordering is
+/// `[control, connection]`; unknown ordering is `[bhp, u]`. The reservoir cell is frozen.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct FlowResvWellLocalSystem {
+    pub(crate) residual: DVector<f64>,
+    pub(crate) jacobian: DMatrix<f64>,
+}
+
+/// Restrict the exact selected global AD evaluation to its well rows and `(bhp,u)` columns.
+/// This deliberately consumes `flow_resv_terms_ad`, the same object scattered by
+/// `assembly_ad.rs`, so the inner solve cannot drift onto a parallel connection/FVF formula.
+pub(crate) fn assemble_flow_resv_well_local_system(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    context: FlowResvReportStepContext,
+) -> FlowResvWellLocalSystem {
+    let values = flow_resv_terms_f64(sim, state, topology, context.perforation_idx, context)
+        .expect("validated RESV perforation has a finite connection");
+    let derivatives = flow_resv_terms_ad(sim, state, topology, context.perforation_idx, context)
+        .expect("validated RESV perforation has a finite connection");
+    let mut residual = DVector::zeros(2);
+    residual[0] = values.control;
+    residual[1] = values.perforation;
+    let mut jacobian = DMatrix::zeros(2, 2);
+    jacobian[(0, 0)] = derivatives.control.d(3);
+    jacobian[(0, 1)] = derivatives.control.d(4);
+    jacobian[(1, 0)] = derivatives.perforation.d(3);
+    jacobian[(1, 1)] = derivatives.perforation.d(4);
+    FlowResvWellLocalSystem { residual, jacobian }
 }
 
 /// Assembles one physical well's local system. Mirrors `assembly_ad.rs`'s
@@ -212,6 +247,95 @@ pub(crate) struct FimWellInnerSolveReport {
     pub(crate) converged: bool,
     pub(crate) iterations: usize,
     pub(crate) final_scaled_residual_peak: f64,
+}
+
+fn flow_resv_well_convergence_status(
+    state: &FimState,
+    context: FlowResvReportStepContext,
+    local: &FlowResvWellLocalSystem,
+    options: &FimWellInnerSolveOptions,
+) -> FimWellConvergenceStatus {
+    let u = state
+        .flow_resv_surface_u(context.perforation_idx)
+        .expect("RESV inner solve requires a typed surface-u primary");
+    let control_scale = context.reservoir_target_rm3_day.abs().max(1.0);
+    let connection_scale = crate::fim::scaling::perforation_flow_scale(u);
+    let scaled_peak =
+        (local.residual[0].abs() / control_scale).max(local.residual[1].abs() / connection_scale);
+    FimWellConvergenceStatus {
+        converged: scaled_peak <= options.tolerance,
+        scaled_residual_peak: scaled_peak,
+    }
+}
+
+/// Converge G4's selected `(bhp,u)` well block with the reservoir cell frozen at the outer
+/// candidate. The outer correction is the warm start; BHP uses the same OPM relative chop as
+/// the historical Bundle-W solve and `u` has no magnitude clamp. The equality control row fixes
+/// `u=Qresv/Bg_ref`, while the connection row restores `c_s=u` before the next global assembly.
+pub(crate) fn solve_flow_resv_well_locally(
+    sim: &ReservoirSimulator,
+    state: &mut FimState,
+    topology: &FimWellTopology,
+    context: FlowResvReportStepContext,
+    options: &FimWellInnerSolveOptions,
+) -> FimWellInnerSolveReport {
+    let mut iterations = 0usize;
+    let mut converged;
+    let mut final_scaled_residual_peak;
+
+    loop {
+        let local = assemble_flow_resv_well_local_system(sim, state, topology, context);
+        let status = flow_resv_well_convergence_status(state, context, &local, options);
+        converged = status.converged;
+        final_scaled_residual_peak = status.scaled_residual_peak;
+        if converged || iterations >= options.max_iterations {
+            break;
+        }
+
+        let Some(delta) = local.jacobian.lu().solve(&(-local.residual)) else {
+            break;
+        };
+        state.well_bhp[context.physical_well_idx] = chop_bhp_update(
+            state.well_bhp[context.physical_well_idx],
+            delta[0],
+            options.dbhp_max_rel,
+        );
+        *state.perforation_primary_value_mut(context.perforation_idx) += delta[1];
+        iterations += 1;
+    }
+
+    FimWellInnerSolveReport {
+        well_idx: context.physical_well_idx,
+        converged,
+        iterations,
+        final_scaled_residual_peak,
+    }
+}
+
+pub(crate) fn flow_resv_well_is_converged(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    context: FlowResvReportStepContext,
+    options: &FimWellInnerSolveOptions,
+) -> bool {
+    let local = assemble_flow_resv_well_local_system(sim, state, topology, context);
+    flow_resv_well_convergence_status(state, context, &local, options).converged
+}
+
+/// Route-aware counterpart of `all_wells_converged`: the selected well is checked in `(bhp,u)`
+/// coordinates and every other well retains the historical Bundle-W check.
+pub(crate) fn all_wells_converged_with_flow_resv(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    context: FlowResvReportStepContext,
+    options: &FimWellInnerSolveOptions,
+) -> bool {
+    flow_resv_well_is_converged(sim, state, topology, context, options)
+        && (0..topology.wells.len())
+            .filter(|&well_idx| well_idx != context.physical_well_idx)
+            .all(|well_idx| well_is_converged(sim, state, topology, well_idx, options))
 }
 
 /// `StandardWellPrimaryVariables::updateNewton`'s BHP lower limit (W0 appendix D): "some cases
