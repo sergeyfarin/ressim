@@ -55,3 +55,25 @@ export function getOpmFlowPublishedReferenceSeries(scenarioKey: string): Publish
         }));
     });
 }
+
+/**
+ * Resolve bundled OPM Flow artifact series by their case keys (not scenarioKey).
+ * Used by prerun-artifacts scenarios, whose declared `opmFlowReferenceArtifactKeys`
+ * map to artifacts by caseKey and are rendered as primary content when `primary`
+ * is set. Silently skips keys with no parsed artifact.
+ */
+export function getOpmFlowArtifactSeriesByKeys(
+    caseKeys: readonly string[],
+    options: { primary?: boolean } = {},
+): PublishedReferenceSeries[] {
+    return caseKeys.flatMap((caseKey) => {
+        const artifact = ARTIFACTS.find((candidate) => candidate.caseKey === caseKey);
+        if (!artifact || artifact.status !== 'parsed') return [];
+        return artifact.series.map((series) => ({
+            ...series,
+            sourceType: 'opm-flow-precomputed' as const,
+            sourceArtifactKey: artifact.caseKey,
+            primary: options.primary ?? false,
+        }));
+    });
+}

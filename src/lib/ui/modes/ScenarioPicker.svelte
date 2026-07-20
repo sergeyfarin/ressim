@@ -168,6 +168,9 @@
               onclick={() => onSelectScenario(scenario.key)}
             >
               {scenario.label}
+              {#if scenario.capabilities.runMode === 'prerun-artifacts'}
+                <span class="ml-1.5 rounded-sm bg-muted/60 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">Pre-run</span>
+              {/if}
             </Button>
           {/each}
         {/if}

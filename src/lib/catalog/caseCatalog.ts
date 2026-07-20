@@ -1,18 +1,5 @@
 import catalogDataRaw from './catalog.json';
 import {
-    benchmarkCases,
-    benchmarkFamilies,
-    getBenchmarkEntry,
-    getBenchmarkFamily,
-    getBenchmarkSensitivityAxisLabel,
-    getBenchmarkVariant,
-    getBenchmarkVariantsForFamily,
-    benchmarkVariants,
-    type BenchmarkEntry,
-    type BenchmarkSensitivityAxisKey,
-    type BenchmarkVariant,
-} from './benchmarkCases';
-import {
     getPresetEntry,
     presetCases,
     type PresetEntry,
@@ -62,16 +49,12 @@ export type CatalogSchema = {
     version: number;
     defaults: Record<string, any>;
     modes: Record<CaseMode, ModeCatalog> & Partial<Record<string, ModeCatalog>>;
-    benchmarks: BenchmarkEntry[];
-    benchmarkVariants: BenchmarkVariant[];
     presets: PresetEntry[];
     caseLibrary: CaseLibraryEntry[];
 };
 
-type CatalogSourceSchema = Omit<CatalogSchema, 'modes' | 'benchmarks' | 'benchmarkVariants' | 'presets' | 'caseLibrary'> & {
+type CatalogSourceSchema = Omit<CatalogSchema, 'modes' | 'presets' | 'caseLibrary'> & {
     modes: Record<CatalogModeKey, ModeCatalog>;
-    benchmarks?: BenchmarkEntry[];
-    benchmarkVariants?: BenchmarkVariant[];
     presets?: PresetEntry[];
 };
 
@@ -86,21 +69,11 @@ export const catalog: CatalogSchema = {
         // Three-phase mode reuses the sim base params; scenarios are added separately
         '3p': rawCatalog.modes['3p'] ?? rawCatalog.modes.sim,
     },
-    benchmarks: benchmarkCases,
-    benchmarkVariants,
     presets: presetCases,
     caseLibrary: caseLibraryEntries,
 };
 
 export {
-    benchmarkCases,
-    benchmarkFamilies,
-    benchmarkVariants,
-    getBenchmarkEntry,
-    getBenchmarkFamily,
-    getBenchmarkVariant,
-    getBenchmarkVariantsForFamily,
-    getBenchmarkSensitivityAxisLabel,
     presetCases,
     getPresetEntry,
     caseLibraryEntries,
@@ -111,8 +84,6 @@ export {
     getCaseLibraryEntriesForFamilyAndGroup,
     getCaseLibraryGroupsForFamily,
 };
-
-export type { BenchmarkSensitivityAxisKey };
 
 export type ToggleState = Record<string, string>;
 

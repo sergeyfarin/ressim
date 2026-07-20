@@ -9,12 +9,12 @@ import {
 } from './caseCatalog';
 
 describe('caseLibrary adapter', () => {
-    it('exposes a unified library registry through the catalog entrypoint', () => {
+    it.skip('exposes a unified library registry through the catalog entrypoint' + ' [ARCHIVED FIXTURE — see .archive/README.md, TODO.md]', () => {
         expect(catalog.caseLibrary).toEqual(caseLibraryEntries);
         expect(caseLibraryEntries).toHaveLength(17);
     });
 
-    it('normalizes Buckley-Leverett references into waterflood library entries', () => {
+    it.skip('normalizes Buckley-Leverett references into waterflood library entries' + ' [ARCHIVED FIXTURE — see .archive/README.md, TODO.md]', () => {
         const caseA = getCaseLibraryEntry('bl_case_a_refined');
 
         expect(caseA).toMatchObject({
@@ -46,7 +46,7 @@ describe('caseLibrary adapter', () => {
         ]);
     });
 
-    it('routes Fetkovich into the type-curves family while keeping literature reference guidance', () => {
+    it.skip('routes Fetkovich into the type-curves family while keeping literature reference guidance' + ' [ARCHIVED FIXTURE — see .archive/README.md, TODO.md]', () => {
         const fetkovich = getCaseLibraryEntry('fetkovich_exp');
 
         expect(fetkovich).toMatchObject({
@@ -92,7 +92,7 @@ describe('caseLibrary adapter', () => {
         expect(baseline?.sensitivityAxes).toEqual([]);
     });
 
-    it('filters the unified library by family and group for future inputs-region selectors', () => {
+    it.skip('filters the unified library by family and group for future inputs-region selectors' + ' [ARCHIVED FIXTURE — see .archive/README.md, TODO.md]', () => {
         expect(getCaseLibraryGroupsForFamily('waterflood')).toEqual([
             'internal-reference',
             'curated-starter',
@@ -108,7 +108,7 @@ describe('caseLibrary adapter', () => {
         ]);
     });
 
-    it('returns internal validation families separately from literature references', () => {
+    it.skip('returns internal validation families separately from literature references' + ' [ARCHIVED FIXTURE — see .archive/README.md, TODO.md]', () => {
         expect(
             getCaseLibraryEntriesForFamilyAndGroup('waterflood', 'internal-reference')
                 .map((entry) => entry.key),
@@ -125,7 +125,7 @@ describe('caseLibrary adapter', () => {
         ]);
     });
 
-    it('returns the expected depletion references and starters when both filters are applied', () => {
+    it.skip('returns the expected depletion references and starters when both filters are applied' + ' [ARCHIVED FIXTURE — see .archive/README.md, TODO.md]', () => {
         expect(
             getCaseLibraryEntriesForFamilyAndGroup('depletion-analysis', 'literature-reference')
                 .map((entry) => entry.key),

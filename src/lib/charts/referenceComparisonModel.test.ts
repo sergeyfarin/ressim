@@ -2,12 +2,73 @@ import { describe, expect, it } from 'vitest';
 import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
 import { calculateAnalyticalProduction, computeWelgeMetrics } from '../analytical/fractionalFlow';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
-import { getBenchmarkFamily, getBenchmarkVariantsForFamily } from '../catalog/caseCatalog';
 import { getScenario, getScenarioChartLayout } from '../catalog/scenarios';
-import { buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRunModel';
+import { buildBenchmarkRunResult } from '../benchmarkRunModel';
 import type { BenchmarkRunSpec } from '../benchmarkRunModel';
 import type { SimulatorSnapshot } from '../simulator-types';
 import { buildReferenceComparisonModel } from './buildChartData';
+
+// Live scenarios stand in for the archived bl_case_a_refined/dietz_sq_center
+// benchmark-family fixtures (see .archive/README.md, TODO.md): wf_bl1d for
+// BL waterflood physics, dep_pss for Dietz PSS depletion (center/corner well
+// shape factor), and sweep_areal/sweep_vertical/sweep_combined for the sweep
+// panels — all structurally equivalent or closer to real product scenarios
+// than the synthetic archived families were.
+function buildScenarioRunSpec(scenarioKey: string, paramOverrides: Record<string, unknown> = {}): BenchmarkRunSpec {
+    const scenario = getScenario(scenarioKey)!;
+    const params = { ...scenario.params, ...paramOverrides };
+    return {
+        key: scenario.key,
+        caseKey: scenario.key,
+        familyKey: scenario.key,
+        analyticalMethod: scenario.capabilities.analyticalMethod,
+        variantKey: null,
+        variantLabel: null,
+        label: scenario.label,
+        description: scenario.description,
+        params,
+        steps: Number(params.steps),
+        deltaTDays: Number(params.delta_t_days),
+        historyInterval: 1,
+        reference: { kind: 'analytical', source: `${scenario.key}:analytical` },
+        comparisonMetric: null,
+        breakthroughCriterion: null,
+        comparisonMeaning: 'Scenario reference (test fixture).',
+    } as BenchmarkRunSpec;
+}
+
+function buildVariantSpec(
+    base: BenchmarkRunSpec,
+    variantKey: string,
+    label: string,
+    paramOverrides: Record<string, unknown> = {},
+): BenchmarkRunSpec {
+    return {
+        ...base,
+        key: variantKey,
+        caseKey: variantKey,
+        variantKey,
+        variantLabel: label,
+        label,
+        params: { ...base.params, ...paramOverrides },
+    };
+}
+
+function buildScenarioFamily(scenarioKey: string, overrides: Record<string, unknown> = {}): BenchmarkFamily {
+    const scenario = getScenario(scenarioKey)!;
+    return {
+        key: scenario.key,
+        label: scenario.label,
+        description: scenario.description,
+        analyticalMethod: scenario.capabilities.analyticalMethod,
+        chartLayoutKey: scenario.chartLayoutKey,
+        chartLayoutPatch: scenario.chartLayoutPatch,
+        showSweepPanel: scenario.capabilities.showSweepPanel,
+        sweepGeometry: (scenario.capabilities as { sweepGeometry?: string | null }).sweepGeometry ?? null,
+        publishedReferenceSeries: scenario.publishedReferenceSeries,
+        ...overrides,
+    } as unknown as BenchmarkFamily;
+}
 
 function getTotalThickness(params: Record<string, any>) {
     if (Array.isArray(params.cellDzPerLayer) && params.cellDzPerLayer.length > 0) {
@@ -78,7 +139,7 @@ function buildSyntheticGasOilRateHistory(
     ];
 }
 
-function buildGasOilRunResult(spec: ReturnType<typeof buildBenchmarkRunSpecs>[number]) {
+function buildGasOilRunResult(spec: BenchmarkRunSpec) {
     return buildBenchmarkRunResult({
         spec,
         rateHistory: buildSyntheticGasOilRateHistory(spec.params, 0.35, 0),
@@ -267,7 +328,7 @@ function buildSweepColumnSnapshots(
     });
 }
 
-function buildSweepRunResult(spec: ReturnType<typeof buildBenchmarkRunSpecs>[number]) {
+function buildSweepRunResult(spec: BenchmarkRunSpec) {
     const params = spec.params;
     const total = Number(params.nx) * Number(params.ny) * Number(params.nz);
     const history = buildSweepSnapshots(params, [1, Math.max(2, Math.floor(total / 4)), Math.max(3, Math.floor(total / 2))]);
@@ -302,9 +363,12 @@ function buildSweepRunResult(spec: ReturnType<typeof buildBenchmarkRunSpecs>[num
 
 describe('referenceComparisonModel', () => {
     it('preserves provided run order while still building reference-solution curves', () => {
-        const family = getBenchmarkFamily('bl_case_a_refined');
-        const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
-        const [baseSpec, gridVariantSpec] = buildBenchmarkRunSpecs(family!, [variants[0]]);
+        const baseSpec = buildScenarioRunSpec('wf_bl1d');
+        const gridVariantSpec = buildVariantSpec(baseSpec, 'wf_bl1d_grid_variant', 'Grid Variant', {
+            nx: 192,
+            cellDx: 5,
+            producerI: 191,
+        });
 
         const reference = computeWelgeMetrics(
             {
@@ -332,7 +396,7 @@ describe('referenceComparisonModel', () => {
         });
 
         const model = buildReferenceComparisonModel({
-            family,
+            family: buildScenarioFamily('wf_bl1d'),
             results: [gridVariantResult, baseResult],
             xAxisMode: 'pvi',
         });
@@ -365,23 +429,17 @@ describe('referenceComparisonModel', () => {
     });
 
     it('uses per-layer dz when reconstructing cumulative oil from recovery series', () => {
-        const family = getBenchmarkFamily('bl_case_a_refined');
-        const [baseSpec] = buildBenchmarkRunSpecs(family!);
-        const spec = {
-            ...baseSpec,
-            params: {
-                ...baseSpec.params,
-                nx: 1,
-                ny: 1,
-                nz: 3,
-                cellDx: 10,
-                cellDy: 10,
-                cellDz: 1,
-                cellDzPerLayer: [1, 2, 3],
-                reservoirPorosity: 0.2,
-                initialSaturation: 0.25,
-            },
-        };
+        const spec = buildScenarioRunSpec('wf_bl1d', {
+            nx: 1,
+            ny: 1,
+            nz: 3,
+            cellDx: 10,
+            cellDy: 10,
+            cellDz: 1,
+            cellDzPerLayer: [1, 2, 3],
+            reservoirPorosity: 0.2,
+            initialSaturation: 0.25,
+        });
         const result = buildBenchmarkRunResult({
             spec,
             rateHistory: [{
@@ -394,7 +452,7 @@ describe('referenceComparisonModel', () => {
         });
 
         const model = buildReferenceComparisonModel({
-            family,
+            family: buildScenarioFamily('wf_bl1d'),
             results: [result],
             xAxisMode: 'time',
         });
@@ -730,15 +788,14 @@ describe('referenceComparisonModel', () => {
     });
 
     it('builds depletion overlay panels with reference-solution oil-rate and pressure curves', () => {
-        const family = getBenchmarkFamily('dietz_sq_center');
-        const [baseSpec] = buildBenchmarkRunSpecs(family!);
+        const baseSpec = buildScenarioRunSpec('dep_pss');
         const result = buildBenchmarkRunResult({
             spec: baseSpec,
             rateHistory: buildDepletionReferenceRateHistory(baseSpec.params),
         });
 
         const model = buildReferenceComparisonModel({
-            family,
+            family: buildScenarioFamily('dep_pss'),
             results: [result],
             xAxisMode: 'tD',
         });
@@ -816,8 +873,7 @@ describe('referenceComparisonModel', () => {
     });
 
     it('uses theme-aware reference-solution colors so overlays stay visible in both themes', () => {
-        const family = getBenchmarkFamily('bl_case_a_refined');
-        const [baseSpec] = buildBenchmarkRunSpecs(family!);
+        const baseSpec = buildScenarioRunSpec('wf_bl1d');
         const reference = computeWelgeMetrics(
             {
                 s_wc: Number(baseSpec.params.s_wc),
@@ -839,13 +895,13 @@ describe('referenceComparisonModel', () => {
         });
 
         const darkModel = buildReferenceComparisonModel({
-            family,
+            family: buildScenarioFamily('wf_bl1d'),
             results: [baseResult],
             xAxisMode: 'pvi',
             theme: 'dark',
         });
         const lightModel = buildReferenceComparisonModel({
-            family,
+            family: buildScenarioFamily('wf_bl1d'),
             results: [baseResult],
             xAxisMode: 'pvi',
             theme: 'light',
@@ -859,27 +915,26 @@ describe('referenceComparisonModel', () => {
     });
 
     it('attaches case keys to simulated curves so charts can toggle runs independently of run-table focus', () => {
-        const family = getBenchmarkFamily('bl_case_a_refined');
-        const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
-        const specs = buildBenchmarkRunSpecs(family!, [variants[0], variants[1]]);
+        const baseSpec = buildScenarioRunSpec('wf_bl1d');
+        const firstVariantSpec = buildVariantSpec(baseSpec, 'wf_bl1d_variant_1', 'Variant 1', { mu_o: 0.5 });
+        const secondVariantSpec = buildVariantSpec(baseSpec, 'wf_bl1d_variant_2', 'Variant 2', { mu_o: 5.0 });
 
         const reference = computeWelgeMetrics(
             {
-                s_wc: Number(specs[0].params.s_wc),
-                s_or: Number(specs[0].params.s_or),
-                n_w: Number(specs[0].params.n_w),
-                n_o: Number(specs[0].params.n_o),
-                k_rw_max: Number(specs[0].params.k_rw_max),
-                k_ro_max: Number(specs[0].params.k_ro_max),
+                s_wc: Number(baseSpec.params.s_wc),
+                s_or: Number(baseSpec.params.s_or),
+                n_w: Number(baseSpec.params.n_w),
+                n_o: Number(baseSpec.params.n_o),
+                k_rw_max: Number(baseSpec.params.k_rw_max),
+                k_ro_max: Number(baseSpec.params.k_ro_max),
             },
             {
-                mu_w: Number(specs[0].params.mu_w),
-                mu_o: Number(specs[0].params.mu_o),
+                mu_w: Number(baseSpec.params.mu_w),
+                mu_o: Number(baseSpec.params.mu_o),
             },
-            Number(specs[0].params.initialSaturation),
+            Number(baseSpec.params.initialSaturation),
         );
 
-        const [baseSpec, firstVariantSpec, secondVariantSpec] = specs;
         const baseResult = buildBenchmarkRunResult({
             spec: baseSpec,
             rateHistory: buildSyntheticWaterfloodRateHistory(baseSpec.params, reference.breakthroughPvi, 0),
@@ -894,7 +949,7 @@ describe('referenceComparisonModel', () => {
         });
 
         const model = buildReferenceComparisonModel({
-            family,
+            family: buildScenarioFamily('wf_bl1d'),
             results: [baseResult, firstVariantResult, secondVariantResult],
             xAxisMode: 'pvi',
         });
@@ -909,9 +964,14 @@ describe('referenceComparisonModel', () => {
     });
 
     it('keeps four compared simulation curves distinct when more than three runs are shown', () => {
-        const family = getBenchmarkFamily('bl_case_a_refined');
-        const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
-        const specs = buildBenchmarkRunSpecs(family!, [variants[0], variants[1], variants[2], variants[3]]);
+        const baseSpec = buildScenarioRunSpec('wf_bl1d');
+        const specs = [
+            baseSpec,
+            buildVariantSpec(baseSpec, 'wf_bl1d_variant_1', 'Variant 1', { mu_o: 0.5 }),
+            buildVariantSpec(baseSpec, 'wf_bl1d_variant_2', 'Variant 2', { mu_o: 1.4, mu_w: 0.6, s_wc: 0.15, s_or: 0.15, n_w: 2.2, initialSaturation: 0.15 }),
+            buildVariantSpec(baseSpec, 'wf_bl1d_variant_3', 'Variant 3', { mu_o: 5.0 }),
+            buildVariantSpec(baseSpec, 'wf_bl1d_variant_4', 'Variant 4', { n_o: 3 }),
+        ];
 
         const reference = computeWelgeMetrics(
             {
@@ -939,7 +999,7 @@ describe('referenceComparisonModel', () => {
         }));
 
         const model = buildReferenceComparisonModel({
-            family,
+            family: buildScenarioFamily('wf_bl1d'),
             results,
             xAxisMode: 'pvi',
         });
@@ -957,8 +1017,7 @@ describe('referenceComparisonModel', () => {
     });
 
     it('stays length-aligned for large comparison sets', () => {
-        const family = getBenchmarkFamily('bl_case_a_refined');
-        const [baseSpec] = buildBenchmarkRunSpecs(family!);
+        const baseSpec = buildScenarioRunSpec('wf_bl1d');
         const reference = computeWelgeMetrics(
             {
                 s_wc: Number(baseSpec.params.s_wc),
@@ -996,7 +1055,7 @@ describe('referenceComparisonModel', () => {
         });
 
         const model = buildReferenceComparisonModel({
-            family,
+            family: buildScenarioFamily('wf_bl1d'),
             results,
             xAxisMode: 'pvi',
         });
@@ -1009,22 +1068,12 @@ describe('referenceComparisonModel', () => {
     });
 
     it('remaps shared waterflood analytical overlays per completed run on time axis', () => {
-        const family = getBenchmarkFamily('bl_case_a_refined');
-        const [baseSpec] = buildBenchmarkRunSpecs(family!);
-        const secondSpec = {
-            ...baseSpec,
-            key: 'grid_like_variant',
-            caseKey: 'grid_like_variant',
-            variantKey: 'grid_like_variant',
-            variantLabel: 'Grid-like variant',
-            label: 'Grid-like variant',
-            params: {
-                ...baseSpec.params,
-                nx: 24,
-                producerI: 23,
-                cellDx: 40,
-            },
-        };
+        const baseSpec = buildScenarioRunSpec('wf_bl1d');
+        const secondSpec = buildVariantSpec(baseSpec, 'grid_like_variant', 'Grid-like variant', {
+            nx: 24,
+            producerI: 23,
+            cellDx: 40,
+        });
 
         const reference = computeWelgeMetrics(
             {
@@ -1052,7 +1101,7 @@ describe('referenceComparisonModel', () => {
         });
 
         const model = buildReferenceComparisonModel({
-            family,
+            family: buildScenarioFamily('wf_bl1d'),
             results: [baseResult, variantResult],
             xAxisMode: 'time',
             analyticalPerVariant: false,
@@ -1133,15 +1182,14 @@ describe('referenceComparisonModel', () => {
     });
 
     it('assigns shared metric keys so compared cases stay aligned within the same family', () => {
-        const family = getBenchmarkFamily('dietz_sq_center');
-        const [baseSpec] = buildBenchmarkRunSpecs(family!);
+        const baseSpec = buildScenarioRunSpec('dep_pss');
         const result = buildBenchmarkRunResult({
             spec: baseSpec,
             rateHistory: buildDepletionReferenceRateHistory(baseSpec.params),
         });
 
         const model = buildReferenceComparisonModel({
-            family,
+            family: buildScenarioFamily('dep_pss'),
             results: [result],
             xAxisMode: 'time',
         });
@@ -1152,15 +1200,12 @@ describe('referenceComparisonModel', () => {
     });
 
     it('builds sweep preview panels before any sweep runs complete', () => {
-        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const };
-        const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
-        const specs = buildBenchmarkRunSpecs(baseFamily!, [variants[0], variants[1]]);
-        const previewVariantParams = specs.slice(1).map((spec) => ({
-            label: spec.label,
-            variantKey: spec.key,
-            params: spec.params,
-        }));
+        const family = buildScenarioFamily('sweep_combined');
+        const baseSpec = buildScenarioRunSpec('sweep_combined');
+        const previewVariantParams = [
+            { label: 'Favorable', variantKey: 'favorable', params: { ...baseSpec.params, mu_o: 0.5 } },
+            { label: 'Unfavorable', variantKey: 'unfavorable', params: { ...baseSpec.params, mu_o: 5.0 } },
+        ];
 
         const model = buildReferenceComparisonModel({
             family,
@@ -1181,9 +1226,8 @@ describe('referenceComparisonModel', () => {
     });
 
     it('suppresses generic BL rate overlays for combined sweep variants that only change heterogeneity', () => {
-        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const, analyticalOverlayMode: 'shared' as const };
-        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+        const family = buildScenarioFamily('sweep_combined', { analyticalOverlayMode: 'shared' as const });
+        const baseSpec = buildScenarioRunSpec('sweep_combined');
 
         const heterogeneityPreviewVariants = [
             {
@@ -1255,62 +1299,13 @@ describe('referenceComparisonModel', () => {
     });
 
     it('suppresses generic BL breakthrough references for completed combined sweep mobility runs', () => {
-        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const, analyticalOverlayMode: 'per-result' as const };
-        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+        const family = buildScenarioFamily('sweep_combined', { analyticalOverlayMode: 'per-result' as const });
+        const baseSpec = buildScenarioRunSpec('sweep_combined');
 
         const mobilitySpecs = [
-            {
-                ...baseSpec,
-                key: 'sweep_mobility_favorable',
-                caseKey: 'sweep_mobility_favorable',
-                variantKey: 'sweep_mobility_favorable',
-                variantLabel: 'Favorable mobility',
-                label: 'Sweep mobility favorable',
-                params: {
-                    ...baseSpec.params,
-                    mu_o: 0.5,
-                    nx: 21,
-                    ny: 21,
-                    nz: 5,
-                    producerI: 20,
-                    producerJ: 20,
-                },
-            },
-            {
-                ...baseSpec,
-                key: 'sweep_mobility_base',
-                caseKey: 'sweep_mobility_base',
-                variantKey: 'sweep_mobility_base',
-                variantLabel: 'Base mobility',
-                label: 'Sweep mobility base',
-                params: {
-                    ...baseSpec.params,
-                    mu_o: 1.0,
-                    nx: 21,
-                    ny: 21,
-                    nz: 5,
-                    producerI: 20,
-                    producerJ: 20,
-                },
-            },
-            {
-                ...baseSpec,
-                key: 'sweep_mobility_unfavorable',
-                caseKey: 'sweep_mobility_unfavorable',
-                variantKey: 'sweep_mobility_unfavorable',
-                variantLabel: 'Unfavorable mobility',
-                label: 'Sweep mobility unfavorable',
-                params: {
-                    ...baseSpec.params,
-                    mu_o: 5.0,
-                    nx: 21,
-                    ny: 21,
-                    nz: 5,
-                    producerI: 20,
-                    producerJ: 20,
-                },
-            },
+            buildVariantSpec(baseSpec, 'sweep_mobility_favorable', 'Sweep mobility favorable', { mu_o: 0.5 }),
+            buildVariantSpec(baseSpec, 'sweep_mobility_base', 'Sweep mobility base', { mu_o: 1.0 }),
+            buildVariantSpec(baseSpec, 'sweep_mobility_unfavorable', 'Sweep mobility unfavorable', { mu_o: 5.0 }),
         ];
 
         const results = mobilitySpecs.map((spec) => buildSweepRunResult(spec));
@@ -1326,31 +1321,11 @@ describe('referenceComparisonModel', () => {
     });
 
     it('suppresses BL breakthrough references for vertical sweep runs even when injection-rate history is missing', () => {
-        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'vertical' as const, analyticalOverlayMode: 'per-result' as const };
-        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+        const family = buildScenarioFamily('sweep_vertical', { analyticalOverlayMode: 'per-result' as const });
+        const baseSpec = buildScenarioRunSpec('sweep_vertical');
 
         const results = [0.5, 5.0].map((mu_o, index) => {
-            const spec = {
-                ...baseSpec,
-                key: `vertical_mobility_${index}`,
-                caseKey: `vertical_mobility_${index}`,
-                variantKey: `vertical_mobility_${index}`,
-                variantLabel: `mobility_${index}`,
-                label: `Vertical mobility ${index}`,
-                params: {
-                    ...baseSpec.params,
-                    mu_o,
-                    nx: 48,
-                    ny: 1,
-                    nz: 5,
-                    permMode: 'perLayer',
-                    layerPermsX: [200, 150, 100, 60, 40],
-                    layerPermsY: [200, 150, 100, 60, 40],
-                    producerI: 47,
-                    producerJ: 0,
-                },
-            };
+            const spec = buildVariantSpec(baseSpec, `vertical_mobility_${index}`, `Vertical mobility ${index}`, { mu_o });
             const result = buildSweepRunResult(spec);
             result.rateHistory = result.rateHistory.map((point) => ({
                 ...point,
@@ -1371,10 +1346,9 @@ describe('referenceComparisonModel', () => {
     });
 
     it('keeps pending sweep variants visible as dashed overlays while completed runs show solid sweep curves', () => {
-        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'vertical' as const };
-        const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
-        const [baseSpec, variantSpec] = buildBenchmarkRunSpecs(baseFamily!, [variants[0]]);
+        const family = buildScenarioFamily('sweep_vertical');
+        const baseSpec = buildScenarioRunSpec('sweep_vertical');
+        const variantSpec = buildVariantSpec(baseSpec, 'sweep_vertical_pending', 'Pending Variant', { mu_o: 0.5 });
         const baseResult = buildSweepRunResult(baseSpec);
         const pendingVariant = {
             label: variantSpec.label,
@@ -1420,29 +1394,8 @@ describe('referenceComparisonModel', () => {
     });
 
     it('hides the areal sweep panel for vertical sweep geometry', () => {
-        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'vertical' as const };
-        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
-        const verticalSpec = {
-            ...baseSpec,
-            key: 'vertical_sweep_case',
-            caseKey: 'vertical_sweep_case',
-            label: 'Vertical sweep case',
-            params: {
-                ...baseSpec.params,
-                nx: 24,
-                ny: 1,
-                nz: 3,
-                cellDx: 10,
-                cellDy: 10,
-                cellDz: 4,
-                permMode: 'perLayer',
-                layerPermsX: [300, 100, 30],
-                layerPermsY: [300, 100, 30],
-                producerI: 23,
-                producerJ: 0,
-            },
-        };
+        const family = buildScenarioFamily('sweep_vertical');
+        const verticalSpec = buildScenarioRunSpec('sweep_vertical');
 
         const result = buildSweepRunResult(verticalSpec);
         const model = buildReferenceComparisonModel({
@@ -1458,30 +1411,13 @@ describe('referenceComparisonModel', () => {
     });
 
     it('keeps uniform variants on the vertical sweep decomposition when scenario geometry is vertical', () => {
-        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'vertical' as const };
-        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
-        const uniformVerticalSpec = {
-            ...baseSpec,
-            key: 'vertical_uniform_case',
-            caseKey: 'vertical_uniform_case',
-            label: 'Vertical uniform case',
-            params: {
-                ...baseSpec.params,
-                nx: 24,
-                ny: 1,
-                nz: 3,
-                cellDx: 10,
-                cellDy: 10,
-                cellDz: 4,
-                permMode: 'uniform',
-                uniformPermX: 100,
-                uniformPermY: 100,
-                uniformPermZ: 10,
-                producerI: 23,
-                producerJ: 0,
-            },
-        };
+        const family = buildScenarioFamily('sweep_vertical');
+        const uniformVerticalSpec = buildScenarioRunSpec('sweep_vertical', {
+            permMode: 'uniform',
+            uniformPermX: 100,
+            uniformPermY: 100,
+            uniformPermZ: 10,
+        });
 
         const result = buildSweepRunResult(uniformVerticalSpec);
         const model = buildReferenceComparisonModel({
@@ -1497,28 +1433,8 @@ describe('referenceComparisonModel', () => {
     });
 
     it('hides the vertical sweep panel for areal sweep geometry', () => {
-        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'areal' as const };
-        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
-        const arealSpec = {
-            ...baseSpec,
-            key: 'areal_sweep_case',
-            caseKey: 'areal_sweep_case',
-            label: 'Areal sweep case',
-            params: {
-                ...baseSpec.params,
-                nx: 21,
-                ny: 21,
-                nz: 3,
-                cellDx: 20,
-                cellDy: 20,
-                cellDz: 4,
-                permMode: 'uniform',
-                uniformPermX: 150,
-                producerI: 20,
-                producerJ: 20,
-            },
-        };
+        const family = buildScenarioFamily('sweep_areal');
+        const arealSpec = buildScenarioRunSpec('sweep_areal');
 
         const result = buildSweepRunResult(arealSpec);
         const model = buildReferenceComparisonModel({
@@ -1534,26 +1450,8 @@ describe('referenceComparisonModel', () => {
     });
 
     it('starts sweep simulation series at zero and uses volumetric sweep for vertical simulation E_V', () => {
-        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'vertical' as const };
-        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
-        const verticalSpec = {
-            ...baseSpec,
-            key: 'vertical_sim_metric_case',
-            caseKey: 'vertical_sim_metric_case',
-            label: 'Vertical sim metric case',
-            params: {
-                ...baseSpec.params,
-                nx: 6,
-                ny: 1,
-                nz: 3,
-                permMode: 'perLayer',
-                layerPermsX: [300, 100, 30],
-                layerPermsY: [300, 100, 30],
-                producerI: 5,
-                producerJ: 0,
-            },
-        };
+        const family = buildScenarioFamily('sweep_vertical');
+        const verticalSpec = buildScenarioRunSpec('sweep_vertical');
 
         const result = buildSweepRunResult(verticalSpec);
         const model = buildReferenceComparisonModel({
@@ -1573,9 +1471,8 @@ describe('referenceComparisonModel', () => {
     });
 
     it('preserves the zero origin when the first sweep snapshot also remaps to x=0', () => {
-        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const };
-        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+        const family = buildScenarioFamily('sweep_combined');
+        const baseSpec = buildScenarioRunSpec('sweep_combined');
         const result = buildSweepRunResult(baseSpec);
         result.pviSeries = result.pviSeries.map((value, index) => (index === 0 ? 0 : value));
 
@@ -1601,9 +1498,8 @@ describe('referenceComparisonModel', () => {
     });
 
     it('remaps completed sweep panels onto the selected time axis', () => {
-        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const };
-        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+        const family = buildScenarioFamily('sweep_combined');
+        const baseSpec = buildScenarioRunSpec('sweep_combined');
         const result = buildSweepRunResult(baseSpec);
 
         const model = buildReferenceComparisonModel({
@@ -1632,9 +1528,8 @@ describe('referenceComparisonModel', () => {
     });
 
     it('suppresses generic BL analytical overlays for combined sweep scenarios', () => {
-        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const };
-        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+        const family = buildScenarioFamily('sweep_combined');
+        const baseSpec = buildScenarioRunSpec('sweep_combined');
         const result = buildSweepRunResult(baseSpec);
 
         const model = buildReferenceComparisonModel({

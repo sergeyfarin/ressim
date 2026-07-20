@@ -58,7 +58,7 @@ export interface SimulatorWellDefinition {
 }
 
 /** Permutation mode for assigning permeability */
-export type PermMode = 'uniform' | 'random' | 'perLayer' | string;
+export type PermMode = 'uniform' | 'random' | 'perLayer' | 'field' | string;
 
 /** Minimal shape for the simulator creation payload (returned by buildCreatePayload). */
 export interface SimulatorCreatePayload {
@@ -129,6 +129,13 @@ export interface SimulatorCreatePayload {
   permsX: number[];
   permsY: number[];
   permsZ: number[];
+  /**
+   * Full per-cell permeability fields (length nx*ny*nz, flat cell order),
+   * used when permMode === 'field'. Enables heterogeneous per-cell maps.
+   */
+  fieldPermX?: number[];
+  fieldPermY?: number[];
+  fieldPermZ?: number[];
   /** Optional overrides for BHP limits */
   bhpMin?: number;
   bhpMax?: number;

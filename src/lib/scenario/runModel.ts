@@ -7,7 +7,7 @@ import type {
     BenchmarkBreakthroughCriterion,
     BenchmarkComparisonMetric,
     BenchmarkReferenceDefinition,
-} from '../catalog/benchmarkCases';
+} from './referenceTypes';
 import {
     getScenario,
     getScenarioWithVariantParams,

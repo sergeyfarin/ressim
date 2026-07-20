@@ -13,6 +13,12 @@ class OpmCase:
     supported_curves: tuple[str, ...]
     units: dict[str, str]
     deck: str
+    # Maps a parsed summary vector's curve_id (mnemonic, or "MNEMONIC:NAME"
+    # for well/group vectors) to how the frontend should display it. Keys
+    # must be a subset of what the deck's SUMMARY section actually requests;
+    # `build_artifact()` treats an unmapped-but-present vector as ignored,
+    # not an error, so this can be extended incrementally.
+    curve_display: dict[str, dict[str, str]]
 
 
 def _clean_deck(text: str) -> str:
@@ -26,6 +32,14 @@ WF_BL1D = OpmCase(
     deck_name="WF_BL1D.DATA",
     supported_curves=("FOPR", "FWPR", "FWIR", "FOPT", "FWPT", "FPR"),
     units={"system": "METRIC", "time": "days", "pressure": "bar", "rate": "m3/day"},
+    curve_display={
+        "FOPR": {"panelKey": "rates", "curveKey": "opm-oil-rate", "label": "OPM Flow — Oil Rate"},
+        "FWPR": {"panelKey": "rates", "curveKey": "opm-water-rate", "label": "OPM Flow — Water Rate"},
+        "FWIR": {"panelKey": "rates", "curveKey": "opm-injection-rate", "label": "OPM Flow — Injection Rate"},
+        "FOPT": {"panelKey": "cumulative", "curveKey": "opm-cum-oil", "label": "OPM Flow — Cum Oil"},
+        "FWPT": {"panelKey": "cumulative", "curveKey": "opm-cum-water", "label": "OPM Flow — Cum Water"},
+        "FPR": {"panelKey": "diagnostics", "curveKey": "opm-avg-pressure", "label": "OPM Flow — Avg Pressure"},
+    },
     deck=_clean_deck(
         """
         RUNSPEC
@@ -63,9 +77,9 @@ WF_BL1D = OpmCase(
         PVTW
           300 1.0 3E-6 0.5 0 /
         PVDO
-          100 1.0 1.0
-          300 1.0 1.0
-          500 1.0 1.0 /
+          100 1.002 1.0
+          300 1.000 1.0
+          500 0.998 1.0 /
         DENSITY
           800 1000 1 /
         SWOF
@@ -81,7 +95,7 @@ WF_BL1D = OpmCase(
         REGIONS
         SOLUTION
         EQUIL
-          0 300 0 0 0 0 0 0 0 /
+          0 300 10000 0 0 0 0 0 0 /
         SUMMARY
         FOPR
         FWPR
@@ -89,6 +103,8 @@ WF_BL1D = OpmCase(
         FOPT
         FWPT
         FPR
+        RUNSUM
+        SEPARATE
         SCHEDULE
         RPTRST
           BASIC=2 /
@@ -121,6 +137,16 @@ SPE1_GAS_INJECTION = OpmCase(
     deck_name="SPE1_GAS_INJECTION.DATA",
     supported_curves=("FOPR", "FGIR", "FOPT", "FGPT", "FPR", "WBHP", "WGOR"),
     units={"system": "METRIC", "time": "days", "pressure": "bar", "rate": "sm3/day"},
+    curve_display={
+        "FOPR": {"panelKey": "oil_rate", "curveKey": "opm-oil-rate", "label": "OPM Flow — Oil Rate"},
+        "FGIR": {"panelKey": "injection_rate", "curveKey": "opm-gas-injection-rate", "label": "OPM Flow — Gas Injection Rate"},
+        "FOPT": {"panelKey": "cumulative", "curveKey": "opm-cum-oil", "label": "OPM Flow — Cum Oil"},
+        "FGPT": {"panelKey": "cumulative", "curveKey": "opm-cum-gas", "label": "OPM Flow — Cum Gas"},
+        "FPR": {"panelKey": "diagnostics", "curveKey": "opm-avg-pressure", "label": "OPM Flow — Avg Pressure"},
+        "WBHP:INJ": {"panelKey": "injector_bhp", "curveKey": "opm-injector-bhp", "label": "OPM Flow — Injector BHP"},
+        "WBHP:PROD": {"panelKey": "producer_bhp", "curveKey": "opm-producer-bhp", "label": "OPM Flow — Producer BHP"},
+        "WGOR:PROD": {"panelKey": "gor", "curveKey": "opm-gor", "label": "OPM Flow — GOR"},
+    },
     deck=_clean_deck(
         """
         RUNSPEC
@@ -134,7 +160,7 @@ SPE1_GAS_INJECTION = OpmCase(
         DISGAS
         METRIC
         TABDIMS
-          2 15 20 20 1 20 /
+          1 1 20 20 1 20 /
         WELLDIMS
           2 2 1 2 /
         START
@@ -208,7 +234,7 @@ SPE1_GAS_INJECTION = OpmCase(
           0.88 0.984 0 0 /
         SOLUTION
         EQUIL
-          0 331 0 0 0 0 0 0 0 /
+          0 331 10000 0 0 0 0 0 0 /
         RSVD
           0 226.197 /
         SUMMARY
@@ -221,6 +247,8 @@ SPE1_GAS_INJECTION = OpmCase(
           'INJ' 'PROD' /
         WGOR
           'PROD' /
+        RUNSUM
+        SEPARATE
         SCHEDULE
         WELSPECS
           'INJ' 'G' 1 1 0 'GAS' /

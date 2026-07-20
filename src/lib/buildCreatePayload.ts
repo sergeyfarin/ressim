@@ -303,6 +303,11 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     permsX,
     permsY,
     permsZ,
+    // Full per-cell fields (permMode === 'field') pass through as-is; the worker
+    // hands them straight to setPermeabilityField.
+    fieldPermX: state.fieldPermX,
+    fieldPermY: state.fieldPermY,
+    fieldPermZ: state.fieldPermZ,
 
     well_radius,
     well_skin,

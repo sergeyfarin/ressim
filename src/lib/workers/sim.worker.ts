@@ -334,6 +334,12 @@ function configureSimulator(payload: SimulatorCreatePayload) {
     } else {
       simulator.setPermeabilityRandom(payload.minPerm, payload.maxPerm);
     }
+  } else if (payload.permMode === 'field') {
+    simulator.setPermeabilityField(
+      new Float64Array(payload.fieldPermX ?? []),
+      new Float64Array(payload.fieldPermY ?? []),
+      new Float64Array(payload.fieldPermZ ?? []),
+    );
   } else if (payload.permMode === 'perLayer' || payload.permMode === 'uniform') {
     simulator.setPermeabilityPerLayer(new Float64Array(payload.permsX), new Float64Array(payload.permsY), new Float64Array(payload.permsZ));
   }

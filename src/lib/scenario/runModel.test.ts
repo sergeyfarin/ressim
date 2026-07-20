@@ -77,11 +77,15 @@ describe('scenario-first run model', () => {
     it('links declared OPM Flow artifact keys to tracked artifacts for the same scenario', () => {
         const artifactsByCase = new Map(listOpmFlowArtifacts().map((artifact) => [artifact.caseKey, artifact]));
         for (const scenario of listScenarios()) {
+            // Prerun-artifacts scenarios (E7) reuse another scenario's bundled
+            // artifact by caseKey, so the same-scenario invariant is skipped for them.
+            const isPrerun = scenario.capabilities.runMode === 'prerun-artifacts';
             for (const artifactKey of scenario.opmFlowReferenceArtifactKeys ?? []) {
                 const artifact = artifactsByCase.get(artifactKey);
                 expect(artifact, `${scenario.key}:${artifactKey}`).toBeTruthy();
-                expect(artifact?.scenarioKey).toBe(scenario.key);
                 expect(artifact?.sourceType).toBe('opm-flow-precomputed');
+                if (isPrerun) continue;
+                expect(artifact?.scenarioKey).toBe(scenario.key);
             }
         }
     });

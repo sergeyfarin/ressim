@@ -7,3 +7,9 @@ dependencies = []
 
 [project.scripts]
 ressim-opm-flow = "opm_flow_tool.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

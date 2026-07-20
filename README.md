@@ -4,7 +4,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 
 ## Current State
 
-- 10 canonical scenarios across waterflood, sweep, depletion, gas, and black-oil benchmark domains.
+- 13 canonical scenarios across waterflood, sweep, depletion, gas, and black-oil benchmark domains, including three "decision-insight" cases demonstrating history-match non-uniqueness, parameter-interaction amplification, and PVT representation risk.
 - Two-phase oil/water IMPES workflow validated against Buckley-Leverett breakthrough references.
 - Analytical overlays for Buckley-Leverett, Craig areal sweep, Dykstra-Parsons vertical sweep, Stiles-style combined sweep, Dietz pseudo-steady-state depletion, Fetkovich decline, Arps decline, and Havlena-Odeh material-balance diagnostics.
 - Black-oil PVT mode is available for volatile-oil style studies through correlation-based or tabular PVT input.
@@ -17,14 +17,17 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 | Domain | Key | Primary Analytical Reference | Notes |
 |--------|-----|------------------------------|-------|
 | Waterflood | `wf_bl1d` | Buckley-Leverett + Welge | 1D immiscible displacement baseline |
+| Waterflood | `wf_tornado` | None (simulation-only) | kv x density-contrast interaction — individually-small parameters combine into a dominant driver |
 | Sweep | `sweep_areal` | Craig confined five-spot | Quarter-pattern style interpretation |
 | Sweep | `sweep_vertical` | Dykstra-Parsons | Non-communicating layered sweep baseline |
 | Sweep | `sweep_combined` | Stiles or Dykstra-Parsons combined with BL | Scenario-owned analytical method toggle |
 | Depletion | `dep_pss` | Dietz pseudo-steady-state | Shape factor varies with producer location |
 | Depletion | `dep_decline` | Fetkovich exponential decline | Constant-PVT decline reference |
 | Depletion | `dep_arps` | Arps decline + material balance diagnostics | Layered / volatile-oil style depletion study |
+| Depletion | `dep_nct` | Dietz PSS decline (shared reference) | N·c_t material-balance ambiguity — matched history, 4x different recovery factor |
 | Gas | `gas_injection` | Gas-oil Buckley-Leverett | Three-phase gas injection with analytical breakthrough |
 | Gas | `gas_drive` | Simulation-first with p/z and MB diagnostics | Qualitative gas-drive study pending stronger validation |
+| Gas | `dep_pvt` | None (simulation-only) | Two black-oil PVT tables, one calibration point — undersaturated compressibility representation risk (three-phase, grouped under Gas) |
 | Benchmark | `spe1_gas_injection` | Published Eclipse results (Odeh, 1981) | SPE1 black-oil benchmark with per-layer dz, PVT table, single-layer wells |
 
 ## Implemented Capabilities

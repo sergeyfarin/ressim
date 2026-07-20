@@ -1,4 +1,4 @@
-import type { BenchmarkFamily } from '../catalog/benchmarkCases';
+import type { BenchmarkFamily } from '../scenario/referenceTypes';
 import {
     getScenarioChartLayout,
     resolveCapabilities,
@@ -6,7 +6,7 @@ import {
     type Scenario,
     type ScenarioAnalyticalOption,
 } from '../catalog/scenarios';
-import { getOpmFlowPublishedReferenceSeries } from '../catalog/opmFlowArtifacts';
+import { getOpmFlowArtifactSeriesByKeys, getOpmFlowPublishedReferenceSeries } from '../catalog/opmFlowArtifacts';
 import type { CurveConfig } from './chartTypes';
 import type { RateChartLayoutConfig, RateChartPanelId, RateChartXAxisMode } from './rateChartLayoutConfig';
 
@@ -81,6 +81,12 @@ export function buildScenarioComparisonFamily(input: {
         publishedReferenceSeries: [
             ...(scenario.publishedReferenceSeries ?? []),
             ...getOpmFlowPublishedReferenceSeries(scenario.key),
+            // Prerun-artifacts scenarios pull their bundled artifacts by the keys
+            // they declare (by artifact caseKey, not scenarioKey) and render them
+            // as primary content.
+            ...(resolved.runMode === 'prerun-artifacts'
+                ? getOpmFlowArtifactSeriesByKeys(scenario.opmFlowReferenceArtifactKeys ?? [], { primary: true })
+                : []),
         ],
     } as BenchmarkFamily;
 }

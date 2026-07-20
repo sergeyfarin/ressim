@@ -409,6 +409,31 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setInjectorEnabled(this.__wbg_ptr, enabled);
     }
     /**
+     * Set per-cell absolute permeability from full-length field vectors.
+     *
+     * Each vector must have length `nx * ny * nz`, ordered by the same flat
+     * cell index as the grid (`idx(i, j, k) = k*nx*ny + j*nx + i`). Every entry
+     * must be finite and strictly positive. This is the field-scale
+     * counterpart to [`set_permeability_per_layer`](Self::set_permeability_per_layer);
+     * it enables fully heterogeneous per-cell permeability maps
+     * (e.g. Tavassoli/SPE10/Egg-style fields) via `permMode: 'field'`.
+     * @param {Float64Array} perms_x
+     * @param {Float64Array} perms_y
+     * @param {Float64Array} perms_z
+     */
+    setPermeabilityField(perms_x, perms_y, perms_z) {
+        const ptr0 = passArrayF64ToWasm0(perms_x, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(perms_y, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayF64ToWasm0(perms_z, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.reservoirsimulator_setPermeabilityField(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * @param {Float64Array} perms_x
      * @param {Float64Array} perms_y
      * @param {Float64Array} perms_z

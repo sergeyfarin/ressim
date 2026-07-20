@@ -41,16 +41,19 @@ Use this file to decide which documents are authoritative, which are active work
 | `docs/TRANSMISSIBILITY_FACTOR.md` | Derivation of the transmissibility conversion factor |
 | `docs/SCENARIO_TERMINATION_POLICY.md` | Early-stop policy syntax, supported conditions, and runtime behavior |
 | `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` | 2026-07 findings and forward plan for comparison architecture, OPM Flow integration, and scenario coverage |
+| `docs/FRONTEND_EXECUTION_PLAN_2026-07.md` | Active ordered frontend execution plan (Waves 0–3): OPM parser completion, Tier-5 insight scenarios, scoped chart/catalog consolidation |
 | `docs/CASE_LIBRARY_ROADMAP.md` | Sourcing map for new scenarios/cases: SPE benchmarks, public field datasets, textbook cases, and selection criteria |
+| `docs/MULTI_SOURCE_COMPARISON_ROADMAP.md` | Comparison-axis roadmap: exhibits built from combinations of analytical / IMPES / FIM / OPM / published / fitted-proxy sources, plus the engineering gaps (dual-solver run sets, solver provenance) they need |
+| `docs/WAVE4_REVIEW_2026-07-19.md` | Open post-Wave-4 review findings (ranked, with mechanisms and fix directions) — headline: OPM artifact curves are filtered out of chart panels by layout curveKeys whitelists |
 | `.claude/skills/README.md` | Workflow skill library index (validation, engine changes, FIM debugging, frontend, scenarios, OPM pipeline) and how to use it with different agents |
 
 ## Current Repo-Level Facts
 
 - `src/lib/catalog/scenarios.ts` is the primary scenario registry.
-- There are 10 canonical scenarios under `src/lib/catalog/scenarios/`.
-- `ScenarioPicker.svelte` is the main scenario-selection surface.
-- Legacy benchmark-family files still exist and remain load-bearing in parts of the UI and chart stack.
-- Public simulations execute directly in browser-side WASM through the IMPES path. Offline OPM Flow artifacts are precomputed reference data, not live browser simulation.
+- There are 13 canonical scenarios under `src/lib/catalog/scenarios/` (2026-07-16/17: added `dep_nct`, `wf_tornado`, `dep_pvt` — see `docs/CASE_LIBRARY_ROADMAP.md` Tier 5).
+- `ScenarioPicker.svelte` is the main scenario-selection surface, driven entirely by `scenarios.ts` — it has no dependency on the case-library/benchmark-family system below.
+- The legacy benchmark-family system (`bl_case_a_refined`, `bl_case_b_refined`, `dietz_sq_center`, `dietz_sq_corner`, `fetkovich_exp`) was archived 2026-07-17 after being confirmed unreachable from the live UI — see `.archive/README.md`. `src/lib/catalog/benchmarkCases.ts` is now a stub (same exports, empty data); `caseCatalog.ts` (Custom Mode's separate, still-live facet system) has zero import coupling to it.
+- Public simulations execute directly in browser-side WASM through the IMPES path. Offline OPM Flow artifacts are precomputed reference data, not live browser simulation. Both committed OPM artifacts (`wf_bl1d`, `spe1_gas_injection`) are `status: "parsed"` with physically sane, non-zero series data as of 2026-07-18 (the earlier 2026-07-16 "parsed" claim was technically true but the underlying decks were dead-well runs — both `EQUIL` water-oil-contact bugs were found and fixed 2026-07-18; see TODO.md and `.claude/skills/opm-reference-pipeline/SKILL.md`).
 - Black-oil mode is implemented and exposed in the UI. SPE1 benchmark scenario is in place with published reference overlays and OPM Flow artifact hooks; quantitative acceptance criteria remain deferred.
 - Three-phase mode is implemented, but remains experimental because validation depth still trails the implementation.
 

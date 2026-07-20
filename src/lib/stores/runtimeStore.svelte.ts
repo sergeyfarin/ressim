@@ -9,7 +9,7 @@ import {
     getBenchmarkFamily,
     getBenchmarkVariantsForFamily,
     type BenchmarkSensitivityAxisKey,
-} from '../catalog/caseCatalog';
+} from '../catalog/benchmarkCases';
 import { buildBenchmarkRunSpecs } from '../benchmarkRunModel';
 import {
     buildCreatePayloadForRun,
@@ -63,6 +63,7 @@ interface NavRef {
     readonly activeScenarioObject: ReturnType<typeof getScenario>;
     readonly isCustomMode: boolean;
     readonly isModified: boolean;
+    readonly isPrerunScenario: boolean;
     readonly activeReferenceFamily: ReturnType<typeof getBenchmarkFamily>;
     restoreActiveReferenceBaseDisplay(): void;
     readonly analyticalStatus: AnalyticalStatus;
@@ -749,6 +750,9 @@ class RuntimeStoreImpl {
 
     initSimulator(options: { runAfterInit?: boolean; silent?: boolean } = {}): boolean {
         const { runAfterInit = false, silent = false } = options;
+        // Prerun-artifacts scenarios ship precomputed — there is no live worker
+        // run to initialize.
+        if (this.#nav?.isPrerunScenario) return false;
         if (!this.wasmReady || !this.simWorker) {
             if (!silent) this.runtimeError = 'WASM not ready yet.';
             return false;
@@ -825,6 +829,7 @@ class RuntimeStoreImpl {
     stepOnce() { this.runSimulationBatch(1, 1); }
 
     runSteps() {
+        if (this.#nav?.isPrerunScenario) return;
         this.runSimulationBatch(
             this.#params.steps,
             this.#params.userHistoryInterval ?? this.#params.defaultHistoryInterval,
@@ -878,6 +883,7 @@ class RuntimeStoreImpl {
     }
 
     runScenarioSet(scenarioKey: string, dimensionKey: string, variantKeys: string[]): boolean {
+        if (this.#nav?.isPrerunScenario) return false;
         if (!this.wasmReady || !this.simWorker) {
             this.runtimeError = 'WASM not ready yet.';
             return false;

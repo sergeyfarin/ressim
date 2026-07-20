@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .cases import CASES, OpmCase
+from .summary import find_summary_file, parse_rsm
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_RUN_ROOT = REPO_ROOT / "tmp" / "opm-flow-runs"
@@ -47,9 +48,70 @@ def run_flow(case: OpmCase, run_root: Path = DEFAULT_RUN_ROOT) -> Path:
     return output_dir
 
 
-def build_artifact(case: OpmCase, artifact_dir: Path = DEFAULT_ARTIFACT_DIR, generated_at: str | None = None) -> Path:
+def _build_series(case: OpmCase, run_dir: Path) -> tuple[list[dict], str, str]:
+    """Return (series, status, notes) for a case's run directory.
+
+    Never raises: parsing failures degrade to status 'error' with the
+    exception message recorded in notes, so a bad run can't crash
+    `build-artifacts all` for every other case.
+    """
+    summary_path = find_summary_file(run_dir)
+    if summary_path is None:
+        return (
+            [],
+            "flow-run",
+            f"Flow run directory found at {run_dir} but no .RSM summary file was present "
+            "(deck may be missing RUNSUM, or Flow hasn't finished).",
+        )
+
+    try:
+        summary = parse_rsm(summary_path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        return [], "error", f"Failed to parse {summary_path.name}: {exc}"
+
+    vectors_by_id = summary.by_curve_id()
+    series: list[dict] = []
+    missing = [curve_id for curve_id in case.curve_display if curve_id not in vectors_by_id]
+    if missing:
+        return (
+            [],
+            "error",
+            f"Parsed {summary_path.name} but it is missing expected curve(s): {', '.join(sorted(missing))}",
+        )
+
+    for curve_id, display in case.curve_display.items():
+        vector = vectors_by_id[curve_id]
+        series.append(
+            {
+                "panelKey": display["panelKey"],
+                "label": display["label"],
+                "curveKey": display["curveKey"],
+                "data": [{"x": t, "y": v} for t, v in zip(summary.time_days, vector.values)],
+            }
+        )
+
+    return series, "parsed", "Series parsed from a real Flow run."
+
+
+def build_artifact(
+    case: OpmCase,
+    artifact_dir: Path = DEFAULT_ARTIFACT_DIR,
+    generated_at: str | None = None,
+    run_root: Path = DEFAULT_RUN_ROOT,
+) -> Path:
     artifact_dir.mkdir(parents=True, exist_ok=True)
     generated_at = generated_at or datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+    run_dir = run_root / case.key
+    if run_dir.is_dir():
+        series, status, notes = _build_series(case, run_dir)
+    else:
+        series, status, notes = (
+            [],
+            "deck-ready",
+            "Generated artifact metadata is available. Run Flow and attach parsed summary series before treating this as numerical reference data.",
+        )
+
     artifact = {
         "schemaVersion": 1,
         "sourceType": "opm-flow-precomputed",
@@ -61,9 +123,9 @@ def build_artifact(case: OpmCase, artifact_dir: Path = DEFAULT_ARTIFACT_DIR, gen
         "generatedAt": generated_at,
         "units": case.units,
         "supportedCurves": list(case.supported_curves),
-        "series": [],
-        "status": "deck-ready",
-        "notes": "Generated artifact metadata is available. Run Flow and attach parsed summary series before treating this as numerical reference data.",
+        "series": series,
+        "status": status,
+        "notes": notes,
     }
     output = artifact_dir / f"{case.key}.json"
     output.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")

@@ -2,7 +2,7 @@
     import { untrack } from 'svelte';
     import ChartSubPanel from './ChartSubPanel.svelte';
     import ToggleGroup from '../ui/controls/ToggleGroup.svelte';
-    import type { BenchmarkFamily } from '../catalog/benchmarkCases';
+    import type { BenchmarkFamily } from '../scenario/referenceTypes';
     import type { BenchmarkRunResult } from '../benchmarkRunModel';
     import {
         coerceChartAxisState,
@@ -36,6 +36,8 @@
         SCALE_SWEEP,
     } from './scalePresetRegistry';
     import { PANEL_DEFS } from './panelDefs';
+    import { resolveHistoryDivider } from './historyDivider';
+    import type { HistoryWindow } from '../catalog/scenarios';
 
     let {
         results = [],
@@ -47,12 +49,15 @@
         pendingPreviewVariants = undefined,
         previewBaseParams = undefined,
         previewAnalyticalMethod = undefined,
+        historyWindow = null,
     }: {
         results?: BenchmarkRunResult[];
         family?: BenchmarkFamily | null;
         layoutConfig?: RateChartLayoutConfig;
         theme?: 'dark' | 'light';
         analyticalPerVariant?: boolean;
+        /** Optional history/forecast divider marker (scenario-declared). */
+        historyWindow?: HistoryWindow | null;
         /** Per-variant preview curves shown before any runs complete (analyticalPerVariant=true). */
         previewVariantParams?: AnalyticalPreviewVariant[];
         /**
@@ -80,6 +85,7 @@
     }
 
     let xAxisMode = $state<RateChartXAxisMode>('time');
+    const resolvedHistoryDivider = $derived(resolveHistoryDivider(historyWindow, xAxisMode));
     let logScale = $state(false);
     let panelExpanded = $state<Record<RateChartPanelId, boolean>>(createDefaultPanelExpandedState());
     let visibleCaseKeys = $state<Record<string, boolean>>({});
@@ -581,6 +587,7 @@
             xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
+            historyDivider={resolvedHistoryDivider}
             onGutterMeasure={(left: number, right: number) => {
                 setNativeGutter(panel.key, left, right);
             }}

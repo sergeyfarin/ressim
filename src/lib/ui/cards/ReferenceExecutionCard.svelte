@@ -10,9 +10,9 @@
     getBenchmarkFamily,
     getBenchmarkSensitivityAxisLabel,
     getBenchmarkVariantsForFamily,
-  } from "../../catalog/caseCatalog";
-  import type { BenchmarkSensitivityAxisKey } from "../../catalog/caseCatalog";
-  import type { BenchmarkVariant } from "../../catalog/benchmarkCases";
+    type BenchmarkSensitivityAxisKey,
+    type BenchmarkVariant,
+  } from "../../catalog/benchmarkCases";
 
   let {
     referenceFamilyKey = null,

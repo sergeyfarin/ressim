@@ -11,7 +11,7 @@
  *   sweep panel builders                → sweepPanelBuilder.ts
  */
 
-import type { BenchmarkFamily } from '../catalog/benchmarkCases';
+import type { BenchmarkFamily } from '../scenario/referenceTypes';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { RateChartPanelKey, RateChartXAxisMode } from './rateChartLayoutConfig';
 import {
@@ -142,6 +142,10 @@ function appendPublishedReferenceSeries(
         const targetPanel = panels[series.panelKey as RateChartPanelKey];
         if (!targetPanel) continue;
         const isOpmFlow = series.sourceType === 'opm-flow-precomputed';
+        // Prerun-artifacts scenarios render their bundled series as primary
+        // (solid, prominent) content — there is no live simulation curve, the
+        // artifact IS the exhibit — rather than a dashed reference overlay.
+        const isPrimary = series.primary === true;
         appendSeries(targetPanel, {
             label: series.label,
             curveKey: series.curveKey,
@@ -150,8 +154,8 @@ function appendPublishedReferenceSeries(
             legendSection: 'published',
             legendSectionLabel: isOpmFlow ? 'OPM Flow reference' : LEGEND_SECTIONS.published,
             color: isOpmFlow ? opmFlowColor : publishedColor,
-            borderWidth: 1.5,
-            borderDash: PUBLISHED_DASH,
+            borderWidth: isPrimary ? 2.5 : 1.5,
+            borderDash: isPrimary ? undefined : PUBLISHED_DASH,
             yAxisID: series.yAxisID ?? 'y',
             pointRadius: 0,
         }, series.data.map((pt) => pt.x), series.data.map((pt) => pt.y));

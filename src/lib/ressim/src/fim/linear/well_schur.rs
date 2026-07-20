@@ -36,15 +36,15 @@
 use nalgebra::{DMatrix, DVector};
 use sprs::{CsMat, TriMatI};
 
-use super::gmres_block_jacobi::{cs_mat_mul_vec, invert_tail_block, matrix_value};
 #[cfg(test)]
 use super::gmres_block_jacobi::{
-    solve_with_smoother_and_restriction, solve_with_smoother_restriction_and_history,
-    solve_with_true_flexible_smoother_and_restriction, CprFineSmootherKind,
-    CprKrylovIterationSnapshot, CprPressureRestrictionKind, FlexibleGmresIterationSnapshot,
+    CprFineSmootherKind, CprKrylovIterationSnapshot, CprPressureRestrictionKind,
+    FlexibleGmresIterationSnapshot, solve_with_smoother_and_restriction,
+    solve_with_smoother_restriction_and_history, solve_with_true_flexible_smoother_and_restriction,
 };
+use super::gmres_block_jacobi::{cs_mat_mul_vec, invert_tail_block, matrix_value};
 use super::{
-    solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
+    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, solve_linearized_system,
 };
 use crate::fim::scaling::EquationScaling;
 
@@ -471,7 +471,7 @@ fn recover_full_system_report(
 
 #[cfg(test)]
 mod tests {
-    use super::super::{sparse_lu_debug, FimLinearSolverKind};
+    use super::super::{FimLinearSolverKind, sparse_lu_debug};
     use super::*;
 
     /// Synthetic 2-cell + 1-well + 2-perforation system mirroring the real row layout: cells

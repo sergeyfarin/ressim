@@ -9,6 +9,12 @@
         applyThemeToChart,
         externalTooltipHandler,
     } from "./chart-helpers";
+    import {
+        createHistoryDividerPlugin,
+        historyDividerColors,
+        HISTORY_DIVIDER_PLUGIN_ID,
+        type ResolvedHistoryDivider,
+    } from "./historyDivider";
 
     type XYPoint = { x: number; y: number | null };
     type LineDataset = ChartDataset<"line", Array<number | null | XYPoint>>;
@@ -28,6 +34,7 @@
         targetRightGutter = 0,
         xRange,
         onGutterMeasure,
+        historyDivider = null,
     }: {
         panelId?: string;
         title?: string;
@@ -43,6 +50,8 @@
         targetRightGutter?: number;
         xRange?: { min: number; max: number } | undefined;
         onGutterMeasure?: (left: number, right: number) => void;
+        /** Optional history/forecast divider (resolved for the active x-axis). */
+        historyDivider?: ResolvedHistoryDivider | null;
     } = $props();
 
     let chartCanvas = $state<HTMLCanvasElement | null>(null);
@@ -242,6 +251,19 @@
         if (chart && theme) {
             untrack(() => applyThemeToChart(chart, theme));
         }
+    });
+
+    // Keep the history/forecast divider in sync with props/theme without a full
+    // chart rebuild (it's a pure overlay, not part of the dataset schema).
+    $effect(() => {
+        const _divider = historyDivider;
+        const _theme = theme;
+        if (!chart) return;
+        untrack(() => {
+            const pluginOpts = (chart!.options.plugins ??= {}) as Record<string, unknown>;
+            pluginOpts[HISTORY_DIVIDER_PLUGIN_ID] = historyDividerOptions();
+            chart!.update("none");
+        });
     });
 
     // Recreate the Chart.js instance when the dataset/axis schema changes.
@@ -507,6 +529,18 @@
         // Otherwise, allow Chart.js to natively auto-pad both max and min ceilings!
     }
 
+    const historyDividerPlugin = createHistoryDividerPlugin();
+
+    function historyDividerOptions() {
+        if (!historyDivider) return { boundary: undefined };
+        return {
+            boundary: historyDivider.boundary,
+            historyLabel: historyDivider.historyLabel,
+            forecastLabel: historyDivider.forecastLabel,
+            colors: historyDividerColors(theme),
+        };
+    }
+
     function createChart() {
         if (!chartCanvas || chart) return;
         Chart.register(...registerables);
@@ -529,12 +563,14 @@
         chart = new Chart(ctx, {
             type: "line",
             data: { labels: [], datasets },
+            plugins: [historyDividerPlugin],
             options: {
                 animation: false,
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { display: false },
+                    [HISTORY_DIVIDER_PLUGIN_ID]: historyDividerOptions(),
                     tooltip: {
                         enabled: false,
                         external: externalTooltipHandler,

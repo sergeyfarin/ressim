@@ -1,4 +1,4 @@
-import type { BenchmarkFamily } from '../catalog/benchmarkCases';
+import type { BenchmarkFamily } from '../scenario/referenceTypes';
 import type { BenchmarkReferencePolicy } from '../benchmarkRunModel';
 import type { RateChartLayoutConfig, RateChartXAxisMode } from './rateChartLayoutConfig';
 

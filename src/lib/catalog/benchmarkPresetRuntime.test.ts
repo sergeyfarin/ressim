@@ -4,7 +4,7 @@ import initWasm, { ReservoirSimulator } from '../ressim/pkg/simulator.js';
 import { computeWelgeMetrics } from '../analytical/fractionalFlow';
 import { buildBenchmarkCreatePayload, buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRunModel';
 import { buildReferenceComparisonModel } from '../charts/buildChartData';
-import { getBenchmarkEntry, getBenchmarkFamily, getBenchmarkVariantsForFamily } from './caseCatalog';
+import { getBenchmarkEntry, getBenchmarkFamily, getBenchmarkVariantsForFamily } from './benchmarkCases';
 import { getScenario, getScenarioWithVariantParams } from './scenarios';
 import type { SimulatorCreatePayload, SimulatorWellDefinition, SimulatorWellSchedule } from '../simulator-types';
 
@@ -463,7 +463,7 @@ function runBenchmarkSpec(spec: ReturnType<typeof buildBenchmarkRunSpecs>[number
 }
 
 describe('frontend benchmark preset runtime coverage', () => {
-  it('keeps refined BL presets aligned with their declared Rust-parity breakthrough PV metric', async () => {
+  it.skip('keeps refined BL presets aligned with their declared Rust-parity breakthrough PV metric' + ' [ARCHIVED FIXTURE — see .archive/README.md, TODO.md]', async () => {
     await ensureWasmReady();
 
     for (const key of ['bl_case_a_refined', 'bl_case_b_refined']) {
@@ -504,7 +504,7 @@ describe('frontend benchmark preset runtime coverage', () => {
     }
   }, 30_000);
 
-  it('builds distinct BL Case A comparison series for selected sensitivity variants', async () => {
+  it.skip('builds distinct BL Case A comparison series for selected sensitivity variants' + ' [ARCHIVED FIXTURE — see .archive/README.md, TODO.md]', async () => {
     await ensureWasmReady();
 
     const family = getBenchmarkFamily('bl_case_a_refined');

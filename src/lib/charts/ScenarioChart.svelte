@@ -94,6 +94,7 @@
         {layoutConfig}
         {analyticalPerVariant}
         {theme}
+        historyWindow={scenario?.historyWindow ?? null}
         previewVariantParams={runResults.length === 0 ? previewVariantParams : undefined}
         pendingPreviewVariants={runResults.length > 0 ? pendingPreviewVariants : undefined}
         previewBaseParams={runResults.length === 0 ? previewBaseParams : undefined}

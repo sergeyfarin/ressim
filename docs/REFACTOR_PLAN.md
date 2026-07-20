@@ -1,5 +1,7 @@
 # ResSim Frontend Refactor — Analysis & Step-by-Step Plan
 
+Status: historical. Most phases below (0–7) are done; the "Phase 8 ← NOW" marker and 2026-04-07 date are stale (see `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` §2.1). Kept for background, not as a live spec. See `docs/DOCUMENTATION_INDEX.md`.
+
 > Last updated: 2026-04-07. Phases 0–4 complete.
 
 ---

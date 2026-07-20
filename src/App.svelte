@@ -172,34 +172,40 @@
         </section>
 
         <section class="space-y-2">
-            <RunControls
-                wasmReady={runtime.wasmReady}
-                workerRunning={runtime.workerRunning || runtime.runSetRunning}
-                runCompleted={runtime.runCompleted}
-                simTime={runtime.simTime}
-                historyLength={runtime.history.length}
-                totalStepsRun={runtime.rateHistory.length}
-                hasValidationErrors={params.hasValidationErrors}
-                numSensitivities={!scenario.isCustomMode ? scenario.activeVariantKeys.length : 0}
-                runProgress={runtime.runSetRunning
-                    ? runtime.runSetProgressLabel
-                    : runtime.workerRunning && runtime.currentRunTotalSteps > 0
-                        ? `${runtime.currentRunStepsCompleted}/${runtime.currentRunTotalSteps} steps`
-                        : ""}
-                bind:steps={params.steps}
-                showStepsInput={scenario.isCustomMode}
-                stopPending={runtime.stopPending}
-                onStepsEdit={() => params.markStepsOverride()}
-                onRunSteps={handleRun}
-                onInitSimulator={() => runtime.initSimulator()}
-                onStopRun={() => runtime.stopRun()}
-                fieldErrors={params.validationErrors}
-                warningPolicy={runtime.warningPolicy}
-            />
-            {#if runtime.runSetError}
-                <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                    {runtime.runSetError}
+            {#if scenario.isPrerunScenario}
+                <div class="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    Precomputed exhibit — results are bundled reference data (no live simulation run).
                 </div>
+            {:else}
+                <RunControls
+                    wasmReady={runtime.wasmReady}
+                    workerRunning={runtime.workerRunning || runtime.runSetRunning}
+                    runCompleted={runtime.runCompleted}
+                    simTime={runtime.simTime}
+                    historyLength={runtime.history.length}
+                    totalStepsRun={runtime.rateHistory.length}
+                    hasValidationErrors={params.hasValidationErrors}
+                    numSensitivities={!scenario.isCustomMode ? scenario.activeVariantKeys.length : 0}
+                    runProgress={runtime.runSetRunning
+                        ? runtime.runSetProgressLabel
+                        : runtime.workerRunning && runtime.currentRunTotalSteps > 0
+                            ? `${runtime.currentRunStepsCompleted}/${runtime.currentRunTotalSteps} steps`
+                            : ""}
+                    bind:steps={params.steps}
+                    showStepsInput={scenario.isCustomMode}
+                    stopPending={runtime.stopPending}
+                    onStepsEdit={() => params.markStepsOverride()}
+                    onRunSteps={handleRun}
+                    onInitSimulator={() => runtime.initSimulator()}
+                    onStopRun={() => runtime.stopRun()}
+                    fieldErrors={params.validationErrors}
+                    warningPolicy={runtime.warningPolicy}
+                />
+                {#if runtime.runSetError}
+                    <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                        {runtime.runSetError}
+                    </div>
+                {/if}
             {/if}
         </section>
 
@@ -259,27 +265,29 @@
                     </Card>
                 </div>
 
-                <div class="space-y-4">
-                    <Card>
-                        <ThreeDViewCard
-                            {ThreeDViewComponent}
-                            {loadingThreeDView}
-                            selectedOutput3D={scenario.selectedOutput3D}
-                            selectedOutputProfile={scenario.selectedOutputProfile}
-                            activeReferenceResults={scenario.activeRunResults}
-                            activePrimaryComparisonResultKey={scenario.activePrimaryRunResultKey}
-                            {theme}
-                            vizRevision={runtime.vizRevision}
-                            bind:showProperty
-                            bind:legendFixedMin
-                            bind:legendFixedMax
-                            onApplyHistoryIndex={handleApplyOutputHistoryIndex}
-                            onLoadThreeDView={loadThreeDViewModule}
-                            onSelectResult={(key) => scenario.setComparisonSelection({ primaryResultKey: key, comparedResultKeys: [] })}
-                            onClearResult={() => scenario.setComparisonSelection({ primaryResultKey: null, comparedResultKeys: [] })}
-                        />
-                    </Card>
-                </div>
+                {#if !scenario.isPrerunScenario}
+                    <div class="space-y-4">
+                        <Card>
+                            <ThreeDViewCard
+                                {ThreeDViewComponent}
+                                {loadingThreeDView}
+                                selectedOutput3D={scenario.selectedOutput3D}
+                                selectedOutputProfile={scenario.selectedOutputProfile}
+                                activeReferenceResults={scenario.activeRunResults}
+                                activePrimaryComparisonResultKey={scenario.activePrimaryRunResultKey}
+                                {theme}
+                                vizRevision={runtime.vizRevision}
+                                bind:showProperty
+                                bind:legendFixedMin
+                                bind:legendFixedMax
+                                onApplyHistoryIndex={handleApplyOutputHistoryIndex}
+                                onLoadThreeDView={loadThreeDViewModule}
+                                onSelectResult={(key) => scenario.setComparisonSelection({ primaryResultKey: key, comparedResultKeys: [] })}
+                                onClearResult={() => scenario.setComparisonSelection({ primaryResultKey: null, comparedResultKeys: [] })}
+                            />
+                        </Card>
+                    </div>
+                {/if}
             </div>
         </section>
     </div>

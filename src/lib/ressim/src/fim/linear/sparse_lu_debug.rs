@@ -3,9 +3,9 @@ use std::f64;
 #[cfg(test)]
 use std::collections::HashSet;
 
+use faer::Col;
 use faer::linalg::solvers::Solve;
 use faer::sparse::{SparseRowMat, Triplet};
-use faer::Col;
 use nalgebra::DVector;
 use sprs::CsMat;
 

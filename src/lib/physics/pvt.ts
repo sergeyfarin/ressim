@@ -3,6 +3,13 @@ import type { PvtRow } from '../simulator-types';
 export const PSI_PER_BAR = 14.5037738;
 export const SCF_PER_BBL_TO_M3_PER_M3 = 0.1781076; // 1 bbl = 0.1589873 m3. 1 scf = 0.0283168 m3. (0.0283168 / 0.1589873) = 0.178107
 export const M3_PER_M3_TO_SCF_PER_BBL = 1.0 / SCF_PER_BBL_TO_M3_PER_M3;
+/**
+ * Default undersaturated oil compressibility [1/bar] used to shrink Bo above
+ * the bubble point when a correlation-specific c_o is not supplied. Shared
+ * by `pvt.ts`'s own undersaturated branch and `analytical/materialBalance.ts`
+ * so both stay numerically consistent by construction.
+ */
+export const DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR = 1e-5;
 
 /**
  * Convert Celsius to Fahrenheit
@@ -186,12 +193,13 @@ export function leeGonzalezEakinViscosity(p: number, z: number, tempR: number, s
  * @returns Array of PvtRow ordered by pressure ascending
  */
 export function generateBlackOilTable(
-    api: number, 
-    sgGas: number, 
-    tempC: number, 
-    pbBar: number, 
+    api: number,
+    sgGas: number,
+    tempC: number,
+    pbBar: number,
     pMaxBar: number,
-    points: number = 30
+    points: number = 30,
+    undersaturatedCompressibilityPerBar: number = DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR,
 ): PvtRow[] {
     const tempF = cToF(tempC);
     const tempR = cToR(tempC);
@@ -237,12 +245,12 @@ export function generateBlackOilTable(
         } else {
             // Undersaturated
             rs_scf = rsMaxScf;
-            // Co = typically around 1e-5. Using simplistic Vasquez-Beggs interpolation for viscosity
+            // Using simplistic Vasquez-Beggs interpolation for viscosity
             mu_o = vasquezBeggsUndersaturatedViscosity(muOPb, pPsia, pbPsia);
             // We use simple compressibility for Bo in Rust, but we precompute the trend here
-            // Vasquez-Beggs c_o correlation (optional, or just use 1e-5)
+            // Vasquez-Beggs c_o correlation (optional, or just use the shared default)
             // c_o = (-1433 + 5 * R_sb + 17.2 * T - 1180 * sg_g + 12.61 * API) / (P * 10^5) -> approx
-            const c_o_bar = 1e-5; // standard oil field default
+            const c_o_bar = undersaturatedCompressibilityPerBar;
             bo = boPb * Math.exp(-c_o_bar * (pBar - pbBar));
         }
 

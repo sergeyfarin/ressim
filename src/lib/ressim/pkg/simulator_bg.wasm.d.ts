@@ -48,6 +48,7 @@ export const reservoirsimulator_setInitialSaturation: (a: number, b: number) => 
 export const reservoirsimulator_setInitialSaturationPerLayer: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setInjectedFluid: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setInjectorEnabled: (a: number, b: number) => void;
+export const reservoirsimulator_setPermeabilityField: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
 export const reservoirsimulator_setPermeabilityPerLayer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
 export const reservoirsimulator_setPermeabilityRandom: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setPermeabilityRandomSeeded: (a: number, b: number, c: number, d: bigint) => [number, number];

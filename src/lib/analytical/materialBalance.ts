@@ -30,6 +30,7 @@ import {
     cToR,
     PSI_PER_BAR,
     SCF_PER_BBL_TO_M3_PER_M3,
+    DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR,
 } from '../physics/pvt';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -113,7 +114,7 @@ function evaluateConstantPvt(params: MaterialBalanceParams, _pressure: number): 
     };
 }
 
-function evaluateBlackOilPvt(params: MaterialBalanceParams, pressure: number): PvtAtPressure {
+export function evaluateBlackOilPvt(params: MaterialBalanceParams, pressure: number): PvtAtPressure {
     const { apiGravity, gasSpecificGravity, reservoirTemperature, bubblePoint } = params;
     const tempF = cToF(reservoirTemperature);
     const tempR = cToR(reservoirTemperature);
@@ -132,7 +133,7 @@ function evaluateBlackOilPvt(params: MaterialBalanceParams, pressure: number): P
         // Undersaturated: Rs frozen at bubble-point value, Bo shrinks via compressibility
         Rs_scf = standingRs(pbPsia, gasSpecificGravity, apiGravity, tempF);
         const Bo_pb = standingBo(Rs_scf, gasSpecificGravity, sgOil, tempF);
-        const c_o = 1e-5; // undersaturated oil compressibility [1/bar]
+        const c_o = DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR;
         Bo = Bo_pb * Math.exp(-c_o * (pressure - bubblePoint));
     }
 

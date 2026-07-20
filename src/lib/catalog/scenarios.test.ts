@@ -393,6 +393,40 @@ describe('scenario capability validation', () => {
         }
     });
 
+    it('every prerun-artifacts scenario declares bundled artifact keys and disables the 3D view (E7)', () => {
+        const prerun = listScenarios().filter((s) => s.capabilities.runMode === 'prerun-artifacts');
+        expect(prerun.length, 'expected at least one prerun-artifacts scenario').toBeGreaterThan(0);
+        for (const scenario of prerun) {
+            expect(
+                scenario.opmFlowReferenceArtifactKeys?.length ?? 0,
+                `${scenario.key} must declare opmFlowReferenceArtifactKeys`,
+            ).toBeGreaterThan(0);
+            expect(
+                scenario.capabilities.default3DScalar,
+                `${scenario.key} must set default3DScalar null (3D off)`,
+            ).toBeNull();
+        }
+    });
+
+    it('validateScenarioCapabilities rejects a prerun-artifacts scenario that leaves the 3D view on', () => {
+        const errors = validateScenarioCapabilities({
+            analyticalMethod: 'none',
+            showSweepPanel: false,
+            hasInjector: true,
+            default3DScalar: 'saturation_water',
+            requiresThreePhaseMode: false,
+            runMode: 'prerun-artifacts',
+        });
+        expect(errors.some((e) => e.includes('default3DScalar to null'))).toBe(true);
+    });
+
+    it('resolveCapabilities defaults runMode to live-worker and honors prerun-artifacts', () => {
+        const live = resolveCapabilities({ analyticalMethod: 'buckley-leverett', showSweepPanel: false, hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false });
+        expect(live.runMode).toBe('live-worker');
+        const prerun = resolveCapabilities({ analyticalMethod: 'none', showSweepPanel: false, hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false, runMode: 'prerun-artifacts' });
+        expect(prerun.runMode).toBe('prerun-artifacts');
+    });
+
     it('resolveCapabilities produces correct defaults for each analytical method', () => {
         const bl = resolveCapabilities({ analyticalMethod: 'buckley-leverett', showSweepPanel: false, hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false });
         expect(bl.primaryRateCurve).toBe('water-cut');

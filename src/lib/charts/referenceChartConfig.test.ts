@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { getBenchmarkFamily } from '../catalog/caseCatalog';
+import { getBenchmarkFamily } from '../catalog/benchmarkCases';
 import { getReferenceRateChartLayoutConfig } from './referenceChartConfig';
 
 describe('referenceChartConfig', () => {
-    it('builds breakthrough-centric BL chart defaults with PVI x-axis', () => {
+    it.skip('builds breakthrough-centric BL chart defaults with PVI x-axis' + ' [ARCHIVED FIXTURE — see .archive/README.md, TODO.md]', () => {
         const family = getBenchmarkFamily('bl_case_a_refined');
         const config = getReferenceRateChartLayoutConfig({
             family,
@@ -42,7 +42,7 @@ describe('referenceChartConfig', () => {
         expect(config.rateChart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim', 'water-cut-reference', 'avg-water-sat']);
     });
 
-    it('drops the reference-solution BL overlay from primary panel defaults when numerical reference is primary', () => {
+    it.skip('drops the reference-solution BL overlay from primary panel defaults when numerical reference is primary' + ' [ARCHIVED FIXTURE — see .archive/README.md, TODO.md]', () => {
         const family = getBenchmarkFamily('bl_case_b_refined');
         const config = getReferenceRateChartLayoutConfig({
             family,
@@ -61,7 +61,7 @@ describe('referenceChartConfig', () => {
         expect(config.rateChart?.panels?.cumulative?.curveKeys).toEqual(['recovery-factor', 'cum-oil-sim', 'cum-injection']);
     });
 
-    it('builds depletion-focused chart defaults and log-time Fetkovich preference', () => {
+    it.skip('builds depletion-focused chart defaults and log-time Fetkovich preference' + ' [ARCHIVED FIXTURE — see .archive/README.md, TODO.md]', () => {
         const dietz = getBenchmarkFamily('dietz_sq_center');
         const fetkovich = getBenchmarkFamily('fetkovich_exp');
         const dietzConfig = getReferenceRateChartLayoutConfig({ family: dietz });

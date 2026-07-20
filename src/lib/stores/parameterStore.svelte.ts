@@ -99,7 +99,7 @@ class ParameterStoreImpl {
     rho_o = $state(800.0);
 
     // Permeability
-    permMode: 'uniform' | 'random' | 'perLayer' = $state('uniform');
+    permMode: 'uniform' | 'random' | 'perLayer' | 'field' = $state('uniform');
     uniformPermX = $state(100.0);
     uniformPermY = $state(100.0);
     uniformPermZ = $state(10.0);
@@ -110,6 +110,10 @@ class ParameterStoreImpl {
     layerPermsX: number[] = $state([100, 150, 50, 200, 120, 1000, 90, 110, 130, 70]);
     layerPermsY: number[] = $state([100, 150, 50, 200, 120, 1000, 90, 110, 130, 70]);
     layerPermsZ: number[] = $state([10, 15, 5, 20, 12, 8, 9, 11, 13, 7]);
+    // Full per-cell permeability fields (length nx*ny*nz), used when permMode === 'field'.
+    fieldPermX: number[] = $state([]);
+    fieldPermY: number[] = $state([]);
+    fieldPermZ: number[] = $state([]);
 
     // Relative Permeability / Capillary
     s_wc = $state(0.1);
@@ -585,6 +589,7 @@ class ParameterStoreImpl {
             minPerm: this.minPerm, maxPerm: this.maxPerm,
             useRandomSeed: this.useRandomSeed, randomSeed: this.randomSeed,
             permsX: this.layerPermsX, permsY: this.layerPermsY, permsZ: this.layerPermsZ,
+            fieldPermX: this.fieldPermX, fieldPermY: this.fieldPermY, fieldPermZ: this.fieldPermZ,
             well_radius: this.well_radius, well_skin: this.well_skin,
             injectorBhp: this.injectorBhp, producerBhp: this.producerBhp,
             rateControlledWells: this.rateControlledWells,

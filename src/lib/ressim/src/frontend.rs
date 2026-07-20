@@ -1174,4 +1174,48 @@ impl ReservoirSimulator {
         }
         Ok(())
     }
+
+    /// Set per-cell absolute permeability from full-length field vectors.
+    ///
+    /// Each vector must have length `nx * ny * nz`, ordered by the same flat
+    /// cell index as the grid (`idx(i, j, k) = k*nx*ny + j*nx + i`). Every entry
+    /// must be finite and strictly positive. This is the field-scale
+    /// counterpart to [`set_permeability_per_layer`](Self::set_permeability_per_layer);
+    /// it enables fully heterogeneous per-cell permeability maps
+    /// (e.g. Tavassoli/SPE10/Egg-style fields) via `permMode: 'field'`.
+    #[wasm_bindgen(js_name = setPermeabilityField)]
+    pub fn set_permeability_field(
+        &mut self,
+        perms_x: Vec<f64>,
+        perms_y: Vec<f64>,
+        perms_z: Vec<f64>,
+    ) -> Result<(), String> {
+        let total = self.nx * self.ny * self.nz;
+        if perms_x.len() != total || perms_y.len() != total || perms_z.len() != total {
+            return Err(format!(
+                "Permeability field vectors must have length equal to nx*ny*nz ({})",
+                total
+            ));
+        }
+        for id in 0..total {
+            let px = perms_x[id];
+            let py = perms_y[id];
+            let pz = perms_z[id];
+            if !px.is_finite() || !py.is_finite() || !pz.is_finite() {
+                return Err(format!("Permeability for cell {} must be finite", id));
+            }
+            if px <= 0.0 || py <= 0.0 || pz <= 0.0 {
+                return Err(format!(
+                    "Permeability for cell {} must be positive, got px={}, py={}, pz={}",
+                    id, px, py, pz
+                ));
+            }
+        }
+        // Flat cell order matches the grid's `idx`, so a direct move is
+        // equivalent to writing each cell via idx(i, j, k).
+        self.perm_x = perms_x;
+        self.perm_y = perms_y;
+        self.perm_z = perms_z;
+        Ok(())
+    }
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { calculateMaterialBalance } from './materialBalance';
+import { calculateMaterialBalance, evaluateBlackOilPvt, type MaterialBalanceParams } from './materialBalance';
+import { generateBlackOilTable, DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR } from '../physics/pvt';
 
 const CONSTANT_PVT_BASE = {
     initialPressure: 300,
@@ -164,5 +165,53 @@ describe('materialBalance', () => {
             const ratio = (result.points[i].N_mbe ?? 0) / N_vol;
             expect(ratio).toBeCloseTo(1.0, 6);
         }
+    });
+});
+
+describe('undersaturated Bo shrinkage stays consistent between pvt.ts and materialBalance.ts', () => {
+    it('uses the same default compressibility constant in both undersaturated-Bo formulas', () => {
+        // pvt.ts's generateBlackOilTable and materialBalance.ts's evaluateBlackOilPvt each
+        // independently shrink Bo above the bubble point via Bo = Bo_pb * exp(-c_o * dP).
+        // They must import the same DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR
+        // constant rather than each carrying their own hardcoded `1e-5` literal, or the
+        // live simulator's PVT table and the analytical material-balance reference would
+        // silently diverge above the bubble point.
+        const api = 35;
+        const sgGas = 0.75;
+        const tempC = 80;
+        const bubblePoint = 150;
+        const testPressure = 250; // above bubble point
+
+        const table = generateBlackOilTable(api, sgGas, tempC, bubblePoint, testPressure, 10);
+        const tableRowAtTestPressure = table[table.length - 1];
+        expect(tableRowAtTestPressure.p_bar).toBeCloseTo(testPressure, 9);
+
+        const params: MaterialBalanceParams = {
+            initialPressure: bubblePoint,
+            initialWaterSaturation: 0.2,
+            initialGasSaturation: 0,
+            porosity: 0.2,
+            poreVolume: 20000,
+            c_w: 3e-6,
+            c_rock: 1e-6,
+            pvtMode: 'black-oil',
+            Bo_constant: 1.0,
+            Bw_constant: 1.0,
+            c_o: 1e-5,
+            apiGravity: api,
+            gasSpecificGravity: sgGas,
+            reservoirTemperature: tempC,
+            bubblePoint,
+            pressureHistory: [],
+            cumulativeOilSC: [],
+            cumulativeGasSC: [],
+            cumulativeWaterSC: [],
+            timeHistory: [],
+        };
+
+        const analyticalBo = evaluateBlackOilPvt(params, testPressure).Bo;
+
+        expect(analyticalBo).toBeCloseTo(tableRowAtTestPressure.bo_m3m3, 9);
+        expect(DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR).toBe(1e-5);
     });
 });

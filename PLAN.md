@@ -1,5 +1,7 @@
 # Frontend Architecture Rewrite Plan: Same Layout, Scenario-First Core
 
+Status: historical. The scenario-first rewrite described here has substantially landed (see `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` §2.1); this plan is kept for background, not as a live spec. See `docs/DOCUMENTATION_INDEX.md`.
+
 ## Summary
 
 The current frontend mixes three approaches: predefined scenarios, legacy benchmark families, and custom mode. This creates duplicated chart builders, confusing runtime paths, brittle tests, and unused or misleading case definitions. We will do a big internal rewrite while keeping the visible layout mostly the same: scenario picker, run controls, charts, and 3D view stay in familiar positions, but the data flow becomes scenario-first and IMPES-first.

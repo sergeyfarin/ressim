@@ -23,12 +23,16 @@ export { CHART_LAYOUTS, getChartLayout, mergeChartLayoutConfig } from './chartLa
 // ─── Per-scenario imports ────────────────────────────────────────────────────
 
 import { wf_bl1d } from './scenarios/wf_bl1d';
+import { wf_bl1d_opm } from './scenarios/wf_bl1d_opm';
+import { wf_tornado } from './scenarios/wf_tornado';
 import { sweep_areal } from './scenarios/sweep_areal';
 import { sweep_vertical } from './scenarios/sweep_vertical';
 import { sweep_combined } from './scenarios/sweep_combined';
 import { dep_pss } from './scenarios/dep_pss';
 import { dep_arps } from './scenarios/dep_arps';
 import { dep_decline } from './scenarios/dep_decline';
+import { dep_nct } from './scenarios/dep_nct';
+import { dep_pvt } from './scenarios/dep_pvt';
 import { gas_injection } from './scenarios/gas_injection';
 import { gas_drive } from './scenarios/gas_drive';
 import { spe1_gas_injection } from './scenarios/spe1_gas_injection';
@@ -205,6 +209,12 @@ export type ScenarioCapabilities = {
     default3DScalar: Default3DScalar;
     /** Whether the gas domain tab gate applies (scenario only visible in 3-phase mode). */
     requiresThreePhaseMode: boolean;
+    /**
+     * How this scenario produces results. 'live-worker' (default) runs the WASM
+     * simulator; 'prerun-artifacts' ships entirely precomputed — no worker run,
+     * variants map to bundled artifact keys, 3D off. Foundation for Tier-6 exhibits.
+     */
+    runMode?: 'live-worker' | 'prerun-artifacts';
 };
 
 /** Fully resolved capabilities — all fields guaranteed present. */
@@ -218,6 +228,7 @@ export type ResolvedCapabilities = {
     hasInjector: boolean;
     default3DScalar: Default3DScalar;
     requiresThreePhaseMode: boolean;
+    runMode: 'live-worker' | 'prerun-artifacts';
     /** Panel expansion defaults from the analytical output contract. */
     defaultPanelExpansion: AnalyticalOutputContract['defaultPanelExpansion'];
 };
@@ -235,6 +246,7 @@ export function resolveCapabilities(caps: ScenarioCapabilities): ResolvedCapabil
         hasInjector: caps.hasInjector,
         default3DScalar: caps.default3DScalar,
         requiresThreePhaseMode: caps.requiresThreePhaseMode,
+        runMode: caps.runMode ?? 'live-worker',
         defaultPanelExpansion: contract.defaultPanelExpansion,
     };
 }
@@ -258,6 +270,9 @@ export function validateScenarioCapabilities(caps: ScenarioCapabilities): string
     }
     if (!caps.showSweepPanel && caps.sweepGeometry) {
         errors.push('sweepGeometry can only be set when showSweepPanel is true.');
+    }
+    if (caps.runMode === 'prerun-artifacts' && caps.default3DScalar !== null) {
+        errors.push("prerun-artifacts scenarios must set default3DScalar to null (3D view is off).");
     }
     return errors;
 }
@@ -323,6 +338,12 @@ export type PublishedReferenceSeries = {
     data: { x: number; y: number }[];
     /** Chart.js y-axis ID (e.g. 'y' for primary, 'y1' for secondary). */
     yAxisID?: string;
+    /**
+     * When true, render as solid primary content instead of a dashed reference
+     * overlay — used by prerun-artifacts scenarios whose entire content IS the
+     * bundled artifact (there is no live simulation curve to compare against).
+     */
+    primary?: boolean;
 };
 
 export type ScenarioTerminationCondition =
@@ -358,6 +379,26 @@ export type ScenarioTerminationPolicy = {
     /** Whether any one condition or all conditions must be met to stop the run. */
     mode: 'any' | 'all';
     conditions: ScenarioTerminationCondition[];
+};
+
+/**
+ * Optional "history / forecast" split marker for the comparison chart. Renders
+ * a shaded history region up to `boundary` plus a divider line, so match-then-
+ * forecast cases (e.g. dep_nct now, Tavassoli/PUNQ-S3 later) can visually
+ * separate the observed-history window from the extrapolated forecast.
+ */
+export type HistoryWindow = {
+    /** X-axis value (in `axis` units) where matched history ends and forecast begins. */
+    boundary: number;
+    /**
+     * Which x-axis this boundary is expressed in. The divider only renders when
+     * the chart's active x-axis matches. Defaults to 'time'.
+     */
+    axis?: 'time' | 'pvi';
+    /** Label drawn in the history (shaded) region. Defaults to 'History'. */
+    historyLabel?: string;
+    /** Label drawn in the forecast region. Defaults to 'Forecast'. */
+    forecastLabel?: string;
 };
 
 export type Scenario = {
@@ -396,6 +437,8 @@ export type Scenario = {
     opmFlowReferenceArtifactKeys?: string[];
     /** Optional stop policy for terminating a run when a production condition is met. */
     terminationPolicy?: ScenarioTerminationPolicy;
+    /** Optional history/forecast divider marker for the comparison chart. */
+    historyWindow?: HistoryWindow;
     /**
      * Scenario-owned analytical computation. When present, App.svelte and
      * chart builders call this instead of string-routing on analyticalMode/Method.
@@ -437,12 +480,16 @@ export const CUSTOM_MODE_CAPABILITIES: ScenarioCapabilities = {
 
 export const SCENARIOS: Scenario[] = [
     wf_bl1d,
+    wf_bl1d_opm,
+    wf_tornado,
     sweep_areal,
     sweep_vertical,
     sweep_combined,
     dep_pss,
     dep_decline,
     dep_arps,
+    dep_nct,
+    dep_pvt,
     gas_injection,
     gas_drive,
     spe1_gas_injection,

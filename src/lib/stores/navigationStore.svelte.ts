@@ -4,15 +4,18 @@ import {
     composeCaseParams,
     getCaseLibraryEntry,
     resolveCaseLibraryEntryFromScenario,
-    getBenchmarkEntry,
-    getBenchmarkFamily,
-    getBenchmarkVariantsForFamily,
     getDefaultToggles,
     getDisabledOptions,
     stabilizeToggleState,
     type CaseMode,
     type ToggleState,
 } from '../catalog/caseCatalog';
+import {
+    getBenchmarkEntry,
+    getBenchmarkFamily,
+    getBenchmarkVariantsForFamily,
+    type BenchmarkFamily,
+} from '../catalog/benchmarkCases';
 import { evaluateAnalyticalStatus, type AnalyticalStatus } from '../warningPolicy';
 import {
     getDefaultScenarioAnalyticalMode,
@@ -43,9 +46,8 @@ import {
 } from './phase2PresetContract';
 import type { ParameterStore } from './parameterStore.svelte';
 import type { RuntimeStore } from './runtimeStore.svelte';
-import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import { getReferenceRateChartLayoutConfig } from '../charts/referenceChartConfig';
-import { getOpmFlowPublishedReferenceSeries } from '../catalog/opmFlowArtifacts';
+import { getOpmFlowArtifactSeriesByKeys, getOpmFlowPublishedReferenceSeries } from '../catalog/opmFlowArtifacts';
 import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
 import {
     computeSweepRecoveryFactor,
@@ -294,6 +296,9 @@ class NavigationStoreImpl {
             publishedReferenceSeries: [
                 ...(sc.publishedReferenceSeries ?? []),
                 ...getOpmFlowPublishedReferenceSeries(sc.key),
+                ...(resolved.runMode === 'prerun-artifacts'
+                    ? getOpmFlowArtifactSeriesByKeys(sc.opmFlowReferenceArtifactKeys ?? [], { primary: true })
+                    : []),
             ],
         } as BenchmarkFamily;
     });
@@ -304,6 +309,12 @@ class NavigationStoreImpl {
     // ===== $derived: Sweep / Analytical Config =====
 
     showSweepPanel = $derived(this.activeScenarioObject?.capabilities.showSweepPanel ?? false);
+
+    /** True when the active scenario ships precomputed (no live worker run, 3D off). */
+    isPrerunScenario = $derived(
+        !this.isCustomMode
+        && (this.activeScenarioObject?.capabilities.runMode ?? 'live-worker') === 'prerun-artifacts',
+    );
 
     sweepGeometry = $derived.by((): SweepGeometry => {
         return this.activeChartFamily?.sweepGeometry

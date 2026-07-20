@@ -170,7 +170,7 @@ export type AnalyticalStatusInput = {
   injectorEnabled: boolean;
   gravityEnabled: boolean;
   capillaryEnabled: boolean;
-  permMode: 'uniform' | 'random' | 'perLayer';
+  permMode: 'uniform' | 'random' | 'perLayer' | 'field';
   toggles: ToggleState;
 };
 
@@ -272,10 +272,10 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
     }
   }
 
-  if (permMode === 'random') {
+  if (permMode === 'random' || permMode === 'field') {
     addReason(
       'perm-nonuniform',
-      'Random permeability heterogeneity — the analytical solution is approximate.',
+      'Per-cell permeability heterogeneity — the analytical solution is approximate.',
       'warning',
     );
   }

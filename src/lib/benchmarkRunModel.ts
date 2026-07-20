@@ -7,7 +7,7 @@ import type {
     BenchmarkFamily,
     BenchmarkReferenceDefinition,
     BenchmarkVariant,
-} from './catalog/benchmarkCases';
+} from './scenario/referenceTypes';
 import type { AnalyticalMethod, ScenarioTerminationPolicy } from './catalog/scenarios';
 import type { RateHistoryPoint, SimulatorCreatePayload, SimulatorSnapshot } from './simulator-types';
 

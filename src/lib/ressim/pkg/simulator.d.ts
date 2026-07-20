@@ -63,6 +63,17 @@ export class ReservoirSimulator {
     setInitialSaturationPerLayer(sw: Float64Array): void;
     setInjectedFluid(fluid: string): void;
     setInjectorEnabled(enabled: boolean): void;
+    /**
+     * Set per-cell absolute permeability from full-length field vectors.
+     *
+     * Each vector must have length `nx * ny * nz`, ordered by the same flat
+     * cell index as the grid (`idx(i, j, k) = k*nx*ny + j*nx + i`). Every entry
+     * must be finite and strictly positive. This is the field-scale
+     * counterpart to [`set_permeability_per_layer`](Self::set_permeability_per_layer);
+     * it enables fully heterogeneous per-cell permeability maps
+     * (e.g. Tavassoli/SPE10/Egg-style fields) via `permMode: 'field'`.
+     */
+    setPermeabilityField(perms_x: Float64Array, perms_y: Float64Array, perms_z: Float64Array): void;
     setPermeabilityPerLayer(perms_x: Float64Array, perms_y: Float64Array, perms_z: Float64Array): void;
     setPermeabilityRandom(min_perm: number, max_perm: number): void;
     setPermeabilityRandomSeeded(min_perm: number, max_perm: number, seed: bigint): void;
@@ -145,6 +156,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setInitialSaturationPerLayer: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setInjectedFluid: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setInjectorEnabled: (a: number, b: number) => void;
+    readonly reservoirsimulator_setPermeabilityField: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
     readonly reservoirsimulator_setPermeabilityPerLayer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
     readonly reservoirsimulator_setPermeabilityRandom: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setPermeabilityRandomSeeded: (a: number, b: number, c: number, d: bigint) => [number, number];
