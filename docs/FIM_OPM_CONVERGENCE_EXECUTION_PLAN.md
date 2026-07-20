@@ -1107,6 +1107,41 @@ compare injector-cell oil/gas accumulation, face flux, and well-source contribut
 OPM-side observable. If OPM does not expose comparable partitions, build that oracle first. The
 cell is still saturated with `Sg` active, so current evidence does not authorize G5 substitution.
 
+### G4b4 product-promotion audit (2026-07-20): core merged, browser profile not promotable yet
+
+The implementation commits through G4b3 are ancestors of `master`; promoted unconditional FIM
+fixes such as well Schur elimination, the producer connected-cell mobility correction, and the
+current damping policy are therefore already in the main Rust solver. This is not equivalent to
+shipping the measured G4b4 configuration in the browser:
+
+- the last committed WASM artifact predates G4b3;
+- the worker only forwards `fimEnabled`, which selects the historical FIM defaults;
+- the UI has no solver selector;
+- `FIM_Y2B_RAW_SATURATION` is a native environment probe and is hard-disabled on WASM; and
+- the scoped RESV route is native/default-off and the TypeScript schedule contract supports only
+  `pressure | rate`.
+
+Consequently, exposing the existing boolean as "OPM-aligned FIM" would be a false promotion: it
+would run Legacy FIM, not the measured Y2 + OpmAligned + nested/RESV lifecycle. Keep IMPES as the
+product default. IMPES owns a sequential pressure/explicit-transport algorithm and does not use
+FIM Newton damping, CPR/Schur/Krylov, typed well-tail primaries, or the inner FIM well solve; those
+mechanisms must not be copied into IMPES. Shared well/reporting contracts already apply to both
+solvers. The 2026-07-20 audit ran the full IMPES bucket (`5/5` pass) and the shared bucket passed
+its first three contracts before the known pre-existing closed-system FIM `rate_history` length
+failure (`2` versus `1`).
+
+The next product-facing slice, after the reservoir-partition oracle or an explicit user decision
+to expose diagnostics early, is an **opt-in experimental profile**, not a default change:
+
+1. replace native environment/cfg selection with explicit cross-target simulator options;
+2. define one typed solver profile in the payload (`IMPES`, `FIM Legacy`, `FIM OPM experimental`)
+   and make the worker set the whole coherent bundle rather than independent booleans;
+3. either omit RESV from the browser profile honestly or extend schedule typing, validation, and
+   WASM routing together—never silently substitute surface-rate control;
+4. rebuild and commit the WASM artifact from the same clean commit; and
+5. pass the FIM controls, shared/IMPES buckets, and `validate:product` before adding a visible UI
+   selector. Predefined scenarios remain on IMPES until Y4's bounded-control promotion gates pass.
+
 ## 8. Y3 and Y4 end gates
 
 Y3 controller parity starts only after full-target Newton convergence is plausible. Its target is

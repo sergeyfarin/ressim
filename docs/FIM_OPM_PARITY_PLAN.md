@@ -1911,3 +1911,18 @@ the matched source at evaluation 1. If OPM lacks those observables, add diagnost
 infrastructure before interpreting a difference. G5 remains unauthorized because the binding
 cell is saturated and continues to use `Sg`; acceptance, damping, linear policy, and controller
 also remain fixed.
+
+### 15.35 Product-promotion boundary: main Rust contains G4, frontend does not reproduce it
+
+An explicit promotion audit confirms the G4 implementation is on `master`, but the browser cannot
+select the tested stack. Its committed WASM artifact predates G4b3, its worker forwards only the
+Legacy `fimEnabled` boolean, and the Y2 primary lifecycle plus selected RESV route are native-only
+default-off probes. The UI has no solver selector. Therefore no current frontend setting can be
+called the G4b4 or OPM-aligned profile.
+
+IMPES remains the correct product default and needs no port of FIM-only Newton/CPR/well-tail
+machinery. Its owned coverage is green (`5/5` on 2026-07-20); the shared gate again stops only at
+the already-recorded closed-system FIM history-length mismatch after three passing contracts.
+Frontend exposure, when authorized, must be a typed opt-in experimental profile that makes the
+whole cross-target option bundle explicit and rebuilds WASM from the same clean commit. A raw
+`fimEnabled` checkbox is insufficient and would mislabel Legacy FIM as the measured stack.
