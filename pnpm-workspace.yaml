@@ -1,14 +1,15 @@
 minimumReleaseAgeExclude:
   - '@types/node@26.1.0'
   - three@0.185.1
-  - '@typescript-eslint/eslint-plugin@8.64.0'
-  - '@typescript-eslint/parser@8.64.0'
-  - '@typescript-eslint/project-service@8.64.0'
-  - '@typescript-eslint/scope-manager@8.64.0'
-  - '@typescript-eslint/tsconfig-utils@8.64.0'
-  - '@typescript-eslint/type-utils@8.64.0'
-  - '@typescript-eslint/types@8.64.0'
-  - '@typescript-eslint/typescript-estree@8.64.0'
-  - '@typescript-eslint/utils@8.64.0'
-  - '@typescript-eslint/visitor-keys@8.64.0'
+  - '@typescript-eslint/eslint-plugin@8.64.0 || 8.65.0'
+  - '@typescript-eslint/parser@8.64.0 || 8.65.0'
+  - '@typescript-eslint/project-service@8.64.0 || 8.65.0'
+  - '@typescript-eslint/scope-manager@8.64.0 || 8.65.0'
+  - '@typescript-eslint/tsconfig-utils@8.64.0 || 8.65.0'
+  - '@typescript-eslint/type-utils@8.64.0 || 8.65.0'
+  - '@typescript-eslint/types@8.64.0 || 8.65.0'
+  - '@typescript-eslint/typescript-estree@8.64.0 || 8.65.0'
+  - '@typescript-eslint/utils@8.64.0 || 8.65.0'
+  - '@typescript-eslint/visitor-keys@8.64.0 || 8.65.0'
   - eslint-plugin-svelte@3.22.0
+  - svelte@5.56.7
