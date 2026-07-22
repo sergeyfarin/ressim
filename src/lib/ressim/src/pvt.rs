@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::ReservoirSimulator;
-use crate::fim::ad::Scalar;
+use crate::fim::ad::{Ad, Scalar};
 
 /// Generic (differentiable) counterpart of the fields interpolated from the
 /// saturated PVT curve. Parameterized by a `Scalar` so the same interpolation
@@ -66,6 +66,21 @@ impl PvtTable {
         let inv_bg_mu = (1.0 / (r0.bg_m3m3 * r0.mu_g_cp))
             + t * (1.0 / (r1.bg_m3m3 * r1.mu_g_cp) - 1.0 / (r0.bg_m3m3 * r0.mu_g_cp));
         (1.0 / inv_bg, inv_bg / inv_bg_mu)
+    }
+
+    /// OPM/ECL PVTO interpolation is performed on `1/Bo` and `1/(Bo*mu_o)`.
+    fn interpolate_oil_segment(r0: &PvtRow, r1: &PvtRow, t: f64) -> (f64, f64) {
+        let inv_bo = (1.0 / r0.bo_m3m3) + t * (1.0 / r1.bo_m3m3 - 1.0 / r0.bo_m3m3);
+        let inv_bo_mu = (1.0 / (r0.bo_m3m3 * r0.mu_o_cp))
+            + t * (1.0 / (r1.bo_m3m3 * r1.mu_o_cp) - 1.0 / (r0.bo_m3m3 * r0.mu_o_cp));
+        (1.0 / inv_bo, inv_bo / inv_bo_mu)
+    }
+
+    fn interpolate_oil_segment_generic<S: Scalar>(r0: &PvtRow, r1: &PvtRow, t: S) -> (S, S) {
+        let inv_bo = t * (1.0 / r1.bo_m3m3 - 1.0 / r0.bo_m3m3) + 1.0 / r0.bo_m3m3;
+        let inv_bo_mu = t * (1.0 / (r1.bo_m3m3 * r1.mu_o_cp) - 1.0 / (r0.bo_m3m3 * r0.mu_o_cp))
+            + 1.0 / (r0.bo_m3m3 * r0.mu_o_cp);
+        (inv_bo.recip(), inv_bo / inv_bo_mu)
     }
 
     pub fn new(rows: Vec<PvtRow>, c_o: f64) -> Self {
@@ -154,12 +169,13 @@ impl PvtTable {
                     return r0.clone();
                 }
                 let t = (p - r0.p_bar) / dp;
+                let (bo_m3m3, mu_o_cp) = Self::interpolate_oil_segment(r0, r1, t);
                 let (bg_m3m3, mu_g_cp) = Self::interpolate_gas_segment(r0, r1, t);
                 return PvtRow {
                     p_bar: p,
                     rs_m3m3: r0.rs_m3m3 + t * (r1.rs_m3m3 - r0.rs_m3m3),
-                    bo_m3m3: r0.bo_m3m3 + t * (r1.bo_m3m3 - r0.bo_m3m3),
-                    mu_o_cp: r0.mu_o_cp + t * (r1.mu_o_cp - r0.mu_o_cp),
+                    bo_m3m3,
+                    mu_o_cp,
                     bg_m3m3,
                     mu_g_cp,
                 };
@@ -193,10 +209,7 @@ impl PvtTable {
                     return (r0.bo_m3m3, r0.mu_o_cp);
                 }
                 let t = (p - r0.p_bar) / dp;
-                return (
-                    r0.bo_m3m3 + t * (r1.bo_m3m3 - r0.bo_m3m3),
-                    r0.mu_o_cp + t * (r1.mu_o_cp - r0.mu_o_cp),
-                );
+                return Self::interpolate_oil_segment(r0, r1, t);
             }
         }
 
@@ -309,9 +322,9 @@ impl PvtTable {
                 );
                 return SatProps {
                     rs: lerp(r0.rs_m3m3, r1.rs_m3m3),
-                    bo: lerp(r0.bo_m3m3, r1.bo_m3m3),
+                    bo: Self::interpolate_oil_segment_generic(r0, r1, t).0,
                     bg: S::from_f64(1.0) / inv_bg,
-                    mu_o: lerp(r0.mu_o_cp, r1.mu_o_cp),
+                    mu_o: Self::interpolate_oil_segment_generic(r0, r1, t).1,
                     mu_g: inv_bg / inv_bg_mu,
                 };
             }
@@ -356,9 +369,7 @@ impl PvtTable {
                     return (S::from_f64(r0.bo_m3m3), S::from_f64(r0.mu_o_cp));
                 }
                 let t = (p - r0.p_bar) / dp;
-                let bo = t * (r1.bo_m3m3 - r0.bo_m3m3) + r0.bo_m3m3;
-                let mu = t * (r1.mu_o_cp - r0.mu_o_cp) + r0.mu_o_cp;
-                return (bo, mu);
+                return Self::interpolate_oil_segment_generic(r0, r1, t);
             }
         }
 
@@ -386,11 +397,22 @@ impl PvtTable {
             if (high.rs_m3m3 - low.rs_m3m3).abs() <= PVTO_RS_TOLERANCE {
                 return (bo_low, mu_low);
             }
-            let (bo_high, mu_high) = Self::branch_props_generic(high, p, self.c_o);
-            // t = (rs - low.rs) / (high.rs - low.rs)
+
+            // OPM's live-oil table uses UniformXTabulated2DFunction::LeftExtreme. Across Rs,
+            // interpolation follows the saturated-pressure guide instead of evaluating both
+            // branches at the same pressure. This preserves the saturated boundary and, at an
+            // Rs knot, selects OPM's left-segment derivative convention.
             let t = (rs - low.rs_m3m3) / (high.rs_m3m3 - low.rs_m3m3);
-            let bo = t * (bo_high - bo_low) + bo_low;
-            let mu = t * (mu_high - mu_low) + mu_low;
+            let pressure_shift = high.rows[0].p_bar - low.rows[0].p_bar;
+            let p_low = p - t * pressure_shift;
+            let p_high = p + (S::from_f64(1.0) - t) * pressure_shift;
+            let (bo_low, mu_low) = Self::branch_props_generic(low, p_low, self.c_o);
+            let (bo_high, mu_high) = Self::branch_props_generic(high, p_high, self.c_o);
+            let inv_bo = t * (bo_high.recip() - bo_low.recip()) + bo_low.recip();
+            let inv_bo_mu = t * ((bo_high * mu_high).recip() - (bo_low * mu_low).recip())
+                + (bo_low * mu_low).recip();
+            let bo = inv_bo.recip();
+            let mu = inv_bo / inv_bo_mu;
             return (bo, mu);
         }
 
@@ -450,12 +472,16 @@ impl PvtTable {
                 return (bo_low, mu_low);
             }
 
-            let (bo_high, mu_high) = Self::branch_props(high, p, self.c_o);
             let t = (rs - low.rs_m3m3) / (high.rs_m3m3 - low.rs_m3m3);
-            return (
-                bo_low + t * (bo_high - bo_low),
-                mu_low + t * (mu_high - mu_low),
-            );
+            let pressure_shift = high.rows[0].p_bar - low.rows[0].p_bar;
+            let p_low = p - t * pressure_shift;
+            let p_high = p + (1.0 - t) * pressure_shift;
+            let (bo_low, mu_low) = Self::branch_props(low, p_low, self.c_o);
+            let (bo_high, mu_high) = Self::branch_props(high, p_high, self.c_o);
+            let inv_bo = 1.0 / bo_low + t * (1.0 / bo_high - 1.0 / bo_low);
+            let inv_bo_mu =
+                1.0 / (bo_low * mu_low) + t * (1.0 / (bo_high * mu_high) - 1.0 / (bo_low * mu_low));
+            return (1.0 / inv_bo, inv_bo / inv_bo_mu);
         }
 
         (sat_row.bo_m3m3, sat_row.mu_o_cp)
@@ -481,29 +507,23 @@ impl PvtTable {
 
     #[allow(dead_code)]
     pub(crate) fn d_bo_d_p(&self, p: f64, rs: f64) -> f64 {
-        let dp = 1.0;
-        let p_lo = (p - dp).max(0.0);
-        let (bo_lo, _) = self.interpolate_oil(p_lo, rs);
-        let (bo_hi, _) = self.interpolate_oil(p + dp, rs);
-        (bo_hi - bo_lo) / (2.0 * dp)
+        self.interpolate_oil_generic(Ad::<1>::variable(p, 0), Ad::<1>::constant(rs))
+            .0
+            .d(0)
     }
 
     #[cfg(test)]
     pub(crate) fn d_bo_d_rs(&self, p: f64, rs: f64) -> f64 {
-        let drs = 1.0;
-        let rs_lo = (rs - drs).max(0.0);
-        let (bo_lo, _) = self.interpolate_oil(p, rs_lo);
-        let (bo_hi, _) = self.interpolate_oil(p, rs + drs);
-        (bo_hi - bo_lo) / (2.0 * drs)
+        self.interpolate_oil_generic(Ad::<1>::constant(p), Ad::<1>::variable(rs, 0))
+            .0
+            .d(0)
     }
 
     #[cfg(test)]
     pub(crate) fn d_bo_sat_d_p(&self, p: f64) -> f64 {
-        let dp = 1.0;
-        let p_lo = (p - dp).max(0.0);
-        let row_lo = self.interpolate(p_lo);
-        let row_hi = self.interpolate(p + dp);
-        (row_hi.bo_m3m3 - row_lo.bo_m3m3) / (2.0 * dp)
+        self.interpolate_saturated_generic(Ad::<1>::variable(p, 0))
+            .bo
+            .d(0)
     }
 
     #[cfg(test)]
@@ -537,29 +557,23 @@ impl PvtTable {
 
     #[cfg(test)]
     pub(crate) fn d_mu_o_d_p(&self, p: f64, rs: f64) -> f64 {
-        let dp = 1.0;
-        let p_lo = (p - dp).max(0.0);
-        let (_, mu_lo) = self.interpolate_oil(p_lo, rs);
-        let (_, mu_hi) = self.interpolate_oil(p + dp, rs);
-        (mu_hi - mu_lo) / (2.0 * dp)
+        self.interpolate_oil_generic(Ad::<1>::variable(p, 0), Ad::<1>::constant(rs))
+            .1
+            .d(0)
     }
 
     #[cfg(test)]
     pub(crate) fn d_mu_o_sat_d_p(&self, p: f64) -> f64 {
-        let dp = 1.0;
-        let p_lo = (p - dp).max(0.0);
-        let row_lo = self.interpolate(p_lo);
-        let row_hi = self.interpolate(p + dp);
-        (row_hi.mu_o_cp - row_lo.mu_o_cp) / (2.0 * dp)
+        self.interpolate_saturated_generic(Ad::<1>::variable(p, 0))
+            .mu_o
+            .d(0)
     }
 
     #[cfg(test)]
     pub(crate) fn d_mu_o_d_rs(&self, p: f64, rs: f64) -> f64 {
-        let drs = 1.0;
-        let rs_lo = (rs - drs).max(0.0);
-        let (_, mu_lo) = self.interpolate_oil(p, rs_lo);
-        let (_, mu_hi) = self.interpolate_oil(p, rs + drs);
-        (mu_hi - mu_lo) / (2.0 * drs)
+        self.interpolate_oil_generic(Ad::<1>::constant(p), Ad::<1>::variable(rs, 0))
+            .1
+            .d(0)
     }
 
     #[cfg(test)]
@@ -582,6 +596,27 @@ impl PvtTable {
 }
 
 impl ReservoirSimulator {
+    /// PVTW inverse formation-volume factor at pressure `p`.
+    ///
+    /// Matches OPM's constant-compressibility water polynomial
+    /// `(1 + X*(1 + X/2))/Bw_ref`, `X=c_w*(p-p_ref)`.
+    pub(crate) fn water_inverse_fvf_generic<S: Scalar>(&self, p: S) -> S {
+        let x = (p - self.water_pvt_reference_pressure_bar) * self.pvt.c_w;
+        (S::from_f64(1.0) + x * (S::from_f64(1.0) + x * 0.5)) / self.b_w.max(1e-9)
+    }
+
+    pub(crate) fn water_inverse_fvf(&self, p: f64) -> f64 {
+        self.water_inverse_fvf_generic(p)
+    }
+
+    pub(crate) fn water_fvf(&self, p: f64) -> f64 {
+        self.water_inverse_fvf(p).max(1e-9).recip()
+    }
+
+    pub(crate) fn water_density_generic<S: Scalar>(&self, p: S) -> S {
+        self.water_inverse_fvf_generic(p) * self.pvt.rho_w
+    }
+
     fn base_oil_fvf(&self, p: f64) -> f64 {
         (self.b_o * f64::exp(-self.pvt.c_o * p)).max(1e-9)
     }
@@ -793,8 +828,8 @@ impl ReservoirSimulator {
         }
     }
 
-    pub(crate) fn get_rho_w(&self, _p: f64) -> f64 {
-        self.pvt.rho_w
+    pub(crate) fn get_rho_w(&self, p: f64) -> f64 {
+        self.water_density_generic(p)
     }
 
     pub(crate) fn get_b_g(&self, p: f64) -> f64 {
@@ -993,6 +1028,152 @@ mod tests {
 
         let derivative = sim.get_d_bo_d_p_for_state(300.0, 0.0, false);
         assert!((derivative + sim.pvt.c_o * oil_hi.bo_m3m3).abs() < 1e-12);
+    }
+
+    #[test]
+    fn pvtw_inverse_fvf_uses_reference_pressure_and_quadratic_compressibility() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_initial_pressure(200.0);
+        sim.set_fluid_compressibilities(1e-5, 5e-5).unwrap();
+        sim.set_rock_properties(0.0, 0.0, 1.0, 1.2).unwrap();
+
+        assert!((sim.water_inverse_fvf(200.0) - 1.0 / 1.2).abs() < 1e-14);
+        let x = 5e-5 * 50.0;
+        let expected = (1.0 + x * (1.0 + x / 2.0)) / 1.2;
+        assert!((sim.water_inverse_fvf(250.0) - expected).abs() < 1e-14);
+        assert!((sim.get_rho_w(250.0) - sim.pvt.rho_w * expected).abs() < 1e-12);
+    }
+
+    #[test]
+    fn pvto_interpolates_inverse_bo_and_inverse_bo_mu_in_pressure_and_rs() {
+        let table = PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 50.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.10,
+                    mu_o_cp: 1.00,
+                    bg_m3m3: 0.02,
+                    mu_g_cp: 0.015,
+                },
+                PvtRow {
+                    p_bar: 350.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.0675,
+                    mu_o_cp: 1.030,
+                    bg_m3m3: 0.02,
+                    mu_g_cp: 0.015,
+                },
+                PvtRow {
+                    p_bar: 150.0,
+                    rs_m3m3: 80.0,
+                    bo_m3m3: 1.25,
+                    mu_o_cp: 0.70,
+                    bg_m3m3: 0.008,
+                    mu_g_cp: 0.018,
+                },
+                PvtRow {
+                    p_bar: 350.0,
+                    rs_m3m3: 80.0,
+                    bo_m3m3: 1.2252,
+                    mu_o_cp: 0.714,
+                    bg_m3m3: 0.008,
+                    mu_g_cp: 0.018,
+                },
+            ],
+            1e-4,
+        );
+
+        let (low_bo, low_mu) = PvtTable::interpolate_oil_segment(
+            &table.oil_branches[0].rows[0],
+            &table.oil_branches[0].rows[1],
+            1.0 / 3.0,
+        );
+        let (high_bo, high_mu) = PvtTable::interpolate_oil_segment(
+            &table.oil_branches[1].rows[0],
+            &table.oil_branches[1].rows[1],
+            0.5,
+        );
+        let rs_t = 0.5;
+        let inv_bo = 1.0 / low_bo + rs_t * (1.0 / high_bo - 1.0 / low_bo);
+        let inv_bo_mu =
+            1.0 / (low_bo * low_mu) + rs_t * (1.0 / (high_bo * high_mu) - 1.0 / (low_bo * low_mu));
+        let expected = (1.0 / inv_bo, inv_bo / inv_bo_mu);
+        let scalar = table.interpolate_oil(200.0, 50.0);
+        let generic = table.interpolate_oil_generic(200.0_f64, 50.0_f64);
+
+        assert!((scalar.0 - expected.0).abs() < 1e-14);
+        assert!((scalar.1 - expected.1).abs() < 1e-14);
+        assert!((generic.0 - scalar.0).abs() < 1e-14);
+        assert!((generic.1 - scalar.1).abs() < 1e-14);
+    }
+
+    #[test]
+    fn pvto_rs_knot_uses_left_extreme_guided_derivative() {
+        let table = PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 50.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.10,
+                    mu_o_cp: 1.00,
+                    bg_m3m3: 0.02,
+                    mu_g_cp: 0.015,
+                },
+                PvtRow {
+                    p_bar: 350.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.0675,
+                    mu_o_cp: 1.030,
+                    bg_m3m3: 0.02,
+                    mu_g_cp: 0.015,
+                },
+                PvtRow {
+                    p_bar: 150.0,
+                    rs_m3m3: 80.0,
+                    bo_m3m3: 1.25,
+                    mu_o_cp: 0.70,
+                    bg_m3m3: 0.008,
+                    mu_g_cp: 0.018,
+                },
+                PvtRow {
+                    p_bar: 350.0,
+                    rs_m3m3: 80.0,
+                    bo_m3m3: 1.2252,
+                    mu_o_cp: 0.714,
+                    bg_m3m3: 0.008,
+                    mu_g_cp: 0.018,
+                },
+                PvtRow {
+                    p_bar: 250.0,
+                    rs_m3m3: 140.0,
+                    bo_m3m3: 1.40,
+                    mu_o_cp: 0.50,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.022,
+                },
+                PvtRow {
+                    p_bar: 350.0,
+                    rs_m3m3: 140.0,
+                    bo_m3m3: 1.3861,
+                    mu_o_cp: 0.505,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.022,
+                },
+            ],
+            1e-4,
+        );
+
+        let ad =
+            table.interpolate_oil_generic(Ad::<1>::constant(200.0), Ad::<1>::variable(80.0, 0));
+        let h = 1e-4;
+        let at_knot = table.interpolate_oil(200.0, 80.0);
+        let from_left = table.interpolate_oil(200.0, 80.0 - h);
+        let fd_bo = (at_knot.0 - from_left.0) / h;
+        let fd_mu = (at_knot.1 - from_left.1) / h;
+
+        assert!((ad.0.d(0) - fd_bo).abs() < 1e-8);
+        assert!((ad.1.d(0) - fd_mu).abs() < 1e-8);
     }
 
     #[test]

@@ -1,6 +1,19 @@
 # FIM Status
 
 This is the consolidated current-state summary for the Rust FIM solver.
+Current execution status: **WATER-005 validated default-off property replay, no direct-day
+promotion 2026-07-22**. Exact gas runs six uncut
+steps at roughly 2x Flow. On water-heavy, OPM endpoint-clipped saturation derivatives remove the
+first BHP-well trajectory split: injector pressure rises to `390 bar` and evaluation-1 water MB
+is `0.313756` versus Flow `0.31375`. The controlled route improves `50 -> 10` substeps and
+`4.39 -> 0.78 s`, but a direct one-day solve still exceeds the held 20-update cap and final
+outputs are not yet Flow-close. WATER-005 reduces the rounded-SWOF evaluation-1 matrix difference
+to `.558%` and controlled FIM work to five substeps, but the fixed direct-day cap still fails.
+See
+`docs/SOLVER_COMPARISON_SUMMARY.md` and
+`docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`; the historical narrative below is retained for
+provenance.
+
 Last full rewrite: 2026-07-05; current decision frontier reconciled 2026-07-13. Older baseline and
 gap sections below remain useful history but are superseded for execution by
 `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`. Bundle N section + gap reprioritization added 2026-07-10; gap #3

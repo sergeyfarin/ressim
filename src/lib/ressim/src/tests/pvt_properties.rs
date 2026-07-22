@@ -388,8 +388,11 @@ fn tabular_undersaturated_pvto_matches_spe1_initial_bo_and_mu_for_rs_127_branch(
     );
 
     let t = (p_initial - p_bubble) / (p_undersat - p_bubble);
-    let expected_bo = bo_bubble + t * (bo_undersat - bo_bubble);
-    let expected_mu = mu_bubble + t * (mu_undersat - mu_bubble);
+    let inv_bo = 1.0 / bo_bubble + t * (1.0 / bo_undersat - 1.0 / bo_bubble);
+    let inv_bo_mu = 1.0 / (bo_bubble * mu_bubble)
+        + t * (1.0 / (bo_undersat * mu_undersat) - 1.0 / (bo_bubble * mu_bubble));
+    let expected_bo = 1.0 / inv_bo;
+    let expected_mu = inv_bo / inv_bo_mu;
     let (bo, mu) = table.interpolate_oil(p_initial, branch_rs);
 
     assert!(

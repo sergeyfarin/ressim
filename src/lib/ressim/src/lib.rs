@@ -142,6 +142,16 @@ pub struct ReservoirSimulator {
     /// (linear-precision floor). Native diagnostic driver only, set via
     /// `set_fim_force_direct_linear`; no wasm surface. Default false = unchanged behavior.
     pub(crate) fim_force_direct_linear: bool,
+    /// WATER-003 native-only replay of OPM's endpoint-extended saturation-function contract.
+    /// At an exact Corey endpoint the property value is unchanged, but its AD derivative is
+    /// frozen, matching both OPM's tabulated law and ResSim's scalar derivative API. Default
+    /// false preserves the production trajectory while the complete FIM lifecycle is measured.
+    pub(crate) fim_opm_endpoint_relperm: bool,
+    /// WATER-005 native-only replay of the corrected water-heavy deck's rounded SWOF table.
+    /// This is deliberately diagnostic-only: it replaces the two-phase Corey property values
+    /// and AD slopes together for every FIM mobility consumer, while default false preserves the
+    /// product's generic Corey contract.
+    pub(crate) fim_opm_water_heavy_swof: bool,
     pub(crate) gas_outer_step_trial_carryover:
         Option<crate::fim::timestep::GasOuterStepTrialCarryover>,
     last_fim_step_stats: Option<reporting::FimStepStats>,
@@ -157,6 +167,10 @@ pub struct ReservoirSimulator {
     depth_reference_m: f64,
     b_o: f64,
     b_w: f64,
+    /// Pressure at which `b_w` is defined. `set_initial_pressure()` establishes the current
+    /// PVTW reference because the public ResSim input model has one uniform initial pressure and
+    /// no separate PVTW-reference field.
+    water_pvt_reference_pressure_bar: f64,
     rate_history: Vec<TimePointRates>,
     pub(crate) sat_gas: Vec<f64>,
     pub(crate) scal_3p: Option<RockFluidPropsThreePhase>,

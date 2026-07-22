@@ -20,19 +20,19 @@ use nalgebra::{DMatrix, DVector};
 use sprs::CsMat;
 
 use super::capture::{
-    FimCapturedSystem, capture_dir_from_env, load_captures, y2b2_capture_dir_from_env,
-    y2d6_capture_dir_from_env, y2d6_corpus_dir_from_env,
+    capture_dir_from_env, capture_sequence_dir_from_env, load_captures, y2b2_capture_dir_from_env,
+    y2d6_capture_dir_from_env, y2d6_corpus_dir_from_env, FimCapturedSystem,
 };
 use super::flow_lifecycle::FlowComponentOracle;
 use super::gmres_block_jacobi::{
-    self, CprFineSmootherKind, CprPressureRestrictionKind, coarse_factorization_lab_compare,
-    solve_with_restriction_kind, solve_with_smoother_and_restriction,
+    self, coarse_factorization_lab_compare, solve_with_restriction_kind,
+    solve_with_smoother_and_restriction, CprFineSmootherKind, CprPressureRestrictionKind,
 };
 use super::sparse_lu_debug;
 use super::well_schur;
 use super::{
-    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
-    solve_linearized_system,
+    solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
+    FimLinearSolverKind,
 };
 use crate::fim::scaling::EquationScaling;
 
@@ -56,6 +56,977 @@ fn residual_norm(jacobian: &CsMat<f64>, solution: &DVector<f64>, rhs: &DVector<f
     residual_vector(jacobian, solution, rhs).norm()
 }
 
+/// WATER-002's matched evaluation-0 oracle. Flow exports its post-well-Schur two-phase system
+/// as `[oil, water] x [Sw, pressure(Pa)]`; ResSim keeps explicit well unknowns and a third,
+/// pinned cell slot in two-phase mode. This lab removes only those representation differences,
+/// solves both raw systems, and reports the largest remaining mapped coefficients.
+///
+/// Required inputs:
+/// - `FIM_CAPTURE_SEQUENCE_DIR`: the corrected-deck ResSim one-day probe capture directory;
+/// - `FIM_WATER002_FLOW_MATRIX`: Flow's evaluation-0 MatrixMarket matrix;
+/// - `FIM_WATER002_FLOW_VECTOR`: the matching MatrixMarket RHS.
+#[test]
+#[ignore]
+fn solver_lab_water002_matched_first_correction() {
+    use std::{cmp::Ordering, fs, path::Path};
+
+    fn matrix_market_coordinate(path: &Path) -> DMatrix<f64> {
+        let content = fs::read_to_string(path).expect("read Flow MatrixMarket matrix");
+        let mut lines = content.lines().filter(|line| !line.starts_with('%'));
+        let shape = lines.next().expect("Flow matrix shape");
+        let shape: Vec<usize> = shape
+            .split_whitespace()
+            .map(|value| value.parse().expect("integer Flow matrix shape"))
+            .collect();
+        assert_eq!(shape.len(), 3);
+        assert_eq!(shape[0], shape[1]);
+        let mut matrix = DMatrix::zeros(shape[0], shape[1]);
+        let mut count = 0usize;
+        for line in lines {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            assert_eq!(fields.len(), 3);
+            let row = fields[0].parse::<usize>().expect("Flow matrix row") - 1;
+            let col = fields[1].parse::<usize>().expect("Flow matrix column") - 1;
+            let value = fields[2].parse::<f64>().expect("Flow matrix value");
+            matrix[(row, col)] += value;
+            count += 1;
+        }
+        assert_eq!(count, shape[2]);
+        matrix
+    }
+
+    fn matrix_market_vector(path: &Path) -> DVector<f64> {
+        let content = fs::read_to_string(path).expect("read Flow MatrixMarket vector");
+        let mut lines = content.lines().filter(|line| !line.starts_with('%'));
+        let shape: Vec<usize> = lines
+            .next()
+            .expect("Flow vector shape")
+            .split_whitespace()
+            .map(|value| value.parse().expect("integer Flow vector shape"))
+            .collect();
+        assert_eq!(shape.len(), 2);
+        assert_eq!(shape[1], 1);
+        let values: Vec<f64> = lines
+            .map(|line| line.trim().parse().expect("Flow vector value"))
+            .collect();
+        assert_eq!(values.len(), shape[0]);
+        DVector::from_vec(values)
+    }
+
+    let capture_dir = capture_sequence_dir_from_env()
+        .expect("set FIM_CAPTURE_SEQUENCE_DIR to the WATER-002 ResSim capture directory");
+    let systems = load_captures(&capture_dir).expect("load WATER-002 ResSim captures");
+    let system = systems
+        .first()
+        .expect("WATER-002 capture must contain evaluation 0");
+    let layout = system
+        .layout
+        .expect("WATER-002 capture requires block layout");
+    assert_eq!((layout.cell_block_count, layout.cell_block_size), (432, 3));
+
+    let elimination = well_schur::eliminate_wells(
+        &system.jacobian,
+        &system.rhs,
+        layout,
+        system.equation_scaling.as_ref(),
+    )
+    .expect("WATER-002 capture must contain explicit well unknowns");
+    let ressim_matrix = elimination.reduced_jacobian;
+    let ressim_rhs = elimination.reduced_rhs;
+    assert_eq!(ressim_matrix.rows(), 1296);
+
+    // In two-phase mode the third slot is a structural pin, not a Flow primary. Prove that its
+    // equation cannot feed back into the physical correction before projecting it away.
+    for cell in 0..432 {
+        let row = 3 * cell + 2;
+        assert!(
+            ressim_rhs[row].abs() < 1e-12,
+            "nonzero pinned RHS at cell {cell}"
+        );
+        let entries = ressim_matrix.outer_view(row).expect("pinned row");
+        assert!(
+            entries
+                .indices()
+                .iter()
+                .zip(entries.data())
+                .all(|(&col, &value)| col == row || value.abs() < 1e-14),
+            "pinned row {row} couples back into physical primaries"
+        );
+    }
+
+    let flow_matrix_path = std::env::var("FIM_WATER002_FLOW_MATRIX")
+        .expect("set FIM_WATER002_FLOW_MATRIX to Flow evaluation-0 matrix");
+    let flow_vector_path = std::env::var("FIM_WATER002_FLOW_VECTOR")
+        .expect("set FIM_WATER002_FLOW_VECTOR to Flow evaluation-0 vector");
+    let flow_matrix = matrix_market_coordinate(Path::new(&flow_matrix_path));
+    let flow_rhs = matrix_market_vector(Path::new(&flow_vector_path));
+    assert_eq!((flow_matrix.nrows(), flow_matrix.ncols()), (864, 864));
+
+    let flow_solution = flow_matrix
+        .clone()
+        .lu()
+        .solve(&flow_rhs)
+        .expect("Flow evaluation-0 matrix must be nonsingular");
+    let flow_reduction =
+        (&flow_matrix * &flow_solution - &flow_rhs).norm() / flow_rhs.norm().max(f64::EPSILON);
+    assert!(
+        flow_reduction < 1e-10,
+        "Flow dense solve reduction {flow_reduction:e}"
+    );
+
+    let direct_options = FimLinearSolveOptions {
+        kind: FimLinearSolverKind::SparseLuDebug,
+        eliminate_wells: false,
+        ..FimLinearSolveOptions::default()
+    };
+    let ressim_solution = solve_linearized_system(
+        &ressim_matrix,
+        &ressim_rhs,
+        &direct_options,
+        Some(elimination.reduced_layout),
+        elimination.reduced_equation_scaling.as_ref(),
+    );
+    assert!(ressim_solution.converged);
+    assert!(
+        residual_norm(&ressim_matrix, &ressim_solution.solution, &ressim_rhs)
+            / ressim_rhs.norm().max(f64::EPSILON)
+            < 1e-10
+    );
+
+    const DT_SECONDS: f64 = 86_400.0;
+    let flow_to_ressim_row = |flow_row: usize| {
+        let cell = flow_row / 2;
+        let equation = flow_row % 2;
+        3 * cell + if equation == 0 { 1 } else { 0 }
+    };
+    let flow_to_ressim_col = |flow_col: usize| {
+        let cell = flow_col / 2;
+        let primary = flow_col % 2;
+        3 * cell + if primary == 0 { 1 } else { 0 }
+    };
+    let flow_scale = |flow_col: usize| DT_SECONDS * if flow_col % 2 == 1 { 1.0e5 } else { 1.0 };
+
+    let mut differences = Vec::new();
+    let mut mapped_flow_norm2 = 0.0;
+    let mut delta_norm2 = 0.0;
+    let mut reservoir_only_delta_norm2 = 0.0;
+    let mut reservoir_only_matrix = DMatrix::zeros(864, 864);
+    let mut reservoir_only_rhs = DVector::zeros(864);
+    for flow_row in 0..864 {
+        let ressim_row = flow_to_ressim_row(flow_row);
+        reservoir_only_rhs[flow_row] = system.rhs[ressim_row];
+        for flow_col in 0..864 {
+            let ressim_col = flow_to_ressim_col(flow_col);
+            let flow_value = flow_matrix[(flow_row, flow_col)] * flow_scale(flow_col);
+            let ressim_value = ressim_matrix
+                .get(ressim_row, ressim_col)
+                .copied()
+                .unwrap_or(0.0);
+            let reservoir_only_value = system
+                .jacobian
+                .get(ressim_row, ressim_col)
+                .copied()
+                .unwrap_or(0.0);
+            reservoir_only_matrix[(flow_row, flow_col)] = reservoir_only_value;
+            let delta = ressim_value - flow_value;
+            let reservoir_only_delta = reservoir_only_value - flow_value;
+            mapped_flow_norm2 += flow_value * flow_value;
+            delta_norm2 += delta * delta;
+            reservoir_only_delta_norm2 += reservoir_only_delta * reservoir_only_delta;
+            if delta != 0.0 {
+                differences.push((
+                    delta.abs(),
+                    delta,
+                    flow_row,
+                    flow_col,
+                    flow_value,
+                    ressim_value,
+                ));
+            }
+        }
+    }
+    differences.sort_by(|left, right| right.0.partial_cmp(&left.0).unwrap_or(Ordering::Equal));
+
+    let mut rhs_delta_norm2 = 0.0;
+    let mut flow_rhs_norm2 = 0.0;
+    for flow_row in 0..864 {
+        let ressim_row = flow_to_ressim_row(flow_row);
+        let mapped_flow_rhs = -flow_rhs[flow_row] * DT_SECONDS;
+        let delta = ressim_rhs[ressim_row] - mapped_flow_rhs;
+        flow_rhs_norm2 += mapped_flow_rhs * mapped_flow_rhs;
+        rhs_delta_norm2 += delta * delta;
+    }
+
+    let well_schur_relative_delta = (delta_norm2 / mapped_flow_norm2.max(f64::EPSILON)).sqrt();
+    let reservoir_only_relative_delta =
+        (reservoir_only_delta_norm2 / mapped_flow_norm2.max(f64::EPSILON)).sqrt();
+    let rhs_relative_delta = (rhs_delta_norm2 / flow_rhs_norm2.max(f64::EPSILON)).sqrt();
+    assert!(well_schur_relative_delta > 3.0);
+    assert!(reservoir_only_relative_delta < 0.01);
+    assert!(rhs_relative_delta < 0.03);
+    println!(
+        "WATER-002 mapped matrix relative Frobenius delta: well-Schur={:.9e} reservoir-only={:.9e}; rhs relative delta={:.9e}",
+        well_schur_relative_delta, reservoir_only_relative_delta, rhs_relative_delta,
+    );
+    for &(abs_delta, delta, flow_row, flow_col, flow_value, ressim_value) in
+        differences.iter().take(16)
+    {
+        let row_cell = flow_row / 2;
+        let row_name = if flow_row % 2 == 0 { "oil" } else { "water" };
+        let col_cell = flow_col / 2;
+        let col_name = if flow_col % 2 == 0 { "Sw" } else { "pressure" };
+        println!(
+            "WATER-002 delta |d|={abs_delta:.9e} d={delta:.9e} row={row_name}@{row_cell} col={col_name}@{col_cell} Flow={flow_value:.9e} ResSim={ressim_value:.9e}"
+        );
+    }
+
+    for cell in [0usize, 143] {
+        let flow_sw = -flow_solution[2 * cell];
+        let flow_dp = -flow_solution[2 * cell + 1] / 1.0e5;
+        let ressim_dp = ressim_solution.solution[3 * cell];
+        let ressim_sw = ressim_solution.solution[3 * cell + 1];
+        println!(
+            "WATER-002 correction cell={cell} Flow=[dp={flow_dp:.12e},dSw={flow_sw:.12e}] ResSim=[dp={ressim_dp:.12e},dSw={ressim_sw:.12e}]"
+        );
+    }
+    let flow_cell0_dp = -flow_solution[1] / 1.0e5;
+    let flow_cell0_sw = -flow_solution[0];
+    let ressim_cell0_dp = ressim_solution.solution[0];
+    let ressim_cell0_sw = ressim_solution.solution[1];
+    assert!((flow_cell0_dp - 110.703482).abs() < 1e-3);
+    assert!((flow_cell0_sw - 160.360789).abs() < 1e-3);
+    assert!((ressim_cell0_dp - (-196.932390)).abs() < 1e-3);
+    assert!((ressim_cell0_sw - 0.792745).abs() < 1e-6);
+
+    // Diagnostic-only attribution: Flow's exported/solved reservoir matrix has no corresponding
+    // single-perforation BHP-well Schur entries. Solve ResSim's unmodified reservoir block and
+    // RHS with only its explicit well rows/columns omitted. If this reproduces Flow's raw
+    // correction, it localizes the first trajectory split to the well linearization contract;
+    // it does not authorize disabling well coupling in production.
+    let reservoir_only_solution = reservoir_only_matrix
+        .clone()
+        .lu()
+        .solve(&reservoir_only_rhs)
+        .expect("ResSim reservoir-only WATER-002 block must be nonsingular");
+    let reservoir_only_reduction =
+        (&reservoir_only_matrix * &reservoir_only_solution - &reservoir_only_rhs).norm()
+            / reservoir_only_rhs.norm().max(f64::EPSILON);
+    assert!(reservoir_only_reduction < 1e-10);
+    for cell in [0usize, 143] {
+        let flow_sw = -flow_solution[2 * cell];
+        let flow_dp = -flow_solution[2 * cell + 1] / 1.0e5;
+        let reservoir_only_dp = reservoir_only_solution[2 * cell + 1];
+        let reservoir_only_sw = reservoir_only_solution[2 * cell];
+        println!(
+            "WATER-002 no-well-Schur counterfactual cell={cell} Flow=[dp={flow_dp:.12e},dSw={flow_sw:.12e}] ResSim=[dp={reservoir_only_dp:.12e},dSw={reservoir_only_sw:.12e}]"
+        );
+    }
+}
+
+/// WATER-004's matched evaluation-1 oracle.  This deliberately uses the system assembled
+/// *after* the shared first applied update (WATER-003), before considering another nonlinear
+/// policy change.  It leaves the Flow/ResSim primary and unit mapping explicit so an export
+/// from either side cannot accidentally be compared in its native ordering.
+///
+/// Required inputs:
+/// - `FIM_CAPTURE_SEQUENCE_DIR`: WATER-003 endpoint-replay sequential capture directory;
+/// - `FIM_WATER004_FLOW_MATRIX` / `FIM_WATER004_FLOW_VECTOR`: Flow `nit_1` files.
+#[test]
+#[ignore]
+fn solver_lab_water004_matched_second_correction() {
+    use std::{fs, path::Path};
+
+    fn matrix(path: &Path) -> DMatrix<f64> {
+        let text = fs::read_to_string(path).expect("read Flow MatrixMarket matrix");
+        let mut lines = text.lines().filter(|line| !line.starts_with('%'));
+        let dims: Vec<usize> = lines
+            .next()
+            .expect("matrix dimensions")
+            .split_whitespace()
+            .map(|x| x.parse().expect("matrix dimension"))
+            .collect();
+        assert_eq!(dims.len(), 3);
+        let mut result = DMatrix::zeros(dims[0], dims[1]);
+        for line in lines {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            assert_eq!(f.len(), 3);
+            result[(
+                f[0].parse::<usize>().unwrap() - 1,
+                f[1].parse::<usize>().unwrap() - 1,
+            )] += f[2].parse::<f64>().unwrap();
+        }
+        result
+    }
+    fn vector(path: &Path) -> DVector<f64> {
+        let text = fs::read_to_string(path).expect("read Flow MatrixMarket vector");
+        let mut lines = text.lines().filter(|line| !line.starts_with('%'));
+        let dims: Vec<usize> = lines
+            .next()
+            .expect("vector dimensions")
+            .split_whitespace()
+            .map(|x| x.parse().expect("vector dimension"))
+            .collect();
+        assert_eq!(dims[1], 1);
+        let values: Vec<f64> = lines
+            .map(|x| x.trim().parse().expect("vector entry"))
+            .collect();
+        assert_eq!(values.len(), dims[0]);
+        DVector::from_vec(values)
+    }
+
+    let dir = capture_sequence_dir_from_env()
+        .expect("set FIM_CAPTURE_SEQUENCE_DIR to WATER-003 sequential captures");
+    let systems = load_captures(&dir).expect("load WATER-004 captures");
+    let system = systems
+        .get(1)
+        .expect("WATER-004 needs post-update evaluation 1");
+    assert_eq!(system.metadata.newton_iteration, 1);
+    let layout = system.layout.expect("WATER-004 capture needs block layout");
+    assert_eq!((layout.cell_block_count, layout.cell_block_size), (432, 3));
+    let eliminated = well_schur::eliminate_wells(
+        &system.jacobian,
+        &system.rhs,
+        layout,
+        system.equation_scaling.as_ref(),
+    )
+    .expect("WATER-004 needs explicit wells");
+
+    let flow = matrix(Path::new(
+        &std::env::var("FIM_WATER004_FLOW_MATRIX")
+            .expect("set FIM_WATER004_FLOW_MATRIX to Flow nit_1 matrix"),
+    ));
+    let flow_rhs = vector(Path::new(
+        &std::env::var("FIM_WATER004_FLOW_VECTOR")
+            .expect("set FIM_WATER004_FLOW_VECTOR to Flow nit_1 vector"),
+    ));
+    assert_eq!(
+        (flow.nrows(), flow.ncols(), flow_rhs.len()),
+        (864, 864, 864)
+    );
+    let flow_x = flow
+        .clone()
+        .lu()
+        .solve(&flow_rhs)
+        .expect("Flow nit_1 is nonsingular");
+    let options = FimLinearSolveOptions {
+        kind: FimLinearSolverKind::SparseLuDebug,
+        eliminate_wells: false,
+        ..FimLinearSolveOptions::default()
+    };
+    let ressim = solve_linearized_system(
+        &eliminated.reduced_jacobian,
+        &eliminated.reduced_rhs,
+        &options,
+        Some(eliminated.reduced_layout),
+        eliminated.reduced_equation_scaling.as_ref(),
+    );
+    assert!(ressim.converged);
+
+    const DT: f64 = 86_400.0;
+    let row = |i: usize| 3 * (i / 2) + if i % 2 == 0 { 1 } else { 0 };
+    let col_scale = |j: usize| DT * if j % 2 == 0 { 1.0 } else { 1.0e5 };
+    let mut flow_norm2 = 0.0;
+    let mut matrix_delta2 = 0.0;
+    let mut rhs_norm2 = 0.0;
+    let mut rhs_delta2 = 0.0;
+    for i in 0..864 {
+        let mapped_rhs = -flow_rhs[i] * DT;
+        rhs_norm2 += mapped_rhs * mapped_rhs;
+        rhs_delta2 += (eliminated.reduced_rhs[row(i)] - mapped_rhs).powi(2);
+        for j in 0..864 {
+            let mapped = flow[(i, j)] * col_scale(j);
+            flow_norm2 += mapped * mapped;
+            matrix_delta2 += (eliminated
+                .reduced_jacobian
+                .get(row(i), row(j))
+                .copied()
+                .unwrap_or(0.0)
+                - mapped)
+                .powi(2);
+        }
+    }
+    let matrix_relative = (matrix_delta2 / flow_norm2.max(f64::EPSILON)).sqrt();
+    let rhs_relative = (rhs_delta2 / rhs_norm2.max(f64::EPSILON)).sqrt();
+    let flow_dp = -flow_x[1] / 1.0e5;
+    let flow_dsw = -flow_x[0];
+    let rs_dp = ressim.solution[0];
+    let rs_dsw = ressim.solution[1];
+    // Both solvers use the held +/-0.2 saturation chop in this experiment.  The reported
+    // pressure value is raw: Flow's own pressure safeguard is lifecycle-specific and must not
+    // be silently substituted for ResSim's fixed 200-bar cap.
+    println!(
+        "WATER-004 eval1 matrix_rel={matrix_relative:.9e} rhs_rel={rhs_relative:.9e}; cell0 raw Flow=[dp={flow_dp:.9e},dSw={flow_dsw:.9e}] ResSim=[dp={rs_dp:.9e},dSw={rs_dsw:.9e}]; ResSim applied=[dp={:.9e},dSw={:.9e}]",
+        rs_dp.clamp(-200.0, 200.0),
+        rs_dsw.clamp(-0.2, 0.2),
+    );
+    assert!(matrix_relative.is_finite() && rhs_relative.is_finite());
+    assert!(flow_dp.is_finite() && flow_dsw.is_finite() && rs_dp.is_finite() && rs_dsw.is_finite());
+}
+
+/// WATER-012: algebraically separate ResSim's reservoir block from its well-Schur contribution
+/// at evaluation 2. Flow's normal `system_cpr` matrix export omits matrix-free well terms, while
+/// materializing them is incompatible with that linear policy; this diagnostic is not a
+/// same-Flow-lifecycle verdict until Flow can dump a materialized copy of its live matrix.
+#[test]
+#[ignore]
+fn solver_lab_water012_eval2_reservoir_well_decomposition() {
+    use std::{cmp::Ordering, fs, path::Path};
+
+    fn matrix(path: &Path) -> DMatrix<f64> {
+        let text = fs::read_to_string(path).expect("read Flow MatrixMarket matrix");
+        let mut lines = text.lines().filter(|line| !line.starts_with('%'));
+        let dims: Vec<usize> = lines
+            .next()
+            .expect("matrix dimensions")
+            .split_whitespace()
+            .map(|x| x.parse().expect("matrix dimension"))
+            .collect();
+        let mut result = DMatrix::zeros(dims[0], dims[1]);
+        for line in lines {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            result[(
+                f[0].parse::<usize>().expect("matrix row") - 1,
+                f[1].parse::<usize>().expect("matrix column") - 1,
+            )] += f[2].parse::<f64>().expect("matrix value");
+        }
+        result
+    }
+    fn vector(path: &Path) -> DVector<f64> {
+        let text = fs::read_to_string(path).expect("read Flow MatrixMarket vector");
+        let mut lines = text.lines().filter(|line| !line.starts_with('%'));
+        let dims: Vec<usize> = lines
+            .next()
+            .expect("vector dimensions")
+            .split_whitespace()
+            .map(|x| x.parse().expect("vector dimension"))
+            .collect();
+        assert_eq!(dims[1], 1);
+        let values: Vec<f64> = lines
+            .map(|x| x.trim().parse().expect("vector value"))
+            .collect();
+        assert_eq!(values.len(), dims[0]);
+        DVector::from_vec(values)
+    }
+
+    let dir = capture_sequence_dir_from_env()
+        .expect("set FIM_CAPTURE_SEQUENCE_DIR to WATER-005 sequential captures");
+    let systems = load_captures(&dir).expect("load WATER-012 captures");
+    let system = systems.get(2).expect("WATER-012 needs evaluation 2");
+    assert_eq!(system.metadata.newton_iteration, 2);
+    let layout = system.layout.expect("WATER-012 capture requires block layout");
+    let eliminated = well_schur::eliminate_wells(
+        &system.jacobian,
+        &system.rhs,
+        layout,
+        system.equation_scaling.as_ref(),
+    )
+    .expect("WATER-012 needs explicit wells");
+    let flow = matrix(Path::new(
+        &std::env::var("FIM_WATER012_FLOW_MATRIX")
+            .expect("set FIM_WATER012_FLOW_MATRIX to Flow nit_2 matrix"),
+    ));
+    let flow_rhs = vector(Path::new(
+        &std::env::var("FIM_WATER012_FLOW_VECTOR")
+            .expect("set FIM_WATER012_FLOW_VECTOR to Flow nit_2 vector"),
+    ));
+    assert_eq!((flow.nrows(), flow.ncols(), flow_rhs.len()), (864, 864, 864));
+    let flow_x = flow.clone().lu().solve(&flow_rhs).expect("Flow nit_2 nonsingular");
+    let ressim = solve_linearized_system(
+        &eliminated.reduced_jacobian,
+        &eliminated.reduced_rhs,
+        &FimLinearSolveOptions {
+            kind: FimLinearSolverKind::SparseLuDebug,
+            eliminate_wells: false,
+            ..FimLinearSolveOptions::default()
+        },
+        Some(eliminated.reduced_layout),
+        eliminated.reduced_equation_scaling.as_ref(),
+    );
+    assert!(ressim.converged && ressim.solution.iter().all(|value| value.is_finite()));
+
+    const DT: f64 = 86_400.0;
+    let row = |i: usize| 3 * (i / 2) + if i % 2 == 0 { 1 } else { 0 };
+    let col_scale = |j: usize| DT * if j % 2 == 0 { 1.0 } else { 1.0e5 };
+    let mut flow_norm2 = 0.0;
+    let mut matrix_delta2 = 0.0;
+    let mut reservoir_only_delta2 = 0.0;
+    let mut schur_increment2 = 0.0;
+    let mut differences = Vec::new();
+    let mut rhs_norm2 = 0.0;
+    let mut rhs_delta2 = 0.0;
+    for i in 0..864 {
+        let mapped_rhs = -flow_rhs[i] * DT;
+        rhs_norm2 += mapped_rhs * mapped_rhs;
+        rhs_delta2 += (eliminated.reduced_rhs[row(i)] - mapped_rhs).powi(2);
+        for j in 0..864 {
+            let mapped = flow[(i, j)] * col_scale(j);
+            let reservoir_only = system.jacobian.get(row(i), row(j)).copied().unwrap_or(0.0);
+            let reduced = eliminated
+                .reduced_jacobian
+                .get(row(i), row(j))
+                .copied()
+                .unwrap_or(0.0);
+            flow_norm2 += mapped * mapped;
+            matrix_delta2 += (reduced - mapped).powi(2);
+            reservoir_only_delta2 += (reservoir_only - mapped).powi(2);
+            schur_increment2 += (reduced - reservoir_only).powi(2);
+            differences.push((
+                (reduced - mapped).abs(),
+                i,
+                j,
+                mapped,
+                reservoir_only,
+                reduced,
+            ));
+        }
+    }
+    differences.sort_by(|left, right| right.0.partial_cmp(&left.0).unwrap_or(Ordering::Equal));
+    let correction = |cell: usize| {
+        let flow_dsw = -flow_x[2 * cell];
+        let flow_dp = -flow_x[2 * cell + 1] / 1e5;
+        let rs_dp = ressim.solution[3 * cell];
+        let rs_dsw = ressim.solution[3 * cell + 1];
+        (flow_dp, flow_dsw, rs_dp, rs_dsw)
+    };
+    let injector = correction(0);
+    let producer = correction(143);
+    println!(
+        "WATER-012 eval2 matrix_rel={{reduced={:.9e},reservoir_only={:.9e},schur_increment={:.9e}}} rhs_rel={:.9e}; injector raw Flow=[dp={:.9e},dSw={:.9e}] ResSim=[dp={:.9e},dSw={:.9e}] saturation-applied Flow/ResSim=[{:.9e},{:.9e}]; producer raw Flow=[dp={:.9e},dSw={:.9e}] ResSim=[dp={:.9e},dSw={:.9e}] saturation-applied Flow/ResSim=[{:.9e},{:.9e}]",
+        (matrix_delta2 / flow_norm2.max(f64::EPSILON)).sqrt(),
+        (reservoir_only_delta2 / flow_norm2.max(f64::EPSILON)).sqrt(),
+        (schur_increment2 / flow_norm2.max(f64::EPSILON)).sqrt(),
+        (rhs_delta2 / rhs_norm2.max(f64::EPSILON)).sqrt(),
+        injector.0, injector.1, injector.2, injector.3,
+        injector.1.clamp(-0.2, 0.2), injector.3.clamp(-0.2, 0.2),
+        producer.0, producer.1, producer.2, producer.3,
+        producer.1.clamp(-0.2, 0.2), producer.3.clamp(-0.2, 0.2),
+    );
+    for &(_, flow_row, flow_col, flow_value, reservoir_only, reduced) in differences.iter().take(12) {
+        let row_name = if flow_row % 2 == 0 { "oil" } else { "water" };
+        let col_name = if flow_col % 2 == 0 { "Sw" } else { "pressure" };
+        println!(
+            "WATER-012 term row={row_name}@{} col={col_name}@{} Flow={flow_value:.9e} ResSim={{reservoir={reservoir_only:.9e},schur={:.9e},reduced={reduced:.9e}}}",
+            flow_row / 2,
+            flow_col / 2,
+            reduced - reservoir_only,
+        );
+    }
+    assert!(matrix_delta2.is_finite() && rhs_delta2.is_finite());
+    assert!(injector.0.is_finite() && injector.1.is_finite());
+    assert!(producer.0.is_finite() && producer.1.is_finite());
+}
+
+/// WATER-006's fixed-policy late-tail oracle. This does not change a Newton option: it solves
+/// the already-captured OPM-aligned WATER-005 systems with CPR and sparse LU, then publishes
+/// comparable full-system residuals, reservoir/well partitions, and correction deltas.
+#[test]
+#[ignore]
+fn solver_lab_water006_late_tail_backend_neutral() {
+    let dir = capture_sequence_dir_from_env()
+        .expect("set FIM_CAPTURE_SEQUENCE_DIR to WATER-005's sequential direct-day capture");
+    let systems = load_captures(&dir).expect("load WATER-006 captures");
+    assert!(
+        systems.len() >= 20,
+        "WATER-006 needs the full held 20-update trace"
+    );
+
+    for system in systems
+        .iter()
+        .filter(|system| system.metadata.newton_iteration >= 14)
+    {
+        let layout = system
+            .layout
+            .expect("WATER-006 capture requires block layout");
+        let cpr = solve_linearized_system(
+            &system.jacobian,
+            &system.rhs,
+            &FimLinearSolveOptions::default(),
+            Some(layout),
+            system.equation_scaling.as_ref(),
+        );
+        let direct = solve_linearized_system(
+            &system.jacobian,
+            &system.rhs,
+            &FimLinearSolveOptions {
+                kind: FimLinearSolverKind::SparseLuDebug,
+                ..FimLinearSolveOptions::default()
+            },
+            Some(layout),
+            system.equation_scaling.as_ref(),
+        );
+        assert!(cpr.solution.iter().all(|value| value.is_finite()));
+        assert!(direct.solution.iter().all(|value| value.is_finite()));
+
+        let cpr_residual = residual_vector(&system.jacobian, &cpr.solution, &system.rhs);
+        let direct_residual = residual_vector(&system.jacobian, &direct.solution, &system.rhs);
+        let reservoir_end = layout.cell_block_count * layout.cell_block_size;
+        let cpr_reservoir = cpr_residual.rows(0, reservoir_end).norm();
+        let cpr_well = cpr_residual
+            .rows(reservoir_end, cpr_residual.len() - reservoir_end)
+            .norm();
+        let direct_reservoir = direct_residual.rows(0, reservoir_end).norm();
+        let direct_well = direct_residual
+            .rows(reservoir_end, direct_residual.len() - reservoir_end)
+            .norm();
+        let correction_delta_inf = cpr
+            .solution
+            .iter()
+            .zip(direct.solution.iter())
+            .map(|(left, right)| (left - right).abs())
+            .fold(0.0_f64, f64::max);
+        let direct_inf = direct
+            .solution
+            .iter()
+            .map(|value| value.abs())
+            .fold(0.0_f64, f64::max);
+        let rhs_norm = system.rhs.norm().max(f64::EPSILON);
+        println!(
+            "WATER-006 iter={} rhs={:.9e} cpr={{converged={},reduction={:.9e},full={:.9e},reservoir={:.9e},well={:.9e}}} direct={{converged={},reduction={:.9e},full={:.9e},reservoir={:.9e},well={:.9e}}} correction_delta_inf={:.9e} relative={:.9e}",
+            system.metadata.newton_iteration,
+            rhs_norm,
+            cpr.converged,
+            cpr_residual.norm() / rhs_norm,
+            cpr_residual.norm(),
+            cpr_reservoir,
+            cpr_well,
+            direct.converged,
+            direct_residual.norm() / rhs_norm,
+            direct_residual.norm(),
+            direct_reservoir,
+            direct_well,
+            correction_delta_inf,
+            correction_delta_inf / direct_inf.max(f64::EPSILON),
+        );
+        assert!(cpr_residual.norm().is_finite() && direct_residual.norm().is_finite());
+    }
+}
+
+/// WATER-007: distinguish CPR's preconditioned stopping signal from full-system recovery.
+/// The strict option is an offline measurement only; no live Newton option is changed.
+#[test]
+#[ignore]
+fn solver_lab_water007_cpr_stop_and_recovery_contract() {
+    let dir = capture_sequence_dir_from_env()
+        .expect("set FIM_CAPTURE_SEQUENCE_DIR to WATER-005's sequential direct-day capture");
+    let systems = load_captures(&dir).expect("load WATER-007 captures");
+    let system = systems
+        .iter()
+        .find(|system| system.metadata.newton_iteration == 19)
+        .expect("WATER-007 needs the final pre-cap system");
+    let layout = system
+        .layout
+        .expect("WATER-007 capture requires block layout");
+    let production = FimLinearSolveOptions::default();
+    let (default_report, default_history) =
+        well_schur::solve_with_well_elimination_configuration_and_history(
+            &system.jacobian,
+            &system.rhs,
+            &production,
+            layout,
+            system.equation_scaling.as_ref(),
+            CprFineSmootherKind::BlockIlu0,
+            CprPressureRestrictionKind::QuasiImpes,
+        );
+    let default_tail = default_history
+        .last()
+        .expect("default CPR must apply a correction");
+    assert!(
+        (default_tail.true_residual_norm - default_report.final_residual_norm).abs()
+            <= 1e-10 * default_report.final_residual_norm.max(1.0),
+        "well-Schur recovery must report the same full-system residual as its recovered snapshot"
+    );
+
+    let strict = FimLinearSolveOptions {
+        relative_tolerance: 1e-8,
+        max_iterations: 60,
+        ..production
+    };
+    let (strict_report, strict_history) =
+        well_schur::solve_with_well_elimination_configuration_and_history(
+            &system.jacobian,
+            &system.rhs,
+            &strict,
+            layout,
+            system.equation_scaling.as_ref(),
+            CprFineSmootherKind::BlockIlu0,
+            CprPressureRestrictionKind::QuasiImpes,
+        );
+    let strict_tail = strict_history
+        .last()
+        .expect("strict CPR must apply a correction");
+    assert!(
+        (strict_tail.true_residual_norm - strict_report.final_residual_norm).abs()
+            <= 1e-10 * strict_report.final_residual_norm.max(1.0),
+        "strict recovered snapshot must retain the full-system residual contract"
+    );
+    let rhs_norm = system.rhs.norm().max(f64::EPSILON);
+    println!(
+        "WATER-007 iter=19 default={{converged={},iters={},full_reduction={:.9e},estimate={:.9e},preconditioned={:.9e},true={:.9e}}} strict={{converged={},iters={},full_reduction={:.9e},estimate={:.9e},preconditioned={:.9e},true={:.9e}}}",
+        default_report.converged,
+        default_report.iterations,
+        default_report.final_residual_norm / rhs_norm,
+        default_tail.estimated_preconditioned_residual_norm,
+        default_tail.actual_preconditioned_residual_norm,
+        default_tail.true_residual_norm,
+        strict_report.converged,
+        strict_report.iterations,
+        strict_report.final_residual_norm / rhs_norm,
+        strict_tail.estimated_preconditioned_residual_norm,
+        strict_tail.actual_preconditioned_residual_norm,
+        strict_tail.true_residual_norm,
+    );
+    assert!(default_report
+        .solution
+        .iter()
+        .all(|value| value.is_finite()));
+    assert!(strict_report.solution.iter().all(|value| value.is_finite()));
+}
+
+/// WATER-008: source inspection established that Flow passes `tol=0.005` and `maxiter=20`
+/// to Dune's outer BiCGSTAB as a desired *raw residual* reduction.  ResSim's historical CPR
+/// path may instead accept from its re-applied preconditioned residual.  Hold the captured
+/// nonlinear system fixed and sweep only that numerical stopping input before considering any
+/// live policy change.
+#[test]
+#[ignore]
+fn solver_lab_water008_same_state_tolerance_budget_sweep() {
+    let dir = capture_sequence_dir_from_env()
+        .expect("set FIM_CAPTURE_SEQUENCE_DIR to WATER-005's sequential direct-day capture");
+    let systems = load_captures(&dir).expect("load WATER-008 captures");
+    let system = systems
+        .iter()
+        .find(|system| system.metadata.newton_iteration == 19)
+        .expect("WATER-008 needs the final pre-cap system");
+    let layout = system
+        .layout
+        .expect("WATER-008 capture requires block layout");
+    let production = FimLinearSolveOptions::default();
+    let rows = [
+        (
+            "production",
+            production.relative_tolerance,
+            production.max_iterations,
+        ),
+        ("same_tol_budget60", production.relative_tolerance, 60),
+        ("numeric_tol_1e-4", 1e-4, 60),
+        ("numeric_tol_1e-5", 1e-5, 60),
+        ("numeric_tol_1e-6", 1e-6, 60),
+    ];
+    let rhs_norm = system.rhs.norm().max(f64::EPSILON);
+
+    for (label, relative_tolerance, max_iterations) in rows {
+        let options = FimLinearSolveOptions {
+            relative_tolerance,
+            max_iterations,
+            ..production
+        };
+        let (report, history) = well_schur::solve_with_well_elimination_configuration_and_history(
+            &system.jacobian,
+            &system.rhs,
+            &options,
+            layout,
+            system.equation_scaling.as_ref(),
+            CprFineSmootherKind::BlockIlu0,
+            CprPressureRestrictionKind::QuasiImpes,
+        );
+        let tail = history
+            .last()
+            .expect("WATER-008 CPR sweep must apply a correction");
+        assert!(
+            (tail.true_residual_norm - report.final_residual_norm).abs()
+                <= 1e-10 * report.final_residual_norm.max(1.0),
+            "{label}: recovered full-system snapshot must agree with the returned report"
+        );
+        println!(
+            "WATER-008 iter=19 row={label} tol={relative_tolerance:.1e} maxiter={max_iterations} converged={} iters={} full_reduction={:.9e} estimate={:.9e} preconditioned={:.9e} true={:.9e}",
+            report.converged,
+            report.iterations,
+            report.final_residual_norm / rhs_norm,
+            tail.estimated_preconditioned_residual_norm,
+            tail.actual_preconditioned_residual_norm,
+            tail.true_residual_norm,
+        );
+        assert!(report.solution.iter().all(|value| value.is_finite()));
+    }
+}
+
+/// WATER-009: retain the captured nonlinear systems and all CPR components, but suppress the
+/// historical preconditioned-residual and tiny-tail acceptance routes. The probe may return
+/// `converged` only after the raw residual of the linear system has cleared the same numeric
+/// target; well-Schur recovery is then checked against the original full system.
+#[test]
+#[ignore]
+fn solver_lab_water009_raw_full_residual_acceptance_contract() {
+    let dir = capture_sequence_dir_from_env()
+        .expect("set FIM_CAPTURE_SEQUENCE_DIR to WATER-005's sequential direct-day capture");
+    let systems = load_captures(&dir).expect("load WATER-009 captures");
+    let production = FimLinearSolveOptions::default();
+
+    for system in systems
+        .iter()
+        .filter(|system| system.metadata.newton_iteration >= 14)
+    {
+        let layout = system
+            .layout
+            .expect("WATER-009 capture requires block layout");
+        let raw_options = FimLinearSolveOptions {
+            require_raw_full_residual_acceptance: true,
+            ..production
+        };
+        let (raw_report, raw_history) =
+            well_schur::solve_with_well_elimination_configuration_and_history(
+                &system.jacobian,
+                &system.rhs,
+                &raw_options,
+                layout,
+                system.equation_scaling.as_ref(),
+                CprFineSmootherKind::BlockIlu0,
+                CprPressureRestrictionKind::QuasiImpes,
+            );
+        let raw_residual = residual_vector(&system.jacobian, &raw_report.solution, &system.rhs);
+        let reservoir_end = layout.cell_unknown_count();
+        let raw_reservoir = raw_residual.rows(0, reservoir_end).norm();
+        let raw_well = raw_residual
+            .rows(reservoir_end, raw_residual.len() - reservoir_end)
+            .norm();
+        let raw_tail = raw_history
+            .last()
+            .expect("WATER-009 raw probe must apply a correction");
+        let tolerance = raw_options.absolute_tolerance
+            + raw_options.relative_tolerance * system.rhs.norm().max(f64::EPSILON);
+        assert!(
+            (raw_tail.true_residual_norm - raw_report.final_residual_norm).abs()
+                <= 1e-10 * raw_report.final_residual_norm.max(1.0),
+            "iteration {}: recovered snapshot/report mismatch",
+            system.metadata.newton_iteration
+        );
+        assert!(raw_report.solution.iter().all(|value| value.is_finite()));
+        assert!(raw_residual.norm().is_finite());
+        if raw_report.converged {
+            assert!(
+                raw_residual.norm() <= tolerance,
+                "iteration {}: raw-accept mode reported convergence above full-system target",
+                system.metadata.newton_iteration
+            );
+        }
+        println!(
+            "WATER-009 iter={} raw={{converged={},iters={},rhs={:.9e},full={:.9e},reduction={:.9e},reservoir={:.9e},well={:.9e},estimate={:.9e},preconditioned={:.9e}}}",
+            system.metadata.newton_iteration,
+            raw_report.converged,
+            raw_report.iterations,
+            raw_report.rhs_norm,
+            raw_residual.norm(),
+            raw_residual.norm() / raw_report.rhs_norm.max(f64::EPSILON),
+            raw_reservoir,
+            raw_well,
+            raw_tail.estimated_preconditioned_residual_norm,
+            raw_tail.actual_preconditioned_residual_norm,
+        );
+    }
+}
+
+/// G4c3's same-state counterfactual for the exact 10x10x3 gas case. Flow's water-pressure
+/// storage entry is `PV*Sw*(c_r+c_w)=0.00135`, while the captured ResSim entry is
+/// `PV*Sw*c_r=0.0006`. This diagnostic changes only the missing `PV*Sw*c_w=0.00075` diagonal
+/// term in the already-captured full system; it does not route a partial water-PVT lifecycle
+/// into production assembly.
+#[test]
+#[ignore]
+fn solver_lab_g4c3_water_storage_counterfactual() {
+    let dir = capture_sequence_dir_from_env()
+        .expect("set FIM_CAPTURE_SEQUENCE_DIR to the exact matched gas capture directory");
+    let systems = load_captures(&dir).expect("load exact matched gas captures");
+    let system = systems.first().expect("capture must contain evaluation 0");
+    let layout = system.layout.expect("G4c3 capture requires block layout");
+    assert_eq!(layout.cell_block_count, 300);
+    assert_eq!(layout.cell_block_size, 3);
+
+    let solve = |jacobian: &CsMat<f64>| {
+        let options = FimLinearSolveOptions {
+            kind: FimLinearSolverKind::SparseLuDebug,
+            eliminate_wells: false,
+            ..FimLinearSolveOptions::default()
+        };
+        solve_linearized_system(jacobian, &system.rhs, &options, system.layout, None)
+    };
+
+    let original = solve(&system.jacobian);
+    assert!(original.solution.iter().all(|value| value.is_finite()));
+    assert!(
+        residual_norm(&system.jacobian, &original.solution, &system.rhs)
+            / system.rhs.norm().max(f64::EPSILON)
+            < 1e-10
+    );
+
+    let mut water_cw = system.jacobian.clone();
+    let missing_water_dp = 100.0 * 0.15 * 5.0e-5;
+    for cell_idx in 0..layout.cell_block_count {
+        let row = cell_idx * layout.cell_block_size;
+        let pressure_column = row;
+        *water_cw
+            .get_mut(row, pressure_column)
+            .expect("every water row has its local pressure diagonal") += missing_water_dp;
+    }
+    let patched = solve(&water_cw);
+    assert!(patched.solution.iter().all(|value| value.is_finite()));
+    let patched_reduction = residual_norm(&water_cw, &patched.solution, &system.rhs)
+        / system.rhs.norm().max(f64::EPSILON);
+    assert!(patched_reduction < 1e-10);
+
+    // G4c2's mapped same-primary cell block supplies a second independent counterfactual.
+    // Apply only the measured non-water block deltas uniformly at the initially uniform state;
+    // then combine them with c_w. This attributes the correction without guessing an oil-PVT
+    // implementation from the end result.
+    let mut mapped_nonwater = system.jacobian.clone();
+    let mut mapped_combined = water_cw.clone();
+    let mapped_deltas = [
+        // (equation-within-cell, primary-within-cell, Flow - ResSim)
+        (1usize, 0usize, 14.6282695 - 14.6273067),
+        (1, 1, -80.4048336 - (-80.4010017)),
+        (1, 2, -0.1645116 - (-0.1426161)),
+        (2, 0, 1170.261648 - 1170.18454),
+        (2, 1, -6432.38712 - (-6432.08013)),
+        (2, 2, 56.0611368 - 57.8094215),
+    ];
+    for cell_idx in 0..layout.cell_block_count {
+        let offset = cell_idx * layout.cell_block_size;
+        for &(equation, primary, delta) in &mapped_deltas {
+            for matrix in [&mut mapped_nonwater, &mut mapped_combined] {
+                *matrix
+                    .get_mut(offset + equation, offset + primary)
+                    .expect("every local reservoir block entry is structurally present") += delta;
+            }
+        }
+    }
+    let nonwater = solve(&mapped_nonwater);
+    let combined = solve(&mapped_combined);
+    for (matrix, report) in [(&mapped_nonwater, &nonwater), (&mapped_combined, &combined)] {
+        assert!(report.solution.iter().all(|value| value.is_finite()));
+        assert!(
+            residual_norm(matrix, &report.solution, &system.rhs)
+                / system.rhs.norm().max(f64::EPSILON)
+                < 1e-10
+        );
+    }
+
+    println!(
+        "G4C3 original cell0=[dp={:.9e},dSw={:.9e},dH={:.9e}] cw-storage=[dp={:.9e},dSw={:.9e},dH={:.9e}] mapped-nonwater=[dp={:.9e},dSw={:.9e},dH={:.9e}] combined=[dp={:.9e},dSw={:.9e},dH={:.9e}] relres={:.3e}",
+        original.solution[0],
+        original.solution[1],
+        original.solution[2],
+        patched.solution[0],
+        patched.solution[1],
+        patched.solution[2],
+        nonwater.solution[0],
+        nonwater.solution[1],
+        nonwater.solution[2],
+        combined.solution[0],
+        combined.solution[1],
+        combined.solution[2],
+        patched_reduction,
+    );
+}
+
 /// Y2d6a payload-sufficiency gate. Parsing performs the source-fingerprint, true-IMPES
 /// recomputation, partition-dimension, and bit-exact full-J reconstruction checks.
 #[test]
@@ -74,12 +1045,11 @@ fn solver_lab_validate_y2d6a_capture_payload() {
     assert_eq!(flow.storage_blocks.len(), layout.cell_block_count);
     assert_eq!(flow.true_impes_weights.len(), layout.cell_block_count);
     assert_eq!(flow.reservoir_unknown_count, layout.cell_unknown_count());
-    assert!(
-        flow.true_impes_weights
-            .iter()
-            .flatten()
-            .all(|value| value.is_finite())
-    );
+    assert!(flow
+        .true_impes_weights
+        .iter()
+        .flatten()
+        .all(|value| value.is_finite()));
     let max_weight = flow
         .true_impes_weights
         .iter()
@@ -1834,11 +2804,9 @@ fn solver_lab_compare_true_flexible_gmres() {
             assert_eq!(snapshot.iteration, history_index + 1);
             assert_eq!(snapshot.restart_index, 1);
             assert_eq!(snapshot.inner_step, history_index + 1);
-            assert!(
-                snapshot
-                    .pressure_reduction_ratio
-                    .is_none_or(|ratio| ratio.is_finite())
-            );
+            assert!(snapshot
+                .pressure_reduction_ratio
+                .is_none_or(|ratio| ratio.is_finite()));
             let independently_recomputed =
                 residual_norm(&system.jacobian, &snapshot.solution, &system.rhs);
             assert!(

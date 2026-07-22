@@ -1344,6 +1344,9 @@ impl ReservoirSimulator {
                             .last_linear_report
                             .as_ref()
                             .map(|linear_report| linear_report.iterations),
+                        linear_solve_count: report.linear_solve_count,
+                        linear_iteration_count: report.linear_iteration_count,
+                        applied_update_count: report.applied_update_count,
                         linear_solve_ms: report.linear_solve_time_ms,
                         linear_preconditioner_ms: report.linear_preconditioner_build_time_ms,
                     });
@@ -1583,6 +1586,9 @@ impl ReservoirSimulator {
                             .last_linear_report
                             .as_ref()
                             .map(|linear_report| linear_report.iterations),
+                        linear_solve_count: report.linear_solve_count,
+                        linear_iteration_count: report.linear_iteration_count,
+                        applied_update_count: report.applied_update_count,
                         linear_solve_ms: report.linear_solve_time_ms,
                         linear_preconditioner_ms: report.linear_preconditioner_build_time_ms,
                         retry_class: Some(failure_diagnostics.class.label().to_string()),
@@ -2832,6 +2838,9 @@ mod tests {
             final_material_balance_inf_norm: 1.0,
             final_update_inf_norm: 0.0,
             last_linear_report: None,
+            linear_solve_count: 1,
+            linear_iteration_count: 1,
+            applied_update_count: 0,
             accepted_hotspot_site: None,
             failure_diagnostics: Some(FimRetryFailureDiagnostics {
                 class: FimRetryFailureClass::NonlinearBad,
@@ -3116,6 +3125,10 @@ mod phase5_repro {
         sim.set_fim_opm_aligned_nonlinear(true);
         sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
         sim.set_fim_flow_lifecycle(std::env::var_os("FIM_FLOW_LIFECYCLE").is_some());
+        sim.set_fim_opm_endpoint_relperm(
+            std::env::var_os("FIM_WATER003_ENDPOINT_REPLAY").is_some(),
+        );
+        sim.set_fim_opm_water_heavy_swof(std::env::var_os("FIM_WATER005_SWOF_REPLAY").is_some());
         // Bundle W (`docs/FIM_BUNDLE_W_PLAN.md` W4): env-gated so this same driver, already the
         // FIM-DIAG-002 re-baseline vehicle, is also the §5 re-run vehicle — no code path change.
         let nested_well_solve = std::env::var_os("FIM_NESTED_WELL_SOLVE").is_some();
@@ -3125,9 +3138,122 @@ mod phase5_repro {
         let force_direct_linear = std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some();
         sim.set_fim_force_direct_linear(force_direct_linear);
 
+        // Water trajectory diagnostic: bypass only the outer timestep proposal/controller and
+        // ask the unchanged Newton solver to take Flow's exact one-day step. This separates a
+        // cold-start cap/controller limitation from a nonlinear trajectory limitation. The
+        // ordinary ignored repro is behavior-identical when the env var is absent.
+        if std::env::var_os("FIM_WATER_FULL_TARGET_PROBE").is_some() {
+            let previous_state = super::FimState::from_simulator(&sim);
+            let mut options = super::FimNewtonOptions::default();
+            options.nonlinear_flavor = crate::fim::newton::FimNonlinearFlavor::OpmAligned;
+            options.nested_well_solve = nested_well_solve;
+            options.max_saturation_change = 0.2;
+            options.max_pressure_change_bar = 200.0;
+            options.verbose = std::env::var_os("FIM_WATER_FULL_TARGET_TRACE").is_some();
+            let water003_first_update = std::env::var_os("FIM_WATER003_FIRST_UPDATE").is_some();
+            let water005_swof_replay = sim.fim_opm_water_heavy_swof;
+            if water003_first_update {
+                assert!(
+                    sim.fim_opm_endpoint_relperm,
+                    "WATER-003 first-update gate requires FIM_WATER003_ENDPOINT_REPLAY=1"
+                );
+                options.max_newton_iterations = 1;
+            }
+            options.linear.use_true_fgmres = sim.fim_true_fgmres;
+            options.linear.use_flow_lifecycle = sim.fim_flow_lifecycle;
+            if force_direct_linear {
+                options.linear.kind = crate::fim::linear::FimLinearSolverKind::SparseLuDebug;
+            }
+            let start = Instant::now();
+            let report = super::run_fim_timestep(
+                &mut sim,
+                &previous_state,
+                &previous_state,
+                dt_days,
+                &options,
+            );
+            if water003_first_update {
+                let injector = &report.accepted_state.cells[0];
+                let topology = crate::fim::wells::build_well_topology(&sim);
+                let assembly = crate::fim::assembly_ad::assemble_fim_system_ad(
+                    &sim,
+                    &previous_state,
+                    &report.accepted_state,
+                    &crate::fim::assembly::FimAssemblyOptions {
+                        dt_days,
+                        include_wells: true,
+                        assemble_residual_only: true,
+                        topology: Some(&topology),
+                        flow_resv_context: None,
+                    },
+                );
+                let water_sum = (0..nx)
+                    .flat_map(|i| (0..ny).flat_map(move |j| (0..nz).map(move |k| (i, j, k))))
+                    .map(|(i, j, k)| {
+                        let cell = i + nx * (j + ny * k);
+                        assembly.residual[cell * 3]
+                    })
+                    .sum::<f64>();
+                let water_mb = water_sum.abs()
+                    / assembly
+                        .equation_scaling
+                        .water
+                        .iter()
+                        .sum::<f64>()
+                        .abs()
+                        .max(1.0);
+                println!(
+                    "WATER003 first applied injector state p={:.12} Sw={:.12} eval1_water_mb={:.12e}",
+                    injector.pressure_bar, injector.sw, water_mb,
+                );
+                assert!(
+                    injector.pressure_bar > 300.0,
+                    "OPM endpoint replay must move injector pressure upward"
+                );
+                assert!((injector.sw - 0.3).abs() < 1e-12);
+                assert!(
+                    (water_mb - 0.31375).abs() < 5e-3,
+                    "evaluation-1 material balance must approach Flow's 0.31375"
+                );
+                if water005_swof_replay {
+                    assert!(
+                        (water_mb - 0.31375).abs() < 1e-6,
+                        "rounded SWOF replay must reproduce Flow's evaluation-1 water MB"
+                    );
+                }
+            }
+            println!(
+                "water full-target probe dt={dt_days:.6} converged={} evaluations={} updates={} linear_solves={} krylov_iters={} residual={:.9e} mb={:.9e} elapsed={:.3}s failure={:?}",
+                report.converged,
+                report.newton_iterations,
+                report.applied_update_count,
+                report.linear_solve_count,
+                report.linear_iteration_count,
+                report.final_residual_inf_norm,
+                report.final_material_balance_inf_norm,
+                start.elapsed().as_secs_f64(),
+                report.failure_diagnostics,
+            );
+            return;
+        }
+
         let start = Instant::now();
         sim.step(dt_days);
         let elapsed = start.elapsed();
+        if let Some(last) = sim.rate_history.last() {
+            println!(
+                "final water summary avg_p={:.12} avg_sw={:.12} inj_sc={:.12} inj_res={:.12} prod_oil_sc={:.12} prod_liq_sc={:.12} prod_liq_res={:.12} water_mb_m3={:.12e} oil_mb_m3={:.12e}",
+                last.avg_reservoir_pressure,
+                last.avg_water_saturation,
+                last.total_injection,
+                last.total_injection_reservoir,
+                last.total_production_oil,
+                last.total_production_liquid,
+                last.total_production_liquid_reservoir,
+                last.material_balance_error_m3,
+                last.material_balance_error_oil_m3,
+            );
+        }
         println!(
             "native step (no trace) elapsed: {:.3}s (nested_well_solve={nested_well_solve} force_direct_linear={force_direct_linear})",
             elapsed.as_secs_f64()
@@ -3252,8 +3378,42 @@ mod phase5_repro {
                 .iter()
                 .map(|rung| rung.newton_iterations)
                 .collect();
+            let accepted_rungs = stats.accepted_rungs.as_deref().unwrap_or(&[]);
+            let retry_rungs = stats.retry_rungs.as_deref().unwrap_or(&[]);
+            let residual_evaluations = accepted_rungs
+                .iter()
+                .map(|rung| rung.newton_iterations)
+                .sum::<usize>()
+                + retry_rungs
+                    .iter()
+                    .map(|rung| rung.newton_iterations)
+                    .sum::<usize>();
+            let applied_updates = accepted_rungs
+                .iter()
+                .map(|rung| rung.applied_update_count)
+                .sum::<usize>()
+                + retry_rungs
+                    .iter()
+                    .map(|rung| rung.applied_update_count)
+                    .sum::<usize>();
+            let linear_solves = accepted_rungs
+                .iter()
+                .map(|rung| rung.linear_solve_count)
+                .sum::<usize>()
+                + retry_rungs
+                    .iter()
+                    .map(|rung| rung.linear_solve_count)
+                    .sum::<usize>();
+            let krylov_iterations = accepted_rungs
+                .iter()
+                .map(|rung| rung.linear_iteration_count)
+                .sum::<usize>()
+                + retry_rungs
+                    .iter()
+                    .map(|rung| rung.linear_iteration_count)
+                    .sum::<usize>();
             println!(
-                "Y2C water result grid={}x{}x{} flavor={} accepted_substeps={} advanced_dt={:.6}/{:.6} newton={:?} linear_bad={} nonlinear_bad={} mixed={} min_dt={:?} max_dt={:?}",
+                "Y2C water result grid={}x{}x{} flavor={} accepted_substeps={} advanced_dt={:.6}/{:.6} newton={:?} work={{residual_evals={},updates={},linear_solves={},krylov_iters={}}} linear_bad={} nonlinear_bad={} mixed={} min_dt={:?} max_dt={:?}",
                 nx,
                 ny,
                 nz,
@@ -3262,6 +3422,10 @@ mod phase5_repro {
                 stats.advanced_dt_days,
                 stats.target_dt_days,
                 newton_iterations,
+                residual_evaluations,
+                applied_updates,
+                linear_solves,
+                krylov_iterations,
                 stats.linear_bad_retries,
                 stats.nonlinear_bad_retries,
                 stats.mixed_retries,
@@ -3316,10 +3480,26 @@ mod phase5_repro {
                     mu_g_cp: 0.015,
                 },
                 PvtRow {
+                    p_bar: 350.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.0675,
+                    mu_o_cp: 1.030,
+                    bg_m3m3: 0.02,
+                    mu_g_cp: 0.015,
+                },
+                PvtRow {
                     p_bar: 150.0,
                     rs_m3m3: 80.0,
                     bo_m3m3: 1.25,
                     mu_o_cp: 0.7,
+                    bg_m3m3: 0.008,
+                    mu_g_cp: 0.018,
+                },
+                PvtRow {
+                    p_bar: 350.0,
+                    rs_m3m3: 80.0,
+                    bo_m3m3: 1.2252,
+                    mu_o_cp: 0.714,
                     bg_m3m3: 0.008,
                     mu_g_cp: 0.018,
                 },
@@ -3333,9 +3513,25 @@ mod phase5_repro {
                 },
                 PvtRow {
                     p_bar: 350.0,
+                    rs_m3m3: 140.0,
+                    bo_m3m3: 1.3861,
+                    mu_o_cp: 0.505,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.022,
+                },
+                PvtRow {
+                    p_bar: 350.0,
                     rs_m3m3: 200.0,
                     bo_m3m3: 1.55,
                     mu_o_cp: 0.4,
+                    bg_m3m3: 0.004,
+                    mu_g_cp: 0.025,
+                },
+                PvtRow {
+                    p_bar: 450.0,
+                    rs_m3m3: 200.0,
+                    bo_m3m3: 1.5346,
+                    mu_o_cp: 0.404,
                     bg_m3m3: 0.004,
                     mu_g_cp: 0.025,
                 },
@@ -3506,10 +3702,26 @@ mod phase5_repro {
                     mu_g_cp: 0.015,
                 },
                 PvtRow {
+                    p_bar: 350.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.0675,
+                    mu_o_cp: 1.030,
+                    bg_m3m3: 0.02,
+                    mu_g_cp: 0.015,
+                },
+                PvtRow {
                     p_bar: 150.0,
                     rs_m3m3: 80.0,
                     bo_m3m3: 1.25,
                     mu_o_cp: 0.7,
+                    bg_m3m3: 0.008,
+                    mu_g_cp: 0.018,
+                },
+                PvtRow {
+                    p_bar: 350.0,
+                    rs_m3m3: 80.0,
+                    bo_m3m3: 1.2252,
+                    mu_o_cp: 0.714,
                     bg_m3m3: 0.008,
                     mu_g_cp: 0.018,
                 },
@@ -3523,9 +3735,25 @@ mod phase5_repro {
                 },
                 PvtRow {
                     p_bar: 350.0,
+                    rs_m3m3: 140.0,
+                    bo_m3m3: 1.3861,
+                    mu_o_cp: 0.505,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.022,
+                },
+                PvtRow {
+                    p_bar: 350.0,
                     rs_m3m3: 200.0,
                     bo_m3m3: 1.55,
                     mu_o_cp: 0.4,
+                    bg_m3m3: 0.004,
+                    mu_g_cp: 0.025,
+                },
+                PvtRow {
+                    p_bar: 450.0,
+                    rs_m3m3: 200.0,
+                    bo_m3m3: 1.5346,
+                    mu_o_cp: 0.404,
                     bg_m3m3: 0.004,
                     mu_g_cp: 0.025,
                 },
@@ -3600,6 +3828,28 @@ mod phase5_repro {
                 .iter()
                 .map(|rung| rung.newton_iterations)
                 .collect();
+            let accepted_rungs = stats.accepted_rungs.as_deref().unwrap_or(&[]);
+            let retry_rungs = stats.retry_rungs.as_deref().unwrap_or(&[]);
+            let residual_evaluations = accepted_rungs
+                .iter()
+                .map(|rung| rung.newton_iterations)
+                .chain(retry_rungs.iter().map(|rung| rung.newton_iterations))
+                .sum::<usize>();
+            let applied_updates = accepted_rungs
+                .iter()
+                .map(|rung| rung.applied_update_count)
+                .chain(retry_rungs.iter().map(|rung| rung.applied_update_count))
+                .sum::<usize>();
+            let linear_solves = accepted_rungs
+                .iter()
+                .map(|rung| rung.linear_solve_count)
+                .chain(retry_rungs.iter().map(|rung| rung.linear_solve_count))
+                .sum::<usize>();
+            let krylov_iterations = accepted_rungs
+                .iter()
+                .map(|rung| rung.linear_iteration_count)
+                .chain(retry_rungs.iter().map(|rung| rung.linear_iteration_count))
+                .sum::<usize>();
             let rate = sim
                 .rate_history
                 .last()
@@ -3650,18 +3900,28 @@ mod phase5_repro {
                 step_idx + 1
             );
             println!(
-                "Y1J step={} accepted_substeps={} advanced_dt={:.6}/{:.6} newton={:?} linear_bad={} nonlinear_bad={} mixed={} min_dt={:?} max_dt={:?} last_dt={:?} state={{sw=[{:.9e},{:.9e}],so=[{:.9e},{:.9e}],sg=[{:.9e},{:.9e}],closure={:.3e},water_inv={:.9e},oil_inv={:.9e},gas_inv={:.9e}}} report={{oil_rate={:.9e},gas_rate={:.9e},injection={:.9e},mb_water={:.9e},mb_oil={:.9e},mb_gas={:.9e}}}",
+                "Y1J step={} accepted_substeps={} advanced_dt={:.6}/{:.6} newton={:?} work={{residual_evals={},updates={},linear_solves={},krylov_iters={}}} linear_bad={} nonlinear_bad={} mixed={} min_dt={:?} max_dt={:?} last_dt={:?} timing_ms={{solver={:.3},assembly={:.3},props={:.3},linear={:.3},preconditioner={:.3},update={:.3}}} state={{sw=[{:.9e},{:.9e}],so=[{:.9e},{:.9e}],sg=[{:.9e},{:.9e}],closure={:.3e},water_inv={:.9e},oil_inv={:.9e},gas_inv={:.9e}}} report={{oil_rate={:.9e},gas_rate={:.9e},injection={:.9e},mb_water={:.9e},mb_oil={:.9e},mb_gas={:.9e}}}",
                 step_idx + 1,
                 stats.accepted_substeps,
                 stats.advanced_dt_days,
                 stats.target_dt_days,
                 newton_iterations,
+                residual_evaluations,
+                applied_updates,
+                linear_solves,
+                krylov_iterations,
                 stats.linear_bad_retries,
                 stats.nonlinear_bad_retries,
                 stats.mixed_retries,
                 stats.min_accepted_dt_days,
                 stats.max_accepted_dt_days,
                 stats.last_accepted_dt_days,
+                stats.solver_ms.unwrap_or_default(),
+                stats.assembly_ms.unwrap_or_default(),
+                stats.property_eval_ms.unwrap_or_default(),
+                stats.linear_solve_ms.unwrap_or_default(),
+                stats.linear_preconditioner_ms.unwrap_or_default(),
+                stats.state_update_ms.unwrap_or_default(),
                 min_sw,
                 max_sw,
                 min_so,

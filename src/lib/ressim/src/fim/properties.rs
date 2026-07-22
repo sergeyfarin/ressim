@@ -156,10 +156,11 @@ pub(crate) fn pore_volume_generic<S: Scalar>(
 pub(crate) fn component_inventory_generic<S: Scalar>(
     sim: &ReservoirSimulator,
     pore_volume: S,
+    pressure: S,
     sw: S,
     props: &CellProps<S>,
 ) -> [S; 3] {
-    let water_sc = pore_volume * sw / sim.b_w.max(1e-9);
+    let water_sc = pore_volume * sw * sim.water_inverse_fvf_generic(pressure);
     let oil_sc = pore_volume * props.so / props.bo.max_floor(1e-9);
     let gas_sc = pore_volume * props.sg / props.bg.max_floor(1e-9) + oil_sc * props.rs;
     [water_sc, oil_sc, gas_sc]
@@ -185,7 +186,7 @@ pub(crate) fn cell_accumulation_generic<S: Scalar>(
 ) -> [S; 3] {
     let props = cell_props_generic(sim, regime, p, sw, hydrocarbon_var, drsdt0_base_rs);
     let pv = pore_volume_generic(sim, cell_idx, p, prev_p);
-    let current = component_inventory_generic(sim, pv, sw, &props);
+    let current = component_inventory_generic(sim, pv, p, sw, &props);
 
     // Previous inventory: same code, f64 instantiation, previous pressure is its
     // own reference (delta 0 -> pv = pv_ref). `derive_cell` derives the
@@ -201,7 +202,7 @@ pub(crate) fn cell_accumulation_generic<S: Scalar>(
         drsdt0_base_rs,
     );
     let prev_pv = pore_volume_generic::<f64>(sim, cell_idx, prev_p, prev_p);
-    let previous = component_inventory_generic::<f64>(sim, prev_pv, prev_sw, &prev_props);
+    let previous = component_inventory_generic::<f64>(sim, prev_pv, prev_p, prev_sw, &prev_props);
 
     [
         current[0] - previous[0],

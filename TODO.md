@@ -316,10 +316,170 @@ below is retained as Bundle N/Y history; it must not override this current seque
   `Rs`. The cause is a benchmark-contract mismatch: ResSim forced DRSDT0, while the deck has no
   `DRSDT`. A default-preserving `FIM_Y1J_GAS_REDISSOLUTION=1` diagnostic now selects the matched
   configuration. No G4 derivative or solver-policy change is justified by this result.
-- [ ] **Next: bounded G5a primary-state/configuration alignment.** Make the exact-deck oracle use
-  one explicit DRSDT contract on both engines, then compare the first post-switch state and
-  evaluation-1 rows. OPM and ResSim already both perform `Rs -> Sg=0`; do not broaden this into a
-  lifecycle rewrite, acceptance change, or controller/linear tuning without a new mismatch.
+- [x] **G5a primary-state/configuration alignment — VALIDATED POSITIVE, DEFAULT-OFF 2026-07-22.**
+  The exact oracle now states the deck's omitted-`DRSDT`/unlimited-redissolution contract and uses
+  `FIM_Y1J_GAS_REDISSOLUTION=1` in ResSim. Both engines perform `Rs -> Sg=0`. The first ResSim
+  post-switch local solve instead exposed a selected RESV-well lifecycle defect: its raw outer
+  update put BHP below cell pressure, the injector clamp returned `q=0` with zero BHP derivative,
+  and Newton could not recover the injecting branch. A scoped pre-Newton reconstruction from the
+  same frozen total-mobility connection law restores that branch. First-step residual evaluations
+  improve `14 -> 9`; the six-step matched route is `[9,5,5,4,4,4]` residual evaluations / `59`
+  linear applications / zero cuts, while the historical DRSDT0 route remains
+  `[10,5,4,4,4,4]`. This is not a general G5 or StandardWell promotion.
+- [x] **G4c3 matched pressure/Sw correction audit — DIAGNOSTIC 2026-07-22.** Flow's water
+  derivative is exactly `PV*Sw*(c_r+c_w)=0.00135`; ResSim's is only
+  `PV*Sw*c_r=0.0006`. An exact full-system capture/replay counterfactual moves cell 0 from
+  `[dp=6.903753,dSw=-4.14225e-5,dRs=293.453882]` to
+  `[6.837656,-9.23084e-5,293.453882]` with only the missing `c_w` term. Applying only the mapped
+  non-water block deltas gives `[9.627512,-5.77651e-5,293.439646]`; applying both gives
+  `[9.469612,-1.27840e-4,293.439646]`, near Flow
+  `[9.52669,-1.28610e-4,293.43965]`. The full-system relative residual is `2.12e-16`.
+  OPM source interpolates PVTO `1/Bo` and `1/(Bo*mu_o)` while ResSim directly interpolates
+  `Bo/mu_o`; the exact ResSim driver also omits the deck's undersaturated PVTO branch rows.
+- [x] **G4c4 coherent PVTW/PVTO lifecycle — VALIDATED POSITIVE 2026-07-22.** Added the OPM
+  constant-compressibility inverse-`Bw` polynomial about the configured initial/reference
+  pressure and routed it through FIM accumulation/flux/wells, convergence/scaling, shared well
+  control/reporting, and pressure-dependent water density. PVTO now interpolates `1/Bo` and
+  `1/(Bo*mu_o)` in pressure and Rs, and the exact fixtures include all undersaturated branch
+  endpoints. The first matched correction becomes `[dp=9.740529,dSw=-1.314971e-4,dRs=293.4397]`
+  versus Flow `[9.52669,-1.28610e-4,293.43965]`; the six-step route accepts without cuts using
+  `[8,5,5,4,3,4]` residual evaluations, 23 updates, 55 linear applications, and `0.597 s` versus
+  Flow 26 updates, 27 linear iterations, and `0.08 s`. This closes the original `>10x` native
+  exact-case gap to about `7.5x`, but does not close the per-linear-application cost gap.
+  Rebuilt-WASM controls are bounded but moved: water stays `8/4/4`, heavy water `25 -> 23`, while
+  gas `20x20x3` moves `2 -> 4` and the six-step gas control `14 -> 28` total substeps. The result
+  is therefore a fidelity/performance gain on the matched route, not a default gas-controller
+  promotion. Reciprocal out-of-table PVTO extrapolation remains outside this in-table slice.
+- [x] **G4c5 guided PVTO derivative and 300-row coarse solve — VALIDATED POSITIVE 2026-07-22.**
+  OPM `LiveOilPvt` selects `UniformXTabulated2DFunction::LeftExtreme`: interpolation between Rs
+  branches evaluates the lower branch at `p-t*shift` and the upper at `p+(1-t)*shift`. G4c4 had
+  used the same pressure on both branches, preserving values at the Rs knot but not its derivative.
+  The complete scalar/AD guided interpolation moves the exact first correction to
+  `[9.529566823,-1.286491521e-4,293.4396825]` versus Flow
+  `[9.52669,-1.28610e-4,293.43965]`, closing all three components to about `0.03%` or better.
+  Profiling then showed `417/553 ms` in linear work and `400 ms` rebuilding the dense coarse
+  inverse. Seven sequential 300-row captures proved the existing ILU0/BiCGSTAB path finite and
+  accurate (zero failures, maximum reduction `7.879e-7`), so its dense cutoff moved `300 -> 299`.
+  Six matched steps remain cut-free with the same 23 updates and 55 Krylov iterations, but fall
+  from `0.597 s` to `0.191 s`, about `2.4x` Flow's `0.08 s`. Rebuilt-WASM substep counts are
+  unchanged from G4c4; the 300-cell gas control is materially faster. Focused, BL, locked FIM,
+  FIM/IMPES and product gates pass; shared retains its pre-existing closed-system history mismatch.
+- [x] **G4c6 linear-work semantics audit — DIAGNOSTIC COMPLETE 2026-07-22.** Added explicit
+  residual-evaluation, applied-update, reservoir-solve-call, and aggregate-Krylov counters. The
+  prior “55 linear applications versus 27” wording mixed work units: exact gas actually uses 29
+  residual evaluations, 23 updates, 23 reservoir solves, and 55 Krylov iterations; Flow uses
+  32 evaluations, 26 updates, and 27 Krylov iterations. There are no retries or duplicate
+  reservoir solves per update. The nested local-well Newton runs in state update and is not part
+  of the 55. Thus the remaining gap is `2.39` versus `1.04` Krylov iterations/solve. The existing
+  complete Flow-linear-lifecycle diagnostic reduces Krylov work to 45 but worsens updates to 28
+  and runtime to `0.646 s`, confirming the earlier `FIM-Y2D6` no-promotion verdict. No solver
+  policy changed. Cross-scenario timing/correctness status is now maintained in
+  `docs/SOLVER_COMPARISON_SUMMARY.md`.
+- [x] **WATER-001 water-heavy mechanism split — DIAGNOSTIC COMPLETE 2026-07-22.** The Flow
+  deck confused Eclipse `COMPDAT` diameter with ResSim well radius; correcting `0.1 -> 0.2`
+  restores evaluation-0 MB/CNV parity. Flow still converges one day in 11 Newton/13 linear
+  iterations. A direct one-day FIM attempt fails after 20 updates in an injector-cell Sw
+  `0.3↔0.5` cycle despite good linear reductions. IMPES's `129` steps instead scale with its
+  explicit max-ΔSw guard (`129/73/46/29` for `0.05/0.1/0.2/0.5`) and move outputs materially.
+  The shared-root hypothesis is refuted; do not loosen IMPES stability or FIM acceptance.
+- [x] **WATER-002 matched first-correction comparison — DIAGNOSTIC COMPLETE 2026-07-22.** The
+  mapped Flow solve and Flow's own maximum-update diagnostic agree on raw injector correction
+  `dp=+110.703 bar, dSw=+160.361`; ResSim gives `dp=-196.932 bar, dSw=+0.792745`. Both chop
+  `dSw` to `+0.2`, but ResSim also clips pressure to `-90 bar`, explaining its evaluation-1
+  source/residual direction. The first matrix split is ResSim's explicit well Schur:
+  `water@injector/Sw=17964.8` and `oil@producer/Sw=-18018.8`, versus Flow's reservoir entries
+  `+20/-20`. Removing only the well Schur in an offline attribution reduces mapped matrix delta
+  `337% -> 0.73%`; no production policy changed.
+- [x] **WATER-003 endpoint-clipped BHP-well lifecycle — VALIDATED DEFAULT-OFF 2026-07-22.** OPM's
+  tabulated saturation law returns a constant at `Sw <= Swc`, hence zero AD derivative; ResSim's
+  scalar Corey derivative also returns zero there, but its AD clamp kept the oil derivative live.
+  One native-only flag applies the endpoint contract through reservoir flux and well assembly.
+  First applied injector state is `390 bar, Sw=0.3` and evaluation-1 water MB is `0.313756` versus
+  Flow `0.31375`. The held controller improves `50 -> 10` substeps, `2 -> 0` retries and
+  `4.39 -> 0.78 s`, but the direct one-day attempt still misses the held 20-update limit and final
+  rates/pressure are not Flow-close. Keep default-off; the first-update gate alone is insufficient.
+- [x] **WATER-004 matched evaluation-1 Jacobian/correction — DIAGNOSTIC, NO POLICY CHANGE
+  2026-07-22.** Flow `nit_1` and the endpoint-replay ResSim evaluation 1 give mapped matrix/RHS
+  deltas `16.63%/0.628%`; injector raw corrections are Flow `[-38.318 bar,+1.8939]` and ResSim
+  `[-111.230 bar,+1.5288]` (both saturation-chop to `+0.2`). The global water MB is matched, but
+  Flow does not export the intermediate cell state, so this is **INCONCLUSIVE** as a strict
+  same-state oracle. The interior derivative contract is nevertheless known: at `Sw=.3`, SWOF
+  slopes are `dkrw=.469`, `dkro=-2.031`, versus Corey `.625/-1.875`. Keep all controller,
+  iteration-limit, chop and IMPES policy fixed; WATER-005 must replay the rounded SWOF law in
+  ResSim before interpreting the remaining matrix/correction delta as solver behavior.
+- [x] **WATER-005 rounded SWOF lifecycle replay — VALIDATED DEFAULT-OFF 2026-07-22.** A
+  native-only table replay applies the corrected deck's rounded values and left-segment AD slope
+  through both scalar and generic FIM mobility consumers. At `Sw=.3`, it gives `krw/kro`
+  derivatives `.469/-2.031`; the first post-update water MB is `0.313749997` versus Flow
+  `.31375`. The held evaluation-1 matrix delta falls `16.63% -> 0.558%`, with injector raw
+  pressure `-39.012` versus Flow `-38.318 bar`. The held controller improves `10 -> 5` substeps
+  and `.775 -> .281 s`, but the direct day still exhausts 20 updates (albeit at MB `1.33e-6`).
+  Keep default-off and all controls fixed; final output remains not Flow-close.
+- [x] **WATER-006 fixed-policy direct-day convergence decomposition — DIAGNOSTIC COMPLETE
+  2026-07-22.** After iteration 14, no pressure/saturation chop is active, upwind flips cease by
+  iteration 18, and well/perforation residuals are negligible. The water tail at cell 419 decays
+  monotonically, but on those same captured systems CPR's full-system reduction floors at roughly
+  `1e-3` while sparse LU reaches `~1e-15`; corrections differ `0.6–2.7%`. Sparse LU's live route
+  is worse because that small correction difference bifurcates the trajectory. This refutes a
+  cap-only/controller explanation and does not authorize direct-backend promotion. WATER-007 must
+  isolate the CPR stopping/recovery contract on the same state, without changing nonlinear policy.
+- [x] **WATER-007 CPR stop/recovery contract — DIAGNOSTIC COMPLETE 2026-07-22.** On the final
+  captured system, production CPR declares convergence after 3 iterations from a preconditioned
+  residual `5.47e-7`, though recovered full-system reduction is `1.007e-3`. A strict offline
+  `1e-8`/60-iteration solve reaches `3.86e-7` full reduction; recovered snapshots and reports
+  agree, so Schur recovery is not hiding the error. This measures a deliberate loose stopping
+  contract, not a recovery defect.
+- [x] **WATER-008 OPM stopping-norm oracle — DIAGNOSTIC COMPLETE 2026-07-22.** Flow's `cprw`
+  property tree passes `tol=.005,maxiter=20` to Dune BiCGSTAB as a desired raw-residual reduction;
+  the same number in ResSim can accept from a re-applied preconditioned residual. On the held
+  WATER-005 iteration-19 system, `maxiter=60` at `.005` stops identically at 3 iterations and
+  `1.007e-3` full reduction. Numeric thresholds `1e-4/1e-5/1e-6` reach
+  `1.93e-5/8.95e-7/4.20e-7` full reduction in `5/6/9` iterations. This localizes the gap to
+  stopping-norm semantics, not budget or CPR capacity. No live setting changed; WATER-009 should
+  implement a default-off raw-full-residual acceptance probe, then run a bounded live A/B only if
+  its same-state report contract is preserved.
+- [x] **WATER-009 raw full-residual acceptance — DIAGNOSTIC COMPLETE 2026-07-22.** Added a
+  default-false CPR mode that suppresses preconditioned/tiny-tail acceptance and ResSim's
+  family gate, requiring raw residual acceptance at the same `.005` target and validating the
+  recovered full system. On all held WATER-005 tail captures 14–19 it accepts in 3 iterations
+  with full reductions `2.493e-3,1.561e-3,1.194e-3,1.058e-3,1.018e-3,1.007e-3`, each below
+  `.005`; well rows are zero. This aligns the isolated outer criterion but cannot improve the
+  direct-day tail, because Flow's deliberately loose `.005` target permits these same solves.
+  Do not run a live A/B yet: next isolate Flow's nonlinear acceptance/update lifecycle.
+- [x] **WATER-010 Flow nonlinear lifecycle map/trace — DIAGNOSTIC COMPLETE 2026-07-22.** Flow
+  checks CNV/MB before each solve, requires two prior updates, applies update/chop and primary
+  adaptation, then reassembles; its default thresholds are MB `1e-7`, CNV `1e-2`, with final
+  relaxed tiers MB `1e-6`, CNV `1`. Existing `OpmAligned` already mirrors this scope. Fresh
+  Flow 2026.04 and OpmAligned+rounded-SWOF+nested-well traces agree at evaluations 0–2, but
+  diverge after the second applied update: Flow eval3 CNV oil/water `41.52/50.53`, ResSim
+  `62.31/27.72`. ResSim then stalls at water cell 419 despite no chop/well issue. CNV/MB alone
+  are not a same-state oracle; WATER-011 must compare the exact second raw/applied update and
+  post-update state/matrix, holding linear acceptance, controller and caps fixed.
+- [x] **WATER-011 update-two matrix/update boundary — DIAGNOSTIC COMPLETE 2026-07-22.** With
+  Flow `nit_2` and the fixed OpmAligned+rounded-SWOF+nested-well ResSim capture, the mapped
+  physical RHS differs only `0.7717%`, but the post-first-update reduced physical matrix differs
+  `12.9698%`. Injector raw correction is Flow `[+67.5900 bar,+.140264 Sw]` versus ResSim
+  `[+69.8011 bar,+.137713 Sw]`; neither saturation increment reaches the held `.2` cap. The
+  producer water increment is tiny but diverges (`.000246` vs `.000693`). Flow does not export
+  intermediate primary states or pressure-chop application, so post-update state identity is
+  **INCONCLUSIVE**, but the matrix mismatch proves this is a water trajectory representation
+  defect before the evaluation-3 CNV split—not a linear policy/controller/cap/damping/IMPES
+  result. Gas remains the held working control.
+- [x] **WATER-012 evaluation-2 reservoir/well decomposition — DIAGNOSTIC COMPLETE 2026-07-22.**
+  On the held ResSim capture, reservoir-only mapped matrix delta is `40.7865%`; ResSim's Schur
+  contribution has norm `38.6768%` and reduces the final reduced-matrix delta to `12.9697%`.
+  The twelve largest remaining entries are reservoir saturation derivatives with zero Schur term.
+  A source-complete Flow export cannot yet be compared at the held `system_cpr` policy:
+  `--matrix-add-well-contributions=true` is explicitly incompatible with it (and the attempted
+  same-policy run aborts), while `cpr_quasiimpes` materializes wells but changes Flow's solve
+  trajectory. Thus this localizes the ResSim side but is **INCONCLUSIVE** as a strict Flow
+  assembly verdict. Next: an observation-only Flow patch that materializes a copy for MatrixMarket
+  output while retaining `system_cpr`; do not change ResSim/IMPES runtime policy.
+- [x] **Next convergence priority: water-heavy trajectory, not another exact-gas linear tune.**
+  Exact gas is now about `0.19-0.21 s` versus Flow `0.08-0.10 s` with strong same-state parity.
+  The comparable water-heavy step remains about `5.8 s`/50 FIM substeps versus Flow `0.04 s`/one
+  step. Re-open gas linear policy only with new same-preconditioner evidence not already covered
+  by `FIM-Y2D4` through `FIM-Y2D6`; keep acceptance, damping, controller and G5 held.
 - [x] **Newton production-seam extraction (2026-07-15): behavior-preserving.** Moved production
   helpers from `fim/newton.rs` into `newton/damping.rs` (Appleyard/chop/history stabilization),
   `newton/convergence.rs` (residual families, CNV/MB, acceptance and stagnation gates), and

@@ -585,7 +585,7 @@ fn cell_component_inventory_sc(
     let pore_volume_m3 = pore_volume_at_state(sim, previous_state, state, cell_idx).max(1e-9);
     let cell = state.cell(cell_idx);
 
-    let water_sc = pore_volume_m3 * cell.sw / sim.b_w.max(1e-9);
+    let water_sc = pore_volume_m3 * cell.sw * sim.water_inverse_fvf(cell.pressure_bar);
     let oil_sc = pore_volume_m3 * derived.so / derived.bo.max(1e-9);
     let gas_sc = pore_volume_m3 * derived.sg / derived.bg.max(1e-9) + oil_sc * derived.rs;
 
@@ -897,7 +897,10 @@ fn cell_accumulation_jacobian_block(
     let pore_volume_m3 = pore_volume_at_state(sim, previous_state, state, cell_idx).max(1e-9);
     let d_pore_volume_d_p = pore_volume_m3 * sim.rock_compressibility;
     let cell = state.cell(cell_idx);
-    let bw = sim.b_w.max(1e-9);
+    let inv_bw = sim.water_inverse_fvf(cell.pressure_bar);
+    let d_inv_bw_d_p = sim.pvt.c_w
+        * (1.0 + sim.pvt.c_w * (cell.pressure_bar - sim.water_pvt_reference_pressure_bar))
+        / sim.b_w.max(1e-9);
     let bo = derived.bo.max(1e-9);
     let bg = derived.bg.max(1e-9);
 
@@ -921,8 +924,9 @@ fn cell_accumulation_jacobian_block(
     };
 
     let oil_inventory = pore_volume_m3 * derived.so / bo;
-    let d_water_d_p = d_pore_volume_d_p * cell.sw / bw;
-    let d_water_d_sw = pore_volume_m3 / bw;
+    let d_water_d_p =
+        d_pore_volume_d_p * cell.sw * inv_bw + pore_volume_m3 * cell.sw * d_inv_bw_d_p;
+    let d_water_d_sw = pore_volume_m3 * inv_bw;
 
     let d_oil_d_p =
         d_pore_volume_d_p * derived.so / bo - pore_volume_m3 * derived.so * d_bo_d_p / (bo * bo);
@@ -1139,6 +1143,7 @@ struct LocalFluxCellSensitivity {
     rs_derivatives: [f64; 3],
     rho_o_derivatives: [f64; 3],
     rho_g_derivatives: [f64; 3],
+    rho_w_derivatives: [f64; 3],
     pcw_derivatives: [f64; 3],
     pcog_derivatives: [f64; 3],
 }
@@ -1259,6 +1264,12 @@ fn local_flux_cell_sensitivity(
         },
     ];
     let rho_g_derivatives = [sim.get_d_rho_g_d_p_for_state(cell.pressure_bar), 0.0, 0.0];
+    let water_x = sim.pvt.c_w * (cell.pressure_bar - sim.water_pvt_reference_pressure_bar);
+    let rho_w_derivatives = [
+        sim.pvt.rho_w * sim.pvt.c_w * (1.0 + water_x) / sim.b_w.max(1e-9),
+        0.0,
+        0.0,
+    ];
     let pcw_derivatives = [0.0, sim.get_d_capillary_pressure_d_sw(cell.sw), 0.0];
     let pcog_derivatives = [
         0.0,
@@ -1281,6 +1292,7 @@ fn local_flux_cell_sensitivity(
         rs_derivatives,
         rho_o_derivatives,
         rho_g_derivatives,
+        rho_w_derivatives,
         pcw_derivatives,
         pcog_derivatives,
     }
@@ -1404,7 +1416,10 @@ pub(crate) fn interface_flux_terms(
         (id_j, derived_j, mobilities_j)
     };
 
-    let q_w_sc_day = geom_t * water_upstream.2.water * dphi_w / sim.b_w.max(1e-9);
+    let q_w_sc_day = geom_t
+        * water_upstream.2.water
+        * dphi_w
+        * sim.water_inverse_fvf(state.cell(water_upstream.0).pressure_bar);
     let q_o_res_day = geom_t * oil_upstream.2.oil * dphi_o;
     let q_o_sc_day = q_o_res_day / oil_upstream.1.bo.max(1e-9);
     let q_g_free_sc_day = geom_t * gas_upstream.2.gas * dphi_g / gas_upstream.1.bg.max(1e-9);
@@ -1594,8 +1609,8 @@ fn add_exact_interface_flux_jacobian(
             pressure_sign,
             if side_idx == 0 { -1.0 } else { 1.0 },
             locals[side_idx].pcw_derivatives,
-            0.0,
-            [0.0; 3],
+            grav_half,
+            locals[side_idx].rho_w_derivatives,
         );
         let dphi_o_derivatives = phase_potential_derivatives(
             pressure_sign,
@@ -1613,12 +1628,22 @@ fn add_exact_interface_flux_jacobian(
         );
 
         for local_var in 0..3 {
-            let mut dq_w_sc_day =
-                geom_t * lambda_w * dphi_w_derivatives[local_var] / sim.b_w.max(1e-9);
+            let water_upwind_pressure = state
+                .cell(if water_upwind == 0 { id_i } else { id_j })
+                .pressure_bar;
+            let inv_bw_up = sim.water_inverse_fvf(water_upwind_pressure);
+            let mut dq_w_sc_day = geom_t * lambda_w * dphi_w_derivatives[local_var] * inv_bw_up;
             if side_idx == water_upwind {
-                dq_w_sc_day +=
-                    geom_t * locals[side_idx].mobility_derivatives[0][local_var] * dphi_w
-                        / sim.b_w.max(1e-9);
+                dq_w_sc_day += geom_t
+                    * locals[side_idx].mobility_derivatives[0][local_var]
+                    * dphi_w
+                    * inv_bw_up;
+                if local_var == 0 {
+                    let water_x = sim.pvt.c_w
+                        * (water_upwind_pressure - sim.water_pvt_reference_pressure_bar);
+                    let d_inv_bw_d_p = sim.pvt.c_w * (1.0 + water_x) / sim.b_w.max(1e-9);
+                    dq_w_sc_day += geom_t * lambda_w * dphi_w * d_inv_bw_d_p;
+                }
             }
 
             let mut dq_o_sc_day = geom_t * lambda_o * dphi_o_derivatives[local_var] / bo_up;

@@ -541,4 +541,132 @@ impl RockFluidProps {
             .min_ceil(1.0);
         s_eff.powf(self.n_o) * self.k_ro_max
     }
+
+    /// OPM's tabulated saturation functions use constant extension at both endpoints. These
+    /// mirrors retain the Corey values but freeze AD at the exact endpoints, also matching the
+    /// strict-open-interval convention used by `d_k_*_d_sw` above.
+    pub(crate) fn k_rw_endpoint_clipped_generic<S: Scalar>(&self, s_w: S) -> S {
+        if s_w.value() <= self.s_wc {
+            return S::from_f64(self.k_rw(self.s_wc));
+        }
+        if s_w.value() >= 1.0 - self.s_or {
+            return S::from_f64(self.k_rw(1.0 - self.s_or));
+        }
+        self.k_rw_generic(s_w)
+    }
+
+    pub(crate) fn k_ro_endpoint_clipped_generic<S: Scalar>(&self, s_w: S) -> S {
+        if s_w.value() <= self.s_wc {
+            return S::from_f64(self.k_ro(self.s_wc));
+        }
+        if s_w.value() >= 1.0 - self.s_or {
+            return S::from_f64(self.k_ro(1.0 - self.s_or));
+        }
+        self.k_ro_generic(s_w)
+    }
+
+    /// Exact rounded SWOF values from `opm/reference-decks/water-heavy-step1/CASE.DATA`.
+    /// OPM's piecewise-linear evaluator selects the segment ending at a knot, hence `Sw=.3`
+    /// uses the `.2-.3` slope rather than the analytic Corey tangent. This narrowly names the
+    /// water-heavy diagnostic table; it is not a replacement for the application's Corey model.
+    const WATER_HEAVY_SWOF: [(f64, f64, f64); 9] = [
+        (0.10, 0.0000, 1.0000),
+        (0.20, 0.0156, 0.7656),
+        (0.30, 0.0625, 0.5625),
+        (0.40, 0.1406, 0.3906),
+        (0.50, 0.2500, 0.2500),
+        (0.60, 0.3906, 0.1406),
+        (0.70, 0.5625, 0.0625),
+        (0.80, 0.7656, 0.0156),
+        (0.90, 1.0000, 0.0000),
+    ];
+
+    pub(crate) fn water_heavy_swof_replay(&self, s_w: f64) -> (f64, f64) {
+        let rows = &Self::WATER_HEAVY_SWOF;
+        let value = |index: usize| (rows[index].1, rows[index].2);
+        if s_w <= rows[0].0 {
+            return value(0);
+        }
+        for index in 1..rows.len() {
+            if s_w <= rows[index].0 {
+                let (x0, krw0, kro0) = rows[index - 1];
+                let (x1, krw1, kro1) = rows[index];
+                let t = ((s_w - x0) / (x1 - x0)).clamp(0.0, 1.0);
+                return (krw0 + t * (krw1 - krw0), kro0 + t * (kro1 - kro0));
+            }
+        }
+        value(rows.len() - 1)
+    }
+
+    pub(crate) fn water_heavy_swof_replay_generic<S: Scalar>(&self, s_w: S) -> (S, S) {
+        let rows = &Self::WATER_HEAVY_SWOF;
+        if s_w.value() <= rows[0].0 {
+            return (S::from_f64(rows[0].1), S::from_f64(rows[0].2));
+        }
+        for index in 1..rows.len() {
+            if s_w.value() <= rows[index].0 {
+                let (x0, krw0, kro0) = rows[index - 1];
+                let (x1, krw1, kro1) = rows[index];
+                let t = ((s_w - x0) / (x1 - x0)).max_floor(0.0).min_ceil(1.0);
+                return (t * (krw1 - krw0) + krw0, t * (kro1 - kro0) + kro0);
+            }
+        }
+        let last = rows.len() - 1;
+        (S::from_f64(rows[last].1), S::from_f64(rows[last].2))
+    }
+}
+
+#[cfg(test)]
+mod endpoint_derivative_tests {
+    use super::*;
+    use crate::fim::ad::Ad;
+
+    #[test]
+    fn opm_endpoint_replay_freezes_corey_ad_without_changing_values() {
+        let scal = RockFluidProps::default_scal();
+        let sw = Ad::<1>::variable(scal.s_wc, 0);
+
+        let legacy_water = scal.k_rw_generic(sw);
+        let legacy_oil = scal.k_ro_generic(sw);
+        let clipped_water = scal.k_rw_endpoint_clipped_generic(sw);
+        let clipped_oil = scal.k_ro_endpoint_clipped_generic(sw);
+
+        assert_eq!(clipped_water.value(), legacy_water.value());
+        assert_eq!(clipped_oil.value(), legacy_oil.value());
+        assert_eq!(clipped_water.d(0), scal.d_k_rw_d_sw(scal.s_wc));
+        assert_eq!(clipped_oil.d(0), scal.d_k_ro_d_sw(scal.s_wc));
+        assert_eq!(clipped_water.d(0), 0.0);
+        assert_eq!(clipped_oil.d(0), 0.0);
+        assert_ne!(legacy_oil.d(0), 0.0);
+    }
+
+    #[test]
+    fn opm_endpoint_replay_keeps_interior_corey_ad_live() {
+        let scal = RockFluidProps::default_scal();
+        let sw_value = 0.3;
+        let sw = Ad::<1>::variable(sw_value, 0);
+
+        let water = scal.k_rw_endpoint_clipped_generic(sw);
+        let oil = scal.k_ro_endpoint_clipped_generic(sw);
+
+        assert!((water.value() - scal.k_rw(sw_value)).abs() < 1e-15);
+        assert!((oil.value() - scal.k_ro(sw_value)).abs() < 1e-15);
+        assert!((water.d(0) - scal.d_k_rw_d_sw(sw_value)).abs() < 1e-15);
+        assert!((oil.d(0) - scal.d_k_ro_d_sw(sw_value)).abs() < 1e-15);
+    }
+
+    #[test]
+    fn water_heavy_swof_replay_uses_rounded_left_segment_slope_at_point_three() {
+        let scal = RockFluidProps::default_scal();
+        let sw = Ad::<1>::variable(0.3, 0);
+        let (krw, kro) = scal.water_heavy_swof_replay_generic(sw);
+        assert!((krw.value() - 0.0625).abs() < 1e-15);
+        assert!((kro.value() - 0.5625).abs() < 1e-15);
+        assert!((krw.d(0) - 0.469).abs() < 1e-12);
+        assert!((kro.d(0) + 2.031).abs() < 1e-12);
+        let endpoint = Ad::<1>::variable(0.1, 0);
+        let (water_endpoint, oil_endpoint) = scal.water_heavy_swof_replay_generic(endpoint);
+        assert_eq!(water_endpoint.d(0), 0.0);
+        assert_eq!(oil_endpoint.d(0), 0.0);
+    }
 }

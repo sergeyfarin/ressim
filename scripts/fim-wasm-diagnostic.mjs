@@ -94,6 +94,8 @@ Options:
   --nz <n>                  Override nz
   --dt <days>               Outer-step size in days
   --steps <n>               Number of outer steps to run
+  --solver <name>           fim | impes (default: fim)
+  --max-sat-change <value>  Override the per-substep saturation-change guard
   --wells <layout>          both | injector-only | producer-only
   --control <mode>          pressure | rate
   --gravity <bool>          true | false
@@ -114,7 +116,7 @@ Options:
 Examples:
   node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 3 --diagnostic step
   node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --wells injector-only --dt 0.1 --steps 5
-  node scripts/fim-wasm-diagnostic.mjs --preset water-rate --control rate --grid 24x1x1
+  node scripts/fim-wasm-diagnostic.mjs --preset water-rate --control rate --grid 24x1x1 --solver impes
 
 Current diagnostic granularity:
   summary = structured outer-step summaries and solver warnings.
@@ -150,6 +152,7 @@ function parseGrid(value) {
 function parseArgs(argv) {
   const options = {
     preset: 'water-pressure',
+    solver: 'fim',
     diagnostic: 'summary',
     emitJson: true,
   };
@@ -191,6 +194,14 @@ function parseArgs(argv) {
         break;
       case '--steps':
         options.steps = Number(next);
+        index += 1;
+        break;
+      case '--solver':
+        options.solver = next;
+        index += 1;
+        break;
+      case '--max-sat-change':
+        options.maxSatChange = Number(next);
         index += 1;
         break;
       case '--wells':
@@ -274,6 +285,21 @@ function buildOptions(parsed) {
   if (!['pressure', 'rate'].includes(resolved.control)) {
     throw new Error(`Unsupported control mode: ${resolved.control}`);
   }
+  if (!['fim', 'impes'].includes(resolved.solver)) {
+    throw new Error(`Unsupported solver: ${resolved.solver}`);
+  }
+  if (
+    resolved.maxSatChange != null
+    && (!Number.isFinite(resolved.maxSatChange) || resolved.maxSatChange <= 0)
+  ) {
+    throw new Error(`Invalid max saturation change: ${resolved.maxSatChange}`);
+  }
+  if (
+    resolved.solver === 'impes'
+    && (resolved.opmAligned || resolved.nestedWellSolve || resolved.trueFgmres)
+  ) {
+    throw new Error('FIM-only solver flags cannot be used with --solver impes');
+  }
   if (!['quiet', 'summary', 'outer', 'step'].includes(resolved.diagnostic)) {
     throw new Error(`Unsupported diagnostic mode: ${resolved.diagnostic}`);
   }
@@ -352,7 +378,11 @@ function configureCommonTwoPhase(sim, options, overrides = {}) {
     new Float64Array(Array.from({ length: options.nz }, () => overrides.ky ?? 2000.0)),
     new Float64Array(Array.from({ length: options.nz }, () => overrides.kz ?? 200.0)),
   );
-  sim.setStabilityParams(overrides.maxSatChange ?? 0.05, overrides.maxPressureChange ?? 75.0, overrides.maxWellRateChange ?? 0.75);
+  sim.setStabilityParams(
+    overrides.maxSatChange ?? options.maxSatChange ?? 0.05,
+    overrides.maxPressureChange ?? 75.0,
+    overrides.maxWellRateChange ?? 0.75,
+  );
 }
 
 function setWells(sim, options, config) {
@@ -583,15 +613,17 @@ function snapshot(sim, outerStep, outerMs, previousHistoryLength) {
 function formatAcceptedRung(record) {
   const backend = record.linear_backend ?? 'n/a';
   const linearIterations = record.linear_iterations == null ? 'n/a' : record.linear_iterations;
-  return `s${record.substep}@${record.dt_days.toExponential(3)}/n${record.newton_iterations}/${backend}[it=${linearIterations},lin=${record.linear_solve_ms.toFixed(1)},pc=${record.linear_preconditioner_ms.toFixed(1)}]`;
+  const work = `updates=${record.applied_update_count ?? 'n/a'},solves=${record.linear_solve_count ?? 'n/a'},krylov=${record.linear_iteration_count ?? 'n/a'}`;
+  return `s${record.substep}@${record.dt_days.toExponential(3)}/n${record.newton_iterations}/${backend}[last_it=${linearIterations},${work},lin=${record.linear_solve_ms.toFixed(1)},pc=${record.linear_preconditioner_ms.toFixed(1)}]`;
 }
 
 function formatRetryRung(record) {
   const backend = record.linear_backend ?? 'n/a';
   const linearIterations = record.linear_iterations == null ? 'n/a' : record.linear_iterations;
+  const work = `updates=${record.applied_update_count ?? 'n/a'},solves=${record.linear_solve_count ?? 'n/a'},krylov=${record.linear_iteration_count ?? 'n/a'}`;
   const retryClass = record.retry_class ?? 'n/a';
   const dominant = record.dominant_family == null ? 'n/a' : `${record.dominant_family}@${record.dominant_row}`;
-  return `s${record.substep}@${record.dt_days.toExponential(3)}/n${record.newton_iterations}/${backend}[it=${linearIterations},lin=${record.linear_solve_ms.toFixed(1)},pc=${record.linear_preconditioner_ms.toFixed(1)}]/${retryClass}:${dominant}`;
+  return `s${record.substep}@${record.dt_days.toExponential(3)}/n${record.newton_iterations}/${backend}[last_it=${linearIterations},${work},lin=${record.linear_solve_ms.toFixed(1)},pc=${record.linear_preconditioner_ms.toFixed(1)}]/${retryClass}:${dominant}`;
 }
 
 function printStepSummary(record) {
@@ -658,6 +690,7 @@ async function main() {
 
   const sim = new ReservoirSimulator(options.nx, options.ny, options.nz, 0.2);
   options.presetConfig.configure(sim, options);
+  sim.setFimEnabled(options.solver === 'fim');
   if (options.opmAligned) {
     sim.setFimOpmAlignedNonlinear(true);
   }
@@ -728,6 +761,7 @@ async function main() {
 
   const result = {
     preset: options.preset,
+    solver: options.solver,
     description: options.presetConfig.description,
     grid: { nx: options.nx, ny: options.ny, nz: options.nz },
     dtDays: options.dt,
@@ -736,6 +770,7 @@ async function main() {
     control: options.control,
     gravity: options.gravity,
     capillary: options.capillary,
+    maxSatChange: options.maxSatChange ?? 0.05,
     diagnostic: options.diagnostic,
     totalMs: performance.now() - started,
     final: stepRecords.at(-1) ?? null,

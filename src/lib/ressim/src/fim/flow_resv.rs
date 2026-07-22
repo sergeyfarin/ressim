@@ -735,6 +735,58 @@ mod tests {
     }
 
     #[test]
+    fn g5a_nested_update_recovers_injecting_branch_after_rs_to_zero_sg_switch() {
+        let mut sim = gas_resv_sim();
+        sim.set_gas_redissolution_enabled(true);
+        let mut state = FimState::from_simulator(&sim);
+        let context = begin_flow_resv_report_step_context(&sim, &state, true)
+            .unwrap()
+            .unwrap();
+        let topology = build_well_topology(&sim);
+        state
+            .initialize_flow_resv_gas_primary(&sim, &topology, context)
+            .unwrap();
+
+        // Reproduce G5a's first post-switch condition: the reservoir update has changed the
+        // composition primary from Rs to Sg=0 and moved pressure above the raw well BHP update.
+        // The connection clamp therefore reports q=0 before the selected local solve.
+        state.cells[0].pressure_bar = 206.27;
+        state.cells[0].sw = 0.149962;
+        state.cells[0].regime = crate::fim::state::HydrocarbonState::Saturated;
+        state.cells[0].hydrocarbon_var = 0.0;
+        state.well_bhp[context.physical_well_idx] = 196.91;
+        assert_eq!(
+            crate::fim::wells::connection_rate_for_bhp(
+                &sim,
+                &state,
+                &topology,
+                context.perforation_idx,
+                state.well_bhp[context.physical_well_idx],
+            ),
+            Some(0.0)
+        );
+
+        let report = crate::fim::wells_inner::solve_flow_resv_well_locally(
+            &sim,
+            &mut state,
+            &topology,
+            context,
+            &crate::fim::wells_inner::FimWellInnerSolveOptions::default(),
+        );
+
+        assert!(report.converged, "branch recovery failed: {report:?}");
+        assert!(state.well_bhp[context.physical_well_idx] > state.cells[0].pressure_bar);
+        let local = crate::fim::wells_inner::assemble_flow_resv_well_local_system(
+            &sim, &state, &topology, context,
+        );
+        assert!(
+            local.residual.iter().all(|value| value.abs() < 1e-7),
+            "selected rows remain nonzero after branch recovery: {:?}",
+            local.residual
+        );
+    }
+
+    #[test]
     fn g4b3_mixed_route_preserves_historical_well_inner_solve() {
         let mut sim = gas_resv_sim();
         sim.add_well_with_id(0, 0, 0, 150.0, 0.1, 0.0, false, "prod".to_string())

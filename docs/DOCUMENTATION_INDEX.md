@@ -18,6 +18,7 @@ Use this file to decide which documents are authoritative, which are active work
 | `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md` | The 95%-track-OPM policy decision and Bundle A/B/C sequencing, with 2026-07-05 status addendum |
 | `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` | Six-item FIM-vs-OPM Newton-efficiency gap decomposition, with 2026-07-05 triage (4 of 6 closed) |
 | `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` | Active decision-frontier plan: Y2b2a backend-neutral oracle repair, corrected raw-state replay, dependency-aware OPM lifecycle gates, promotion matrix, and prescriptive simple-model handoff |
+| `docs/SOLVER_COMPARISON_SUMMARY.md` | Current OPM/FIM/IMPES scenario timing and correctness table, comparability limits, and replay commands |
 | `docs/FIM_Y2B3_PRIMARY_VARIABLE_LIFECYCLE_DESIGN.md` | Deck-scoped OPM `Sg`/`Rs` lifecycle map, ResSim fixed-layout dependency contract, empty-column invariant, and prescriptive Y2b3a-c implementation gates |
 | `docs/FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md` | Source-pinned Flow 2026.04 BiCGSTAB/true-IMPES/CPRW/paroverilu0/one-loop-AMG lifecycle, well-operator split, coupled capture gates, and IMPES applicability audit |
 | `docs/FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md` | G4a source-pinned, default-off design for the single-perforation Flow gas-RESV injector surface-primary/control/connection/source lifecycle and mandatory oracle |

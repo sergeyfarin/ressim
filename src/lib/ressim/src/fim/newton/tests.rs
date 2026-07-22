@@ -395,6 +395,9 @@ fn zero_residual_scaffold_converges_in_one_newton_step() {
     assert!(report.final_residual_inf_norm <= 1e-12);
     assert!(report.final_material_balance_inf_norm <= 1e-12);
     assert!(report.final_update_inf_norm <= 1e-12);
+    assert_eq!(report.applied_update_count, 0);
+    assert_eq!(report.linear_solve_count, 0);
+    assert_eq!(report.linear_iteration_count, 0);
 }
 
 #[test]
@@ -436,6 +439,9 @@ fn local_closed_system_newton_recovers_previous_state_from_perturbed_iterate() {
     );
 
     assert!(report.converged);
+    assert!(report.applied_update_count > 0);
+    assert_eq!(report.linear_solve_count, report.applied_update_count);
+    assert!(report.linear_iteration_count >= report.linear_solve_count);
     assert!(
         (report.accepted_state.cells[0].pressure_bar - previous_state.cells[0].pressure_bar).abs()
             < 0.5

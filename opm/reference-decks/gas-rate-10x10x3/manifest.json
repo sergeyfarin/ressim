@@ -33,7 +33,10 @@
         "pressureBar": 200,
         "waterSaturation": 0.15,
         "gasSaturation": 0,
-        "rsSm3Sm3": 80
+        "rsSm3Sm3": 80,
+        "gasRedissolution": "enabled; DRSDT intentionally omitted (unlimited increment)",
+        "waterPvtReferencePressureBar": 200,
+        "oilTableInterpolation": "reciprocal 1/Bo and 1/(Bo*mu_o), including undersaturated PVTO rows and LeftExtreme guided pressure shifts between Rs branches"
       },
       "controls": {
         "injector": "gas RESV 500 m3/day, max BHP 400 bar",

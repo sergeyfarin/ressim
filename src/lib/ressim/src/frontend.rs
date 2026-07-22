@@ -82,6 +82,7 @@ impl ReservoirSimulator {
             depth_reference_m: 0.0,
             b_o: 1.0,
             b_w: 1.0,
+            water_pvt_reference_pressure_bar: 300.0,
             rate_history: Vec::new(),
             last_solver_warning: String::new(),
             last_fim_trace: String::new(),
@@ -93,6 +94,8 @@ impl ReservoirSimulator {
             fim_flow_lifecycle: false,
             fim_flow_resv_injector: false,
             fim_force_direct_linear: false,
+            fim_opm_endpoint_relperm: false,
+            fim_opm_water_heavy_swof: false,
             gas_outer_step_trial_carryover: None,
             last_fim_step_stats: None,
             fim_step_stats_history: Vec::new(),
@@ -334,6 +337,20 @@ impl ReservoirSimulator {
         self.fim_flow_resv_injector = enabled;
     }
 
+    /// WATER-003 native-only diagnostic flag. OPM extends a tabulated saturation function as a
+    /// constant at either endpoint, so the AD derivative is zero exactly at `Swc`/`1-Sor`.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_fim_opm_endpoint_relperm(&mut self, enabled: bool) {
+        self.fim_opm_endpoint_relperm = enabled;
+    }
+
+    /// WATER-005 native-only replay of the exact rounded SWOF table in the water-heavy Flow
+    /// oracle. It is not a public scenario setting.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_fim_opm_water_heavy_swof(&mut self, enabled: bool) {
+        self.fim_opm_water_heavy_swof = enabled;
+    }
+
     #[wasm_bindgen(js_name = setGravityEnabled)]
     pub fn set_gravity_enabled(&mut self, enabled: bool) {
         self.gravity_enabled = enabled;
@@ -513,6 +530,7 @@ impl ReservoirSimulator {
         for i in 0..self.nx * self.ny * self.nz {
             self.pressure[i] = pressure;
         }
+        self.water_pvt_reference_pressure_bar = pressure;
     }
 
     #[wasm_bindgen(js_name = setCellDimensions)]

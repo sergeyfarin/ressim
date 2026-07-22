@@ -1361,11 +1361,17 @@ fn accumulation_block_has_exact_water_derivatives() {
     let d = state.derive_cell(&sim, 0);
     let block = cell_accumulation_jacobian_block(&sim, &previous_state, &state, 0, &d);
     let pv = sim.pore_volume_m3(0).max(1e-9);
+    let pressure = state.cells[0].pressure_bar;
+    let inv_bw = sim.water_inverse_fvf(pressure);
+    let x = sim.pvt.c_w * (pressure - sim.water_pvt_reference_pressure_bar);
+    let d_inv_bw_d_p = sim.pvt.c_w * (1.0 + x) / sim.b_w;
 
     assert!(
-        (block[0][0] - pv * sim.rock_compressibility * state.cells[0].sw / sim.b_w).abs() < 1e-12
+        (block[0][0] - pv * state.cells[0].sw * (sim.rock_compressibility * inv_bw + d_inv_bw_d_p))
+            .abs()
+            < 1e-12
     );
-    assert!((block[0][1] - pv / sim.b_w).abs() < 1e-12);
+    assert!((block[0][1] - pv * inv_bw).abs() < 1e-12);
     assert!(block[0][2].abs() < 1e-12);
 }
 

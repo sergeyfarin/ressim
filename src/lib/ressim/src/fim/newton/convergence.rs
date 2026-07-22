@@ -719,12 +719,11 @@ pub(super) fn cnv_mb_diagnostics(
     let n_cells = state.cells.len();
     let mut pore_volumes = Vec::with_capacity(n_cells);
     let mut fvf = Vec::with_capacity(n_cells);
-    let b_w = sim.b_w.max(1e-9);
     for idx in 0..n_cells {
         pore_volumes.push(sim.pore_volume_m3(idx));
         let pressure_bar = state.cells[idx].pressure_bar;
         fvf.push([
-            b_w,
+            sim.water_fvf(pressure_bar),
             sim.get_b_o_cell(idx, pressure_bar).max(1e-9),
             sim.get_b_g(pressure_bar).max(1e-9),
         ]);

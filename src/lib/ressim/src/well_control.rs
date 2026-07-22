@@ -345,7 +345,7 @@ impl ReservoirSimulator {
         let q_m3_day = self.completion_rate_for_bhp(well, pressure_bar, bhp_bar)?;
         if well.injector {
             let injected_sc_rate = match self.injected_fluid {
-                InjectedFluid::Water => (-q_m3_day) / self.b_w.max(1e-9),
+                InjectedFluid::Water => (-q_m3_day) * self.water_inverse_fvf(pressure_bar),
                 InjectedFluid::Gas => (-q_m3_day) / self.get_b_g(pressure_bar).max(1e-9),
             };
             Some(injected_sc_rate.max(0.0))

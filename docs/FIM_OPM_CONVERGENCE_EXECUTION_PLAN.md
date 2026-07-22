@@ -1,7 +1,10 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **G4b4 complete: the scoped Flow RESV well lifecycle is now source-comparable and stable
-for six uncut steps, but it does not reduce the nonlinear-count gap (2026-07-20)**. This document turns the evidence in
+Status: **WATER-008 establishes a Flow-vs-ResSim stopping-norm mismatch: Flow's `.005` is raw
+residual reduction, while ResSim may accept on a re-applied preconditioned residual; WATER-009
+shows that raw `.005` accepts the same tail; next isolate Flow's nonlinear acceptance/update
+lifecycle (WATER-010) is already mapped and locates divergence after update two; WATER-011 must
+compare that exact update/state contract (2026-07-22)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -1019,8 +1022,9 @@ lifecycle, multi-perf allocation, and BHP switching held.
 
 The current non-gas blocker remains material and is unaffected by G4b2b: fresh water-heavy
 12x12x3 uses seven accepted substeps plus one rejected trial, 70 total applied updates and 185
-linear iterations in `0.510 s`; fresh Flow takes one step, zero cuts, 11 Newton and 14 linear
-iterations in `0.04 s`. Preserve it as the cross-physics promotion gate, not as evidence against
+linear iterations in `0.510 s`; the then-current Flow deck took one step, zero cuts, 11 Newton
+and 14 linear iterations in `0.04 s` (WATER-001 later corrected its radius/diameter mapping and
+measured 13 linear iterations). Preserve it as the cross-physics promotion gate, not as evidence against
 the gas-only G4 mechanism.
 
 ### G4b3 implementation checkpoint (2026-07-20): selected inner system is route-correct
@@ -1271,3 +1275,334 @@ Next authorized checkpoint:
 Commit code and its focused tests together. Commit the evidence/docs checkpoint after the result
 is known. Never proceed to the next branch merely because a run improved one headline count, and
 never discard an improvement because a second path emitted incomparable diagnostics.
+
+### G5a result (2026-07-22): substitution matches; selected injector branch recovery was missing
+
+The explicit contract is Flow's deck-as-written `DISGAS` with no `DRSDT`, matched in the native
+ResSim oracle by `FIM_Y1J_GAS_REDISSOLUTION=1`. Both engines start on Rs and switch the overshoot
+to `Sg=0`; G5 substitution is not the mismatch.
+
+At the first post-switch evaluation, ResSim's raw outer correction had put BHP below cell
+pressure. Its clamped connection was consequently `q=0` with zero BHP derivative, preventing the
+selected local Newton solve from recovering the injecting branch and removing the gas source.
+The scoped selected route now reconstructs an injecting BHP from its frozen total-mobility linear
+connection law before running the unchanged shared-row Newton solve. This restores the exact
+surface target/source and reduces first-step residual evaluations `14 -> 9` without changing the
+historical DRSDT0 route.
+
+This is default-off G4 well-lifecycle infrastructure exposed by G5a, not full StandardWell or a
+general G5 promotion. Full well-primary structure, BHP switching, multi-perforation allocation,
+PVTO reciprocal/extrapolation, linear acceptance, and controller behavior remain held or missing.
+Authorize G4c3 only: explain the evaluation-0 pressure/Sw correction gap from the mapped
+derivatives before any reservoir-flux or policy edit.
+
+### G4c3 result (2026-07-22): mapped PVT blocks explain the full first correction
+
+An exact captured-full-system counterfactual isolates the derivative gaps without changing live
+physics. Adding only the omitted `PV*Sw*c_w=0.00075` water-pressure diagonal moves dSw most of the
+way toward Flow; applying the mapped non-water block deltas moves pressure and Rs; combining both
+gives cell 0 `[dp=9.469612,dSw=-1.27840e-4,dRs=293.439646]` versus Flow
+`[9.52669,-1.28610e-4,293.43965]`. The patched full-system relative residual is `2.12e-16`.
+
+The source audit is consistent: OPM water uses a PVTW reference pressure and inverse Bw; OPM live
+oil interpolates inverse Bo and inverse Bo-mu, while ResSim uses constant Bw in FIM accumulation,
+direct Bo/mu interpolation, and an exact fixture missing PVTO undersaturated rows. G4c3 does not
+port only the diagonal. Authorize G4c4 as a coherent PVTW/PVTO lifecycle covering all coupled
+consumers and relevant shared/IMPES behavior. Keep G5, wells, acceptance, linear policy, and
+controller fixed.
+
+### G4c4 result (2026-07-22): coherent in-table PVT lifecycle closes the >10x native gap
+
+The complete shared lifecycle is now active: reference-pressure PVTW inverse FVF is used by
+storage, flux, wells, convergence/scaling, reporting/control and density; PVTO interpolates
+inverse Bo and inverse Bo-mu in pressure and Rs; exact fixtures contain all eight deck rows.
+Scalar, AD, legacy-test and shared consumers agree. Reciprocal out-of-table PVTO extrapolation is
+still missing and is not claimed by this checkpoint.
+
+The first correction is within about 2% of Flow in pressure and closely aligned in Sw/Rs. Six
+matched report steps accept without cuts in `0.597 s`, with 23 updates and 55 linear applications,
+versus Flow's `0.08 s`, 26 updates and 27 linear iterations. Thus the headline native exact-case
+gap is now about 7.5x, but the linear-work/cost gap remains. Browser gas controls regress while
+remaining bounded, so this is not a blanket convergence promotion. Authorize G4c5 only: compare
+the remaining same-state residual/Jacobian terms and profile linear cost before selecting another
+bounded G4 mechanism. G5, acceptance, damping and controller policy remain held.
+
+### G4c5 result (2026-07-22): guided PVTO derivative closes the correction; coarse setup dominates
+
+OPM's live-oil two-dimensional table uses `LeftExtreme` guided interpolation: neighboring Rs
+branches are evaluated at pressure-shifted coordinates, not both at the same pressure. Adding the
+same scalar/AD rule closes the exact first correction to
+`[9.529566823,-1.286491521e-4,293.4396825]` versus Flow
+`[9.52669,-1.28610e-4,293.43965]`. This is completion of the in-table G4c4 semantics, not a fitted
+Jacobian or G5 change.
+
+Profiling attributes three quarters of the old solver time to linear work and nearly all of that
+to rebuilding a dense 300-row coarse inverse. Seven sequential captures validate the existing
+ILU0/BiCGSTAB coarse path with zero failures and maximum relative residual `7.879e-7`, authorizing
+the bounded dense threshold `300 -> 299`. Matched six-step time falls `0.597 -> 0.191 s` with the
+same 23 updates, 55 Krylov iterations and zero cuts; the Flow comparison is `0.08 s`.
+
+G4c5 is validated positive. Browser substep counts and the earlier G4c4 gas tradeoff are unchanged.
+Authorize G4c6 only: attribute the 55-versus-27 linear count semantics before changing linear
+policy. Keep G5, acceptance, damping, controller and iteration limits fixed.
+
+### G4c6 result (2026-07-22): the remaining factor is Krylov efficiency, not duplicate solves
+
+Explicit counters correct the earlier ambiguous wording. ResSim exact gas uses 29 residual
+evaluations, 23 applied updates, 23 reservoir solve calls, and 55 Krylov iterations. Flow uses 32
+linearizations/evaluations, 26 Newton updates, and 27 Krylov iterations. There is exactly one
+ResSim reservoir solve per applied update, no retry, and the local well Newton lives in state
+update. The remaining linear metric is therefore 2.39 versus 1.04 Krylov iterations per solve.
+
+The existing complete Flow lifecycle counterfactual gives 28 updates/45 Krylov iterations but
+`0.646 s`, decisively slower than G4c5. This confirms `FIM-Y2D6` rather than authorizing a repeat.
+G4c6 closes diagnostic-only. The multi-scenario table now shows water-heavy (`50` FIM substeps
+versus Flow's one) is the larger convergence priority. Hold exact-gas solver policy unless a new
+same-preconditioner oracle identifies a mechanism not already covered by Y2D4-D6.
+
+### WATER-001 result (2026-07-22): corrected oracle separates FIM nonlinear work from IMPES CFL
+
+The water Flow deck incorrectly treated ResSim's `0.1 m` well radius as Eclipse `COMPDAT`'s
+diameter. Changing the deck value `0.1 -> 0.2` removes the predicted 1.23 well-PI mismatch and
+restores evaluation-0 parity: Flow water MB/CNV is `0.83078/358.90`, versus ResSim
+`0.8308/358.9`. Flow still solves the full day in 11 Newton and 13 linear iterations.
+
+A controller-bypassing FIM probe shows the full day is not currently a viable Newton step: after
+20 applied updates it remains at water MB `1.234`, dominated by injector cell 0, cycling Sw
+between `0.3` and `0.5`; linear reductions remain about `1e-6`. Removing the cold-start cap would
+therefore add a failed attempt, not close the gap. Separately, IMPES substeps respond directly to
+its explicit max-saturation-change guard: `129,73,46,29` at limits `0.05,0.1,0.2,0.5`, with
+materially changing outputs. The two solvers do not share the active convergence mechanism.
+
+Authorize WATER-002 only: matched evaluation-0 Flow/FIM Jacobian and raw-correction comparison,
+using the corrected deck. Hold FIM controller/acceptance/iteration limits and IMPES stability
+policy fixed.
+
+### WATER-002 result (2026-07-22): first split is the BHP-well linearization contract
+
+The corrected evaluation-0 systems map as Flow `[oil,water] x [Sw,pressure(Pa)]` to ResSim
+`[water,oil] x [pressure(bar),Sw]`; ResSim's pinned third two-phase row has zero RHS and cannot
+feed back. Flow's exported solve gives injector raw correction
+`[dp=+110.703482 bar,dSw=+160.360789]`. Flow independently reports maxima
+`DP=1.107e7 Pa, DS=160.4`, validating the export despite the extreme raw saturation update.
+ResSim's exact well-Schur solve gives `[-196.932390,0.792745]`.
+
+Both engines chop injector `dSw` to `+0.2`. Flow therefore raises injector pressure toward its
+500-bar BHP; ResSim's pressure safeguard clips its opposite raw direction to `-90 bar`, so the
+first applied state is `p=210 bar, Sw=0.3` and water MB barely changes `0.8308 -> 0.8277`.
+The largest mapped matrix differences are the ResSim well-Schur terms
+`water@cell0/Sw=17964.8` versus Flow `20.0`, and
+`oil@cell143/Sw=-18018.8` versus Flow `-20.0`. Before ResSim's explicit well Schur, the mapped
+reservoir matrix differs from Flow by `0.732%` in Frobenius norm; afterward it differs by `337%`.
+The mapped RHS difference is `2.23%`.
+
+This localizes the first nonlinear split but does not authorize deleting well derivatives: the
+well solve, reservoir source, BHP constraint, connection update, inner-well solve, and recovery
+order are coupled semantics. WATER-003 must source-trace and replay Flow's complete single-perf
+BHP-well linearization/update lifecycle default-off. Its gate is an upward first applied injector
+pressure and evaluation-1 water MB approaching Flow's `0.314`. Controller, acceptance, saturation
+and pressure chops, iteration limits, and IMPES stability policy remain fixed.
+
+### WATER-003 result (2026-07-22): endpoint-clipped property lifecycle closes update 1
+
+OPM `PiecewiseLinearTwoPhaseMaterial::evalAscending_` returns the first tabulated value as a
+constant when `Sw <= first sample`; its AD derivative is therefore zero at `Swc`. ResSim's scalar
+Corey derivative API already uses the same strict-open-interval convention, but the generic AD
+clamp was equality-inclusive and retained the oil relative-permeability derivative. That live
+connection-mobility derivative generated WATER-002's `~1.8e4` well-Schur entries.
+
+A native-only, default-false flag freezes only exact two-phase Corey endpoints and is consumed by
+the FIM mobility path, so reservoir faces, well connection equations, Schur elimination, recovery
+and the nested post-update well solve see one property contract. No well derivative was deleted
+and controller, acceptance, chops, iteration cap and IMPES were unchanged. The first applied
+injector state becomes `p=390 bar, Sw=0.3`; evaluation-1 water MB is `0.313756`, versus Flow
+`0.31375`. The controlled day improves from 50 substeps/two nonlinear retries/`4.39 s` to
+10/zero/`0.78 s`.
+
+This is not promoted. The direct one-day attempt still fails after the held 20 updates, and the
+10-substep final pressure/rates retain time-discretization and physics differences from Flow's
+one-step result. Authorize WATER-004 only: matched evaluation-1 matrix, RHS, raw correction and
+applied update, explicitly including rounded SWOF versus Corey interior derivatives. Keep all
+solver-policy and IMPES controls fixed.
+
+### WATER-004 result (2026-07-22): evaluation-1 remains a property-oracle gate
+
+Fresh Flow `nit_1` MatrixMarket output and ResSim capture sequence `00001` were projected through
+the same two-phase row/primary/unit mapping and the complete ResSim well Schur. Their mapped
+matrix/RHS relative differences are `16.6253%` and `0.6280%`. At the injector, Flow's raw
+correction is `dp=-38.3182 bar, dSw=+1.89389`; ResSim's is `dp=-111.2297 bar, dSw=+1.52877`.
+Both hit the unchanged `+0.2` saturation chop.
+
+The first update's global water material balance matches, but Flow's export contains no
+intermediate cell state. Thus it cannot establish strict same-state identity and is
+**INCONCLUSIVE**, not evidence for changing iteration limits or timestep control. Moreover, at
+the resulting `Sw=.3`, Flow's rounded SWOF segment slopes (`.469`, `-2.031`) differ from the
+analytic Corey slopes (`.625`, `-1.875`). WATER-005 must implement a default-off, complete
+rounded-SWOF property replay before repeating this oracle; all solver and IMPES policy stays held.
+
+### WATER-005 result (2026-07-22): rounded SWOF closes the property gap
+
+The corrected deck's nine SWOF rows were replayed behind a native-only default-false flag in both
+the scalar and AD two-phase mobility paths. Thus reservoir flux, all perforation/BHP equations,
+well Schur/recovery, and nested post-update mobility use the same rounded values and OPM's
+left-segment knot convention. At `Sw=.3`, the replay derivative is `.469/-2.031` for water/oil;
+at endpoints it remains constant/zero derivative.
+
+The first applied state stays `p=390, Sw=.3`, with water MB `.313749997` versus Flow `.31375`.
+The fresh evaluation-1 oracle improves the mapped matrix delta `16.6253% -> .55813%` (RHS
+`.62792%`) and the injector raw correction is `[-39.0118 bar,+1.93434]` versus Flow
+`[-38.3182,+1.89389]`; both retain the fixed `.2` saturation chop. The held controlled route
+falls from ten substeps/`.775 s` to five/`.281 s`. Its final pressure/rates remain non-Flow-close,
+and direct dt=1 still exhausts the unchanged 20-update cap, despite MB `1.326e-6`.
+
+This is a property-parity validation, not a convergence-policy promotion. WATER-006 may only
+measure the remaining fixed-policy acceptance/convergence decomposition; controller, iteration
+limits, chops, linear policy and IMPES remain held.
+
+### WATER-006 result (2026-07-22): the remaining tail is CPR accuracy, not controller policy
+
+The direct one-day WATER-005 trace is unchopped after iteration 13, has zero upwind flips from
+iteration 18, and has negligible well/perforation residuals. Its remaining water row at cell 419
+decays monotonically (`1.171 -> .347 -> .104 -> .0313 -> .0094 -> .00282 -> .000846`), so neither
+an active bound/chop nor an oscillating well state explains the 20-update miss.
+
+The new backend-neutral late-tail lab solves the exact captured full systems at iterations 14–19.
+CPR leaves full-system reductions from `2.21e-3` down to `1.01e-3`; sparse LU leaves
+`3.5–4.1e-15`, with reservoir—not well—rows carrying CPR's residual. The corresponding correction
+difference falls only from `2.67%` to `.618%`. A native forced-direct trajectory is worse at the
+same cap (`MB=6.37e-5`), so an exact direct backend is a valid same-state oracle but not a live
+replacement: its small correction change bifurcates the nonlinear path.
+
+WATER-006 therefore rules out cap/controller tuning and direct promotion. WATER-007 must measure
+the CPR stopping and post-Schur recovery contract on these same states; all nonlinear policy,
+caps, chops, controller and IMPES remain held.
+
+### WATER-007 result (2026-07-22): Schur recovery is sound; CPR stops at its loose norm
+
+The final pre-cap capture was replayed with production-faithful well elimination, recovered
+Krylov history, and an offline-only strict control. Production CPR reports convergence after three
+iterations: estimated/actual preconditioned residuals are `5.454e-7/5.469e-7`, while the recovered
+full-system reduction is `1.007e-3`. The recovered-history snapshot and returned report have the
+same true full residual, and WATER-006 already shows that residual is reservoir rows, not the
+well tail. Thus recovery is not losing accuracy.
+
+With only the offline linear target/budget tightened to `1e-8`/60, CPR reaches `3.860e-7` full
+reduction (but does not meet that stricter target within 60 iterations). This proves the `~1e-3`
+floor is the current loose stopping contract, not an intrinsic inability to reduce the system.
+It does not authorize a live tolerance/budget change: OPM's corresponding norm/lifecycle has not
+yet been compared and nonlinear trajectory controls remain held. WATER-008 is that source and
+same-state tolerance/budget oracle.
+
+### WATER-008 result (2026-07-22): the numeric `.005` is not a shared stopping contract
+
+OPM source now closes the missing oracle. `setupPropertyTree.cpp::setupCPRW()` supplies
+`tol=.005,maxiter=20`; `FlexibleSolver_impl.hpp::initSolver()` passes that `tol` as Dune
+BiCGSTAB's desired residual-reduction factor. ResSim's CPR implementation, by contrast, can
+accept after a Krylov correction when its re-applied preconditioned residual `beta` is below the
+numeric tolerance, even while the independently recovered full residual is larger. Therefore the
+historical claim that equal numbers "translate exactly" was false.
+
+`solver_lab_water008_same_state_tolerance_budget_sweep` holds the WATER-005 iteration-19 full
+system, well elimination, Block-ILU0 and quasi-IMPES restriction fixed. Raising only the budget
+from 20 to 60 at `.005` leaves the result unchanged: 3 iterations and full reduction
+`1.007231199e-3`. At the same 60 budget, numeric thresholds `1e-4`, `1e-5`, and `1e-6` produce
+full reductions `1.931079858e-5`, `8.952550031e-7`, and `4.200655241e-7` in 5, 6, and 9
+iterations. The final two reductions are not monotonic because they are still CPR's existing
+preconditioned-stop path, not raw-norm targets; they demonstrate capacity only.
+
+This is a valid same-state oracle with finite corrections and full recovered snapshot/report
+agreement. It rules out an iteration-budget explanation and identifies the stopping-norm
+semantic mismatch. No live tolerance, nonlinear/controller/cap/chop or IMPES setting changed.
+WATER-009 is limited to a default-off raw-full-residual acceptance implementation plus
+same-state report-contract tests; only then may a bounded live A/B be proposed.
+
+### WATER-009 result (2026-07-22): raw `.005` is valid, but intentionally still loose
+
+The native/default-false `require_raw_full_residual_acceptance` mode disables both historical
+preconditioned-`beta` acceptance and the tiny-tail accept. It also scopes out ResSim's
+per-family gate, because Flow supplies the Dune outer solver a single raw residual-reduction
+target. Candidate and final acceptance now require the raw assembled-system residual to clear
+the numeric target; well-Schur recovery then independently checks the original full system.
+
+`solver_lab_water009_raw_full_residual_acceptance_contract` replays captures 14–19 at the held
+`.005`/20. It reports finite corrections, one full RHS/residual/reduction, reservoir/well
+partitions and recovered snapshot/report equality. All six accepts take three iterations and
+full reductions are `2.492910139e-3,1.561255692e-3,1.194199752e-3,1.058216751e-3,
+1.018074864e-3,1.007231199e-3`; well residual is zero. Thus the source-aligned raw criterion
+is satisfied on every tail state, but it makes no accuracy gain relevant to the nonlinear tail:
+Flow's `.005` target itself permits this level of linear error.
+
+This is not a complete Flow lifecycle claim. Dune measures the residual of Flow's own
+StandardWell-reduced operator, whereas ResSim verifies recovery against its separately
+implemented full system; Flow's nonlinear acceptance, update/chop and primary-variable
+adaptation remain outside this probe. No live A/B is authorized because the same-state evidence
+predicts no change to the tail. The next slice must source and compare that nonlinear lifecycle,
+not retune the linear tolerance or controller.
+
+### WATER-010 result (2026-07-22): lifecycle ordering is already mirrored; divergence begins after update two
+
+Flow source establishes the precise order: `getConvergence()` computes reservoir MB/CNV and then
+well convergence; only a non-converged state is linearized. `updateSolution()` invokes the
+Newton update, refreshes intensive quantities, and `applyUpdate()` adapts primary variables after
+the update. Default black-oil tolerances are MB `1e-7`, CNV `1e-2`, with final-iteration relaxed
+tiers MB `1e-6` and CNV `1`; Flow requires two prior updates before acceptance. OPM's per-cell
+`ds-max=.2`/relative-pressure chop is applied in that update lifecycle.
+
+ResSim's existing `OpmAligned` path already implements this scoped lifecycle: entry CNV/MB plus
+the two-update gate, final relaxed tiers, per-cell chop, optional per-iteration primary
+adaptation, and OPM-like well convergence under the nested-well flag. The water fixture has two
+active phases and no primary switch, and both Flow and ResSim report clean wells; primary
+adaptation therefore cannot explain this particular early split.
+
+A fresh Flow 2026.04 run (`CASE.INFOITER`) and native direct-day ResSim trace with OpmAligned,
+rounded SWOF and nested wells agree closely at evaluations 0–2: Flow/ResSim at evaluation 2 are
+oil MB/CNV `.28605/48.147` versus `.2849/48.26`, and water `.45965/102.06` versus
+`.4621/103.0`. After the second applied update, evaluation 3 separates: Flow oil/water CNV are
+`41.516/50.531`, ResSim `62.31/27.72`. ResSim then evolves into the known unchopped, well-clean
+cell-419 tail and fails its 20th evaluation at MB `1.326e-6`; Flow reaches MB oil/water
+`5.99e-9/7.33e-9` and CNV `3.45e-6/9.11e-7` at evaluation 11.
+
+The early CNV/MB similarity is a trajectory locator, not a same-state proof: Flow does not
+export the intermediate primary state. This is therefore a valid lifecycle map and a valid
+divergence boundary, but not evidence to tune acceptance, controller, caps or primary variables.
+WATER-011 must capture and compare the second raw/applied update and its post-update linear
+system/state representation before any live change.
+
+### WATER-011 result (2026-07-22): the water matrix is already different at update two
+
+Flow MatrixMarket `nit_2` exports the system before its second update. Reducing ResSim's
+captured evaluation-2 system through the same explicit-well Schur operation and projecting its
+two physical primaries onto Flow's `[oil, water] x [Sw, pressure]` ordering gives a mapped RHS
+difference of only `0.771731%`, but a mapped physical matrix difference of `12.969764%`.
+The corresponding raw injector corrections are Flow `[dp=+67.5900425 bar, dSw=+.140264393]`
+and ResSim `[+69.8010821 bar, +.137712998]`; both saturation updates are below the held `.2`
+cap. At the producer the pressure corrections are `+7.38911` versus `+6.44680` bar, and the
+small water correction is `.000246153` versus `.000693354`.
+
+This establishes a pre-evaluation-3 representation mismatch on the water path while holding
+the linear `.005`/20 policy, nonlinear controller, caps, damping and IMPES unchanged. It does
+not establish exact post-update primary-state identity: Flow's standard MatrixMarket output has
+no intermediate cell primaries and does not expose its applied pressure safeguard. Therefore the
+state half of the requested comparison is **INCONCLUSIVE**, and the matrix evidence must not be
+used to retune solver policy. The appropriate next diagnostic is a source-complete comparison of
+the water reservoir/well assembly terms at evaluation 2 (including the reduced-well operator),
+with gas retained as the successful control.
+
+### WATER-012 result (2026-07-22): ResSim well reduction helps; a strict Flow well oracle is unavailable
+
+On the held evaluation-2 capture, projecting the uneliminated ResSim reservoir block gives a
+`40.786531%` matrix difference from the Flow MatrixMarket system. ResSim's own explicit-well
+Schur contribution has `38.676838%` Frobenius norm and reduces the difference to `12.969745%`.
+The largest residual terms are all reservoir saturation derivatives with exactly zero Schur
+increment (for example `water@144/Sw@144`, `oil@157/Sw@157`, and `oil@13/Sw@13`). Consequently
+the remaining algebraic mismatch is not caused by ResSim's well reduction; its reduction is
+moving the matrix markedly toward the Flow system.
+
+This cannot yet be promoted to a source-complete Flow assembly verdict. Flow source rejects
+`--matrix-add-well-contributions=true` with its default `system_cpr` because that solver assumes
+matrix-free well contributions; the local same-policy attempt aborts. Switching Flow to
+`cpr_quasiimpes` permits a materialized `nit_2` export but changes the Flow linear policy and may
+alter the intermediate nonlinear state. The test is therefore **INCONCLUSIVE** as a strict
+cross-engine well comparison. The next bounded action is an observation-only Flow source patch
+which writes a materialized copy of the live `system_cpr` matrix, leaving the actual matrix-free
+solver and all ResSim/IMPES policy untouched.

@@ -62,8 +62,8 @@ pub(crate) fn face_flux_terms_generic<S: Scalar>(
         j.drsdt0_base_rs,
     );
 
-    let rho_w_i = S::from_f64(sim.get_rho_w(i.p.value()));
-    let rho_w_j = S::from_f64(sim.get_rho_w(j.p.value()));
+    let rho_w_i = sim.water_density_generic(i.p);
+    let rho_w_j = sim.water_density_generic(j.p);
     let rho_o_i = sim.oil_density_generic(i.p, props_i.rs);
     let rho_o_j = sim.oil_density_generic(j.p, props_j.rs);
     let rho_g_i = sim.gas_density_generic(i.p);
@@ -87,10 +87,10 @@ pub(crate) fn face_flux_terms_generic<S: Scalar>(
 
     // Upwind selection: branch on the value of the potential difference,
     // matching `interface_flux_terms`'s `dphi >= 0.0` convention exactly.
-    let mobility_w = if dphi_w.value() >= 0.0 {
-        mob_i.water
+    let (mobility_w, p_w) = if dphi_w.value() >= 0.0 {
+        (mob_i.water, i.p)
     } else {
-        mob_j.water
+        (mob_j.water, j.p)
     };
 
     let (mobility_o, bo_o, rs_o) = if dphi_o.value() >= 0.0 {
@@ -105,7 +105,7 @@ pub(crate) fn face_flux_terms_generic<S: Scalar>(
         (mob_j.gas, props_j.bg)
     };
 
-    let q_w_sc_day = mobility_w * dphi_w * geom_t / sim.b_w.max(1e-9);
+    let q_w_sc_day = mobility_w * dphi_w * geom_t * sim.water_inverse_fvf_generic(p_w);
     let q_o_res_day = mobility_o * dphi_o * geom_t;
     let q_o_sc_day = q_o_res_day / bo_o.max_floor(1e-9);
     let q_g_free_sc_day = mobility_g * dphi_g * geom_t / bg_g.max_floor(1e-9);

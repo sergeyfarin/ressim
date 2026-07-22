@@ -100,7 +100,9 @@ fn rate_controlled_injector_fim_path_converges() {
     sim.set_injected_fluid("gas").unwrap();
     sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
     sim.set_initial_pressure(100.0);
-    sim.set_initial_saturation(0.10);
+    // Keep this gas-well convergence fixture off the connate-water lower-bound kink:
+    // compressible water must be able to shrink as injection raises cell pressure.
+    sim.set_initial_saturation(0.11);
     sim.set_gravity_enabled(false);
     sim.pvt_table = Some(PvtTable::new(
         vec![PvtRow {

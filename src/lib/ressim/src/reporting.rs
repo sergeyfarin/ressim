@@ -138,6 +138,15 @@ pub struct FimAcceptedRungStats {
     pub linear_backend: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linear_iterations: Option<usize>,
+    /// Total reservoir linear solve calls in this accepted Newton attempt.
+    #[serde(default)]
+    pub linear_solve_count: usize,
+    /// Total Krylov iterations across those solve calls.
+    #[serde(default)]
+    pub linear_iteration_count: usize,
+    /// Candidate Newton corrections committed during the attempt.
+    #[serde(default)]
+    pub applied_update_count: usize,
     pub linear_solve_ms: f64,
     pub linear_preconditioner_ms: f64,
 }
@@ -151,6 +160,15 @@ pub struct FimRetryRungStats {
     pub linear_backend: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linear_iterations: Option<usize>,
+    /// Total reservoir linear solve calls in this rejected Newton attempt.
+    #[serde(default)]
+    pub linear_solve_count: usize,
+    /// Total Krylov iterations across those solve calls.
+    #[serde(default)]
+    pub linear_iteration_count: usize,
+    /// Candidate Newton corrections committed during the attempt.
+    #[serde(default)]
+    pub applied_update_count: usize,
     pub linear_solve_ms: f64,
     pub linear_preconditioner_ms: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -350,7 +368,8 @@ impl ReservoirSimulator {
                     if self.three_phase_mode {
                         match self.injected_fluid {
                             InjectedFluid::Water => {
-                                total_injection += -q_m3_day / self.b_w.max(1e-9);
+                                total_injection +=
+                                    -q_m3_day * self.water_inverse_fvf(self.pressure[id]);
                                 total_water_injection_reservoir += -q_m3_day;
                             }
                             InjectedFluid::Gas => {
@@ -360,7 +379,7 @@ impl ReservoirSimulator {
                             }
                         }
                     } else {
-                        total_injection += -q_m3_day / self.b_w.max(1e-9);
+                        total_injection += -q_m3_day * self.water_inverse_fvf(self.pressure[id]);
                         total_water_injection_reservoir += -q_m3_day;
                     }
                 } else {
@@ -378,9 +397,9 @@ impl ReservoirSimulator {
 
                     total_prod_water_reservoir += q_m3_day * fw;
                     let bo = producer_state.oil_fvf.max(1e-9);
-                    let bw = self.b_w.max(1e-9);
+                    let inv_bw = self.water_inverse_fvf(self.pressure[id]);
                     let oil_rate_sc = q_m3_day * (1.0 - fw - fg) / bo;
-                    let water_rate_sc = q_m3_day * fw / bw;
+                    let water_rate_sc = q_m3_day * fw * inv_bw;
                     total_prod_oil += oil_rate_sc;
                     total_prod_liquid += oil_rate_sc + water_rate_sc;
 

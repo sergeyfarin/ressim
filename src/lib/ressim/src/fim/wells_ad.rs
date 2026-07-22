@@ -204,7 +204,7 @@ pub(crate) fn component_rate_coefficients_generic<S: Scalar>(
     if injector {
         return match injected_fluid {
             InjectedFluid::Water => [
-                S::from_f64(1.0 / sim.b_w.max(1e-9)),
+                sim.water_inverse_fvf_generic(cell.p),
                 S::from_f64(0.0),
                 S::from_f64(0.0),
             ],
@@ -221,7 +221,7 @@ pub(crate) fn component_rate_coefficients_generic<S: Scalar>(
     let bg_safe = props.bg.max_floor(1e-9);
     let oil_coef = fractions.oil_fraction / bo_safe;
     [
-        fractions.water_fraction / sim.b_w.max(1e-9),
+        fractions.water_fraction * sim.water_inverse_fvf_generic(cell.p),
         oil_coef,
         fractions.gas_fraction / bg_safe + oil_coef * props.rs,
     ]
@@ -254,7 +254,7 @@ pub(crate) fn perforation_surface_rate_generic<S: Scalar>(
     if injector {
         let clamped = (-q).max_floor(0.0);
         return match injected_fluid {
-            InjectedFluid::Water => clamped / sim.b_w.max(1e-9),
+            InjectedFluid::Water => clamped * sim.water_inverse_fvf_generic(cell.p),
             InjectedFluid::Gas => clamped / props.bg.max_floor(1e-9),
         };
     }
@@ -508,14 +508,14 @@ pub(crate) fn mass_balance_neighbor_jacobian(
         producer_fractions_neighbor_block(sim, neighborhood, neighbor_idx);
     let bo = props.bo.max(1e-9);
     let bg = props.bg.max(1e-9);
-    let bw = sim.b_w.max(1e-9);
+    let inv_bw = sim.water_inverse_fvf(cell.p);
 
     let mut block = [[0.0; 3]; 3];
     for v in 0..3 {
         let d_water_frac = frac_block[0][v];
         let d_oil_frac = frac_block[1][v];
         let d_gas_frac = frac_block[2][v];
-        block[0][v] = (d_water_frac / bw) * q;
+        block[0][v] = (d_water_frac * inv_bw) * q;
         block[1][v] = (d_oil_frac / bo) * q;
         block[2][v] = (d_gas_frac / bg + (d_oil_frac / bo) * props.rs) * q;
     }

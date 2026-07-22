@@ -17,10 +17,11 @@ use crate::timing::PerfTimer;
 // path already used above it costs ~0.5ms — ~100-170x cheaper — with zero convergence failures
 // and residual reduction ~4e-7 (far tighter than needed) on every single captured system.
 // Lowered from 512 to 300 to move the heavy case (432 rows) and the `22x22x1` control-matrix
-// case (484 rows) onto the already-proven BiCGStab path; 300 keeps the smallest control-matrix
-// case (`gas-rate 10x10x3`, exactly 300 rows) on the dense path, untested at that size and
-// trivially cheap regardless. See `docs/FIM_BUNDLE_P_PLAN.md` for the full comparison numbers.
-const PRESSURE_DIRECT_SOLVE_ROW_THRESHOLD: usize = 300;
+// case (484 rows) onto the already-proven BiCGStab path. G4c5 subsequently validated the
+// previously-held exact 300-row gas case on seven sequential systems: zero coarse failures,
+// worst residual reduction 7.9e-7, and a >100x cost advantage over dense inversion.
+// See `docs/FIM_BUNDLE_P_PLAN.md` and the G4c5 worklog for the comparison numbers.
+const PRESSURE_DIRECT_SOLVE_ROW_THRESHOLD: usize = 299;
 const PRESSURE_DEFECT_CORRECTION_MAX_ITERS: usize = 50;
 const PRESSURE_DEFECT_CORRECTION_REL_TOL: f64 = 1e-6;
 const FULL_ILU_ROW_LIMIT: usize = 4096;
@@ -1544,7 +1545,9 @@ where
     while iterations < max_iterations {
         let residual = rhs - matrix_apply(&solution);
         let residual_norm = residual.norm();
-        if residual_norm <= tolerance && family_ok(&residual) {
+        if residual_norm <= tolerance
+            && (options.require_raw_full_residual_acceptance || family_ok(&residual))
+        {
             return (
                 build_report(solution, true, iterations, residual_norm, last_estimate),
                 history,
@@ -1925,7 +1928,11 @@ fn run_cpr_iterative_solve(
         // `GmresIlu0` call. From `iterations >= 1` onward `solution` reflects at least one real
         // Krylov correction built from a preconditioned basis, so trusting `beta` there is the
         // ordinary (unchanged) preconditioned-residual convergence test.
-        if iterations > 0 && beta <= tolerance && family_ok(&residual) {
+        if !options.require_raw_full_residual_acceptance
+            && iterations > 0
+            && beta <= tolerance
+            && family_ok(&residual)
+        {
             if residual_norm > 10.0 * tolerance
                 && std::env::var_os("FIM_WELL_SCHUR_DEBUG").is_some()
             {
@@ -2088,7 +2095,9 @@ fn run_cpr_iterative_solve(
                     candidate_residual,
                 );
 
-                if tiny_tail_action == TinyResidualTailAction::AcceptCurrentIterate {
+                if !options.require_raw_full_residual_acceptance
+                    && tiny_tail_action == TinyResidualTailAction::AcceptCurrentIterate
+                {
                     restart_diagnostics.push(build_restart_diagnostics(
                         restart_index,
                         restart_start_iteration,
@@ -2191,8 +2200,12 @@ fn run_cpr_iterative_solve(
                 ));
                 restart_recorded = true;
 
-                let family_converged =
-                    candidate_residual <= tolerance && family_ok(&candidate_residual_vec);
+                // WATER-009's source-scoped probe follows Dune's outer raw-residual reduction.
+                // The historical ResSim family criterion remains unchanged unless that
+                // default-off mode is explicitly selected.
+                let family_converged = candidate_residual <= tolerance
+                    && (options.require_raw_full_residual_acceptance
+                        || family_ok(&candidate_residual_vec));
                 if family_converged || iterations >= max_iterations {
                     let converged = family_converged;
                     return FimLinearSolveReport {
@@ -2293,7 +2306,8 @@ fn run_cpr_iterative_solve(
 
     let final_residual_vec = rhs - &cs_mat_mul_vec(jacobian, &solution);
     let final_residual = final_residual_vec.norm();
-    let final_converged = final_residual <= tolerance && family_ok(&final_residual_vec);
+    let final_converged = final_residual <= tolerance
+        && (options.require_raw_full_residual_acceptance || family_ok(&final_residual_vec));
     FimLinearSolveReport {
         solution,
         converged: final_converged,
@@ -3170,6 +3184,7 @@ mod tests {
             use_true_fgmres: false,
             use_flow_lifecycle: false,
             eliminate_wells: false,
+            require_raw_full_residual_acceptance: false,
         };
         let layout = Some(FimLinearBlockLayout {
             cell_block_count: 3,
@@ -3404,6 +3419,7 @@ mod tests {
                 use_true_fgmres: false,
                 use_flow_lifecycle: false,
                 eliminate_wells: false,
+                require_raw_full_residual_acceptance: false,
             },
             Some(FimLinearBlockLayout {
                 cell_block_count: 6,

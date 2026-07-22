@@ -139,6 +139,10 @@ pub(crate) struct FimLinearSolveOptions {
     /// solve) rather than iterating them as ordinary global unknowns. Off by default pending
     /// offline-lab validation (`solve_with_well_elimination`, `fim/linear/well_schur.rs`).
     pub(crate) eliminate_wells: bool,
+    /// WATER-009: accept CPR only after the raw residual of the assembled system clears the
+    /// numeric tolerance. Default false preserves the historical preconditioned-residual route;
+    /// this is an offline/default-off OPM-alignment probe, not a live Newton-policy change.
+    pub(crate) require_raw_full_residual_acceptance: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -181,10 +185,13 @@ impl Default for FimLinearSolveOptions {
         // linear tolerance (`0.005` relative reduction) with a small iteration budget
         // (`maxiter: 20`). ResSim's linear solve always starts from x_0=0, so r_0=rhs
         // exactly and OPM's relative-reduction target translates exactly to
-        // `relative_tolerance = 5e-3` here. Re-applied after a first live attempt
-        // regressed the heavy case (Newton-side mechanisms weren't yet reconciled to the
-        // new linear-solve noise level, Step 10.1) — see `docs/FIM_CONVERGENCE_WORKLOG.md`
-        // "Phase 10" for the re-applied investigation.
+        // `relative_tolerance = 5e-3` here. WATER-008 subsequently established that the
+        // matching number is not yet a matching contract: Flow's Dune outer solver tests raw
+        // residual reduction, while this historical CPR path can accept a re-applied
+        // preconditioned residual. Keep the numeric default pending a separately gated
+        // stopping-norm alignment. Re-applied after a first live attempt regressed the heavy
+        // case (Newton-side mechanisms weren't yet reconciled to the new linear-solve noise
+        // level, Step 10.1) — see `docs/FIM_CONVERGENCE_WORKLOG.md` "Phase 10".
         Self {
             kind: FimLinearSolverKind::FgmresCpr,
             restart: 30,
@@ -197,6 +204,7 @@ impl Default for FimLinearSolveOptions {
             // showed a decisive win (34/35 -> 35/35 converged, mean linear iterations 3.9 -> 1.1)
             // — promoted to default pending the live control-matrix gate.
             eliminate_wells: true,
+            require_raw_full_residual_acceptance: false,
         }
     }
 }
@@ -308,6 +316,7 @@ mod tests {
         assert_eq!(options.kind, FimLinearSolverKind::FgmresCpr);
         assert!(!options.use_true_fgmres);
         assert!(!options.use_flow_lifecycle);
+        assert!(!options.require_raw_full_residual_acceptance);
     }
 
     #[test]

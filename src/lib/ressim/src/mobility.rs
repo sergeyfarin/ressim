@@ -140,8 +140,11 @@ impl ReservoirSimulator {
             };
         }
 
-        let krw = self.scal.k_rw(sw);
-        let kro = self.scal.k_ro(sw);
+        let (krw, kro) = if self.fim_opm_water_heavy_swof {
+            self.scal.water_heavy_swof_replay(sw)
+        } else {
+            (self.scal.k_rw(sw), self.scal.k_ro(sw))
+        };
         PhaseMobilities {
             water: krw / self.get_mu_w(pressure_bar),
             oil: kro / self.get_mu_o_for_rs(pressure_bar, rs_sm3_sm3),
@@ -185,8 +188,16 @@ impl ReservoirSimulator {
             };
         }
 
-        let krw = self.scal.k_rw_generic(sw);
-        let kro = self.scal.k_ro_generic(sw);
+        let (krw, kro) = if self.fim_opm_water_heavy_swof {
+            self.scal.water_heavy_swof_replay_generic(sw)
+        } else if self.fim_opm_endpoint_relperm {
+            (
+                self.scal.k_rw_endpoint_clipped_generic(sw),
+                self.scal.k_ro_endpoint_clipped_generic(sw),
+            )
+        } else {
+            (self.scal.k_rw_generic(sw), self.scal.k_ro_generic(sw))
+        };
         let mu_o = self.get_mu_o_for_rs_generic(pressure_bar, rs_sm3_sm3);
         PhaseMobilitiesGeneric {
             water: krw / mu_w,

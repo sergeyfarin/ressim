@@ -6,10 +6,8 @@
 -- (the FIM-DIAG-002/Bundle W/FIM-DIAG-003 heavy-case re-baseline driver,
 -- fim/timestep.rs). Adapted from opm/reference-decks/water-medium-step1
 -- (origin/fim-opm-continuation-plan) with DIMENS 12x12x3, TSTEP 1.0, and
--- COMPDAT well radius 0.1 (NOT the template's 0.2 -- the repro driver's
--- add_well calls pass well_radius=0.1, not the fim-wasm-diagnostic.mjs
--- preset default of 0.2; verified against frontend.rs::add_well call sites
--- in both places before writing this deck).
+-- ResSim well radius 0.1. Eclipse COMPDAT specifies well DIAMETER, so the
+-- matching deck value is 0.2.
 -- ============================================================================
 
 RUNSPEC
@@ -106,8 +104,8 @@ WELSPECS
 /
 
 COMPDAT
-   'INJ' 1  1  1 1 'OPEN' 1*  1*  0.1 /
-   'PRO' 12 12 1 1 'OPEN' 1*  1*  0.1 /
+   'INJ' 1  1  1 1 'OPEN' 1*  1*  0.2 /
+   'PRO' 12 12 1 1 'OPEN' 1*  1*  0.2 /
 /
 
 WCONINJE

@@ -838,6 +838,12 @@ pub(crate) struct FimStepReport {
     pub(crate) final_material_balance_inf_norm: f64,
     pub(crate) final_update_inf_norm: f64,
     pub(crate) last_linear_report: Option<FimLinearSolveReport>,
+    /// Number of reservoir linear-system solve calls made by this Newton attempt.
+    pub(crate) linear_solve_count: usize,
+    /// Sum of backend Krylov iterations across all reservoir linear solve calls.
+    pub(crate) linear_iteration_count: usize,
+    /// Number of candidate Newton corrections committed to the iterate.
+    pub(crate) applied_update_count: usize,
     pub(crate) accepted_hotspot_site: Option<FimHotspotSite>,
     pub(crate) failure_diagnostics: Option<FimRetryFailureDiagnostics>,
     pub(crate) retry_factor: f64,
@@ -903,6 +909,9 @@ pub(crate) fn run_fim_timestep(
     let mut linear_solve_time_ms = 0.0;
     let mut linear_preconditioner_build_time_ms = 0.0;
     let mut state_update_ms = 0.0;
+    let mut linear_solve_count = 0_usize;
+    let mut linear_iteration_count = 0_usize;
+    let mut applied_update_count = 0_usize;
     let mut last_effective_update_inf_norm = f64::INFINITY;
     let mut last_effective_update_peak: Option<UpdateFamilyPeak> = None;
     let requested_linear_kind = options.linear.kind;
@@ -1224,6 +1233,9 @@ pub(crate) fn run_fim_timestep(
                 final_material_balance_inf_norm: mb_value,
                 final_update_inf_norm,
                 last_linear_report,
+                linear_solve_count,
+                linear_iteration_count,
+                applied_update_count,
                 accepted_hotspot_site: Some(current_hotspot_site),
                 failure_diagnostics: None,
                 retry_factor: 1.0,
@@ -1304,6 +1316,9 @@ pub(crate) fn run_fim_timestep(
                     final_material_balance_inf_norm: accepted_diagnostics.material_balance_inf_norm,
                     final_update_inf_norm,
                     last_linear_report,
+                    linear_solve_count,
+                    linear_iteration_count,
+                    applied_update_count,
                     accepted_hotspot_site: Some(residual_hotspot_site(
                         sim,
                         &topology,
@@ -1368,6 +1383,9 @@ pub(crate) fn run_fim_timestep(
                 final_material_balance_inf_norm: accepted_diagnostics.material_balance_inf_norm,
                 final_update_inf_norm,
                 last_linear_report,
+                linear_solve_count,
+                linear_iteration_count,
+                applied_update_count,
                 accepted_hotspot_site: None,
                 failure_diagnostics: Some(failure_diagnostics),
                 retry_factor,
@@ -1552,6 +1570,9 @@ pub(crate) fn run_fim_timestep(
                             .material_balance_inf_norm,
                         final_update_inf_norm,
                         last_linear_report,
+                        linear_solve_count,
+                        linear_iteration_count,
+                        applied_update_count,
                         accepted_hotspot_site: Some(residual_hotspot_site(
                             sim,
                             &topology,
@@ -1625,6 +1646,9 @@ pub(crate) fn run_fim_timestep(
                     final_material_balance_inf_norm,
                     final_update_inf_norm,
                     last_linear_report,
+                    linear_solve_count,
+                    linear_iteration_count,
+                    applied_update_count,
                     accepted_hotspot_site: None,
                     failure_diagnostics: Some(failure_diagnostics),
                     retry_factor,
@@ -1822,6 +1846,8 @@ pub(crate) fn run_fim_timestep(
         );
         linear_solve_time_ms += linear_report.total_time_ms;
         linear_preconditioner_build_time_ms += linear_report.preconditioner_build_time_ms;
+        linear_solve_count += 1;
+        linear_iteration_count += linear_report.iterations;
 
         // Bundle P (`FIM-BUNDLE-P`) P0.2: unconditional per-iteration capture of every linear
         // system actually solved, gated on a distinct env var from the failure-only
@@ -2015,6 +2041,8 @@ pub(crate) fn run_fim_timestep(
                 linear_report.used_fallback = true;
                 linear_solve_time_ms += linear_report.total_time_ms;
                 linear_preconditioner_build_time_ms += linear_report.preconditioner_build_time_ms;
+                linear_solve_count += 1;
+                linear_iteration_count += linear_report.iterations;
             } else {
                 restart_stagnation_fallback_streak = 0;
             }
@@ -2155,6 +2183,9 @@ pub(crate) fn run_fim_timestep(
                         final_material_balance_inf_norm,
                         final_update_inf_norm,
                         last_linear_report: Some(linear_report),
+                        linear_solve_count,
+                        linear_iteration_count,
+                        applied_update_count,
                         accepted_hotspot_site: None,
                         failure_diagnostics: Some(failure_diagnostics),
                         retry_factor,
@@ -2188,6 +2219,9 @@ pub(crate) fn run_fim_timestep(
                 final_material_balance_inf_norm,
                 final_update_inf_norm,
                 last_linear_report: Some(linear_report),
+                linear_solve_count,
+                linear_iteration_count,
+                applied_update_count,
                 accepted_hotspot_site: None,
                 failure_diagnostics: Some(failure_diagnostics),
                 retry_factor,
@@ -2262,6 +2296,9 @@ pub(crate) fn run_fim_timestep(
                     final_material_balance_inf_norm: accepted_diagnostics.material_balance_inf_norm,
                     final_update_inf_norm,
                     last_linear_report: Some(linear_report),
+                    linear_solve_count,
+                    linear_iteration_count,
+                    applied_update_count,
                     accepted_hotspot_site: Some(residual_hotspot_site(
                         sim,
                         &topology,
@@ -2325,6 +2362,9 @@ pub(crate) fn run_fim_timestep(
                 final_material_balance_inf_norm: accepted_diagnostics.material_balance_inf_norm,
                 final_update_inf_norm,
                 last_linear_report: Some(linear_report),
+                linear_solve_count,
+                linear_iteration_count,
+                applied_update_count,
                 accepted_hotspot_site: None,
                 failure_diagnostics: Some(failure_diagnostics),
                 retry_factor,
@@ -3017,6 +3057,9 @@ pub(crate) fn run_fim_timestep(
                     final_material_balance_inf_norm: accepted_diagnostics.material_balance_inf_norm,
                     final_update_inf_norm,
                     last_linear_report: Some(linear_report),
+                    linear_solve_count,
+                    linear_iteration_count,
+                    applied_update_count,
                     accepted_hotspot_site: Some(current_hotspot_site),
                     failure_diagnostics: None,
                     retry_factor: 1.0,
@@ -3053,6 +3096,9 @@ pub(crate) fn run_fim_timestep(
                 final_material_balance_inf_norm,
                 final_update_inf_norm,
                 last_linear_report: Some(linear_report),
+                linear_solve_count,
+                linear_iteration_count,
+                applied_update_count,
                 accepted_hotspot_site: None,
                 failure_diagnostics: Some(failure_diagnostics),
                 retry_factor,
@@ -3068,6 +3114,7 @@ pub(crate) fn run_fim_timestep(
         if let Some(switched) = candidate_primary_variables_switched {
             primary_variables_switched = switched;
         }
+        applied_update_count += 1;
         state = candidate;
     }
 
@@ -3137,6 +3184,9 @@ pub(crate) fn run_fim_timestep(
             final_material_balance_inf_norm,
             final_update_inf_norm,
             last_linear_report,
+            linear_solve_count,
+            linear_iteration_count,
+            applied_update_count,
             accepted_hotspot_site: Some(residual_hotspot_site(
                 sim,
                 &topology,
@@ -3184,6 +3234,9 @@ pub(crate) fn run_fim_timestep(
         final_material_balance_inf_norm,
         final_update_inf_norm,
         last_linear_report,
+        linear_solve_count,
+        linear_iteration_count,
+        applied_update_count,
         accepted_hotspot_site: None,
         failure_diagnostics: Some(failure_diagnostics),
         retry_factor,

@@ -20,8 +20,8 @@ use crate::fim::assembly_ad::{
 use crate::fim::flow_resv::FlowResvReportStepContext;
 use crate::fim::state::FimState;
 use crate::fim::wells::{
-    FimWellTopology, effective_injected_fluid, geometric_well_index, perforation_local_block,
-    physical_well_control,
+    FimWellTopology, connection_rate_for_bhp, effective_injected_fluid, geometric_well_index,
+    perforation_local_block, physical_well_control,
 };
 use crate::fim::wells_ad::{
     WellCellInput, WellPerforationInputGeneric, connection_rate_generic,
@@ -279,6 +279,16 @@ pub(crate) fn solve_flow_resv_well_locally(
     context: FlowResvReportStepContext,
     options: &FimWellInnerSolveOptions,
 ) -> FimWellInnerSolveReport {
+    // OPM's StandardWell source confirms that injecting perforations use total reservoir
+    // mobility; the Flow oracle also remains injecting across this primary switch. Together those
+    // observations support restoring this selected route to the injecting side before its local
+    // solve. A global ResSim correction can put BHP below the newly updated cell pressure when
+    // Rs switches to Sg=0. The clamped connection is then q=0 with a zero BHP derivative, so a
+    // Newton-only local solve cannot cross back onto the active injector branch. Reconstruct a
+    // connection-consistent injecting BHP first; the ordinary shared-row Newton loop below still
+    // supplies the convergence verdict and any remaining (bhp,u) correction.
+    restore_flow_resv_injecting_branch(sim, state, topology, context);
+
     let mut iterations = 0usize;
     let mut converged;
     let mut final_scaled_residual_peak;
@@ -309,6 +319,58 @@ pub(crate) fn solve_flow_resv_well_locally(
         converged,
         iterations,
         final_scaled_residual_peak,
+    }
+}
+
+fn restore_flow_resv_injecting_branch(
+    sim: &ReservoirSimulator,
+    state: &mut FimState,
+    topology: &FimWellTopology,
+    context: FlowResvReportStepContext,
+) {
+    let perf_idx = context.perforation_idx;
+    let well_idx = context.physical_well_idx;
+    let Some(u) = state.flow_resv_surface_u(perf_idx) else {
+        return;
+    };
+    if !u.is_finite() || u <= 0.0 {
+        return;
+    }
+    let Some(current_q) =
+        connection_rate_for_bhp(sim, state, topology, perf_idx, state.well_bhp[well_idx])
+    else {
+        return;
+    };
+    if current_q < 0.0 {
+        return;
+    }
+
+    let cell_idx = topology.perforations[perf_idx].cell_index;
+    let cell_pressure = state.cells[cell_idx].pressure_bar;
+    let bg = state.derive_cell(sim, cell_idx).bg;
+    if !cell_pressure.is_finite() || !bg.is_finite() || bg <= 0.0 {
+        return;
+    }
+    let desired_q = -u * bg;
+    if !desired_q.is_finite() || desired_q >= 0.0 {
+        return;
+    }
+
+    // With the reservoir state frozen, StandardWell's total-mobility connection is linear in
+    // pressure drawdown. Evaluate one bar into the injecting branch to recover its slope, then
+    // invert that exact local law. This selected route excludes BHP limits and multi-perf
+    // allocation, so no additional piecewise control is hidden in the inversion.
+    let Some(q_per_bar) =
+        connection_rate_for_bhp(sim, state, topology, perf_idx, cell_pressure + 1.0)
+    else {
+        return;
+    };
+    if !q_per_bar.is_finite() || q_per_bar >= 0.0 {
+        return;
+    }
+    let pressure_gap = desired_q / q_per_bar;
+    if pressure_gap.is_finite() && pressure_gap > 0.0 {
+        state.well_bhp[well_idx] = cell_pressure + pressure_gap;
     }
 }
 
