@@ -2650,6 +2650,8 @@ pub(crate) fn run_fim_timestep(
                     .collect();
                 let raw_dp_cell = update_to_apply[p_col];
                 let raw_dsw_cell = update_to_apply[sw_col];
+                let hc_col = unknown_offset(cell_idx, 2);
+                let raw_dhc_cell = update_to_apply[hc_col];
                 let sw_current = state.cells[cell_idx].sw;
                 let sw_wc = if sim.three_phase_mode {
                     sim.scal_3p
@@ -2660,7 +2662,7 @@ pub(crate) fn run_fim_timestep(
                     sim.scal.s_wc
                 };
                 crate::fim::trace_sink::write_line(&format!(
-                    "WELLJAC iter={:>2} perf={} cell={} res_pf={:.6e} d(res_pf)/dq={:.6e} d(res_pf)/dp={:.6e} d(res_pf)/dsw={:.6e} sw={:.6} sw_wc={:.6} raw_dp={:.6e} raw_dsw={:.6e} sw_unclamped_would_be={:.6} {}",
+                    "WELLJAC iter={:>2} perf={} cell={} res_pf={:.6e} d(res_pf)/dq={:.6e} d(res_pf)/dp={:.6e} d(res_pf)/dsw={:.6e} sw={:.6} sw_wc={:.6} hc_meaning={:?} hc_pre={:.9e} raw_dp={:.6e} raw_dsw={:.6e} raw_dhc={:.6e} sw_unclamped_would_be={:.6} hc_post_meaning={:?} hc_post={:.9e} {}",
                     iteration,
                     perf_idx,
                     cell_idx,
@@ -2670,9 +2672,14 @@ pub(crate) fn run_fim_timestep(
                     d_pf_dsw,
                     sw_current,
                     sw_wc,
+                    state.cells[cell_idx].regime,
+                    state.cells[cell_idx].hydrocarbon_var,
                     raw_dp_cell,
                     raw_dsw_cell,
+                    raw_dhc_cell,
                     sw_current + raw_dsw_cell,
+                    candidate.cells[cell_idx].regime,
+                    candidate.cells[cell_idx].hydrocarbon_var,
                     cell_terms.join(" "),
                 ));
                 // Y2d8/G4 source-formulation audit: emit the exact component source passed to
@@ -2820,6 +2827,39 @@ pub(crate) fn run_fim_timestep(
                         water_breakdown.well_source,
                         water_breakdown.total,
                     ));
+                }
+                for (component, label) in ["water", "oil", "gas"].iter().enumerate() {
+                    if let Some(partition) =
+                        crate::fim::assembly_ad::cell_equation_residual_breakdown_ad(
+                            sim,
+                            previous_state,
+                            &state,
+                            &topology,
+                            dt_days,
+                            options.flow_resv_context,
+                            cell_idx,
+                            component,
+                        )
+                    {
+                        let assembled = assembly.residual[equation_offset(cell_idx, component)];
+                        crate::fim::trace_sink::write_line(&format!(
+                            "RESERVOIR-PARTITION iter={:>2} cell={} component={} accumulation={:.9e} x-={:.9e} x+={:.9e} y-={:.9e} y+={:.9e} z-={:.9e} z+={:.9e} well_source={:.9e} total={:.9e} assembled={:.9e} reconstruction_delta={:.9e}",
+                            iteration,
+                            cell_idx,
+                            label,
+                            partition.accumulation,
+                            partition.x_minus,
+                            partition.x_plus,
+                            partition.y_minus,
+                            partition.y_plus,
+                            partition.z_minus,
+                            partition.z_plus,
+                            partition.well_source,
+                            partition.total,
+                            assembled,
+                            partition.total - assembled,
+                        ));
+                    }
                 }
             }
         }

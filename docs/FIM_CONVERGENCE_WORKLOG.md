@@ -4397,3 +4397,99 @@ standalone convergence improvement is not supported. Next build a comparable OPM
 injector-cell reservoir-row partition oracle, then audit oil/gas accumulation, face flux, and
 the now-matched well source at evaluation 1. Do not start G5 while the tracked cell remains
 saturated with `Sg` active, and do not tune acceptance, damping, linear routing, or controller.
+
+### G4c0/G4c1 injector-cell partition and reciprocal PVDG (2026-07-21, provisional dirty tree)
+
+Built an observation-only partition on both production paths. ResSim uses the exact AD
+accumulation, face-flux, and routed source helpers and logs `total`, the assembled row, and their
+delta. The new all-cell/all-component unit gate reconstructs to machine precision. OPM was built
+from exact `release/2026.04/final` commit `b82f21dba405286c4c4446614dd3bf9cdebf7a2c` with the
+tracked `opm/diagnostics/g4c0-reservoir-partition.patch`. The first attempted generic-FV hook was
+correctly rejected because Flow uses the TPFA fast path and emitted no trace. The final TPFA hook
+logs each face, accumulation, source, and assembled row; the run completes with canonical
+`26/27` nonlinear/linear counts. OPM rate values are multiplied by `21600 s`.
+
+At cell 0, evaluation 0, Flow versus ResSim before the fix is:
+
+| Term | Flow | ResSim |
+| --- | ---: | ---: |
+| oil z+ flux | `0.877958` | `0.877861` |
+| gas z+ flux | `70.236654` | `70.228917` |
+| gas source | `-20,312.500` | `-19,230.769` |
+| gas total | `-20,242.263` | `-19,160.540` |
+
+This pins the first mismatch to PVDG/RESV conversion rather than face physics. OPM source read
+confirms `DryGasPvt` stores/interpolates `1/Bg` and `1/(Bg*mu_g)`. At 200 bar the exact deck gives
+`Bg=1/162.5=0.006153846`, so the `500 rm3/day` target is `81,250 Sm3/day`; ResSim's direct-Bg
+interpolation gave `0.0065` and `76,923.077 Sm3/day`.
+
+G4c1 changes shared `PvtTable` f64/AD interpolation and analytic `dBg/dp` to those reciprocal
+semantics. Evaluation 0 source now matches exactly. At evaluation 1, ResSim gas terms become
+accumulation `2,490.73`, faces `13,076.95/13,076.95/6,578.60`, source `-20,312.5`, total
+`14,910.74`; Flow is `1,903.19`, `2,556.34/2,556.34/1,288.48`, `-20,312.5`, total
+`-12,008.14`. Because the engines arrived at different states after correction 0, this selects a
+matched-state Jacobian/update audit rather than a flux patch.
+
+Release six-step G4c1: residual-evaluation counts `[10,5,4,4,4,4]`, hence applied updates
+`[9,4,3,3,3,3]` (25); linear iterations 62; `0.576-0.579 s`. G4b4 was 23/61/
+`0.528-0.559 s`; Flow is 26/27/`0.08 s`. Fidelity is improved, but the speed gap is unchanged and
+the first report step costs two more updates. Verdict: provisional correctness fix, not a
+convergence promotion. Next G4c2 compares evaluation-0 Jacobian/update blocks with all policy and
+G5 held.
+
+Validation: PVT `4/4`, PVT behavior `7/7`, AD assembly `13/13`, Flow-RESV `11/11`, IMPES `5/5`,
+Buckley-Leverett `3/3`, and owned FIM coverage `11/11`. The `all` coverage script again passes its first three shared controls and
+stops at the documented pre-existing closed-system `rate_history` length `2` versus `1`; it is not
+attributed to G4c1.
+
+Held/missing coupled semantics remain explicit: this slice proves in-table PVDG segment
+interpolation only; OPM-style reciprocal extrapolation beyond the table remains unimplemented.
+PVTO reciprocal interpolation, full StandardWell variables, BHP switching, and multi-perforation
+allocation are also not claimed by this result.
+
+### G4c2 matched evaluation-0 Jacobian/update oracle (2026-07-22, diagnostic)
+
+The first Flow MatrixMarket capture was an invalid well-coupled oracle: the default export writes
+the reservoir matrix before matrix-free well contributions are materialized. The valid capture
+uses `--matrix-add-well-contributions=true --linear-solver=cpr_quasiimpes`; changing the linear
+preconditioner changes the later solve trajectory, but not the evaluation-0 nonlinear assembly
+exported before that solve. Exact commands and unit/sign mappings are recorded in
+`opm/diagnostics/README.md`.
+
+The valid oracle exposed a more basic comparator mismatch. The tracked Flow deck has no `DRSDT`,
+so `maxGasDissolutionFactor()` is effectively unbounded and cell 0 begins undersaturated with
+`Rs=80` as the third primary. The historical ResSim exact driver forced
+`gas_redissolution_enabled=false`; its DRSDT0 cap makes the same state saturated with `Sg=0` as
+the third primary. The Flow Jacobian confirms this dynamically: its evaluation-0 third column is
+an Rs derivative, while evaluation 1 is an Sg derivative after gas appears. Thus the prior claim
+that this exact comparator remained in Sg throughout was incorrect.
+
+`FIM_Y1J_GAS_REDISSOLUTION=1` now provides a default-preserving matched diagnostic. With it, the
+post-well-Schur cell-0 blocks, after mapping Flow oil/water/gas rows to ResSim water/oil/gas and
+Pa/rate units to bar/timestep-integrated units, are:
+
+| Row | Flow `[dp, dSw, dRs]` | ResSim `[dp, dSw, dRs]` |
+| --- | --- | --- |
+| water | `[0.00135, 100.000008, 0]` | `[0.0006, 100, 0]` |
+| oil | `[14.6282695, -80.4048336, -0.1645116]` | `[14.6273067, -80.4010017, -0.1426161]` |
+| gas | `[1170.261648, -6432.38712, 56.0611368]` | `[1170.18454, -6432.08013, 57.8094215]` |
+
+The mapped cell-0 RHS is Flow `[0,-0.87795814,20242.2629]` versus ResSim
+`[0,-0.87786146,20242.27108]`. A dense solve of the exported Flow matrix gives the cell-0 raw
+correction `[dp=9.52669 bar,dSw=-1.28610e-4,dRs=293.43965]`; ResSim's forced-direct solve gives
+`[6.903753,-4.142252e-5,293.4539]`. The hydrocarbon correction agrees within about `0.005%`.
+Pressure/Sw remain globally sensitive to the water-pressure derivative and smaller PVT-column
+differences, but those do not justify a guessed G4 patch.
+
+OPM's `BlackOilPrimaryVariables::adaptPrimaryVariables()` also confirms that an overshooting Rs
+switches to Sg and writes exactly `0.0`; ResSim's existing OPM-style adaptation already does the
+same. Therefore G4c2 closes as diagnostic, not as a convergence promotion. The next bounded work
+is G5a: make DRSDT semantics explicit and identical in both exact-deck paths, then compare the
+first post-switch evaluation. Full StandardWell variables, BHP switching, multi-perforation
+allocation, reciprocal PVTO/extrapolation, solver acceptance, damping, linear routing, and
+timestep control remain held or unimplemented and are not refuted here.
+
+Validation: primary-state lifecycle tests `13/13`, the matched release one-step diagnostic `1/1`,
+and the owned FIM coverage bucket `11/11` pass. The shared bucket again passes its first three
+controls and stops at the documented pre-existing closed-system `rate_history` length `2` versus
+`1`; G4c2 does not touch that path.

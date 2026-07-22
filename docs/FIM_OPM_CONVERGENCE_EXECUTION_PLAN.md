@@ -1107,6 +1107,91 @@ compare injector-cell oil/gas accumulation, face flux, and well-source contribut
 OPM-side observable. If OPM does not expose comparable partitions, build that oracle first. The
 cell is still saturated with `Sg` active, so current evidence does not authorize G5 substitution.
 
+### G4c0 reservoir-partition oracle (2026-07-21): first mismatch is the RESV source
+
+The exact Flow executable uses the TPFA fast path, not the generic FV local-residual path. The
+tracked patch `opm/diagnostics/g4c0-reservoir-partition.patch` therefore instruments
+`tpfalinearizer.hh` at exact OPM commit `b82f21dba405286c4c4446614dd3bf9cdebf7a2c` and logs signed
+face flux, accumulation, source, and assembled total. ResSim's trace-only AD decomposition calls
+the same production accumulation, face-flux, and selected-RESV source helpers as assembly. A new
+test reconstructs every reservoir row, and both live traces independently reconstruct their
+assembled injector-cell row. OPM rate terms are multiplied by the exact `dt=21600 s` before
+comparison.
+
+At the matched initial evaluation, the reservoir physics is already close except for source:
+
+| Evaluation 0, cell 0 | Flow | ResSim before G4c1 |
+| --- | ---: | ---: |
+| vertical oil flux | `0.877958` | `0.877861` |
+| vertical gas flux | `70.236654` | `70.228917` |
+| gas source | `-20,312.500` | `-19,230.769` |
+| gas assembled total | `-20,242.263` | `-19,160.540` |
+
+The flux differences are only about `0.011%`; the source differs by `1,081.731 Sm3` over the
+quarter-day step. At evaluation 1, Flow gas accumulation/three outgoing faces/source/total are
+`1,903.19 / (2,556.34,2,556.34,1,288.48) / -20,312.5 / -12,008.14`, while ResSim before the fix
+is `2,377.67 / (12,800.50,12,800.50,6,438.35) / -19,230.77 / 15,186.25`. Those later face
+differences are not yet a same-state flux refutation: the first Newton updates already differ.
+
+The source mismatch has a precise upstream cause. OPM's `DryGasPvt` interpolates the PVDG table
+in inverse formation volume factor and inverse mobility factor: `1/Bg` and `1/(Bg*mu_g)`.
+ResSim interpolated the reported `Bg` and `mu_g` columns directly. At 200 bar the mapped table
+therefore gives Flow `Bg=1/162.5=0.006153846`, not ResSim's former `0.0065`; `500/Bg` explains
+the exact `81,250 Sm3/day` Flow source.
+
+### G4c1 reciprocal-PVDG result (2026-07-21): correctness closes; speed does not
+
+`PvtTable` now uses the OPM/ECL reciprocal interpolation for both f64 and generic AD properties,
+including the analytic active-segment `dBg/dp`. The direct PVDG oracle, PVT tests, AD/legacy
+assembly parity, central-FD selected-route tests, and IMPES-owned gates pass. The selected-route
+matrix comparison needed only a `1e-10 -> 2e-10` absolute roundoff allowance on a `2.43e5` entry
+(`<1e-15` relative) because reciprocal evaluation changes operation ordering; no benchmark or
+physics tolerance moved.
+
+The evaluation-0 gas source is now exactly Flow's `-20,312.5 Sm3`, and the initial oil/gas face
+terms remain within `0.011%`. Evaluation 1 now has matched source but still divergent state/terms:
+ResSim gas accumulation/faces/source/total are
+`2,490.73 / (13,076.95,13,076.95,6,578.60) / -20,312.5 / 14,910.74`, versus Flow's values above.
+That moves the next discriminator to the matched evaluation-0 Jacobian and first update.
+
+Six-step release measurement is not a performance promotion:
+
+| Route | Applied updates | Linear iterations | Time |
+| --- | ---: | ---: | ---: |
+| G4b4 | `23` (`7,3,3,4,3,3`) | `61` | `0.528-0.559 s` |
+| G4c1 | `25` (`9,4,3,3,3,3`) | `62` | `0.576-0.579 s` |
+| Flow 2026.04 | `26` (`7,5,4,3,4,3`) | `27` | `0.08 s` |
+
+G4c1 is a shared-physics correctness fix, provisionally measured on the current dirty tree, not a
+speed win. Next is G4c2: obtain comparable evaluation-0 Jacobian/update blocks from the two
+engines. Keep G5, acceptance, damping, linear routing, controller, BHP switching, and multi-perf
+allocation fixed. Do not patch evaluation-1 fluxes while the states being evaluated differ.
+This slice aligns only proven in-table PVDG segment semantics; OPM-style reciprocal extrapolation,
+PVTO reciprocal interpolation, full StandardWell variables, BHP switching, and multi-perforation
+allocation remain unimplemented or held and are not refuted here.
+
+### G4c2 result (2026-07-22): the evaluation-0 comparator used different primaries
+
+The default Flow MatrixMarket output is not a valid coupled oracle because matrix-free well
+contributions are absent. G4c2 reran evaluation 0 with explicit well materialization and mapped
+Flow's row order, primary order, rate units, pressure units, and correction sign. The resulting
+RHS and dominant injector-cell derivatives closely match ResSim. In the same-primary comparison,
+oil/gas pressure and Sw derivatives differ by less than `0.007%`, and the independently solved
+raw Rs correction differs by about `0.005%`.
+
+The categorical mismatch is the third primary itself. The Flow deck contains no `DRSDT` and
+starts cell 0 undersaturated with Rs active. The historical ResSim reproduction forced DRSDT0 and
+classified that cell saturated with Sg active. OPM and ResSim source both switch an Rs overshoot
+to exactly `Sg=0`, so the already-implemented switch is not refuted. A default-preserving
+`FIM_Y1J_GAS_REDISSOLUTION=1` flag now permits the matched diagnostic without rewriting historical
+measurements.
+
+**Decision:** do not promote a G4 Jacobian, damping, acceptance, or linear-policy change. G4c2 is
+complete as a diagnostic. Authorize only a bounded G5a configuration/primary-state comparison:
+declare identical DRSDT semantics on both exact paths, capture evaluation 0 through the first
+switch, and compare evaluation 1 before changing the lifecycle. Keep broader StandardWell,
+BHP-switching, multi-perforation, controller, and timestep work held.
+
 ### G4b4 product-promotion audit (2026-07-20): core merged, browser profile not promotable yet
 
 The implementation commits through G4b3 are ancestors of `master`; promoted unconditional FIM

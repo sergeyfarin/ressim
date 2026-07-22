@@ -1926,3 +1926,46 @@ the already-recorded closed-system FIM history-length mismatch after three passi
 Frontend exposure, when authorized, must be a typed opt-in experimental profile that makes the
 whole cross-target option bundle explicit and rebuilds WASM from the same clean commit. A raw
 `fimEnabled` checkbox is insufficient and would mislabel Legacy FIM as the measured stack.
+
+### 15.36 G4c0/G4c1: TPFA reservoir oracle finds reciprocal-PVDG mismatch
+
+The comparable oracle now exists on both engines. ResSim's trace-only partition calls the live AD
+accumulation, signed face-flux, and routed source helpers and reconstructs every assembled row.
+The OPM patch in `opm/diagnostics/g4c0-reservoir-partition.patch` targets the actual TPFA fast
+linearizer at exact release commit `b82f21d`, logs rate partitions plus the final row, and reproduces
+Flow's canonical `26` Newton / `27` linear iteration run. Multiplying OPM rates by `21600 s`
+reconstructs its timestep-integrated row.
+
+At the shared evaluation-0 state, vertical oil/gas flux differs by only `0.011%`, but the gas RESV
+source is Flow `-20,312.5` versus ResSim `-19,230.77 Sm3`. OPM interpolates PVDG `1/Bg` and
+`1/(Bg*mu_g)`; ResSim formerly interpolated `Bg` and `mu_g`. G4c1 adopts the reciprocal semantics
+for f64 and AD, including the active-segment derivative, and makes the initial source exact.
+
+This improves fidelity but not runtime. Six-step applied updates move `23 -> 25` versus Flow 26,
+linear work `61 -> 62` versus Flow 27, and time `0.528-0.559 -> 0.576-0.579 s` versus Flow
+`0.08 s`. Evaluation-1 face partitions remain far apart, but the states already differ after the
+first correction, so they do not prove a flux formula defect. G4c2 must compare the matched
+evaluation-0 Jacobian and update before another physics change. G5 and solver-policy levers remain
+unauthorized.
+The fix covers the proven in-table PVDG segment. Reciprocal extrapolation, PVTO reciprocal
+interpolation, full StandardWell variables, BHP switching, and multi-perforation allocation remain
+outside this result.
+
+### 15.37 G4c2: matched Jacobian oracle finds a primary-state contract mismatch
+
+Flow's ordinary MatrixMarket output omits matrix-free well contributions and is not a valid
+post-Schur oracle. With explicit well materialization, unit/order/sign mapping, and the same
+initial primary meaning, the evaluation-0 residual and dominant injector-cell Jacobian entries
+are close: oil/gas pressure and Sw columns differ below `0.007%`, while the raw Rs correction is
+within about `0.005%`. Remaining water-pressure and Rs-column derivative differences are real but
+do not explain the categorical first divergence by themselves.
+
+The historical comparison instead entered Newton with different third primaries. ResSim forced
+DRSDT0, which capped the initial dissolved-gas limit at `Rs=80` and selected Sg. The Flow deck has
+no `DRSDT`, leaves that limit unbounded, and selects Rs because `80 < Rs_sat`. OPM's source and
+ResSim's existing adaptation agree on the subsequent overshoot rule: both switch Rs to `Sg=0`.
+
+G4c2 therefore closes without a solver or derivative promotion. The next allowed slice is bounded
+G5a configuration/primary-state alignment, using an explicit identical DRSDT contract and a
+post-switch evaluation-1 comparison. This does not authorize a general G5 rewrite, acceptance or
+damping relaxation, linear-routing change, controller tuning, or omitted StandardWell semantics.

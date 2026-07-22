@@ -59,6 +59,15 @@ struct PvtOilBranch {
 }
 
 impl PvtTable {
+    /// OPM/ECL PVDG interpolation is linear in `1/Bg` and `1/(Bg*mu_g)`, not in the
+    /// reported `Bg` and `mu_g` columns themselves.
+    fn interpolate_gas_segment(r0: &PvtRow, r1: &PvtRow, t: f64) -> (f64, f64) {
+        let inv_bg = (1.0 / r0.bg_m3m3) + t * (1.0 / r1.bg_m3m3 - 1.0 / r0.bg_m3m3);
+        let inv_bg_mu = (1.0 / (r0.bg_m3m3 * r0.mu_g_cp))
+            + t * (1.0 / (r1.bg_m3m3 * r1.mu_g_cp) - 1.0 / (r0.bg_m3m3 * r0.mu_g_cp));
+        (1.0 / inv_bg, inv_bg / inv_bg_mu)
+    }
+
     pub fn new(rows: Vec<PvtRow>, c_o: f64) -> Self {
         let mut oil_branches = Self::build_oil_branches(&rows);
         oil_branches.sort_by(|a, b| a.rs_m3m3.partial_cmp(&b.rs_m3m3).unwrap());
@@ -145,13 +154,14 @@ impl PvtTable {
                     return r0.clone();
                 }
                 let t = (p - r0.p_bar) / dp;
+                let (bg_m3m3, mu_g_cp) = Self::interpolate_gas_segment(r0, r1, t);
                 return PvtRow {
                     p_bar: p,
                     rs_m3m3: r0.rs_m3m3 + t * (r1.rs_m3m3 - r0.rs_m3m3),
                     bo_m3m3: r0.bo_m3m3 + t * (r1.bo_m3m3 - r0.bo_m3m3),
                     mu_o_cp: r0.mu_o_cp + t * (r1.mu_o_cp - r0.mu_o_cp),
-                    bg_m3m3: r0.bg_m3m3 + t * (r1.bg_m3m3 - r0.bg_m3m3),
-                    mu_g_cp: r0.mu_g_cp + t * (r1.mu_g_cp - r0.mu_g_cp),
+                    bg_m3m3,
+                    mu_g_cp,
                 };
             }
         }
@@ -292,12 +302,17 @@ impl PvtTable {
                 }
                 let t = (p - r0.p_bar) / dp;
                 let lerp = |a: f64, b: f64| t * (b - a) + a;
+                let inv_bg = lerp(1.0 / r0.bg_m3m3, 1.0 / r1.bg_m3m3);
+                let inv_bg_mu = lerp(
+                    1.0 / (r0.bg_m3m3 * r0.mu_g_cp),
+                    1.0 / (r1.bg_m3m3 * r1.mu_g_cp),
+                );
                 return SatProps {
                     rs: lerp(r0.rs_m3m3, r1.rs_m3m3),
                     bo: lerp(r0.bo_m3m3, r1.bo_m3m3),
-                    bg: lerp(r0.bg_m3m3, r1.bg_m3m3),
+                    bg: S::from_f64(1.0) / inv_bg,
                     mu_o: lerp(r0.mu_o_cp, r1.mu_o_cp),
-                    mu_g: lerp(r0.mu_g_cp, r1.mu_g_cp),
+                    mu_g: inv_bg / inv_bg_mu,
                 };
             }
         }
@@ -509,7 +524,11 @@ impl PvtTable {
                 return if pressure_span.abs() <= f64::EPSILON {
                     0.0
                 } else {
-                    (high.bg_m3m3 - low.bg_m3m3) / pressure_span
+                    let inv_bg = 1.0 / low.bg_m3m3
+                        + (p - low.p_bar) / pressure_span
+                            * (1.0 / high.bg_m3m3 - 1.0 / low.bg_m3m3);
+                    let d_inv_bg_d_p = (1.0 / high.bg_m3m3 - 1.0 / low.bg_m3m3) / pressure_span;
+                    -d_inv_bg_d_p / (inv_bg * inv_bg)
                 };
             }
         }
@@ -1016,8 +1035,52 @@ mod tests {
             1.0e-5,
         );
 
-        assert!((table.d_bg_d_p(200.0) + 3.5e-5).abs() < 1e-15);
-        assert!((table.d_bg_d_p(250.0) + 1.5e-5).abs() < 1e-15);
+        let expected = |p: f64, low_p: f64, low_bg: f64, high_p: f64, high_bg: f64| {
+            let slope = (1.0 / high_bg - 1.0 / low_bg) / (high_p - low_p);
+            let inv_bg = 1.0 / low_bg + (p - low_p) * slope;
+            -slope / (inv_bg * inv_bg)
+        };
+        assert!(
+            (table.d_bg_d_p(200.0) - expected(200.0, 100.0, 0.01, 200.0, 0.0065)).abs() < 1e-15
+        );
+        assert!(
+            (table.d_bg_d_p(250.0) - expected(250.0, 200.0, 0.0065, 300.0, 0.005)).abs() < 1e-15
+        );
         assert!((table.d_bg_d_p(300.0) + 0.005 / 300.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn pvdg_segment_interpolates_inverse_bg_and_inverse_bg_mu() {
+        let table = PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 150.0,
+                    rs_m3m3: 10.0,
+                    bo_m3m3: 1.0,
+                    mu_o_cp: 1.0,
+                    bg_m3m3: 0.008,
+                    mu_g_cp: 0.018,
+                },
+                PvtRow {
+                    p_bar: 250.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.0,
+                    mu_o_cp: 1.0,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.022,
+                },
+            ],
+            1.0e-5,
+        );
+
+        let row = table.interpolate(200.0);
+        let expected_inv_bg = 0.5 * (1.0 / 0.008 + 1.0 / 0.005);
+        let expected_inv_bg_mu = 0.5 * (1.0 / (0.008 * 0.018) + 1.0 / (0.005 * 0.022));
+        assert!((row.bg_m3m3 - 1.0 / expected_inv_bg).abs() < 1e-15);
+        assert!((row.mu_g_cp - expected_inv_bg / expected_inv_bg_mu).abs() < 1e-15);
+
+        let generic = table.interpolate_saturated_generic(200.0_f64);
+        assert!((generic.bg - row.bg_m3m3).abs() < 1e-15);
+        assert!((generic.mu_g - row.mu_g_cp).abs() < 1e-15);
     }
 }

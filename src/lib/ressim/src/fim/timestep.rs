@@ -3416,6 +3416,8 @@ mod phase5_repro {
     /// - `FIM_FLOW_RESV_INJECTOR=1` selects G4b2b's typed surface-u route for the injector.
     ///   The producer remains on the held historical rate route; the selected injector receives
     ///   an explicit RESV 500 schedule without BHP switching, matching G4b2b's narrow scope.
+    /// - `FIM_Y1J_GAS_REDISSOLUTION=1` leaves gas redissolution enabled, matching the tracked
+    ///   Flow deck (which has no `DRSDT 0` limit). Unset preserves the historical ResSim preset.
     /// - `FIM_MAX_SUBSTEPS=1` caps after the first accepted rung; use this for the bounded
     ///   first-rung comparison, not as a completed 0.25-day-step result.
     /// - `FIM_TRACE_FILE=<path> FIM_TRACE_DT_BELOW=1` records every iteration's `WELLTRACE`
@@ -3537,7 +3539,7 @@ mod phase5_repro {
         .unwrap();
         sim.set_three_phase_mode_enabled(true);
         sim.set_injected_fluid("gas").unwrap();
-        sim.set_gas_redissolution_enabled(false);
+        sim.set_gas_redissolution_enabled(std::env::var_os("FIM_Y1J_GAS_REDISSOLUTION").is_some());
         sim.set_stability_params(0.05, 75.0, 0.75);
 
         let rate_controlled = control == "rate";

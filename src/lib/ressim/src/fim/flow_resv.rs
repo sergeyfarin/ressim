@@ -237,7 +237,9 @@ mod tests {
     use super::*;
     use crate::fim::ad::Ad;
     use crate::fim::assembly::{FimAssemblyOptions, assemble_fim_system};
-    use crate::fim::assembly_ad::assemble_fim_system_ad;
+    use crate::fim::assembly_ad::{
+        assemble_fim_system_ad, cell_equation_residual_breakdown_ad, flow_resv_terms_f64,
+    };
     use crate::fim::linear::{
         FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolverKind, solve_linearized_system,
     };
@@ -429,8 +431,10 @@ mod tests {
             for col in 0..ad.residual.len() {
                 let lhs = ad.jacobian.get(row, col).copied().unwrap_or(0.0);
                 let rhs = legacy.jacobian.get(row, col).copied().unwrap_or(0.0);
+                // Reciprocal PVDG interpolation changes the floating-point evaluation order;
+                // 2e-10 is below 1e-15 relative error for the largest selected-well entry.
                 assert!(
-                    (lhs - rhs).abs() < 1e-10,
+                    (lhs - rhs).abs() < 2e-10,
                     "AD/legacy mismatch at ({row},{col}): {lhs} vs {rhs}"
                 );
             }
@@ -449,6 +453,35 @@ mod tests {
         assert!((ad.equation_scaling.well_constraint[0] - 500.0).abs() < 1e-12);
         assert!((ad.equation_scaling.perforation_flow[0] - u).abs() < 1e-8);
         assert!((ad.variable_scaling.perforation_rate[0] - u).abs() < 1e-8);
+
+        let selected_terms =
+            flow_resv_terms_f64(&sim, &state, &topology, context.perforation_idx, context)
+                .expect("selected RESV diagnostic terms");
+        for component in 0..3 {
+            let partition = cell_equation_residual_breakdown_ad(
+                &sim,
+                &state,
+                &state,
+                &topology,
+                options.dt_days,
+                Some(context),
+                0,
+                component,
+            )
+            .expect("selected reservoir partition");
+            assert!(
+                (partition.total - ad.residual[component]).abs() < 1e-10,
+                "component {component} partition={} assembly={}",
+                partition.total,
+                ad.residual[component]
+            );
+            let expected_source = if component == 2 {
+                selected_terms.gas_source_sc_day * options.dt_days
+            } else {
+                0.0
+            };
+            assert!((partition.well_source - expected_source).abs() < 1e-10);
+        }
 
         let p_col = crate::fim::assembly::unknown_offset(0, 0);
         let sw_col = crate::fim::assembly::unknown_offset(0, 1);

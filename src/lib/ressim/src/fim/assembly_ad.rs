@@ -20,8 +20,8 @@ use sprs::TriMatI;
 use crate::ReservoirSimulator;
 use crate::fim::ad::Ad;
 use crate::fim::assembly::{
-    DARCY_METRIC_FACTOR, FimAssembly, FimAssemblyOptions, FimAssemblyTiming, equation_offset,
-    unknown_offset,
+    CellResidualBreakdown, DARCY_METRIC_FACTOR, FimAssembly, FimAssemblyOptions, FimAssemblyTiming,
+    equation_offset, unknown_offset,
 };
 use crate::fim::flow_resv::{
     FimWellRoute, FlowResvInjectorResidual, FlowResvReportStepContext, fim_well_route,
@@ -580,6 +580,138 @@ fn add_face_residual(
     }
 }
 
+/// Observation-only decomposition of one live AD reservoir row into accumulation, signed face
+/// fluxes, and well source. Every term calls the same generic helper as
+/// [`assemble_fim_system_ad`], including the selected Flow-RESV source route, so its `total`
+/// must reconstruct the assembled row before it is used as an OPM comparison oracle.
+pub(crate) fn cell_equation_residual_breakdown_ad(
+    sim: &ReservoirSimulator,
+    previous_state: &FimState,
+    state: &FimState,
+    topology: &FimWellTopology,
+    dt_days: f64,
+    flow_resv_context: Option<FlowResvReportStepContext>,
+    cell_idx: usize,
+    component: usize,
+) -> Option<CellResidualBreakdown> {
+    if cell_idx >= state.cells.len() || component >= 3 {
+        return None;
+    }
+
+    let cell = state.cell(cell_idx);
+    let prev_cell = previous_state.cell(cell_idx);
+    let accumulation = cell_accumulation_generic::<f64>(
+        sim,
+        cell_idx,
+        cell.pressure_bar,
+        cell.sw,
+        cell.hydrocarbon_var,
+        cell.regime,
+        cell_drsdt0_base_rs(sim, cell_idx),
+        prev_cell.pressure_bar,
+        prev_cell.sw,
+        prev_cell.hydrocarbon_var,
+        prev_cell.regime,
+    )[component];
+
+    let mut breakdown = CellResidualBreakdown {
+        accumulation,
+        x_minus: 0.0,
+        x_plus: 0.0,
+        y_minus: 0.0,
+        y_plus: 0.0,
+        z_minus: 0.0,
+        z_plus: 0.0,
+        well_source: 0.0,
+        total: 0.0,
+    };
+    let cells_per_layer = sim.nx * sim.ny;
+    let k = cell_idx / cells_per_layer;
+    let in_layer = cell_idx % cells_per_layer;
+    let j = in_layer / sim.nx;
+    let i = in_layer % sim.nx;
+
+    let face = |id_i: usize, id_j: usize, dim: char, k_i: usize, k_j: usize| {
+        let geom_t = DARCY_METRIC_FACTOR * sim.geometric_transmissibility(id_i, id_j, dim);
+        if geom_t <= 0.0 {
+            return [0.0; 6];
+        }
+        let left = face_cell_input(sim, state, id_i, k_i);
+        let right = face_cell_input(sim, state, id_j, k_j);
+        face_flux_residual_f64(sim, geom_t, dt_days, &left, &right)
+    };
+
+    if i > 0 {
+        let neighbor = sim.idx(i - 1, j, k);
+        breakdown.x_minus = face(neighbor, cell_idx, 'x', k, k)[3 + component];
+    }
+    if i + 1 < sim.nx {
+        let neighbor = sim.idx(i + 1, j, k);
+        breakdown.x_plus = face(cell_idx, neighbor, 'x', k, k)[component];
+    }
+    if j > 0 {
+        let neighbor = sim.idx(i, j - 1, k);
+        breakdown.y_minus = face(neighbor, cell_idx, 'y', k, k)[3 + component];
+    }
+    if j + 1 < sim.ny {
+        let neighbor = sim.idx(i, j + 1, k);
+        breakdown.y_plus = face(cell_idx, neighbor, 'y', k, k)[component];
+    }
+    if k > 0 {
+        let neighbor = sim.idx(i, j, k - 1);
+        breakdown.z_minus = face(neighbor, cell_idx, 'z', k - 1, k)[3 + component];
+    }
+    if k + 1 < sim.nz {
+        let neighbor = sim.idx(i, j, k + 1);
+        breakdown.z_plus = face(cell_idx, neighbor, 'z', k, k + 1)[component];
+    }
+
+    let injected_fluid = effective_injected_fluid(sim);
+    for (perf_idx, perforation) in topology.perforations.iter().enumerate() {
+        if perforation.cell_index != cell_idx {
+            continue;
+        }
+        if let Some(context) =
+            flow_resv_context_for_perforation(flow_resv_context, topology, perf_idx)
+        {
+            if component == 2 {
+                breakdown.well_source +=
+                    flow_resv_terms_f64(sim, state, topology, perf_idx, context)?.gas_source_sc_day
+                        * dt_days;
+            }
+            continue;
+        }
+        let injector = topology.wells[perforation.physical_well_index].injector;
+        let cell_input = well_cell_input(sim, state, cell_idx);
+        let neighborhood_cells =
+            perforation_local_block(topology, state, perf_idx).control_influence_cells(sim);
+        let neighborhood: Vec<WellCellInput<f64>> = neighborhood_cells
+            .iter()
+            .map(|&neighbor| well_cell_input(sim, state, neighbor))
+            .collect();
+        let fractions = (!injector).then(|| producer_fractions_generic::<f64>(sim, &neighborhood));
+        let coefficients = component_rate_coefficients_generic(
+            sim,
+            injector,
+            injected_fluid,
+            &cell_input,
+            fractions.as_ref(),
+        );
+        breakdown.well_source +=
+            coefficients[component] * state.reservoir_connection_q(perf_idx)? * dt_days;
+    }
+
+    breakdown.total = breakdown.accumulation
+        + breakdown.x_minus
+        + breakdown.x_plus
+        + breakdown.y_minus
+        + breakdown.y_plus
+        + breakdown.z_minus
+        + breakdown.z_plus
+        + breakdown.well_source;
+    Some(breakdown)
+}
+
 fn scatter_block(
     tri: &mut TriMatI<f64, usize>,
     row_cell: usize,
@@ -928,6 +1060,36 @@ mod tests {
                 real.residual[i],
                 generic.residual[i]
             );
+        }
+    }
+
+    #[test]
+    fn diagnostic_partition_reconstructs_every_reservoir_row() {
+        let (sim, previous_state, state) = reservoir_only_fixture();
+        let options = no_wells_options();
+        let topology = build_well_topology(&sim);
+        let assembly = assemble_fim_system_ad(&sim, &previous_state, &state, &options);
+
+        for cell_idx in 0..state.cells.len() {
+            for component in 0..3 {
+                let partition = cell_equation_residual_breakdown_ad(
+                    &sim,
+                    &previous_state,
+                    &state,
+                    &topology,
+                    options.dt_days,
+                    None,
+                    cell_idx,
+                    component,
+                )
+                .expect("valid reservoir partition");
+                let assembled = assembly.residual[equation_offset(cell_idx, component)];
+                assert!(
+                    (partition.total - assembled).abs() < 1e-10,
+                    "cell={cell_idx} component={component} partition={} assembly={assembled}",
+                    partition.total
+                );
+            }
         }
     }
 

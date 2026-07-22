@@ -1,0 +1,127 @@
+diff --git a/opm/models/discretization/common/tpfalinearizer.hh b/opm/models/discretization/common/tpfalinearizer.hh
+index 94f626766..69bb4cda7 100644
+--- a/opm/models/discretization/common/tpfalinearizer.hh
++++ b/opm/models/discretization/common/tpfalinearizer.hh
+@@ -51,11 +51,15 @@
+ 
+ #include <cassert>
+ #include <cstddef>
++#include <cstdlib>
+ #include <exception>   // current_exception, rethrow_exception
++#include <fstream>
++#include <iomanip>
+ #include <iostream>
+ #include <map>
+ #include <memory>
+ #include <numeric>
++#include <mutex>
+ #include <set>
+ #include <stdexcept>
+ #include <unordered_map>
+@@ -86,6 +90,48 @@ struct SeparateSparseSourceTerms { static constexpr bool value = false; };
+ 
+ namespace Opm {
+ 
++namespace ResSimTpfaPartitionTrace {
++
++inline int targetCell()
++{
++    static const int target = [] {
++        const char* raw = std::getenv("OPM_RESSIM_PARTITION_CELL");
++        return raw ? std::atoi(raw) : -1;
++    }();
++    return target;
++}
++
++template<class Simulator, class Vector>
++void write(const Simulator& simulator,
++           unsigned cell,
++           const char* term,
++           int neighbor,
++           const Vector& values)
++{
++    const char* path = std::getenv("OPM_RESSIM_PARTITION_FILE");
++    if (!path || targetCell() < 0 || cell != static_cast<unsigned>(targetCell())) {
++        return;
++    }
++
++    static std::mutex mutex;
++    std::lock_guard<std::mutex> guard(mutex);
++    std::ofstream out(path, std::ios::app);
++    out << std::setprecision(17)
++        << "OPM-RESERVOIR-PARTITION"
++        << " time_s=" << simulator.time()
++        << " dt_s=" << simulator.timeStepSize()
++        << " iteration=" << simulator.problem().iterationContext().iteration()
++        << " cell=" << cell
++        << " term=" << term
++        << " neighbor=" << neighbor;
++    for (unsigned eqIdx = 0; eqIdx < values.size(); ++eqIdx) {
++        out << " eq" << eqIdx << '=' << values[eqIdx];
++    }
++    out << '\n';
++}
++
++} // namespace ResSimTpfaPartitionTrace
++
+ // forward declarations
+ template<class TypeTag>
+ class EcfvDiscretization;
+@@ -964,6 +1010,8 @@ private:
+                         }
+                     }
+                     setResAndJacobi(res, bMat, adres);
++                    ResSimTpfaPartitionTrace::write(
++                        simulator_(), globI, "face_flux", static_cast<int>(globJ), res);
+                     residual_[globI] += res;
+                     //SparseAdapter syntax:  jacobian_->addToBlock(globI, globI, bMat);
+                     *diagMatAddress_[globI] += bMat;
+@@ -1021,6 +1069,8 @@ private:
+             }
+             res *= storefac;
+             bMat *= storefac;
++            ResSimTpfaPartitionTrace::write(
++                simulator_(), globI, "accumulation", -1, res);
+             residual_[globI] += res;
+             //SparseAdapter syntax: jacobian_->addToBlock(globI, globI, bMat);
+             *diagMatAddress_[globI] += bMat;
+@@ -1038,14 +1088,27 @@ private:
+             }
+             adres *= -volume;
+             setResAndJacobi(res, bMat, adres);
++            ResSimTpfaPartitionTrace::write(
++                simulator_(), globI, "source_residual", -1, res);
+             residual_[globI] += res;
+             //SparseAdapter syntax: jacobian_->addToBlock(globI, globI, bMat);
+             *diagMatAddress_[globI] += bMat;
+         } // end of loop for cell globI.
+ 
+         // Add sparse source terms. For now only wells.
++        VectorBlock beforeSparseSource(0.0);
++        const int traceCell = ResSimTpfaPartitionTrace::targetCell();
++        if (separateSparseSourceTerms_ && traceCell >= 0 &&
++            static_cast<unsigned>(traceCell) < residual_.size()) {
++            beforeSparseSource = residual_[traceCell];
++        }
+         if (separateSparseSourceTerms_) {
+             problem_().wellModel().addReservoirSourceTerms(residual_, diagMatAddress_);
++            if (traceCell >= 0 && static_cast<unsigned>(traceCell) < residual_.size()) {
++                VectorBlock sparseSource = residual_[traceCell] - beforeSparseSource;
++                ResSimTpfaPartitionTrace::write(
++                    simulator_(), traceCell, "sparse_source_residual", -1, sparseSource);
++            }
+         }
+ 
+         // Boundary terms. Only looping over cells with nontrivial bcs.
+@@ -1066,6 +1129,11 @@ private:
+             ////SparseAdapter syntax: jacobian_->addToBlock(globI, globI, bMat);
+             *diagMatAddress_[globI] += bMat;
+         }
++
++        if (traceCell >= 0 && static_cast<unsigned>(traceCell) < residual_.size()) {
++            ResSimTpfaPartitionTrace::write(
++                simulator_(), traceCell, "assembled_total", -1, residual_[traceCell]);
++        }
+     }
+ 
+     void updateStoredTransmissibilities()

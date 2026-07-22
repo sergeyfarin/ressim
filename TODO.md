@@ -283,7 +283,7 @@ below is retained as Bundle N/Y history; it must not override this current seque
   `docs/FIM_G4B2A_ATOMIC_ROUTE_IMPLEMENTATION_DESIGN.md` prescribes typed u state,
   construction, AD+legacy row/column scatter, q-relax/nested exclusions, scaling, Schur, trace,
   and a non-live gate sequence. The G4b2 pre-Newton block remains; this is no convergence result.
-- [ ] **Next: G4b2b atomic RESV route and non-live gates.** Implement the whole typed-u route in
+- [x] **G4b2b atomic RESV route and non-live gates — DONE 2026-07-19.** Implemented the whole typed-u route in
   one commit, including both assemblers/Jacobians, update/scaling/Schur/trace and all contract
   tests. **Scaffold checkpoint 2026-07-15:** context now reaches both assemblers in focused
   tests, and initialization/AD-legacy/u-column/scaling gates pass, but the selected value is
@@ -297,8 +297,29 @@ below is retained as Bundle N/Y history; it must not override this current seque
   FD/Schur gates are still required; this is not a live or convergence result.
   **S1 checkpoint 2026-07-19:** the parallel numeric/kind vectors are now replaced by
   `Vec<FimPerforationPrimary>`. Tail ordering and offsets are unchanged; state and AD-parity gates
-  pass. S2 remains open: route-sensitive production consumers must use the q/u accessors rather
-  than reading `.value` directly.
+  pass. At that checkpoint S2 remained open; the completed route later moved all route-sensitive
+  production consumers to the q/u accessors.
+- [x] **G4c0 injector-cell reservoir partition oracle — DONE 2026-07-21.** Added trace-only
+  ResSim production-row partitions and a reproducible OPM 2026.04 TPFA patch. Both independently
+  reconstruct the assembled residual. The first comparable mismatch is RESV gas source at
+  evaluation 0: Flow `-20,312.5` versus ResSim `-19,230.77 Sm3` per `0.25 day`.
+- [x] **G4c1 PVDG interpolation parity — PROVISIONAL 2026-07-21.** ResSim now follows OPM/ECL by
+  interpolating `1/Bg` and `1/(Bg*mu_g)`. The evaluation-0 source becomes exactly
+  `-20,312.5 Sm3`, while face terms remain within `0.011%`. This is a correctness fix, not a speed
+  win: six-step applied updates move `23 -> 25`, linear work `61 -> 62`, runtime
+  `0.528-0.559 -> 0.576-0.579 s` versus Flow `26/27/0.08 s`.
+- [x] **G4c2 matched-evaluation-0 Jacobian/update oracle — DIAGNOSTIC 2026-07-22.** A valid
+  post-well-Schur Flow matrix requires `--matrix-add-well-contributions=true` and a compatible
+  explicit-well linear solver; the default MatrixMarket export omits matrix-free well terms.
+  Once row/column units are mapped, the residual and dominant pressure/Sw derivatives agree, but
+  the historical ResSim probe starts cell 0 with `Sg` while the tracked Flow deck starts with
+  `Rs`. The cause is a benchmark-contract mismatch: ResSim forced DRSDT0, while the deck has no
+  `DRSDT`. A default-preserving `FIM_Y1J_GAS_REDISSOLUTION=1` diagnostic now selects the matched
+  configuration. No G4 derivative or solver-policy change is justified by this result.
+- [ ] **Next: bounded G5a primary-state/configuration alignment.** Make the exact-deck oracle use
+  one explicit DRSDT contract on both engines, then compare the first post-switch state and
+  evaluation-1 rows. OPM and ResSim already both perform `Rs -> Sg=0`; do not broaden this into a
+  lifecycle rewrite, acceptance change, or controller/linear tuning without a new mismatch.
 - [x] **Newton production-seam extraction (2026-07-15): behavior-preserving.** Moved production
   helpers from `fim/newton.rs` into `newton/damping.rs` (Appleyard/chop/history stabilization),
   `newton/convergence.rs` (residual families, CNV/MB, acceptance and stagnation gates), and
