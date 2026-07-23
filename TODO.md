@@ -698,6 +698,13 @@ below is retained as Bundle N/Y history; it must not override this current seque
   `fim_opm_aligned_nonlinear` now defaults true. FIM is dev-only (IMPES ships), so no shipped-scenario
   impact. Diagnostic gains `--legacy` to opt out. New baseline: water 20x20x3 `3` sub (Legacy 8),
   23x23x1 `6`, heavy `4`, gas `1`. fim 5/5, impes 2/2; shared's lone failure is pre-existing.
+- [x] **Forced-direct fallback hardened 2026-07-23.** Direct-LU failure now enters iterative
+  dispatch with forced-direct routing disabled (`allow_forced_direct = false` on the recursive
+  call), preventing the small-system WASM path from recursively selecting dense LU until stack
+  overflow — on wasm `should_force_direct_solve` is true for any non-`SparseLuDebug` kind on a
+  small system, so the earlier `GmresIlu0` re-entry recursed. The returned report now marks the
+  fallback (`used_fallback`) and includes timing from both attempts. Relperm endpoint physics is
+  intentionally unchanged; the root-cause fix that would make this fallback redundant is below.
 
 - [ ] **ROOT-CAUSE FIX (deferred): relperm-endpoint singularity under raw saturations.** WATER-025's
   raw-saturation path can drive a cell onto the flat part of the relperm curve (`Sw` at/below `Swc`,
@@ -705,9 +712,9 @@ below is retained as Bundle N/Y history; it must not override this current seque
   direct sparse-LU (systems under the direct-solve threshold) then fails to factor it, reports
   `reduction=1.0`, and collapses the timestep. Found via the OpmAligned-default regressions on small
   1D/well-dominated cases (`simple_pressure_control`, `benchmark_like_substepping`,
-  `shared_block_multiwell`), fixed 2026-07-23 by an **iterative fallback** in
-  `solve_linearized_system` (`fim/linear/mod.rs`): on direct-factorization failure it retries with
-  the block-Jacobi/CPR backend, which needs no exact factorization.
+  `shared_block_multiwell`), currently handled by the **iterative fallback** in
+  `solve_linearized_system` (`fim/linear/mod.rs`; hardened above): on direct-factorization failure it
+  retries with the block-Jacobi/CPR backend, which needs no exact factorization.
   That fallback is a **backstop, not a cure** — the singular Jacobian still forms; it is only caught
   after the fact. The dependency chain is three links long: OpmAligned-default rests on WATER-025
   raw saturations, which can go singular, which the fallback catches. Risks: (a) if the linear-solver

@@ -256,12 +256,25 @@ pub(crate) fn solve_linearized_system(
     layout: Option<FimLinearBlockLayout>,
     equation_scaling: Option<&crate::fim::scaling::EquationScaling>,
 ) -> FimLinearSolveReport {
+    solve_linearized_system_with_routing(jacobian, rhs, options, layout, equation_scaling, true)
+}
+
+fn solve_linearized_system_with_routing(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    layout: Option<FimLinearBlockLayout>,
+    equation_scaling: Option<&crate::fim::scaling::EquationScaling>,
+    allow_forced_direct: bool,
+) -> FimLinearSolveReport {
     // Small systems solve directly. If the direct factorization hits a singular Jacobian (a
     // cell driven onto a zero relperm-derivative endpoint by the raw-saturation path can make a
     // block rank-deficient), fall back to the iterative block-Jacobi/CPR backend, which does not
     // require an exact factorization and lets the Newton iteration proceed instead of collapsing
-    // the timestep. The iterative path handles well elimination internally via the dispatch
-    // below, so re-enter `solve_linearized_system` with the iterative kind.
+    // the timestep. The recursive fallback call passes `allow_forced_direct = false` so it lands
+    // on the iterative dispatch below instead of re-selecting the forced direct path — on wasm
+    // `should_force_direct_solve` is true for any non-`SparseLuDebug` kind on a small system, so
+    // without that guard the `GmresIlu0` re-entry would recurse into dense LU until stack overflow.
     //
     // This fallback is load-bearing, not generic defensive code: it is what keeps the OpmAligned
     // default (WATER-026, which rests on WATER-025 raw saturations) converging on small
@@ -269,37 +282,47 @@ pub(crate) fn solve_linearized_system(
     // regularization tracked in TODO.md ("ROOT-CAUSE FIX (deferred): relperm-endpoint singularity
     // under raw saturations").
     #[cfg(not(target_arch = "wasm32"))]
-    if should_force_direct_solve(options.kind, jacobian.rows(), false) {
+    if allow_forced_direct && should_force_direct_solve(options.kind, jacobian.rows(), false) {
         let direct = sparse_lu_debug::solve(jacobian, rhs, options, false);
         if direct.converged {
             return direct;
         }
         let mut iterative_options = options.clone();
         iterative_options.kind = FimLinearSolverKind::GmresIlu0;
-        return solve_linearized_system(
+        let mut iterative = solve_linearized_system_with_routing(
             jacobian,
             rhs,
             &iterative_options,
             layout,
             equation_scaling,
+            false,
         );
+        iterative.used_fallback = true;
+        iterative.total_time_ms += direct.total_time_ms;
+        iterative.preconditioner_build_time_ms += direct.preconditioner_build_time_ms;
+        return iterative;
     }
 
     #[cfg(target_arch = "wasm32")]
-    if should_force_direct_solve(options.kind, jacobian.rows(), true) {
+    if allow_forced_direct && should_force_direct_solve(options.kind, jacobian.rows(), true) {
         let direct = dense_lu_debug::solve(jacobian, rhs, options, false);
         if direct.converged {
             return direct;
         }
         let mut iterative_options = options.clone();
         iterative_options.kind = FimLinearSolverKind::GmresIlu0;
-        return solve_linearized_system(
+        let mut iterative = solve_linearized_system_with_routing(
             jacobian,
             rhs,
             &iterative_options,
             layout,
             equation_scaling,
+            false,
         );
+        iterative.used_fallback = true;
+        iterative.total_time_ms += direct.total_time_ms;
+        iterative.preconditioner_build_time_ms += direct.preconditioner_build_time_ms;
+        return iterative;
     }
 
     // Phase 11 (`FIM-LINEAR-010`): eliminate well/perforation unknowns before the iterative
@@ -403,6 +426,29 @@ mod tests {
     }
 
     #[test]
+    fn failed_forced_direct_solve_falls_back_once_and_reports_fallback() {
+        let mut tri = TriMatI::<f64, usize>::new((2, 2));
+        tri.add_triplet(0, 0, 2.0);
+        let jacobian = tri.to_csr();
+        let rhs = DVector::from_vec(vec![4.0, 0.0]);
+
+        let direct =
+            sparse_lu_debug::solve(&jacobian, &rhs, &FimLinearSolveOptions::default(), false);
+        assert!(!direct.converged, "singular control must reject direct LU");
+
+        let report = solve_linearized_system(
+            &jacobian,
+            &rhs,
+            &FimLinearSolveOptions::default(),
+            None,
+            None,
+        );
+
+        assert!(report.used_fallback);
+        assert_eq!(report.backend_used, FimLinearSolverKind::GmresIlu0);
+    }
+
+    #[test]
     fn large_default_fim_system_still_uses_iterative_backend() {
         let n = DIRECT_SOLVE_ROW_THRESHOLD + 1;
         let mut tri = TriMatI::<f64, usize>::new((n, n));
@@ -447,6 +493,29 @@ mod tests {
             32,
             true,
         ));
+    }
+
+    #[test]
+    fn iterative_fallback_bypasses_wasm_forced_direct_routing() {
+        assert!(should_force_direct_solve(
+            FimLinearSolverKind::GmresIlu0,
+            2,
+            true,
+        ));
+
+        let mut tri = TriMatI::<f64, usize>::new((2, 2));
+        tri.add_triplet(0, 0, 2.0);
+        let jacobian = tri.to_csr();
+        let rhs = DVector::from_vec(vec![4.0, 0.0]);
+        let options = FimLinearSolveOptions {
+            kind: FimLinearSolverKind::GmresIlu0,
+            ..FimLinearSolveOptions::default()
+        };
+
+        let report =
+            solve_linearized_system_with_routing(&jacobian, &rhs, &options, None, None, false);
+
+        assert_eq!(report.backend_used, FimLinearSolverKind::GmresIlu0);
     }
 
     #[test]
