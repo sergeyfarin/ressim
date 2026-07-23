@@ -1199,6 +1199,22 @@ impl ReservoirSimulator {
                 linear_preconditioner_ms += report.linear_preconditioner_build_time_ms;
                 state_update_ms += report.state_update_ms;
 
+                // WATER-024: attribute the oil material-balance imbalance at the states the outer
+                // controller actually visits (the limit-cycle substeps WATER-023 identified).
+                // Default-off; prints one line per substep solve.
+                #[cfg(test)]
+                if std::env::var_os("FIM_W024_OIL_MB").is_some() {
+                    crate::fim::timestep::water024_oil_mb_line(
+                        self,
+                        &previous_state,
+                        &report.accepted_state,
+                        trial_dt,
+                        substeps as usize,
+                        report.newton_iterations,
+                        report.converged,
+                    );
+                }
+
                 if report.converged {
                     let materially_changed =
                         iterate_has_material_change(&previous_state, &report.accepted_state);
@@ -3015,6 +3031,103 @@ mod tests {
         assert!((sim.sat_water[0] - sw_before).abs() < 1e-12);
         assert!(sim.last_solver_warning.is_empty());
     }
+}
+
+#[cfg(test)]
+pub(crate) fn water024_oil_mb_line(
+    sim: &ReservoirSimulator,
+    previous_state: &FimState,
+    state: &FimState,
+    dt_days: f64,
+    substep: usize,
+    iters: usize,
+    converged: bool,
+) {
+    use crate::fim::assembly_ad::cell_equation_residual_breakdown_ad;
+    let topology = crate::fim::wells::build_well_topology(sim);
+    const OIL: usize = 1;
+    let n = state.cells.len();
+    let inj = 0usize;
+    let prod = (sim.nx - 1) + sim.nx * ((sim.ny - 1) + sim.ny * 0);
+    let mut net = 0.0_f64;
+    let mut net_wells = 0.0_f64;
+    let mut abs_sum = 0.0_f64;
+    let mut worst = (0usize, 0.0_f64);
+    for cell in 0..n {
+        if let Some(bd) = cell_equation_residual_breakdown_ad(
+            sim,
+            previous_state,
+            state,
+            &topology,
+            dt_days,
+            None,
+            cell,
+            OIL,
+        ) {
+            net += bd.total;
+            abs_sum += bd.total.abs();
+            if cell == inj || cell == prod {
+                net_wells += bd.total;
+            }
+            if bd.total.abs() > worst.1.abs() {
+                worst = (cell, bd.total);
+            }
+        }
+    }
+    let wshare = if net.abs() > 1e-30 {
+        net_wells / net
+    } else {
+        0.0
+    };
+    let (waccum, wfaces, wsrc) = cell_equation_residual_breakdown_ad(
+        sim,
+        previous_state,
+        state,
+        &topology,
+        dt_days,
+        None,
+        worst.0,
+        OIL,
+    )
+    .map(|b| {
+        (
+            b.accumulation,
+            b.x_minus + b.x_plus + b.y_minus + b.y_plus + b.z_minus + b.z_plus,
+            b.well_source,
+        )
+    })
+    .unwrap_or((0.0, 0.0, 0.0));
+    // Coherent net carried by cells whose Sw sits within one table segment of a SWOF breakpoint
+    // (the moving front's kink cells), testing the WATER-018 endpoint-kink mechanism.
+    let nodes = [0.1_f64, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+    let seg = 0.2 / 20.0;
+    let mut net_near_knot = 0.0_f64;
+    for cell in 0..n {
+        let sw = state.cells[cell].sw;
+        if nodes.iter().any(|node| (sw - node).abs() < seg) {
+            if let Some(bd) = cell_equation_residual_breakdown_ad(
+                sim,
+                previous_state,
+                state,
+                &topology,
+                dt_days,
+                None,
+                cell,
+                OIL,
+            ) {
+                net_near_knot += bd.total;
+            }
+        }
+    }
+    let knot_share = if net.abs() > 1e-30 {
+        net_near_knot / net
+    } else {
+        0.0
+    };
+    println!(
+        "W024MB substep={substep} dt={dt_days:.6e} iters={iters} converged={converged} net_oil={net:.6e} abs_sum={abs_sum:.6e} well_share={wshare:.4} knot_share={knot_share:.4} worst_cell={} worst={:.6e} accum={waccum:.6e} faces={wfaces:.6e} src={wsrc:.6e}",
+        worst.0, worst.1,
+    );
 }
 
 #[cfg(test)]

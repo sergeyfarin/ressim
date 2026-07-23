@@ -649,13 +649,25 @@ below is retained as Bundle N/Y history; it must not override this current seque
   OpmAligned enforces OPM's MB and so exposes it. Both objectives -- correctness (oil gap) and
   speed (wasted iterations, dt fragmentation) -- reduce to driving the oil material balance to
   OPM's level.
-- [ ] **NEXT (correctness + speed, one investigation): attribute the ~2.5e-6 oil material
-  imbalance.** Apply the WATER-017 same-state dump apparatus to 23x23x1/20x20x3: compare ResSim's
-  and Flow's per-cell oil mass balance at the same state, and attribute the residual to either a
-  well surface-rate/reservoir-flux inconsistency or an accumulation/FVF inconsistency in the oil
-  equation. The binding cells are the injector corner (cell23/25) and producer corner (cell528).
-  This supersedes further solver, controller, growth or per-iteration-cost work — it is the
-  dominant lever for both stated objectives.
+- [x] **WATER-024 — ATTRIBUTED 2026-07-23: the oil MB floor is the water front on SWOF
+  breakpoints, NOT the wells.** New `#[cfg(test)]` `FIM_W024_OIL_MB` hook decomposes each substep's
+  oil residual (accum / faces / well-source) at the states the controller visits. On 23x23x1
+  limit-cycle substeps: `well_share=0.0000` (wells contribute nothing — WATER-023's well hypothesis
+  refuted), `knot_share=1.0000` (the entire coherent net is cells within one segment of a SWOF
+  breakpoint), `net~=abs_sum` (one-signed). Worst cells are the injector-corner front; each has
+  `accum~=-faces` with ~4% left over — the piecewise-linear relperm kink. Heavy 12x12x3 converges
+  because its front-cell kink errors CANCEL (net = 1% of abs_sum, MB 2.6e-8) where the areal
+  single-layer front's ALIGN (MB 2.5e-6). This unifies WATER-018/021/023/024: one saturation-front
+  SWOF-kink phenomenon, which is also the produced-oil correctness gap.
+- [ ] **NEXT: fix the front-cell relperm-kink limit cycle (correctness + speed, one fix).** OPM
+  uses the same piecewise-linear SWOF and reaches 1e-7, so the defect is in how ResSim evaluates
+  the tabulated relperm at a cell crossing a knot during Newton. Compare ResSim's value/derivative
+  interval selection at a front cell against OPM's `PiecewiseLinearTwoPhaseMaterial` — which side
+  of the knot each takes, and whether value and AD derivative stay on the same interval across an
+  iteration. Make them consistent so a front cell stops limit-cycling. Weigh: consistent one-sided
+  knot evaluation; small saturation-space kink regularization; or OPM's CNV-only final-iteration
+  acceptance when only MB is marginally violated. This is the dominant lever for BOTH objectives —
+  it removes OpmAligned's wasted iterations/dt fragmentation AND closes the oil gap.
 
 - [ ] **Objective-1 gap: ResSim over-predicts oil by `8-10%` versus Flow on all three quarter-day
   controls** (comparing `rate x dt` against `FOPT`, an approximation since ResSim's `oil=` is an

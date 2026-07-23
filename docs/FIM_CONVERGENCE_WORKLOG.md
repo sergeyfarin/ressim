@@ -5730,3 +5730,69 @@ controller, or per-iteration-cost work.
 No production behavior changed. The only source additions are the default-off `FIM_W023_FULL_TRACE`
 trace-to-file hook and `FIM_NESTED_WELL_SOLVE` plumbing on the 23x23x1 driver to match the 12x12x3
 one. `validate-solver-coverage.sh fim` 5/5.
+
+### WATER-024: the oil material-balance floor is the saturation front on SWOF breakpoints (2026-07-23)
+
+WATER-023 localized OpmAligned's areal-water slowdown to a persistent oil material-balance floor
+(`~2.5e-6`) and named a WATER-017-style same-state comparison as the next step. That comparison is
+unnecessary: the imbalance is fully attributable from ResSim's own observability, and it is not a
+well defect.
+
+Added `water024_oil_mb_line` (`#[cfg(test)]`, gated on `FIM_W024_OIL_MB`), which decomposes every
+cell's oil-equation residual — accumulation, six signed face fluxes, well source — at the accepted
+state of each substep the outer controller visits, using the live AD breakdown helper. Direct
+single-step reproduction was abandoned because a full-dt step from the uniform initial state exits
+at iteration 1 (dt too large) at every dt tried; the in-loop hook instead reads the real
+limit-cycle substeps.
+
+**The imbalance is the water front, not the wells.** On the 23x23x1 limit-cycle substeps
+(`iters=20`):
+
+| substep | dt | net oil | abs sum | well share | knot share | worst cell | worst accum / faces |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 0 | `2.96e-3` | `-2.665e-2` | `2.665e-2` | `0.0000` | `1.0000` | 47 | `+0.01395 / -0.01451` |
+| 0 | `3.52e-5` | `-2.995e-3` | `2.995e-3` | `0.0000` | `1.0000` | 1 | `+0.01032 / -0.01072` |
+| 1 | `1.41e-5` | `-1.194e-3` | `1.194e-3` | `0.0000` | `1.0000` | 23 | `+0.00260 / -0.00270` |
+| 3 | `1.69e-5` | `-1.326e-3` | `1.326e-3` | `-0.0000` | `1.0000` | 24 | `+0.00155 / -0.00161` |
+
+Three facts, each decisive:
+
+- **`well_share = 0.0000`.** The two perforated cells contribute nothing to the net oil imbalance.
+  The well-coupling hypothesis from WATER-023 is refuted.
+- **`knot_share = 1.0000`.** The entire coherent net is carried by cells whose `Sw` sits within one
+  table segment of a SWOF breakpoint — the moving saturation front. This is the WATER-018
+  endpoint-kink mechanism: the piecewise-linear relperm derivative is discontinuous at a knot, so a
+  front cell straddling one cannot have its oil face-flux and accumulation simultaneously nulled by
+  Newton. The worst cells (`1, 23, 24, 47`) are all on the injector-corner water front; at each,
+  `accumulation ≈ -faces` with a residual of about `4%` left over — the kink inconsistency.
+- **`net ≈ abs_sum`** on the areal case: the front cells' errors are one-signed and sum coherently.
+
+**Why the flavors and cases differ, completely resolved.** Contrast the heavy 12x12x3 OpmAligned
+step, which converges: `net_oil = 2.25e-4` against `abs_sum = 2.38e-2` — the per-cell front errors
+are the same size but here they **cancel** (only `1%` of the absolute sum survives), giving MB
+`2.6e-8`, below tolerance. In the 23x23x1 areal single-layer sweep the front is a clean radial band
+of cells all at the same `Sw` on the same breakpoint, so the kink errors align and sum to
+`2.5e-6`, above tolerance. Whether OpmAligned converges a case reduces to whether its front-cell
+kink errors cancel (gas, layered heavy) or align (areal single-layer water). Legacy accepts the
+raw-residual-converged state through its bailouts and so never sees the floor — which is why Legacy
+is faster on the areal cases and also why its produced oil differs: the coherent front imbalance it
+accepts is exactly the displacement-front oil error.
+
+**Unifying finding.** WATER-018 (a `1e-7` state difference flips a relperm derivative at a
+breakpoint), WATER-021 (the tabulated relperm win), WATER-023 (the MB floor and limit cycle) and
+WATER-024 (the floor is `100%` front cells on breakpoints, `0%` wells) are one phenomenon: the
+piecewise-linear saturation-function kink at the moving front. It is also the correctness gap,
+since the front controls produced oil.
+
+**Fix direction, not yet attempted.** OPM uses the same piecewise-linear SWOF and reaches `1e-7`,
+so the defect is in how ResSim evaluates the tabulated relperm *at a cell crossing a knot during
+Newton*, not in tabulation itself. The next step is to compare ResSim's tabulated value/derivative
+interval selection at a front cell against OPM's `PiecewiseLinearTwoPhaseMaterial` (which side of
+the knot each takes, and whether value and AD derivative stay on the same interval across an
+iteration) and make them consistent so a front cell stops limit-cycling across the knot. Candidates
+to weigh once that is understood: consistent one-sided knot evaluation, a small saturation-space
+regularization of the kink, or the CNV-only "final iteration" acceptance OPM applies when only MB
+is marginally violated.
+
+No production behavior changed. The only addition is the `#[cfg(test)]`, default-off
+`FIM_W024_OIL_MB` decomposition hook. `validate-solver-coverage.sh fim` 5/5; wasm builds clean.
