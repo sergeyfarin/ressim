@@ -5468,3 +5468,86 @@ clean tree. Two further observations are recorded as separate threads: `OpmAlign
 expensive than Legacy on every control measured here (`97` versus `8` substeps on water 20x20x3,
 `501` versus `4` on gas-rate), and the `20x20x3` water case remains at `87-91` substeps under
 `OpmAligned` even with the table, so it is the next target after the heavy case.
+
+### WATER-020 promotion attempt: knot plateau, attribution, matrix — and a blocking defect (2026-07-23)
+
+Ran the three prerequisites recorded for `FIM-RELPERM-001`. Two passed and produced a clear
+promotion candidate; the third exposed a defect in the implementation that invalidates the
+attribution, so the default was reverted and nothing is promoted.
+
+**(1) Knot count: the plateau is `13..33`.** Native OpmAligned driver, heavy case:
+
+| knots | 9 | 13 | 17 | 21 | 25 | 29 | 33 | 41 | 49 | 65 | 81 | 97 | 129 | 161 | 193 | 257 | 385 | 513 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| substeps | 5 | 4 | 4 | 4 | 4 | 4 | 4 | 8 | 8 | 8 | 10 | 11 | 10 | 10 | 10 | 6 | 8 | 10 |
+| ms | 293 | 227 | 240 | 243 | 254 | 278 | 287 | 708 | 682 | 720 | 761 | 832 | 754 | 748 | 735 | 418 | 565 | 770 |
+
+`13..33` is a six-value contiguous plateau at 4 substeps; `81..193` is a second plateau at 10-11.
+`n=257` is an isolated dip and must not be selected. `n=21` is the plateau centre.
+
+**(2) Attribution: the produced-oil shift is temporal, not model.** Grouping the same sweep by
+substep count rather than knot count:
+
+| substeps | knot counts | produced oil | spread |
+| ---: | ---: | --- | ---: |
+| 4 | 6 different tables | `2790.76..2801.76` | `0.39%` |
+| 8 | 4 different tables | `2892.91..2916.38` | `0.81%` |
+| 10 | 5 different tables | `2935.14..2951.41` | `0.55%` |
+| 50 | analytic Corey | `2925.04` | — |
+
+Produced oil is determined by temporal resolution, not by the table: across tables as different as
+41 and 385 knots it varies by under `1%` at fixed substep count, while moving from 4 to 10 substeps
+changes it by `5%`. Against analytic Corey at 50 substeps, tabulated runs at comparable resolution
+give `+0.90%` (`n=161`, 10 substeps) and `-1.10%` (`n=65`, 8 substeps). The `5%` seen earlier at
+`n=33` is the cost of taking 4 substeps instead of 55, not a change of model.
+
+**(3) Matrix: `n=21` preserves every control.** wasm, both flavors, against the analytic baseline:
+
+| case | flavor | analytic | `n=21` | `n=161` |
+| --- | --- | --- | --- | --- |
+| water 20x20x3 dt.25 | Legacy | `8 / 3403 / 3340.50` | `8 / 3306 / 3344.73` | `4 / 3011 / 3288.79` |
+| water 22x22x1 dt.25 | Legacy | `4 / 1218 / 1473.29` | `4 / 1319 / 1474.50` | `2 / 1149 / 1424.90` |
+| water 23x23x1 dt.25 | Legacy | `4 / 1317 / 1454.48` | `4 / 1366 / 1455.53` | `2 / 1196 / 1407.13` |
+| gas-rate 20x20x3 dt.25 | Legacy | `4 / 3494 / 160.75` | `4 / 3459 / 160.75` | `4 / 3676 / 160.75` |
+| water 12x12x3 dt1 | Legacy | `23 / 4213 / 3107.30` | `24 / 4280 / 3119.25` | `21 / 3737 / 3067.74` |
+| water 20x20x3 dt.25 | OpmAligned | `97 / 43377 / 3387.32` | `90 / 23849 / 3391.43` | `87 / 22687 / 3383.87` |
+| water 23x23x1 dt.25 | OpmAligned | `77 / 8138 / 1501.43` | `72 / 6514 / 1501.66` | `70 / 6108 / 1500.22` |
+| water 12x12x3 dt1 | OpmAligned | `55 / 6518 / 2945.59` | **`4 / 835 / 2794.48`** | `11 / 1535 / 2940.47` |
+
+`n=21` leaves the Legacy controls at identical substep counts with produced oil within `0.4%`, keeps
+gas bit-identical, and still gives the `7.8x` OpmAligned heavy-case win. `n=161` buys Legacy
+speedups by halving substeps, at the corresponding `1.3-3.3%` temporal cost. `n=21` was therefore
+selected and promoted to the default, and the default-on matrix reproduced the `n=21` column
+exactly.
+
+**Blocking defect found by the well gate.** With the default on,
+`fim::tests::wells::rate_controlled_producer_fim_hits_bhp_limit` fails: the accepted-state
+perforation residual is `+3.970393e-3` against the gate's `2e-3`, versus `-4.705763e-4` analytic —
+`8.4x` larger and sign-flipped. Sweeping the knot count shows it does **not** converge back to the
+analytic value as the table refines:
+
+| knots | 0 | 13 | 21 | 33 | 65 | 161 | 513 | 2049 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| perf residual | `-4.706e-4` | `3.756e-3` | `3.970e-3` | `4.091e-3` | `4.192e-3` | `4.252e-3` | `4.280e-3` | `4.289e-3` |
+
+A table that reproduces Corey to machine precision must reproduce its residual. It asymptotes to
+`4.29e-3` instead, which is the signature of an inconsistent path, not of discretization. Source
+confirms it: the live AD assembly (`fim/flux.rs`, `fim/wells_ad.rs`) routes through
+`phase_mobilities_for_state_generic` and is tabulated, but `fim/wells.rs` well-state helpers use
+`scal.k_rw`/`scal.k_ro` with the analytic derivatives `d_k_rw_d_sw`/`d_k_ro_d_sw`, and
+`fim/newton/damping.rs` computes the Wang-Tchelepi fractional-flow chop from analytic Corey. Under
+the flag the reservoir sees a table while the well-state update, its derivatives, and the damping
+still see the smooth curve.
+
+**This invalidates the WATER-020 attribution, and the same defect applies to the pre-existing
+`FIM_WATER005_SWOF_REPLAY` flag**, which is likewise applied only in `mobility.rs`. The chop is
+precisely the mechanism the win was attributed to, so a chop computed from analytic curvature over
+a curvature-free reservoir model is exactly the configuration whose behaviour cannot be
+interpreted. The measured numbers are real, but "the piecewise-linear representation is the lever"
+is **INCONCLUSIVE** until the tabulated path is consistent.
+
+Default reverted to `0`. The heavy case reproduces its analytic baseline exactly
+(`23` substeps, oil `3107.30`), `validate-solver-coverage.sh fim` is 5/5 and IMPES 2/2. Next step
+is to make the tabulated evaluation consistent across `fim/wells.rs`, its analytic derivatives, and
+`fim/newton/damping.rs`, verify that the perforation residual then converges to the analytic value
+as the table refines, and only then re-run the sweep and the matrix.

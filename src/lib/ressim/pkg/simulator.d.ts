@@ -32,9 +32,9 @@ export class ReservoirSimulator {
     setCellDimensions(dx: number, dy: number, dz: number): void;
     setCellDimensionsPerLayer(dx: number, dy: number, dz_per_layer: Float64Array): void;
     /**
-     * WATER-020 diagnostic: evaluate relative permeability from a piecewise-linear table with
-     * `points` knots sampled from ResSim's own Corey curves, the way OPM evaluates SWOF. Zero
-     * (the default) keeps the analytic Corey evaluation.
+     * Evaluate relative permeability from a piecewise-linear table with `points` knots sampled
+     * from ResSim's own Corey curves, the way OPM evaluates SWOF. Zero selects the historical
+     * analytic Corey evaluation; the default is [`DEFAULT_FIM_COREY_TABLE_POINTS`].
      */
     setFimCoreyTablePoints(points: number): void;
     setFimEnabled(enabled: boolean): void;

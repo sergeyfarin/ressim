@@ -585,11 +585,28 @@ below is retained as Bundle N/Y history; it must not override this current seque
   wasm matrix, OpmAligned: heavy `55/6518 ms -> 4/858 ms` (`7.6x`); water 20x20x3
   `97/43377 -> 91/24069`; 23x23x1 `77/8138 -> 69/6114`; gas bit-identical. Legacy: modest.
   Produced oil moves TOWARD Flow's `2608.56` (`2945.59` analytic vs `2794.16` tabulated).
-- [ ] **Promote WATER-020 (do not flip the default yet).** Required first: (1) pick the knot count
-  from a measured plateau, not the lucky `n=33` — substeps vs `n` is chaotic exactly as the
-  `k`-sweep was in `FIM-DAMP-004`; (2) attribute the heavy case's `5%` produced-oil shift between
-  temporal error (`55 -> 4` substeps) and model error, against a fine-dt reference; (3) rerun the
-  bounded matrix on a clean tree. Only then consider making the table the FIM default.
+- [x] **WATER-020 prerequisites 1-3 DONE 2026-07-23; promotion ATTEMPTED AND REVERTED.**
+  (1) Plateau is `13..33` knots at 4 substeps (`n=21` centre); `81..193` is a second plateau at
+  10-11; `n=257` is an isolated dip, not a plateau. (2) The produced-oil shift is TEMPORAL, not
+  model: grouped by substep count the spread across tables from 41 to 385 knots is `<=1%`, while
+  4 versus 10 substeps moves oil `5%`; tabulated at comparable resolution is `+0.90%` / `-1.10%`
+  against analytic at 50 substeps. (3) Matrix at `n=21`: every Legacy control keeps its substep
+  count with oil within `0.4%`, gas bit-identical, OpmAligned heavy `55/6518 ms -> 4/835 ms`.
+  The default was flipped to `21`, the default-on matrix reproduced the `n=21` column exactly, and
+  then `fim::tests::wells::rate_controlled_producer_fim_hits_bhp_limit` failed: perforation
+  residual `+3.970e-3` versus analytic `-4.706e-4` against a `2e-3` gate. Default reverted to `0`;
+  heavy case reproduces its analytic baseline exactly (23 substeps, oil `3107.30`).
+- [ ] **BLOCKER: the tabulated relperm path is not self-consistent.** The perforation residual does
+  not converge back to the analytic value as the table refines (`4.289e-3` at 2049 knots), which is
+  an inconsistency signature rather than discretization. The live AD assembly (`fim/flux.rs`,
+  `fim/wells_ad.rs`) is tabulated via `phase_mobilities_for_state_generic`, but `fim/wells.rs`
+  well-state helpers use `scal.k_rw`/`scal.k_ro` with analytic `d_k_rw_d_sw`/`d_k_ro_d_sw`, and
+  `fim/newton/damping.rs` computes the Wang-Tchelepi chop from analytic Corey. The same partiality
+  affects the pre-existing `FIM_WATER005_SWOF_REPLAY`, so the WATER-020 attribution to "the
+  piecewise-linear representation" is **INCONCLUSIVE** until this is fixed. Do not relax the well
+  gate. Fix order: route wells + their derivatives + the chop through the same tabulated
+  evaluation, prove the perforation residual converges to the analytic value as knots increase,
+  then re-run the sweep and the matrix.
 - [ ] **OpmAligned is far more expensive than Legacy on every control measured.** water 20x20x3
   `97` substeps versus Legacy's `8`; gas-rate 20x20x3 `501` versus `4` (`233 s`). This is the
   flavor Bundle Y targets and the one the OPM-parity work runs under, so it needs its own
