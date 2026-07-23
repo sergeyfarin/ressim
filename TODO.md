@@ -616,10 +616,37 @@ below is retained as Bundle N/Y history; it must not override this current seque
   `closed_system_public_step_keeps_same_water_inventory_on_both_solvers` failure, confirmed to
   fail identically with the analytic default.
 
-- [ ] **OpmAligned is far more expensive than Legacy on every control measured.** water 20x20x3
-  `97` substeps versus Legacy's `8`; gas-rate 20x20x3 `501` versus `4` (`233 s`). This is the
-  flavor Bundle Y targets and the one the OPM-parity work runs under, so it needs its own
-  investigation; the table helps but does not close it.
+- [x] **WATER-022 Legacy/OpmAligned diff — the growth controller is REFUTED as the lever.** Giving
+  Legacy OPM's PID+iteration growth (`fim/timestep.rs:1233` gating) made it worse: `24` substeps /
+  `4856 ms` -> `31` / `4267`, dt still `1.84e-2..5.53e-2` versus OpmAligned's `1.90e-1..3.60e-1`.
+  Rungs show Legacy needs `9-12` Newton updates per substep at `dt=3.125e-2` while OpmAligned needs
+  `5-9` at `dt=2.5e-1`, so the flavors differ in nonlinear ACCEPTANCE, not in dt growth. Switch
+  reverted rather than left as dead configuration.
+- [x] **WATER-022: OpmAligned does not just run slow on water 20x20x3 — it FAILS.** Its ladder
+  burns the full 20-iteration budget at `2.500e-1`, `8.250e-2` and `2.723e-2` (`n20` each), then dt
+  collapses to `1.705e-5` across `90` substeps. Legacy solves the same case in `8` substeps at a
+  flat `3.125e-2`. The flavors are not ranked: OPM criteria take large steps where they converge
+  and leave no viable step where they do not.
+- [x] **WATER-022: Flow reference decks now exist for every water control.** Tracked at
+  `opm/reference-decks/water-pressure-{20x20x3,22x22x1,23x23x1}` with manifests recording the Flow
+  oracle, generated from the heavy deck (same rock/fluid/wells; only DIMENS, cell counts, producer
+  location and TSTEP differ). Every manifest carries the gravity warning — they MUST be run with
+  `--enable-gravity=false` or the comparison repeats the WATER-019 error.
+  Flow: 20x20x3 `0.0692 s`/12 Newton/FOPT `762.52`; 22x22x1 `0.0339 s`/9/`340.14`; 23x23x1
+  `0.0456 s`/11/`336.24`; heavy `0.0870 s`/20/`2608.56`.
+- [ ] **NEXT LEVER: why OpmAligned cannot converge on water 20x20x3 at any step size it tries.**
+  Only the heavy case is inside the `2-3x` target (`2.7x` native). The other controls sit near
+  `9-14x` once wasm's ~`3.6x` overhead is removed, and the reason is the work count: Flow needs
+  9-12 Newton iterations for a whole quarter-day step while ResSim spends 4-8 substeps of ~9
+  updates each. The heavy case shows what closing that looks like. Fix OpmAligned's 20x20x3
+  failure so the same mechanism applies to the rest; failing that, give Legacy OPM's acceptance
+  criteria without OPM's failure mode.
+- [ ] **Objective-1 gap: ResSim over-predicts oil by `8-10%` versus Flow on all three quarter-day
+  controls** (comparing `rate x dt` against `FOPT`, an approximation since ResSim's `oil=` is an
+  end-of-step rate). Same order as the heavy case's gap, consistent across grids — points at a
+  systematic property/well difference, not the solver. Needs a proper cumulative-production
+  comparison before attribution.
+
 - [ ] **Next water target after the heavy case:** water 20x20x3 dt.25 under OpmAligned stays at
   `87-91` substeps even with the table.
 - [ ] **Candidate, NOT promoted: raise `max_newton_iterations` above 20.** Distinct from the
