@@ -545,7 +545,39 @@ below is retained as Bundle N/Y history; it must not override this current seque
   set. Per `FIM-AD-002` the legacy assembler exists precisely as this regression net, and it is
   the gate that historically caught the two-phase singularity and the Stone2/connection-rate
   kinks. Reproduce: `cargo test --manifest-path src/lib/ressim/Cargo.toml two_phase_rate_controlled_wells`.
-- [ ] **WATER-019 (was WATER-018b) — now the only surviving thread: the pressure bias.** At the assembly state Flow's pressure exceeds
+- [x] **WATER-019 — GRAVITY MISMATCH FOUND AND FIXED 2026-07-23; the 20-vs-11 gap disappears.**
+  The comparison had been running gravity-off in ResSim (`fim/timestep.rs` fixture, mirroring
+  `configureCommonTwoPhase`) against gravity-on in Flow (no `NOGRAV`, Flow defaults on). Evidence
+  was the layer decomposition of the WATER-017 bias: `k=0/1/2` means `-0.0008/+0.0766/+0.1540`
+  bar, a constant `~0.077 bar` per 1 m layer against `rho_o*g*dz = 0.0785` bar, `corr = +0.983`.
+  Fixed on the ORACLE side with `flow --enable-gravity=false`; control re-established under the
+  flag (`CASE.INFOITER` bit-identical stock vs instrumented).
+  Results: **Flow needs 20 Newton / 27 linear iterations with gravity off, versus 11/13 with it
+  on** — matching ResSim's 20. Post-update-0 `max|dp|` improves `0.156 -> 6.305e-4` bar; both
+  engines end update 19 agreeing to `1.88e-5` `Sw` and `8.09e-4` bar. The WATER-018 probe sharpens
+  correspondingly: with no straddling cell the Jacobians agree to `6.5e-6` (so WATER-018's
+  `4.4e-2` "background" was itself the gravity offset), and at post-update-1 three cells of 432
+  carry `99%` of an `8.2%` delta.
+  WATER-015's ROCK-porosity candidate is ruled out analytically: `c_r=1e-6/bar`, `dp<=150 bar`
+  gives `x<=1.5e-4` and `exp(x)-(1+x+x^2/2) ~ x^3/6 ~ 5.6e-13`; and the committed pressure equals
+  the ROCK reference (`300 bar`) at step 1.
+- [x] **WATER-019b — ResSim's failure on this step is a BUDGET BOUNDARY, not a stall.**
+  `FimNewtonOptions::default()` allows 20 Newton iterations (`fim/newton.rs:892`) and ResSim was
+  stopping three short. With the new test-only `FIM_WATER_FULL_TARGET_MAX_ITERS` override (absent,
+  the driver is bit-identical): budget 20 -> `converged=false`, `mb=1.325882641e-6`; budget 24 or
+  30 -> `converged=true` in 23 updates, `residual=2.284721116e-5`, `mb=3.577023665e-8`. So with
+  gravity matched, ResSim converges in 23 updates against Flow's 20 — a `15%` nonlinear-work gap,
+  not the `1.8x` gap plus failure carried in the record since WATER-010.
+- [ ] **Candidate, NOT promoted: raise `max_newton_iterations` above 20.** Distinct from the
+  acceptance-widening refuted as `FIM-NEWTON-004`/`005` — that accepted under-converged states,
+  this gives Newton room to converge. Requires the full bounded control matrix on a clean tree,
+  plus the shipped `gas-rate` replay, before any promotion. Do not promote on this one probe.
+- [ ] **Re-measure the shipped heavy-case shelf under matched gravity.** WATER-019 used the direct
+  one-day probe, which bypasses the outer timestep controller. The substep/retry shelf reported
+  throughout `FIM_STATUS.md` and the archive was measured against the gravity-mismatched Flow
+  reference, so every "ResSim needs N x more work than Flow" claim on the water-heavy case needs
+  restating. The ResSim-side numbers themselves are unaffected; only the Flow comparison is.
+- [ ] **(superseded framing) the pressure bias as an unattributed PVT/ROCK difference.** At the assembly state Flow's pressure exceeds
   ResSim's in 432/432 cells by `0.287-0.973` bar (mean `0.656`), one-signed and not cleanly
   proportional to `p - p_ref`. WATER-015's quadratic-vs-exponential ROCK porosity is a candidate
   but is NOT established. Do not attribute or "fix" it before the WATER-018 test.

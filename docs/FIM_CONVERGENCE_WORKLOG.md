@@ -5262,3 +5262,119 @@ two_phase_rate_controlled_wells` failure on committed HEAD is unrelated and trac
 `TODO.md`. No ResSim physics, controller, linear policy, caps, damping, wells, or IMPES behavior
 changed; the source changes are the `#[cfg(test)]` dump, the extracted test fixture, and this
 ignored probe.
+
+### WATER-019 attribution: the pressure bias is a gravity harness mismatch (2026-07-23)
+
+WATER-018 left the one-signed pressure bias as the only surviving thread and named WATER-015's
+ROCK porosity as a candidate. That candidate is wrong, and the real cause is a mismatch in the
+comparison harness rather than anything in either solver.
+
+Decomposing the WATER-017 bias by layer at post-update-0, where the trajectories are otherwise
+nearly identical:
+
+| layer | mean bias (bar) | min | max |
+| --- | ---: | ---: | ---: |
+| `k=0` | `-0.000759` | `-0.000833` | `+0.000000` |
+| `k=1` | `+0.076605` | `+0.000000` | `+0.077939` |
+| `k=2` | `+0.153969` | `+0.000000` | `+0.156499` |
+
+That is a constant `~0.077 bar` per 1 m layer with `corr(bias, layer) = +0.983`, against
+`rho_o * g * dz = 0.0785 bar` for the deck's `800 kg/m3` oil at `Sw ~ 0.1`. It is a hydrostatic
+column. By post-update-1 the correlation weakens to `+0.6475` as the saturation front develops,
+but the layer ordering is intact and every cell is one-signed.
+
+The cause is direct: the ResSim fixture calls `set_gravity_enabled(false)`
+(`fim/timestep.rs:3118`, mirroring `configureCommonTwoPhase` in `scripts/fim-wasm-diagnostic.mjs`),
+while the deck carries no `NOGRAV` and Flow enables gravity by default
+(`FlowProblemBlackoil.hpp:358-368`). Every cross-engine comparison in the WATER chain has
+therefore run gravity-off against gravity-on, and gravity appears in no WATER dependency table as
+either held constant or missing.
+
+WATER-015's ROCK-porosity candidate is ruled out analytically and needs no experiment. With the
+deck's `c_r = 1e-6/bar` and `dp <= 150 bar`, `x <= 1.5e-4`, so Flow's quadratic
+`1 + x + x^2/2` and ResSim's exponential differ by `x^3/6 ~ 5.6e-13` — fourteen orders below the
+observed bias. The reference-point difference also vanishes on this deck at the first step,
+because the committed pressure and the ROCK reference pressure are both `300 bar`.
+
+**Nothing already promoted is invalidated, but one framing is.** WATER-015's assembly-equality
+proof is a source and regression result, unaffected. WATER-018's conclusion is a statement about
+Jacobian sensitivity to a state perturbation and holds regardless of what caused the perturbation.
+What is now suspect is WATER-010/011/012's implicit framing of the evaluation-2 divergence as a
+solver-side trajectory difference: an unlisted physics-input mismatch is upstream of it.
+
+The next step is to repair the oracle and not the product case. Flow accepts
+`--enable-gravity=false`, and `NOGRAV` is a supported deck keyword; either removes the mismatch
+without touching ResSim's fixture, which is the tracked heavy-case baseline anchor and must not be
+flipped to gravity-on for this purpose. After that, re-run the WATER-017 dumps and the WATER-018
+probe and record the new `max|dSw|` and `max|dp|`, whether any cell still straddles a SWOF
+breakpoint, the new relative `dJ` against the `4.398e-2` smooth background, and above all whether
+ResSim's evaluation count moves from `20` toward Flow's `11`. If it does not, the gravity mismatch
+was a nuisance term and the convergence gap is genuinely elsewhere; either outcome is decisive.
+If gravity is ever enabled on both sides instead, note that Flow uses `unit::gravity = 9.80665`.
+
+No source changed for this entry; it is analysis of the WATER-017 dumps already recorded above.
+
+### WATER-019 result: gravity matched — the 20-vs-11 gap disappears (2026-07-23)
+
+Repaired the oracle rather than the product case: `flow ... --enable-gravity=false`, leaving the
+ResSim fixture's `set_gravity_enabled(false)` untouched. The control was re-established under the
+flag — with the dump disabled, stock `flow` and the instrumented binary give a bit-identical
+`CASE.INFOITER`, and `CASE.INFOSTEP` differs only in timing columns.
+
+**Flow's nonlinear cost is the gravity term, not a solver advantage.**
+
+| configuration | Flow Newton iterations | Flow linear iterations |
+| --- | ---: | ---: |
+| gravity on (every prior WATER comparison) | `11` | `13` |
+| gravity off (matching ResSim) | `20` | `27` |
+
+ResSim performs 20 evaluations on the same step. The `20 versus 11` gap that motivated
+WATER-010 through WATER-016 was the harness mismatch.
+
+**State agreement improves by orders of magnitude, and the two engines end at the same state.**
+At post-update-0 `max|dp|` falls from `0.156` bar to `6.305e-4` bar and `max|dSw|` is `3.99e-5`;
+at post-update-1 `max|dp|` falls from `0.973` to `0.123` bar. The trajectories still separate
+mid-step, peaking at `max|dSw| 2.6e-1` around update 7, then reconverge: by update 19 they agree
+to `1.88e-5` in `Sw` and `8.09e-4` bar. Same work, same endpoint, different path through the
+middle.
+
+**The kink mechanism is confirmed far more sharply than in WATER-018.** Rerunning
+`water018_kink_amplification` against the gravity-matched Flow states:
+
+| state | max `dSw` | max `dp` (bar) | straddling cells | relative `dJ` | ablated |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| post-update-0 | `3.993e-5` | `6.305e-4` | 0 | `6.535e-6` | `6.535e-6` |
+| post-update-1 | `1.982e-4` | `1.228e-1` | 3 | `8.167e-2` | `8.348e-4` |
+| post-update-2 | `6.883e-3` | `8.671e0` | 3 | `2.778e-1` | `2.461e-1` |
+
+With no cell at a breakpoint the two Jacobians now agree to `6.5e-6` — so WATER-018's `4.4e-2`
+"smooth background" was itself the gravity offset, not intrinsic sensitivity. At post-update-1,
+three cells out of 432 carry `99%` of an `8.2%` Jacobian difference. Endpoint-kink amplification is
+now isolated almost exactly.
+
+**ResSim's failure on this step was a budget boundary, not a stall.** Its
+`FimNewtonOptions::default()` allows 20 Newton iterations (`fim/newton.rs:892`), and it was
+stopping three iterations short. With the new test-only `FIM_WATER_FULL_TARGET_MAX_ITERS`
+override (absent, the driver is unchanged and reproduces `converged=false evaluations=20
+updates=20 krylov_iters=66 residual=8.462188752e-4 mb=1.325882641e-6` exactly):
+
+| budget | converged | evaluations | updates | krylov | residual | mb |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 20 | false | 20 | 20 | 66 | `8.462188752e-4` | `1.325882641e-6` |
+| 24 | **true** | 24 | 23 | 75 | `2.284721116e-5` | `3.577023665e-8` |
+| 30 | true | 24 | 23 | 75 | `2.284721116e-5` | `3.577023665e-8` |
+
+So on this step, gravity matched, ResSim converges in 23 updates against Flow's 20 — a `15%`
+nonlinear-work gap, not the `1.8x` gap plus failure that the record has carried since WATER-010.
+
+**Scope discipline.** This is the direct one-day probe (`FIM_WATER_FULL_TARGET_PROBE`), which
+bypasses the outer timestep controller. It does **not** establish that the shipped heavy-case
+substep shelf is explained; that runs through the controller and retry ladder and must be measured
+separately. Nor is a budget increase promoted here: raising `max_newton_iterations` is a distinct
+mechanism from the acceptance-widening refuted as `FIM-NEWTON-004`/`FIM-NEWTON-005` — it gives
+Newton room to actually converge rather than accepting an under-converged state — but it is a
+live-solver change and requires the full bounded control matrix on a clean tree before any
+promotion. Recorded as a candidate only.
+
+Validation: `bash scripts/validate-solver-coverage.sh fim` passes; the driver is bit-identical
+with the new env var absent. Source changes remain test-only.

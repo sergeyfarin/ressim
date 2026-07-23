@@ -640,7 +640,10 @@ fn dump_water017_ressim_state(
     let mut out = std::io::BufWriter::new(file);
 
     let n_cells = candidate.cells.len();
-    let _ = writeln!(out, "# WATER-017 ResSim applied-state dump (observation only)");
+    let _ = writeln!(
+        out,
+        "# WATER-017 ResSim applied-state dump (observation only)"
+    );
     let _ = writeln!(
         out,
         "# update_index {update_index} iteration {iteration} dt_days {dt_days:.17e} damping {damping:.17e} n_cells {n_cells}"

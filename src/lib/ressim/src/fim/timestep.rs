@@ -3162,6 +3162,15 @@ mod phase5_repro {
             options.max_saturation_change = 0.2;
             options.max_pressure_change_bar = 200.0;
             options.verbose = std::env::var_os("FIM_WATER_FULL_TARGET_TRACE").is_some();
+            // WATER-019: with the gravity mismatch removed, ResSim's default 20-iteration budget
+            // expires at exactly the iterate where Flow accepts. This override exists only to
+            // separate "budget boundary" from "genuine stall"; absent, the driver is unchanged.
+            if let Some(limit) = std::env::var("FIM_WATER_FULL_TARGET_MAX_ITERS")
+                .ok()
+                .and_then(|value| value.parse::<usize>().ok())
+            {
+                options.max_newton_iterations = limit;
+            }
             let water003_first_update = std::env::var_os("FIM_WATER003_FIRST_UPDATE").is_some();
             let water005_swof_replay = sim.fim_opm_water_heavy_swof;
             if water003_first_update {
