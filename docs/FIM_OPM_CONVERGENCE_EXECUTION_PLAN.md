@@ -1606,3 +1606,26 @@ alter the intermediate nonlinear state. The test is therefore **INCONCLUSIVE** a
 cross-engine well comparison. The next bounded action is an observation-only Flow source patch
 which writes a materialized copy of the live `system_cpr` matrix, leaving the actual matrix-free
 solver and all ResSim/IMPES policy untouched.
+
+### WATER-013 status (2026-07-22): same-policy Flow observation patch is ready
+
+`opm/diagnostics/water012-system-cpr-materialized-dump.patch` is an observation-only patch
+against local Flow source `062cb19986aa8f11cffc30351fd2fee355d0ccb4`; `git apply --check` passes.
+At verbosity 11 it retains the normal matrix-free `system_cpr` solve and writes one additional
+MatrixMarket file formed from the existing reservoir matrix plus the exact
+`WellModelAsLinearOperator` that the live solver applies separately (`-C D^-1 B`). No Flow solve
+input, ResSim runtime setting, nonlinear lifecycle, controller, cap, damping, linear acceptance,
+or IMPES path is changed.
+
+The patch still requires a Flow rebuild and a fresh same-policy water capture before it becomes a
+valid oracle. Once available, rerun the WATER-012 projection against the materialized `nit_2`
+matrix and distinguish remaining reservoir terms from the complete Flow well contribution.
+
+### WATER-014 status (2026-07-22): patched Flow build environment is incomplete
+
+A disposable detached source worktree accepted WATER-013, but CMake configuration stops before
+compilation at `find_package(opm-common)`: the host has `libopmcommon.so.2026.04` runtime libraries
+but no `opm-commonConfig.cmake` or development headers. This is an environment/dependency blocker,
+not a Flow or ResSim result. Do not fall back to `/usr/bin/flow` (it lacks the observation patch),
+or to `cpr_quasiimpes` (it changes the policy). Supply/install the matching OPM development SDK,
+then configure, build, run the unchanged deck, and repeat WATER-012.

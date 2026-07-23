@@ -475,6 +475,21 @@ below is retained as Bundle N/Y history; it must not override this current seque
   trajectory. Thus this localizes the ResSim side but is **INCONCLUSIVE** as a strict Flow
   assembly verdict. Next: an observation-only Flow patch that materializes a copy for MatrixMarket
   output while retaining `system_cpr`; do not change ResSim/IMPES runtime policy.
+- [x] **WATER-013 same-policy Flow materialized-matrix oracle — PATCH READY 2026-07-22.** Added
+  `opm/diagnostics/water012-system-cpr-materialized-dump.patch`, validated with `git apply
+  --check` against local Flow `062cb19986aa8f11cffc30351fd2fee355d0ccb4`. It materializes the
+  live `WellModelAsLinearOperator` (`-C D^-1 B`) only into an additional MatrixMarket file at
+  verbosity 11; Flow continues to solve its original matrix-free `system_cpr` operator. Rebuild
+  Flow and capture the unmodified water deck before drawing a new cross-engine conclusion or
+  altering any ResSim/IMPES behavior.
+- [ ] **WATER-014 rebuild patched Flow oracle — ENVIRONMENT BLOCKED 2026-07-22.** A disposable
+  `cmake -S /tmp/water013-flow-src -B /tmp/water013-flow-build -DCMAKE_BUILD_TYPE=Release`
+  attempt against the exact patched source stops at `find_package(opm-common)`: runtime
+  `libopmcommon.so.2026.04` is installed, but `opm-commonConfig.cmake`/development headers are
+  absent. Do not substitute `/usr/bin/flow`, switch Flow's linear solver, or alter ResSim. Install
+  the matching OPM development SDK or supply its CMake prefix, then rerun the unmodified deck.
+  Matching `libopm-simulators-dev`/`libopm-common-dev` packages are available but require
+  interactive administrator authentication in this environment.
 - [x] **Next convergence priority: water-heavy trajectory, not another exact-gas linear tune.**
   Exact gas is now about `0.19-0.21 s` versus Flow `0.08-0.10 s` with strong same-state parity.
   The comparable water-heavy step remains about `5.8 s`/50 FIM substeps versus Flow `0.04 s`/one

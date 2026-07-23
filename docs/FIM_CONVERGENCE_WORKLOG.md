@@ -5013,3 +5013,27 @@ under `system_cpr`, and the same-policy attempt aborts. A `cpr_quasiimpes` expor
 diagnostic because that solver selection can change the evaluation-2 state. Result:
 **INCONCLUSIVE for full Flow well parity**. The next observation must dump a materialized copy
 without changing Flow's real matrix-free solve; no ResSim FIM or IMPES runtime setting changed.
+
+### WATER-013 same-policy Flow materialized dump (2026-07-22)
+
+Added `opm/diagnostics/water012-system-cpr-materialized-dump.patch`, mechanically validated with
+`git -C OPM/opm-simulators apply --check` at `062cb19986aa8f11cffc30351fd2fee355d0ccb4`. The
+patch leaves Flow's matrix and matrix-free `WellModelAsLinearOperator` unchanged for the live
+`system_cpr` solve. Only when MatrixMarket output is already requested does it apply that same
+operator to basis columns and write the summed reservoir-plus-well matrix to a separate file.
+This is deliberately a Flow observation mechanism, not independent ResSim logic.
+
+No rebuilt Flow binary is available in this workspace, so no new parity numbers are claimed. The
+next operation is to rebuild the patched Flow, rerun the unmodified water deck, and feed `nit_2`
+to WATER-012 without changing any runtime policy.
+
+### WATER-014 patched Flow build attempt (2026-07-22)
+
+Created a disposable detached worktree at Flow `062cb199`, applied WATER-013, and configured with
+`cmake -S /tmp/water013-flow-src -B /tmp/water013-flow-build -DCMAKE_BUILD_TYPE=Release`.
+Configuration fails before compilation because `find_package(opm-common)` cannot find
+`opm-commonConfig.cmake`; only the runtime OPM libraries are installed. The source patch remains
+mechanically applicable, but it is not compiled or executed. This is **ENVIRONMENT BLOCKED**, not
+a negative result about Flow well algebra or ResSim. Matching `2026.04` development packages are
+available, but installation requires interactive administrator authentication here. No solver
+policy changed.
