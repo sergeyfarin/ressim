@@ -473,23 +473,29 @@ below is retained as Bundle N/Y history; it must not override this current seque
   `--matrix-add-well-contributions=true` is explicitly incompatible with it (and the attempted
   same-policy run aborts), while `cpr_quasiimpes` materializes wells but changes Flow's solve
   trajectory. Thus this localizes the ResSim side but is **INCONCLUSIVE** as a strict Flow
-  assembly verdict. Next: an observation-only Flow patch that materializes a copy for MatrixMarket
-  output while retaining `system_cpr`; do not change ResSim/IMPES runtime policy.
-- [x] **WATER-013 same-policy Flow materialized-matrix oracle — PATCH READY 2026-07-22.** Added
-  `opm/diagnostics/water012-system-cpr-materialized-dump.patch`, validated with `git apply
-  --check` against local Flow `062cb19986aa8f11cffc30351fd2fee355d0ccb4`. It materializes the
-  live `WellModelAsLinearOperator` (`-C D^-1 B`) only into an additional MatrixMarket file at
-  verbosity 11; Flow continues to solve its original matrix-free `system_cpr` operator. Rebuild
-  Flow and capture the unmodified water deck before drawing a new cross-engine conclusion or
-  altering any ResSim/IMPES behavior.
-- [ ] **WATER-014 rebuild patched Flow oracle — ENVIRONMENT BLOCKED 2026-07-22.** A disposable
-  `cmake -S /tmp/water013-flow-src -B /tmp/water013-flow-build -DCMAKE_BUILD_TYPE=Release`
-  attempt against the exact patched source stops at `find_package(opm-common)`: runtime
-  `libopmcommon.so.2026.04` is installed, but `opm-commonConfig.cmake`/development headers are
-  absent. Do not substitute `/usr/bin/flow`, switch Flow's linear solver, or alter ResSim. Install
-  the matching OPM development SDK or supply its CMake prefix, then rerun the unmodified deck.
-  Matching `libopm-simulators-dev`/`libopm-common-dev` packages are available but require
-  interactive administrator authentication in this environment.
+  assembly verdict. WATER-015 should now compare Flow's two-phase TPFA reservoir implementation
+  directly with ResSim's accumulation/face-flux AD assembly, porting confirmed OPM semantics and
+  keeping gas, wells, linear policy, controller, caps, damping, and IMPES fixed.
+- [x] **WATER-015 Flow TPFA reservoir source audit — DIAGNOSTIC COMPLETE 2026-07-23.** Flow's
+  TPFA linearizer forms one focus-cell derivative column per oriented face visit: exterior
+  mobility/PVT is scalar in that pass, but the reverse visit supplies the neighbor column. A
+  focused-pass regression proves the two Flow-style passes exactly equal ResSim's paired-cell AD
+  four-block Jacobian, including gravity and rounded SWOF. Storage has the same component-volume
+  form; Flow uses reference-pressure quadratic ROCK porosity while ResSim uses an exponential
+  increment from the committed state, a small pressure-column difference that cannot explain the
+  dominant saturation entries. Therefore deleting exterior derivatives would be a partial and
+  incorrect OPM port. WATER-016 should replay Flow's exact first two applied updates from source
+  and compare reservoir terms at that reconstructed same state, without rebuilding Flow.
+- [x] **WATER-016 Flow applied-state reconstruction — ORACLE LIMIT CONFIRMED 2026-07-23.**
+  Flow source confirms the two-phase update contract: subtract each linear correction, cap
+  pressure at `0.3 * current pressure`, and scale the water/oil pair to `ds-max=.2`; there is no
+  applicable primary-variable switch. But MatrixMarket exports only `J` and RHS, not the actual
+  iterative correction vector. LU-solving those files manufactures a different update; Flow's
+  `solUpd_` output path publishes only maxima, while `EnableWriteAllSolutions` emits substeps,
+  not Newton iterates. Therefore a strict reconstructed eval-2 state is **INCONCLUSIVE** without
+  observation-only Flow state/update output. Do not substitute a LU trajectory or retune ResSim.
+  A future WATER-017 needs a prebuilt Flow diagnostic capable of exporting the applied primary
+  state/update, or an explicitly authorized rebuild solely to add that observation.
 - [x] **Next convergence priority: water-heavy trajectory, not another exact-gas linear tune.**
   Exact gas is now about `0.19-0.21 s` versus Flow `0.08-0.10 s` with strong same-state parity.
   The comparable water-heavy step remains about `5.8 s`/50 FIM substeps versus Flow `0.04 s`/one

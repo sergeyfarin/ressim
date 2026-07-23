@@ -5011,29 +5011,36 @@ Schur algebra is corrective rather than the remaining cause.
 The Flow side is not yet a strict same-policy oracle: Flow source forbids matrix materialization
 under `system_cpr`, and the same-policy attempt aborts. A `cpr_quasiimpes` export exists only as a
 diagnostic because that solver selection can change the evaluation-2 state. Result:
-**INCONCLUSIVE for full Flow well parity**. The next observation must dump a materialized copy
-without changing Flow's real matrix-free solve; no ResSim FIM or IMPES runtime setting changed.
+**INCONCLUSIVE for full Flow well parity**. The build-oracle detour was removed without changing
+either solver. WATER-015 proceeds from the stronger local fact: the dominant remaining terms have
+zero ResSim Schur contribution and are reservoir saturation derivatives. Flow source, rather
+than a new ResSim-specific model, is the authority for the next implementation comparison.
 
-### WATER-013 same-policy Flow materialized dump (2026-07-22)
+### WATER-015 Flow two-phase reservoir source audit (2026-07-23)
 
-Added `opm/diagnostics/water012-system-cpr-materialized-dump.patch`, mechanically validated with
-`git -C OPM/opm-simulators apply --check` at `062cb19986aa8f11cffc30351fd2fee355d0ccb4`. The
-patch leaves Flow's matrix and matrix-free `WellModelAsLinearOperator` unchanged for the live
-`system_cpr` solve. Only when MatrixMarket output is already requested does it apply that same
-operator to basis columns and write the summed reservoir-plus-well matrix to a separate file.
-This is deliberately a Flow observation mechanism, not independent ResSim logic.
+The apparent exterior-derivative difference is an assembly-layout artifact. Flow treats each cell
+as the AD focus, puts its flux derivative into both adjacent residual rows, then obtains the other
+matrix column when the neighbor becomes the focus. The scalar exterior mobility/PVT in
+`BlackOilLocalResidualTPFA::calculateFluxes_` is required one-sided AD behavior. The focused-pass
+regression exactly reproduces ResSim's paired four-block result with rounded SWOF and gravity.
 
-No rebuilt Flow binary is available in this workspace, so no new parity numbers are claimed. The
-next operation is to rebuild the patched Flow, rerun the unmodified water deck, and feed `nit_2`
-to WATER-012 without changing any runtime policy.
+Storage comparison matches water/oil surface-volume inventories. Flow's reference-pressure
+quadratic ROCK porosity differs from ResSim's committed-pressure exponential, but this affects
+pressure terms and cannot explain the dominant saturation entries. No production policy changed.
+WATER-016 will source-replay Flow's first two applied updates and establish a same-state reservoir
+comparison without rebuilding OPM.
 
-### WATER-014 patched Flow build attempt (2026-07-22)
+### WATER-016 Flow applied-state reconstruction audit (2026-07-23)
 
-Created a disposable detached worktree at Flow `062cb199`, applied WATER-013, and configured with
-`cmake -S /tmp/water013-flow-src -B /tmp/water013-flow-build -DCMAKE_BUILD_TYPE=Release`.
-Configuration fails before compilation because `find_package(opm-common)` cannot find
-`opm-commonConfig.cmake`; only the runtime OPM libraries are installed. The source patch remains
-mechanically applicable, but it is not compiled or executed. This is **ENVIRONMENT BLOCKED**, not
-a negative result about Flow well algebra or ResSim. Matching `2026.04` development packages are
-available, but installation requires interactive administrator authentication here. No solver
-policy changed.
+Source establishes the update semantics but also the hard observability limit. For the held
+oil-water deck, Flow subtracts the linear correction, caps pressure at 30% of current pressure,
+and scales each water/oil saturation pair to a maximum .2 change. No gas-variable adaptation
+applies. However the retained MatrixMarket exports are `J` and RHS only; they do not contain the
+CPR/matrix-free-well correction actually passed to the update routine. `solUpd_` is internal and
+the public convergence path reports maxima only; `EnableWriteAllSolutions` is substep output,
+not Newton-iterate output.
+
+Accordingly an LU solution of the exported system would be a new artificial trajectory, not Flow
+state reconstruction. The same-state matrix comparison remains **INCONCLUSIVE**. WATER-017 is
+blocked on an observation-only applied-state/update dump from an already compatible Flow binary,
+or an explicit decision to rebuild solely for that diagnostic. No runtime policy changed.

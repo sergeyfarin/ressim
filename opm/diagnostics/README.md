@@ -3,26 +3,6 @@
 The patches and commands in this directory are observation-only aids for the tracked FIM/Flow
 comparison. They are not production OPM dependencies.
 
-## WATER-013 same-policy materialized `system_cpr` matrix
-
-`water012-system-cpr-materialized-dump.patch` applies to Flow source commit
-`062cb19986aa8f11cffc30351fd2fee355d0ccb4`. At linear-solver verbosity above 10 it preserves
-the live `system_cpr` matrix-free solve, while additionally writing
-`reports/*_flow_materialized_matrix_istl.mm`. The file is the ordinary reservoir matrix plus the
-same `WellModelAsLinearOperator` (`-C D^-1 B`) used by Flow's actual solve; it is generated only
-for observation and is never passed back to the solver.
-
-Apply, rebuild Flow, then run the unmodified water deck with its ordinary linear policy:
-
-```sh
-git apply /path/to/water012-system-cpr-materialized-dump.patch
-flow CASE.DATA --linear-solver-verbosity=11 --output-extra-convergence-info=steps,iterations
-```
-
-Do not use `--matrix-add-well-contributions=true` or switch to `cpr_quasiimpes` for this oracle:
-those alter the `system_cpr` contract. Compare `nit_2`'s materialized matrix with the normal RHS
-and the held ResSim capture using `solver_lab_water012_eval2_reservoir_well_decomposition`.
-
 ## G4c0 reservoir partition
 
 Apply `g4c0-reservoir-partition.patch` to exact OPM `release/2026.04/final` commit

@@ -450,4 +450,65 @@ mod tests {
 
         assert_jacobian_matches(&analytic, &numerical, 1e-6, 1e-9);
     }
+
+    /// WATER-015 source-parity gate for Flow's TPFA linearizer contract.
+    ///
+    /// Flow seeds only the current ("interior") cell, adds that derivative as one
+    /// global matrix column to both residual rows, and later visits the opposite
+    /// orientation to assemble the neighbor column.  Its scalar exterior mobility
+    /// is therefore not a dropped derivative.  The two focused passes must equal
+    /// ResSim's single six-variable face AD evaluation, including rounded SWOF.
+    #[test]
+    fn water015_two_focused_tpfa_passes_equal_paired_face_ad() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_fim_opm_water_heavy_swof(true);
+        sim.set_gravity_enabled(true);
+        let geom_t = 3.5_f64;
+        let dt_days = 1.0_f64;
+        let i = input(342.0, 0.44, 0.0, HydrocarbonState::Saturated, 1000.0);
+        let j = input(318.0, 0.27, 0.0, HydrocarbonState::Saturated, 1001.0);
+
+        let paired = face_flux_jacobian_blocks(&sim, geom_t, dt_days, &i, &j);
+
+        let focused = |focus_i: bool| {
+            let lift = |cell: FaceCellInput<f64>, offset: usize| FaceCellInput {
+                p: Ad::<3>::variable(cell.p, offset),
+                sw: Ad::<3>::variable(cell.sw, offset + 1),
+                hydrocarbon_var: Ad::<3>::variable(cell.hydrocarbon_var, offset + 2),
+                regime: cell.regime,
+                depth: cell.depth,
+                drsdt0_base_rs: cell.drsdt0_base_rs,
+            };
+            let constant = |cell: FaceCellInput<f64>| FaceCellInput {
+                p: Ad::<3>::constant(cell.p),
+                sw: Ad::<3>::constant(cell.sw),
+                hydrocarbon_var: Ad::<3>::constant(cell.hydrocarbon_var),
+                regime: cell.regime,
+                depth: cell.depth,
+                drsdt0_base_rs: cell.drsdt0_base_rs,
+            };
+            let (i_ad, j_ad) = if focus_i {
+                (lift(i, 0), constant(j))
+            } else {
+                (constant(i), lift(j, 0))
+            };
+            let flux = face_flux_terms_generic(&sim, geom_t, &i_ad, &j_ad);
+            let mut positive = [[0.0; 3]; 3];
+            let mut negative = [[0.0; 3]; 3];
+            for (eq, value) in flux.flux_sc_day.iter().enumerate() {
+                for var in 0..3 {
+                    positive[eq][var] = value.d(var) * dt_days;
+                    negative[eq][var] = -positive[eq][var];
+                }
+            }
+            (positive, negative)
+        };
+
+        let (row_i_col_i, row_j_col_i) = focused(true);
+        let (row_i_col_j, row_j_col_j) = focused(false);
+        assert_eq!(row_i_col_i, paired.0);
+        assert_eq!(row_i_col_j, paired.1);
+        assert_eq!(row_j_col_i, paired.2);
+        assert_eq!(row_j_col_j, paired.3);
+    }
 }

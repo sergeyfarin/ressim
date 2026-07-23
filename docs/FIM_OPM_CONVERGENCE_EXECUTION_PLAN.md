@@ -1603,29 +1603,45 @@ This cannot yet be promoted to a source-complete Flow assembly verdict. Flow sou
 matrix-free well contributions; the local same-policy attempt aborts. Switching Flow to
 `cpr_quasiimpes` permits a materialized `nit_2` export but changes the Flow linear policy and may
 alter the intermediate nonlinear state. The test is therefore **INCONCLUSIVE** as a strict
-cross-engine well comparison. The next bounded action is an observation-only Flow source patch
-which writes a materialized copy of the live `system_cpr` matrix, leaving the actual matrix-free
-solver and all ResSim/IMPES policy untouched.
+cross-engine well comparison. The next bounded action is WATER-015: use Flow source as the
+authority for the two-phase TPFA reservoir residual/Jacobian lifecycle, decompose accumulation
+and face-flux saturation derivatives against ResSim, and port only confirmed OPM semantics.
+Keep gas as the successful control and do not change wells, linear policy, controller, caps,
+damping, or IMPES.
 
-### WATER-013 status (2026-07-22): same-policy Flow observation patch is ready
+### WATER-015 result (2026-07-23): Flow's focused TPFA derivatives equal paired-cell AD
 
-`opm/diagnostics/water012-system-cpr-materialized-dump.patch` is an observation-only patch
-against local Flow source `062cb19986aa8f11cffc30351fd2fee355d0ccb4`; `git apply --check` passes.
-At verbosity 11 it retains the normal matrix-free `system_cpr` solve and writes one additional
-MatrixMarket file formed from the existing reservoir matrix plus the exact
-`WellModelAsLinearOperator` that the live solver applies separately (`-C D^-1 B`). No Flow solve
-input, ResSim runtime setting, nonlinear lifecycle, controller, cap, damping, linear acceptance,
-or IMPES path is changed.
+Flow does not discard an upstream neighbor derivative. It evaluates one focus cell, writes that
+derivative column into both adjacent residual rows, and later visits the reverse orientation to
+form the other column. The new `water015_two_focused_tpfa_passes_equal_paired_face_ad` regression
+proves exact equality with ResSim's single six-variable/four-block face assembly for a two-phase
+rounded-SWOF, gravity-active face.
 
-The patch still requires a Flow rebuild and a fresh same-policy water capture before it becomes a
-valid oracle. Once available, rerun the WATER-012 projection against the materialized `nit_2`
-matrix and distinguish remaining reservoir terms from the complete Flow well contribution.
+Component storage also matches. Flow applies ROCK porosity as `1 + x + x^2/2` from reference
+pressure, while ResSim uses an exponential relative to committed pressure. That is a real
+higher-order pressure-term difference, not an explanation for WATER-012's leading saturation
+columns. Removing neighbor mobility derivatives would port only half of Flow's lifecycle.
 
-### WATER-014 status (2026-07-22): patched Flow build environment is incomplete
+WATER-015 changes no production policy. The evaluation-2 matrices do not prove identical states,
+so WATER-016 must reconstruct Flow's first two applied updates from its chop/primary-adaptation
+source and compare reservoir terms at that same state; rebuilding Flow is not required.
 
-A disposable detached source worktree accepted WATER-013, but CMake configuration stops before
-compilation at `find_package(opm-common)`: the host has `libopmcommon.so.2026.04` runtime libraries
-but no `opm-commonConfig.cmake` or development headers. This is an environment/dependency blocker,
-not a Flow or ResSim result. Do not fall back to `/usr/bin/flow` (it lacks the observation patch),
-or to `cpr_quasiimpes` (it changes the policy). Supply/install the matching OPM development SDK,
-then configure, build, run the unchanged deck, and repeat WATER-012.
+### WATER-016 result (2026-07-23): applied-state reconstruction is not observable
+
+Flow source fully specifies the relevant two-phase update lifecycle. `updateSolution()` passes
+the linear correction to `BlackOilNewtonMethod::updatePrimaryVariables_`, which subtracts it,
+limits pressure to `dp-max-rel * current pressure` (`.3`), and applies the per-cell Appleyard
+factor so neither the water nor complementary oil saturation changes by more than `ds-max` (`.2`).
+This deck has no gas switching primary, so primary adaptation adds no omitted two-phase branch.
+
+The retained MatrixMarket files cannot supply the actual input to that lifecycle: they contain
+only the assembled `J` and RHS, while Flow's applied correction is the result returned by its
+active iterative matrix-free-well solver. An LU solve of exported `J x = R` is a distinct update.
+Flow's `solUpd_` path retains full corrections only internally and reports maxima; its normal
+restart/output path writes substeps, not Newton iterates. Thus no exact Flow evaluation-2 state
+can be reconstructed from these artifacts.
+
+Result: **INCONCLUSIVE — missing state oracle**. No ResSim physics, controller, linear policy,
+caps, damping, wells, or IMPES behavior changed. WATER-017 requires an observation-only Flow
+dump of the applied primary state/update from a compatible binary, or explicit authorization to
+rebuild solely for that diagnostic. It must not replace the unknown correction with an LU solve.
