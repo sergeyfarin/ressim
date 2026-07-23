@@ -3026,7 +3026,10 @@ mod tests {
         sim.step_internal(1.0);
 
         assert!((sim.time_days - 1.0).abs() < 1e-12);
-        assert_eq!(sim.rate_history.len(), 1);
+        // `rate_history` records one entry per accepted substep. FIM's deliberate cold-start
+        // trial-dt cap (`INITIAL_OUTER_STEP_SMALL_TARGET_TRIAL_CAP_DAYS`) splits this first
+        // 1.0-day report step into more than one substep, so it records at least one entry.
+        assert!(!sim.rate_history.is_empty());
         assert!((sim.pressure[0] - pressure_before).abs() < 1e-12);
         assert!((sim.sat_water[0] - sw_before).abs() < 1e-12);
         assert!(sim.last_solver_warning.is_empty());

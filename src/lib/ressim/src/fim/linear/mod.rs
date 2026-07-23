@@ -256,14 +256,44 @@ pub(crate) fn solve_linearized_system(
     layout: Option<FimLinearBlockLayout>,
     equation_scaling: Option<&crate::fim::scaling::EquationScaling>,
 ) -> FimLinearSolveReport {
+    // Small systems solve directly. If the direct factorization hits a singular Jacobian (a
+    // cell driven onto a zero relperm-derivative endpoint by the raw-saturation path can make a
+    // block rank-deficient), fall back to the iterative block-Jacobi/CPR backend, which does not
+    // require an exact factorization and lets the Newton iteration proceed instead of collapsing
+    // the timestep. The iterative path handles well elimination internally via the dispatch
+    // below, so re-enter `solve_linearized_system` with the iterative kind.
     #[cfg(not(target_arch = "wasm32"))]
     if should_force_direct_solve(options.kind, jacobian.rows(), false) {
-        return sparse_lu_debug::solve(jacobian, rhs, options, false);
+        let direct = sparse_lu_debug::solve(jacobian, rhs, options, false);
+        if direct.converged {
+            return direct;
+        }
+        let mut iterative_options = options.clone();
+        iterative_options.kind = FimLinearSolverKind::GmresIlu0;
+        return solve_linearized_system(
+            jacobian,
+            rhs,
+            &iterative_options,
+            layout,
+            equation_scaling,
+        );
     }
 
     #[cfg(target_arch = "wasm32")]
     if should_force_direct_solve(options.kind, jacobian.rows(), true) {
-        return dense_lu_debug::solve(jacobian, rhs, options, false);
+        let direct = dense_lu_debug::solve(jacobian, rhs, options, false);
+        if direct.converged {
+            return direct;
+        }
+        let mut iterative_options = options.clone();
+        iterative_options.kind = FimLinearSolverKind::GmresIlu0;
+        return solve_linearized_system(
+            jacobian,
+            rhs,
+            &iterative_options,
+            layout,
+            equation_scaling,
+        );
     }
 
     // Phase 11 (`FIM-LINEAR-010`): eliminate well/perforation unknowns before the iterative

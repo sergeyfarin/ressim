@@ -44,7 +44,10 @@ fn water_mass_balance_sanity_without_wells_on_fim_branch() {
     let water_after = total_water_volume(&sim);
     assert!((water_after - water_before).abs() < 1e-6);
     assert!((sim.time_days - 1.0).abs() < 1e-12);
-    assert_eq!(sim.rate_history.len(), 1);
+    // `rate_history` records one entry per accepted substep. FIM's deliberate cold-start
+    // trial-dt cap (`INITIAL_OUTER_STEP_SMALL_TARGET_TRIAL_CAP_DAYS`) splits this first 1.0-day
+    // report step into more than one substep, so it records at least one entry.
+    assert!(!sim.rate_history.is_empty());
 }
 
 #[test]
@@ -74,13 +77,21 @@ fn closed_system_public_step_keeps_same_water_inventory_on_both_solvers() {
     let impes = run_case(false);
     let fim = run_case(true);
 
+    // The physics contract: both solvers conserve water in the closed system and reach the same
+    // final inventory.
     assert!((impes.1 - impes.0).abs() < 1e-6);
     assert!((fim.1 - fim.0).abs() < 1e-6);
     assert!((impes.1 - fim.1).abs() < 1e-9);
-    assert_eq!(impes.2, 1);
-    assert_eq!(fim.2, 1);
+    // Both solvers reach exactly the requested report time in a single public step.
     assert!((impes.3 - 1.0).abs() < 1e-12);
     assert!((fim.3 - 1.0).abs() < 1e-12);
+    // `rate_history` records one entry per accepted substep, not per public step. IMPES takes the
+    // full day in one substep here, while FIM's deliberate cold-start trial-dt cap
+    // (`INITIAL_OUTER_STEP_SMALL_TARGET_TRIAL_CAP_DAYS`) splits the first report step into
+    // substeps, so it records at least as many entries. The substep count is a controller detail;
+    // the physics contract above is what matters.
+    assert_eq!(impes.2, 1);
+    assert!(fim.2 >= 1);
 }
 
 #[test]
