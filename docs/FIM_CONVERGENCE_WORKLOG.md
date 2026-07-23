@@ -5916,3 +5916,44 @@ Verdict: **the FIM water-heavy OPM-parity objective is met.** Convergence is wit
 on the water controls after WATER-025/026, and the remaining produced-oil difference is a shared
 core-physics item, not a FIM defect. No code changed for this attribution; it is analysis of the
 WATER-017 dumps and the IMPES comparison.
+
+### WATER-028: the over-injection/over-production is temporal, not a physics gap — corrects WATER-027 (2026-07-23)
+
+WATER-027 concluded the `~7%` produced-oil difference was a shared ResSim-vs-OPM reservoir-physics
+difference. That is wrong. A timestep-refinement study shows both engines converge to the same
+answer, so the difference is temporal discretization of the strong initial injection transient, not
+a model difference.
+
+The injector starts at `Sw=Swc` (`krw=0`, so `λ_total=1.0`) with a `200 bar` drawdown, giving an
+initial injection rate near `7178 Sm3/day` that falls by roughly `5x` within the first fraction of
+a day as the cell floods and the field pressurises. A single `0.25`-day report step under-resolves
+that transient, and each engine under-resolves it differently.
+
+Cumulative oil to `t=0.25` on the gravity-matched 23x23x1 deck, refining the report step:
+
+| report steps × dt | ResSim FIM | Flow FOPT | diff |
+| --- | ---: | ---: | ---: |
+| 1 × 0.25 | `363.0` | `336.24` | `+7.96%` |
+| 5 × 0.05 | `352.3` | `347.74` | `+1.31%` |
+| 25 × 0.01 | `356.64` | `356.46` | **`+0.05%`** |
+
+Both engines converge to `FOPT ≈ 356.5` from opposite sides — Flow's single step under-injects
+(`336`, `5.7%` below the converged value), ResSim's overshoots slightly (`363`, `1.8%` above). At
+`25 × 0.01` the instantaneous injection-rate profiles overlay within `~1%` at every step
+(`1209/1200` at the first, `1505/1513` at the last) and cumulative oil agrees to `0.05%`. So
+ResSim's reservoir physics matches OPM's; the WATER-027 single-step snapshot (producer cell `140.40`
+vs `137.54 bar`) was a fair comparison only at that one coarse resolution, where the transient is
+under-resolved.
+
+Two consequences. First, the correctness objective is effectively met: at a converged report step
+ResSim and OPM agree to `< 0.1%` on injection and production; WATER-027's "shared physics
+difference" is superseded. Second, the IMPES `+12.7%` single-step figure is the same effect with a
+larger temporal error (explicit transport), not a separate defect — it too would converge under
+refinement.
+
+The residual, genuinely actionable item is narrow and is a convergence/accuracy-controller
+question, not a physics one: ResSim's substepping overshoots the converged value by `~1.8%` on the
+single report step where Flow undershoots by `5.7%`. ResSim is already closer to the converged
+truth than Flow's single step, so this is low priority; if pursued, it belongs with the timestep
+controller (first-step transient detection), not the reservoir model. No code changed; this is a
+refinement study on the tracked deck.

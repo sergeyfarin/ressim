@@ -677,11 +677,19 @@ below is retained as Bundle N/Y history; it must not override this current seque
   to +8% water injection at the same BHP=500. Decisive: ResSim IMPES over-produces MORE (+12.7%)
   than FIM (+8.0%), so it is a SHARED ResSim-vs-OPM reservoir-physics difference (pressure-volume /
   compressibility / transmissibility candidate), with FIM closer to Flow than the shipped IMPES.
-- [ ] **CORE (not FIM): close the shared ~8-13% over-production vs OPM.** Affects IMPES more than
-  FIM, so investigate in the shared core with IMPES-vs-Flow as the primary probe. Candidates:
-  fluid/rock compressibility, transmissibility, or the absolute pressure-level (pressure-volume)
-  coupling. The FIM water-heavy OPM-parity objective is otherwise MET (convergence within 2-3x of
-  OPM after WATER-025/026).
+- [x] **WATER-028 — the over-production is TEMPORAL, not a physics gap; corrects WATER-027.**
+  Timestep refinement on 23x23x1 (cumulative oil vs Flow FOPT): 1x0.25 `+7.96%`, 5x0.05 `+1.31%`,
+  25x0.01 `+0.05%`. Both engines converge to FOPT~=356.5 from opposite sides (Flow single-step
+  under-injects, ResSim overshoots slightly); at fine dt the rate profiles overlay within ~1% and
+  cumulative agrees to 0.05%. The strong initial injection transient (rate ~7178 at t=0, falling
+  ~5x fast) is under-resolved by a single 0.25-day step. ResSim's reservoir physics MATCHES OPM to
+  <0.1% at converged dt. The IMPES +12.7% is the same effect with larger explicit-transport
+  temporal error. WATER-027's "shared physics difference" is superseded.
+- [ ] **(low priority, controller not physics) First-step injection-transient over-shoot.** On the
+  single 0.25-day report step ResSim overshoots the converged FOPT by ~1.8% where Flow undershoots
+  by 5.7% — so ResSim is already CLOSER to the converged truth than Flow's single step. If pursued,
+  belongs with the timestep controller (detect the stiff first-step injection transient and cut dt),
+  not the reservoir model. Correctness objective is otherwise met.
 - [x] **OpmAligned gas replay — RESOLVED 2026-07-23 (WATER-026).** The gas-rate OpmAligned
   multi-step that previously ran away to 501 substeps now completes in 1 substep/step with correct
   GOR (80.0) and valid Sg. A/B (`FIM_W025_DISABLE_RAW_SW`) shows it did not depend on WATER-025
