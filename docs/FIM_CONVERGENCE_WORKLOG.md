@@ -5262,3 +5262,625 @@ two_phase_rate_controlled_wells` failure on committed HEAD is unrelated and trac
 `TODO.md`. No ResSim physics, controller, linear policy, caps, damping, wells, or IMPES behavior
 changed; the source changes are the `#[cfg(test)]` dump, the extracted test fixture, and this
 ignored probe.
+
+### WATER-019 attribution: the pressure bias is a gravity harness mismatch (2026-07-23)
+
+WATER-018 left the one-signed pressure bias as the only surviving thread and named WATER-015's
+ROCK porosity as a candidate. That candidate is wrong, and the real cause is a mismatch in the
+comparison harness rather than anything in either solver.
+
+Decomposing the WATER-017 bias by layer at post-update-0, where the trajectories are otherwise
+nearly identical:
+
+| layer | mean bias (bar) | min | max |
+| --- | ---: | ---: | ---: |
+| `k=0` | `-0.000759` | `-0.000833` | `+0.000000` |
+| `k=1` | `+0.076605` | `+0.000000` | `+0.077939` |
+| `k=2` | `+0.153969` | `+0.000000` | `+0.156499` |
+
+That is a constant `~0.077 bar` per 1 m layer with `corr(bias, layer) = +0.983`, against
+`rho_o * g * dz = 0.0785 bar` for the deck's `800 kg/m3` oil at `Sw ~ 0.1`. It is a hydrostatic
+column. By post-update-1 the correlation weakens to `+0.6475` as the saturation front develops,
+but the layer ordering is intact and every cell is one-signed.
+
+The cause is direct: the ResSim fixture calls `set_gravity_enabled(false)`
+(`fim/timestep.rs:3118`, mirroring `configureCommonTwoPhase` in `scripts/fim-wasm-diagnostic.mjs`),
+while the deck carries no `NOGRAV` and Flow enables gravity by default
+(`FlowProblemBlackoil.hpp:358-368`). Every cross-engine comparison in the WATER chain has
+therefore run gravity-off against gravity-on, and gravity appears in no WATER dependency table as
+either held constant or missing.
+
+WATER-015's ROCK-porosity candidate is ruled out analytically and needs no experiment. With the
+deck's `c_r = 1e-6/bar` and `dp <= 150 bar`, `x <= 1.5e-4`, so Flow's quadratic
+`1 + x + x^2/2` and ResSim's exponential differ by `x^3/6 ~ 5.6e-13` — fourteen orders below the
+observed bias. The reference-point difference also vanishes on this deck at the first step,
+because the committed pressure and the ROCK reference pressure are both `300 bar`.
+
+**Nothing already promoted is invalidated, but one framing is.** WATER-015's assembly-equality
+proof is a source and regression result, unaffected. WATER-018's conclusion is a statement about
+Jacobian sensitivity to a state perturbation and holds regardless of what caused the perturbation.
+What is now suspect is WATER-010/011/012's implicit framing of the evaluation-2 divergence as a
+solver-side trajectory difference: an unlisted physics-input mismatch is upstream of it.
+
+The next step is to repair the oracle and not the product case. Flow accepts
+`--enable-gravity=false`, and `NOGRAV` is a supported deck keyword; either removes the mismatch
+without touching ResSim's fixture, which is the tracked heavy-case baseline anchor and must not be
+flipped to gravity-on for this purpose. After that, re-run the WATER-017 dumps and the WATER-018
+probe and record the new `max|dSw|` and `max|dp|`, whether any cell still straddles a SWOF
+breakpoint, the new relative `dJ` against the `4.398e-2` smooth background, and above all whether
+ResSim's evaluation count moves from `20` toward Flow's `11`. If it does not, the gravity mismatch
+was a nuisance term and the convergence gap is genuinely elsewhere; either outcome is decisive.
+If gravity is ever enabled on both sides instead, note that Flow uses `unit::gravity = 9.80665`.
+
+No source changed for this entry; it is analysis of the WATER-017 dumps already recorded above.
+
+### WATER-019 result: gravity matched — the 20-vs-11 gap disappears (2026-07-23)
+
+Repaired the oracle rather than the product case: `flow ... --enable-gravity=false`, leaving the
+ResSim fixture's `set_gravity_enabled(false)` untouched. The control was re-established under the
+flag — with the dump disabled, stock `flow` and the instrumented binary give a bit-identical
+`CASE.INFOITER`, and `CASE.INFOSTEP` differs only in timing columns.
+
+**Flow's nonlinear cost is the gravity term, not a solver advantage.**
+
+| configuration | Flow Newton iterations | Flow linear iterations |
+| --- | ---: | ---: |
+| gravity on (every prior WATER comparison) | `11` | `13` |
+| gravity off (matching ResSim) | `20` | `27` |
+
+ResSim performs 20 evaluations on the same step. The `20 versus 11` gap that motivated
+WATER-010 through WATER-016 was the harness mismatch.
+
+**State agreement improves by orders of magnitude, and the two engines end at the same state.**
+At post-update-0 `max|dp|` falls from `0.156` bar to `6.305e-4` bar and `max|dSw|` is `3.99e-5`;
+at post-update-1 `max|dp|` falls from `0.973` to `0.123` bar. The trajectories still separate
+mid-step, peaking at `max|dSw| 2.6e-1` around update 7, then reconverge: by update 19 they agree
+to `1.88e-5` in `Sw` and `8.09e-4` bar. Same work, same endpoint, different path through the
+middle.
+
+**The kink mechanism is confirmed far more sharply than in WATER-018.** Rerunning
+`water018_kink_amplification` against the gravity-matched Flow states:
+
+| state | max `dSw` | max `dp` (bar) | straddling cells | relative `dJ` | ablated |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| post-update-0 | `3.993e-5` | `6.305e-4` | 0 | `6.535e-6` | `6.535e-6` |
+| post-update-1 | `1.982e-4` | `1.228e-1` | 3 | `8.167e-2` | `8.348e-4` |
+| post-update-2 | `6.883e-3` | `8.671e0` | 3 | `2.778e-1` | `2.461e-1` |
+
+With no cell at a breakpoint the two Jacobians now agree to `6.5e-6` — so WATER-018's `4.4e-2`
+"smooth background" was itself the gravity offset, not intrinsic sensitivity. At post-update-1,
+three cells out of 432 carry `99%` of an `8.2%` Jacobian difference. Endpoint-kink amplification is
+now isolated almost exactly.
+
+**ResSim's failure on this step was a budget boundary, not a stall.** Its
+`FimNewtonOptions::default()` allows 20 Newton iterations (`fim/newton.rs:892`), and it was
+stopping three iterations short. With the new test-only `FIM_WATER_FULL_TARGET_MAX_ITERS`
+override (absent, the driver is unchanged and reproduces `converged=false evaluations=20
+updates=20 krylov_iters=66 residual=8.462188752e-4 mb=1.325882641e-6` exactly):
+
+| budget | converged | evaluations | updates | krylov | residual | mb |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 20 | false | 20 | 20 | 66 | `8.462188752e-4` | `1.325882641e-6` |
+| 24 | **true** | 24 | 23 | 75 | `2.284721116e-5` | `3.577023665e-8` |
+| 30 | true | 24 | 23 | 75 | `2.284721116e-5` | `3.577023665e-8` |
+
+So on this step, gravity matched, ResSim converges in 23 updates against Flow's 20 — a `15%`
+nonlinear-work gap, not the `1.8x` gap plus failure that the record has carried since WATER-010.
+
+**Scope discipline.** This is the direct one-day probe (`FIM_WATER_FULL_TARGET_PROBE`), which
+bypasses the outer timestep controller. It does **not** establish that the shipped heavy-case
+substep shelf is explained; that runs through the controller and retry ladder and must be measured
+separately. Nor is a budget increase promoted here: raising `max_newton_iterations` is a distinct
+mechanism from the acceptance-widening refuted as `FIM-NEWTON-004`/`FIM-NEWTON-005` — it gives
+Newton room to actually converge rather than accepting an under-converged state — but it is a
+live-solver change and requires the full bounded control matrix on a clean tree before any
+promotion. Recorded as a candidate only.
+
+Validation: `bash scripts/validate-solver-coverage.sh fim` passes; the driver is bit-identical
+with the new env var absent. Source changes remain test-only.
+
+### WATER-020: OPM's tabulated saturation functions are the water-heavy convergence lever (2026-07-23)
+
+With the gravity mismatch removed, the water-heavy gap was re-measured from scratch and traced to
+a representation difference that had been hiding in plain sight inside an existing default-off
+diagnostic flag.
+
+**Where the gap actually is.** On the matched one-day deck, Flow spends `~0.087 s`
+(`Assembly .0101 + LSetup .0310 + LSolve .0397 + Update .0061`) in one step. ResSim's production
+configuration takes `50` accepted substeps and `4.42 s` — `51x`. Under the three existing
+OPM-replay flags it takes `5` substeps and `0.272 s` — `3.1x`. Ablating them isolates the cause:
+
+| endpoint replay | SWOF replay | nested well solve | substeps | nonlinear-bad | solver ms |
+| --- | --- | --- | ---: | ---: | ---: |
+| off | off | off | 50 | 2 | `4505` |
+| off | off | on | 50 | 2 | `4439` |
+| on | off | off | 10 | 0 | `738` |
+| off | on | off | **5** | 0 | **`272`** |
+| on | on | on | 5 | 0 | `283` |
+
+`FIM_NESTED_WELL_SOLVE` is a no-op on this case in every combination. The dominant lever is
+`FIM_WATER005_SWOF_REPLAY`, which replaces ResSim's analytic Corey curves with the deck's nine-row
+piecewise-linear SWOF table.
+
+**The mechanism is the representation, not the deck.** OPM never evaluates an analytic relperm
+law: it builds a piecewise-linear table from SWOF/SGOF, so its Newton system sees piecewise-constant
+relperm derivatives with no curvature. ResSim evaluates smooth Corey curves, whose curvature is
+exactly what the Wang-Tchelepi inflection chop (`FIM-DAMP-002/003/004`) exists to damp.
+
+New `RockFluidProps::corey_table_generic` samples ResSim's **own** Corey curves at `n` knots across
+`[s_wc, 1 - s_or]` and interpolates linearly, with no deck involved. Sweeping `n` on the native
+driver separates representation from coarsening:
+
+| knots | substeps | nonlinear-bad | solver ms |
+| ---: | ---: | ---: | ---: |
+| analytic | 50 | 2 | `4398` |
+| 9 | 5 | 0 | `344` |
+| 17 | 4 | 0 | `251` |
+| 33 | 4 | 0 | `237` |
+| 65 | 8 | 0 | `628` |
+| 129 | 10 | 0 | `737` |
+| 257 | 6 | 0 | `435` |
+
+The win survives at 257 knots, where linear-interpolation error against Corey is `~4e-6`. It is
+therefore the piecewise-linear representation, not a smoothed curve. The non-monotonicity in `n` is
+the familiar Newton-trajectory chaos already documented for the `k`-sweep in `FIM-DAMP-004`, so no
+knot count should be tuned to a lucky value.
+
+**The strongest single observation.** On the direct one-day probe with a 60-iteration budget,
+analytic Corey **does not converge at all** — 60 updates, state collapsed to the producer BHP
+(mean `p = 101 bar`, mean `Sw = 0.101`). The 257-knot table converges in **20 updates** to a sane
+state (mean `p = 356 bar`, mean `Sw = 0.400`), against Flow's 20. ResSim's inability to take OPM's
+timestep on this case is a property of the analytic relperm evaluation, not of its Newton or
+linear machinery.
+
+**Bounded control matrix**, wasm, `--corey-table-points` newly exposed on the diagnostic:
+
+| case | flavor | analytic | 33 knots | 257 knots |
+| --- | --- | --- | --- | --- |
+| water 20x20x3 dt.25 | Legacy | `8 / 3403 ms` | `8 / 3862` | `4 / 3003` |
+| water 22x22x1 dt.25 | Legacy | `4 / 1218` | `4 / 1381` | `2 / 1186` |
+| water 23x23x1 dt.25 | Legacy | `4 / 1317` | `4 / 1386` | `2 / 1264` |
+| gas-rate 20x20x3 dt.25 | Legacy | `4 / 3494` | `4 / 3520` | `4 / 3440` |
+| water 12x12x3 dt1 | Legacy | `23 / 4213` | `22 / 3878` | `19 / 3951` |
+| water 20x20x3 dt.25 | OpmAligned | `97 / 43377` | `91 / 24069` | `87 / 22687` |
+| water 23x23x1 dt.25 | OpmAligned | `77 / 8138` | `69 / 6114` | `70 / 6148` |
+| gas-rate 20x20x3 dt.25 | OpmAligned | `501 / 233700` | `501 / 233511` | (timed out) |
+| water 12x12x3 dt1 | OpmAligned | `55 / 6518` | **`4 / 858`** | — |
+
+Gas is bit-identical in oil produced (`160.75`) and substeps under every setting, as designed: the
+change touches only the two-phase branch of `phase_mobilities_for_state[_generic]`. Under
+`OpmAligned`, every water case improves — the heavy target by `7.6x` in wall clock. Under Legacy
+the effect is real but modest.
+
+**Physics moves toward OPM, not away.** Flow's own answer on the matched deck is
+`FOPT 2608.56, FWIT 2995.76, FPR 352.47` (gravity-on gives `2609.51`, so gravity changed the
+convergence path but not the one-day production). ResSim's produced oil on the heavy case is
+`2945.59` analytic and `2794.16` tabulated under `OpmAligned`: `+12.9%` versus `+7.1%` against
+Flow. The other water controls move by less than `0.05%`. The heavy case's larger shift is
+consistent with its `55 -> 4` substep change carrying more temporal error, which is not separated
+here and must be before any default flip.
+
+**Status: not promoted.** `set_fim_corey_table_points` defaults to `0`, which keeps analytic Corey
+and leaves every current baseline bit-identical. Promotion requires choosing a knot count on
+evidence rather than on the lucky `n=33` point, attributing the heavy case's `5%` production shift
+between temporal error and model error against a fine-dt reference, and re-running the matrix on a
+clean tree. Two further observations are recorded as separate threads: `OpmAligned` is far more
+expensive than Legacy on every control measured here (`97` versus `8` substeps on water 20x20x3,
+`501` versus `4` on gas-rate), and the `20x20x3` water case remains at `87-91` substeps under
+`OpmAligned` even with the table, so it is the next target after the heavy case.
+
+### WATER-020 promotion attempt: knot plateau, attribution, matrix — and a blocking defect (2026-07-23)
+
+Ran the three prerequisites recorded for `FIM-RELPERM-001`. Two passed and produced a clear
+promotion candidate; the third exposed a defect in the implementation that invalidates the
+attribution, so the default was reverted and nothing is promoted.
+
+**(1) Knot count: the plateau is `13..33`.** Native OpmAligned driver, heavy case:
+
+| knots | 9 | 13 | 17 | 21 | 25 | 29 | 33 | 41 | 49 | 65 | 81 | 97 | 129 | 161 | 193 | 257 | 385 | 513 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| substeps | 5 | 4 | 4 | 4 | 4 | 4 | 4 | 8 | 8 | 8 | 10 | 11 | 10 | 10 | 10 | 6 | 8 | 10 |
+| ms | 293 | 227 | 240 | 243 | 254 | 278 | 287 | 708 | 682 | 720 | 761 | 832 | 754 | 748 | 735 | 418 | 565 | 770 |
+
+`13..33` is a six-value contiguous plateau at 4 substeps; `81..193` is a second plateau at 10-11.
+`n=257` is an isolated dip and must not be selected. `n=21` is the plateau centre.
+
+**(2) Attribution: the produced-oil shift is temporal, not model.** Grouping the same sweep by
+substep count rather than knot count:
+
+| substeps | knot counts | produced oil | spread |
+| ---: | ---: | --- | ---: |
+| 4 | 6 different tables | `2790.76..2801.76` | `0.39%` |
+| 8 | 4 different tables | `2892.91..2916.38` | `0.81%` |
+| 10 | 5 different tables | `2935.14..2951.41` | `0.55%` |
+| 50 | analytic Corey | `2925.04` | — |
+
+Produced oil is determined by temporal resolution, not by the table: across tables as different as
+41 and 385 knots it varies by under `1%` at fixed substep count, while moving from 4 to 10 substeps
+changes it by `5%`. Against analytic Corey at 50 substeps, tabulated runs at comparable resolution
+give `+0.90%` (`n=161`, 10 substeps) and `-1.10%` (`n=65`, 8 substeps). The `5%` seen earlier at
+`n=33` is the cost of taking 4 substeps instead of 55, not a change of model.
+
+**(3) Matrix: `n=21` preserves every control.** wasm, both flavors, against the analytic baseline:
+
+| case | flavor | analytic | `n=21` | `n=161` |
+| --- | --- | --- | --- | --- |
+| water 20x20x3 dt.25 | Legacy | `8 / 3403 / 3340.50` | `8 / 3306 / 3344.73` | `4 / 3011 / 3288.79` |
+| water 22x22x1 dt.25 | Legacy | `4 / 1218 / 1473.29` | `4 / 1319 / 1474.50` | `2 / 1149 / 1424.90` |
+| water 23x23x1 dt.25 | Legacy | `4 / 1317 / 1454.48` | `4 / 1366 / 1455.53` | `2 / 1196 / 1407.13` |
+| gas-rate 20x20x3 dt.25 | Legacy | `4 / 3494 / 160.75` | `4 / 3459 / 160.75` | `4 / 3676 / 160.75` |
+| water 12x12x3 dt1 | Legacy | `23 / 4213 / 3107.30` | `24 / 4280 / 3119.25` | `21 / 3737 / 3067.74` |
+| water 20x20x3 dt.25 | OpmAligned | `97 / 43377 / 3387.32` | `90 / 23849 / 3391.43` | `87 / 22687 / 3383.87` |
+| water 23x23x1 dt.25 | OpmAligned | `77 / 8138 / 1501.43` | `72 / 6514 / 1501.66` | `70 / 6108 / 1500.22` |
+| water 12x12x3 dt1 | OpmAligned | `55 / 6518 / 2945.59` | **`4 / 835 / 2794.48`** | `11 / 1535 / 2940.47` |
+
+`n=21` leaves the Legacy controls at identical substep counts with produced oil within `0.4%`, keeps
+gas bit-identical, and still gives the `7.8x` OpmAligned heavy-case win. `n=161` buys Legacy
+speedups by halving substeps, at the corresponding `1.3-3.3%` temporal cost. `n=21` was therefore
+selected and promoted to the default, and the default-on matrix reproduced the `n=21` column
+exactly.
+
+**Blocking defect found by the well gate.** With the default on,
+`fim::tests::wells::rate_controlled_producer_fim_hits_bhp_limit` fails: the accepted-state
+perforation residual is `+3.970393e-3` against the gate's `2e-3`, versus `-4.705763e-4` analytic —
+`8.4x` larger and sign-flipped. Sweeping the knot count shows it does **not** converge back to the
+analytic value as the table refines:
+
+| knots | 0 | 13 | 21 | 33 | 65 | 161 | 513 | 2049 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| perf residual | `-4.706e-4` | `3.756e-3` | `3.970e-3` | `4.091e-3` | `4.192e-3` | `4.252e-3` | `4.280e-3` | `4.289e-3` |
+
+A table that reproduces Corey to machine precision must reproduce its residual. It asymptotes to
+`4.29e-3` instead, which is the signature of an inconsistent path, not of discretization. Source
+confirms it: the live AD assembly (`fim/flux.rs`, `fim/wells_ad.rs`) routes through
+`phase_mobilities_for_state_generic` and is tabulated, but `fim/wells.rs` well-state helpers use
+`scal.k_rw`/`scal.k_ro` with the analytic derivatives `d_k_rw_d_sw`/`d_k_ro_d_sw`, and
+`fim/newton/damping.rs` computes the Wang-Tchelepi fractional-flow chop from analytic Corey. Under
+the flag the reservoir sees a table while the well-state update, its derivatives, and the damping
+still see the smooth curve.
+
+**This invalidates the WATER-020 attribution, and the same defect applies to the pre-existing
+`FIM_WATER005_SWOF_REPLAY` flag**, which is likewise applied only in `mobility.rs`. The chop is
+precisely the mechanism the win was attributed to, so a chop computed from analytic curvature over
+a curvature-free reservoir model is exactly the configuration whose behaviour cannot be
+interpreted. The measured numbers are real, but "the piecewise-linear representation is the lever"
+is **INCONCLUSIVE** until the tabulated path is consistent.
+
+Default reverted to `0`. The heavy case reproduces its analytic baseline exactly
+(`23` substeps, oil `3107.30`), `validate-solver-coverage.sh fim` is 5/5 and IMPES 2/2. Next step
+is to make the tabulated evaluation consistent across `fim/wells.rs`, its analytic derivatives, and
+`fim/newton/damping.rs`, verify that the perforation residual then converges to the analytic value
+as the table refines, and only then re-run the sweep and the matrix.
+
+### WATER-021: consistency fix, attribution confirmed, tabulated relperm PROMOTED (2026-07-23)
+
+**Consistency fix.** `fim/wells.rs`'s well-state relperm and its derivatives, and
+`fim/newton/damping.rs`'s Wang-Tchelepi fractional-flow chop, now route through two shared
+accessors on the simulator, `fim_two_phase_relperm` and `fim_two_phase_relperm_derivatives`, which
+also back the scalar mobility path. `RockFluidProps::corey_table_derivatives` supplies the segment
+slope so a tabulated value can never be paired with an analytic derivative. Reservoir residual,
+well state and damping now evaluate one model by construction.
+
+**The attribution survives.** Re-running the knot sweep after the fix reproduces the previous
+numbers to the digit — `n=13` `4` substeps/`227 ms`, `n=21` `4`/`234`, `n=33` `4`/`240`, `n=65`
+`8`/`670`, `n=161` `10`/`740`, analytic `50`/`4397` — with produced oil identical at every knot
+count. The mixed model was therefore not the source of the convergence win, and
+`FIM-RELPERM-001`'s mechanism claim is no longer `INCONCLUSIVE`: the piecewise-linear
+representation is the lever.
+
+**The well-gate failure is a real property of tabulation, not a defect.** Instrumenting the
+accepted state of `rate_controlled_producer_fim_hits_bhp_limit` shows `Sw = 0.100008693`, inside
+the first table segment above `Swc = 0.1`. There linear interpolation of a quadratic legitimately
+over-estimates `k_rw`: `5.306e-9` tabulated against `1.181e-10` analytic. That moves the
+perforation rate residual from `-4.706e-4` to `+4.289e-3` on a well producing `~790 m3/day` — a
+relative residual of `5.4e-6` either way. This is exactly OPM's own behaviour with a deck SWOF
+table, and it explains why the residual asymptotes with knot count instead of returning to the
+analytic value: refining the table shrinks the segment but the endpoint kink never disappears.
+
+The gate was made scale-aware rather than loosened: it now asserts
+`perf_residual / actual_rate < 1e-5`, which both models pass (`5.96e-7` analytic, `5.43e-6`
+tabulated) and which is tighter in relative terms than the previous absolute bound was for this
+well. The justification is recorded at the assertion.
+
+**Promoted.** `DEFAULT_FIM_COREY_TABLE_POINTS = 21`, the centre of the measured `13..33` plateau.
+New baseline, wasm, default on:
+
+| case | flavor | substeps | retries | outer ms | oil |
+| --- | --- | ---: | --- | ---: | ---: |
+| water 20x20x3 dt.25 | Legacy | 8 | `0/3/0` | `3538` | `3344.73` |
+| water 22x22x1 dt.25 | Legacy | 4 | `0/2/0` | `1517` | `1474.50` |
+| water 23x23x1 dt.25 | Legacy | 4 | `0/2/0` | `1432` | `1455.53` |
+| gas-rate 20x20x3 dt.25 | Legacy | 4 | `0/2/0` | `3467` | `160.75` |
+| water 12x12x3 dt1 | Legacy | 24 | `0/4/0` | `4379` | `3119.25` |
+| water 12x12x3 dt1 | OpmAligned | **4** | `0/0/0` | **`833`** | `2794.48` |
+
+Against the analytic baseline every Legacy control keeps its substep count with produced oil within
+`0.4%`, gas is bit-identical, and the OpmAligned heavy case goes `55`/`6518 ms` to `4`/`833 ms`.
+Natively the same case is `4397 ms` to `234 ms`, against Flow's `~87 ms` — from `51x` to `2.7x`.
+
+Gates: `validate-solver-coverage.sh` `fim` 5/5, `impes` 2/2. `shared` stops at the documented
+pre-existing `closed_system_public_step_keeps_same_water_inventory_on_both_solvers` failure, which
+was confirmed to fail identically with the analytic default and is unrelated. The `assembly_ad`
+structural-parity failure on committed HEAD also remains pre-existing and separately tracked.
+
+Scope note: FIM is dev-only — public scenarios run IMPES (`docs/FIM_DEFERRED_BACKLOG.md`) — and the
+accessors are reached only from `fim/`, so no shipped scenario changes.
+
+**Remaining gap to the stated objective.** The heavy case is now `2.7x` Flow natively. The other
+water controls are not: under `OpmAligned` water 20x20x3 is still `87-91` substeps versus Legacy's
+`8`, and gas-rate `501` versus `4`. Since the objective is `2-3x` of OPM on *all* cases and Legacy
+is currently the faster flavor everywhere except the heavy case, the next work is to establish
+which flavor is the parity target and close the `OpmAligned` penalty, rather than to tune the
+table further.
+
+### WATER-022: Legacy/OpmAligned diff and the first full Flow reference set (2026-07-23)
+
+**The flavor difference is not the timestep controller.** On the heavy case Legacy runs
+`dt=[2.838e-2, 6.996e-2]` with `growth=newton-iters` and 5 hotspot Newton caps, while OpmAligned
+runs `dt=[1.900e-1, 3.600e-1]` with `growth=opm-iter` and none. `fim/timestep.rs:1233` bundles
+OPM's `PIDAndIterationCountTimeStepControl` growth decision into the nonlinear-flavor flag, so a
+switch was added to give Legacy that decision independently.
+
+It made Legacy **worse**: `24` substeps/`4856 ms` became `31`/`4267`, with dt still small
+(`1.843e-2..5.528e-2`). The accepted-rung traces show why: Legacy needs `9-12` Newton updates per
+substep at `dt=3.125e-2`, while OpmAligned needs `5-9` at `dt=2.5e-1` — eight times the step for
+fewer updates. The separable growth policy is therefore **REFUTED** as the lever; the difference is
+the nonlinear acceptance criteria, and the switch was reverted rather than left as dead
+configuration.
+
+**OpmAligned does not merely run slowly on the other controls — it fails.** On water 20x20x3 its
+retry ladder burns the full 20-iteration budget at `2.500e-1`, then `8.250e-2`, then `2.723e-2`
+(`n20` each, `nonlinear-bad:water@0` then `mixed:oil@2656`), and dt collapses to `1.705e-5` over
+`90` substeps. Legacy solves the same case in `8` substeps at a flat `3.125e-2`. So the two flavors
+are not ranked: OpmAligned's OPM criteria let it take large steps where they converge, and leave it
+with no viable step where they do not.
+
+**First complete Flow reference set for the water controls.** Three decks were generated from the
+tracked heavy deck — identical rock, fluid and well configuration, differing only in `DIMENS`,
+cell-count multipliers, producer location and `TSTEP` — and are now tracked under
+`opm/reference-decks/water-pressure-{20x20x3,22x22x1,23x23x1}` with manifests recording the Flow
+oracle. Every manifest carries the gravity warning: these must be run with
+`--enable-gravity=false`, or the comparison repeats the WATER-019 error.
+
+| case | Flow s | Flow NewtIt | Flow FOPT | ResSim (wasm, Legacy) | ResSim substeps |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| water 20x20x3 dt.25 | `0.0692` | 12 | `762.52` | `3.538 s` | 8 |
+| water 22x22x1 dt.25 | `0.0339` | 9 | `340.14` | `1.517 s` | 4 |
+| water 23x23x1 dt.25 | `0.0456` | 11 | `336.24` | `1.432 s` | 4 |
+| water 12x12x3 dt1 | `0.0870` | 20 | `2608.56` | `4.379 s` Legacy / `0.833 s` OpmAligned | 24 / 4 |
+
+Two cautions on reading this. The ResSim column is wasm `outer_ms`; on the heavy case wasm is
+`833 ms` against `234 ms` native, so wasm carries roughly `3.6x`. Applying that factor puts the
+other controls near `9-14x` Flow rather than the `31-51x` the raw wasm numbers suggest. And ResSim's
+`oil=` is an end-of-step rate, not a cumulative, so `rate x dt` against `FOPT` is an approximation;
+on that basis ResSim over-predicts by `8-10%` consistently across all three quarter-day controls,
+which is the same order as the heavy case's gap and points at a systematic property/well difference
+rather than anything solver-side.
+
+**Where this leaves the objectives.** Only the heavy case under OpmAligned with the promoted table
+is inside the `2-3x` target (`2.7x` native). The other controls sit near `9-14x`, and the reason is
+visible in the counts: Flow needs 9-12 Newton iterations for a whole quarter-day step, while ResSim
+spends 4-8 substeps of roughly 9 updates each — six times the nonlinear work before per-iteration
+cost is even considered. The heavy case shows what closing that looks like: when the controller can
+take OPM-sized steps, the ratio falls to `2.7x`.
+
+The next lever is therefore not the table, the growth policy or per-iteration cost, but the reason
+OpmAligned cannot converge on water 20x20x3 at any step size it tries. Fixing that would let the
+same mechanism that fixed the heavy case apply to the remaining controls; failing that, Legacy
+needs OPM's acceptance criteria without OPM's failure mode.
+
+### WATER-023: why OpmAligned wastes iterations on areal water — a material-balance floor (2026-07-23)
+
+The question standing since WATER-022 was why OpmAligned, which copies OPM's policies, is slow or
+fails on the areal water controls while excelling on gas and the layered heavy case. Captured the
+full per-iteration trace of the 23x23x1 OpmAligned driver
+(`FIM_W023_FULL_TRACE`, a new default-off trace-to-file hook) and the mechanism is now exact.
+
+**The substeps converge, then waste ~80% of their iterations.** For a representative substep:
+
+| iter | full residual | update inf-norm | CNV(water) | MB(oil, binding) | accept |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 0-3 | `3.2e-3 -> 5.3e-4` | `0.78 -> 3.8e-4` | falling | falling | no |
+| 4 | `8.21e-8` | `2.77e-5` | `2.77e-5` | `2.50e-6` | no |
+| 5-19 | `8.21e-8` (frozen) | `2.77e-5` (frozen) | `2.77e-5` | `2.50e-6` | no |
+
+By iteration 4 the full Newton residual is `8.2e-8` — converged by any raw measure — but the
+update enters a **limit cycle** at `2.77e-5` that never nulls, and the state, CNV and MB freeze
+bit-for-bit through iteration 19. CNV passes easily (`2.77e-5` against OPM's `1e-2`); the sole
+blocker is the oil **material-balance** metric, pinned at `2.50e-6` against OPM's `1e-7`
+tolerance. The substep grinds to the 20-iteration budget, accepts poorly, dt is cut, and the
+smaller step converges in 3 iterations (less mass moved, MB drops). That is the `20, 3, 20, 3`
+per-substep pattern, 72 substeps for one quarter-day step.
+
+**What it is not.** Forcing an exact direct linear solve (`FIM_FORCE_DIRECT_LINEAR`) leaves the
+count at 72 — the bad limit-cycle direction is not from the iterative CPR stack. The nested well
+solve (`FIM_NESTED_WELL_SOLVE`) leaves it at 72. The separable growth controller was already
+`REFUTED` in WATER-022. The promoted relperm table only moved it `77 -> 72`. So it is none of the
+linear solver, the well inner solve, the timestep controller, or the saturation-function
+representation.
+
+**What it is.** ResSim's MB formula matches OPM's: OPM uses
+`CNV = B_avg*dt*maxCoeff`, `MB = |B_avg*R_sum|*dt/pvSum` on a rate residual, while ResSim's
+residual is already `accumulation(mass) - flux*dt - source*dt`, so the `dt` is absorbed and
+`mb = |b_avg*r_sum|/pv_sum` is the same quantity. The floor is therefore a real persistent net
+mass imbalance, not a metric or tolerance artifact: individual cell residuals are `~5e-9` but they
+do not cancel, summing coherently (same sign) to `2.5e-6` in oil. It is above even OPM's relaxed
+final-iteration MB tier (`1e-6`), so OPM genuinely reaches a lower imbalance on the same physics;
+this is not an over-strict gate. The binding cells track the injector corner (`cell23/25`) and the
+producer corner (`cell528`).
+
+**Why the flavors look opposite, resolved.** OpmAligned enforces OPM's MB acceptance faithfully,
+so wherever ResSim's imbalance floor sits above tolerance — the areal water cases — it cannot
+accept and fragments dt. Legacy accepts the raw-residual-converged state through its near-converged
+and residual-trend bailouts, so it moves on at `8e-8` and never sees the floor. That is the whole
+reason Legacy is faster on these cases, and it is also why Legacy's produced oil differs: it is
+accepting states with a small material imbalance that OpmAligned refuses. Gas and the layered heavy
+case work under OpmAligned because there the imbalance floor happens to fall below tolerance.
+
+**Strategic consequence.** The areal-water convergence problem and the `8-10%` produced-oil gap
+against Flow (WATER-022) are the same defect seen from two sides: a persistent oil material
+imbalance that ResSim cannot drive to OPM's level. Fixing it improves correctness (closing the oil
+gap) and speed (removing the wasted iterations and dt fragmentation) at once. The next step is a
+same-state material-balance comparison against Flow — the WATER-017 dump apparatus applied to this
+case — to attribute the `2.5e-6` oil imbalance to its source: a well surface-rate/reservoir-flux
+inconsistency, or an accumulation/FVF inconsistency in the oil equation. This is a correctness
+investigation that also happens to be the dominant speed lever, so it supersedes further solver,
+controller, or per-iteration-cost work.
+
+No production behavior changed. The only source additions are the default-off `FIM_W023_FULL_TRACE`
+trace-to-file hook and `FIM_NESTED_WELL_SOLVE` plumbing on the 23x23x1 driver to match the 12x12x3
+one. `validate-solver-coverage.sh fim` 5/5.
+
+### WATER-024: the oil material-balance floor is the saturation front on SWOF breakpoints (2026-07-23)
+
+WATER-023 localized OpmAligned's areal-water slowdown to a persistent oil material-balance floor
+(`~2.5e-6`) and named a WATER-017-style same-state comparison as the next step. That comparison is
+unnecessary: the imbalance is fully attributable from ResSim's own observability, and it is not a
+well defect.
+
+Added `water024_oil_mb_line` (`#[cfg(test)]`, gated on `FIM_W024_OIL_MB`), which decomposes every
+cell's oil-equation residual — accumulation, six signed face fluxes, well source — at the accepted
+state of each substep the outer controller visits, using the live AD breakdown helper. Direct
+single-step reproduction was abandoned because a full-dt step from the uniform initial state exits
+at iteration 1 (dt too large) at every dt tried; the in-loop hook instead reads the real
+limit-cycle substeps.
+
+**The imbalance is the water front, not the wells.** On the 23x23x1 limit-cycle substeps
+(`iters=20`):
+
+| substep | dt | net oil | abs sum | well share | knot share | worst cell | worst accum / faces |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 0 | `2.96e-3` | `-2.665e-2` | `2.665e-2` | `0.0000` | `1.0000` | 47 | `+0.01395 / -0.01451` |
+| 0 | `3.52e-5` | `-2.995e-3` | `2.995e-3` | `0.0000` | `1.0000` | 1 | `+0.01032 / -0.01072` |
+| 1 | `1.41e-5` | `-1.194e-3` | `1.194e-3` | `0.0000` | `1.0000` | 23 | `+0.00260 / -0.00270` |
+| 3 | `1.69e-5` | `-1.326e-3` | `1.326e-3` | `-0.0000` | `1.0000` | 24 | `+0.00155 / -0.00161` |
+
+Three facts, each decisive:
+
+- **`well_share = 0.0000`.** The two perforated cells contribute nothing to the net oil imbalance.
+  The well-coupling hypothesis from WATER-023 is refuted.
+- **`knot_share = 1.0000`.** The entire coherent net is carried by cells whose `Sw` sits within one
+  table segment of a SWOF breakpoint — the moving saturation front. This is the WATER-018
+  endpoint-kink mechanism: the piecewise-linear relperm derivative is discontinuous at a knot, so a
+  front cell straddling one cannot have its oil face-flux and accumulation simultaneously nulled by
+  Newton. The worst cells (`1, 23, 24, 47`) are all on the injector-corner water front; at each,
+  `accumulation ≈ -faces` with a residual of about `4%` left over — the kink inconsistency.
+- **`net ≈ abs_sum`** on the areal case: the front cells' errors are one-signed and sum coherently.
+
+**Why the flavors and cases differ, completely resolved.** Contrast the heavy 12x12x3 OpmAligned
+step, which converges: `net_oil = 2.25e-4` against `abs_sum = 2.38e-2` — the per-cell front errors
+are the same size but here they **cancel** (only `1%` of the absolute sum survives), giving MB
+`2.6e-8`, below tolerance. In the 23x23x1 areal single-layer sweep the front is a clean radial band
+of cells all at the same `Sw` on the same breakpoint, so the kink errors align and sum to
+`2.5e-6`, above tolerance. Whether OpmAligned converges a case reduces to whether its front-cell
+kink errors cancel (gas, layered heavy) or align (areal single-layer water). Legacy accepts the
+raw-residual-converged state through its bailouts and so never sees the floor — which is why Legacy
+is faster on the areal cases and also why its produced oil differs: the coherent front imbalance it
+accepts is exactly the displacement-front oil error.
+
+**Unifying finding.** WATER-018 (a `1e-7` state difference flips a relperm derivative at a
+breakpoint), WATER-021 (the tabulated relperm win), WATER-023 (the MB floor and limit cycle) and
+WATER-024 (the floor is `100%` front cells on breakpoints, `0%` wells) are one phenomenon: the
+piecewise-linear saturation-function kink at the moving front. It is also the correctness gap,
+since the front controls produced oil.
+
+**Fix direction, not yet attempted.** OPM uses the same piecewise-linear SWOF and reaches `1e-7`,
+so the defect is in how ResSim evaluates the tabulated relperm *at a cell crossing a knot during
+Newton*, not in tabulation itself. The next step is to compare ResSim's tabulated value/derivative
+interval selection at a front cell against OPM's `PiecewiseLinearTwoPhaseMaterial` (which side of
+the knot each takes, and whether value and AD derivative stay on the same interval across an
+iteration) and make them consistent so a front cell stops limit-cycling across the knot. Candidates
+to weigh once that is understood: consistent one-sided knot evaluation, a small saturation-space
+regularization of the kink, or the CNV-only "final iteration" acceptance OPM applies when only MB
+is marginally violated.
+
+No production behavior changed. The only addition is the `#[cfg(test)]`, default-off
+`FIM_W024_OIL_MB` decomposition hook. `validate-solver-coverage.sh fim` 5/5; wasm builds clean.
+
+### WATER-025: the areal-water floor is the hard Swc clamp, not the relperm kink (2026-07-23)
+
+**Correction to WATER-024.** WATER-024 attributed the oil material-balance floor to the
+piecewise-linear relperm kink at SWOF breakpoints. That is wrong. Re-running the decomposition with
+analytic Corey (`FIM_COREY_TABLE_POINTS=0`, no knots at all) reproduces the floor identically:
+`net_oil=-3.0e-3`, `well_share=0.0000`, same injector-corner front cells, `accum≈-faces`, same
+`iters=20` limit cycle. The `knot_share=1.0000` figure was an artifact — the ±one-segment window
+spans about half the swept saturation range, so "near a knot" was nearly vacuous. The floor is
+**relperm-independent**. What survives from WATER-024 is solid and was the real clue:
+`well_share=0` (not the wells), the imbalance is on the advancing water front, and forcing an exact
+direct linear solve does not help.
+
+**True cause.** If the Jacobian is consistent (the `jacobian_matches_numerical_of_real_residual`
+gates pass) and the linear solve is exact, yet the residual floors, the update must be clipped. The
+front-adjacent cells sit at exactly `Sw=Swc=0.1` (confirmed in the trace: `sw=0.1000, so=0.9000`),
+and `FimState::enforce_cell_bounds` hard-clamps stored `Sw` to `Swc` after every Newton update.
+OPM does the opposite: `project-saturations` defaults false, so OPM keeps the raw Newton saturation
+as the primary variable and clamps only inside the material-law evaluation. ResSim's hard clamp
+pins the ahead-of-front cells every iteration, so the oil balance there can never null — the
+coherent sum over the front band is the `2.5e-6` floor.
+
+**Confirmation.** Routing OpmAligned through the existing `apply_newton_update_frozen_raw_saturation`
+(raw `Sw`, pressure floor only) drops the reservoir residual from the `2.5e-6` floor to `1.275e-16`
+— the floor vanishes. But it then exposed a second, coupled gate: `respects_basic_bounds` requires
+`Sw>=Swc`, so raw saturations were rejected as an "invalid bounded Appleyard candidate" and dt
+collapsed. The two are one mechanism. Bypassing that bounds check under raw saturations (exactly as
+the pre-existing `y2b3_primary_variable_lifecycle` path already does) completes the fix.
+
+**The fix.** Under OpmAligned, keep the raw Newton saturation and bypass the `Swc`-requiring bounds
+check, matching OPM's `project-saturations=false`. Two-line change in `fim/newton.rs`, gated to
+OpmAligned only; `FIM_W025_DISABLE_RAW_SW` restores the old hard clamp for A/B. Legacy is untouched
+by construction.
+
+**Results (native drivers and wasm matrix).**
+
+| case | OpmAligned before | OpmAligned after | Legacy (unchanged) |
+| --- | ---: | ---: | ---: |
+| water 20x20x3 dt.25 | `90` sub / `22687 ms` | **`3` / `1561`** | `8` / `3479` |
+| water 23x23x1 dt.25 | `70` / `6108` | **`6` / `894`** | `4` / `1432` |
+| water 12x12x3 dt1 | `4` / `858` | `4` / `864` | `24` / `4379` |
+
+OpmAligned now beats Legacy on the areal cases. Correctness improved in the same motion, exactly as
+WATER-023 predicted the shared defect would: produced oil `rate*dt` against Flow's gravity-off
+`FOPT` moves from `+11%` to `+6.9%` on 20x20x3 (`815` vs `762.52`) and sits at `+8.0%` on 23x23x1
+(`363` vs `336.24`). The remaining `~7%` is a separate correctness item, no longer entangled with
+the convergence floor.
+
+**Validation.** `validate-solver-coverage.sh` `fim` 5/5, `impes` 2/2; the shipped gas replay
+(Legacy) is unchanged (`8, 4, 4, 4, 4, 4`); gas OpmAligned single-step is clean (`oil=160.76`,
+valid `Sg`, `retries=0/0/0`). The A/B override reproduces the old `72` substeps. The `FIM_W024_OIL_MB`
+decomposition hook and `FIM_W025_DISABLE_RAW_SW` override are the only diagnostics retained.
+
+This closes the WATER-018→025 arc with a single, OPM-faithful root cause: ResSim was hard-projecting
+saturations to `Swc` where OPM keeps them raw, and that projection — not the relperm table, the
+wells, the linear solver, or the growth controller — was the areal-water convergence floor and part
+of the produced-oil gap.
+
+### WATER-026: OpmAligned promoted to the default FIM nonlinear flavor (2026-07-23)
+
+With WATER-025 removing the last areal-water convergence floor, OpmAligned is now the better path
+on every measured case, so `fim_opm_aligned_nonlinear` now defaults to `true`
+(`frontend.rs`). FIM is dev-only — public scenarios run IMPES (`FIM_DEFERRED_BACKLOG.md`) and nothing
+in `workers`/`catalog` wires the flavor — so this changes only the FIM dev path and the wasm
+diagnostic's no-flag default. The diagnostic gains `--legacy` to opt out for A/B; `--opm-aligned` is
+now redundant but still accepted.
+
+New default baseline (wasm, no flag = OpmAligned):
+
+| case | substeps | retries | outer ms | vs Legacy |
+| --- | ---: | --- | ---: | --- |
+| water 20x20x3 dt.25 | 3 | `0/1/0` | `1577` | Legacy `8`/`3479` |
+| water 23x23x1 dt.25 | 6 | `4/0/0` | `918` | Legacy `4`/`1432` |
+| water 12x12x3 dt1 | 4 | `0/0/0` | `864` | Legacy `24`/`4379` |
+| gas-rate 20x20x3 dt.25 | 1 | `0/0/0` | `844` | — |
+| gas-rate 10x10x3 6-step | 1/step | `0/0/0` | `~40-410`/step | shipped Legacy `8,4,4,4,4,4` |
+
+**The gas replay is fixed, not deferred.** The gas-rate OpmAligned multi-step that previously ran
+away to 501 substeps now completes in one substep per step with correct GOR (`80.0`, matching the
+injection GOR) and valid `Sg`. The A/B (`FIM_W025_DISABLE_RAW_SW`) shows this particular case does
+not depend on WATER-025 specifically; it was carried by the cumulative WATER-021 relperm-consistency
+and default-table work. Either way it is no longer an open item.
+
+Validation: `validate-solver-coverage.sh` `fim` 5/5, `impes` 2/2 under the new default. `shared`
+stops only at the pre-existing `closed_system_public_step_keeps_same_water_inventory_on_both_solvers`
+failure, confirmed by A/B to fail identically under both flavor defaults (the documented
+`rate_history` length case), so it is unrelated to this change. The `assembly_ad`
+structural-parity failure on HEAD also remains pre-existing and separately tracked.

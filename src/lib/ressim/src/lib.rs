@@ -77,6 +77,18 @@ impl FluidProperties {
     }
 }
 
+/// Knot count for the FIM path's OPM-style tabulated relative permeability.
+///
+/// OPM never evaluates an analytic relperm law: it interpolates a piecewise-linear SWOF table, so
+/// its Newton system sees no relperm curvature. ResSim samples its own Corey curves at this many
+/// knots across `[s_wc, 1 - s_or]` and interpolates linearly, reproducing that treatment without
+/// changing the user-facing Corey parameters.
+///
+/// `21` is the centre of the measured `13..33` plateau (`FIM-RELPERM-001`, worklog "WATER-020").
+/// Substep count versus knot count is chaotic outside that band, exactly as the `k`-sweep was in
+/// `FIM-DAMP-004`, so this value must be re-derived from a fresh sweep rather than nudged.
+pub const DEFAULT_FIM_COREY_TABLE_POINTS: usize = 21;
+
 #[wasm_bindgen]
 pub struct ReservoirSimulator {
     nx: usize,
@@ -147,6 +159,9 @@ pub struct ReservoirSimulator {
     /// frozen, matching both OPM's tabulated law and ResSim's scalar derivative API. Default
     /// false preserves the production trajectory while the complete FIM lifecycle is measured.
     pub(crate) fim_opm_endpoint_relperm: bool,
+    /// Knot count for the OPM-style tabulated Corey relperm used by the FIM path; 0 selects the
+    /// historical analytic evaluation. See [`DEFAULT_FIM_COREY_TABLE_POINTS`].
+    pub(crate) fim_corey_table_points: usize,
     /// WATER-005 native-only replay of the corrected water-heavy deck's rounded SWOF table.
     /// This is deliberately diagnostic-only: it replaces the two-phase Corey property values
     /// and AD slopes together for every FIM mobility consumer, while default false preserves the

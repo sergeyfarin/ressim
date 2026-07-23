@@ -140,15 +140,45 @@ impl ReservoirSimulator {
             };
         }
 
-        let (krw, kro) = if self.fim_opm_water_heavy_swof {
-            self.scal.water_heavy_swof_replay(sw)
-        } else {
-            (self.scal.k_rw(sw), self.scal.k_ro(sw))
-        };
+        let (krw, kro) = self.fim_two_phase_relperm(sw);
         PhaseMobilities {
             water: krw / self.get_mu_w(pressure_bar),
             oil: kro / self.get_mu_o_for_rs(pressure_bar, rs_sm3_sm3),
             gas: 0.0,
+        }
+    }
+
+    /// Two-phase `(k_rw, k_ro)` for the FIM path, honouring the tabulated-relperm setting.
+    ///
+    /// Every FIM consumer of two-phase relative permeability must go through this and
+    /// [`Self::fim_two_phase_relperm_derivatives`], so the reservoir residual, the well-state
+    /// helpers and the Newton damping all evaluate the same model. Mixing a tabulated reservoir
+    /// with analytic wells or an analytic fractional-flow chop leaves the accepted state
+    /// satisfying neither model - see the worklog's "WATER-020 promotion attempt".
+    pub(crate) fn fim_two_phase_relperm(&self, sw: f64) -> (f64, f64) {
+        if self.fim_opm_water_heavy_swof {
+            self.scal.water_heavy_swof_replay(sw)
+        } else if self.fim_corey_table_points > 0 {
+            self.scal.corey_table(sw, self.fim_corey_table_points)
+        } else {
+            (self.scal.k_rw(sw), self.scal.k_ro(sw))
+        }
+    }
+
+    /// Saturation derivatives matching [`Self::fim_two_phase_relperm`].
+    pub(crate) fn fim_two_phase_relperm_derivatives(&self, sw: f64) -> (f64, f64) {
+        if self.fim_opm_water_heavy_swof {
+            // Slope of the rounded deck table's active segment, by the same one-sided rule the
+            // value path uses.
+            let h = 1e-7;
+            let (krw_hi, kro_hi) = self.scal.water_heavy_swof_replay(sw + h);
+            let (krw_lo, kro_lo) = self.scal.water_heavy_swof_replay(sw - h);
+            ((krw_hi - krw_lo) / (2.0 * h), (kro_hi - kro_lo) / (2.0 * h))
+        } else if self.fim_corey_table_points > 0 {
+            self.scal
+                .corey_table_derivatives(sw, self.fim_corey_table_points)
+        } else {
+            (self.scal.d_k_rw_d_sw(sw), self.scal.d_k_ro_d_sw(sw))
         }
     }
 
@@ -190,6 +220,9 @@ impl ReservoirSimulator {
 
         let (krw, kro) = if self.fim_opm_water_heavy_swof {
             self.scal.water_heavy_swof_replay_generic(sw)
+        } else if self.fim_corey_table_points > 0 {
+            self.scal
+                .corey_table_generic(sw, self.fim_corey_table_points)
         } else if self.fim_opm_endpoint_relperm {
             (
                 self.scal.k_rw_endpoint_clipped_generic(sw),

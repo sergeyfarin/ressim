@@ -100,6 +100,8 @@ Options:
   --control <mode>          pressure | rate
   --gravity <bool>          true | false
   --capillary <bool>        true | false
+  --corey-table-points <n>  evaluate relperm from an n-knot piecewise-linear table sampled
+                            from the Corey curves (OPM's SWOF representation); omit for analytic
   --diagnostic <mode>       quiet | summary | outer | step
   --checkpoint-in <file>    Load simulator state checkpoint before running
   --checkpoint-out <file>   Save simulator state checkpoint after the run
@@ -107,6 +109,7 @@ Options:
   --checkpoint-dir <dir>    Directory used with --checkpoint-every
   --json                    Emit final JSON summary to stdout (default true)
   --no-json                 Suppress final JSON summary
+  --legacy                  use the Legacy nonlinear flavor (OpmAligned is now the default)
   --opm-aligned             Bundle N dev flag: OPM-aligned nonlinear layer (per-cell chopping)
   --nested-well-solve       Bundle W dev flag: converged per-well inner Newton solve
   --true-fgmres             Y2d5 dev flag: corrected right-preconditioned flexible GMRES
@@ -249,8 +252,15 @@ function parseArgs(argv) {
       case '--opm-aligned':
         options.opmAligned = true;
         break;
+      case '--legacy':
+        options.legacy = true;
+        break;
       case '--nested-well-solve':
         options.nestedWellSolve = true;
+        break;
+      case '--corey-table-points':
+        options.coreyTablePoints = Number.parseInt(next, 10);
+        index += 1;
         break;
       case '--true-fgmres':
         options.trueFgmres = true;
@@ -691,11 +701,18 @@ async function main() {
   const sim = new ReservoirSimulator(options.nx, options.ny, options.nz, 0.2);
   options.presetConfig.configure(sim, options);
   sim.setFimEnabled(options.solver === 'fim');
-  if (options.opmAligned) {
+  // OpmAligned is the default flavor (WATER-026). --legacy opts out for A/B; --opm-aligned is
+  // accepted for backward compatibility and is now redundant.
+  if (options.legacy) {
+    sim.setFimOpmAlignedNonlinear(false);
+  } else if (options.opmAligned) {
     sim.setFimOpmAlignedNonlinear(true);
   }
   if (options.nestedWellSolve) {
     sim.setFimNestedWellSolve(true);
+  }
+  if (options.coreyTablePoints) {
+    sim.setFimCoreyTablePoints(options.coreyTablePoints);
   }
   if (options.trueFgmres) {
     sim.setFimTrueFgmres(true);

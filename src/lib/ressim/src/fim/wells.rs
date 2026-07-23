@@ -865,21 +865,23 @@ fn local_phase_sensitivity(
     let derived = state.derive_cell(sim, cell_idx);
     let saturated = cell.regime == HydrocarbonState::Saturated;
 
+    // Two-phase relperm and its derivative come from the shared FIM accessor so this well-state
+    // path evaluates the same model as the reservoir residual (WATER-020).
     let krw = if sim.three_phase_mode {
         sim.scal_3p
             .as_ref()
             .map(|rock| rock.k_rw(cell.sw))
-            .unwrap_or_else(|| sim.scal.k_rw(cell.sw))
+            .unwrap_or_else(|| sim.fim_two_phase_relperm(cell.sw).0)
     } else {
-        sim.scal.k_rw(cell.sw)
+        sim.fim_two_phase_relperm(cell.sw).0
     };
     let dkrw_dsw = if sim.three_phase_mode {
         sim.scal_3p
             .as_ref()
             .map(|rock| rock.d_k_rw_d_sw(cell.sw))
-            .unwrap_or_else(|| sim.scal.d_k_rw_d_sw(cell.sw))
+            .unwrap_or_else(|| sim.fim_two_phase_relperm_derivatives(cell.sw).0)
     } else {
-        sim.scal.d_k_rw_d_sw(cell.sw)
+        sim.fim_two_phase_relperm_derivatives(cell.sw).0
     };
 
     let (kro, dkro_dsw, dkro_dsg, krg, dkrg_dsg) = if sim.three_phase_mode {
@@ -896,8 +898,8 @@ fn local_phase_sensitivity(
             })
             .unwrap_or_else(|| {
                 (
-                    sim.scal.k_ro(cell.sw),
-                    sim.scal.d_k_ro_d_sw(cell.sw),
+                    sim.fim_two_phase_relperm(cell.sw).1,
+                    sim.fim_two_phase_relperm_derivatives(cell.sw).1,
                     0.0,
                     0.0,
                     0.0,
@@ -905,8 +907,8 @@ fn local_phase_sensitivity(
             })
     } else {
         (
-            sim.scal.k_ro(cell.sw),
-            sim.scal.d_k_ro_d_sw(cell.sw),
+            sim.fim_two_phase_relperm(cell.sw).1,
+            sim.fim_two_phase_relperm_derivatives(cell.sw).1,
             0.0,
             0.0,
             0.0,

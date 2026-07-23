@@ -1,0 +1,122 @@
+-- ============================================================================
+-- ResSim/OPM FIM-DIAG-003 D3 parity deck: water-heavy-step1
+-- Mirrors:
+--   cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+--     repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored --nocapture
+-- (the FIM-DIAG-002/Bundle W/FIM-DIAG-003 heavy-case re-baseline driver,
+-- fim/timestep.rs). Adapted from opm/reference-decks/water-medium-step1
+-- (origin/fim-opm-continuation-plan) with DIMENS 12x12x3, TSTEP 1.0, and
+-- ResSim well radius 0.1. Eclipse COMPDAT specifies well DIAMETER, so the
+-- matching deck value is 0.2.
+-- ============================================================================
+
+RUNSPEC
+
+TITLE
+   water-pressure 22x22x1 dt=0.25d (WATER-022 control reference)
+
+DIMENS
+   22 22 1 /
+
+OIL
+WATER
+
+METRIC
+
+START
+   1 'JAN' 2024 /
+
+WELLDIMS
+   2 1 1 2 /
+
+TABDIMS
+   1 1 9 9 1 1 /
+
+UNIFOUT
+
+GRID
+
+INIT
+
+DXV
+   22*10 /
+DYV
+   22*10 /
+DZV
+   1*1 /
+
+TOPS
+   484*1000 /
+
+PORO
+   484*0.2 /
+
+PERMX
+   484*2000 /
+PERMY
+   484*2000 /
+PERMZ
+   484*200 /
+
+PROPS
+
+DENSITY
+   800.0  1000.0  1.0 /
+
+PVTW
+   300.0  1.0  3.0E-6  0.5  0.0 /
+
+PVCDO
+   300.0  1.0  1.0E-5  1.0  0.0 /
+
+ROCK
+   300.0  1.0E-6 /
+
+SWOF
+   0.10   0.0000   1.0000   0.0
+   0.20   0.0156   0.7656   0.0
+   0.30   0.0625   0.5625   0.0
+   0.40   0.1406   0.3906   0.0
+   0.50   0.2500   0.2500   0.0
+   0.60   0.3906   0.1406   0.0
+   0.70   0.5625   0.0625   0.0
+   0.80   0.7656   0.0156   0.0
+   0.90   1.0000   0.0000   0.0
+/
+
+SOLUTION
+
+PRESSURE
+   484*300.0 /
+
+SWAT
+   484*0.1 /
+
+SUMMARY
+
+ALL
+
+SCHEDULE
+
+WELSPECS
+   'INJ'  'G' 1  1  1*  'WATER' /
+   'PRO'  'G' 22 22 1*  'OIL'   /
+/
+
+COMPDAT
+   'INJ' 1  1  1 1 'OPEN' 1*  1*  0.2 /
+   'PRO' 22 22 1 1 'OPEN' 1*  1*  0.2 /
+/
+
+WCONINJE
+   'INJ' 'WATER' 'OPEN' 'BHP' 1*  1*  500.0 /
+/
+
+WCONPROD
+   'PRO' 'OPEN' 'BHP' 5*  100.0 /
+/
+
+TSTEP
+   0.25 /
+
+END

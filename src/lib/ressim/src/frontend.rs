@@ -88,13 +88,14 @@ impl ReservoirSimulator {
             last_fim_trace: String::new(),
             capture_fim_trace: false,
             fim_trace_window_active: false,
-            fim_opm_aligned_nonlinear: false,
+            fim_opm_aligned_nonlinear: true,
             fim_nested_well_solve: false,
             fim_true_fgmres: false,
             fim_flow_lifecycle: false,
             fim_flow_resv_injector: false,
             fim_force_direct_linear: false,
             fim_opm_endpoint_relperm: false,
+            fim_corey_table_points: crate::DEFAULT_FIM_COREY_TABLE_POINTS,
             fim_opm_water_heavy_swof: false,
             gas_outer_step_trial_carryover: None,
             last_fim_step_stats: None,
@@ -342,6 +343,14 @@ impl ReservoirSimulator {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn set_fim_opm_endpoint_relperm(&mut self, enabled: bool) {
         self.fim_opm_endpoint_relperm = enabled;
+    }
+
+    /// Evaluate relative permeability from a piecewise-linear table with `points` knots sampled
+    /// from ResSim's own Corey curves, the way OPM evaluates SWOF. Zero selects the historical
+    /// analytic Corey evaluation; the default is [`DEFAULT_FIM_COREY_TABLE_POINTS`].
+    #[wasm_bindgen(js_name = setFimCoreyTablePoints)]
+    pub fn set_fim_corey_table_points(&mut self, points: usize) {
+        self.fim_corey_table_points = points;
     }
 
     /// WATER-005 native-only replay of the exact rounded SWOF table in the water-heavy Flow

@@ -29,6 +29,7 @@ export const reservoirsimulator_new: (a: number, b: number, c: number, d: number
 export const reservoirsimulator_setCapillaryParams: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setCellDimensions: (a: number, b: number, c: number, d: number) => [number, number];
 export const reservoirsimulator_setCellDimensionsPerLayer: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+export const reservoirsimulator_setFimCoreyTablePoints: (a: number, b: number) => void;
 export const reservoirsimulator_setFimEnabled: (a: number, b: number) => void;
 export const reservoirsimulator_setFimNestedWellSolve: (a: number, b: number) => void;
 export const reservoirsimulator_setFimOpmAlignedNonlinear: (a: number, b: number) => void;

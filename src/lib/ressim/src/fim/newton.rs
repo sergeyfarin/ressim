@@ -640,7 +640,10 @@ fn dump_water017_ressim_state(
     let mut out = std::io::BufWriter::new(file);
 
     let n_cells = candidate.cells.len();
-    let _ = writeln!(out, "# WATER-017 ResSim applied-state dump (observation only)");
+    let _ = writeln!(
+        out,
+        "# WATER-017 ResSim applied-state dump (observation only)"
+    );
     let _ = writeln!(
         out,
         "# update_index {update_index} iteration {iteration} dt_days {dt_days:.17e} damping {damping:.17e} n_cells {n_cells}"
@@ -1035,6 +1038,13 @@ pub(crate) fn run_fim_timestep(
         opm_aligned && std::env::var_os("FIM_Y2B_RAW_SATURATION").is_some();
     #[cfg(target_arch = "wasm32")]
     let y2b3_primary_variable_lifecycle = false;
+    // WATER-025: OPM keeps the raw Newton saturation (project-saturations defaults false),
+    // clamping only in the material-law evaluation, while ResSim historically hard-clamped stored
+    // Sw to Swc after every update. That hard clamp pins ahead-of-front cells sitting on Swc and
+    // prevents the oil material balance from nulling, which is the areal-water limit cycle
+    // (worklog WATER-023/024/025). Under OpmAligned this now matches OPM by default; the env var
+    // restores the old hard clamp for A/B comparison. Legacy is unaffected.
+    let opm_raw_saturation = opm_aligned && std::env::var_os("FIM_W025_DISABLE_RAW_SW").is_none();
     let mut primary_variables_switched = vec![false; state.cells.len()];
 
     if y2b3_primary_variable_lifecycle {
@@ -2639,6 +2649,17 @@ pub(crate) fn run_fim_timestep(
                 &primary_variables_switched,
             );
             (candidate, Some(switched))
+        } else if opm_raw_saturation {
+            (
+                state.apply_newton_update_frozen_raw_saturation(
+                    sim,
+                    update_to_apply,
+                    damping,
+                    &topology,
+                    well_update_mode,
+                ),
+                None,
+            )
         } else {
             (
                 state.apply_newton_update_frozen(
@@ -3012,7 +3033,9 @@ pub(crate) fn run_fim_timestep(
             && damping > 0.0
             && (opm_aligned || candidate_materially_changed)
             && candidate.is_finite()
-            && (y2b3_primary_variable_lifecycle || candidate.respects_basic_bounds(sim))
+            && (y2b3_primary_variable_lifecycle
+                || opm_raw_saturation
+                || candidate.respects_basic_bounds(sim))
             // OpmAligned: the per-cell chop bounds the update by construction (§9.2 limits,
             // not the Legacy max_pressure/saturation_change options this check enforces).
             && (opm_aligned || candidate_respects_update_bounds(&state, &candidate, options));
