@@ -671,10 +671,17 @@ below is retained as Bundle N/Y history; it must not override this current seque
   Legacy on areal water. Correctness: produced oil `+11% -> +6.9%` vs Flow FOPT on 20x20x3.
   Gates: fim 5/5, impes 2/2, shipped gas replay unchanged, gas OpmAligned single-step clean.
   Default-on under OpmAligned; `FIM_W025_DISABLE_RAW_SW` reverts. Legacy untouched.
-- [ ] **Remaining correctness item: the ~7% produced-oil gap vs Flow FOPT.** No longer entangled
-  with convergence. Present on all water controls (20x20x3 +6.9%, 23x23x1 +8.0%). Attribute via a
-  proper cumulative-production comparison (well index, PVT, or endpoint treatment) against the
-  tracked Flow reference decks.
+- [x] **WATER-027 — the ~7% oil gap is ATTRIBUTED and is NOT a FIM defect 2026-07-23.** On
+  23x23x1: producer drawdown 40.40 vs Flow 37.54 (+7.6% = the oil gap); WI identical (35.89) and
+  injector uses total mobility like OPM, so it is an elevated ~3 bar pressure field voidage-coupled
+  to +8% water injection at the same BHP=500. Decisive: ResSim IMPES over-produces MORE (+12.7%)
+  than FIM (+8.0%), so it is a SHARED ResSim-vs-OPM reservoir-physics difference (pressure-volume /
+  compressibility / transmissibility candidate), with FIM closer to Flow than the shipped IMPES.
+- [ ] **CORE (not FIM): close the shared ~8-13% over-production vs OPM.** Affects IMPES more than
+  FIM, so investigate in the shared core with IMPES-vs-Flow as the primary probe. Candidates:
+  fluid/rock compressibility, transmissibility, or the absolute pressure-level (pressure-volume)
+  coupling. The FIM water-heavy OPM-parity objective is otherwise MET (convergence within 2-3x of
+  OPM after WATER-025/026).
 - [x] **OpmAligned gas replay — RESOLVED 2026-07-23 (WATER-026).** The gas-rate OpmAligned
   multi-step that previously ran away to 501 substeps now completes in 1 substep/step with correct
   GOR (80.0) and valid Sg. A/B (`FIM_W025_DISABLE_RAW_SW`) shows it did not depend on WATER-025

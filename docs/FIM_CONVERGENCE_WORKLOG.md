@@ -5884,3 +5884,35 @@ stops only at the pre-existing `closed_system_public_step_keeps_same_water_inven
 failure, confirmed by A/B to fail identically under both flavor defaults (the documented
 `rate_history` length case), so it is unrelated to this change. The `assembly_ad`
 structural-parity failure on HEAD also remains pre-existing and separately tracked.
+
+### WATER-027: the ~7% oil gap is a shared reservoir-physics difference, not a FIM defect (2026-07-23)
+
+Attributed the residual produced-oil gap that survived WATER-025. Using the instrumented Flow
+binary on the gravity-matched 23x23x1 deck and the ResSim WATER-017 dump, at the same 0.25-day step:
+
+| quantity | Flow | ResSim FIM (OpmAligned) |
+| --- | ---: | ---: |
+| producer cell 528 pressure | `137.54` bar | `140.40` bar |
+| producer drawdown (`p-BHP`) | `37.54` | `40.40` (`+7.6%`) |
+| FOPR / oil rate | `1344.97` | `1451.99` (`+8.0%`) |
+| water injection rate | `1343.8` | `1453.85` (`+8.2%`) |
+| injector cell 0 `Sw` / `p` | `0.730` / `471.1` | `0.827` / `475.6` |
+
+The chain is closed and voidage-consistent: the producer sits at `Sw≈0.1` (`kro≈1`) in both engines,
+the Peaceman well index is identical (`35.89`; `35.89 × 1.0 × 37.54 = 1347 ≈ FOPR`), and ResSim's
+injector uses total mobility exactly as OPM does (`injector_connection_mobility`, verified). So the
+`+8%` oil is neither a well-index nor a mobility-convention difference — it is a `~3 bar` elevated
+pressure field, voidage-coupled to the water injector taking `~8%` more water at the same `BHP=500`.
+
+**The discriminator: it is not FIM.** The same deck through ResSim's separately-validated IMPES
+solver over-produces even more — oil `1515.44`, `+12.7%` vs Flow. Both ResSim solvers over-produce;
+FIM (`+8%`) is actually closer to Flow than the shipped IMPES path (`+12.7%`). The gap is therefore
+a shared ResSim-vs-OPM reservoir-physics difference — a candidate is the pressure-volume coupling
+(fluid/rock compressibility or transmissibility) that sets the absolute pressure level — and it
+affects IMPES more than FIM. Chasing the FIM solver will not close it; the FIM convergence work is
+done here, and this is a model-level item for the shared core.
+
+Verdict: **the FIM water-heavy OPM-parity objective is met.** Convergence is within `2-3x` of OPM
+on the water controls after WATER-025/026, and the remaining produced-oil difference is a shared
+core-physics item, not a FIM defect. No code changed for this attribution; it is analysis of the
+WATER-017 dumps and the IMPES comparison.
