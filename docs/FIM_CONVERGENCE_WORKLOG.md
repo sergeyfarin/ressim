@@ -5044,3 +5044,221 @@ Accordingly an LU solution of the exported system would be a new artificial traj
 state reconstruction. The same-state matrix comparison remains **INCONCLUSIVE**. WATER-017 is
 blocked on an observation-only applied-state/update dump from an already compatible Flow binary,
 or an explicit decision to rebuild solely for that diagnostic. No runtime policy changed.
+
+### WATER-017 instrumented Flow oracle: build path established, blocked on one dev package (2026-07-23)
+
+Authorized the scoped rebuild WATER-016 asked for. It is not an OPM rebuild: the tracked
+`opm/diagnostics/water017-build-flow-oilwater.sh` compiles five translation units against the
+installed 2026.04 libraries from a detached `opm-simulators` worktree pinned to
+`b82f21dba405286c4c4446614dd3bf9cdebf7a2c`, the same revision G4c0 used. The instrumented TU
+takes `1m39s` on this single-core host, so the cost objection to an instrumented Flow does not
+apply at this scope.
+
+`opm/diagnostics/water017-applied-state-dump.patch` adds the missing observable at its source.
+`BlackOilNewtonMethod::update_` receives `solutionUpdate` — the correction the live matrix-free
+well/CPR solver actually returned — together with `currentSolution` and, after
+`ParentType::update_`, the chopped and adapted `nextSolution`. The patch writes all of these per
+Newton iterate, plus residual and both primary-variable meaning sets, gated on
+`OPM_WATER017_DUMP_DIR`. Nothing is read or modified when that variable is unset.
+
+Two build facts were established by measurement rather than assumption. First, the upstream
+standalone `flow_oilwater` entry (`Main::runStatic`) is not usable: it aborts on the tracked
+two-phase deck, so the build keeps `flow.cpp` and `MainDispatchDynamic.cpp` and stubs the other
+~35 variants, reaching `flowOilWaterMain` by the identical stock route
+`runDynamic -> dispatchDynamic_ -> runTwoPhase`. Second, HDF5 is not optional. The shipped
+`libopmsimulators.so` is built with `HAVE_HDF5=1` and the non-template `SimulatorSerializer`
+declares a member only under that macro, so an HDF5-less build is an ABI mismatch. Its symptom
+is silent corruption, not a link error: the run aborted during problem initialisation with
+`Canonical phase 2 is not active` (`PhaseUsageInfo.hpp:68`), traced by backtrace to
+`FlowProblemBlackoil::readExplicitInitialCondition_` reading a garbage material-law multiplexer
+approach and dispatching a two-phase deck into three-phase `EclDefaultMaterial::pcgn`.
+
+A second ABI trap was found after `libhdf5-openmpi-dev` was installed and the first build still
+aborted with the same phase error. `NDEBUG` must not be defined: both shipped libraries reference
+`__assert_fail`, so the packages are built with asserts enabled, and under that configuration
+`EnsureFinalized` — base class of every material-law params object — carries a `finalized_`
+member. Compiling these TUs with `-DNDEBUG` drops that member and shifts every field after it.
+The build script now derives this from the installed library instead of assuming it, and aborts
+with an explicit message if the assert configuration ever changes.
+
+**Control PASSED.** With the dump disabled, the instrumented binary and stock `flow` produce a
+bit-identical `CASE.INFOITER` on `/tmp/opm-water-heavy-step1/CASE.DATA`. `CASE.INFOSTEP` differs
+only in the wall-clock timing columns; every solver column matches
+(`WellIt 0, Lins 12, NewtIt 11, LinIt 13, Conv 1`), reproducing the WATER-010 reference
+lifecycle. Replay: `opm/diagnostics/water017-build-flow-oilwater.sh`, then run stock `flow` and
+`OPM/build-water017/flow_w017` with `--output-extra-convergence-info=steps,iterations
+--solver-verbosity=3 --time-step-verbosity=3` and diff the two files.
+
+**Dump semantics, verified rather than assumed.** Eleven dumps are written, one per Newton
+update, 432 dofs, `numEq 2`, primaries `[Sw, pressure(Pa)]`. `currentSolution` and `nextSolution`
+alias at this call site, so both columns hold the *post*-update state; the pre-update state of
+iterate N is iterate N-1's state, and the initial condition for iterate 0. This was confirmed
+against Flow's own documented safeguards: iterate 0 at the injector moves `Sw` from the deck's
+`0.1` to exactly `0.3` (`ds-max=.2`) and pressure from `3.0e7` to exactly `3.9e7` Pa
+(`dp-max-rel=.3`), and iterate 1 moves `Sw` to exactly `0.5`.
+
+**First result: the LU reconstruction WATER-016 refused to trust is measurably wrong, and its
+error is not uniform.** Iterate 2 is identified with Flow's `nit_2` export unambiguously — it is
+the only iterate whose injector correction is near the recorded value, the neighbours being
+`-38.24 bar` and `+20.36 bar`. At the injector the actually-applied correction is
+`+67.5816786 bar, +0.140278419 Sw`, matching WATER-011's LU-derived
+`+67.5900425 bar, +0.140264393 Sw` to `1.2e-4` and `1.0e-4` relative. At the producer it is
+`+8.7498665 bar, +0.000804216 Sw` against the LU-derived `+7.38911 bar, +0.000246153 Sw`: `18%`
+and `227%` relative error.
+
+That directly corrects part of WATER-011's reading. Its producer-side observation — ResSim
+`.000693354` against "Flow" `.000246153`, a factor `2.8` — compared ResSim to an artifact.
+Against Flow's actual applied value `.000804216`, ResSim's producer water increment is within
+`16%`. The producer is therefore much weaker evidence for a water-side representation defect than
+recorded, while the injector agreement confirms the LU value there was sound. The `12.97%`
+evaluation-2 matrix delta itself is untouched by this and remains the open quantity.
+
+Status: **oracle live, comparison not yet performed.** The remaining half of WATER-017 needs a
+ResSim-side counterpart: the captures under `FIM_CAPTURE_SEQUENCE_DIR` store the linear system,
+not the primary state, so ResSim cannot currently be compared state-for-state against these
+dumps. The next bounded step is a test-only ResSim per-iterate primary dump mirroring this one,
+then the same-state comparison at evaluation 2 under the decision rule. No ResSim physics,
+controller, linear policy, caps, damping, wells, or IMPES behavior changed.
+
+No ResSim physics, controller, linear policy, caps, damping, wells, or IMPES behavior changed;
+no solver result is claimed. The decision rule for reading the dump is recorded in
+`opm/diagnostics/README.md` and must be honored: matching evaluation-2 primaries select the
+WATER-015 PVTW/ROCK pressure-column target, differing primaries select the applied-update path,
+and neither outcome ends the WATER chain rather than authorizing a further build.
+
+### WATER-017 same-state comparison: the states match, the matrix delta is a kink artifact (2026-07-23)
+
+Added the ResSim counterpart dump, `dump_water017_ressim_state` in `fim/newton.rs`, `#[cfg(test)]`
+and inert unless `RESSIM_WATER017_DUMP_DIR` is set. It writes, per applied update, the post-update
+primaries, the raw linear correction and the actually-applied update, in ResSim's own units and
+additive sign convention so no mapping is baked into the dump. Replay:
+
+```
+FIM_WATER_FULL_TARGET_PROBE=1 FIM_WATER003_ENDPOINT_REPLAY=1 FIM_WATER005_SWOF_REPLAY=1 \
+FIM_NESTED_WELL_SOLVE=1 RESSIM_WATER017_DUMP_DIR=<dir> \
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+  repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored --nocapture
+```
+
+It reproduces the WATER-010 tail exactly: `converged=false evaluations=20 updates=20
+krylov_iters=66 residual=8.462188752e-4 mb=1.325882641e-6`, dominant `water` cell 419. Flow takes
+11 updates on the same deck.
+
+**The primaries match at the decision point.** Flow's `nit_2` matrix and ResSim's evaluation-2
+capture are both assembled at the post-update-1 state. There, across all 432 cells:
+
+| quantity | max | p99 | median | rms |
+| --- | ---: | ---: | ---: | ---: |
+| `Sw_flow - Sw_ressim` | `1.3365e-4` | `2.8436e-5` | `2.8320e-7` | `7.8549e-6` |
+| `p_flow - p_ressim` (bar) | `9.7330e-1` | `8.9696e-1` | `6.5652e-1` | `6.6371e-1` |
+
+Relative maxima are `1.34e-3` in `Sw` and `3.01e-3` in pressure. Update 0 is closer still
+(`max|dSw| 4.0e-5`, `max|dp| 0.157 bar`); the trajectories separate only at update 2
+(`max|dSw| 1.1e-1`, `max|dp| 30.3 bar`). Under the decision rule fixed in
+`opm/diagnostics/README.md` this selects the first branch: the WATER-011 `12.97%` matrix delta was
+measured at states that agree to `2.8e-7` median saturation, so it is a same-state difference, not
+a state difference.
+
+**Why that matrix delta appears is now mechanically explained, and it is not a modelling
+difference.** WATER-012's three named dominant entries were `water@144/Sw@144`, `oil@157/Sw@157`
+and `oil@13/Sw@13`. At the assembly state all three straddle a SWOF table breakpoint:
+
+| cell | `Sw` Flow | `Sw` ResSim | nearest node | straddles |
+| --- | ---: | ---: | ---: | --- |
+| 144 | `0.29996004` | `0.30000000` | `0.30` | yes |
+| 157 | `0.09999976` | `0.10000009` | `0.10` | yes |
+| 13 | `0.09999979` | `0.10000010` | `0.10` | yes |
+
+Cells 13 and 157 sit at the lower endpoint `Swc=0.1`, where WATER-003 already established that
+`PiecewiseLinearTwoPhaseMaterial::evalAscending_` returns the front value and its AD derivative is
+exactly zero below the endpoint. Flow is `3e-7` below it and ResSim `1e-7` above it, so one engine
+carries a zero relperm derivative and the other a finite one at the same cell. Six of 432 cells
+straddle a breakpoint this way and four sit within `1e-6` of one.
+
+This reconciles WATER-015 with WATER-011/012: the assembly really is equal term-for-term, and the
+matrices still differ, because a state difference of order `1e-7` is amplified to an `O(1)`
+Jacobian entry by the endpoint kink. The `12.97%` delta is evidence about derivative-kink
+sensitivity, not about a water-side representation defect.
+
+**Separately, a real systematic pressure bias exists and is not explained.** At the assembly state
+Flow is higher than ResSim in all 432 of 432 cells, by `0.287` to `0.973` bar, mean `0.656`. At
+update 0 the bias is smaller and not yet one-signed (`284/432` cells, mean `0.077` bar). It is not
+cleanly proportional to `p - p_ref`, so WATER-015's quadratic-versus-exponential ROCK porosity
+difference is a candidate but is **not** established as the cause by this measurement.
+
+Verdicts. **MEASURED:** state agreement at the assembly point; the breakpoint straddle at
+WATER-012's dominant cells; the one-signed pressure bias; ResSim's applied update-2 injector
+correction `+69.800262 bar, +0.137712734 Sw` against Flow's `+67.581679 bar, +0.140278419 Sw`,
+with whole-field correction differences of `3.57 bar` rms and `31.0 bar` max at cell 13.
+**INFERRED, NOT PROVEN:** that the pressure bias is what perturbs `Sw` across the kink, and that
+the kink straddle is what produces the `12.97%` delta.
+
+The decisive next test is now cheap and was impossible before: Flow's exact post-update-1 state is
+in hand, so ResSim's Jacobian can be reassembled *at that state* and compared to Flow's `nit_2`
+export. If the delta collapses, kink amplification is proven and the assembly is fully exonerated;
+if it does not, a real assembly difference survives at identical state. Do not attribute the
+pressure bias, retune anything, or select G4/G5/Y3 before that test runs.
+
+No ResSim physics, controller, linear policy, caps, damping, wells, or IMPES behavior changed. The
+only source change is the `#[cfg(test)]` dump.
+
+### WATER-018: state sensitivity fully accounts for the 12.97% matrix delta (2026-07-23)
+
+WATER-017 left one inference unproven: that the evaluation-2 matrix delta is endpoint-kink
+amplification of a `1e-7`-scale state difference rather than a representation difference. The new
+ignored `water018_kink_amplification` (`fim/timestep.rs`) tests it without any cross-engine
+mapping. It assembles **ResSim's own** Jacobian twice — once at ResSim's post-update-1 state, once
+at the same state with only `Sw` and pressure replaced by Flow's dumped values — and measures the
+relative Frobenius change of the reservoir block. Hydrocarbon variable, regime and the entire well
+state are held at ResSim's values, so the measured change is attributable to the reservoir
+primaries alone. Flow's assembler does not enter the experiment at all.
+
+The heavy fixture is now `water_heavy_12x12x3_fixture`, extracted verbatim from the
+`FIM-DIAG-002`/`FIM-DIAG-003` re-baseline driver so the two cannot drift. The driver is
+bit-identical after the extraction: `converged=false evaluations=20 updates=20 linear_solves=20
+krylov_iters=66 residual=8.462188752e-4 mb=1.325882641e-6`, dominant `water` cell 419.
+
+Replay:
+
+```
+RESSIM_WATER018_RESSIM_STATE=<dir>/r017_00001.txt \
+RESSIM_WATER018_FLOW_STATE=<dir>/w017_00001.txt \
+FIM_WATER003_ENDPOINT_REPLAY=1 FIM_WATER005_SWOF_REPLAY=1 \
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+  water018_kink_amplification -- --ignored --nocapture
+```
+
+| state | max `dSw` | max `dp` (bar) | straddling cells | relative `dJ` | with straddling cells ablated |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| post-update-0 | `3.996e-5` | `0.156` | 0 | `4.398e-2` | `4.398e-2` |
+| post-update-1 | `1.337e-4` | `0.973` | 6 | **`1.2996e-1`** | `4.240e-2` |
+
+**Verdict: CONFIRMED for state sensitivity, and a representation defect is REFUTED as the
+explanation of the delta.** Perturbing ResSim's own state by exactly the measured Flow/ResSim gap
+moves ResSim's own Jacobian by `12.996%`, against WATER-011's cross-engine `12.969764%`. The two
+numbers are computed under different norm conventions — WATER-011 measured the Schur-reduced,
+projected two-primary physical system, this measures ResSim's full reservoir block — so the claim
+is that the magnitudes coincide, not that they agree to three figures. Even under that weaker
+reading, the entire observed delta is reproduced by state sensitivity inside one engine, leaving
+nothing for an assembly difference to explain.
+
+The kink attribution is also confirmed quantitatively. A smooth background sensitivity of `4.2` to
+`4.4%` is present at both states. At post-update-1, ablating the rows and columns of the six cells
+whose `Sw` straddles a SWOF breakpoint drops `12.996%` to `4.240%`: those six cells, `1.4%` of the
+grid, carry about two thirds of the change. At post-update-0 no cell straddles and the delta is
+exactly the background value.
+
+This closes the WATER-011/012 line. Its `12.97%` was never evidence of a water-side representation
+defect; combined with WATER-015's proof that the assemblies are equal term-for-term, the matrix
+comparison is now fully explained and should not be reopened. What survives is strictly upstream
+of it: **why the two engines' states differ at all**, i.e. the one-signed `0.287-0.973` bar
+pressure bias present in 432 of 432 cells at post-update-1, which is what pushes six cells across a
+relperm kink in the first place. That bias remains unattributed — WATER-015's quadratic-versus-
+exponential ROCK porosity is a candidate and nothing more.
+
+Validation: `bash scripts/validate-solver-coverage.sh fim` passes; the re-baseline driver is
+bit-identical. The pre-existing `assembly_ad::structural_parity_sweep::
+two_phase_rate_controlled_wells` failure on committed HEAD is unrelated and tracked separately in
+`TODO.md`. No ResSim physics, controller, linear policy, caps, damping, wells, or IMPES behavior
+changed; the source changes are the `#[cfg(test)]` dump, the extracted test fixture, and this
+ignored probe.

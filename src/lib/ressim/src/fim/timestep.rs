@@ -3095,10 +3095,14 @@ mod phase5_repro {
     /// (`setFimNestedWellSolve`/`nested_well_solve`), independent of the trace env vars above —
     /// this is the §5 re-run vehicle for the mechanism this bundle targets, layered on the same
     /// `FIM-DIAG-002` re-baseline driver. No-op (Legacy relax path) when unset.
-    #[test]
-    #[ignore]
-    fn repro_water_pressure_12x12x3_opm_aligned_no_trace() {
-        let (nx, ny, nz, dt_days) = (12usize, 12usize, 3usize, 1.0_f64);
+    /// The heavy water fixture shared by the `FIM-DIAG-002`/`FIM-DIAG-003` re-baseline driver and
+    /// the WATER-018 same-state Jacobian probe. Extracted verbatim so the two cannot drift; it
+    /// stops before the env-gated flags, which remain the callers' own.
+    pub(super) fn water_heavy_12x12x3_fixture(
+        nx: usize,
+        ny: usize,
+        nz: usize,
+    ) -> ReservoirSimulator {
         let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.2);
         sim.set_fim_enabled(true);
         sim.set_cell_dimensions(10.0, 10.0, 1.0).unwrap();
@@ -3122,6 +3126,14 @@ mod phase5_repro {
         sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
         sim.add_well(nx - 1, ny - 1, 0, 100.0, 0.1, 0.0, false)
             .unwrap();
+        sim
+    }
+
+    #[test]
+    #[ignore]
+    fn repro_water_pressure_12x12x3_opm_aligned_no_trace() {
+        let (nx, ny, nz, dt_days) = (12usize, 12usize, 3usize, 1.0_f64);
+        let mut sim = water_heavy_12x12x3_fixture(nx, ny, nz);
         sim.set_fim_opm_aligned_nonlinear(true);
         sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
         sim.set_fim_flow_lifecycle(std::env::var_os("FIM_FLOW_LIFECYCLE").is_some());
@@ -3941,5 +3953,173 @@ mod phase5_repro {
             );
         }
         println!("Y1J elapsed_s={:.3}", start.elapsed().as_secs_f64());
+    }
+
+    /// WATER-018: does a state difference the size of the measured Flow/ResSim gap account for
+    /// the `12.97%` evaluation-2 matrix delta on its own?
+    ///
+    /// WATER-017 measured that at the state where Flow's `nit_2` and ResSim's evaluation-2
+    /// systems are assembled, the two engines' primaries agree to `1.34e-4` max / `2.83e-7`
+    /// median in `Sw` and `0.973` bar max in pressure. WATER-012's dominant matrix entries were
+    /// reservoir saturation derivatives at cells 144/157/13, all of which straddle a SWOF
+    /// breakpoint across that tiny gap — two of them at `Swc=0.1`, where Flow's
+    /// `PiecewiseLinearTwoPhaseMaterial::evalAscending_` derivative is exactly zero below the
+    /// endpoint. The inference to test is that endpoint-kink amplification, not a representation
+    /// difference, produces the delta.
+    ///
+    /// This assembles ResSim's own Jacobian twice — at ResSim's post-update-1 state, and at the
+    /// same state with only `Sw` and pressure replaced by Flow's dumped values — and measures the
+    /// relative change. Nothing about Flow's assembly enters, so this isolates state sensitivity
+    /// from any cross-engine mapping question. If a perturbation this small moves ResSim's own
+    /// matrix by a comparable fraction, the delta is accounted for without an assembly defect.
+    ///
+    /// Both dumps come from WATER-017:
+    /// ```text
+    /// RESSIM_WATER018_RESSIM_STATE=<dir>/r017_00001.txt \
+    /// RESSIM_WATER018_FLOW_STATE=<dir>/w017_00001.txt \
+    /// FIM_WATER003_ENDPOINT_REPLAY=1 FIM_WATER005_SWOF_REPLAY=1 \
+    /// cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+    ///   water018_kink_amplification -- --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore]
+    fn water018_kink_amplification() {
+        use crate::fim::state::FimState;
+
+        fn ressim_state_dump(path: &str) -> Vec<(f64, f64)> {
+            std::fs::read_to_string(path)
+                .expect("read ResSim WATER-017 dump")
+                .lines()
+                .filter(|line| !line.starts_with('#') && !line.starts_with("well"))
+                .map(|line| {
+                    let f: Vec<&str> = line.split_whitespace().collect();
+                    (
+                        f[1].parse::<f64>().expect("p_bar"),
+                        f[2].parse::<f64>().expect("sw"),
+                    )
+                })
+                .collect()
+        }
+        fn flow_state_dump(path: &str) -> Vec<(f64, f64)> {
+            std::fs::read_to_string(path)
+                .expect("read Flow WATER-017 dump")
+                .lines()
+                .filter(|line| !line.starts_with('#'))
+                .map(|line| {
+                    let f: Vec<&str> = line.split_whitespace().collect();
+                    // Flow primaries are [Sw, pressure(Pa)]; ResSim carries pressure in bar.
+                    (
+                        f[2].parse::<f64>().expect("p_pa") / 1e5,
+                        f[1].parse::<f64>().expect("sw"),
+                    )
+                })
+                .collect()
+        }
+
+        let (nx, ny, nz, dt_days) = (12usize, 12usize, 3usize, 1.0_f64);
+        let mut sim = water_heavy_12x12x3_fixture(nx, ny, nz);
+        sim.set_fim_opm_aligned_nonlinear(true);
+        sim.set_fim_opm_endpoint_relperm(
+            std::env::var_os("FIM_WATER003_ENDPOINT_REPLAY").is_some(),
+        );
+        sim.set_fim_opm_water_heavy_swof(std::env::var_os("FIM_WATER005_SWOF_REPLAY").is_some());
+
+        let previous_state = FimState::from_simulator(&sim);
+        let ressim_cells = ressim_state_dump(
+            &std::env::var("RESSIM_WATER018_RESSIM_STATE")
+                .expect("set RESSIM_WATER018_RESSIM_STATE to a WATER-017 r017_*.txt dump"),
+        );
+        let flow_cells = flow_state_dump(
+            &std::env::var("RESSIM_WATER018_FLOW_STATE")
+                .expect("set RESSIM_WATER018_FLOW_STATE to the matching WATER-017 w017_*.txt dump"),
+        );
+        assert_eq!(ressim_cells.len(), previous_state.cells.len());
+        assert_eq!(flow_cells.len(), previous_state.cells.len());
+
+        let mut ressim_state = previous_state.clone();
+        for (cell, (p, sw)) in ressim_state.cells.iter_mut().zip(&ressim_cells) {
+            cell.pressure_bar = *p;
+            cell.sw = *sw;
+        }
+        // Only the two primaries Flow actually carries are replaced. Hydrocarbon variable,
+        // regime and the entire well state are held at ResSim's own values, so any difference
+        // measured below is attributable to the reservoir primaries alone.
+        let mut flow_state = ressim_state.clone();
+        for (cell, (p, sw)) in flow_state.cells.iter_mut().zip(&flow_cells) {
+            cell.pressure_bar = *p;
+            cell.sw = *sw;
+        }
+
+        let topology = crate::fim::wells::build_well_topology(&sim);
+        let assemble = |state: &FimState| {
+            crate::fim::assembly_ad::assemble_fim_system_ad(
+                &sim,
+                &previous_state,
+                state,
+                &crate::fim::assembly::FimAssemblyOptions {
+                    dt_days,
+                    include_wells: true,
+                    assemble_residual_only: false,
+                    topology: Some(&topology),
+                    flow_resv_context: None,
+                },
+            )
+        };
+        let at_ressim = assemble(&ressim_state);
+        let at_flow = assemble(&flow_state);
+
+        let n = previous_state.cells.len();
+        let dense = |a: &sprs::CsMat<f64>| {
+            let mut m = vec![0.0; (n * 3) * (n * 3)];
+            for (value, (row, col)) in a.iter() {
+                if row < n * 3 && col < n * 3 {
+                    m[row * (n * 3) + col] += *value;
+                }
+            }
+            m
+        };
+        let (ja, jb) = (dense(&at_ressim.jacobian), dense(&at_flow.jacobian));
+        let norm = |m: &[f64]| m.iter().map(|x| x * x).sum::<f64>().sqrt();
+        let diff: Vec<f64> = ja.iter().zip(&jb).map(|(a, b)| a - b).collect();
+        let relative = norm(&diff) / norm(&ja);
+
+        // Attribute the change to the cells whose Sw straddles a SWOF breakpoint between the
+        // two engines: zero those rows/columns out of the difference and re-measure.
+        let nodes = [0.1_f64, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+        let straddling: Vec<usize> = (0..n)
+            .filter(|&c| {
+                let (fa, fb) = (flow_cells[c].1, ressim_cells[c].1);
+                nodes.iter().any(|node| (fa - node) * (fb - node) < 0.0)
+            })
+            .collect();
+        let mut without = diff.clone();
+        for &c in &straddling {
+            for k in 0..3 {
+                let idx = c * 3 + k;
+                for j in 0..n * 3 {
+                    without[idx * (n * 3) + j] = 0.0;
+                    without[j * (n * 3) + idx] = 0.0;
+                }
+            }
+        }
+        let relative_without = norm(&without) / norm(&ja);
+
+        let max_dsw = flow_cells
+            .iter()
+            .zip(&ressim_cells)
+            .map(|(f, r)| (f.1 - r.1).abs())
+            .fold(0.0_f64, f64::max);
+        let max_dp = flow_cells
+            .iter()
+            .zip(&ressim_cells)
+            .map(|(f, r)| (f.0 - r.0).abs())
+            .fold(0.0_f64, f64::max);
+        println!(
+            "WATER018 state_gap max_dsw={max_dsw:.6e} max_dp_bar={max_dp:.6e} \
+             straddling_cells={} relative_jacobian_delta={relative:.9e} \
+             relative_without_straddling_cells={relative_without:.9e}",
+            straddling.len()
+        );
+        assert!(relative.is_finite() && relative_without.is_finite());
     }
 }

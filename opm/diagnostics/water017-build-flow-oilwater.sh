@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+# WATER-017 observation-only Flow build.
+#
+# Builds an instrumented OPM Flow binary for the two-phase OIL/WATER reference deck without
+# rebuilding OPM. Only five translation units are compiled; libopmsimulators/libopmcommon/
+# libopmgrid 2026.04 are used as installed by the system packages.
+#
+# What is compiled:
+#   flow/flow.cpp                                  stock entry point (Opm::Main::runDynamic)
+#   opm/simulators/flow/MainDispatchDynamic.cpp    stock runtime dispatcher
+#   flow/flow_oilwater.cpp                         the instrumented variant TU
+#   opm/simulators/utils/moduleVersion.cpp         version strings (not in the shared library)
+#   w017_variant_stubs.cpp (generated)             the other ~35 Flow variants, stubbed
+#
+# The dispatcher is kept because it is the only route that reproduces stock behaviour: a
+# two-phase OIL/WATER deck goes Main::runDynamic -> dispatchDynamic_ -> runTwoPhase ->
+# flowOilWaterMain. The upstream standalone `flow_oilwater` entry point (Main::runStatic)
+# takes a different route and aborts on this deck, so it is deliberately not used. Every
+# other variant the dispatcher can reach is stubbed with a throwing definition, so this
+# binary is valid *only* for two-phase oil/water decks.
+#
+# The instrumentation is `water017-applied-state-dump.patch`: an env-gated dump, added to
+# BlackOilNewtonMethod::update_, of the correction the live matrix-free-well solver actually
+# applied on each Newton iterate and the post-cap/post-chop primaries it produced. With
+# OPM_WATER017_DUMP_DIR unset the dump returns immediately and the binary must reproduce
+# stock `flow` exactly. That equivalence check is the required control (see bottom).
+#
+# Usage:
+#   opm/diagnostics/water017-build-flow-oilwater.sh [build-dir]
+#
+# Prerequisites beyond libopm-simulators-dev and its dependencies:
+#   sudo apt-get install libhdf5-openmpi-dev
+#
+# ABI WARNING. These TUs are linked against prebuilt shared libraries, so every macro that
+# changes a class layout must match how those libraries were compiled. Two do, and both were
+# found the hard way. Neither fails at link time; both fail as silent memory corruption whose
+# symptom is an abort during problem initialisation with
+#   "Canonical phase 2 is not active" (PhaseUsageInfo.hpp:68)
+# because the material-law parameters read back a garbage multiplexer approach and a
+# two-phase deck is dispatched into the three-phase EclDefaultMaterial path.
+#
+#   1. NDEBUG must NOT be defined. The shipped libopmsimulators.so and libopmcommon.so both
+#      reference __assert_fail, i.e. the packages are built with asserts enabled. Under that
+#      configuration `EnsureFinalized` — the base class of every material-law params object —
+#      carries a `finalized_` member (see EnsureFinalized.hpp:38-52). Adding -DNDEBUG here
+#      removes that member from our copy of those classes and shifts every field after it.
+#   2. HAVE_HDF5=1 is required, because `SimulatorSerializer` (non-template, lives in the
+#      shared library) declares a member only under that macro
+#      (/usr/include/opm/simulators/flow/SimulatorSerializer.hpp:93).
+#
+# If this script ever aborts with the phase error again, re-derive the definition list from
+# the installed cmake target files rather than guessing, and check `nm -D ... | grep
+# __assert_fail` to confirm the assert configuration has not changed.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+OPM_ROOT="${REPO_ROOT}/OPM"
+SRC="${OPM_ROOT}/opm-simulators-2026.04"
+BLD="${1:-${OPM_ROOT}/build-water017}"
+
+# Exact reference revision: OPM release/2026.04/final, matching the installed flow 2026.04.
+# This is the same revision the G4c0 reservoir-partition oracle was built from.
+OPM_REV=b82f21dba405286c4c4446614dd3bf9cdebf7a2c
+
+if [[ ! -f /usr/include/hdf5/openmpi/hdf5.h ]]; then
+  echo "ERROR: HDF5 development headers not found (/usr/include/hdf5/openmpi/hdf5.h)." >&2
+  echo "       Install them first:  sudo apt-get install libhdf5-openmpi-dev" >&2
+  echo "       See the HDF5 note in the header of this script for why this is mandatory." >&2
+  exit 1
+fi
+
+if [[ ! -d "${SRC}" ]]; then
+  echo "== creating detached worktree of opm-simulators at ${OPM_REV}"
+  git -C "${OPM_ROOT}/opm-simulators" worktree add --detach "${SRC}" "${OPM_REV}"
+fi
+
+actual_rev="$(git -C "${SRC}" rev-parse HEAD)"
+if [[ "${actual_rev}" != "${OPM_REV}" ]]; then
+  echo "ERROR: ${SRC} is at ${actual_rev}, expected ${OPM_REV}" >&2
+  exit 1
+fi
+
+echo "== applying WATER-017 instrumentation (idempotent)"
+if git -C "${SRC}" apply --check --reverse "${REPO_ROOT}/opm/diagnostics/water017-applied-state-dump.patch" 2>/dev/null; then
+  echo "   (already applied)"
+else
+  git -C "${SRC}" apply "${REPO_ROOT}/opm/diagnostics/water017-applied-state-dump.patch"
+fi
+
+mkdir -p "${BLD}"
+
+# config.h / project-version.h / project-timestamp.h are normally generated by cmake. A full
+# cmake configure of opm-simulators additionally needs the Boost unit-test framework for its
+# test targets (which this build does not use and which is not installed), so the three
+# generated headers are written directly. The real generated config.h for this configuration
+# contains only the Boost line.
+cat > "${BLD}/config.h" <<'EOF'
+#define HAVE_DYNAMIC_BOOST_TEST 1
+EOF
+cat > "${BLD}/project-version.h" <<'EOF'
+#ifndef OPM_GENERATED_OPM_VERSION_HEADER_INCLUDED
+#define OPM_GENERATED_OPM_VERSION_HEADER_INCLUDED
+#define PROJECT_VERSION_NAME "2026.04"
+#define PROJECT_VERSION_HASH "b82f21dba"
+#define PROJECT_VERSION "2026.04 (b82f21dba)"
+#endif
+EOF
+cat > "${BLD}/project-timestamp.h" <<'EOF'
+#ifndef OPM_GENERATED_OPM_TIMESTAMP_HEADER_INCLUDED
+#define OPM_GENERATED_OPM_TIMESTAMP_HEADER_INCLUDED
+#define BUILD_TIMESTAMP "water017-diagnostic"
+#endif
+EOF
+
+# Definitions must match libopmsimulators.so's INTERFACE_COMPILE_DEFINITIONS exactly, read
+# from /usr/lib/x86_64-linux-gnu/cmake/opm-simulators/opm-simulators-targets.cmake, plus
+# HAVE_OPM_COMMON from opm-common-targets.cmake. Any mismatch is an ABI mismatch.
+DEFS=(-DHAVE_CONFIG_H -DHAVE_HDF5=1 -DHAVE_AVX2_EXTENSION=1 -DCOMPILE_GPU_BRIDGE=1
+      -DHAVE_MPI=1 -DMPI_2=1 -DHAVE_OPM_COMMON=1)
+
+# Note: grep -c, not grep -q. Under `set -o pipefail` an early-exiting `grep -q` makes nm
+# die of SIGPIPE and the whole pipeline report failure.
+assert_refs="$(nm -D /usr/lib/x86_64-linux-gnu/libopmcommon.so | grep -c __assert_fail || true)"
+if [[ "${assert_refs}" -gt 0 ]]; then
+  echo "== installed OPM libraries have asserts enabled: building without NDEBUG (required)"
+else
+  echo "ERROR: installed libopmcommon.so does not reference __assert_fail, so it was built" >&2
+  echo "       with NDEBUG. This script's ABI assumption no longer holds -- add -DNDEBUG to" >&2
+  echo "       CXXFLAGS below and re-verify. See the ABI WARNING at the top of this file." >&2
+  exit 1
+fi
+
+INCS=(
+  -I"${BLD}"
+  -I"${SRC}"
+  -I/usr/include
+  -I/usr/lib/x86_64-linux-gnu/openmpi/include
+  -I/usr/lib/x86_64-linux-gnu/openmpi/include/openmpi
+  -I/usr/include/hdf5/openmpi
+  -I/usr/include/suitesparse
+)
+# No -DNDEBUG: see the ABI WARNING at the top of this file.
+CXXFLAGS=(-std=c++20 -O2 -fopenmp)
+
+echo "== generating stubs for the Flow variants that are not built"
+{
+  echo '// Generated by water017-build-flow-oilwater.sh -- do not edit.'
+  echo '// Only the OIL/WATER variant is compiled for this diagnostic; every other variant'
+  echo '// MainDispatchDynamic can dispatch to is stubbed so the dispatcher links unchanged.'
+  echo '#include <stdexcept>'
+  echo 'namespace Opm {'
+  grep -h -oE 'int flow[A-Za-z]*Main\(int argc, char\*\* argv, bool out[a-zA-Z]*Cout, bool outputFiles\)' \
+    "${SRC}"/flow/*.hpp \
+    | sort -u \
+    | grep -v 'flowOilWaterMain(' \
+    | sed 's/$/ { throw std::runtime_error("WATER-017 build: this Flow variant was not compiled"); }/'
+  echo '}'
+} > "${BLD}/w017_variant_stubs.cpp"
+
+compile() {
+  echo "== compiling $1"
+  g++ "${CXXFLAGS[@]}" "${DEFS[@]}" "${INCS[@]}" -c "$1" -o "$2"
+}
+
+compile "${SRC}/flow/flow_oilwater.cpp"                       "${BLD}/flow_oilwater.o"
+compile "${SRC}/flow/flow.cpp"                                "${BLD}/flow_cpp.o"
+compile "${SRC}/opm/simulators/flow/MainDispatchDynamic.cpp"  "${BLD}/MainDispatchDynamic.o"
+compile "${SRC}/opm/simulators/utils/moduleVersion.cpp"       "${BLD}/moduleVersion.o"
+compile "${BLD}/w017_variant_stubs.cpp"                       "${BLD}/w017_variant_stubs.o"
+
+echo "== linking flow_w017"
+g++ -fopenmp -o "${BLD}/flow_w017" \
+  "${BLD}/flow_cpp.o" "${BLD}/MainDispatchDynamic.o" "${BLD}/flow_oilwater.o" \
+  "${BLD}/moduleVersion.o" "${BLD}/w017_variant_stubs.o" \
+  -lopmsimulators -lopmcommon -lopmgrid \
+  -ldunecommon -ldunegeometry -ldunegrid -lumfpack -lfmt \
+  -lmpi_cxx -lmpi
+
+cat <<EOF
+
+built: ${BLD}/flow_w017
+
+MANDATORY control before any dump is used as an oracle -- run the deck twice with
+OPM_WATER017_DUMP_DIR unset and require identical output:
+
+  flow CASE.DATA --output-extra-convergence-info=steps,iterations \\
+      --solver-verbosity=3 --time-step-verbosity=3
+  ${BLD}/flow_w017 CASE.DATA --output-extra-convergence-info=steps,iterations \\
+      --solver-verbosity=3 --time-step-verbosity=3
+
+  diff stock/CASE.INFOSTEP built/CASE.INFOSTEP
+  diff stock/CASE.INFOITER built/CASE.INFOITER
+
+Then produce the dump:
+
+  mkdir -p dump && OPM_WATER017_DUMP_DIR=\$PWD/dump ${BLD}/flow_w017 CASE.DATA \\
+      --output-extra-convergence-info=steps,iterations
+EOF

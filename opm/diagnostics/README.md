@@ -138,3 +138,56 @@ The G4c5 seven-system oracle has 300 coarse rows, zero ILU0/BiCGSTAB failures, m
 residual `5.197e-7`, and maximum `7.879e-7`; this is the evidence for routing exactly 300 rows away
 from dense inversion. The production six-step oracle must retain 23 updates, 55 Krylov
 iterations, and zero cuts while timing the setup improvement.
+
+## WATER-017 applied-state oracle
+
+WATER-011/012/016 all closed `INCONCLUSIVE` for one reason: Flow's MatrixMarket export contains
+only `J` and RHS, so the correction its matrix-free-well solver actually applied — and therefore
+the post-update primary state — cannot be reconstructed. `water017-applied-state-dump.patch` adds
+that missing observable directly at the source, in `BlackOilNewtonMethod::update_`
+(`opm/models/blackoil/blackoilnewtonmethod.hpp`): for every Newton iterate it writes the
+pre-update primaries, `solutionUpdate`, the post-update primaries after Flow's pressure cap and
+Appleyard saturation chop, the residual, and the primary-variable meanings on both sides.
+
+The dump is inert unless `OPM_WATER017_DUMP_DIR` names a writable directory, so an instrumented
+binary must reproduce the stock trajectory exactly. That equivalence — identical `CASE.INFOSTEP`
+and `CASE.INFOITER` against system `flow` on the same deck — is a mandatory control, not an
+optional one, and must be recorded before any dump is read as an oracle.
+
+Build with `water017-build-flow-oilwater.sh`. It does **not** rebuild OPM: it compiles five
+translation units against the installed 2026.04 libraries, from a detached `opm-simulators`
+worktree pinned to `b82f21dba405286c4c4446614dd3bf9cdebf7a2c` (the same revision G4c0 used).
+Three build facts are load-bearing and were all established the hard way:
+
+- The upstream standalone `flow_oilwater` entry point (`Main::runStatic`) is not usable — it
+  takes a different route than `flow` and aborts on the two-phase deck. The build therefore
+  keeps `flow.cpp` plus `MainDispatchDynamic.cpp`, so the deck reaches `flowOilWaterMain` by
+  the stock path `runDynamic -> dispatchDynamic_ -> runTwoPhase`, and stubs the other ~35
+  variants. The resulting binary is valid only for two-phase oil/water decks.
+- `libhdf5-openmpi-dev` is mandatory and `HAVE_HDF5=1` must be defined, because the non-template
+  `SimulatorSerializer` declares a member only under that macro
+  (`/usr/include/opm/simulators/flow/SimulatorSerializer.hpp:93`).
+- `NDEBUG` must **not** be defined. Both shipped libraries reference `__assert_fail`, i.e. the
+  packages are built with asserts enabled, and under that configuration `EnsureFinalized` — the
+  base class of every material-law params object — carries a `finalized_` member
+  (`EnsureFinalized.hpp:38-52`). The script derives this from the installed library rather than
+  assuming it.
+
+Both ABI mismatches fail silently rather than at link time, with the same symptom: an abort in
+problem initialisation with `Canonical phase 2 is not active` (`PhaseUsageInfo.hpp:68`), because
+the material-law parameters read back a garbage multiplexer approach and a two-phase deck is
+dispatched into the three-phase `EclDefaultMaterial` path.
+
+Dump semantics, verified rather than assumed: `currentSolution` and `nextSolution` alias at this
+call site, so both columns hold the *post*-update state. The pre-update state of iterate N is
+iterate N-1's state, and the initial condition for iterate 0. On the tracked deck, iterate 0 moves
+the injector from the deck's `Sw=0.1, p=3.0e7 Pa` to exactly `0.3` and `3.9e7`, matching
+`ds-max=.2` and `dp-max-rel=.3` exactly.
+
+Decision rule, fixed before the dump is read, so WATER-017 cannot become another open-ended
+diagnostic: if Flow's evaluation-2 primaries match ResSim's within tolerance, the WATER-011
+`12.97%` matrix delta is a same-state assembly/property difference and the PVTW/ROCK
+pressure-column divergence recorded in WATER-015 is the next target. If they differ, the defect
+is in the applied update itself — pressure cap, Appleyard pairing, or the correction ResSim's
+linear stack returns — and G4/G5/Y3 branch selection is premature. If neither holds, stop the
+WATER chain rather than build again.

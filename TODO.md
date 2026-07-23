@@ -496,6 +496,59 @@ below is retained as Bundle N/Y history; it must not override this current seque
   observation-only Flow state/update output. Do not substitute a LU trajectory or retune ResSim.
   A future WATER-017 needs a prebuilt Flow diagnostic capable of exporting the applied primary
   state/update, or an explicitly authorized rebuild solely to add that observation.
+- [x] **WATER-017 instrumented Flow oracle — LIVE, CONTROL PASSED 2026-07-23.**
+  `opm/diagnostics/water017-build-flow-oilwater.sh` builds five TUs against the installed
+  2026.04 libraries from a worktree pinned to `b82f21dba`; OPM itself is not rebuilt.
+  `water017-applied-state-dump.patch` dumps the correction Flow's live matrix-free-well solver
+  actually applied plus the resulting post-cap/post-chop primaries, gated on
+  `OPM_WATER017_DUMP_DIR`. Control passed: with the dump off, `CASE.INFOITER` is bit-identical to
+  stock `flow` and `CASE.INFOSTEP` differs only in timing columns
+  (`WellIt 0, Lins 12, NewtIt 11, LinIt 13, Conv 1`). Two ABI traps are documented in the script
+  and must not be re-litigated: `HAVE_HDF5=1` is required, and `NDEBUG` must NOT be defined
+  because the shipped libraries are built with asserts enabled and `EnsureFinalized` then carries
+  a `finalized_` member. Both fail silently as `Canonical phase 2 is not active`.
+- [x] **WATER-017 first result: LU-reconstructed corrections are wrong non-uniformly.** Iterate 2
+  is unambiguously Flow's `nit_2`. Injector applied `+67.5816786 bar, +.140278419 Sw` matches
+  WATER-011's LU value to `1.2e-4`/`1.0e-4`; producer applied `+8.7498665 bar, +.000804216 Sw`
+  versus LU `+7.38911 bar, +.000246153 Sw` is `18%`/`227%` off. WATER-011's producer-side
+  evidence therefore compared ResSim to an artifact: ResSim's `.000693354` is within `16%` of
+  Flow's actual `.000804216`, not a factor `2.8` away. The injector agreement stands and the
+  `12.97%` evaluation-2 matrix delta is unaffected.
+- [x] **WATER-017 comparison half — DONE 2026-07-23; states match, matrix delta is a kink
+  artifact.** Added `#[cfg(test)]` `dump_water017_ressim_state` (`fim/newton.rs`, inert unless
+  `RESSIM_WATER017_DUMP_DIR` is set) and ran the held WATER-010 direct replay, which reproduces
+  the tail exactly (`evaluations=20 updates=20 krylov_iters=66 residual=8.462188752e-4`, cell
+  419) against Flow's 11 updates. At the state where both engines assemble the compared systems,
+  `Sw` agrees to max `1.34e-4` / median `2.83e-7` and pressure to max `0.973` bar. Per the fixed
+  decision rule this refutes a state difference. WATER-012's dominant entries (cells 144/157/13)
+  all straddle a SWOF breakpoint, and 13/157 sit at `Swc=0.1` where Flow's `evalAscending_`
+  derivative is exactly zero below the endpoint — so a `3e-7` state difference flips a relperm
+  derivative between zero and finite. That reconciles WATER-015's proven assembly equality with
+  WATER-011/012's `12.97%` delta.
+- [x] **WATER-018 — DONE 2026-07-23: kink attribution CONFIRMED, WATER-011/012 line CLOSED.**
+  New ignored `water018_kink_amplification` (`fim/timestep.rs`) assembles ResSim's *own* Jacobian
+  at its own post-update-1 state and at the same state with only `Sw`/pressure replaced by Flow's
+  dumped values. Flow's assembler never enters. Relative Frobenius change `1.2996e-1` versus
+  WATER-011's cross-engine `1.2969764e-1` (different norm conventions, so: coincident magnitude,
+  not three-figure identity). Ablating the six SWOF-straddling cells drops it to `4.240e-2`;
+  post-update-0, with no straddling cell, gives the `4.398e-2` background. So six cells (`1.4%` of
+  the grid) carry two thirds of the change, and the whole cross-engine delta is reproduced by
+  state sensitivity within one engine. Do not reopen the evaluation-2 matrix comparison.
+  Heavy fixture extracted as `water_heavy_12x12x3_fixture`; the re-baseline driver is bit-identical
+  after it (`evaluations=20 updates=20 krylov_iters=66 residual=8.462188752e-4`).
+- [ ] **PRE-EXISTING RED GATE: `assembly_ad` structural parity is failing on committed HEAD
+  (`47454c9`), found 2026-07-23.** `fim::assembly_ad::structural_parity_sweep::
+  two_phase_rate_controlled_wells` fails with `row 6 column-occupancy pattern diverges
+  (legacy=[6, 8] ad=[0, 6, 8])` — the AD assembler writes a column the legacy reference does not.
+  Verified pre-existing by stashing the WATER-017 dump and rerunning; 12/13 other `assembly_ad`
+  tests pass and `validate-solver-coverage.sh fim` is 5/5, so this gate is not in that script's
+  set. Per `FIM-AD-002` the legacy assembler exists precisely as this regression net, and it is
+  the gate that historically caught the two-phase singularity and the Stone2/connection-rate
+  kinks. Reproduce: `cargo test --manifest-path src/lib/ressim/Cargo.toml two_phase_rate_controlled_wells`.
+- [ ] **WATER-019 (was WATER-018b) — now the only surviving thread: the pressure bias.** At the assembly state Flow's pressure exceeds
+  ResSim's in 432/432 cells by `0.287-0.973` bar (mean `0.656`), one-signed and not cleanly
+  proportional to `p - p_ref`. WATER-015's quadratic-vs-exponential ROCK porosity is a candidate
+  but is NOT established. Do not attribute or "fix" it before the WATER-018 test.
 - [x] **Next convergence priority: water-heavy trajectory, not another exact-gas linear tune.**
   Exact gas is now about `0.19-0.21 s` versus Flow `0.08-0.10 s` with strong same-state parity.
   The comparable water-heavy step remains about `5.8 s`/50 FIM substeps versus Flow `0.04 s`/one

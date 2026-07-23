@@ -1,0 +1,129 @@
+diff --git a/opm/models/blackoil/blackoilnewtonmethod.hpp b/opm/models/blackoil/blackoilnewtonmethod.hpp
+index fd7ba75d6..326a8b614 100644
+--- a/opm/models/blackoil/blackoilnewtonmethod.hpp
++++ b/opm/models/blackoil/blackoilnewtonmethod.hpp
+@@ -40,6 +40,11 @@
+ 
+ #include <algorithm>
+ #include <cmath>
++#include <cstddef>
++#include <cstdlib>
++#include <fstream>
++#include <iomanip>
++#include <sstream>
+ #include <vector>
+ 
+ namespace Opm::Properties {
+@@ -172,6 +177,13 @@ public:
+         }
+ 
+         numPriVarsSwitched_ = comm.sum(numPriVarsSwitched_);
++
++        // WATER-017 observation-only diagnostic. Writes the applied linear correction and
++        // the resulting post-update primaries for every Newton iterate. Inactive unless
++        // OPM_WATER017_DUMP_DIR is set, and it never modifies any solver state. Only this
++        // global overload is instrumented; the NLDD domain overload below is deliberately
++        // left untouched.
++        dumpWater017_(nextSolution, currentSolution, solutionUpdate, currentResidual);
+     }
+ 
+     template <class DofIndices>
+@@ -194,6 +206,98 @@ public:
+         }
+     }
+ 
++private:
++    /*!
++     * \brief WATER-017 observation-only applied-state dump.
++     *
++     * Writes, for one Newton iterate, the linear correction that the live matrix-free-well
++     * solver actually applied, and the primaries that result from it after Flow's
++     * dp-max-rel pressure cap and ds-max Appleyard saturation chop. This is the state that
++     * MatrixMarket exports cannot supply.
++     *
++     * Both solution vectors are dumped, but note that they are observed to hold the *same*
++     * post-update values here: `nextSolution` and `currentSolution` alias by the time this
++     * runs, so no separate pre-update view is available at this call site. The pre-update
++     * state of iterate N is therefore the state dumped by iterate N-1, and for iterate 0 it
++     * is the initial condition. Both columns are written anyway so that a future reader can
++     * detect it if that aliasing ever stops holding.
++     *
++     * Enabled only when OPM_WATER017_DUMP_DIR names an existing writable directory. When it
++     * is unset the function returns before touching any solver state, so an instrumented
++     * binary must reproduce the stock trajectory exactly.
++     */
++    void dumpWater017_(const SolutionVector& nextSolution,
++                       const SolutionVector& currentSolution,
++                       const GlobalEqVector& solutionUpdate,
++                       const GlobalEqVector& currentResidual) const
++    {
++        const char* dumpDir = std::getenv("OPM_WATER017_DUMP_DIR");
++        if (dumpDir == nullptr) {
++            return;
++        }
++
++        static unsigned callIdx = 0;
++        std::ostringstream path;
++        path << dumpDir << "/w017_" << std::setw(5) << std::setfill('0') << callIdx << ".txt";
++        ++callIdx;
++
++        std::ofstream out(path.str());
++        if (!out) {
++            return;
++        }
++        out << std::setprecision(17) << std::scientific;
++
++        const std::size_t numDof = currentSolution.size();
++        out << "# WATER-017 applied-state dump (observation only)\n"
++            << "# episode " << this->simulator_.episodeIndex()
++            << " time " << this->simulator_.time()
++            << " dt " << this->simulator_.timeStepSize()
++            << " iteration " << this->simulator_.problem().iterationContext().iteration()
++            << " priVarsSwitched " << numPriVarsSwitched_
++            << " numDof " << numDof
++            << " numEq " << numEq << "\n"
++            << "# currentSolution and nextSolution alias here: both columns hold the\n"
++            << "# post-update state, i.e. after dp-max-rel and ds-max. The pre-update state\n"
++            << "# of this iterate is the state dumped by the previous one (initial condition\n"
++            << "# for iterate 0). update[] is the correction that produced this state.\n"
++            << "# columns: dofIdx"
++            << " currentSolution[0.." << (numEq - 1) << "]"
++            << " update[0.." << (numEq - 1) << "]"
++            << " nextSolution[0.." << (numEq - 1) << "]"
++            << " residual[0.." << (numEq - 1) << "]"
++            << " meaningCurrent(water,pressure,gas,brine,solvent)"
++            << " meaningNext(water,pressure,gas,brine,solvent)\n";
++
++        for (std::size_t dofIdx = 0; dofIdx < numDof; ++dofIdx) {
++            const auto& cur = currentSolution[dofIdx];
++            const auto& nxt = nextSolution[dofIdx];
++            out << dofIdx;
++            for (unsigned eqIdx = 0; eqIdx < numEq; ++eqIdx) {
++                out << ' ' << cur[eqIdx];
++            }
++            for (unsigned eqIdx = 0; eqIdx < numEq; ++eqIdx) {
++                out << ' ' << solutionUpdate[dofIdx][eqIdx];
++            }
++            for (unsigned eqIdx = 0; eqIdx < numEq; ++eqIdx) {
++                out << ' ' << nxt[eqIdx];
++            }
++            for (unsigned eqIdx = 0; eqIdx < numEq; ++eqIdx) {
++                out << ' ' << currentResidual[dofIdx][eqIdx];
++            }
++            out << ' ' << static_cast<int>(cur.primaryVarsMeaningWater())
++                << ' ' << static_cast<int>(cur.primaryVarsMeaningPressure())
++                << ' ' << static_cast<int>(cur.primaryVarsMeaningGas())
++                << ' ' << static_cast<int>(cur.primaryVarsMeaningBrine())
++                << ' ' << static_cast<int>(cur.primaryVarsMeaningSolvent())
++                << ' ' << static_cast<int>(nxt.primaryVarsMeaningWater())
++                << ' ' << static_cast<int>(nxt.primaryVarsMeaningPressure())
++                << ' ' << static_cast<int>(nxt.primaryVarsMeaningGas())
++                << ' ' << static_cast<int>(nxt.primaryVarsMeaningBrine())
++                << ' ' << static_cast<int>(nxt.primaryVarsMeaningSolvent())
++                << '\n';
++        }
++    }
++
+ protected:
+     /*!
+      * \copydoc FvBaseNewtonMethod::updatePrimaryVariables_

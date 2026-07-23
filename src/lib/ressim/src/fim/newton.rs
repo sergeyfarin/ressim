@@ -602,6 +602,83 @@ fn trace_y2a_injector_jacobian_audit(
     ));
 }
 
+/// WATER-017's test-only per-iterate primary-state dump.
+///
+/// Counterpart of `opm/diagnostics/water017-applied-state-dump.patch` on the Flow side, written
+/// so the two engines can be compared state-for-state at the same Newton iterate. The captures
+/// under `FIM_CAPTURE_SEQUENCE_DIR` hold only the linear system, so they cannot serve here.
+///
+/// One file per applied update, named by update index, mirroring the Flow dump's convention:
+/// the state written is the *post*-update state, and `raw[]` is the linear correction that
+/// produced it. Note the two sign conventions differ — Flow solves `J dx = R` and subtracts
+/// `dx`, ResSim solves `J dx = -R` and adds it — and ResSim carries pressure in bar against
+/// Flow's Pa. The comparison script owns both conversions; this dump stays in ResSim's own
+/// units and sign so it cannot silently bake in a mapping error.
+///
+/// Inert unless `RESSIM_WATER017_DUMP_DIR` names a writable directory. Observation only: it
+/// neither selects nor mutates a candidate.
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+fn dump_water017_ressim_state(
+    update_index: usize,
+    iteration: usize,
+    dt_days: f64,
+    damping: f64,
+    raw_update: &DVector<f64>,
+    applied_update: &DVector<f64>,
+    candidate: &crate::fim::state::FimState,
+) {
+    use std::io::Write;
+
+    let Some(dir) = std::env::var_os("RESSIM_WATER017_DUMP_DIR") else {
+        return;
+    };
+    let path = std::path::Path::new(&dir).join(format!("r017_{update_index:05}.txt"));
+    let Ok(file) = std::fs::File::create(&path) else {
+        return;
+    };
+    let mut out = std::io::BufWriter::new(file);
+
+    let n_cells = candidate.cells.len();
+    let _ = writeln!(out, "# WATER-017 ResSim applied-state dump (observation only)");
+    let _ = writeln!(
+        out,
+        "# update_index {update_index} iteration {iteration} dt_days {dt_days:.17e} damping {damping:.17e} n_cells {n_cells}"
+    );
+    let _ = writeln!(
+        out,
+        "# state is POST-update (after enforce_cell_bounds); raw[] is the linear correction,"
+    );
+    let _ = writeln!(
+        out,
+        "# applied[] is what was handed to apply_newton_update (raw, or OPM-chopped when active)."
+    );
+    let _ = writeln!(
+        out,
+        "# ResSim adds the update; pressure is in bar. columns: cell p_bar sw hydrocarbon_var regime raw_dp_bar raw_dsw raw_dhc applied_dp_bar applied_dsw applied_dhc"
+    );
+    for (idx, cell) in candidate.cells.iter().enumerate() {
+        let offset = idx * 3;
+        let _ = writeln!(
+            out,
+            "{idx} {:.17e} {:.17e} {:.17e} {:?} {:.17e} {:.17e} {:.17e} {:.17e} {:.17e} {:.17e}",
+            cell.pressure_bar,
+            cell.sw,
+            cell.hydrocarbon_var,
+            cell.regime,
+            raw_update[offset],
+            raw_update[offset + 1],
+            raw_update[offset + 2],
+            applied_update[offset],
+            applied_update[offset + 1],
+            applied_update[offset + 2],
+        );
+    }
+    for (well_idx, bhp) in candidate.well_bhp.iter().enumerate() {
+        let _ = writeln!(out, "well {well_idx} bhp_bar {bhp:.17e}");
+    }
+}
+
 /// Y2b's test-only raw-candidate versus projected-candidate trace.
 ///
 /// OPM keeps its raw primary-variable update for the following assembly unless
@@ -3114,6 +3191,16 @@ pub(crate) fn run_fim_timestep(
         if let Some(switched) = candidate_primary_variables_switched {
             primary_variables_switched = switched;
         }
+        #[cfg(test)]
+        dump_water017_ressim_state(
+            applied_update_count,
+            iteration,
+            dt_days,
+            damping,
+            &linear_report.solution,
+            update_to_apply,
+            &candidate,
+        );
         applied_update_count += 1;
         state = candidate;
     }
