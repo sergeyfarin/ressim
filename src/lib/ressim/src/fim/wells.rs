@@ -1480,7 +1480,21 @@ pub(crate) fn perforation_surface_rate_cell_derivatives_sc_day(
             return [0.0; 3];
         }
         return match effective_injected_fluid(sim) {
-            InjectedFluid::Water => [0.0; 3],
+            InjectedFluid::Water => {
+                // The water injector's surface rate is `(-q).max(0) * water_inverse_fvf(p)`, and
+                // `1/Bw` depends on the perforated cell's pressure through the water
+                // compressibility, so the cell-pressure derivative is nonzero. Omitting it left
+                // the legacy hand-Jacobian one column short of the AD assembler on the
+                // rate-controlled water-injector row (structural-parity gate). `d(1/Bw)/dp`
+                // matches `d_inv_bw_d_p` in `assembly.rs`.
+                let q_m3_day = state
+                    .reservoir_connection_q(perf_idx)
+                    .expect("historical well path requires a reservoir-q primary");
+                let x = (state.cell(cell_idx).pressure_bar - sim.water_pvt_reference_pressure_bar)
+                    * sim.pvt.c_w;
+                let d_inv_bw_d_p = sim.pvt.c_w * (1.0 + x) / sim.b_w.max(1e-9);
+                [(-q_m3_day).max(0.0) * d_inv_bw_d_p, 0.0, 0.0]
+            }
             InjectedFluid::Gas => {
                 let q_m3_day = state
                     .reservoir_connection_q(perf_idx)
