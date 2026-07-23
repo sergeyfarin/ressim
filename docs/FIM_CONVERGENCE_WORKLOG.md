@@ -5378,3 +5378,93 @@ promotion. Recorded as a candidate only.
 
 Validation: `bash scripts/validate-solver-coverage.sh fim` passes; the driver is bit-identical
 with the new env var absent. Source changes remain test-only.
+
+### WATER-020: OPM's tabulated saturation functions are the water-heavy convergence lever (2026-07-23)
+
+With the gravity mismatch removed, the water-heavy gap was re-measured from scratch and traced to
+a representation difference that had been hiding in plain sight inside an existing default-off
+diagnostic flag.
+
+**Where the gap actually is.** On the matched one-day deck, Flow spends `~0.087 s`
+(`Assembly .0101 + LSetup .0310 + LSolve .0397 + Update .0061`) in one step. ResSim's production
+configuration takes `50` accepted substeps and `4.42 s` — `51x`. Under the three existing
+OPM-replay flags it takes `5` substeps and `0.272 s` — `3.1x`. Ablating them isolates the cause:
+
+| endpoint replay | SWOF replay | nested well solve | substeps | nonlinear-bad | solver ms |
+| --- | --- | --- | ---: | ---: | ---: |
+| off | off | off | 50 | 2 | `4505` |
+| off | off | on | 50 | 2 | `4439` |
+| on | off | off | 10 | 0 | `738` |
+| off | on | off | **5** | 0 | **`272`** |
+| on | on | on | 5 | 0 | `283` |
+
+`FIM_NESTED_WELL_SOLVE` is a no-op on this case in every combination. The dominant lever is
+`FIM_WATER005_SWOF_REPLAY`, which replaces ResSim's analytic Corey curves with the deck's nine-row
+piecewise-linear SWOF table.
+
+**The mechanism is the representation, not the deck.** OPM never evaluates an analytic relperm
+law: it builds a piecewise-linear table from SWOF/SGOF, so its Newton system sees piecewise-constant
+relperm derivatives with no curvature. ResSim evaluates smooth Corey curves, whose curvature is
+exactly what the Wang-Tchelepi inflection chop (`FIM-DAMP-002/003/004`) exists to damp.
+
+New `RockFluidProps::corey_table_generic` samples ResSim's **own** Corey curves at `n` knots across
+`[s_wc, 1 - s_or]` and interpolates linearly, with no deck involved. Sweeping `n` on the native
+driver separates representation from coarsening:
+
+| knots | substeps | nonlinear-bad | solver ms |
+| ---: | ---: | ---: | ---: |
+| analytic | 50 | 2 | `4398` |
+| 9 | 5 | 0 | `344` |
+| 17 | 4 | 0 | `251` |
+| 33 | 4 | 0 | `237` |
+| 65 | 8 | 0 | `628` |
+| 129 | 10 | 0 | `737` |
+| 257 | 6 | 0 | `435` |
+
+The win survives at 257 knots, where linear-interpolation error against Corey is `~4e-6`. It is
+therefore the piecewise-linear representation, not a smoothed curve. The non-monotonicity in `n` is
+the familiar Newton-trajectory chaos already documented for the `k`-sweep in `FIM-DAMP-004`, so no
+knot count should be tuned to a lucky value.
+
+**The strongest single observation.** On the direct one-day probe with a 60-iteration budget,
+analytic Corey **does not converge at all** — 60 updates, state collapsed to the producer BHP
+(mean `p = 101 bar`, mean `Sw = 0.101`). The 257-knot table converges in **20 updates** to a sane
+state (mean `p = 356 bar`, mean `Sw = 0.400`), against Flow's 20. ResSim's inability to take OPM's
+timestep on this case is a property of the analytic relperm evaluation, not of its Newton or
+linear machinery.
+
+**Bounded control matrix**, wasm, `--corey-table-points` newly exposed on the diagnostic:
+
+| case | flavor | analytic | 33 knots | 257 knots |
+| --- | --- | --- | --- | --- |
+| water 20x20x3 dt.25 | Legacy | `8 / 3403 ms` | `8 / 3862` | `4 / 3003` |
+| water 22x22x1 dt.25 | Legacy | `4 / 1218` | `4 / 1381` | `2 / 1186` |
+| water 23x23x1 dt.25 | Legacy | `4 / 1317` | `4 / 1386` | `2 / 1264` |
+| gas-rate 20x20x3 dt.25 | Legacy | `4 / 3494` | `4 / 3520` | `4 / 3440` |
+| water 12x12x3 dt1 | Legacy | `23 / 4213` | `22 / 3878` | `19 / 3951` |
+| water 20x20x3 dt.25 | OpmAligned | `97 / 43377` | `91 / 24069` | `87 / 22687` |
+| water 23x23x1 dt.25 | OpmAligned | `77 / 8138` | `69 / 6114` | `70 / 6148` |
+| gas-rate 20x20x3 dt.25 | OpmAligned | `501 / 233700` | `501 / 233511` | (timed out) |
+| water 12x12x3 dt1 | OpmAligned | `55 / 6518` | **`4 / 858`** | — |
+
+Gas is bit-identical in oil produced (`160.75`) and substeps under every setting, as designed: the
+change touches only the two-phase branch of `phase_mobilities_for_state[_generic]`. Under
+`OpmAligned`, every water case improves — the heavy target by `7.6x` in wall clock. Under Legacy
+the effect is real but modest.
+
+**Physics moves toward OPM, not away.** Flow's own answer on the matched deck is
+`FOPT 2608.56, FWIT 2995.76, FPR 352.47` (gravity-on gives `2609.51`, so gravity changed the
+convergence path but not the one-day production). ResSim's produced oil on the heavy case is
+`2945.59` analytic and `2794.16` tabulated under `OpmAligned`: `+12.9%` versus `+7.1%` against
+Flow. The other water controls move by less than `0.05%`. The heavy case's larger shift is
+consistent with its `55 -> 4` substep change carrying more temporal error, which is not separated
+here and must be before any default flip.
+
+**Status: not promoted.** `set_fim_corey_table_points` defaults to `0`, which keeps analytic Corey
+and leaves every current baseline bit-identical. Promotion requires choosing a knot count on
+evidence rather than on the lucky `n=33` point, attributing the heavy case's `5%` production shift
+between temporal error and model error against a fine-dt reference, and re-running the matrix on a
+clean tree. Two further observations are recorded as separate threads: `OpmAligned` is far more
+expensive than Legacy on every control measured here (`97` versus `8` substeps on water 20x20x3,
+`501` versus `4` on gas-rate), and the `20x20x3` water case remains at `87-91` substeps under
+`OpmAligned` even with the table, so it is the next target after the heavy case.

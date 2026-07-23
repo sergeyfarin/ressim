@@ -142,6 +142,8 @@ impl ReservoirSimulator {
 
         let (krw, kro) = if self.fim_opm_water_heavy_swof {
             self.scal.water_heavy_swof_replay(sw)
+        } else if self.fim_corey_table_points > 0 {
+            self.scal.corey_table(sw, self.fim_corey_table_points)
         } else {
             (self.scal.k_rw(sw), self.scal.k_ro(sw))
         };
@@ -190,6 +192,9 @@ impl ReservoirSimulator {
 
         let (krw, kro) = if self.fim_opm_water_heavy_swof {
             self.scal.water_heavy_swof_replay_generic(sw)
+        } else if self.fim_corey_table_points > 0 {
+            self.scal
+                .corey_table_generic(sw, self.fim_corey_table_points)
         } else if self.fim_opm_endpoint_relperm {
             (
                 self.scal.k_rw_endpoint_clipped_generic(sw),

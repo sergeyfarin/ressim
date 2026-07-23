@@ -581,6 +581,58 @@ impl RockFluidProps {
         (0.90, 1.0000, 0.0000),
     ];
 
+    /// WATER-020: OPM-style tabulated saturation functions, sampled from ResSim's *own* Corey
+    /// curves rather than from a deck.
+    ///
+    /// OPM never evaluates an analytic relative-permeability law. It builds a piecewise-linear
+    /// table from SWOF/SGOF and interpolates it, so its Newton system sees piecewise-constant
+    /// relperm derivatives with no curvature. ResSim evaluates smooth Corey curves, whose
+    /// curvature is what the Wang-Tchelepi inflection chop (`FIM-DAMP-002/003/004`) exists to
+    /// damp.
+    ///
+    /// This samples `k_rw`/`k_ro` at `points` equally spaced knots across `[s_wc, 1 - s_or]` and
+    /// interpolates linearly between them, exactly as `water_heavy_swof_replay` does for the
+    /// tracked deck table but without being tied to that deck. Sweeping `points` separates the
+    /// two candidate mechanisms: if a convergence win survives at a knot count fine enough that
+    /// the table reproduces Corey to within a small tolerance, it comes from the piecewise-linear
+    /// *representation* and is a faithful OPM replication; if it only appears for coarse tables,
+    /// it is a physics change and must not be promoted.
+    ///
+    /// `points` is the number of knots and must be at least 2.
+    pub(crate) fn corey_table_generic<S: Scalar>(&self, s_w: S, points: usize) -> (S, S) {
+        let points = points.max(2);
+        let lo = self.s_wc;
+        let hi = 1.0 - self.s_or;
+        let span = (hi - lo).max(1e-12);
+        let step = span / ((points - 1) as f64);
+
+        let knot = |index: usize| {
+            let x = (lo + (index as f64) * step).min(hi);
+            (x, self.k_rw(x), self.k_ro(x))
+        };
+
+        let value = s_w.value();
+        if value <= lo {
+            let (_, krw, kro) = knot(0);
+            return (S::from_f64(krw), S::from_f64(kro));
+        }
+        if value >= hi {
+            let (_, krw, kro) = knot(points - 1);
+            return (S::from_f64(krw), S::from_f64(kro));
+        }
+
+        let segment = (((value - lo) / step).floor() as usize).min(points - 2);
+        let (x0, krw0, kro0) = knot(segment);
+        let (x1, krw1, kro1) = knot(segment + 1);
+        let t = ((s_w - x0) / (x1 - x0)).max_floor(0.0).min_ceil(1.0);
+        (t * (krw1 - krw0) + krw0, t * (kro1 - kro0) + kro0)
+    }
+
+    /// Scalar mirror of [`Self::corey_table_generic`].
+    pub(crate) fn corey_table(&self, s_w: f64, points: usize) -> (f64, f64) {
+        self.corey_table_generic(s_w, points)
+    }
+
     pub(crate) fn water_heavy_swof_replay(&self, s_w: f64) -> (f64, f64) {
         let rows = &Self::WATER_HEAVY_SWOF;
         let value = |index: usize| (rows[index].1, rows[index].2);

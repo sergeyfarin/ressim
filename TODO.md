@@ -568,6 +568,34 @@ below is retained as Bundle N/Y history; it must not override this current seque
   30 -> `converged=true` in 23 updates, `residual=2.284721116e-5`, `mb=3.577023665e-8`. So with
   gravity matched, ResSim converges in 23 updates against Flow's 20 — a `15%` nonlinear-work gap,
   not the `1.8x` gap plus failure carried in the record since WATER-010.
+- [x] **WATER-020 — the water-heavy lever is OPM's TABULATED relperm, found 2026-07-23.** OPM never
+  evaluates an analytic relperm law; it interpolates a piecewise-linear SWOF table, so its Newton
+  system sees no relperm curvature. ResSim evaluates smooth Corey. Ablating the three OPM-replay
+  flags on the native OpmAligned driver: nested-well-solve is a no-op, endpoint replay gives
+  `50 -> 10` substeps, SWOF replay gives `50 -> 5` (`4505 -> 272 ms`).
+  New `RockFluidProps::corey_table[_generic]` samples ResSim's OWN Corey curves at `n` knots and
+  interpolates linearly, no deck involved, exposed as `setFimCoreyTablePoints` /
+  `--corey-table-points` and defaulting to `0` (analytic, every baseline bit-identical).
+  Knot sweep: `50/4398 ms` analytic, `4/237` at 33, `6/435` at 257 — the win survives where the
+  table matches Corey to `~4e-6`, so it is the representation, not smoothing.
+  Strongest observation: on the direct one-day probe analytic Corey does NOT converge in 60
+  updates (state collapses to producer BHP, mean p `101 bar`), while the 257-knot table converges
+  in 20 — matching Flow's 20. ResSim's inability to take OPM's timestep is a property of the
+  analytic relperm evaluation, not of Newton or the linear stack.
+  wasm matrix, OpmAligned: heavy `55/6518 ms -> 4/858 ms` (`7.6x`); water 20x20x3
+  `97/43377 -> 91/24069`; 23x23x1 `77/8138 -> 69/6114`; gas bit-identical. Legacy: modest.
+  Produced oil moves TOWARD Flow's `2608.56` (`2945.59` analytic vs `2794.16` tabulated).
+- [ ] **Promote WATER-020 (do not flip the default yet).** Required first: (1) pick the knot count
+  from a measured plateau, not the lucky `n=33` — substeps vs `n` is chaotic exactly as the
+  `k`-sweep was in `FIM-DAMP-004`; (2) attribute the heavy case's `5%` produced-oil shift between
+  temporal error (`55 -> 4` substeps) and model error, against a fine-dt reference; (3) rerun the
+  bounded matrix on a clean tree. Only then consider making the table the FIM default.
+- [ ] **OpmAligned is far more expensive than Legacy on every control measured.** water 20x20x3
+  `97` substeps versus Legacy's `8`; gas-rate 20x20x3 `501` versus `4` (`233 s`). This is the
+  flavor Bundle Y targets and the one the OPM-parity work runs under, so it needs its own
+  investigation; the table helps but does not close it.
+- [ ] **Next water target after the heavy case:** water 20x20x3 dt.25 under OpmAligned stays at
+  `87-91` substeps even with the table.
 - [ ] **Candidate, NOT promoted: raise `max_newton_iterations` above 20.** Distinct from the
   acceptance-widening refuted as `FIM-NEWTON-004`/`005` — that accepted under-converged states,
   this gives Newton room to converge. Requires the full bounded control matrix on a clean tree,

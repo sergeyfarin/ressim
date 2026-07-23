@@ -147,6 +147,8 @@ pub struct ReservoirSimulator {
     /// frozen, matching both OPM's tabulated law and ResSim's scalar derivative API. Default
     /// false preserves the production trajectory while the complete FIM lifecycle is measured.
     pub(crate) fim_opm_endpoint_relperm: bool,
+    /// WATER-020 diagnostic: knot count for OPM-style tabulated Corey relperm; 0 disables.
+    pub(crate) fim_corey_table_points: usize,
     /// WATER-005 native-only replay of the corrected water-heavy deck's rounded SWOF table.
     /// This is deliberately diagnostic-only: it replaces the two-phase Corey property values
     /// and AD slopes together for every FIM mobility consumer, while default false preserves the

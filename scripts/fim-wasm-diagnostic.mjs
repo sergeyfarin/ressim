@@ -100,6 +100,8 @@ Options:
   --control <mode>          pressure | rate
   --gravity <bool>          true | false
   --capillary <bool>        true | false
+  --corey-table-points <n>  evaluate relperm from an n-knot piecewise-linear table sampled
+                            from the Corey curves (OPM's SWOF representation); omit for analytic
   --diagnostic <mode>       quiet | summary | outer | step
   --checkpoint-in <file>    Load simulator state checkpoint before running
   --checkpoint-out <file>   Save simulator state checkpoint after the run
@@ -251,6 +253,10 @@ function parseArgs(argv) {
         break;
       case '--nested-well-solve':
         options.nestedWellSolve = true;
+        break;
+      case '--corey-table-points':
+        options.coreyTablePoints = Number.parseInt(next, 10);
+        index += 1;
         break;
       case '--true-fgmres':
         options.trueFgmres = true;
@@ -696,6 +702,9 @@ async function main() {
   }
   if (options.nestedWellSolve) {
     sim.setFimNestedWellSolve(true);
+  }
+  if (options.coreyTablePoints) {
+    sim.setFimCoreyTablePoints(options.coreyTablePoints);
   }
   if (options.trueFgmres) {
     sim.setFimTrueFgmres(true);

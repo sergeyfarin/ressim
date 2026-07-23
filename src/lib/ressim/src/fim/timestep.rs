@@ -3141,6 +3141,12 @@ mod phase5_repro {
             std::env::var_os("FIM_WATER003_ENDPOINT_REPLAY").is_some(),
         );
         sim.set_fim_opm_water_heavy_swof(std::env::var_os("FIM_WATER005_SWOF_REPLAY").is_some());
+        // WATER-020: knot count for OPM-style tabulated Corey relperm; absent keeps analytic Corey.
+        if let Ok(points) = std::env::var("FIM_COREY_TABLE_POINTS") {
+            if let Ok(points) = points.parse::<usize>() {
+                sim.set_fim_corey_table_points(points);
+            }
+        }
         // Bundle W (`docs/FIM_BUNDLE_W_PLAN.md` W4): env-gated so this same driver, already the
         // FIM-DIAG-002 re-baseline vehicle, is also the §5 re-run vehicle — no code path change.
         let nested_well_solve = std::env::var_os("FIM_NESTED_WELL_SOLVE").is_some();

@@ -31,6 +31,12 @@ export class ReservoirSimulator {
     setCapillaryParams(p_entry: number, lambda: number): void;
     setCellDimensions(dx: number, dy: number, dz: number): void;
     setCellDimensionsPerLayer(dx: number, dy: number, dz_per_layer: Float64Array): void;
+    /**
+     * WATER-020 diagnostic: evaluate relative permeability from a piecewise-linear table with
+     * `points` knots sampled from ResSim's own Corey curves, the way OPM evaluates SWOF. Zero
+     * (the default) keeps the analytic Corey evaluation.
+     */
+    setFimCoreyTablePoints(points: number): void;
     setFimEnabled(enabled: boolean): void;
     /**
      * Bundle W dev flag (`docs/FIM_BUNDLE_W_PLAN.md`): replace
@@ -137,6 +143,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setCapillaryParams: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setCellDimensions: (a: number, b: number, c: number, d: number) => [number, number];
     readonly reservoirsimulator_setCellDimensionsPerLayer: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+    readonly reservoirsimulator_setFimCoreyTablePoints: (a: number, b: number) => void;
     readonly reservoirsimulator_setFimEnabled: (a: number, b: number) => void;
     readonly reservoirsimulator_setFimNestedWellSolve: (a: number, b: number) => void;
     readonly reservoirsimulator_setFimOpmAlignedNonlinear: (a: number, b: number) => void;
