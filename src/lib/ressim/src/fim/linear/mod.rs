@@ -262,6 +262,12 @@ pub(crate) fn solve_linearized_system(
     // require an exact factorization and lets the Newton iteration proceed instead of collapsing
     // the timestep. The iterative path handles well elimination internally via the dispatch
     // below, so re-enter `solve_linearized_system` with the iterative kind.
+    //
+    // This fallback is load-bearing, not generic defensive code: it is what keeps the OpmAligned
+    // default (WATER-026, which rests on WATER-025 raw saturations) converging on small
+    // well-dominated cases. Do not remove it without first landing the root-cause relperm-endpoint
+    // regularization tracked in TODO.md ("ROOT-CAUSE FIX (deferred): relperm-endpoint singularity
+    // under raw saturations").
     #[cfg(not(target_arch = "wasm32"))]
     if should_force_direct_solve(options.kind, jacobian.rows(), false) {
         let direct = sparse_lu_debug::solve(jacobian, rhs, options, false);

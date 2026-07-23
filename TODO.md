@@ -699,6 +699,30 @@ below is retained as Bundle N/Y history; it must not override this current seque
   impact. Diagnostic gains `--legacy` to opt out. New baseline: water 20x20x3 `3` sub (Legacy 8),
   23x23x1 `6`, heavy `4`, gas `1`. fim 5/5, impes 2/2; shared's lone failure is pre-existing.
 
+- [ ] **ROOT-CAUSE FIX (deferred): relperm-endpoint singularity under raw saturations.** WATER-025's
+  raw-saturation path can drive a cell onto the flat part of the relperm curve (`Sw` at/below `Swc`,
+  or at/above `1-Sor`), where `dkr/dSw = 0`. That makes a Jacobian block rank-deficient; the forced
+  direct sparse-LU (systems under the direct-solve threshold) then fails to factor it, reports
+  `reduction=1.0`, and collapses the timestep. Found via the OpmAligned-default regressions on small
+  1D/well-dominated cases (`simple_pressure_control`, `benchmark_like_substepping`,
+  `shared_block_multiwell`), fixed 2026-07-23 by an **iterative fallback** in
+  `solve_linearized_system` (`fim/linear/mod.rs`): on direct-factorization failure it retries with
+  the block-Jacobi/CPR backend, which needs no exact factorization.
+  That fallback is a **backstop, not a cure** — the singular Jacobian still forms; it is only caught
+  after the fact. The dependency chain is three links long: OpmAligned-default rests on WATER-025
+  raw saturations, which can go singular, which the fallback catches. Risks: (a) if the linear-solver
+  routing changes (e.g. the direct-solve threshold is raised, or the iterative path is "simplified"
+  away) the singularity resurfaces; (b) the iterative solve of a near-singular system is slower and
+  less accurate than a clean factorization.
+  **Root fix:** make the Jacobian non-singular at the source with a small relative-permeability
+  regularization below `Swc` / above `1-Sor` — a linear tail with a small non-zero slope instead of
+  the flat clamp (`s_eff.clamp(0,1)` in `relperm.rs::k_rw`/`k_ro`) — so `dkr/dSw` never hits exactly
+  zero on the raw path. Must be scoped so it does NOT move the validated Corey physics in-range
+  (relperm gates, Buckley-Leverett, the OpmAligned wasm baselines, and the WATER-025 areal win must
+  all hold), and small enough not to change produced rates. If done, the iterative fallback becomes
+  genuinely redundant rather than load-bearing. Until then, keep the fallback and the
+  `fim/linear/mod.rs` comment explaining why it is not generic defensive code.
+
 - [ ] **Objective-1 gap: ResSim over-predicts oil by `8-10%` versus Flow on all three quarter-day
   controls** (comparing `rate x dt` against `FOPT`, an approximation since ResSim's `oil=` is an
   end-of-step rate). Same order as the heavy case's gap, consistent across grids — points at a
