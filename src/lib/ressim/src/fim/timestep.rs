@@ -3385,10 +3385,14 @@ mod phase5_repro {
         sim.set_fim_opm_aligned_nonlinear(opm_aligned);
         sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
         sim.set_fim_flow_lifecycle(std::env::var_os("FIM_FLOW_LIFECYCLE").is_some());
+        sim.set_fim_nested_well_solve(std::env::var_os("FIM_NESTED_WELL_SOLVE").is_some());
 
         let start = Instant::now();
         let trace = sim.step_with_diagnostics(dt_days);
         let elapsed = start.elapsed();
+        if let Ok(path) = std::env::var("FIM_W023_FULL_TRACE") {
+            let _ = std::fs::write(path, &trace);
+        }
         println!(
             "native step elapsed: {:.3}s (opm_aligned={})",
             elapsed.as_secs_f64(),

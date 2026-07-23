@@ -634,13 +634,29 @@ below is retained as Bundle N/Y history; it must not override this current seque
   `--enable-gravity=false` or the comparison repeats the WATER-019 error.
   Flow: 20x20x3 `0.0692 s`/12 Newton/FOPT `762.52`; 22x22x1 `0.0339 s`/9/`340.14`; 23x23x1
   `0.0456 s`/11/`336.24`; heavy `0.0870 s`/20/`2608.56`.
-- [ ] **NEXT LEVER: why OpmAligned cannot converge on water 20x20x3 at any step size it tries.**
-  Only the heavy case is inside the `2-3x` target (`2.7x` native). The other controls sit near
-  `9-14x` once wasm's ~`3.6x` overhead is removed, and the reason is the work count: Flow needs
-  9-12 Newton iterations for a whole quarter-day step while ResSim spends 4-8 substeps of ~9
-  updates each. The heavy case shows what closing that looks like. Fix OpmAligned's 20x20x3
-  failure so the same mechanism applies to the rest; failing that, give Legacy OPM's acceptance
-  criteria without OPM's failure mode.
+- [x] **WATER-023 — DIAGNOSED 2026-07-23: OpmAligned's areal-water slowdown is a material-balance
+  floor.** Full per-iteration trace of the 23x23x1 OpmAligned driver (`FIM_W023_FULL_TRACE`): the
+  full residual converges to `8.2e-8` by iter 4, but the update limit-cycles at `2.77e-5` and the
+  oil MB metric freezes at `2.50e-6`, above OPM's `1e-7` tolerance. Iters 4-19 are pure waste; the
+  substep grinds to budget, accepts poorly, dt is cut, next step converges in 3 -- the `20,3,20,3`
+  pattern, 72 substeps per quarter-day. Ruled out: linear solver (forced-direct = 72), well inner
+  solve (nested = 72), growth controller (FIM-TIME-006 refuted), relperm table (77->72). The MB
+  formula matches OPM (dt absorbed into ResSim's mass residual), so the floor is a REAL persistent
+  net oil imbalance -- above even OPM's relaxed `1e-6` tier, so OPM genuinely reaches lower.
+- [x] **WATER-023: the areal-water convergence problem and the 8-10% oil gap are ONE defect.**
+  Legacy hides the imbalance by accepting the raw-residual-converged state (near-converged/trend
+  bailouts), which is exactly why Legacy is faster on these cases AND why its produced oil differs.
+  OpmAligned enforces OPM's MB and so exposes it. Both objectives -- correctness (oil gap) and
+  speed (wasted iterations, dt fragmentation) -- reduce to driving the oil material balance to
+  OPM's level.
+- [ ] **NEXT (correctness + speed, one investigation): attribute the ~2.5e-6 oil material
+  imbalance.** Apply the WATER-017 same-state dump apparatus to 23x23x1/20x20x3: compare ResSim's
+  and Flow's per-cell oil mass balance at the same state, and attribute the residual to either a
+  well surface-rate/reservoir-flux inconsistency or an accumulation/FVF inconsistency in the oil
+  equation. The binding cells are the injector corner (cell23/25) and producer corner (cell528).
+  This supersedes further solver, controller, growth or per-iteration-cost work — it is the
+  dominant lever for both stated objectives.
+
 - [ ] **Objective-1 gap: ResSim over-predicts oil by `8-10%` versus Flow on all three quarter-day
   controls** (comparing `rate x dt` against `FOPT`, an approximation since ResSim's `oil=` is an
   end-of-step rate). Same order as the heavy case's gap, consistent across grids — points at a

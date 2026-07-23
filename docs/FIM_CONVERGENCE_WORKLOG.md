@@ -5668,3 +5668,65 @@ The next lever is therefore not the table, the growth policy or per-iteration co
 OpmAligned cannot converge on water 20x20x3 at any step size it tries. Fixing that would let the
 same mechanism that fixed the heavy case apply to the remaining controls; failing that, Legacy
 needs OPM's acceptance criteria without OPM's failure mode.
+
+### WATER-023: why OpmAligned wastes iterations on areal water — a material-balance floor (2026-07-23)
+
+The question standing since WATER-022 was why OpmAligned, which copies OPM's policies, is slow or
+fails on the areal water controls while excelling on gas and the layered heavy case. Captured the
+full per-iteration trace of the 23x23x1 OpmAligned driver
+(`FIM_W023_FULL_TRACE`, a new default-off trace-to-file hook) and the mechanism is now exact.
+
+**The substeps converge, then waste ~80% of their iterations.** For a representative substep:
+
+| iter | full residual | update inf-norm | CNV(water) | MB(oil, binding) | accept |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 0-3 | `3.2e-3 -> 5.3e-4` | `0.78 -> 3.8e-4` | falling | falling | no |
+| 4 | `8.21e-8` | `2.77e-5` | `2.77e-5` | `2.50e-6` | no |
+| 5-19 | `8.21e-8` (frozen) | `2.77e-5` (frozen) | `2.77e-5` | `2.50e-6` | no |
+
+By iteration 4 the full Newton residual is `8.2e-8` — converged by any raw measure — but the
+update enters a **limit cycle** at `2.77e-5` that never nulls, and the state, CNV and MB freeze
+bit-for-bit through iteration 19. CNV passes easily (`2.77e-5` against OPM's `1e-2`); the sole
+blocker is the oil **material-balance** metric, pinned at `2.50e-6` against OPM's `1e-7`
+tolerance. The substep grinds to the 20-iteration budget, accepts poorly, dt is cut, and the
+smaller step converges in 3 iterations (less mass moved, MB drops). That is the `20, 3, 20, 3`
+per-substep pattern, 72 substeps for one quarter-day step.
+
+**What it is not.** Forcing an exact direct linear solve (`FIM_FORCE_DIRECT_LINEAR`) leaves the
+count at 72 — the bad limit-cycle direction is not from the iterative CPR stack. The nested well
+solve (`FIM_NESTED_WELL_SOLVE`) leaves it at 72. The separable growth controller was already
+`REFUTED` in WATER-022. The promoted relperm table only moved it `77 -> 72`. So it is none of the
+linear solver, the well inner solve, the timestep controller, or the saturation-function
+representation.
+
+**What it is.** ResSim's MB formula matches OPM's: OPM uses
+`CNV = B_avg*dt*maxCoeff`, `MB = |B_avg*R_sum|*dt/pvSum` on a rate residual, while ResSim's
+residual is already `accumulation(mass) - flux*dt - source*dt`, so the `dt` is absorbed and
+`mb = |b_avg*r_sum|/pv_sum` is the same quantity. The floor is therefore a real persistent net
+mass imbalance, not a metric or tolerance artifact: individual cell residuals are `~5e-9` but they
+do not cancel, summing coherently (same sign) to `2.5e-6` in oil. It is above even OPM's relaxed
+final-iteration MB tier (`1e-6`), so OPM genuinely reaches a lower imbalance on the same physics;
+this is not an over-strict gate. The binding cells track the injector corner (`cell23/25`) and the
+producer corner (`cell528`).
+
+**Why the flavors look opposite, resolved.** OpmAligned enforces OPM's MB acceptance faithfully,
+so wherever ResSim's imbalance floor sits above tolerance — the areal water cases — it cannot
+accept and fragments dt. Legacy accepts the raw-residual-converged state through its near-converged
+and residual-trend bailouts, so it moves on at `8e-8` and never sees the floor. That is the whole
+reason Legacy is faster on these cases, and it is also why Legacy's produced oil differs: it is
+accepting states with a small material imbalance that OpmAligned refuses. Gas and the layered heavy
+case work under OpmAligned because there the imbalance floor happens to fall below tolerance.
+
+**Strategic consequence.** The areal-water convergence problem and the `8-10%` produced-oil gap
+against Flow (WATER-022) are the same defect seen from two sides: a persistent oil material
+imbalance that ResSim cannot drive to OPM's level. Fixing it improves correctness (closing the oil
+gap) and speed (removing the wasted iterations and dt fragmentation) at once. The next step is a
+same-state material-balance comparison against Flow — the WATER-017 dump apparatus applied to this
+case — to attribute the `2.5e-6` oil imbalance to its source: a well surface-rate/reservoir-flux
+inconsistency, or an accumulation/FVF inconsistency in the oil equation. This is a correctness
+investigation that also happens to be the dominant speed lever, so it supersedes further solver,
+controller, or per-iteration-cost work.
+
+No production behavior changed. The only source additions are the default-off `FIM_W023_FULL_TRACE`
+trace-to-file hook and `FIM_NESTED_WELL_SOLVE` plumbing on the 23x23x1 driver to match the 12x12x3
+one. `validate-solver-coverage.sh fim` 5/5.
