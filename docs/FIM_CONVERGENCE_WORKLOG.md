@@ -5853,3 +5853,34 @@ This closes the WATER-018→025 arc with a single, OPM-faithful root cause: ResS
 saturations to `Swc` where OPM keeps them raw, and that projection — not the relperm table, the
 wells, the linear solver, or the growth controller — was the areal-water convergence floor and part
 of the produced-oil gap.
+
+### WATER-026: OpmAligned promoted to the default FIM nonlinear flavor (2026-07-23)
+
+With WATER-025 removing the last areal-water convergence floor, OpmAligned is now the better path
+on every measured case, so `fim_opm_aligned_nonlinear` now defaults to `true`
+(`frontend.rs`). FIM is dev-only — public scenarios run IMPES (`FIM_DEFERRED_BACKLOG.md`) and nothing
+in `workers`/`catalog` wires the flavor — so this changes only the FIM dev path and the wasm
+diagnostic's no-flag default. The diagnostic gains `--legacy` to opt out for A/B; `--opm-aligned` is
+now redundant but still accepted.
+
+New default baseline (wasm, no flag = OpmAligned):
+
+| case | substeps | retries | outer ms | vs Legacy |
+| --- | ---: | --- | ---: | --- |
+| water 20x20x3 dt.25 | 3 | `0/1/0` | `1577` | Legacy `8`/`3479` |
+| water 23x23x1 dt.25 | 6 | `4/0/0` | `918` | Legacy `4`/`1432` |
+| water 12x12x3 dt1 | 4 | `0/0/0` | `864` | Legacy `24`/`4379` |
+| gas-rate 20x20x3 dt.25 | 1 | `0/0/0` | `844` | — |
+| gas-rate 10x10x3 6-step | 1/step | `0/0/0` | `~40-410`/step | shipped Legacy `8,4,4,4,4,4` |
+
+**The gas replay is fixed, not deferred.** The gas-rate OpmAligned multi-step that previously ran
+away to 501 substeps now completes in one substep per step with correct GOR (`80.0`, matching the
+injection GOR) and valid `Sg`. The A/B (`FIM_W025_DISABLE_RAW_SW`) shows this particular case does
+not depend on WATER-025 specifically; it was carried by the cumulative WATER-021 relperm-consistency
+and default-table work. Either way it is no longer an open item.
+
+Validation: `validate-solver-coverage.sh` `fim` 5/5, `impes` 2/2 under the new default. `shared`
+stops only at the pre-existing `closed_system_public_step_keeps_same_water_inventory_on_both_solvers`
+failure, confirmed by A/B to fail identically under both flavor defaults (the documented
+`rate_history` length case), so it is unrelated to this change. The `assembly_ad`
+structural-parity failure on HEAD also remains pre-existing and separately tracked.

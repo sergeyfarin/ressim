@@ -675,9 +675,14 @@ below is retained as Bundle N/Y history; it must not override this current seque
   with convergence. Present on all water controls (20x20x3 +6.9%, 23x23x1 +8.0%). Attribute via a
   proper cumulative-production comparison (well index, PVT, or endpoint treatment) against the
   tracked Flow reference decks.
-- [ ] **OpmAligned gas replay (10x10x3 6-step) still times out.** The shipped gas runs Legacy;
-  OpmAligned gas is a separate open item (three-phase, was 501 substeps). WATER-025 did not regress
-  it (single-step clean) but did not fix the multi-step replay either.
+- [x] **OpmAligned gas replay — RESOLVED 2026-07-23 (WATER-026).** The gas-rate OpmAligned
+  multi-step that previously ran away to 501 substeps now completes in 1 substep/step with correct
+  GOR (80.0) and valid Sg. A/B (`FIM_W025_DISABLE_RAW_SW`) shows it did not depend on WATER-025
+  specifically — carried by the cumulative WATER-021 relperm-consistency and default-table work.
+- [x] **WATER-026 — OpmAligned promoted to the DEFAULT FIM nonlinear flavor 2026-07-23.**
+  `fim_opm_aligned_nonlinear` now defaults true. FIM is dev-only (IMPES ships), so no shipped-scenario
+  impact. Diagnostic gains `--legacy` to opt out. New baseline: water 20x20x3 `3` sub (Legacy 8),
+  23x23x1 `6`, heavy `4`, gas `1`. fim 5/5, impes 2/2; shared's lone failure is pre-existing.
 
 - [ ] **Objective-1 gap: ResSim over-predicts oil by `8-10%` versus Flow on all three quarter-day
   controls** (comparing `rate x dt` against `FOPT`, an approximation since ResSim's `oil=` is an

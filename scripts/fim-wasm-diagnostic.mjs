@@ -109,6 +109,7 @@ Options:
   --checkpoint-dir <dir>    Directory used with --checkpoint-every
   --json                    Emit final JSON summary to stdout (default true)
   --no-json                 Suppress final JSON summary
+  --legacy                  use the Legacy nonlinear flavor (OpmAligned is now the default)
   --opm-aligned             Bundle N dev flag: OPM-aligned nonlinear layer (per-cell chopping)
   --nested-well-solve       Bundle W dev flag: converged per-well inner Newton solve
   --true-fgmres             Y2d5 dev flag: corrected right-preconditioned flexible GMRES
@@ -250,6 +251,9 @@ function parseArgs(argv) {
         break;
       case '--opm-aligned':
         options.opmAligned = true;
+        break;
+      case '--legacy':
+        options.legacy = true;
         break;
       case '--nested-well-solve':
         options.nestedWellSolve = true;
@@ -697,7 +701,11 @@ async function main() {
   const sim = new ReservoirSimulator(options.nx, options.ny, options.nz, 0.2);
   options.presetConfig.configure(sim, options);
   sim.setFimEnabled(options.solver === 'fim');
-  if (options.opmAligned) {
+  // OpmAligned is the default flavor (WATER-026). --legacy opts out for A/B; --opm-aligned is
+  // accepted for backward compatibility and is now redundant.
+  if (options.legacy) {
+    sim.setFimOpmAlignedNonlinear(false);
+  } else if (options.opmAligned) {
     sim.setFimOpmAlignedNonlinear(true);
   }
   if (options.nestedWellSolve) {
