@@ -87,7 +87,7 @@ impl FluidProperties {
 /// `21` is the centre of the measured `13..33` plateau (`FIM-RELPERM-001`, worklog "WATER-020").
 /// Substep count versus knot count is chaotic outside that band, exactly as the `k`-sweep was in
 /// `FIM-DAMP-004`, so this value must be re-derived from a fresh sweep rather than nudged.
-pub const DEFAULT_FIM_COREY_TABLE_POINTS: usize = 0;
+pub const DEFAULT_FIM_COREY_TABLE_POINTS: usize = 21;
 
 #[wasm_bindgen]
 pub struct ReservoirSimulator {

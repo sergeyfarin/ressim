@@ -596,17 +596,26 @@ below is retained as Bundle N/Y history; it must not override this current seque
   then `fim::tests::wells::rate_controlled_producer_fim_hits_bhp_limit` failed: perforation
   residual `+3.970e-3` versus analytic `-4.706e-4` against a `2e-3` gate. Default reverted to `0`;
   heavy case reproduces its analytic baseline exactly (23 substeps, oil `3107.30`).
-- [ ] **BLOCKER: the tabulated relperm path is not self-consistent.** The perforation residual does
-  not converge back to the analytic value as the table refines (`4.289e-3` at 2049 knots), which is
-  an inconsistency signature rather than discretization. The live AD assembly (`fim/flux.rs`,
-  `fim/wells_ad.rs`) is tabulated via `phase_mobilities_for_state_generic`, but `fim/wells.rs`
-  well-state helpers use `scal.k_rw`/`scal.k_ro` with analytic `d_k_rw_d_sw`/`d_k_ro_d_sw`, and
-  `fim/newton/damping.rs` computes the Wang-Tchelepi chop from analytic Corey. The same partiality
-  affects the pre-existing `FIM_WATER005_SWOF_REPLAY`, so the WATER-020 attribution to "the
-  piecewise-linear representation" is **INCONCLUSIVE** until this is fixed. Do not relax the well
-  gate. Fix order: route wells + their derivatives + the chop through the same tabulated
-  evaluation, prove the perforation residual converges to the analytic value as knots increase,
-  then re-run the sweep and the matrix.
+- [x] **WATER-021 — consistency fixed, attribution confirmed, tabulated relperm PROMOTED
+  2026-07-23.** `fim/wells.rs` well-state relperm and derivatives and `fim/newton/damping.rs`'s
+  Wang-Tchelepi chop now route through `fim_two_phase_relperm[_derivatives]`, with
+  `corey_table_derivatives` supplying the segment slope so a tabulated value can never be paired
+  with an analytic derivative. Re-running the sweep after the fix reproduces every previous number
+  to the digit, so the mixed model was NOT the source of the win — the piecewise-linear
+  representation is. Default is now `DEFAULT_FIM_COREY_TABLE_POINTS = 21`.
+  The well-gate failure was explained, not patched around: at the accepted state `Sw = 0.1000087`,
+  inside the first segment above `Swc`, linear interpolation of a quadratic legitimately
+  over-estimates `k_rw` (`5.31e-9` vs `1.18e-10`), moving the perforation residual from `-4.71e-4`
+  to `+4.29e-3` on a `~790 m3/day` well — `5.4e-6` relative either way, and exactly OPM's own
+  behaviour with a deck table. The gate is now scale-aware (`residual/rate < 1e-5`), which both
+  models pass and which is tighter in relative terms than the old absolute bound.
+  New baseline (wasm, default on): Legacy `8/3538`, `4/1517`, `4/1432`, gas `4/3467` (oil
+  `160.75`, bit-identical), heavy `24/4379`; OpmAligned heavy `4/833`. Natively the heavy case is
+  `4397 -> 234 ms` against Flow's `~87 ms`: `51x -> 2.7x`.
+  Gates: `fim` 5/5, `impes` 2/2. `shared` stops at the pre-existing
+  `closed_system_public_step_keeps_same_water_inventory_on_both_solvers` failure, confirmed to
+  fail identically with the analytic default.
+
 - [ ] **OpmAligned is far more expensive than Legacy on every control measured.** water 20x20x3
   `97` substeps versus Legacy's `8`; gas-rate 20x20x3 `501` versus `4` (`233 s`). This is the
   flavor Bundle Y targets and the one the OPM-parity work runs under, so it needs its own

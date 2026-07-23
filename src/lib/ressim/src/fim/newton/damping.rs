@@ -20,14 +20,14 @@ pub(super) fn fw_at_sw(
             let lg = scal.k_rg(sg) / sim.get_mu_g(p);
             (lw, lo, lg)
         } else {
-            let lw = sim.scal.k_rw(sw) / mu_w;
-            let lo = sim.scal.k_ro(sw) / mu_o;
-            (lw, lo, 0.0)
+            let (krw, kro) = sim.fim_two_phase_relperm(sw);
+            (krw / mu_w, kro / mu_o, 0.0)
         }
     } else {
-        let lw = sim.scal.k_rw(sw) / mu_w;
-        let lo = sim.scal.k_ro(sw) / mu_o;
-        (lw, lo, 0.0)
+        // The fractional-flow inflection chop must see the same relperm model as the residual,
+        // otherwise it damps curvature the reservoir no longer has (WATER-020).
+        let (krw, kro) = sim.fim_two_phase_relperm(sw);
+        (krw / mu_w, kro / mu_o, 0.0)
     };
 
     let lambda_t = lambda_w + lambda_o + lambda_g;

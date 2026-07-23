@@ -628,6 +628,32 @@ impl RockFluidProps {
         (t * (krw1 - krw0) + krw0, t * (kro1 - kro0) + kro0)
     }
 
+    /// Segment slopes of [`Self::corey_table_generic`].
+    ///
+    /// The tabulated law is piecewise linear, so its derivative is the slope of the segment
+    /// containing `s_w`, and zero outside `[s_wc, 1 - s_or]` where the table is clamped. Any
+    /// consumer that needs `dk/dSw` must use this rather than the analytic Corey derivative,
+    /// otherwise the value and its derivative come from two different models.
+    pub(crate) fn corey_table_derivatives(&self, s_w: f64, points: usize) -> (f64, f64) {
+        let points = points.max(2);
+        let lo = self.s_wc;
+        let hi = 1.0 - self.s_or;
+        let span = (hi - lo).max(1e-12);
+        let step = span / ((points - 1) as f64);
+
+        if s_w <= lo || s_w >= hi {
+            return (0.0, 0.0);
+        }
+        let segment = (((s_w - lo) / step).floor() as usize).min(points - 2);
+        let x0 = (lo + (segment as f64) * step).min(hi);
+        let x1 = (lo + ((segment + 1) as f64) * step).min(hi);
+        let width = (x1 - x0).max(1e-12);
+        (
+            (self.k_rw(x1) - self.k_rw(x0)) / width,
+            (self.k_ro(x1) - self.k_ro(x0)) / width,
+        )
+    }
+
     /// Scalar mirror of [`Self::corey_table_generic`].
     pub(crate) fn corey_table(&self, s_w: f64, points: usize) -> (f64, f64) {
         self.corey_table_generic(s_w, points)

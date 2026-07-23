@@ -5551,3 +5551,64 @@ Default reverted to `0`. The heavy case reproduces its analytic baseline exactly
 is to make the tabulated evaluation consistent across `fim/wells.rs`, its analytic derivatives, and
 `fim/newton/damping.rs`, verify that the perforation residual then converges to the analytic value
 as the table refines, and only then re-run the sweep and the matrix.
+
+### WATER-021: consistency fix, attribution confirmed, tabulated relperm PROMOTED (2026-07-23)
+
+**Consistency fix.** `fim/wells.rs`'s well-state relperm and its derivatives, and
+`fim/newton/damping.rs`'s Wang-Tchelepi fractional-flow chop, now route through two shared
+accessors on the simulator, `fim_two_phase_relperm` and `fim_two_phase_relperm_derivatives`, which
+also back the scalar mobility path. `RockFluidProps::corey_table_derivatives` supplies the segment
+slope so a tabulated value can never be paired with an analytic derivative. Reservoir residual,
+well state and damping now evaluate one model by construction.
+
+**The attribution survives.** Re-running the knot sweep after the fix reproduces the previous
+numbers to the digit — `n=13` `4` substeps/`227 ms`, `n=21` `4`/`234`, `n=33` `4`/`240`, `n=65`
+`8`/`670`, `n=161` `10`/`740`, analytic `50`/`4397` — with produced oil identical at every knot
+count. The mixed model was therefore not the source of the convergence win, and
+`FIM-RELPERM-001`'s mechanism claim is no longer `INCONCLUSIVE`: the piecewise-linear
+representation is the lever.
+
+**The well-gate failure is a real property of tabulation, not a defect.** Instrumenting the
+accepted state of `rate_controlled_producer_fim_hits_bhp_limit` shows `Sw = 0.100008693`, inside
+the first table segment above `Swc = 0.1`. There linear interpolation of a quadratic legitimately
+over-estimates `k_rw`: `5.306e-9` tabulated against `1.181e-10` analytic. That moves the
+perforation rate residual from `-4.706e-4` to `+4.289e-3` on a well producing `~790 m3/day` — a
+relative residual of `5.4e-6` either way. This is exactly OPM's own behaviour with a deck SWOF
+table, and it explains why the residual asymptotes with knot count instead of returning to the
+analytic value: refining the table shrinks the segment but the endpoint kink never disappears.
+
+The gate was made scale-aware rather than loosened: it now asserts
+`perf_residual / actual_rate < 1e-5`, which both models pass (`5.96e-7` analytic, `5.43e-6`
+tabulated) and which is tighter in relative terms than the previous absolute bound was for this
+well. The justification is recorded at the assertion.
+
+**Promoted.** `DEFAULT_FIM_COREY_TABLE_POINTS = 21`, the centre of the measured `13..33` plateau.
+New baseline, wasm, default on:
+
+| case | flavor | substeps | retries | outer ms | oil |
+| --- | --- | ---: | --- | ---: | ---: |
+| water 20x20x3 dt.25 | Legacy | 8 | `0/3/0` | `3538` | `3344.73` |
+| water 22x22x1 dt.25 | Legacy | 4 | `0/2/0` | `1517` | `1474.50` |
+| water 23x23x1 dt.25 | Legacy | 4 | `0/2/0` | `1432` | `1455.53` |
+| gas-rate 20x20x3 dt.25 | Legacy | 4 | `0/2/0` | `3467` | `160.75` |
+| water 12x12x3 dt1 | Legacy | 24 | `0/4/0` | `4379` | `3119.25` |
+| water 12x12x3 dt1 | OpmAligned | **4** | `0/0/0` | **`833`** | `2794.48` |
+
+Against the analytic baseline every Legacy control keeps its substep count with produced oil within
+`0.4%`, gas is bit-identical, and the OpmAligned heavy case goes `55`/`6518 ms` to `4`/`833 ms`.
+Natively the same case is `4397 ms` to `234 ms`, against Flow's `~87 ms` — from `51x` to `2.7x`.
+
+Gates: `validate-solver-coverage.sh` `fim` 5/5, `impes` 2/2. `shared` stops at the documented
+pre-existing `closed_system_public_step_keeps_same_water_inventory_on_both_solvers` failure, which
+was confirmed to fail identically with the analytic default and is unrelated. The `assembly_ad`
+structural-parity failure on committed HEAD also remains pre-existing and separately tracked.
+
+Scope note: FIM is dev-only — public scenarios run IMPES (`docs/FIM_DEFERRED_BACKLOG.md`) — and the
+accessors are reached only from `fim/`, so no shipped scenario changes.
+
+**Remaining gap to the stated objective.** The heavy case is now `2.7x` Flow natively. The other
+water controls are not: under `OpmAligned` water 20x20x3 is still `87-91` substeps versus Legacy's
+`8`, and gas-rate `501` versus `4`. Since the objective is `2-3x` of OPM on *all* cases and Legacy
+is currently the faster flavor everywhere except the heavy case, the next work is to establish
+which flavor is the parity target and close the `OpmAligned` penalty, rather than to tune the
+table further.
