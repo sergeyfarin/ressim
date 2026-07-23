@@ -3499,6 +3499,11 @@ mod phase5_repro {
         sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
         sim.set_fim_flow_lifecycle(std::env::var_os("FIM_FLOW_LIFECYCLE").is_some());
         sim.set_fim_nested_well_solve(std::env::var_os("FIM_NESTED_WELL_SOLVE").is_some());
+        if let Ok(points) = std::env::var("FIM_COREY_TABLE_POINTS") {
+            if let Ok(points) = points.parse::<usize>() {
+                sim.set_fim_corey_table_points(points);
+            }
+        }
 
         let start = Instant::now();
         let trace = sim.step_with_diagnostics(dt_days);

@@ -659,15 +659,25 @@ below is retained as Bundle N/Y history; it must not override this current seque
   because its front-cell kink errors CANCEL (net = 1% of abs_sum, MB 2.6e-8) where the areal
   single-layer front's ALIGN (MB 2.5e-6). This unifies WATER-018/021/023/024: one saturation-front
   SWOF-kink phenomenon, which is also the produced-oil correctness gap.
-- [ ] **NEXT: fix the front-cell relperm-kink limit cycle (correctness + speed, one fix).** OPM
-  uses the same piecewise-linear SWOF and reaches 1e-7, so the defect is in how ResSim evaluates
-  the tabulated relperm at a cell crossing a knot during Newton. Compare ResSim's value/derivative
-  interval selection at a front cell against OPM's `PiecewiseLinearTwoPhaseMaterial` — which side
-  of the knot each takes, and whether value and AD derivative stay on the same interval across an
-  iteration. Make them consistent so a front cell stops limit-cycling. Weigh: consistent one-sided
-  knot evaluation; small saturation-space kink regularization; or OPM's CNV-only final-iteration
-  acceptance when only MB is marginally violated. This is the dominant lever for BOTH objectives —
-  it removes OpmAligned's wasted iterations/dt fragmentation AND closes the oil gap.
+- [x] **WATER-025 — FIXED 2026-07-23: the areal-water floor was the hard Swc clamp, PROMOTED.**
+  CORRECTION: WATER-024's SWOF-kink attribution was wrong — analytic Corey (no knots) floors
+  identically, and the `knot_share=1.0` metric was an artifact (its window spans half the swept
+  range). The real cause: front-adjacent cells sit at `Sw=Swc`, and `enforce_cell_bounds`
+  hard-clamps stored Sw to Swc every update, pinning them so the oil balance never nulls. OPM keeps
+  raw Sw (`project-saturations=false`). The fix: under OpmAligned keep raw Sw and bypass the
+  `Swc`-requiring `respects_basic_bounds` (the two are coupled — raw Sw alone is rejected as an
+  "invalid bounded Appleyard candidate"). Reservoir residual `2.5e-6 -> 1.3e-16`. Results:
+  20x20x3 `90->3` substeps (`22687->1561 ms`), 23x23x1 `70->6`, heavy `4->4`; OpmAligned now beats
+  Legacy on areal water. Correctness: produced oil `+11% -> +6.9%` vs Flow FOPT on 20x20x3.
+  Gates: fim 5/5, impes 2/2, shipped gas replay unchanged, gas OpmAligned single-step clean.
+  Default-on under OpmAligned; `FIM_W025_DISABLE_RAW_SW` reverts. Legacy untouched.
+- [ ] **Remaining correctness item: the ~7% produced-oil gap vs Flow FOPT.** No longer entangled
+  with convergence. Present on all water controls (20x20x3 +6.9%, 23x23x1 +8.0%). Attribute via a
+  proper cumulative-production comparison (well index, PVT, or endpoint treatment) against the
+  tracked Flow reference decks.
+- [ ] **OpmAligned gas replay (10x10x3 6-step) still times out.** The shipped gas runs Legacy;
+  OpmAligned gas is a separate open item (three-phase, was 501 substeps). WATER-025 did not regress
+  it (single-step clean) but did not fix the multi-step replay either.
 
 - [ ] **Objective-1 gap: ResSim over-predicts oil by `8-10%` versus Flow on all three quarter-day
   controls** (comparing `rate x dt` against `FOPT`, an approximation since ResSim's `oil=` is an

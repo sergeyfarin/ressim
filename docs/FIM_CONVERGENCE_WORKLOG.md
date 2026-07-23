@@ -5796,3 +5796,60 @@ is marginally violated.
 
 No production behavior changed. The only addition is the `#[cfg(test)]`, default-off
 `FIM_W024_OIL_MB` decomposition hook. `validate-solver-coverage.sh fim` 5/5; wasm builds clean.
+
+### WATER-025: the areal-water floor is the hard Swc clamp, not the relperm kink (2026-07-23)
+
+**Correction to WATER-024.** WATER-024 attributed the oil material-balance floor to the
+piecewise-linear relperm kink at SWOF breakpoints. That is wrong. Re-running the decomposition with
+analytic Corey (`FIM_COREY_TABLE_POINTS=0`, no knots at all) reproduces the floor identically:
+`net_oil=-3.0e-3`, `well_share=0.0000`, same injector-corner front cells, `accum≈-faces`, same
+`iters=20` limit cycle. The `knot_share=1.0000` figure was an artifact — the ±one-segment window
+spans about half the swept saturation range, so "near a knot" was nearly vacuous. The floor is
+**relperm-independent**. What survives from WATER-024 is solid and was the real clue:
+`well_share=0` (not the wells), the imbalance is on the advancing water front, and forcing an exact
+direct linear solve does not help.
+
+**True cause.** If the Jacobian is consistent (the `jacobian_matches_numerical_of_real_residual`
+gates pass) and the linear solve is exact, yet the residual floors, the update must be clipped. The
+front-adjacent cells sit at exactly `Sw=Swc=0.1` (confirmed in the trace: `sw=0.1000, so=0.9000`),
+and `FimState::enforce_cell_bounds` hard-clamps stored `Sw` to `Swc` after every Newton update.
+OPM does the opposite: `project-saturations` defaults false, so OPM keeps the raw Newton saturation
+as the primary variable and clamps only inside the material-law evaluation. ResSim's hard clamp
+pins the ahead-of-front cells every iteration, so the oil balance there can never null — the
+coherent sum over the front band is the `2.5e-6` floor.
+
+**Confirmation.** Routing OpmAligned through the existing `apply_newton_update_frozen_raw_saturation`
+(raw `Sw`, pressure floor only) drops the reservoir residual from the `2.5e-6` floor to `1.275e-16`
+— the floor vanishes. But it then exposed a second, coupled gate: `respects_basic_bounds` requires
+`Sw>=Swc`, so raw saturations were rejected as an "invalid bounded Appleyard candidate" and dt
+collapsed. The two are one mechanism. Bypassing that bounds check under raw saturations (exactly as
+the pre-existing `y2b3_primary_variable_lifecycle` path already does) completes the fix.
+
+**The fix.** Under OpmAligned, keep the raw Newton saturation and bypass the `Swc`-requiring bounds
+check, matching OPM's `project-saturations=false`. Two-line change in `fim/newton.rs`, gated to
+OpmAligned only; `FIM_W025_DISABLE_RAW_SW` restores the old hard clamp for A/B. Legacy is untouched
+by construction.
+
+**Results (native drivers and wasm matrix).**
+
+| case | OpmAligned before | OpmAligned after | Legacy (unchanged) |
+| --- | ---: | ---: | ---: |
+| water 20x20x3 dt.25 | `90` sub / `22687 ms` | **`3` / `1561`** | `8` / `3479` |
+| water 23x23x1 dt.25 | `70` / `6108` | **`6` / `894`** | `4` / `1432` |
+| water 12x12x3 dt1 | `4` / `858` | `4` / `864` | `24` / `4379` |
+
+OpmAligned now beats Legacy on the areal cases. Correctness improved in the same motion, exactly as
+WATER-023 predicted the shared defect would: produced oil `rate*dt` against Flow's gravity-off
+`FOPT` moves from `+11%` to `+6.9%` on 20x20x3 (`815` vs `762.52`) and sits at `+8.0%` on 23x23x1
+(`363` vs `336.24`). The remaining `~7%` is a separate correctness item, no longer entangled with
+the convergence floor.
+
+**Validation.** `validate-solver-coverage.sh` `fim` 5/5, `impes` 2/2; the shipped gas replay
+(Legacy) is unchanged (`8, 4, 4, 4, 4, 4`); gas OpmAligned single-step is clean (`oil=160.76`,
+valid `Sg`, `retries=0/0/0`). The A/B override reproduces the old `72` substeps. The `FIM_W024_OIL_MB`
+decomposition hook and `FIM_W025_DISABLE_RAW_SW` override are the only diagnostics retained.
+
+This closes the WATER-018→025 arc with a single, OPM-faithful root cause: ResSim was hard-projecting
+saturations to `Swc` where OPM keeps them raw, and that projection — not the relperm table, the
+wells, the linear solver, or the growth controller — was the areal-water convergence floor and part
+of the produced-oil gap.
