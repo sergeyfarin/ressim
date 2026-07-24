@@ -207,6 +207,18 @@ Both claims are guarded by tests: monotonic front spreading with P_e, earlier fi
 
 The bias converges monotonically with refinement but is still ~8 % at 10 m cells. Across the skin ladder (s = -2, 0, +5) the recovered permeability is identical to three decimals — the slope/offset separation the case teaches, holding exactly. Documented in the scenario rather than tuned away.
 
+**T7.18 — SHIPPED, with its sign reversed by measurement.** New `endpoints_vs_geology` dimension on `sweep_vertical`: a 2x2 of Corey `n_o` (2 vs 4) against layer contrast (uniform vs V_DP ~ 0.8), plus `sweep_vertical.test.ts`.
+
+Written first as an *amplification* case by analogy with `wf_tornado`; the simulator refuted that and the case was rewritten around what it actually does. Measured at a common 0.625 PVI (recovery of mobile oil):
+
+| variant | base | curve only | layers only | both |
+|---|---|---|---|---|
+| recovery | 0.7257 | 0.5786 | 0.3794 | 0.3573 |
+
+The individual penalties sum to -0.4935; the combined penalty is -0.3684. The two mechanisms **mask** each other — once a thief zone is bypassing most of the section, a worse oil curve has little left to spoil. The decision consequence is the teaching point: a one-at-a-time study values fixing the rock curve at 0.147 of mobile oil, while in the layered reservoir it returns 0.022, so a SCAL programme justified on the first number is over-valued ~7x.
+
+This makes the library's pair of interaction cases deliberately opposite in sign — `wf_tornado` under-predicts from one-at-a-time reasoning, `endpoints_vs_geology` over-predicts. Together they say the direction of the error is not guessable either. Second tell in the same dimension: the Dykstra-Parsons overlay moves for the geology variant and is completely blind to the Corey variant, because the Corey exponent is not one of its inputs (`affectsAnalytical: false` on that variant, correctly).
+
 **T7.11 negative result — attempted, refuted, not shipped.** A `wf_orientation` scenario was built and measured: same 31x31 grid, same pore volume, wells moved between edge-to-edge ("parallel") and corner-to-corner ("diagonal"), crossed with favorable and adverse mobility ratio. The construction cannot demonstrate the classical effect, and the measurements say so:
 
 - Comparing at equal *days* is invalid under BHP control — the diagonal path has higher resistance, injects less per day, and sits at an earlier point in its flood. That alone produced a 36 % spread unrelated to orientation.

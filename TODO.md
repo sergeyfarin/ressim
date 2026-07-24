@@ -196,7 +196,12 @@ Open, no engine gap (cheapest):
 - [ ] **T7.12 numerical vs physical dispersion** framing on the existing `wf_bl1d` grid ladder.
 - [ ] **T7.13 IMPES-vs-FIM as a user-visible solver-choice sensitivity** — reuses the ~10 % liberated
   gas disagreement recorded in `docs/BLACK_OIL_VALIDATION.md` §2 (also a Priority-2 defect below).
-- [ ] **T7.14 joint relperm-endpoint uncertainty**, **T7.15 pattern density**, **T7.18 endpoints × V_DP**.
+- [ ] **T7.14 joint relperm-endpoint uncertainty**, **T7.15 pattern density**.
+- [x] **T7.18 endpoints × V_DP — DONE 2026-07-24.** `endpoints_vs_geology` dimension on
+  `sweep_vertical` + `sweep_vertical.test.ts`. Drafted as an amplification case by analogy with
+  `wf_tornado`, then rewritten when measurement showed the opposite: the two mechanisms *mask* each
+  other (individual penalties sum to -0.4935 of mobile oil, combined is -0.3684, measured at
+  0.625 PVI). The library's two interaction cases now deliberately have opposite sign.
 - [ ] **T7.5 Koval correction** — honest reference for the high-M `wf_bl1d` rungs.
 
 Open, needs a new analytical module:

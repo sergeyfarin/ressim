@@ -381,6 +381,7 @@ describe('scenario capability validation', () => {
         expect(getScenario('sweep_vertical')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['heterogeneity', 'per-result'],
             ['mobility', 'per-result'],
+            ['endpoints_vs_geology', 'per-result'],
             ['solver_comparison', 'shared'],
         ]);
         expect(getScenario('sweep_combined')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
