@@ -957,6 +957,9 @@ impl ReservoirSimulator {
     /// `FIM-DIAG-003` D0/D1 dev setter (`.archive/docs/FIM_DIAG_003_PLAN.md`): see
     /// `fim_force_direct_linear` doc comment. No wasm surface — set by the native repro test
     /// driver from `FIM_FORCE_DIRECT_LINEAR`, same pattern as `set_fim_nested_well_solve`.
+    /// The flag itself stays live in every build (read in `solve_fim_linear_system`); only this
+    /// setter is test-gated, since no production or wasm path flips it.
+    #[cfg(test)]
     pub(crate) fn set_fim_force_direct_linear(&mut self, enabled: bool) {
         self.fim_force_direct_linear = enabled;
     }

@@ -436,6 +436,7 @@ fn recover_full_system_report(
     // can never compute a `reduction` value and always hard-aborts, regardless of how good the
     // true state was. Native-only, off unless the env var is set; no-op verified (control matrix
     // bit-identical, `assembly_ad` parity 10/10).
+    #[cfg(not(target_arch = "wasm32"))]
     if std::env::var_os("FIM_WELL_SCHUR_DEBUG").is_some() {
         let line = format!(
             "WELL-SCHUR-DEBUG reduced_converged={} reduced_iters={} full_residual_norm={:.6e} tolerance={:.6e} rhs_norm={:.6e} reduced_final_residual_norm={:.6e}",

@@ -128,7 +128,9 @@ pub struct ReservoirSimulator {
     /// native-only, env-gated `fim::trace_sink` once a substep's trial dt drops below
     /// `FIM_TRACE_DT_BELOW` (or the substep index reaches `FIM_TRACE_SUBSTEP_START`). While
     /// true, every `fim_trace!` line and the per-iteration `WELLTRACE` line stream to the
-    /// `FIM_TRACE_FILE` sink. Always false when `FIM_TRACE_FILE` is unset — never set on wasm.
+    /// `FIM_TRACE_FILE` sink. Always false when `FIM_TRACE_FILE` is unset — never set on wasm,
+    /// hence the gate: the wasm build has no reader and no writer for it.
+    #[cfg(not(target_arch = "wasm32"))]
     fim_trace_window_active: bool,
     /// Bundle N (`.archive/docs/FIM_BUNDLE_N_DESIGN.md`): opt into the OPM-aligned nonlinear layer
     /// (per-cell update chopping instead of global-scalar damping). Dev/diagnostic flag,

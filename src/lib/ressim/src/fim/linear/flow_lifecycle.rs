@@ -1099,6 +1099,17 @@ pub(crate) struct FlowComponentIdentityMetrics {
     pub(crate) correction_max_abs: f64,
 }
 
+/// BiCGSTAB instrumentation for the reduced (Schur-eliminated) Flow system.
+///
+/// `initial_norm`/`final_norm`/`reduction` are **reduced-system** quantities and are
+/// deliberately not forwarded into [`FimLinearSolveReport`]: `solve_live_flow_lifecycle`
+/// recomputes `rhs_norm`/`final_residual_norm` on the full system (`rhs - J*solution`) so the
+/// Flow backend reports the same backend-neutral observables as every other backend. Publishing
+/// the reduced norms under those names is exactly the wrapper/reduced-system mismatch that makes
+/// a cross-backend comparison inconclusive. They stay here because the component-oracle tests
+/// assert BiCGSTAB's internal residual identity and alpha/omega/preconditioner accounting, which
+/// only the reduced view can express.
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Clone, Debug)]
 pub(crate) struct FlowBicgstabReport {
     pub(crate) reservoir_solution: DVector<f64>,
@@ -1180,6 +1191,8 @@ impl FlowBicgstabReport {
         report
     }
 
+    /// Reduced-system reduction ratio — see the struct doc for why this is test-only.
+    #[cfg(test)]
     pub(crate) fn reduction(&self) -> f64 {
         self.final_norm / self.initial_norm.max(1e-30)
     }

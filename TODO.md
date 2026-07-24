@@ -261,6 +261,22 @@ matter more. Search `docs/FIM_EXPERIMENT_REGISTRY.md` by mechanism before any ch
   phase in diagnostics.
 
 ## Housekeeping
+- [x] **No parity test between the tabulated-relperm value and derivative paths.** Found during the
+  2026-07-24 dead-code review. `RockFluidProps::corey_table_derivatives` (analytic segment slopes)
+  and `corey_table_generic` (what production differentiates via AD) are two independent
+  implementations of the same piecewise-linear law, and nothing asserted they agree.
+  Closed 2026-07-24 by `relperm::endpoint_derivative_tests::corey_table_derivatives_match_ad_derivative_of_the_table`:
+  it compares the analytic slopes against `Ad<1>` duals of `corey_table_generic` over two Corey
+  parameter sets, `points ∈ {2, 3, 5, 21, 101}`, and saturations covering both clamped tails, the
+  knots themselves and mid-segment points, plus a value-path check that the AD instantiation agrees
+  with `corey_table`. Verified to fail on an injected 1e-4 relative perturbation of the analytic
+  slope.
+- [ ] **The analytic well-sensitivity family in `fim/wells.rs` is entirely `#[cfg(test)]`.**
+  `local_phase_sensitivity` and its ~600 lines of dependent analytic well/perforation blocks exist
+  only as the oracle the AD well blocks are checked against (production has been on `assembly_ad`
+  since the Phase 5 cutover). That is a legitimate role, but it is undocumented at the module level
+  and the code reads as if it were live. Worth a module-level comment saying so; not worth deleting
+  while it is the only independent check on the AD well Jacobian.
 - [ ] **`.claude/settings.json` allowlist is stale** — `/home/reken/...` absolute paths and one-off
   experiment commands from old sessions. Needs a manual prune (agent-initiated permission edits are
   blocked by policy — user action).

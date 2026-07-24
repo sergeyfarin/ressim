@@ -4,8 +4,11 @@ use crate::ReservoirSimulator;
 use crate::fim::assembly::{
     CellFacePhaseDiagnostics, FacePhaseDiagnostics, FaceUpwindSample, FimAssemblyOptions,
     PhaseFluxDiagnostic, cell_equation_residual_breakdown, cell_face_phase_flux_diagnostics,
-    collect_face_upwind_snapshot, diff_face_upwind_snapshots, equation_offset, unknown_offset,
+    collect_face_upwind_snapshot, diff_face_upwind_snapshots,
 };
+// Offset helpers are only reached from the native-gated trace/diagnostic blocks below.
+#[cfg(not(target_arch = "wasm32"))]
+use crate::fim::assembly::{equation_offset, unknown_offset};
 // Phase 5 cutover: production Newton now assembles the coupled residual/
 // Jacobian via automatic differentiation (`assembly_ad`) instead of the
 // legacy hand-derivative/finite-difference hybrid in `assembly`. Aliased to
@@ -13,16 +16,17 @@ use crate::fim::assembly::{
 // `#[cfg(test)]` module still imports the legacy `assemble_fim_system`
 // directly for its own assertions.
 use crate::fim::assembly_ad::assemble_fim_system_ad as assemble_fim_system;
-use crate::fim::flow_resv::{FlowResvReportStepContext, flow_resv_injector_residual};
+use crate::fim::flow_resv::FlowResvReportStepContext;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::fim::flow_resv::flow_resv_injector_residual;
 use crate::fim::linear::{
     FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport,
     FimLinearSolverKind, active_direct_solve_row_threshold, solve_linearized_system,
 };
 use crate::fim::state::{FimState, HydrocarbonState};
-use crate::fim::wells::{
-    build_well_topology, connection_rate_for_bhp, perforation_component_rates_sc_day,
-    perforation_local_block, physical_well_control,
-};
+use crate::fim::wells::{build_well_topology, perforation_local_block, physical_well_control};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::fim::wells::{connection_rate_for_bhp, perforation_component_rates_sc_day};
 use crate::timing::PerfTimer;
 
 /// Diagnostic trace macro — persists lines for wasm diagnostics and optionally prints on native.
@@ -30,6 +34,10 @@ macro_rules! fim_trace {
     ($sim:expr, $verbose:expr, $($arg:tt)*) => {{
         let line = format!($($arg)*);
         $sim.append_fim_trace_line(&line);
+        // wasm has no stderr, so `$verbose` is unread there. Bind it anyway, otherwise every
+        // `verbose` parameter threaded down to a trace call warns as unused in the wasm build.
+        #[cfg(target_arch = "wasm32")]
+        let _ = $verbose;
         #[cfg(not(target_arch = "wasm32"))]
         if $verbose {
             eprintln!("{}", line);

@@ -10,9 +10,11 @@ use crate::fim::flow_resv::{
     FimWellRoute, FlowResvInjectorResidual, fim_well_route, flow_resv_context_for_perforation,
     flow_resv_injector_residual,
 };
-use crate::fim::scaling::{EquationScaling, VariableScaling, apply_flow_resv_scaling};
+use crate::fim::scaling::{EquationScaling, VariableScaling};
 #[cfg(test)]
-use crate::fim::scaling::{build_equation_scaling, build_variable_scaling};
+use crate::fim::scaling::{
+    apply_flow_resv_scaling, build_equation_scaling, build_variable_scaling,
+};
 #[cfg(test)]
 use crate::fim::state::HydrocarbonState;
 use crate::fim::state::{FimCellDerived, FimState};

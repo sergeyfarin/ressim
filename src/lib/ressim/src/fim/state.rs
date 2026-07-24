@@ -13,7 +13,10 @@ use crate::fim::wells::{
 /// drop-in at the single call site (`apply_newton_update_frozen`), flag-gated.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum WellStateUpdateMode {
-    /// No well-state post-processing (test-only path, `apply_newton_update`).
+    /// No well-state post-processing (test-only path, `apply_newton_update`). Gated so the
+    /// non-test build cannot silently acquire a fourth production mode: every live call site
+    /// goes through `Relax`, `NestedSolve` or `FlowResv`.
+    #[cfg(test)]
     None,
     /// Legacy: `relax_well_state_toward_local_consistency` (blend + trust radius).
     Relax,
@@ -718,6 +721,7 @@ impl FimState {
         well_update_mode: WellStateUpdateMode,
     ) {
         match well_update_mode {
+            #[cfg(test)]
             WellStateUpdateMode::None => self.enforce_control_bounds(sim, topology),
             WellStateUpdateMode::Relax => {
                 self.enforce_control_bounds(sim, topology);

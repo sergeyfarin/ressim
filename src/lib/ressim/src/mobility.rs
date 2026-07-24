@@ -166,6 +166,14 @@ impl ReservoirSimulator {
     }
 
     /// Saturation derivatives matching [`Self::fim_two_phase_relperm`].
+    ///
+    /// Test-only since WATER-021: the production residual/Jacobian path differentiates
+    /// [`Self::phase_mobilities_for_state_generic`] with AD, so it never needs an explicit
+    /// `dk/dSw`. The remaining consumer is `fim::wells::local_phase_sensitivity`, the analytic
+    /// well-sensitivity oracle the well tests check the AD blocks against. Keep this in step
+    /// with the value path above — an analytic oracle built on a different model would make
+    /// those tests assert the wrong thing.
+    #[cfg(test)]
     pub(crate) fn fim_two_phase_relperm_derivatives(&self, sw: f64) -> (f64, f64) {
         if self.fim_opm_water_heavy_swof {
             // Slope of the rounded deck table's active segment, by the same one-sided rule the

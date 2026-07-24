@@ -86,6 +86,11 @@ pub(crate) fn flow_resv_context_for_perforation(
 /// path until G4b2 can route every coupled row together.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FlowResvInjectorResidual<S> {
+    /// Part of G4b1's residual contract and asserted by the AD-parity tests, but the only
+    /// non-test reader is the native-gated well trace in `newton.rs`, so the wasm build sees no
+    /// read. Kept rather than dropped: `perforation` and `gas_source_sc_day` are both defined in
+    /// terms of it, and the tests pin their agreement.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(crate) connection_rate_sc_day: S,
     pub(crate) perforation: S,
     pub(crate) control: S,

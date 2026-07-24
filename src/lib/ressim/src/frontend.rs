@@ -87,6 +87,7 @@ impl ReservoirSimulator {
             last_solver_warning: String::new(),
             last_fim_trace: String::new(),
             capture_fim_trace: false,
+            #[cfg(not(target_arch = "wasm32"))]
             fim_trace_window_active: false,
             fim_opm_aligned_nonlinear: true,
             fim_nested_well_solve: false,

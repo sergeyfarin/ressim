@@ -13,6 +13,9 @@ pub(crate) mod properties;
 pub(crate) mod scaling;
 pub(crate) mod state;
 pub(crate) mod timestep;
+// Native-only: every call site is already `#[cfg(not(target_arch = "wasm32"))]`, and the sink
+// writes to the filesystem, so compiling it for wasm only produced dead `std::fs` code.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod trace_sink;
 pub(crate) mod wells;
 pub(crate) mod wells_ad;

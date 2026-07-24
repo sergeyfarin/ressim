@@ -634,6 +634,10 @@ impl RockFluidProps {
     /// containing `s_w`, and zero outside `[s_wc, 1 - s_or]` where the table is clamped. Any
     /// consumer that needs `dk/dSw` must use this rather than the analytic Corey derivative,
     /// otherwise the value and its derivative come from two different models.
+    ///
+    /// Test-only: production differentiates `corey_table_generic` with AD, so the only caller
+    /// is the analytic oracle behind `fim_two_phase_relperm_derivatives`.
+    #[cfg(test)]
     pub(crate) fn corey_table_derivatives(&self, s_w: f64, points: usize) -> (f64, f64) {
         let points = points.max(2);
         let lo = self.s_wc;
@@ -746,5 +750,63 @@ mod endpoint_derivative_tests {
         let (water_endpoint, oil_endpoint) = scal.water_heavy_swof_replay_generic(endpoint);
         assert_eq!(water_endpoint.d(0), 0.0);
         assert_eq!(oil_endpoint.d(0), 0.0);
+    }
+
+    /// `corey_table_derivatives` (analytic segment slopes, the oracle behind
+    /// `fim_two_phase_relperm_derivatives`) and `corey_table_generic` (what production
+    /// differentiates with AD) are independent implementations of the same piecewise-linear law.
+    /// Nothing else asserts they agree, so a drift would surface only as a mismatch between the
+    /// AD Jacobian and the well-sensitivity oracle. Sweep both knot counts and saturations,
+    /// including the clamped tails and the knots themselves, where segment selection switches.
+    #[test]
+    fn corey_table_derivatives_match_ad_derivative_of_the_table() {
+        let cases = [
+            RockFluidProps::default_scal(),
+            RockFluidProps {
+                s_wc: 0.15,
+                s_or: 0.25,
+                n_w: 3.0,
+                n_o: 1.5,
+                k_rw_max: 0.4,
+                k_ro_max: 0.85,
+            },
+        ];
+
+        for scal in cases {
+            for points in [2usize, 3, 5, 21, 101] {
+                let lo = scal.s_wc;
+                let hi = 1.0 - scal.s_or;
+                let step = (hi - lo) / ((points - 1) as f64);
+
+                let mut samples = vec![0.0, lo - 0.05, lo, hi, hi + 0.05, 1.0];
+                for index in 0..points {
+                    let knot = lo + (index as f64) * step;
+                    samples.push(knot);
+                    samples.push(knot + 0.25 * step);
+                    samples.push(knot + 0.5 * step);
+                }
+
+                for sw in samples {
+                    let (d_krw, d_kro) = scal.corey_table_derivatives(sw, points);
+                    let (krw, kro) = scal.corey_table_generic(Ad::<1>::variable(sw, 0), points);
+
+                    assert!(
+                        (krw.d(0) - d_krw).abs() <= 1e-9 * d_krw.abs().max(1.0),
+                        "krw slope mismatch at sw={sw}, points={points}: ad={} analytic={d_krw}",
+                        krw.d(0)
+                    );
+                    assert!(
+                        (kro.d(0) - d_kro).abs() <= 1e-9 * d_kro.abs().max(1.0),
+                        "kro slope mismatch at sw={sw}, points={points}: ad={} analytic={d_kro}",
+                        kro.d(0)
+                    );
+
+                    // The AD instantiation must also carry the scalar value path's result.
+                    let (value_krw, value_kro) = scal.corey_table(sw, points);
+                    assert!((krw.value() - value_krw).abs() < 1e-14);
+                    assert!((kro.value() - value_kro).abs() < 1e-14);
+                }
+            }
+        }
     }
 }

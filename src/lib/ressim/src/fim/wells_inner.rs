@@ -45,6 +45,9 @@ pub(crate) struct FimWellLocalSystem {
 }
 
 impl FimWellLocalSystem {
+    /// Test-only: asserts the local row/unknown count documented above. Production code indexes
+    /// `residual`/`jacobian` through the global offsets instead.
+    #[cfg(test)]
     pub(crate) fn dim(&self) -> usize {
         1 + self.perforation_indices.len()
     }
