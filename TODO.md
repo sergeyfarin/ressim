@@ -39,6 +39,46 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   takes the first `*.RSM` glob match.
 - [ ] **(MINOR) `wf_tornado` runtime:** 4×800 steps of a 40×1×10 IMPES grid ≈ 4–5 s each headless —
   visual check the sweep UX stays responsive.
+
+### Large-grid IMPES runtime (headless catalog sweep, 2026-07-24)
+Measured all 130 catalog cases headless in Node against the committed wasm
+(`node tmp/time-all.mjs`, harness not committed). Full catalog ≈ 1000 s; three scenarios own 97 % of it:
+
+| Scenario (all variants) | Total | Worst single case |
+|---|---|---|
+| `sweep_combined` | 458 s | `interaction_favorable_layered` 21×21×5, 69 s |
+| `spe1_gas_injection` | 268 s | `grid/grid_20` 20×20×3, 162 s |
+| `sweep_areal` | 241 s | `grid_resolution/grid_high` 48×48×1, 124 s |
+
+- [x] **SPE1 `grid_20` slowness diagnosed.** Not a frontend or worker problem — the worker's
+  snapshot path is already incremental (`historyInterval = ceil(steps/25)`, `getRateHistorySince`
+  deltas). Cost is engine-side and CFL-bound: 4089 accepted substeps × 1200 cells for 4000 days.
+  Forcing `delta_t_days: 2.5 / steps: 1600` in the variant patch is **not** what makes it slow —
+  running the same 4000 days at the base `dt = 30` costs the same wall time (172 s vs 162 s),
+  because the internal adaptive loop subdivides to the same CFL limit either way.
+- [x] **Repeated symbolic LU factorization removed** (`solvers/faer_sparse_lu.rs`). `sp_lu()` redid
+  the fill-reducing ordering on every solve although the IMPES pressure pattern is fixed for a run.
+  Now cached per sparsity pattern; numeric factorization still runs every solve, so trajectories are
+  unchanged (substep/solve/retry counts bit-identical before/after on all three cases below).
+  Measured: `sweep_combined` 55.6 → 48.4 s, `sweep_areal/grid_high` 49.4 → 40.1 s,
+  `spe1/grid_20` 26.1 → 25.0 s (equal step caps, sequential, no CPU contention).
+- [ ] **(MAJOR) The linear solver strategy is the real large-grid bottleneck.** `LinearSolverKind::DEFAULT`
+  is `FaerSparseLu` — a *direct* sparse LU rebuilt from scratch every substep. It is 73–80 % of runtime
+  on the ≥2000-cell cases and its cost grows superlinearly with cell count, so every future large case
+  inherits this. Two supporting observations: (a) `calculate_fluxes` assembles `diag_inv` and passes
+  `initial_guess` for an iterative solve, then the LU path **discards both** — the warm start from the
+  previous pressure is free and unused; (b) a probe forcing `BiCgStab` cut `spe1/grid_20` linear time
+  13.9 → 5.4 s, but needed ~119 Jacobi-preconditioned iterations per solve and was *slower* on the
+  300-cell base grid, so a blanket switch is not the answer. Wanted: a size-aware choice plus a
+  stronger preconditioner (ILU0/CPR) and warm starting. Note the per-solve `sprs → faer` triplet
+  rebuild + `to_col_major()` is also redone every substep against a fixed pattern and could reuse a
+  cached structure, refilling values only.
+- [ ] **(MINOR) `spe1 delta_t/delta_t_0_25` runs 16 000 outer steps for 4000 days** (61 s, 300 cells,
+  ~1 substep per step). Given the adaptive loop already controls CFL, this variant mostly measures
+  outer-loop overhead; confirm it still teaches what it claims to.
+- [ ] **(MINOR) `sim.worker.ts` calls `peekLatestRatePoint()` every step** for the termination policy,
+  which marshals up to `historyInterval` rate-history entries across the wasm boundary each time
+  though only the last point is used. Cheap next to the solver, but pure waste on long runs.
 - [ ] **(MINOR, style)** `navigationStore`/`runtimeStore` import benchmark types via the
   `benchmarkCases` stub re-export instead of `scenario/referenceTypes` directly — trivial cleanup
   when next touched.
