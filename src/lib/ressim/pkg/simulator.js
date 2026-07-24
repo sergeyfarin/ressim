@@ -117,6 +117,18 @@ export class ReservoirSimulator {
         }
     }
     /**
+     * Most recent rate-history point, or `null` when no rates have been recorded yet.
+     *
+     * Cheap alternative to `getRateHistorySince` for callers that only need the
+     * latest point (e.g. the worker's per-step termination check): it serializes
+     * one entry instead of the whole undelivered tail.
+     * @returns {any}
+     */
+    getLatestRatePoint() {
+        const ret = wasm.reservoirsimulator_getLatestRatePoint(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * @returns {Float64Array}
      */
     getPressures() {

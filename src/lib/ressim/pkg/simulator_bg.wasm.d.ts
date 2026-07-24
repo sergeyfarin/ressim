@@ -15,6 +15,7 @@ export const reservoirsimulator_getFimTrace: (a: number) => [number, number];
 export const reservoirsimulator_getGridState: (a: number) => any;
 export const reservoirsimulator_getLastFimStepStats: (a: number) => any;
 export const reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
+export const reservoirsimulator_getLatestRatePoint: (a: number) => any;
 export const reservoirsimulator_getPressures: (a: number) => [number, number];
 export const reservoirsimulator_getRateHistory: (a: number) => any;
 export const reservoirsimulator_getRateHistorySince: (a: number, b: number) => any;

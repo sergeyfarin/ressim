@@ -314,7 +314,7 @@ export const spe1_gas_injection: Scenario = {
         // ── Numerics ────────────────────────────────────────────────────
         fimEnabled: true,
         delta_t_days: 30,
-        steps: 120,               // 4000 days coverage
+        steps: 120,               // 3600 days coverage (~10 years, the SPE1 Case 1 window)
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 20,
         max_well_rate_change_fraction: 0.2,
@@ -406,43 +406,48 @@ export const spe1_gas_injection: Scenario = {
             label: 'Time Step',
             description: 'Time step convergence study — refine or coarsen the time step while maintaining the same physical domain.',
             analyticalOverlayMode: 'shared',
+            // Every variant runs the same 3600-day window (steps × Δt = 3600, matching
+            // the base params), so the curves are comparable. Under FIM each outer step
+            // is one implicit solve — measured 1.00-1.02 accepted substeps per step at
+            // every Δt below — so cost scales linearly with the step count (~23 ms/solve
+            // on 300 cells). That is why the ladder stops at 1.25 days: a measured
+            // Δt = 0.25 rung costs 14 400 solves / 342 s yet moves end-state average
+            // pressure by 0.002 % and GOR by 0.06 % versus Δt = 1.25 (2026-07-24).
             variants: [
+                {
+                    key: 'delta_t_30',
+                    label: 'Δt = 30 days  (base)',
+                    description: 'Base time step — 30 days, the scenario default.',
+                    paramPatch: {},
+                    affectsAnalytical: false,
+                },
                 {
                     key: 'delta_t_5',
                     label: 'Δt = 5 days  (coarse)',
                     description: 'Coarse time step — larger numerical diffusion, faster gas breakthrough.',
                     paramPatch: {
                         delta_t_days: 5,
+                        steps: 720,
                     },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'delta_t_2_5',
-                    label: 'Δt = 2.5 days  (base)',
-                    description: 'Base time step — 2.5 days.',
+                    label: 'Δt = 2.5 days  (fine)',
+                    description: 'Refined time step — 2.5 days.',
                     paramPatch: {
                         delta_t_days: 2.5,
-                        steps: 1600,
+                        steps: 1440,
                     },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'delta_t_1_25',
-                    label: 'Δt = 1.25 days  (fine)',
-                    description: 'Refined time step — 1.25 days, sharper gas front, with tighter timestep and control-change limits to keep the fine-grid case stable.',
+                    label: 'Δt = 1.25 days  (finest)',
+                    description: 'Most refined time step — 1.25 days, sharpest gas front; the point where the pressure and GOR curves stop moving materially.',
                     paramPatch: {
                         delta_t_days: 1.25,
-                        steps: 3200,
-                    },
-                    affectsAnalytical: false,
-                },
-                {
-                    key: 'delta_t_0_25',
-                    label: 'Δt = 0.25 days  (fine)',
-                    description: 'Refined time step — 0.25 days, sharper gas front, with tighter timestep and control-change limits to keep the fine-grid case stable.',
-                    paramPatch: {
-                        delta_t_days: 0.25,
-                        steps: 16000,
+                        steps: 2880,
                     },
                     affectsAnalytical: false,
                 },

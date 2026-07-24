@@ -12,6 +12,14 @@ export class ReservoirSimulator {
     getGridState(): any;
     getLastFimStepStats(): any;
     getLastSolverWarning(): string;
+    /**
+     * Most recent rate-history point, or `null` when no rates have been recorded yet.
+     *
+     * Cheap alternative to `getRateHistorySince` for callers that only need the
+     * latest point (e.g. the worker's per-step termination check): it serializes
+     * one entry instead of the whole undelivered tail.
+     */
+    getLatestRatePoint(): any;
     getPressures(): Float64Array;
     getRateHistory(): any;
     getRateHistorySince(start_index: number): any;
@@ -130,6 +138,7 @@ export interface InitOutput {
     readonly reservoirsimulator_getGridState: (a: number) => any;
     readonly reservoirsimulator_getLastFimStepStats: (a: number) => any;
     readonly reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
+    readonly reservoirsimulator_getLatestRatePoint: (a: number) => any;
     readonly reservoirsimulator_getPressures: (a: number) => [number, number];
     readonly reservoirsimulator_getRateHistory: (a: number) => any;
     readonly reservoirsimulator_getRateHistorySince: (a: number, b: number) => any;

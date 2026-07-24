@@ -75,12 +75,56 @@ Measured all 130 catalog cases headless in Node against the committed wasm
   the prior 162 s catalog-sweep measurement (~2.6x), but its temporary timing harness was not kept,
   so treat that number as directional rather than a replayable baseline. Direct-vs-iterative tests
   cover a 576-row nonsymmetric Cartesian pressure system at `1e-10` relative residual.
-- [ ] **(MINOR) `spe1 delta_t/delta_t_0_25` runs 16 000 outer steps for 4000 days** (61 s, 300 cells,
-  ~1 substep per step). Given the adaptive loop already controls CFL, this variant mostly measures
-  outer-loop overhead; confirm it still teaches what it claims to.
-- [ ] **(MINOR) `sim.worker.ts` calls `peekLatestRatePoint()` every step** for the termination policy,
-  which marshals up to `historyInterval` rate-history entries across the wasm boundary each time
-  though only the last point is used. Cheap next to the solver, but pure waste on long runs.
+- [x] **`spe1 delta_t` sensitivity rebuilt on measurement (2026-07-24).** The original item assumed
+  an IMPES CFL-resubdividing outer loop; since b88ee28 the scenario is FIM (`fimEnabled: true`), and
+  every rung measures **1.00–1.02 accepted substeps per outer step** — the outer Δt *is* the implicit
+  solve, so this was never outer-loop overhead. Two real defects were found instead: `delta_t_5`
+  patched only `delta_t_days` and inherited `steps: 120`, so it covered **600 days against the other
+  rungs' 4000**; and the base-params comment claimed 4000 days when `120 × 30 = 3600`. The ladder is
+  now 30 (base) / 5 / 2.5 / 1.25 days at a uniform 3600-day window, and `delta_t_0_25` is dropped.
+  Measured headless on this tree by driving `sim.worker.ts`'s own message loop against
+  `buildScenarioRunSpecs('spe1_gas_injection', 'delta_t', …)` — i.e. the exact catalog config the
+  app runs — with `ReservoirSimulator.prototype.step` wrapped to accumulate
+  `getLastFimStepStats().accepted_substeps`. 300 cells, FIM, sequential, no CPU contention. The
+  harness was a throwaway vitest file and was **not kept**, so these are directional numbers, not a
+  replayable baseline:
+
+  | Δt (d) | steps | wall | substeps/step | end avg P (bar) | end GOR | end oil rate |
+  |---|---|---|---|---|---|---|
+  | 30 | 120 | 4.47 s | 1.02 | 256.2818 | 3847.25 | 878.824 |
+  | 5 | 720 | 17.49 s | 1.00 | 256.1038 | 3857.94 | 876.630 |
+  | 2.5 | 1440 | 32.61 s | 1.00 | 256.0868 | 3859.02 | 876.412 |
+  | 1.25 | 2880 | 69.03 s | 1.00 | 256.0810 | 3859.14 | 876.368 |
+  | 0.25 (dropped) | 14400 | 342.02 s | 1.00 | 256.0768 | 3856.82 | 876.612 |
+
+  Cost is linear in step count (~23 ms/solve). The dropped rung costs 5× the rest of the ladder
+  combined and moves end-state pressure by 0.002 % / GOR by 0.06 % versus Δt = 1.25 — it taught
+  nothing the 1.25 rung does not. Provisional: measured on the dirty tree that became this commit,
+  not re-replayed after commit.
+- [x] **`sim.worker.ts` per-step rate-history marshalling removed.** Added
+  `getLatestRatePoint()` (`frontend.rs`) returning the last `TimePointRates` or `null`;
+  `peekLatestRatePoint()` now calls it instead of `getRateHistorySince(lastRateHistoryLen)`.
+  Equivalence probed over 25 steps on a 10×1×1 waterflood: identical to both
+  `last(getRateHistory())` and the old `getRateHistorySince` tail, and `null` before any rates
+  exist (throwaway node probe, not kept). Measured probe cost: 373.8 → 2.5 µs/call at a 128-point
+  tail (152×), 1277.2 → 2.4 µs/call at a 640-point tail (523×). Worth ~0.5 s on a 2880-step run —
+  small next to the solver, as the original item said, but now zero.
+- [x] **`pnpm test` was running the entire suite twice (2026-07-24).** Agent worktrees under
+  `.claude/worktrees/` are full checkouts, and vitest's default `include` swept them up: 84 test
+  files / 136 s instead of 42 / 22 s, with both copies of the heavy scenario tests competing for CPU.
+  That is how it surfaced — `wf_tornado.test.ts` in the worktree copy hit the 30 s timeout during
+  `validate:product` while the same test passed in isolation. `vitest.config.ts` now excludes
+  `.claude/worktrees/**` and `tmp/**`. Any past "flaky timeout" in a scenario test is suspect for
+  this cause.
+- [ ] **(MINOR) `spe1 grid/grid_20` covers a different time window than its siblings.** It patches
+  `delta_t_days: 2.5, steps: 1600` → 4000 days, while the base and the other grid rungs run
+  `120 × 30 = 3600`. Same defect class as the `delta_t_5` one fixed on 2026-07-24 (a variant patching
+  Δt without re-deriving `steps`). A scan of every scenario for `steps × Δt` drift within a
+  dimension also flags `sweep_areal` (variants at 325 d and 1250 d against a 625 d base) and
+  `wf_bl1d` (75 d against a 50 d base). Some of those may be deliberate — a coarser rung can need
+  longer to reach breakthrough, and a termination policy can end the run early regardless — so each
+  needs a judgement call, not a blanket fix. A contract test asserting the invariant per dimension
+  (with an explicit opt-out flag) would stop the accidental cases recurring.
 - [ ] **(MINOR, style)** `navigationStore`/`runtimeStore` import benchmark types via the
   `benchmarkCases` stub re-export instead of `scenario/referenceTypes` directly — trivial cleanup
   when next touched.

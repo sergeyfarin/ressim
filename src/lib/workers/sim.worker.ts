@@ -153,8 +153,9 @@ function peekLatestRatePoint(): Record<string, unknown> | null {
     throw new Error('Simulator not initialized');
   }
 
-  const rateHistoryDelta = simulator.getRateHistorySince(lastRateHistoryLen) as Array<Record<string, unknown>>;
-  return rateHistoryDelta.length > 0 ? rateHistoryDelta[rateHistoryDelta.length - 1] : null;
+  // Only the latest point is needed here, so avoid marshalling the whole
+  // undelivered rate-history tail across the wasm boundary every step.
+  return (simulator.getLatestRatePoint() as Record<string, unknown> | null) ?? null;
 }
 
 function configureSimulator(payload: SimulatorCreatePayload) {

@@ -510,6 +510,19 @@ impl ReservoirSimulator {
         serde_wasm_bindgen::to_value(&self.rate_history[start..]).unwrap()
     }
 
+    /// Most recent rate-history point, or `null` when no rates have been recorded yet.
+    ///
+    /// Cheap alternative to `getRateHistorySince` for callers that only need the
+    /// latest point (e.g. the worker's per-step termination check): it serializes
+    /// one entry instead of the whole undelivered tail.
+    #[wasm_bindgen(js_name = getLatestRatePoint)]
+    pub fn get_latest_rate_point(&self) -> JsValue {
+        match self.rate_history.last() {
+            Some(point) => serde_wasm_bindgen::to_value(point).unwrap(),
+            None => JsValue::NULL,
+        }
+    }
+
     #[wasm_bindgen(js_name = getLastSolverWarning)]
     pub fn get_last_solver_warning(&self) -> String {
         self.last_solver_warning.clone()
