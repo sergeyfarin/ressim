@@ -17,10 +17,9 @@ import {
     type BenchmarkRunPolicy,
     type BenchmarkSensitivityAxisKey,
 } from './benchmarkCases';
-import {
-    presetCases,
-    type PresetEntry,
-} from './caseCatalog';
+// Type-only: a runtime import from './caseCatalog' would close an import cycle
+// (caseCatalog imports caseLibrary) and put caseLibraryEntries in the TDZ.
+import type { PresetEntry } from './caseCatalog';
 
 type PresetCategory = string;
 type PresetLayoutConfig = Record<string, unknown>;
@@ -303,10 +302,12 @@ function compareCaseLibraryEntries(left: CaseLibraryEntry, right: CaseLibraryEnt
     return left.label.localeCompare(right.label);
 }
 
-export const caseLibraryEntries: CaseLibraryEntry[] = [
-    ...benchmarkFamilies.map(buildBenchmarkLibraryEntry),
-    ...presetCases.map(buildPresetLibraryEntry),
-].sort(compareCaseLibraryEntries);
+// Preset ('curated-starter') entries are archived: caseCatalog.presetCases is a
+// permanently empty stub, so only benchmark families are materialized here.
+// buildPresetLibraryEntry stays available for when presets are reinstated.
+export const caseLibraryEntries: CaseLibraryEntry[] = benchmarkFamilies
+    .map(buildBenchmarkLibraryEntry)
+    .sort(compareCaseLibraryEntries);
 
 const caseLibraryEntryMap = new Map(caseLibraryEntries.map((entry) => [entry.key, entry]));
 
