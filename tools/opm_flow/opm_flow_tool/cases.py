@@ -113,8 +113,11 @@ WF_BL1D = OpmCase(
           'PROD' 'G' 96 1 0 'OIL' /
         /
         COMPDAT
-          'INJ' 1 1 1 1 'OPEN' 1* 0.1 /
-          'PROD' 96 1 1 1 'OPEN' 1* 0.1 /
+        -- Items 7-8 (SATNUM, connection transmissibility factor) are defaulted so
+        -- Flow computes the Peaceman factor itself; item 9 is the wellbore
+        -- DIAMETER (2 x the ResSim scenario's 0.1 m well_radius).
+          'INJ' 1 1 1 1 'OPEN' 2* 0.2 /
+          'PROD' 96 1 1 1 'OPEN' 2* 0.2 /
         /
         WCONINJE
           'INJ' 'WATER' 'OPEN' 'BHP' 1* 1* 500 /
@@ -161,6 +164,8 @@ SPE1_GAS_INJECTION = OpmCase(
         METRIC
         TABDIMS
           1 1 20 20 1 20 /
+        EQLDIMS
+        /
         WELLDIMS
           2 2 1 2 /
         START
@@ -172,8 +177,11 @@ SPE1_GAS_INJECTION = OpmCase(
           10*304.8 /
         DZ
           100*6.096 100*9.144 100*15.24 /
+        -- 8325 ft: the true SPE1 reservoir top. Needed so the WELSPECS datum
+        -- depths below sit inside the grid and BHP is reported at the same
+        -- datum the ResSim scenario uses (depth_reference 2560 m).
         TOPS
-          100*0 /
+          100*2537.46 /
         PORO
           300*0.3 /
         PERMX
@@ -233,10 +241,15 @@ SPE1_GAS_INJECTION = OpmCase(
           0.70 0.94 0 0
           0.88 0.984 0 0 /
         SOLUTION
+        -- Datum 8400 ft / 4800 psia, WOC just below (8450 ft) and GOC just
+        -- above (8300 ft) the reservoir, as in Odeh's Table 1.
         EQUIL
-          0 331 10000 0 0 0 0 0 0 /
+          2560.32 331 2575.56 0 2529.84 0 1 0 0 /
+        -- Undersaturated: Rs is constant with depth (bubble point 4014.7 psia
+        -- < 4800 psia initial), so both bracketing depths carry the same Rs.
         RSVD
-          0 226.197 /
+          2529.84 226.197
+          2575.56 226.197 /
         SUMMARY
         FOPR
         FGIR
@@ -250,13 +263,22 @@ SPE1_GAS_INJECTION = OpmCase(
         RUNSUM
         SEPARATE
         SCHEDULE
+        -- Case 1: no re-dissolution of free gas, matching the ResSim
+        -- scenario's gasRedissolutionEnabled: false.
+        DRSDT
+          0 /
+        -- Datum depths are the perforated layer centres: 8335 ft (layer 1) for
+        -- the injector, 8400 ft (layer 3) for the producer.
         WELSPECS
-          'INJ' 'G' 1 1 0 'GAS' /
-          'PROD' 'G' 10 10 0 'OIL' /
+          'INJ' 'G' 1 1 2540.51 'GAS' /
+          'PROD' 'G' 10 10 2560.32 'OIL' /
         /
         COMPDAT
-          'INJ' 1 1 1 1 'OPEN' 1* 0.0762 /
-          'PROD' 10 10 3 3 'OPEN' 1* 0.0762 /
+        -- Items 7-8 (SATNUM, connection transmissibility factor) are defaulted so
+        -- Flow computes the Peaceman factor itself; item 9 is the wellbore
+        -- DIAMETER (0.5 ft = 2 x the deck's 0.25 ft well radius).
+          'INJ' 1 1 1 1 'OPEN' 2* 0.1524 /
+          'PROD' 10 10 3 3 'OPEN' 2* 0.1524 /
         /
         WCONINJE
           'INJ' 'GAS' 'OPEN' 'RATE' 2831680 1* 621 /

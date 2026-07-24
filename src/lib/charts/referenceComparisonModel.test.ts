@@ -637,10 +637,10 @@ describe('referenceComparisonModel', () => {
         });
 
         expect(model.panels.diagnostics.curves.find((curve) => curve.curveKey === 'published-pressure')?.label).toBe('Eclipse — Avg Pressure');
-        expect(model.panels.producer_bhp.curves.find((curve) => curve.curveKey === 'published-producer-bhp')?.label).toBe('Brontosaurus — PROD WBHP');
-        expect(model.panels.injector_bhp.curves.find((curve) => curve.curveKey === 'published-injector-bhp')?.label).toBe('Brontosaurus — INJ WBHP');
+        expect(model.panels.producer_bhp.curves.find((curve) => curve.curveKey === 'published-producer-bhp')?.label).toBe('SPE1 Case 1 Reference — PROD WBHP');
+        expect(model.panels.injector_bhp.curves.find((curve) => curve.curveKey === 'published-injector-bhp')?.label).toBe('SPE1 Case 1 Reference — INJ WBHP');
         expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'published-gor')?.label).toBe('Eclipse — GOR');
-        expect(model.panels.oil_rate.curves.find((curve) => curve.curveKey === 'published-oil-rate')?.label).toBe('Brontosaurus — Oil Rate');
+        expect(model.panels.oil_rate.curves.find((curve) => curve.curveKey === 'published-oil-rate')?.label).toBe('SPE1 Case 1 Reference — Oil Rate');
     });
 
     it('suppresses GOR points when oil rate is negligible', () => {
@@ -784,7 +784,7 @@ describe('referenceComparisonModel', () => {
         });
 
         expect(model.panels.oil_rate.curves.find((curve) => curve.curveKey === 'oil-rate-sim')?.label).toBe('SPE1 Oil Rate Compare Oil Rate');
-        expect(model.panels.oil_rate.curves.find((curve) => curve.curveKey === 'published-oil-rate')?.label).toBe('Brontosaurus — Oil Rate');
+        expect(model.panels.oil_rate.curves.find((curve) => curve.curveKey === 'published-oil-rate')?.label).toBe('SPE1 Case 1 Reference — Oil Rate');
     });
 
     it('builds depletion overlay panels with reference-solution oil-rate and pressure curves', () => {

@@ -17,6 +17,24 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+### SPE1 reference data (2026-07-24)
+- [x] **SPE1 published oil-rate/BHP overlays were wrong.** The 4-point "Brontosaurus" samples showed
+  oil rate ≈ flat to 1826 d (3155.9 Sm³/d); the real SPE1 Case 1 producer hits its 1000 psia BHP
+  floor at ~1000 d and declines (1758.5 Sm³/d at 1826 d, 883.7 at 3650 d). Replaced with a monthly
+  series from `flow 2026.04` on `OPM/opm-common/tests/SPE1CASE1.DATA` (WELLDIMS raised to 4 so the
+  RFT wells load; `flow SPE1CASE1.DATA --output-dir=.`). ResSim's own decline onset (~950 d) was
+  correct all along. `ECLIPSE_GOR` verified against the same run (≤0.3 %); `ECLIPSE_PRESSURE` tracks
+  block (1,1,1) pressure, ~25 bar below it — labelled "Avg Pressure", worth renaming.
+- [x] **(MAJOR) The generated OPM decks in `tools/opm_flow/opm_flow_tool/cases.py` were malformed.**
+  `COMPDAT` put the wellbore radius in item 8 (connection transmissibility factor) instead of item 9
+  (wellbore *diameter*), choking every connection by ~2 orders of magnitude — SPE1 ran at FOPR ≈ 24
+  Sm³/d with both wells BHP-pinned from day 1, and `wf_bl1d` at FOPR ≈ 1e-4 Sm³/d (which was the
+  cause of its long-standing "degenerate reference" caveat, now closed). Fixed by defaulting items
+  7-8 and passing the diameter in item 9; SPE1 additionally got real depths (`TOPS` 2537.46 m with
+  matching `EQUIL`/`RSVD`/`WELSPECS` datums), `EQLDIMS`, and `DRSDT 0`. Both artifacts regenerated
+  with `flow 2026.04`. SPE1 now matches the canonical `SPE1CASE1.DATA` run to ~4 % on FOPR with the
+  same ~day-1000 decline onset; `wf_bl1d` shows a proper BL front breaking through at ~14.5 d.
+
 ### Wave 4 follow-ups
 - [ ] **(MAJOR, E5) History/forecast divider never shows on `dep_nct` by default.** The `fetkovich`
   layout opens on `xAxisMode: 'logTime'` but `resolveHistoryDivider` only matches `axis: 'time'`.
