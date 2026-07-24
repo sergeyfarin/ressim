@@ -97,12 +97,16 @@ matter more. Search `docs/FIM_EXPERIMENT_REGISTRY.md` by mechanism before any ch
   clean-success budget of `2`; that commit deliberately made a repeated same-site hotspot *extend*
   the budget (`extra_clean_successes_for_repeated_hotspot`, `2..=3 => 1`) and added a sibling test
   endorsing it, but left these two un-updated. Corrected the two expectations `2 → 3`.
-- [ ] **1 pre-existing failing timestep test (dev-only, unrelated to the above):**
-  `fim::timestep::tests::legacy_resv_failed_direct_fallback_is_rejected_before_state_update`
-  (`assert !linear.converged` at `timestep.rs:2015`). The failed legacy-RESV direct fallback now
-  *converges* where the test expects rejection — likely the iterative-fallback hardening (`c2167f2`)
-  interacting with the RESV path. Needs a scoped look: is the test stale (fallback is now legitimately
-  solving it) or is a bad-direct-solve being accepted? Not investigated yet.
+- [ ] **`legacy_resv_failed_direct_fallback_...` — DIAGNOSED + disabled 2026-07-24 (stale fixture,
+  not a bug); revive later.** Verified the runtime: the direct RESV solve now returns
+  `converged=true` / finite / `used_fallback=false`, the timestep still reports `!converged`, and
+  `accepted_state` stays finite — the safety guarantee holds; physics/assembly drift since 2026-07-19
+  (WATER-019..028 + singular-Jacobian handling) just made the `scoped_resv_sim` system solve finitely,
+  so the fixture no longer reaches the non-finite branch. The reject→fallback mechanism is covered
+  deterministically by `fim::linear::mod::tests::failed_forced_direct_solve_falls_back_once_and_reports_fallback`.
+  Marked `#[ignore]` with a full comment. To revive the timestep-level orchestration check, build a
+  fixture that deterministically forces a non-finite correction (or inject one) instead of relying on
+  a physical case staying singular.
 - [ ] **Relperm-endpoint singularity (re-scoped 2026-07-24).** The `linear-bad` backstop on small
   well-dominated cases (`22x22x1`, `23x23x1`, `sweep-areal`). **Recommendation: do not do the
   relperm-tail regularization (Option B); prefer proactive iterative routing (Option A) if ever
