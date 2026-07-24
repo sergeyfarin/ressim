@@ -36,14 +36,9 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   same ~day-1000 decline onset; `wf_bl1d` shows a proper BL front breaking through at ~14.5 d.
 
 ### Wave 4 follow-ups
-- [ ] **(MAJOR, E5) History/forecast divider never shows on `dep_nct` by default.** The `fetkovich`
-  layout opens on `xAxisMode: 'logTime'` but `resolveHistoryDivider` only matches `axis: 'time'`.
-  On `logTime` the chart plots `log10(time)` on a linear scale, so the divider must draw at
-  `Math.log10(boundary)` (guard `boundary > 0`) — extend `resolveHistoryDivider` to treat `logTime`
-  as time-family with a transformed boundary.
-- [ ] **(MINOR, E5) Divider only exists on the comparison-chart path** (`ReferenceComparisonChart`);
-  the live single-run `RateChart`/`UniversalChart` path doesn't thread `historyWindow`. OK by design;
-  record so a future live-panel use doesn't assume it exists there.
+- Moved to `ROADMAP.md` §4.3 on 2026-07-24 (deferred as longer-term, pending a UX decision on whether
+  the divider belongs on a Fetkovich log-time plot at all): the E5 history/forecast divider not
+  showing on `dep_nct` under `xAxisMode: 'logTime'`, and its comparison-chart-only scope.
 - [ ] **(MINOR, E7 cosmetic) 3D card hidden for pre-run scenarios leaves `xl:grid-cols-2` with one
   child** — empty right half on xl. Consider full-width chart when `isPrerunScenario`. Verify in
   `pnpm run dev`.
@@ -244,12 +239,21 @@ Open, blocked on an enabler:
   parser itself is done and both committed artifacts are `status: "parsed"`.
 
 ## Priority 2 — Validation & correctness
-- [ ] **(MAJOR) `scripts/validate-solver-coverage.sh` exits 0 when the crate fails to compile.**
-  Hit on 2026-07-24: adding a field to `ResolvedWellControl` broke three `#[cfg(test)]` fixtures, so
-  every `cargo test` invocation failed with `error[E0063]` — and the script still reported success.
-  A validation gate that passes on a compile error is worse than no gate. Make the script `set -e`
-  (or check each `cargo test` exit status) and re-verify it fails loudly on an injected compile
-  error before trusting it again.
+- [x] **(MAJOR) `scripts/validate-solver-coverage.sh` could report success without running a gate.**
+  Closed 2026-07-24 — **the originally-reported root cause did not reproduce.** The script has had
+  `set -euo pipefail` since `dce20c1`, and an injected `E0308` in a `#[cfg(test)]` fixture already
+  made it exit 101, so "exits 0 when the crate fails to compile" is not a property of the committed
+  script (most likely the 2026-07-24 observation came from invoking it through a pipe, where the
+  observed status is the last command's, not the script's). The *real* silent-pass hole, confirmed
+  by measurement: `cargo test <filter>` exits **0 when the filter matches nothing**
+  (`0 passed; ... 510 filtered out`), so any renamed / deleted / `cfg`-ed-out test would turn its
+  gate line into a no-op that still reported success. Fixed by (a) building the test target once up
+  front so a compile break is reported as a build failure before any bucket runs, and (b) requiring
+  every filter to prove it executed ≥ 1 test, parsed from the `test result:` lines, with a
+  `gate ok: '<filter>' ran N test(s)` line per gate. Re-verified against all three injected failure
+  modes (zero-match filter → exit 1; compile error → exit 1; failing assertion → exit 101) and on
+  the clean tree: `bash scripts/validate-solver-coverage.sh all` → exit 0, 24/24 filters live,
+  32 tests, 2m22s. No filter was already dead.
 - [x] **Black-oil validation gates closed (2026-07-24, ROADMAP 1.1).** Quantitative SPE1 acceptance
   criteria (`src/lib/ressim/src/tests/spe1_acceptance.rs`) vs the `flow 2026.04` SPE1CASE1 reference:
   pressure 3 % / oil rate 8 % / GOR 12 % / plateau 0.5 % / MB drift 1 %; worst measured on `0cfead9`

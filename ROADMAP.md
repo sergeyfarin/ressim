@@ -98,7 +98,19 @@ Why this block matters:
 - Add multi-case 3D inspection and synchronized case selection across charts, summaries, and spatial views.
 - Restore or explicitly retire the dormant saturation-profile path as part of the same output review.
 
-### 4.3 Export and persistence
+### 4.3 History/forecast divider on non-linear time axes (E5, deferred from TODO 2026-07-24)
+
+- `resolveHistoryDivider` (`src/lib/charts/historyDivider.ts`) only matches `axis: 'time'`, so the
+  divider never draws on `dep_nct`, whose `fetkovich` layout opens on `xAxisMode: 'logTime'`.
+- `logTime` plots `log10(time)` on a linear scale, so a fix means treating `logTime` as time-family
+  with the boundary transformed to `Math.log10(boundary)` (guard `boundary > 0`).
+- Deferred rather than done: it is not settled that the divider is the right treatment for a
+  Fetkovich log-time plot at all. Decide the intended UX before touching the resolver.
+- Related, recorded so it is not assumed away: the divider exists only on the comparison-chart path
+  (`ReferenceComparisonChart`); the live single-run `RateChart`/`UniversalChart` path does not thread
+  `historyWindow`. Fine by design today.
+
+### 4.4 Export and persistence
 
 - Add JSON export/import for scenarios and custom studies.
 - Add CSV/JSON result export for sensitivity runs and benchmark summaries.

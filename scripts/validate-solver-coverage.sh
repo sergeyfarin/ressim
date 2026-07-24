@@ -6,8 +6,42 @@ bucket="${1:-all}"
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 manifest_path="$repo_root/src/lib/ressim/Cargo.toml"
 
+log_file="$(mktemp)"
+trap 'rm -f "$log_file"' EXIT
+
+# Compile the test target once, up front. `set -e` would already abort on the
+# first failing `cargo test`, but a dedicated build step reports a broken crate
+# as a build failure instead of burying E0xxx output in a test bucket.
+if ! cargo test --manifest-path "$manifest_path" --no-run; then
+    echo "FAIL: test target does not compile — no gate was run." >&2
+    exit 1
+fi
+
+# `cargo test <filter>` exits 0 when the filter matches nothing ("0 passed;
+# ... N filtered out"). A renamed, deleted or cfg-ed-out test would silently
+# turn its gate line into a no-op that still reports success, so every filter
+# must be shown to have actually executed at least one test.
 run_test() {
-    cargo test --manifest-path "$manifest_path" "$1" -- --nocapture
+    local filter="$1"
+    local status=0
+
+    cargo test --manifest-path "$manifest_path" "$filter" -- --nocapture 2>&1 | tee "$log_file" || status=$?
+    if [ "$status" -ne 0 ]; then
+        echo "FAIL: cargo test '$filter' exited $status." >&2
+        exit "$status"
+    fi
+
+    local ran
+    ran="$(awk '/^test result:/ {
+        gsub(/;/, "")
+        for (i = 2; i <= NF; i++) if ($i == "passed" || $i == "ignored") total += $(i - 1)
+    } END { print total + 0 }' "$log_file")"
+    if [ "$ran" -eq 0 ]; then
+        echo "FAIL: filter '$filter' matched no tests — the gate did not run." >&2
+        echo "      A test was probably renamed, removed or cfg-ed out; fix the filter." >&2
+        exit 1
+    fi
+    echo "gate ok: '$filter' ran $ran test(s)"
 }
 
 run_shared() {

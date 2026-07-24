@@ -55,6 +55,13 @@ bash scripts/validate-solver-coverage.sh fim      # FIM-owned fast tests
 bash scripts/validate-solver-coverage.sh all
 ```
 
+The script builds the test target first (a compile break fails as a build error before
+any bucket runs) and prints a `gate ok: '<filter>' ran N test(s)` line per filter. A
+filter that matches **no** tests is a hard failure — `cargo test <filter>` exits 0 when
+nothing matches, so without that check a renamed or deleted test would silently turn its
+gate line into a no-op that still reported success. If you rename a test, update the
+filter in the script.
+
 FIM locked day-to-day baseline (exact commands from `docs/FIM_STATUS.md`):
 
 ```bash
