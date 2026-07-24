@@ -208,4 +208,49 @@ describe('buildCreatePayloadFromState', () => {
       },
     ])
   })
+
+  // The payload is handed to Worker.postMessage, which structured-clones it.
+  // Svelte 5 $state values are deep Proxies and structured cloning rejects them
+  // with a DataCloneError, so every array reaching the payload must be detached
+  // from the caller's state. Proxy stands in for a $state proxy here.
+  describe('structured-clone safety', () => {
+    const proxied = <T extends object>(value: T): T => new Proxy(value, {})
+
+    it('detaches per-cell permeability fields from the caller', () => {
+      const fieldPermX = [1, 2, 3, 4]
+      const payload = buildCreatePayloadFromState({
+        nx: 2, ny: 2, nz: 1,
+        permMode: 'field',
+        fieldPermX: proxied(fieldPermX),
+        fieldPermY: proxied([5, 6, 7, 8]),
+        fieldPermZ: proxied([9, 10, 11, 12]),
+      }) as SimulatorCreatePayload
+
+      expect(payload.fieldPermX).toEqual([1, 2, 3, 4])
+      expect(payload.fieldPermX).not.toBe(fieldPermX)
+      expect(() => structuredClone(payload.fieldPermX)).not.toThrow()
+    })
+
+    it('produces a fully cloneable payload from proxied array inputs', () => {
+      const payload = buildCreatePayloadFromState({
+        nx: 2, ny: 2, nz: 2,
+        permMode: 'field',
+        fieldPermX: proxied([1, 2, 3, 4, 5, 6, 7, 8]),
+        fieldPermY: proxied([1, 2, 3, 4, 5, 6, 7, 8]),
+        fieldPermZ: proxied([1, 2, 3, 4, 5, 6, 7, 8]),
+        layerPermsX: proxied([1, 2]),
+        layerPermsY: proxied([3, 4]),
+        layerPermsZ: proxied([5, 6]),
+        cellDzPerLayer: proxied([10, 12]),
+        producerKLayers: proxied([0, 1]),
+        injectorKLayers: proxied([0]),
+        pvtMode: 'black-oil',
+        pvtTable: proxied([
+          proxied({ p_bar: 100, rs_m3m3: 50, bo_m3m3: 1.2, mu_o_cp: 1.0, bg_m3m3: 0.01, mu_g_cp: 0.02 }),
+        ]),
+      }) as SimulatorCreatePayload
+
+      expect(() => structuredClone(payload)).not.toThrow()
+    })
+  })
 })

@@ -336,8 +336,8 @@ class RuntimeStoreImpl {
 
         const payload = buildCreatePayloadForRun(nextSpec);
         this.lastCreateSignature = JSON.stringify(payload);
-        this.simWorker.postMessage({ type: 'create', payload });
-        this.simWorker.postMessage({
+        this.#post({ type: 'create', payload });
+        this.#post({
             type: 'run',
             payload: {
                 steps: nextSpec.steps,
@@ -497,7 +497,7 @@ class RuntimeStoreImpl {
     resetModelAndVisualizationState(stopWorker = true, showReinitNotice = false) {
         this.stopPlaying();
         if (stopWorker && this.simWorker && this.workerRunning) {
-            this.simWorker.postMessage({ type: 'stop' });
+            this.#post({ type: 'stop' });
         }
         this.history = [];
         this.currentIndex = -1;
@@ -694,6 +694,19 @@ class RuntimeStoreImpl {
         }
     }
 
+    /**
+     * Single choke point for every worker post.
+     *
+     * Anything reachable from a `$state` declaration is a deep reactive proxy,
+     * and structured cloning rejects proxies with a DataCloneError. Snapshotting
+     * here detaches the whole message, so callers can pass store-derived values
+     * without each one having to remember to copy. Do not call
+     * `simWorker.postMessage` directly.
+     */
+    #post(message: Record<string, unknown>): void {
+        this.simWorker?.postMessage($state.snapshot(message));
+    }
+
     setupWorker() {
         this.simWorker = new Worker(
             new URL('../workers/sim.worker.ts', import.meta.url),
@@ -708,13 +721,13 @@ class RuntimeStoreImpl {
             this.workerRunning = false;
             this.runtimeError = 'Worker message deserialization failed. Reset the model and retry.';
         };
-        this.simWorker.postMessage({ type: 'init' });
+        this.#post({ type: 'init' });
     }
 
     dispose() {
         this.stopPlaying();
         if (this.simWorker) {
-            this.simWorker.postMessage({ type: 'dispose' });
+            this.#post({ type: 'dispose' });
             this.simWorker.terminate();
             this.simWorker = null;
         }
@@ -785,7 +798,7 @@ class RuntimeStoreImpl {
         }
         this.vizRevision += 1;
         const payload = this.buildCreatePayload();
-        this.simWorker.postMessage({ type: 'create', payload });
+        this.#post({ type: 'create', payload });
         this.lastCreateSignature = JSON.stringify(payload);
         this.pendingAutoReinit = false;
         if (runAfterInit) this.runSteps();
@@ -815,7 +828,7 @@ class RuntimeStoreImpl {
         this.runtimeWarning = this.longRunEstimate
             ? `Estimated run: ${this.estimatedRunSeconds.toFixed(1)}s. You can stop at any time.`
             : this.runtimeWarning;
-        this.simWorker.postMessage({
+        this.#post({
             type: 'run',
             payload: {
                 steps: batchSteps,
@@ -839,7 +852,7 @@ class RuntimeStoreImpl {
     stopRun() {
         if (this.simWorker) {
             this.stopPending = true;
-            this.simWorker.postMessage({ type: 'stop' });
+            this.#post({ type: 'stop' });
         }
     }
 

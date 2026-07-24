@@ -42,6 +42,11 @@ function normalizeLayerArray(values: unknown, fallback: number, length: number):
   })
 }
 
+/** Detach an array from any reactive proxy so the result is structured-cloneable. */
+function copyNumberArray(values: unknown): number[] | undefined {
+  return Array.isArray(values) ? Array.from(values, (value) => Number(value)) : undefined
+}
+
 function cloneScalTables(value: unknown): ThreePhaseScalTables | undefined {
   if (!value || typeof value !== 'object') {
     return undefined
@@ -303,11 +308,12 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     permsX,
     permsY,
     permsZ,
-    // Full per-cell fields (permMode === 'field') pass through as-is; the worker
-    // hands them straight to setPermeabilityField.
-    fieldPermX: state.fieldPermX,
-    fieldPermY: state.fieldPermY,
-    fieldPermZ: state.fieldPermZ,
+    // Full per-cell fields (permMode === 'field'); the worker hands them straight
+    // to setPermeabilityField. Copied, not passed by reference: the caller's
+    // arrays are Svelte $state proxies, which structured cloning rejects.
+    fieldPermX: copyNumberArray(state.fieldPermX),
+    fieldPermY: copyNumberArray(state.fieldPermY),
+    fieldPermZ: copyNumberArray(state.fieldPermZ),
 
     well_radius,
     well_skin,
