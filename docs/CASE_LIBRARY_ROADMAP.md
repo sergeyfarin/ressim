@@ -19,7 +19,7 @@ None of these had shipped as of the 2026-07-24 audit; each now carries its Tier 
 |---|---|---|---|---|
 | Gas-cap depletion / blowdown | T7.2 | p/z material balance; Havlena-Odeh with gas-cap ratio `m` | none (black-oil machinery exists) | ROADMAP 5.1; best next case per `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` §4 |
 | Aquifer-supported depletion | T7.3 | Fetkovich aquifer; Carter-Tracy; van Everdingen-Hurst | needs an aquifer boundary model (E9, new physics) | ROADMAP 5.4; OPM supports AQUFETP/AQUCT → OPM cross-check possible |
-| Well test / pressure transient (drawdown, buildup, Horner) | T7.1 | radial diffusivity solution, Horner/MDH | none for a first version (fine Cartesian grid near well + Peaceman) | New analytical module (E10); classic RE teaching content |
+| Well test / pressure transient (drawdown, buildup, Horner) | T7.1 | radial diffusivity solution, Horner/MDH | none for a first version (fine Cartesian grid near well + Peaceman) | **SHIPPED 2026-07-24** as `dep_welltest` |
 | Unfavorable-M waterflood / fingering sensitivity | T7.5 | BL with high M (stability limit discussion); Koval (1963) | none | Parameter sensitivity on `wf_bl1d` family |
 | Directly-simulated quarter five-spot vs Craig correlation | T7.11 | Craig (1971) correlation vs own simulation | none | Shows where the correlation's assumptions break; pairs with the grid-orientation study |
 | Dykstra-Parsons with vertical communication sweep | — | D-P (1950) + Warren-Root style kv/kh blending | none | Extends `sweep_vertical`; ROADMAP 5.3 |
@@ -134,7 +134,7 @@ Two structural findings frame the whole tier:
 
 | ID | Case | Reference | Engine gap | Effort |
 |---|---|---|---|---|
-| T7.1 | **Well test — drawdown / buildup / Horner** | Line-source (Ei) solution; Horner (1951); Earlougher (1977); Bourdet derivative | none (fine Cartesian near-well + existing Peaceman) | new `wellTest.ts` module, moderate |
+| T7.1 | **Well test — drawdown / buildup / Horner** — **SHIPPED 2026-07-24** (`dep_welltest`) | Line-source (Ei) solution; Horner (1951); Earlougher (1977); Bourdet derivative | needed one additive reporting field (`Well::flowing_bhp`); see the delivery record | done |
 | T7.2 | **Dry-gas p/z material balance + gas-cap blowdown** | p/z straight line; water-drive p/z curvature (Agarwal et al. 1965); Havlena-Odeh with `m` | none — `materialBalance.ts` already carries `m` and `driveIndex_gasCap` but has no p/z path and **no scenario exercises them** | extends existing module, small |
 | T7.3 | **Aquifer influx — Fetkovich / Carter-Tracy / van Everdingen-Hurst** | Fetkovich (1980); Carter-Tracy (1960); van Everdingen & Hurst (1949) | **new engine boundary model** | large |
 | T7.4 | **Capillary/gravity equilibrium — Leverett J-function transition zone** | Leverett (1941); hydrostatic Pc–Sw equilibrium | none (capillary module shipped, unused) | small |
@@ -188,7 +188,24 @@ Both claims are guarded by tests: monotonic front spreading with P_e, earlier fi
 
 **Still open in T7.4:** the gravity-capillary *transition zone* — the hydrostatic P_c = drho.g.h profile and Leverett J-function scaling. That is a saturation-versus-depth comparison and the chart stack is time-series only (`SwProfileChart.svelte` is dormant and unwired). Needs a profile-chart primitive, related to but separate from E8.
 
-**T7.1 — analytical module SHIPPED, scenario NOT.** `src/lib/analytical/wellTest.ts` + 37 tests: exponential integral E1 (series/continued-fraction, verified to 1e-12 relative against independently computed 40-digit values), line-source and semilog drawdown, Horner buildup, semilog line fitting, and the two inverse problems — permeability from the semilog slope and skin from the one-hour intercept, both verified by round trip over skin in [-3, 12]. Every constant is derived from the engine's own `DARCY_METRIC_FACTOR` rather than lifted from a field-unit textbook formula, so it cannot drift from the simulator's transmissibility convention. Remaining for T7.1: the `AnalyticalMethod` union member, the adapter, a semilog chart layout, and the scenario itself (the rest of E10).
+**T7.1 — SHIPPED COMPLETE (E10 closed).** Delivered in two stages.
+
+*Stage 1 — the analytical module.* `src/lib/analytical/wellTest.ts` + 37 tests: exponential integral E1 (series/continued-fraction, verified to 1e-12 relative against independently computed 40-digit values), line-source and semilog drawdown, Horner buildup, semilog line fitting, and the two inverse problems — permeability from the semilog slope and skin from the one-hour intercept, both verified by round trip over skin in [-3, 12]. Every constant is derived from the engine's own `DARCY_METRIC_FACTOR` rather than lifted from a field-unit textbook formula.
+
+*Stage 2 — the scenario and its plumbing.* `'well-test'` is now a first-class `AnalyticalMethod` (union member, output contract, coarse-mode and picker-group mapping), with `computeWellTestOnTimeAxis`/`computeWellTestFromParams` in `analyticalParamAdapters.ts`, `buildWellTestReference` in `referenceOverlayBuilders.ts`, its own branch in `buildChartData.ts` (both the result and preview paths), a `well_test` chart layout opening on log time, and the scenario `dep_welltest.ts`. It was **not** piggybacked onto `depletion`, per ROADMAP Priority 2.1.
+
+`AnalyticalOverlay` gained an optional `producerBhp` slot: a drawdown reference belongs against the simulated *flowing bottomhole pressure*, not average reservoir pressure, and no existing slot carried that. Every other builder leaves it null.
+
+*Engine change this required.* `Well::bhp` is the well's configured target-or-limit and does not move under rate control, so the simulated curve was a flat line at the BHP floor. The solver already computes the flowing pressure every step (`solve_well_bhp_for_pressures`, and the FIM BHP unknown) and then discarded it. Added `ResolvedWellControl::flowing_bhp` and `Well::flowing_bhp`, published in both `record_step_report` (IMPES) and `record_fim_step_report` (FIM). **Reporting-only — nothing in either solve reads it back, so no trajectory can change.** The frontend prefers it and falls back to `bhp` for histories recorded before it existed.
+
+*Measured result (2026-07-24, `dep_welltest.test.ts`).* Interpreting the simulated drawdown the way an engineer would:
+
+| grid | 40 m | 20 m | 10 m |
+|---|---|---|---|
+| recovered k (true 10 mD) | 8.674 | 9.118 | 9.209 |
+| recovered s (true 0) | -0.997 | -0.665 | -0.597 |
+
+The bias converges monotonically with refinement but is still ~8 % at 10 m cells. Across the skin ladder (s = -2, 0, +5) the recovered permeability is identical to three decimals — the slope/offset separation the case teaches, holding exactly. Documented in the scenario rather than tuned away.
 
 **T7.11 negative result — attempted, refuted, not shipped.** A `wf_orientation` scenario was built and measured: same 31x31 grid, same pore volume, wells moved between edge-to-edge ("parallel") and corner-to-corner ("diagonal"), crossed with favorable and adverse mobility ratio. The construction cannot demonstrate the classical effect, and the measurements say so:
 
@@ -200,7 +217,7 @@ Diagnosis: with a single injector-producer pair on a Cartesian grid, moving the 
 
 ### Suggested order
 
-T7.4 (done) and T7.1 (module done) first (days of work, zero engine risk, and T7.4 closes the shipped-but-unused capillary gap), then T7.1 (the missing classical pillar), then E8/T7.19 — because §7.C and §7.D cannot be told properly without it. T7.3 (aquifer) is the one large physics item worth committing to, since it unlocks T7.2's water-drive variant, T7.17 and live PUNQ-S3.
+T7.4 and T7.1 are done (days of work, zero engine risk, and T7.4 closes the shipped-but-unused capillary gap), then T7.1 (the missing classical pillar), then E8/T7.19 — because §7.C and §7.D cannot be told properly without it. T7.3 (aquifer) is the one large physics item worth committing to, since it unlocks T7.2's water-drive variant, T7.17 and live PUNQ-S3.
 
 ## Enabler gaps surfaced by Tiers 5–7 (backlog)
 
@@ -215,7 +232,7 @@ T7.4 (done) and T7.1 (module done) first (days of work, zero engine risk, and T7
 | E7 | `runPolicy: 'prerun-artifacts'` scenario class — no worker run; variants map to bundled artifact keys; read-only parameter panel; 3D off | entire Tier 6 | **LANDED** as `capabilities.runMode`; precedent `wf_bl1d_opm.ts`. Multi-artifact fan/ensemble split out to E8 |
 | E8 | **Ensemble / fan-curve chart primitive** — N realizations as a P10/P50/P90 band rather than N labelled curves, across both live variants and multiple pre-run artifacts | T7.19 and therefore all of Tier 7.D; Tier 6.1 PUNQ-S3, 6.6 Egg | large. Lands in `buildChartData.ts` as a new sequential section (which the frontend-architecture skill explicitly permits — what it forbids is inlining analytical-method physics there) plus band-fill support in `ChartSubPanel`/curve types. Needs visual verification, so it is not a headless-testable change |
 | E9 | Aquifer boundary model (analytical influx into boundary cells) | T7.2 water-drive gas, T7.3, T7.17, live 5.6 PUNQ-S3 | large (engine) |
-| E10 | Well-test analytical module (`src/lib/analytical/wellTest.ts`) + `AnalyticalMethod` union entry and adapter | T7.1 | **module LANDED 2026-07-24**; union entry, adapter and semilog chart layout still open |
+| E10 | Well-test analytical module (`src/lib/analytical/wellTest.ts`) + `AnalyticalMethod` union entry and adapter | T7.1 | **CLOSED 2026-07-24** — module, union entry, contract, adapters, overlay builder, `well_test` chart layout and scenario all landed |
 | E11 | **Multi-well patterns** — more than one injector/producer per run driven from scenario params. The worker already honors a `payload.wells` array; no scenario populates it | T7.11 done properly (Yanosik-McCracken five-spot pair), SPE9, pattern-density studies (T7.15) | moderate |
 
 E1's sweep path is wired but the **single-run** path is not (`parameterStore.fieldPermX/Y/Z` default `[]`, `applyResolvedParams` doesn't map them) — see `TODO.md`. Close it with the first consuming scenario (T7.9 / T7.6 / Egg).

@@ -32,6 +32,7 @@ import {
     computeDepletionTau,
     computeGasOilBLAnalyticalFromParams,
     computeMbeDiagnostics,
+    computeWellTestFromParams,
     hasDistinctBuckleyLeverettOverlays,
     hasDistinctGasOilBLOverlays,
     resolveOverlayMode,
@@ -56,6 +57,7 @@ import {
     buildBuckleyLeverettReference,
     buildDepletionReference,
     buildGasOilBLReference,
+    buildWellTestReference,
 } from './referenceOverlayBuilders';
 import { buildPreviewSweepPanels, buildSweepPanels } from './sweepPanelBuilder';
 
@@ -381,6 +383,41 @@ function buildAnalyticalPreviewPanels(
                 borderDash: ANALYTICAL_DASH,
                 yAxisID: 'y',
             }, curves.xValues, curves.avgPressureValues);
+        });
+        return panels;
+    }
+
+    if (analyticalMethod === 'well-test') {
+        variants.forEach((variant, index) => {
+            const color = getColor(index);
+            const prefix = labelPrefix(variant);
+            const caseKey = multiVariant ? variant.variantKey : undefined;
+            const curves = computeWellTestFromParams(variant.params, xAxisMode);
+            if (!curves) return;
+            appendSeries(panels.producer_bhp, {
+                label: `${prefix}Analytical Flowing BHP`,
+                curveKey: 'producer-bhp-reference',
+                ...(caseKey ? { caseKey } : {}),
+                toggleGroupKey: 'analytical',
+                toggleLabel: analyticalLabel,
+                color,
+                legendColor: legendGrey,
+                borderWidth: ANALYTICAL_BORDER,
+                borderDash: ANALYTICAL_DASH,
+                yAxisID: 'y',
+            }, curves.xValues, curves.flowingBhp);
+            appendSeries(panels.oil_rate, {
+                label: `${prefix}Analytical Oil Rate`,
+                curveKey: 'oil-rate-reference',
+                ...(caseKey ? { caseKey } : {}),
+                toggleGroupKey: 'analytical',
+                toggleLabel: analyticalLabel,
+                color,
+                legendColor: legendGrey,
+                borderWidth: ANALYTICAL_BORDER,
+                borderDash: ANALYTICAL_DASH,
+                yAxisID: 'y',
+            }, curves.xValues, curves.oilRates);
         });
         return panels;
     }
@@ -1365,6 +1402,72 @@ export function buildReferenceComparisonModel(input: {
                     });
                 }
             }
+        }
+    } else if (family.analyticalMethod === 'well-test') {
+        // ── Well test (pressure transient) ─────────────────────────────────
+        // Always per-result: a drawdown reference depends on k, skin and rate,
+        // which is exactly what these scenarios vary, so a shared curve would
+        // be wrong for every variant but one.
+        orderedResults.forEach((result, index) => {
+            const derived = derivedByKey.get(result.key);
+            if (!derived) return;
+            const color = getReferenceComparisonCaseColor(index);
+            const caseLabel = compactCaseLabel(result.label);
+            const refOverlay = buildWellTestReference(result, derived, input.xAxisMode);
+            if (refOverlay.producerBhp) {
+                appendSeries(panels.producer_bhp, {
+                    label: `${result.label} — Reference Flowing BHP`,
+                    curveKey: 'producer-bhp-reference',
+                    caseKey: result.key,
+                    toggleGroupKey: result.key + '__ref',
+                    toggleLabel: caseLabel,
+                    legendSection: 'analytical',
+                    legendSectionLabel: LEGEND_SECTIONS.analytical,
+                    color,
+                    borderWidth: 1.5,
+                    borderDash: ANALYTICAL_DASH,
+                    yAxisID: 'y',
+                }, refOverlay.xValues, refOverlay.producerBhp.values);
+            }
+            if (refOverlay.rates) {
+                appendSeries(panels.oil_rate, {
+                    label: `${result.label} — Reference Oil Rate`,
+                    curveKey: 'oil-rate-reference',
+                    caseKey: result.key,
+                    toggleGroupKey: result.key + '__ref',
+                    toggleLabel: caseLabel,
+                    legendSection: 'analytical',
+                    legendSectionLabel: LEGEND_SECTIONS.analytical,
+                    color,
+                    borderWidth: 1.5,
+                    borderDash: ANALYTICAL_DASH,
+                    yAxisID: 'y',
+                }, refOverlay.xValues, refOverlay.rates.values);
+            }
+        });
+
+        // Analytical-only overlay for variants still queued/running.
+        if (input.pendingPreviewVariants?.length && !usesRunMappedAnalyticalXAxis) {
+            input.pendingPreviewVariants.forEach((variant, i) => {
+                const color = getReferenceComparisonCaseColor(orderedResults.length + i);
+                const curves = computeWellTestFromParams(variant.params, input.xAxisMode);
+                if (!curves) return;
+                appendSeries(panels.producer_bhp, {
+                    label: `${variant.label} — Reference Flowing BHP`,
+                    curveKey: 'producer-bhp-reference',
+                    caseKey: variant.variantKey,
+                    toggleGroupKey: variant.variantKey + '__ref',
+                    toggleLabel: compactCaseLabel(variant.label),
+                    legendSection: 'analytical',
+                    legendSectionLabel: LEGEND_SECTIONS.analytical,
+                    color,
+                    borderWidth: 1.5,
+                    borderDash: ANALYTICAL_DASH,
+                    yAxisID: 'y',
+                }, curves.xValues, curves.flowingBhp);
+            });
+        } else if (input.pendingPreviewVariants?.length) {
+            hidesPendingAnalyticalWithoutMapping = true;
         }
     } else {
         // Depletion path.

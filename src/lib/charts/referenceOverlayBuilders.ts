@@ -15,6 +15,7 @@ import {
     computeBLAnalyticalFromParams,
     computeDepletionOnTimeAxis,
     computeGasOilBLAnalyticalFromParams,
+    computeWellTestOnTimeAxis,
     extractGasOilFluidProps,
     extractGasOilRockProps,
     getOoip,
@@ -118,6 +119,40 @@ export function buildDepletionReference(
             xAxisMode,
             tau,
         ),
+    };
+}
+
+// ─── Well test (pressure transient) overlay ──────────────────────────────────
+
+/**
+ * Line-source drawdown overlay.
+ *
+ * Unlike the depletion builder, the primary curve here belongs against the
+ * simulated *producer BHP*, not average reservoir pressure — a drawdown test
+ * measures the flowing pressure at the well. It is returned in the dedicated
+ * `producerBhp` slot for that reason; `diagnostics` is left null so the
+ * analytical p_wf is never drawn against an average-pressure series.
+ */
+export function buildWellTestReference(
+    baseResult: BenchmarkRunResult,
+    derived: DerivedRunSeries,
+    xAxisMode: RateChartXAxisMode,
+): AnalyticalOverlay {
+    const solution = computeWellTestOnTimeAxis(baseResult.params, derived.time);
+    if (!solution) return emptyOverlay();
+
+    return {
+        rates: {
+            label: 'Reference Solution Oil Rate',
+            values: solution.oilRate,
+        },
+        cumulative: null,
+        diagnostics: null,
+        producerBhp: {
+            label: 'Reference Solution Flowing BHP',
+            values: solution.flowingBhp,
+        },
+        xValues: buildXAxisValues({ ...derived, time: solution.time }, xAxisMode, null),
     };
 }
 

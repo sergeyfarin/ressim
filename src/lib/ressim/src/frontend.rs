@@ -162,6 +162,7 @@ impl ReservoirSimulator {
             bhp,
             productivity_index: pi,
             injector,
+            flowing_bhp: None,
             well_radius,
             skin,
         };

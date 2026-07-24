@@ -26,6 +26,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 | Depletion | `dep_decline` | Fetkovich exponential decline | Constant-PVT decline reference |
 | Depletion | `dep_arps` | Arps decline + material balance diagnostics | Layered / volatile-oil style depletion study |
 | Depletion | `dep_nct` | Dietz PSS decline (shared reference) | N·c_t material-balance ambiguity — matched history, 4x different recovery factor |
+| Depletion | `dep_welltest` | Line-source (Theis) drawdown, Horner-style semilog analysis | Pressure-transient test — recover k and skin from the simulator's own flowing BHP, and see the near-well grid bias in the answer |
 | Gas | `gas_injection` | Gas-oil Buckley-Leverett | Three-phase gas injection with analytical breakthrough |
 | Gas | `gas_drive` | Simulation-first with p/z and MB diagnostics | Qualitative gas-drive study pending stronger validation |
 | Gas | `dep_pvt` | None (simulation-only) | Two black-oil PVT tables, one calibration point — undersaturated compressibility representation risk (three-phase, grouped under Gas) |

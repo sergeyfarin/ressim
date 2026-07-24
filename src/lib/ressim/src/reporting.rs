@@ -321,6 +321,19 @@ impl ReservoirSimulator {
         actual_oil_removed_sc: f64,
         actual_change_gas_sc: f64,
     ) {
+        // Publish the pressure each well actually flowed at this step. For a
+        // rate-controlled well this is the only place it survives: the solve
+        // computes it to meet the rate target and then discards it, and
+        // `Well::bhp` keeps holding the configured limit. Reporting-only —
+        // nothing downstream in the solve reads `flowing_bhp` back.
+        for (w_idx, well) in self.wells.iter_mut().enumerate() {
+            well.flowing_bhp = well_controls
+                .get(w_idx)
+                .and_then(|control| *control)
+                .and_then(|control| control.flowing_bhp)
+                .filter(|bhp| bhp.is_finite());
+        }
+
         let n_cells = self.nx * self.ny * self.nz;
         let mut total_prod_oil = 0.0;
         let mut total_prod_liquid = 0.0;
@@ -502,6 +515,28 @@ impl ReservoirSimulator {
     ) {
         let n_cells = self.nx * self.ny * self.nz;
         let topology = build_well_topology(self);
+
+        // Same reporting-only publication as the IMPES path. Here the flowing
+        // pressure is a primary unknown of the Newton solve, carried per
+        // *physical* well; map it back to every completion entry through the
+        // perforation table so `getWellState` reports the same quantity on
+        // both solvers.
+        {
+            let flowing: Vec<Option<f64>> = (0..self.wells.len())
+                .map(|entry_idx| {
+                    topology
+                        .perforations
+                        .iter()
+                        .find(|perf| perf.well_entry_index == entry_idx)
+                        .map(|perf| state.well_bhp[perf.physical_well_index])
+                        .filter(|bhp| bhp.is_finite())
+                })
+                .collect();
+            for (well, bhp) in self.wells.iter_mut().zip(flowing) {
+                well.flowing_bhp = bhp;
+            }
+        }
+
         let mut total_prod_oil = 0.0;
         let mut total_prod_liquid = 0.0;
         let mut total_prod_liquid_reservoir = 0.0;

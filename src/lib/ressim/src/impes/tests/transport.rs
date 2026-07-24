@@ -30,6 +30,8 @@ fn transport_reporting_reuses_rate_control_decision() {
         decision: WellControlDecision::Rate { q_m3_day: -30.0 },
         bhp_limited: false,
         producer_state: None,
+        // Reporting-only field; these fixtures assert transport, not BHP.
+        flowing_bhp: None,
     })];
 
     sim.update_saturations_and_pressure(
@@ -87,6 +89,8 @@ fn producing_gor_is_zero_when_oil_rate_is_negligible() {
             gas_fvf: sim.get_b_g(sim.pressure[id]).max(1e-9),
             rs_sm3_sm3: sim.rs[id],
         }),
+        // Reporting-only field; these fixtures assert transport, not BHP.
+        flowing_bhp: None,
     })];
 
     sim.update_saturations_and_pressure(
@@ -148,6 +152,8 @@ fn producer_reporting_uses_same_sampled_near_well_mixture() {
         decision: WellControlDecision::Rate { q_m3_day: 1000.0 },
         bhp_limited: false,
         producer_state: Some(cached_state),
+        // Reporting-only field; these fixtures assert transport, not BHP.
+        flowing_bhp: None,
     })];
 
     sim.update_saturations_and_pressure(

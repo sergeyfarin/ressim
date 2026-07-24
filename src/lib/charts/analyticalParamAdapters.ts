@@ -14,6 +14,12 @@ import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } fr
 import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
 import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
 import { calculateMaterialBalance } from '../analytical/materialBalance';
+import {
+    lineSourcePressure,
+    semilogSlope,
+    semilogValidFromTime,
+    type ReservoirTestProps,
+} from '../analytical/wellTest';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { AnalyticalOverlayMode } from '../catalog/scenarios';
 import type { DerivedRunSeries } from './axisAdapters';
@@ -418,6 +424,115 @@ export function computeDepletionAnalyticalFromParams(
     };
 }
 
+// ─── Well test (pressure transient) ───────────────────────────────────────────
+
+/**
+ * Assembles `ReservoirTestProps` from scenario params.
+ *
+ * Total compressibility is built the way a well-test analyst would, from the
+ * saturation-weighted fluid compressibilities plus rock:
+ *   c_t = c_o.S_o + c_w.S_w + c_rock
+ * `initialSaturation` is water saturation, so S_o = 1 - S_w.
+ */
+export function extractWellTestProps(params: Record<string, any>): ReservoirTestProps {
+    const s_w = toFiniteNumber(params.initialSaturation, 0.2);
+    const s_o = Math.max(0, 1 - s_w);
+    const c_t = toFiniteNumber(params.c_o, 1e-5) * s_o
+        + toFiniteNumber(params.c_w, 3e-6) * s_w
+        + toFiniteNumber(params.rock_compressibility, 1e-6);
+    return {
+        k: toFiniteNumber(params.uniformPermX, 100),
+        h: getTotalThickness(params),
+        porosity: toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2),
+        mu: toFiniteNumber(params.mu_o, 1),
+        c_t,
+        r_w: toFiniteNumber(params.well_radius, 0.1),
+        skin: toFiniteNumber(params.well_skin, 0),
+    };
+}
+
+/**
+ * The constant reservoir-volume rate the drawdown is run at [m3/day].
+ *
+ * A well test is a rate-controlled experiment by definition, so this reads
+ * `targetProducerRate` and does not attempt to infer a rate from a BHP-
+ * controlled run — a well-test scenario that is not rate-controlled has no
+ * analytical solution of this form, and the overlay is skipped instead.
+ */
+export function getWellTestRate(params: Record<string, any>): number {
+    if (String(params.producerControlMode) !== 'rate') return Number.NaN;
+    const q = toFiniteNumber(params.targetProducerRate, 0);
+    return q > 0 ? q : Number.NaN;
+}
+
+/**
+ * Well-test analytical solution on a caller-supplied time axis.
+ *
+ * Returns flowing bottomhole pressure from the full line-source solution (not
+ * the semilog approximation), so the curve stays correct at early times where
+ * the two differ — the region a user is most likely to be looking at on a
+ * log-time axis. `semilogFromDay` marks where infinite-acting radial flow
+ * analysis becomes valid, so the scenario can state it rather than implying
+ * the whole curve is analysable.
+ *
+ * Returns null when the case is not a constant-rate test.
+ */
+export function computeWellTestOnTimeAxis(
+    params: Record<string, any>,
+    timeHistory: number[],
+): {
+    time: number[];
+    flowingBhp: Array<number | null>;
+    oilRate: Array<number | null>;
+    semilogFromDay: number;
+    semilogSlopeBarPerCycle: number;
+} | null {
+    const q = getWellTestRate(params);
+    if (!Number.isFinite(q)) return null;
+    const props = extractWellTestProps(params);
+    if (!(props.k > 0) || !(props.h > 0)) return null;
+    const p_i = toFiniteNumber(params.initialPressure, 300);
+
+    return {
+        time: timeHistory,
+        flowingBhp: timeHistory.map((t) => {
+            const p = lineSourcePressure(p_i, q, props.r_w, t, props);
+            return Number.isFinite(p) ? p : null;
+        }),
+        oilRate: timeHistory.map(() => q),
+        semilogFromDay: semilogValidFromTime(props),
+        semilogSlopeBarPerCycle: semilogSlope(q, props),
+    };
+}
+
+/**
+ * Well-test analytical solution over a synthetic time grid, for preview
+ * overlays before any simulation result exists. Mirrors
+ * `computeDepletionAnalyticalFromParams`.
+ */
+export function computeWellTestFromParams(
+    params: Record<string, any>,
+    xAxisMode: RateChartXAxisMode,
+): {
+    xValues: (number | null)[];
+    flowingBhp: (number | null)[];
+    oilRates: (number | null)[];
+} | null {
+    const steps = toFiniteNumber(params.steps, 200);
+    const dt = toFiniteNumber(params.delta_t_days, 0.01);
+    const timeHistory = Array.from({ length: steps }, (_, i) => (i + 1) * dt);
+    const solution = computeWellTestOnTimeAxis(params, timeHistory);
+    if (!solution) return null;
+
+    return {
+        xValues: solution.time.map((t) => (
+            xAxisMode === 'logTime' ? (t > 0 ? Math.log10(t) : null) : t
+        )),
+        flowingBhp: solution.flowingBhp,
+        oilRates: solution.oilRate,
+    };
+}
+
 // ─── Material balance diagnostics ─────────────────────────────────────────────
 
 export type MbeDiagnostics = {
@@ -516,13 +631,25 @@ function extractWellBhpHistory(result: BenchmarkRunResult): {
     const producerBhp: Array<number | null> = [];
     const injectorBhp: Array<number | null> = [];
 
+    /**
+     * `flowing_bhp` is the pressure the solver arrived at; `bhp` is the well's
+     * configured target-or-limit. They coincide for a BHP-controlled well, but
+     * for a rate-controlled one `bhp` never moves — it is the limit — so
+     * reading it produces a flat line where the real transient lives. Prefer
+     * the flowing value and fall back for histories recorded before the engine
+     * reported it.
+     */
+    const bhpOf = (well: Record<string, any> | undefined): number | null => {
+        if (!well) return null;
+        if (Number.isFinite(well.flowing_bhp)) return Number(well.flowing_bhp);
+        return Number.isFinite(well.bhp) ? Number(well.bhp) : null;
+    };
+
     for (const snapshot of result.history) {
         historyTime.push(toFiniteNumber(snapshot.time, 0));
         const wells = Array.isArray(snapshot.wells) ? snapshot.wells : [];
-        const producer = wells.find((well) => well?.injector === false && Number.isFinite(well?.bhp));
-        const injector = wells.find((well) => well?.injector === true && Number.isFinite(well?.bhp));
-        producerBhp.push(Number.isFinite(producer?.bhp) ? Number(producer?.bhp) : null);
-        injectorBhp.push(Number.isFinite(injector?.bhp) ? Number(injector?.bhp) : null);
+        producerBhp.push(bhpOf(wells.find((well) => well?.injector === false)));
+        injectorBhp.push(bhpOf(wells.find((well) => well?.injector === true)));
     }
 
     return { historyTime, producerBhp, injectorBhp };

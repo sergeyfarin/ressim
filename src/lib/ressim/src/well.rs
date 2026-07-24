@@ -88,6 +88,16 @@ pub struct Well {
     pub well_radius: f64,
     /// Skin factor [dimensionless]
     pub skin: f64,
+    /// Bottomhole pressure the well actually flowed at on the last recorded
+    /// step [bar], or `None` before the first step / while disabled.
+    ///
+    /// `bhp` above is the well's *configured* pressure — a target for a
+    /// BHP-controlled well and a limit for a rate-controlled one, and it does
+    /// not move. This field is the pressure the solver arrived at, which for a
+    /// rate-controlled well is the quantity a pressure-transient analysis
+    /// needs. Written by the reporting pass only; no solver reads it back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flowing_bhp: Option<f64>,
 }
 
 impl Well {

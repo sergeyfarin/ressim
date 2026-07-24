@@ -481,7 +481,12 @@ class NavigationStoreImpl {
         if (ref) {
             const resultParams = ref.params ?? {};
             if (resultParams.injectedFluid === 'gas') return 'saturation_gas';
-            if (ref.analyticalMethod !== 'depletion') return 'saturation_water';
+            // Single-producer pressure cases (depletion, well test) have no
+            // displacement front worth showing; fall through to the scenario's
+            // own default rather than defaulting to water saturation.
+            if (ref.analyticalMethod !== 'depletion' && ref.analyticalMethod !== 'well-test') {
+                return 'saturation_water';
+            }
             return null;
         }
         if (this.#params.injectedFluid === 'gas' && this.#params.threePhaseModeEnabled) {

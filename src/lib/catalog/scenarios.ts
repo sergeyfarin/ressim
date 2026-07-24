@@ -33,6 +33,7 @@ import { dep_pss } from './scenarios/dep_pss';
 import { dep_arps } from './scenarios/dep_arps';
 import { dep_decline } from './scenarios/dep_decline';
 import { dep_nct } from './scenarios/dep_nct';
+import { dep_welltest } from './scenarios/dep_welltest';
 import { dep_pvt } from './scenarios/dep_pvt';
 import { gas_injection } from './scenarios/gas_injection';
 import { gas_drive } from './scenarios/gas_drive';
@@ -45,6 +46,7 @@ export type AnalyticalMethod =
     | 'buckley-leverett'
     | 'gas-oil-bl'
     | 'depletion'
+    | 'well-test'
     | 'digitized-reference'
     | 'none';
 
@@ -134,6 +136,18 @@ export const ANALYTICAL_OUTPUT_CONTRACTS: Record<AnalyticalMethod, AnalyticalOut
         defaultPrimaryRateCurve: 'oil-rate',
         hasTau: true,
         defaultPanelExpansion: { rates: true, recovery: true, cumulative: false, diagnostics: true },
+    },
+    'well-test': {
+        // A constant-rate pressure transient: the reference curve is flowing
+        // bottomhole pressure against time, and the rate is the controlled
+        // input rather than a result. No recovery/cumulative curve is meaningful
+        // over the hours-to-days span of a test.
+        produces: ['pressure', 'oil-rate'],
+        supportedRateCurves: ['oil-rate'],
+        nativeXAxis: 'time',
+        defaultPrimaryRateCurve: 'oil-rate',
+        hasTau: false,
+        defaultPanelExpansion: { rates: false, recovery: false, cumulative: false, diagnostics: true },
     },
     'digitized-reference': {
         produces: [],
@@ -506,6 +520,7 @@ const SOURCE_SCENARIOS: Scenario[] = [
     dep_decline,
     dep_arps,
     dep_nct,
+    dep_welltest,
     dep_pvt,
     gas_injection,
     gas_drive,
@@ -669,7 +684,10 @@ export function validateScenarioChartLayout(scenario: Pick<Scenario, 'key' | 'ca
 }
 
 export function getAnalyticalModeForMethod(method: AnalyticalMethod): AnalyticalMode {
-    if (method === 'depletion') return 'depletion';
+    // Well test shares the coarse 'depletion' family: single producer, no
+    // injector, pressure-and-rate outputs on a time axis. The fine-grained
+    // routing is on `analyticalMethod`, not this coarse mode.
+    if (method === 'depletion' || method === 'well-test') return 'depletion';
     if (method === 'none') return 'none';
     if (method === 'digitized-reference') return 'none';
     return 'waterflood';
@@ -685,7 +703,9 @@ export function getScenarioGroup(scenario: Pick<Scenario, 'capabilities'>): Scen
         return 'gas';
     }
     if (capabilities.showSweepPanel) return 'sweep';
-    if (capabilities.analyticalMethod === 'depletion') return 'depletion';
+    if (capabilities.analyticalMethod === 'depletion' || capabilities.analyticalMethod === 'well-test') {
+        return 'depletion';
+    }
     return 'waterflood';
 }
 

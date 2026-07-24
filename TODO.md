@@ -200,16 +200,20 @@ Open, no engine gap (cheapest):
 - [ ] **T7.5 Koval correction** — honest reference for the high-M `wf_bl1d` rungs.
 
 Open, needs a new analytical module:
-- [x] **T7.1 analytical module — DONE 2026-07-24.** `src/lib/analytical/wellTest.ts` + 37 tests:
-  E1 (verified to 1e-12 relative against independently computed 40-digit values), line-source and
-  semilog drawdown, Horner buildup, semilog line fit, and both inverse problems (k from slope, skin
-  from the one-hour intercept) verified by round trip over skin ∈ [-3, 12]. All constants derived
-  from `DARCY_METRIC_FACTOR`, not from field-unit textbook forms.
-- [ ] **T7.1 remainder (E10): wire it to a scenario** — `AnalyticalMethod` union member +
-  `ANALYTICAL_OUTPUT_CONTRACTS` entry, adapter in `analyticalAdapters.ts`, a semilog chart layout,
-  and the drawdown/buildup scenario. Until then `wellTest.ts` has no consumer.
+- [x] **T7.1 well test — DONE 2026-07-24 (E10 closed).** `src/lib/analytical/wellTest.ts` + 37 tests
+  (E1 verified to 1e-12 relative against independently computed 40-digit values; both inverse
+  problems verified by round trip over skin ∈ [-3, 12]; all constants derived from
+  `DARCY_METRIC_FACTOR`), plus full wiring: `'well-test'` as a first-class `AnalyticalMethod`, param
+  adapters, `buildWellTestReference`, a `buildChartData` branch, a `well_test` log-time layout, and
+  the `dep_welltest` scenario. Not piggybacked on `depletion` — see ROADMAP Priority 2.1.
+  Measured (`dep_welltest.test.ts`): interpreting the simulated drawdown returns k = 8.674 / 9.118 /
+  9.209 mD at 40 / 20 / 10 m cells against a true 10 mD, and apparent skin −1.00 / −0.67 / −0.60
+  against a true 0 — a real near-well grid bias, converging with refinement, documented in the
+  scenario rather than tuned away. Recovered k is identical to three decimals across the skin
+  ladder, so the slope/offset separation holds exactly.
 - [ ] **T7.2 dry-gas p/z + gas-cap blowdown** — extends `materialBalance.ts`, which already carries
   `m`/`driveIndex_gasCap` with no scenario exercising them. Water-drive variant needs E9.
+  Now the cheapest remaining analytical case, since T7.1 closed.
 
 Open, blocked on an enabler:
 - [ ] **E1 single-run field perm** (see Wave 4 follow-ups) → unblocks **T7.9 Tavassoli**,
@@ -235,6 +239,12 @@ Open, blocked on an enabler:
   parser itself is done and both committed artifacts are `status: "parsed"`.
 
 ## Priority 2 — Validation & correctness
+- [ ] **(MAJOR) `scripts/validate-solver-coverage.sh` exits 0 when the crate fails to compile.**
+  Hit on 2026-07-24: adding a field to `ResolvedWellControl` broke three `#[cfg(test)]` fixtures, so
+  every `cargo test` invocation failed with `error[E0063]` — and the script still reported success.
+  A validation gate that passes on a compile error is worse than no gate. Make the script `set -e`
+  (or check each `cargo test` exit status) and re-verify it fails loudly on an injected compile
+  error before trusting it again.
 - [x] **Black-oil validation gates closed (2026-07-24, ROADMAP 1.1).** Quantitative SPE1 acceptance
   criteria (`src/lib/ressim/src/tests/spe1_acceptance.rs`) vs the `flow 2026.04` SPE1CASE1 reference:
   pressure 3 % / oil rate 8 % / GOR 12 % / plateau 0.5 % / MB drift 1 %; worst measured on `0cfead9`

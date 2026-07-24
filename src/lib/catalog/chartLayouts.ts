@@ -198,6 +198,50 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
         },
     },
 
+    /**
+     * Pressure-transient layout. Opens on a log-time axis because that is the
+     * plot the analysis is done on — the infinite-acting radial period is a
+     * straight line there and nowhere else. The flowing-BHP panel leads; there
+     * is no recovery or cumulative panel, because nothing meaningful is
+     * produced over the hours-to-days span of a test.
+     */
+    well_test: {
+        rateChart: {
+            xAxisMode: 'logTime',
+            xAxisOptions: ['logTime', 'time'],
+            xAxisRangePolicy: { mode: 'data-extent' },
+            allowLogScale: false,
+            logScale: false,
+            panelOrder: ['producer_bhp', 'oil_rate', 'diagnostics', 'control_limits'],
+            panels: {
+                producer_bhp: {
+                    title: 'Flowing BHP',
+                    curveKeys: ['producer-bhp-sim', 'producer-bhp-reference'],
+                    scalePreset: 'pressure',
+                    expanded: true,
+                },
+                oil_rate: {
+                    title: 'Oil Rate',
+                    curveKeys: ['oil-rate-sim', 'oil-rate-reference'],
+                    scalePreset: 'rates',
+                    expanded: true,
+                },
+                diagnostics: {
+                    title: 'Average Reservoir Pressure',
+                    curveKeys: ['avg-pressure-sim'],
+                    scalePreset: 'pressure',
+                    expanded: false,
+                },
+                control_limits: {
+                    title: 'Control-Limit Fraction',
+                    curveKeys: ['producer-bhp-limited-sim'],
+                    scalePreset: 'fraction',
+                    expanded: false,
+                },
+            },
+        },
+    },
+
     gas_oil_bl: {
         rateChart: {
             xAxisMode: 'pvi',

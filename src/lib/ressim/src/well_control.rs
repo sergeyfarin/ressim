@@ -15,6 +15,15 @@ pub(crate) struct ResolvedWellControl {
     pub(crate) decision: WellControlDecision,
     pub(crate) bhp_limited: bool,
     pub(crate) producer_state: Option<ProducerControlState>,
+    /// Bottomhole pressure the well is actually flowing at this step [bar].
+    ///
+    /// For a BHP-controlled well this is simply the target. For a *rate*-
+    /// controlled well it is the pressure `solve_well_bhp_for_pressures`
+    /// found in order to meet the rate, which is otherwise discarded — the
+    /// `Well::bhp` field keeps holding the configured limit. Reporting-only:
+    /// nothing in the solve reads it back, so it cannot change a trajectory.
+    /// `None` for a disabled well, which has no flowing pressure.
+    pub(crate) flowing_bhp: Option<f64>,
 }
 
 #[derive(Clone, Copy)]
@@ -502,6 +511,7 @@ impl ReservoirSimulator {
                 decision: WellControlDecision::Disabled,
                 bhp_limited: false,
                 producer_state: None,
+                flowing_bhp: None,
             });
         }
 
@@ -524,6 +534,7 @@ impl ReservoirSimulator {
                 },
                 bhp_limited,
                 producer_state,
+                flowing_bhp: Some(group_bhp),
             });
         }
 
@@ -540,6 +551,7 @@ impl ReservoirSimulator {
             },
             bhp_limited: false,
             producer_state,
+            flowing_bhp: Some(config.bhp_target),
         })
     }
 

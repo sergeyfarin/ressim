@@ -93,6 +93,12 @@ export type AnalyticalOverlay = {
         cumulativeValues: Array<number | null>;
     } | null;
     diagnostics: { label: string; values: Array<number | null> } | null;
+    /**
+     * Analytical flowing bottomhole pressure, for methods whose reference curve
+     * belongs against the simulated producer BHP rather than average reservoir
+     * pressure — currently only 'well-test'. Left null by every other builder.
+     */
+    producerBhp?: { label: string; values: Array<number | null> } | null;
     xValues: Array<number | null>;
 };
 

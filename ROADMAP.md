@@ -109,7 +109,7 @@ Why after architecture cleanup:
 ## Priority 5: Analytical Coverage And Physics Extensions After Validation
 
 Case-level detail, references and blockers live in `docs/CASE_LIBRARY_ROADMAP.md` Tier 7
-(stable IDs `T7.n`, enablers `E1`–`E10`). This section carries only the ordering rationale;
+(stable IDs `T7.n`, enablers `E1`–`E11`). This section carries only the ordering rationale;
 `TODO.md` carries the active checkboxes. Do not restate case detail in all three places.
 
 The 2026-07-24 gap audit of the shipped library (14 scenarios, 4 analytical modules) produced two
@@ -126,10 +126,12 @@ structural findings that reorder this priority:
 - ~~Capillary waterflood case (**T7.4**) — first scenario to turn capillarity on.~~ **Done
   2026-07-24** (`wf_capillary`). The gravity-capillary *transition-zone* half remains open and is
   blocked on a saturation-vs-depth profile chart, not on physics.
-- Well-test analytical module: drawdown / buildup / Horner (**T7.1**, enabler **E10**). This is the
-  largest missing pillar of classical reservoir engineering in the product. **The mathematics landed
-  2026-07-24** (`src/lib/analytical/wellTest.ts`, 37 tests); the scenario wiring — union member,
-  adapter, semilog chart layout — has not.
+- ~~Well-test analytical module and scenario: drawdown / buildup / Horner (**T7.1**, enabler
+  **E10**).~~ **Done 2026-07-24** — `wellTest.ts` (37 tests) plus `'well-test'` as a first-class
+  analytical method and the `dep_welltest` scenario. This closed the largest missing pillar of
+  classical reservoir engineering in the product. It also produced a result worth acting on: read as
+  a measurement instrument, the simulator reports permeability ~9 % low and a slightly stimulated
+  well that is not stimulated, converging with near-well refinement but still biased at 10 m cells.
 - Grid orientation (**T7.11**) was attempted and refuted on 2026-07-24: a single injector-producer
   pair cannot separate grid alignment from pattern geometry. It now depends on multi-well pattern
   support (**E11**) and belongs under 5.4, not here.
