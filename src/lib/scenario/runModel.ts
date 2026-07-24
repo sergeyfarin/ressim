@@ -11,8 +11,11 @@ import type {
 import {
     getScenario,
     getScenarioWithVariantParams,
+    solverFromParams,
+    solverLabel,
     type AnalyticalMethod,
     type Scenario,
+    type SimulationSolver,
     type ScenarioTerminationPolicy,
 } from '../catalog/scenarios';
 import { cloneTerminationPolicy } from '../workers/terminationPolicy';
@@ -49,6 +52,7 @@ export type RunSpec = {
     breakthroughCriterion: BenchmarkBreakthroughCriterion | null;
     terminationPolicy?: ScenarioTerminationPolicy | null;
     comparisonMeaning: string;
+    solver: SimulationSolver;
 };
 
 export type RunResult = ReturnType<typeof buildBenchmarkRunResult> & {
@@ -142,6 +146,8 @@ export function buildScenarioRunSpecs(input: {
         const variant = dimension.variants.find((candidate) => candidate.key === variantKey);
         if (!variant) continue;
         const params = getScenarioWithVariantParams(scenario.key, dimension.key, variant.key);
+        const solver = solverFromParams(params);
+        const solverName = solverLabel(solver);
         const runPolicy = buildScenarioRunPolicy({
             params,
             baseParams: scenario.params,
@@ -155,8 +161,10 @@ export function buildScenarioRunSpecs(input: {
             familyKey: scenario.key,
             analyticalMethod: scenario.capabilities.analyticalMethod,
             variantKey: variant.key,
-            variantLabel: variant.label,
-            label: `${scenario.label} — ${variant.label}`,
+            variantLabel: dimension.key === 'solver_comparison'
+                ? variant.label
+                : `${variant.label} · ${solverName}`,
+            label: `${scenario.label} — ${variant.label} [${solverName}]`,
             description: variant.description,
             params,
             steps: runPolicy.steps,
@@ -168,6 +176,7 @@ export function buildScenarioRunSpecs(input: {
             breakthroughCriterion: null,
             terminationPolicy: runPolicy.terminationPolicy,
             comparisonMeaning: variant.description,
+            solver,
         });
     }
 

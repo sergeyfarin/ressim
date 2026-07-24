@@ -59,6 +59,16 @@ export type PrimaryRateCurve = 'water-cut' | 'gas-cut' | 'oil-rate';
 /** How analytical overlays should be grouped for a selected sensitivity dimension. */
 export type AnalyticalOverlayMode = 'auto' | 'shared' | 'per-result';
 
+/** Numerical formulation used for a live simulator run. */
+export type SimulationSolver = 'impes' | 'fim';
+
+/** Catalog-owned solver choice and the reason exposed to the frontend. */
+export type ScenarioSolverPolicy = {
+    defaultSolver: SimulationSolver;
+    rationale: string;
+    comparisonSensitivityAvailable: boolean;
+};
+
 export type ScenarioAnalyticalOption = {
     key: string;
     label: string;
@@ -454,6 +464,11 @@ export type Scenario = {
     liveChartPanels?: import('../charts/universalChartTypes').UniversalPanelDef[];
 };
 
+/** Scenario after catalog-level solver policy has been applied. */
+export type CatalogScenario = Scenario & {
+    solverPolicy: ScenarioSolverPolicy;
+};
+
 // Scenario-first product vocabulary. The older Scenario/Sensitivity names
 // remain exported while migration continues, but new frontend code should
 // prefer these aliases.
@@ -478,7 +493,7 @@ export const CUSTOM_MODE_CAPABILITIES: ScenarioCapabilities = {
 
 // ─── Scenarios ────────────────────────────────────────────────────────────────
 
-export const SCENARIOS: Scenario[] = [
+const SOURCE_SCENARIOS: Scenario[] = [
     wf_bl1d,
     wf_bl1d_opm,
     wf_tornado,
@@ -495,6 +510,52 @@ export const SCENARIOS: Scenario[] = [
     spe1_gas_injection,
 ];
 
+function solverComparisonSensitivity(defaultSolver: SimulationSolver): SensitivityDimension {
+    const orderedSolvers: SimulationSolver[] = defaultSolver === 'impes'
+        ? ['impes', 'fim']
+        : ['fim', 'impes'];
+    return {
+        key: 'solver_comparison',
+        label: 'FIM vs. IMPES',
+        description: 'Run the same oil/water case with both numerical formulations. Physics inputs, grid, wells, timestep, and analytical reference stay fixed.',
+        analyticalOverlayMode: 'shared',
+        variants: orderedSolvers.map((solver) => ({
+            key: `solver_${solver}`,
+            label: solver.toUpperCase(),
+            description: solver === 'fim'
+                ? 'Fully implicit coupled pressure/saturation Newton solve.'
+                : 'Implicit pressure with explicit saturation transport.',
+            paramPatch: { fimEnabled: solver === 'fim' },
+            affectsAnalytical: false,
+        })),
+    };
+}
+
+function applySolverPolicy(source: Scenario): CatalogScenario {
+    const involvesGas = source.capabilities.requiresThreePhaseMode;
+    const defaultSolver: SimulationSolver = involvesGas ? 'fim' : 'impes';
+    const solverPolicy: ScenarioSolverPolicy = {
+        defaultSolver,
+        rationale: involvesGas
+            ? 'FIM is required for coupled free/dissolved-gas, PVT, phase-appearance, and well-control updates; IMPES gas transport remains an explicit approximation.'
+            : 'IMPES is the measured faster default for the catalog oil/water workload; use the FIM vs. IMPES sensitivity to compare formulations on this scenario.',
+        comparisonSensitivityAvailable: !involvesGas,
+    };
+    return {
+        ...source,
+        params: {
+            ...source.params,
+            fimEnabled: defaultSolver === 'fim',
+        },
+        sensitivities: involvesGas
+            ? [...source.sensitivities]
+            : [...source.sensitivities, solverComparisonSensitivity(defaultSolver)],
+        solverPolicy,
+    };
+}
+
+export const SCENARIOS: CatalogScenario[] = SOURCE_SCENARIOS.map(applySolverPolicy);
+
 // Freeze all scenario params objects to catch accidental in-place mutation early.
 // A mutation to one scenario's params cannot silently corrupt another.
 for (const scenario of SCENARIOS) {
@@ -505,7 +566,7 @@ for (const scenario of SCENARIOS) {
 
 const scenarioMap = new Map(SCENARIOS.map((s) => [s.key, s]));
 
-export function getScenario(key: string | null | undefined): Scenario | null {
+export function getScenario(key: string | null | undefined): CatalogScenario | null {
     if (!key) return null;
     const found = scenarioMap.get(key);
     if (!found && import.meta.env.DEV) {
@@ -626,6 +687,14 @@ export function getScenarioGroup(scenario: Pick<Scenario, 'capabilities'>): Scen
     return 'waterflood';
 }
 
-export function listScenarios(): Scenario[] {
+export function listScenarios(): CatalogScenario[] {
     return SCENARIOS;
+}
+
+export function solverLabel(solver: SimulationSolver): string {
+    return solver === 'fim' ? 'FIM' : 'IMPES';
+}
+
+export function solverFromParams(params: Record<string, unknown>): SimulationSolver {
+    return params.fimEnabled === true ? 'fim' : 'impes';
 }

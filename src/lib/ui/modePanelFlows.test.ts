@@ -28,4 +28,10 @@ describe('scenario picker flows', () => {
     expect(scenarioPickerSource).toMatch(/ui-chip/);
     expect(scenarioPickerSource).toMatch(/validActiveVariantKeys\.includes/);
   });
+
+  it('shows the selected numerical solver explicitly', () => {
+    expect(scenarioPickerSource).toMatch(/Numerical solver:/);
+    expect(scenarioPickerSource).toMatch(/scenario\.solverPolicy\.defaultSolver/);
+    expect(scenarioPickerSource).toMatch(/activeScenario\.solverPolicy\.rationale/);
+  });
 });

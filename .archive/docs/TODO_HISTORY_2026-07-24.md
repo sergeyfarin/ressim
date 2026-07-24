@@ -4,6 +4,14 @@
 
 ## Post-Wave-4 review of Waves 0–4 — 2026-07-19 (findings, ranked)
 
+- [x] **Scenario solver policy made explicit (2026-07-24).** Gas/PVT scenarios default to FIM
+  because phase appearance, dissolved/free-gas transfer, PVT, and well controls require the
+  coupled nonlinear path. Oil/water scenarios retain the established IMPES default across their
+  ordinary sensitivities and expose a dedicated FIM-vs-IMPES comparison axis. The scenario picker
+  and comparison-run labels display the selected solver. Representative wasm timings confirmed
+  that speed is regime-dependent: IMPES/FIM was `0.24/0.54 s` (24×1×1), `0.94/1.14 s`
+  (21×21×1), `2.43/1.15 s` (strong-flow 12×12×3), and `2.74/2.76 s` (21×21×5).
+
 Full-stack self-review after Wave 4 (E5/E7/E1). Items below supersede any earlier claim they contradict — including two claims from the 2026-07-17 review and Wave 1. **Self-contained record with mechanisms and fix directions: `docs/WAVE4_REVIEW_2026-07-19.md`.** Follow-up comparison-axis planning (analytical vs IMPES vs FIM vs OPM vs published vs fitted-proxy exhibit combinations): `docs/MULTI_SOURCE_COMPARISON_ROADMAP.md`.
 
 - [x] **Product boundary:** remove unready Custom Mode from the live UI and archive its JSON facet catalog and legacy starter presets. Production case definitions now live in `src/lib/catalog/scenarios/` only.

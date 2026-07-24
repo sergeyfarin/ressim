@@ -31,10 +31,51 @@ function assertWellBounds(params: Record<string, unknown>) {
 }
 
 describe('scenario-first run model', () => {
-    it('keeps every predefined scenario on the IMPES product path by default', () => {
+    it('routes gas scenarios to FIM and oil/water scenarios to IMPES by default', () => {
         for (const scenario of listScenarios()) {
-            expect(scenario.params.fimEnabled, scenario.key).toBe(false);
+            const expectedFim = scenario.capabilities.requiresThreePhaseMode;
+            expect(scenario.params.fimEnabled, scenario.key).toBe(expectedFim);
+            expect(scenario.solverPolicy.defaultSolver, scenario.key).toBe(expectedFim ? 'fim' : 'impes');
         }
+    });
+
+    it('adds an explicit FIM-vs-IMPES sensitivity to every oil/water scenario only', () => {
+        for (const scenario of listScenarios()) {
+            const dimension = scenario.sensitivities.find((candidate) => candidate.key === 'solver_comparison');
+            if (scenario.capabilities.requiresThreePhaseMode) {
+                expect(dimension, scenario.key).toBeUndefined();
+                continue;
+            }
+            expect(dimension?.variants.map((variant) => [variant.label, variant.paramPatch.fimEnabled]), scenario.key).toEqual([
+                ['IMPES', false],
+                ['FIM', true],
+            ]);
+        }
+    });
+
+    it('keeps each scenario default solver across ordinary sensitivities', () => {
+        for (const scenario of listScenarios()) {
+            const expectedFim = scenario.solverPolicy.defaultSolver === 'fim';
+            for (const dimension of scenario.sensitivities) {
+                if (dimension.key === 'solver_comparison') continue;
+                for (const variant of dimension.variants) {
+                    const params = getScenarioWithVariantParams(scenario.key, dimension.key, variant.key);
+                    expect(params.fimEnabled, `${scenario.key}/${dimension.key}/${variant.key}`).toBe(expectedFim);
+                }
+            }
+        }
+    });
+
+    it('includes the numerical solver in scenario run metadata', () => {
+        const specs = buildScenarioRunSpecs({
+            scenarioKey: 'wf_bl1d',
+            dimensionKey: 'solver_comparison',
+            variantKeys: ['solver_impes', 'solver_fim'],
+        });
+        expect(specs.map((spec) => [spec.solver, spec.variantLabel, spec.label])).toEqual([
+            ['impes', 'IMPES', '1D Waterflood — IMPES [IMPES]'],
+            ['fim', 'FIM', '1D Waterflood — FIM [FIM]'],
+        ]);
     });
 
     it('builds scenario-native run specs and simulator payloads for each predefined scenario', () => {
@@ -56,7 +97,7 @@ describe('scenario-first run model', () => {
                 referenceSource: expect.objectContaining({ source: expect.any(String) }),
             });
             const payload = buildCreatePayloadForRun(specs[0]);
-            expect(payload.fimEnabled, scenario.key).toBe(false);
+            expect(payload.fimEnabled, scenario.key).toBe(scenario.capabilities.requiresThreePhaseMode);
             expect(payload.nx, scenario.key).toBeGreaterThan(0);
             expect(payload.ny, scenario.key).toBeGreaterThan(0);
             expect(payload.nz, scenario.key).toBeGreaterThan(0);

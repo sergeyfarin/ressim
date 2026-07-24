@@ -3,7 +3,7 @@
   import Card from "../controls/Card.svelte";
   import ToggleGroup from "../controls/ToggleGroup.svelte";
   import WarningPolicyPanel from "../feedback/WarningPolicyPanel.svelte";
-  import { SCENARIOS, getScenario, getScenarioGroup, type Scenario, type ScenarioGroup } from "../../catalog/scenarios";
+  import { SCENARIOS, getScenario, getScenarioGroup, solverLabel, type Scenario, type ScenarioGroup } from "../../catalog/scenarios";
   import type { WarningPolicy } from "../../warningPolicy";
 
   let {
@@ -133,6 +133,9 @@
               onclick={() => onSelectScenario(scenario.key)}
             >
               {scenario.label}
+              <span class="ml-1.5 rounded-sm bg-muted/60 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {solverLabel(scenario.solverPolicy.defaultSolver)}
+              </span>
               {#if scenario.capabilities.runMode === 'prerun-artifacts'}
                 <span class="ml-1.5 rounded-sm bg-muted/60 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">Pre-run</span>
               {/if}
@@ -153,6 +156,13 @@
         {formatParamSummary(activeScenario)}
       </p>
           <p class="ui-microcopy text-foreground">{activeScenario.description}</p>
+          <div class="ui-microcopy flex flex-wrap items-center gap-2 text-foreground">
+            <span class="font-semibold">Numerical solver:</span>
+            <span class="ui-chip border-primary/50 bg-primary/10 font-semibold text-foreground">
+              {solverLabel(activeScenario.solverPolicy.defaultSolver)}
+            </span>
+            <span class="text-muted-foreground">{activeScenario.solverPolicy.rationale}</span>
+          </div>
           <div class="ui-microcopy text-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
             <span class="text-foreground font-semibold">Analytical:</span>
             {#if analyticalOptionToggleOptions.length > 1 && activeAnalyticalOption}

@@ -14,9 +14,10 @@ import { generateBlackOilTable } from '../../physics/pvt';
  * "lab report") — a value a single flash test cannot pin down, since it
  * governs behavior only *above* the bubble point.
  *
- * Verified (headless wasm probe, 2026-07-16, three-phase mode required —
- * a two-phase oil/water run does not consult the PVT table's undersaturated
- * Bo trend at all, only the scalar c_o): the two tables produce genuinely
+ * In FIM, undersaturated oil follows a fixed-Rs PVTO branch and uses the
+ * scalar c_o to extrapolate that branch above its bubble point. Each variant
+ * therefore supplies both its generated display table and the matching c_o.
+ * The two fluid models produce genuinely
  * different average-pressure and GOR trajectories above the bubble point,
  * converging once pressure drops back into the saturated region where both
  * tables share the identical, directly-calibrated Rs(P)/Bo(P) branch. The
@@ -146,7 +147,7 @@ export const dep_pvt: Scenario = {
         well_radius: 0.1,
         well_skin: 0,
         // Numerics
-        fimEnabled: false,
+        fimEnabled: true,
         delta_t_days: 0.5,
         steps: 300,
         max_sat_change_per_step: 0.05,
@@ -173,7 +174,9 @@ export const dep_pvt: Scenario = {
                     key: 'pvt_lab_report',
                     label: 'Lab Report  (c_o = 1e-4/bar above Pb)',
                     description: 'A different, equally plausible undersaturated compressibility — 10x steeper Bo decline above the bubble point, identical Rs/Bo at and below it.',
-                    paramPatch: { pvtTable: PVT_TABLE_LAB_REPORT },
+                    // FIM extrapolates a fixed-Rs undersaturated branch with
+                    // scalar c_o; keep it consistent with the generated table.
+                    paramPatch: { pvtTable: PVT_TABLE_LAB_REPORT, c_o: 1e-4 },
                     affectsAnalytical: false,
                 },
             ],

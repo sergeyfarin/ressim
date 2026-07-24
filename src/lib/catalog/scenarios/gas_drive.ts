@@ -53,7 +53,7 @@ export const gas_drive: Scenario = {
         max_sat_change_per_step: 0.1,
         max_pressure_change_per_step: 75,
         max_well_rate_change_fraction: 0.75,
-        fimEnabled: false,
+        fimEnabled: true,
     },
     sensitivities: [
         {

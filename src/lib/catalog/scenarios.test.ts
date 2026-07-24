@@ -18,10 +18,12 @@ import {
 } from './scenarios';
 
 describe('sweep scenario sensitivities', () => {
-    it('defaults predefined product scenarios to IMPES', () => {
-        const scenario = getScenario('wf_bl1d');
-
-        expect(scenario?.params.fimEnabled).toBe(false);
+    it('uses FIM for gas scenarios and IMPES for oil/water scenarios', () => {
+        expect(getScenario('wf_bl1d')?.params.fimEnabled).toBe(false);
+        expect(getScenario('dep_pvt')?.params.fimEnabled).toBe(true);
+        expect(getScenario('gas_injection')?.params.fimEnabled).toBe(true);
+        expect(getScenario('gas_drive')?.params.fimEnabled).toBe(true);
+        expect(getScenario('spe1_gas_injection')?.params.fimEnabled).toBe(true);
     });
 
     it('provides analytical method metadata for every canonical scenario', () => {
@@ -63,6 +65,7 @@ describe('sweep scenario sensitivities', () => {
             'areal_heterogeneity',
             'sor',
             'grid_resolution',
+            'solver_comparison',
         ]);
 
         const arealAxis = scenario?.sensitivities.find((dimension) => dimension.key === 'areal_heterogeneity');
@@ -118,6 +121,7 @@ describe('sweep scenario sensitivities', () => {
         expect(scenario?.sensitivities.map((dimension) => dimension.key)).toEqual([
             'interaction_core',
             'sweep_ladder',
+            'solver_comparison',
         ]);
 
         const interactionAxis = scenario?.sensitivities.find((dimension) => dimension.key === 'interaction_core');
@@ -339,12 +343,14 @@ describe('scenario capability validation', () => {
             ['areal_heterogeneity', 'shared'],
             ['sor', 'per-result'],
             ['grid_resolution', 'shared'],
+            ['solver_comparison', 'shared'],
         ]);
         expect(getScenario('wf_bl1d')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['mobility', 'per-result'],
             ['corey_no', 'per-result'],
             ['sor', 'per-result'],
             ['grid', 'shared'],
+            ['solver_comparison', 'shared'],
         ]);
         expect(getScenario('dep_pss')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['shape_factor', 'per-result'],
@@ -352,16 +358,19 @@ describe('scenario capability validation', () => {
             ['compressibility', 'per-result'],
             ['timestep', 'shared'],
             ['grid_refinement', 'shared'],
+            ['solver_comparison', 'shared'],
         ]);
         expect(getScenario('dep_decline')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['permeability', 'per-result'],
             ['skin', 'per-result'],
             ['timestep', 'shared'],
             ['grid_refinement', 'shared'],
+            ['solver_comparison', 'shared'],
         ]);
         expect(getScenario('dep_arps')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['arps_b', 'per-result'],
             ['layer_contrast', 'per-result'],
+            ['solver_comparison', 'shared'],
         ]);
         expect(getScenario('gas_injection')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['mobility', 'per-result'],
@@ -372,10 +381,12 @@ describe('scenario capability validation', () => {
         expect(getScenario('sweep_vertical')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['heterogeneity', 'per-result'],
             ['mobility', 'per-result'],
+            ['solver_comparison', 'shared'],
         ]);
         expect(getScenario('sweep_combined')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['interaction_core', 'per-result'],
             ['sweep_ladder', 'shared'],
+            ['solver_comparison', 'shared'],
         ]);
     });
 
