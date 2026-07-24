@@ -180,6 +180,7 @@ TODO.md
 | `.archive/docs/DELIVERED_WORK_2026_Q1.md` | Archived delivered work moved out of TODO |
 | `docs/BENCHMARK_MODE_GUIDE.md` | Benchmark workflow semantics and chart behavior |
 | `docs/P4_TWO_PHASE_BENCHMARKS.md` | Buckley-Leverett benchmark methodology and tolerance policy |
+| `docs/BLACK_OIL_VALIDATION.md` | SPE1 acceptance criteria, black-oil grid convergence, solver safeguards |
 | `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase implementation details and remaining validation gaps |
 | `docs/UNIT_SYSTEM.md` | Unit conventions, equations, and PVT / solver notes |
 | `docs/DOCUMENTATION_INDEX.md` | Which documents are authoritative vs historical |

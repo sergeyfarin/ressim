@@ -15,16 +15,23 @@ The ordering below follows standard reservoir-engineering practice and the liter
 
 ### 1.1 Black-oil validation
 
-- Add SPE-style comparative-solution coverage for black-oil cases before extending into more gas-cap and compositional features.
-- Add grid-convergence checks for pressure, Rs, Bo, and liberated-gas behavior in volatile-oil style depletion.
-- Document current black-oil solver safeguards in user-facing physics notes, especially the saturated-region `c_o` fallback used to keep the IMPES pressure solve stable.
+Record: `docs/BLACK_OIL_VALIDATION.md` (acceptance criteria, measured baselines, replay commands, safeguards).
 
-Progress:
+Done (2026-07-24):
+- **Quantitative SPE1 acceptance criteria** against the `flow 2026.04` SPE1CASE1 reference, in the Rust engine rather than the frontend (`src/lib/ressim/src/tests/spe1_acceptance.rs`): field pressure 3 %, producer oil rate 8 %, producing GOR 12 %, plateau-hold 0.5 %, oil/gas material-balance drift 1 %, zero solver warnings. Worst measured errors on `0cfead9`: 1.73 % / 3.33 % / 4.39 %. Fast first-year gate runs by default in the `fim` validation bucket; the 10-year replay is an explicit `--ignored --release` run.
+- **Grid-convergence checks** for pressure, Rs, Bo and liberated gas on a depletion column taken through the bubble point (`src/lib/ressim/src/tests/physics/depletion_grid_convergence.rs`): 5/10/20/40 cells, successive differences must contract by ≥ 0.8× and the two finest grids agree to 1 %. IMPES runs by default in the `impes` bucket; the FIM sweep is an explicit replay.
+- **Black-oil safeguards documented** for users in `docs/BLACK_OIL_VALIDATION.md` section 3: the saturated-region `c_o` fallback and its bubble-point blend, the two-phase scalar-`c_o` choice, the `c_o` default asserted independently in the engine and the frontend, the residual-based oil material-balance diagnostic, redissolution off in SPE1, and tabular-vs-Corey SCAL.
+
+Earlier progress (still current):
 - Per-layer cell thickness (`dz` as `Vec<f64>`) and per-layer initial gas saturation are implemented in the Rust solver and wired through the TypeScript worker.
 - Per-layer well completions (`producerKLayers`, `injectorKLayers`) allow single-layer wells as required by SPE1.
-- SPE1 scenario is defined (`spe1_gas_injection`) with full PVT table, Corey SCAL approximation, per-layer dz/perm, and Eclipse Case 1 reference data overlay.
+- SPE1 scenario is defined (`spe1_gas_injection`) with full PVT table, exact SWOF/SGOF tables, per-layer dz/perm, deck-intent surface-rate well control, and the Case 1 reference overlay.
 - Published-reference overlay infrastructure (`publishedReferenceSeries`) is wired through the chart model with scatter markers.
-- Remaining: tabular SCAL (SPE1 tables are currently Corey-approximated), surface-rate well control, and quantitative acceptance criteria.
+
+Remaining:
+- No SPE-style black-oil case beyond SPE1 (SPE9, volatile-oil style depletion) is covered.
+- FIM and IMPES converge to measurably different answers on the same depletion column (~10 % on liberated gas); each is self-consistent under refinement, so this is a solver/timestep question, not a gridding one.
+- SPE1 scenario-wiring regressions (published-reference panel placement, `cellDzPerLayer`, per-layer completion payloads) are still frontend-side gaps.
 
 Why first:
 - In the reservoir-simulation literature, black-oil extensions are only meaningful when the pressure equation, PVT coupling, and material-balance behavior are benchmarked against accepted reference problems.

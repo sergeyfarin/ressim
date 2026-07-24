@@ -29,6 +29,7 @@ run_shared() {
 }
 
 run_fim() {
+    run_test spe1_first_year_matches_published_reference
     run_test fim::tests::spe1::
     run_test fim::tests::wells::
     run_test dep_pss_fim_closed_system_depletion_invariants_hold
@@ -37,6 +38,7 @@ run_fim() {
 }
 
 run_impes() {
+    run_test physics_depletion_grid_convergence_impes
     run_test impes::tests::transport::
     run_test impes::tests::timestep::
 }

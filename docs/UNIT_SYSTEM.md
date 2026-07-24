@@ -255,6 +255,6 @@ If converting between systems:
 4. **Material balance:** While the IMPES method is not strictly conservative (due to splitting), material balance errors are typically small for small time steps and reasonable mobility ratios.
 
 5. **Three-phase diagnostics:** water and gas cumulative material-balance errors are reported explicitly. Oil remains the residual phase in current diagnostics, so this is not yet a full per-phase closure check.
-6. **Black-oil solver safeguard:** below bubble point, the simulator can fall back to the base positive `c_o` in the pressure accumulation path to avoid destabilizing the IMPES pressure solve when saturated `B_o(P)` slope would otherwise imply a negative compressibility contribution.
+6. **Black-oil solver safeguard:** below bubble point, the simulator can fall back to the base positive `c_o` in the pressure accumulation path to avoid destabilizing the IMPES pressure solve when saturated `B_o(P)` slope would otherwise imply a negative compressibility contribution. Full description of this and the other black-oil safeguards: `docs/BLACK_OIL_VALIDATION.md` section 3.
 
-6. **Default grid:** the constructor starts from 10 m × 10 m × 1 m cells and 100 mD / 100 mD / 10 mD permeability until scenario parameters overwrite them.
+7. **Default grid:** the constructor starts from 10 m × 10 m × 1 m cells and 100 mD / 100 mD / 10 mD permeability until scenario parameters overwrite them.

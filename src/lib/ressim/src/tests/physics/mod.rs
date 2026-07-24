@@ -1,4 +1,5 @@
 mod depletion_gas;
+mod depletion_grid_convergence;
 mod depletion_liberation;
 mod depletion_oil;
 pub(crate) mod fixtures;

@@ -211,6 +211,7 @@ pub(crate) mod tests {
     pub(crate) mod physics;
     mod pvt_properties;
     mod runtime_api;
+    mod spe1_acceptance;
     mod three_phase;
     mod well_controls;
 

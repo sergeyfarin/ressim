@@ -23,6 +23,7 @@ dated snapshots moved to `.archive/`).
 | `docs/TRANSMISSIBILITY_FACTOR.md` | Derivation of the transmissibility conversion factor |
 | `docs/BENCHMARK_MODE_GUIDE.md` | Benchmark workflow semantics and comparison behavior |
 | `docs/P4_TWO_PHASE_BENCHMARKS.md` | Buckley-Leverett benchmark methodology, tolerances, results |
+| `docs/BLACK_OIL_VALIDATION.md` | SPE1 acceptance criteria, depletion grid convergence, black-oil solver safeguards |
 | `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase implementation details and remaining validation gaps |
 | `docs/SCENARIO_TERMINATION_POLICY.md` | Early-stop policy syntax, conditions, runtime behavior |
 | `docs/OPM_FLOW_MINIMAL_MAPPING.md` | Minimal OPM Flow → ResSim solver mapping and CPRW-first plan |

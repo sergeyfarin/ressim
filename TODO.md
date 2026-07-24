@@ -170,15 +170,34 @@ Measured all 130 catalog cases headless in Node against the committed wasm
   record dataset licenses/provenance before bundling artifacts.
 
 ## Priority 2 — Validation & correctness
+- [x] **Black-oil validation gates closed (2026-07-24, ROADMAP 1.1).** Quantitative SPE1 acceptance
+  criteria (`src/lib/ressim/src/tests/spe1_acceptance.rs`) vs the `flow 2026.04` SPE1CASE1 reference:
+  pressure 3 % / oil rate 8 % / GOR 12 % / plateau 0.5 % / MB drift 1 %; worst measured on `0cfead9`
+  1.73 % / 3.33 % / 4.39 %. Grid-convergence checks for pressure, Rs, Bo and liberated gas
+  (`.../tests/physics/depletion_grid_convergence.rs`). Safeguards documented for users in
+  `docs/BLACK_OIL_VALIDATION.md`. Fast gates wired into `scripts/validate-solver-coverage.sh`
+  (`fim` and `impes` buckets); the long replays are `--ignored --release`.
+- [ ] **FIM and IMPES disagree on the black-oil depletion column** (~10 % on average liberated gas,
+  0.6 bar on average pressure; `docs/BLACK_OIL_VALIDATION.md` section 2). Each converges cleanly under
+  grid refinement, so this is a solver/timestep question. Dev-only priority, but it is the one
+  black-oil result that two shipped paths do not agree on.
+- [ ] **`docs/DOCUMENTATION_INDEX.md` still says "FIM is dev-only; public scenarios ship IMPES."**
+  Gas/three-phase scenarios (incl. `spe1_gas_injection`) have defaulted to FIM since `b88ee28`.
+  Reconcile the doc with the shipped solver policy.
 - [ ] **Define three-phase `experimental` exit criteria** + acceptance tests for gas-injection and
   gas-drive (breakthrough timing, Sg evolution, phase-closure diagnostics).
 - [ ] **Reconcile three-phase docs with implemented state:** gas-oil capillary sign, `s_org`, explicit
   gas MB reporting, oil-phase diagnostic limits.
 - [ ] **SPE1:** add regression tests for scenario wiring / published-reference panel placement /
-  `cellDzPerLayer` + per-layer completion payload; tune rate targets vs Eclipse reference (exact match
-  needs tabular SCAL, now in place); re-verify the comparison source/metric mapping (Case 1 vs 2, avg
-  vs field pressure, producing GOR). Note the post-breakthrough GOR still rises too sharply and finer
-  grid moves *away* from reference — a well/transport-model question, not a solver-stability one.
+  `cellDzPerLayer` + per-layer completion payload; re-verify the comparison source/metric mapping
+  (Case 1 vs 2, avg vs field pressure, producing GOR). Rate-target tuning is done — the engine is
+  within 3.3 % on oil rate and 4.4 % on GOR at 10×10×3 (`docs/BLACK_OIL_VALIDATION.md` §1).
+- [ ] **SPE1 breakthrough sharpens with areal refinement.** Measured 2026-07-24: at 20×20×3 the
+  producing-GOR error peaks at 32.8 % at 730 d and oil rate at 6.6 % at 1095 d, while *late*-time
+  agreement is better than the coarse grid (0.12 % pressure, 1.0 % GOR at 3650 d). So the older
+  "finer grid moves away from reference" note is really a breakthrough-timing/front-sharpness effect,
+  not a whole-run degradation; material balance closes on both grids. Well/transport-model question.
+  Replay: `spe1_areal_refinement_reference_error_replay`.
 - [ ] **Revisit the ignored Buckley-Leverett refined-grid regression** as a potential solver/timestep
   issue, not just a slow-test classification.
 - [ ] **Comparison-model tests:** preview mode, depletion per-variant analytical overlays, color-index

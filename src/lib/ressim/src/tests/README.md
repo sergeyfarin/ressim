@@ -23,8 +23,10 @@ public or crate-visible APIs rather than through a single module's private helpe
   - Geometry and per-layer API behavior that is broader than one internal formula.
 - `three_phase.rs`
   - Three-phase public behavior and table/API validation.
-- `buckley.rs`, `pvt_properties.rs`, `well_controls.rs`
+- `buckley.rs`, `pvt_properties.rs`, `well_controls.rs`, `spe1_acceptance.rs`
   - Domain or benchmark tests that exercise the crate through higher-level entry points.
+  - `spe1_acceptance.rs` holds the SPE1 comparative-solution acceptance criteria; its tolerances
+    and measured baselines are documented in `docs/BLACK_OIL_VALIDATION.md`.
 
 ## What does not live here
 
