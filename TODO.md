@@ -156,18 +156,83 @@ Measured all 130 catalog cases headless in Node against the committed wasm
   scenario-first migration). Re-verify its 14 findings against the current UI before any UX pass;
   keep only survivors.
 
-### Scenario library (Tier 5–6)
-- [ ] **5.1 "Matched history, different reserves"** (N·c_t ambiguity) — no engine gap, extends `dep_*`.
-- [ ] **5.2 "The tornado plot lies"** (kv/kh × density-contrast) — no engine gap.
-- [ ] **5.3 "Two fluid models, one calibration point"** (correlation vs tabular PVT) — no engine gap;
-  no OPM deck for this case yet.
+### Scenario library (Tier 5–7)
+
+Case IDs below are `docs/CASE_LIBRARY_ROADMAP.md` Tier 7 IDs (`T7.n`) — that doc holds the
+rationale and references; this list holds only the action and its blocker.
+
+- [x] **5.1 "Matched history, different reserves"** (N·c_t ambiguity) — shipped as `dep_nct.ts`.
+- [x] **5.2 "The tornado plot lies"** (kv/kh × density-contrast) — shipped as `wf_tornado.ts`. The
+  second candidate pair from 5.2 (capillary × layer contrast) was never built → now T7.16.
+- [x] **5.3 "Two fluid models, one calibration point"** (correlation vs lab-report PVT) — shipped as
+  `dep_pvt.ts`. Still no OPM deck for this case (below).
+- [x] **E7 pre-run scenario class** — shipped as `capabilities.runMode: 'prerun-artifacts'`
+  (`scenarios.ts`), precedent `wf_bl1d_opm.ts`; validated by `scenarios.test.ts`. The multi-artifact
+  fan/ensemble half of the original E7 is split out as E8 and is still open.
+- [x] **E5 history/forecast divider** — shipped (`resolveHistoryDivider`); the `logTime` bug is
+  tracked under Wave 4 follow-ups above.
+
+Open, no engine gap (cheapest):
+- [x] **T7.4 capillary waterflood — DONE 2026-07-24.** `scenarios/wf_capillary.ts` is the first
+  scenario in the catalog with `capillaryEnabled: true`, closing the "shipped physics no user can
+  see" gap. Entry-pressure ladder against a fixed BL overlay + a "physics or truncation error?"
+  dimension. Key measurement: at `wf_bl1d`'s 400 bar drawdown an 8 bar entry pressure moves front
+  width by only ~3 %; at a representative 40 bar drawdown the ladder spans 0.081 → 0.289 PVI of
+  front width. Claims guarded by `wf_capillary.test.ts`. Full table in `CASE_LIBRARY_ROADMAP.md`
+  Tier 7 delivery record.
+- [ ] **T7.4 remainder: gravity-capillary transition zone** (hydrostatic P_c = Δρgh profile,
+  Leverett J). Blocked on a saturation-vs-depth profile chart — `SwProfileChart.svelte` exists but
+  is dormant and unwired. Related to the "restore or retire SwProfileChart" decision under
+  Priority 2.
+- [ ] **T7.11 grid-orientation effect — ATTEMPTED AND REFUTED 2026-07-24; reclassified.** A
+  single-well-pair construction (same grid, wells moved edge-to-edge vs corner-to-corner, crossed
+  with mobility ratio) was built, measured and discarded. Comparing at equal days is invalid under
+  BHP control (36 % spread from throughput alone); balanced rate control fixes that but is too slow
+  to ship; and comparing at equal PVI controlled for breakthrough gave a *larger* gap at the
+  favorable mobility ratio (35 %) than the adverse one (21 %) — the opposite of the grid-orientation
+  signature. Moving one well pair changes pattern geometry far more than grid alignment. **Needs
+  E11 (multi-well patterns) for the real Yanosik-McCracken construction; do not retry with a single
+  well pair.** Full record in `CASE_LIBRARY_ROADMAP.md` Tier 7.
+- [ ] **T7.12 numerical vs physical dispersion** framing on the existing `wf_bl1d` grid ladder.
+- [ ] **T7.13 IMPES-vs-FIM as a user-visible solver-choice sensitivity** — reuses the ~10 % liberated
+  gas disagreement recorded in `docs/BLACK_OIL_VALIDATION.md` §2 (also a Priority-2 defect below).
+- [ ] **T7.14 joint relperm-endpoint uncertainty**, **T7.15 pattern density**, **T7.18 endpoints × V_DP**.
+- [ ] **T7.5 Koval correction** — honest reference for the high-M `wf_bl1d` rungs.
+
+Open, needs a new analytical module:
+- [x] **T7.1 analytical module — DONE 2026-07-24.** `src/lib/analytical/wellTest.ts` + 37 tests:
+  E1 (verified to 1e-12 relative against independently computed 40-digit values), line-source and
+  semilog drawdown, Horner buildup, semilog line fit, and both inverse problems (k from slope, skin
+  from the one-hour intercept) verified by round trip over skin ∈ [-3, 12]. All constants derived
+  from `DARCY_METRIC_FACTOR`, not from field-unit textbook forms.
+- [ ] **T7.1 remainder (E10): wire it to a scenario** — `AnalyticalMethod` union member +
+  `ANALYTICAL_OUTPUT_CONTRACTS` entry, adapter in `analyticalAdapters.ts`, a semilog chart layout,
+  and the drawdown/buildup scenario. Until then `wellTest.ts` has no consumer.
+- [ ] **T7.2 dry-gas p/z + gas-cap blowdown** — extends `materialBalance.ts`, which already carries
+  `m`/`driveIndex_gasCap` with no scenario exercising them. Water-drive variant needs E9.
+
+Open, blocked on an enabler:
+- [ ] **E1 single-run field perm** (see Wave 4 follow-ups) → unblocks **T7.9 Tavassoli**,
+  **T7.6/T7.7 SPE10**, Egg.
 - [ ] **E2: declarative time-based well schedule** in scenario params, worker-driven (wasm APIs exist;
-  `sim.worker.ts` applies schedules only at create). Unblocks WAG (5.5) and SPE9.
+  `sim.worker.ts` applies schedules only at create) → unblocks WAG (5.5) and **T7.8 SPE9**.
+- [ ] **E8: ensemble / fan-curve chart primitive** (P10/P50/P90 band) → **T7.19**, and therefore all
+  combined-uncertainty cases plus Tier 6.1/6.6. Lands in `buildChartData.ts` as a new sequential
+  section (permitted by the frontend-architecture skill — it forbids inlining analytical-method
+  physics, not adding a new concern) plus band-fill support in `ChartSubPanel` and the curve types.
+  Not started 2026-07-24: it is a large, visually-verified change, and the chart-consolidation item
+  above should be scoped first so the band does not land on the older of two coexisting paths.
+- [ ] **E9: aquifer boundary model** → T7.2 water-drive, **T7.3**, T7.17, live PUNQ-S3 (5.6).
+- [ ] **E11: multi-well patterns** — drive the worker's existing `payload.wells` array from scenario
+  params (no scenario populates it today) → T7.11 done properly, SPE9, pattern density (T7.15).
 - [ ] **Engine gaps deferred:** relperm hysteresis (E4, WAG), per-well injected fluid (E3), inactive
   cells (E6, blocks live PUNQ-S3).
-- [ ] **Tier-6 pre-run exhibits** (need only E7 + data curation): 6.5 SPE11 inter-simulator spread,
-  6.1 PUNQ-S3 ensemble, 6.3/6.4 SPE5 WAG + hysteresis; pilot `flowexp_comp` compositional for 6.2;
-  record dataset licenses/provenance before bundling artifacts.
+- [ ] **Tier-6 pre-run exhibits** (E7 done; need data curation only, except where noted): 6.5 SPE11
+  inter-simulator spread (no simulation at all — cheapest), 6.3/6.4 SPE5 WAG + hysteresis;
+  6.1 PUNQ-S3 ensemble and 6.6 Egg additionally need E8; pilot `flowexp_comp` compositional for 6.2.
+  Record dataset licenses/provenance before bundling artifacts.
+- [ ] **OPM decks still missing** for `dep_pvt` (5.3), `gas_injection`, and `gas_drive`. The summary
+  parser itself is done and both committed artifacts are `status: "parsed"`.
 
 ## Priority 2 — Validation & correctness
 - [x] **Black-oil validation gates closed (2026-07-24, ROADMAP 1.1).** Quantitative SPE1 acceptance
@@ -181,9 +246,14 @@ Measured all 130 catalog cases headless in Node against the committed wasm
   0.6 bar on average pressure; `docs/BLACK_OIL_VALIDATION.md` section 2). Each converges cleanly under
   grid refinement, so this is a solver/timestep question. Dev-only priority, but it is the one
   black-oil result that two shipped paths do not agree on.
-- [ ] **`docs/DOCUMENTATION_INDEX.md` still says "FIM is dev-only; public scenarios ship IMPES."**
+- [x] **`docs/DOCUMENTATION_INDEX.md` still says "FIM is dev-only; public scenarios ship IMPES."**
   Gas/three-phase scenarios (incl. `spe1_gas_injection`) have defaulted to FIM since `b88ee28`.
   Reconcile the doc with the shipped solver policy.
+  Done 2026-07-24: rewrote the "FIM — current truth" preamble in `DOCUMENTATION_INDEX.md`, replaced
+  the "Product Boundary" section of `FIM_DEFERRED_BACKLOG.md` with the shipped solver policy (pointing
+  at `applySolverPolicy` in `src/lib/catalog/scenarios.ts` as the single source), and updated the
+  `FIM_STATUS.md` current-state line. Historical mentions in `FIM_CONVERGENCE_WORKLOG.md`, the
+  experiment registry, and dated review docs were left as provenance.
 - [ ] **Define three-phase `experimental` exit criteria** + acceptance tests for gas-injection and
   gas-drive (breakthrough timing, Sg evolution, phase-closure diagnostics).
 - [ ] **Reconcile three-phase docs with implemented state:** gas-oil capillary sign, `s_org`, explicit

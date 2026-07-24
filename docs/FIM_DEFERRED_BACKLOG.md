@@ -1,12 +1,14 @@
 # Deferred FIM Backlog
 
-FIM is intentionally out of the user-facing product path while ResSim is stabilized around IMPES and offline OPM Flow references. Keep the code, tests, and diagnostics available for developer work, but do not treat FIM as part of product readiness until the gates below are met.
+FIM is in the user-facing product path as of `b88ee28` (2026-07-24). This file tracks the FIM work that is still deferred — convergence closure, linear-stack alignment, and diagnostic reproduction — not a product boundary.
 
-## Product Boundary
+## Solver Policy (shipped)
 
-- Public scenario runs default to IMPES.
-- FIM remains accessible only through explicit developer tests, Rust APIs, and diagnostic scripts.
-- Do not add public UI solver toggles until predefined-case acceptance is stable.
+Applied centrally by `applySolverPolicy` in `src/lib/catalog/scenarios.ts`; scenarios do not set `fimEnabled` themselves.
+
+- Gas / three-phase scenarios (`requiresThreePhaseMode`) default to FIM: `gas_injection`, `gas_drive`, `spe1_gas_injection`.
+- Oil/water scenarios default to IMPES, and each gets a public `solver_comparison` ("FIM vs. IMPES") sensitivity.
+- Every scenario carries a `solverPolicy` with a user-visible rationale, surfaced in scenario cards and run labels.
 
 ## Later FIM Work
 

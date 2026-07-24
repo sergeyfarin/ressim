@@ -30,8 +30,11 @@ dated snapshots moved to `.archive/`).
 
 ## FIM — current truth
 
-FIM is dev-only; public scenarios ship IMPES (`docs/FIM_DEFERRED_BACKLOG.md`). Search the registry
-**by mechanism name** before proposing any convergence change.
+FIM ships in the user path since `b88ee28` (2026-07-24): gas/three-phase scenarios default to FIM,
+oil/water scenarios default to IMPES and expose a user-selectable "FIM vs. IMPES" sensitivity. The
+policy is applied centrally in `applySolverPolicy` (`src/lib/catalog/scenarios.ts`), not per
+scenario. Convergence work on FIM remains developer-driven (`docs/FIM_DEFERRED_BACKLOG.md`) — search
+the registry **by mechanism name** before proposing any convergence change.
 
 | Document | Use it for |
 |----------|------------|
@@ -44,7 +47,7 @@ FIM is dev-only; public scenarios ship IMPES (`docs/FIM_DEFERRED_BACKLOG.md`). S
 | `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` | Six-item FIM-vs-OPM Newton-efficiency gap decomposition + triage |
 | `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` | Decision-frontier execution plan (oracle repair, raw-state replay, promotion matrix) |
 | `docs/FIM_OPM_PARITY_PLAN.md` | Bundle Y evidence record and original Y0–Y4 roadmap |
-| `docs/FIM_DEFERRED_BACKLOG.md` | Product boundary: why FIM is out of the user path and the gates to re-enter it |
+| `docs/FIM_DEFERRED_BACKLOG.md` | Deferred FIM convergence/validation work and the gates that remain open |
 
 ## FIM — design frontier (paused behind the WATER track)
 
@@ -96,8 +99,12 @@ in `FIM_EXPERIMENT_REGISTRY.md`; the docs themselves are provenance, not live sp
   (`wf_bl1d`, `spe1_gas_injection`) are `status: "parsed"` with physically sane series (dead-well
   `EQUIL` bug fixed 2026-07-18).
 - Black-oil and three-phase modes are implemented and exposed; three-phase validation depth still
-  trails the implementation. SPE1 has published reference overlays and OPM artifact hooks;
-  quantitative acceptance criteria remain deferred.
+  trails the implementation. SPE1 has published reference overlays, OPM artifact hooks, and
+  quantitative acceptance criteria (`src/lib/ressim/src/tests/spe1_acceptance.rs`, closed 2026-07-24;
+  see `docs/BLACK_OIL_VALIDATION.md`).
+- Case-library planning is owned by `docs/CASE_LIBRARY_ROADMAP.md` (Tier 7 = the 2026-07-24 gap
+  audit; stable case IDs `T7.n`, enabler IDs `E1`–`E10`). `ROADMAP.md` Priority 5 carries the
+  ordering rationale and `TODO.md` the active checkboxes; neither restates case detail.
 
 ## Maintenance rule
 

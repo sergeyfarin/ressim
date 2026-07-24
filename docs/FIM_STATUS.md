@@ -115,7 +115,9 @@ mechanism name**, not just target case, before proposing any solver change; see 
 
 ## Current State (2026-07-05)
 
-FIM is dev-only (public scenario runs use IMPES, `docs/FIM_DEFERRED_BACKLOG.md`). The solver is
+FIM ships in the user path since `b88ee28` (2026-07-24): gas/three-phase scenarios default to FIM,
+oil/water scenarios default to IMPES with a selectable FIM comparison sensitivity
+(`docs/FIM_DEFERRED_BACKLOG.md` for what remains deferred). The solver is
 now substantially OPM-aligned, assembled over Phases 0-11:
 
 - **Assembly**: exact AD Jacobian (`fim/assembly_ad.rs`) is the live path; the legacy

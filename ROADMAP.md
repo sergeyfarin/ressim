@@ -106,28 +106,71 @@ Why this block matters:
 Why after architecture cleanup:
 - Persistence and comparison UX are much easier to implement once the output-selection model is unified.
 
-## Priority 5: Physics Extensions After Validation
+## Priority 5: Analytical Coverage And Physics Extensions After Validation
 
-### 5.1 Gas-cap and depletion extensions
+Case-level detail, references and blockers live in `docs/CASE_LIBRARY_ROADMAP.md` Tier 7
+(stable IDs `T7.n`, enablers `E1`–`E10`). This section carries only the ordering rationale;
+`TODO.md` carries the active checkboxes. Do not restate case detail in all three places.
 
-- Primary gas-cap scenario with gas-cap ratio `m` and material-balance framing.
-- Gas-cap expansion and secondary gas-cap interpretation tied to the existing black-oil machinery.
-- Gas-cap blowdown with p/z style diagnostics.
+The 2026-07-24 gap audit of the shipped library (14 scenarios, 4 analytical modules) produced two
+structural findings that reorder this priority:
 
-### 5.2 Vertical and areal sweep upgrades
+- **Capillarity is implemented, validated, and used by no scenario** (`capillaryEnabled: false` in
+  all 14; gravity on in only 2). Exercising existing physics now outranks adding new physics.
+- **No ensemble/fan chart primitive exists**, so no case can pose a P10/P50/P90 or
+  "many models match, forecasts diverge" question. That is a chart-architecture gap (E8), not a
+  physics gap, and it gates the most valuable remaining case content.
+
+### 5.1 Exercise shipped physics and close analytical gaps (no engine change)
+
+- ~~Capillary waterflood case (**T7.4**) — first scenario to turn capillarity on.~~ **Done
+  2026-07-24** (`wf_capillary`). The gravity-capillary *transition-zone* half remains open and is
+  blocked on a saturation-vs-depth profile chart, not on physics.
+- Well-test analytical module: drawdown / buildup / Horner (**T7.1**, enabler **E10**). This is the
+  largest missing pillar of classical reservoir engineering in the product. **The mathematics landed
+  2026-07-24** (`src/lib/analytical/wellTest.ts`, 37 tests); the scenario wiring — union member,
+  adapter, semilog chart layout — has not.
+- Grid orientation (**T7.11**) was attempted and refuted on 2026-07-24: a single injector-producer
+  pair cannot separate grid alignment from pattern geometry. It now depends on multi-well pattern
+  support (**E11**) and belongs under 5.4, not here.
+- Numerical-vs-physical dispersion framing (**T7.12**) — partly delivered as the second dimension of
+  `wf_capillary`; the `wf_bl1d` grid-ladder framing is still open.
+- Dry-gas p/z material balance and gas-cap blowdown (**T7.2**). `materialBalance.ts` already carries
+  the gas-cap ratio `m` and `driveIndex_gasCap`; no scenario exercises either.
+- Koval correction for unfavorable-mobility floods (**T7.5**).
+
+### 5.2 Uncertainty and decision content (needs the chart pass, not new physics)
+
+- Ensemble / fan-curve chart primitive (**E8** → **T7.19**): P10/P50/P90 bands across live variants
+  and across multiple pre-run artifacts. Gated behind the Priority 3 chart consolidation, since it
+  lands on `buildChartData.ts`.
+- Combined-uncertainty cases once E8 exists: capillary × layer contrast (**T7.16**), relperm
+  endpoints × heterogeneity (**T7.18**), joint endpoint uncertainty (**T7.14**).
+- Per-cell permeability on the single-run path (**E1**, half-wired today) → the Tavassoli
+  "perfect match, wrong forecast" flagship (**T7.9**) and SPE10 Model 1 / layer subsets
+  (**T7.6**, **T7.7**).
+
+### 5.3 Vertical and areal sweep upgrades
 
 - Kv/Kh-aware Warren-Root style blending between Dykstra-Parsons and perfect communication.
-- Additional well-pattern correlations only after current sweep semantics are clean.
+- Additional well-pattern correlations only after current sweep semantics are clean (Priority 2.2).
 
-### 5.3 Longer-range reservoir-model features
+### 5.4 Longer-range reservoir-model features
 
-- Aquifer models.
-- Well schedules.
+- Aquifer models (**E9**) — the one large physics item with broad reach: it unlocks water-drive gas
+  (**T7.2**), aquifer-strength × OOIP ambiguity (**T7.17**), and live PUNQ-S3.
+- Well schedules (**E2**) — unlocks SPE9 (**T7.8**) and immiscible WAG.
+- Multi-well patterns (**E11**) — the worker already honors a `payload.wells` array but no scenario
+  drives it. Unlocks the real Yanosik-McCracken grid-orientation construction (**T7.11**), SPE9, and
+  pattern-density studies (**T7.15**).
+- Relperm hysteresis (**E4**), inactive cells (**E6**), per-well injected fluid (**E3**).
 - Non-uniform grids and local refinement.
 - Horizontal or deviated wells.
 
 Why later:
-- These features add breadth, but they should come after the simulator's current black-oil, gas, and analytical foundations are better validated.
+- These features add breadth, but they should come after the simulator's current black-oil, gas, and
+  analytical foundations are better validated — and, per the audit above, after the physics already
+  in the engine is actually reachable from the case library.
 
 ## References Behind The Ordering
 
