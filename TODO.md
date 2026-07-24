@@ -131,6 +131,18 @@ Found while building the `.claude/skills/` library. Small stale-doc/path items w
 Current execution authority: `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`. The detailed list
 below is retained as Bundle N/Y history; it must not override this current sequence.
 
+- [x] **Convergence re-baseline on clean tree `663e380` (2026-07-24).** Rebuilt wasm, re-ran the
+  full control matrix + added three-phase (`gas-pressure`, `gas-rate`, heavier `12x12x3`),
+  areal-sweep, and SPE1-suite rows; FIM-vs-IMPES contrast on each. Full results supersede the
+  provisional dirty-tree `1db2db8` numbers in `docs/SOLVER_COMPARISON_SUMMARY.md`. Headline: the
+  heavy water case is now **4 substeps / 0 retries** on the `OpmAligned` default (was `50` in the
+  stale baseline; `Legacy` = 24), i.e. within `4x` of OPM Flow's single substep; SPE1 runs
+  1 substep/step uncut; gas-rate uncut. **New dominant convergence gap is the `linear-bad`
+  singularity backstop on small well-dominated cases** (`22x22x1`=8, `23x23x1`=4, `sweep-areal`=4
+  `linear-bad` retries vs `Legacy`'s zero) — the WATER-025 raw-saturation endpoint singularity,
+  fix deferred below. All grids kept `<=1200` cells for the browser heap. Tree confirmed clean
+  after measurement (SPE1 numbers read via a temporary reverted `stats` print).
+
 - [x] **Y0-Y2a evidence chain:** exact Flow oracle tracked; false linear-failure acceptance fixed;
   direct/live linear quality refuted as the remaining first-rung cause; injector isolated; the
   `Sw=Swc` derivative/update kink clean-replayed.

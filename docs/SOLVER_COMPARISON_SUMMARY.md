@@ -1,18 +1,90 @@
 # OPM Flow vs ResSim FIM vs ResSim IMPES
 
-Updated 2026-07-22 on provisional dirty tree `1db2db8`. This is a decision table, not a claim
-that every row is a three-way parity oracle. A solver is marked `N/A` when the repository lacks
-the same control/physics mapping; it is marked `not qualified` when it runs but has no quantitative
-correctness band against the named reference.
+Convergence numbers re-baselined **2026-07-24 on clean committed tree `663e380`** (wasm rebuilt
+via `scripts/build-wasm.sh` first). This **supersedes the provisional dirty-tree `1db2db8`
+(2026-07-22) baseline**, whose water-heavy row reported `50 substeps` for the `--opm-aligned` path;
+on the clean tree — where `OpmAligned` is now the default nonlinear flavor (WATER-026) — the same
+case converges in `4 substeps / 0 retries`. The stale figures were an intermediate-experiment
+artifact, exactly the case the baseline-discipline rule exists to catch. This is a decision table,
+not a claim that every row is a three-way parity oracle. A solver is marked `N/A` when the
+repository lacks the same control/physics mapping; `not qualified` when it runs but has no
+quantitative correctness band against the named reference.
+
+## Browser memory footprint
+
+ResSim runs in a browser WASM sandbox, so this baseline deliberately stays within grids that fit a
+constrained heap. Every case below is `≤ 1200` cells (largest: `23×23×1 = 529`; three-phase heavy
+`12×12×3 = 432`; SPE1-like `10×10×3 = 300`). No corner-point, no full-field (SPE10/PUNQ/Egg-scale)
+case is exercised here — those are deferred to the offline OPM pipeline, not the browser solver.
+Do not add `> ~1500`-cell convergence cases to this matrix without a memory-budget check.
+
+## Convergence re-baseline — clean tree `663e380` (2026-07-24)
+
+FIM = default `OpmAligned` flavor unless marked `(Legacy)`. Commands are
+`node scripts/fim-wasm-diagnostic.mjs --preset <P> --grid <G> --steps <S> --dt <D> --diagnostic summary --no-json`;
+IMPES adds `--solver impes` (its `substeps` = explicit adaptive internal steps, reported as
+`history+=N`). Single-run WASM observations; treat sub-100 ms differences as noise.
+
+### Two-phase waterflood (control matrix)
+
+| Case | FIM substeps / retries (l/n/m) | FIM wall | Legacy substeps / retries | IMPES substeps | Note |
+| --- | --- | --- | --- | --- | --- |
+| water-pressure 20×20×3 dt=0.25 | 3 / 0-1-0 | 1.6 s | — | 58 | clean |
+| water-pressure 22×22×1 dt=0.25 | 11 / **8**-0-0 | 1.1 s | 4 / 0-2-0 | — | `linear-bad` = singularity backstop firing |
+| water-pressure 23×23×1 dt=0.25 | 6 / **4**-0-0 | 0.9 s | 4 / 0-2-0 | — | same backstop pattern |
+| water-pressure **12×12×3 dt=1 (heavy)** | **4 / 0-0-0** | ~1.0 s | 24 / 0-4-0 (4.6 s) | 128 | OPM Flow oracle: 1 substep / 11 Newton |
+
+### Three-phase gas injection
+
+| Case | FIM substeps / retries | FIM wall | IMPES substeps | Final `Sg_max` (FIM / IMPES) | Note |
+| --- | --- | --- | --- | --- | --- |
+| gas-rate 20×20×3 dt=0.25 | 1 / 0-0-0 | 0.9 s | — | 0.231 / — | clean, uncut |
+| gas-rate 10×10×3 dt=0.25 ×6 | 1 per step / 0-0-0 | 0.04-0.4 s/step | ~4/step | 0.438 / 0.329 | steady GOR=80; FIM≠IMPES final Sg (not interchangeable) |
+| gas-pressure 10×10×3 dt=0.25 | 6 / 0-2-0 | 1.4 s | 39 | 0.477 / 0.316 | `nonlinear-bad:gas` transient |
+| gas-pressure 20×20×3 dt=0.25 | 6 / 0-2-0 | 3.9 s | — | 0.489 / — | |
+| gas-pressure 12×12×3 dt=1 | 9 / 0-2-0 | 2.0 s | — | 0.559 / — | heavier three-phase, no cuts |
+
+### Areal sweep
+
+| Case | FIM substeps / retries | FIM wall | IMPES substeps | Note |
+| --- | --- | --- | --- | --- |
+| sweep-areal 21×21×1 dt=0.25 | 6 / **4**-0-0 | 0.7 s | 37 | `linear-bad` singularity backstop again |
+
+### SPE-suite (SPE1-like, 10×10×3, native `cargo --release`)
+
+| Test | Result | Convergence detail |
+| --- | --- | --- |
+| `spe1_fim_first_steps_converge_without_stall` (5×1 d) | pass | step 1 = **2 substeps**, steps 2-5 = **1 substep each**, 0 retries, dt reaches full 1.0 uncut — OPM-class |
+| `spe1_fim_gas_injection_creates_free_gas` (10×1 d) | pass | free gas created, MB-closed, no solver warnings |
+| `spe1_fim_producer_gas_breakthrough_smoke` (4×4×3) | pass | breakthrough reached, no warnings |
+
+Suite: `3 passed; 0 failed` in 0.32 s. (Per-step substep counts read via a temporary one-line
+`stats` print; the committed test asserts only the envelope substeps≤20 / nonlinear_bad≤2 /
+min_dt≥5e-3, all satisfied with wide margin.)
+
+### What the re-baseline changes
+
+1. **The heavy water case is essentially solved on the default path**: `4 substeps / 0 retries`
+   vs OPM Flow's `1`, and `6×` fewer substeps than `Legacy` (24). The `50`-substep figure in the
+   old baseline is stale.
+2. **The default (`OpmAligned` + WATER-025 raw saturations) trades this for `linear-bad` retries
+   on small well-dominated cases** (`22×22×1`: 8; `23×23×1`: 4; `sweep-areal`: 4). Each is the
+   deferred relperm-endpoint singularity backstop (`solve_linearized_system` iterative fallback)
+   catching a singular Jacobian after the fact — `Legacy` has zero `linear-bad` on these. This is
+   the fragility flagged in `c2167f2` / `TODO.md:709`, now quantified.
+3. **Gas / three-phase converges cleanly** (gas-rate uncut at 1 substep; gas-pressure 6-9 substeps,
+   0 `linear-bad`), and SPE1 is at OPM-class efficiency.
+4. **FIM and IMPES remain non-interchangeable** as correctness oracles (e.g. gas-rate `Sg_max`
+   0.438 vs 0.329; heavy-water final oil differs) — the documented explicit-vs-implicit gap.
 
 ## Current result table
 
 | Scenario | OPM Flow 2026.04 | ResSim FIM | ResSim IMPES | Correctness status |
 | --- | --- | --- | --- | --- |
 | Exact gas RESV, 10x10x3, 6 x 0.25 d | `0.08-0.10 s` simulation; 6 steps, 26 Newton updates, 32 residual evaluations, 27 Krylov iterations, 0 cuts | `0.191-0.207 s` native; 6 steps, 23 updates, 29 evaluations, 23 reservoir solves, 55 Krylov iterations, 0 cuts | N/A: product IMPES has no typed surface-u RESV injector lifecycle matching this deck | Strong same-state/local parity: first correction agrees to about `0.03%` or better and evaluation-1 terms to about `0.1-0.7%`. No six-step production-curve acceptance band yet. |
-| Water-heavy pressure case, 12x12x3, 1 d | Corrected well-diameter oracle: `0.03-0.04 s` simulation; 1 step, 11 Newton, 12 evaluations, 13 Krylov iterations, 0 cuts | Production/default: `5.78 s` WASM (`4.38 s` native), 50 substeps/2 retries. WATER-003 default-off: `0.78 s` native, 10 substeps/0 retries | `1.58 s` WASM; 129 adaptive explicit substeps, finite/bounded state | WATER-003 closes update 1: injector `p=390,Sw=.3`, water MB `.313756` vs Flow `.31375`. Not promoted: the direct day exceeds 20 updates and final FIM pressure/rates differ from Flow. IMPES remains a separate explicit-stability mechanism. |
-| Default gas-rate control, 10x10x3, 6 x 0.25 d | Not comparable: tracked Flow deck uses the typed RESV/unlimited-redissolution lifecycle absent from this browser preset | `3.47 s` WASM; 28 substeps, 13 nonlinear retries; `Sg_max=0.4570` | `0.60 s` WASM; 26 adaptive substeps; `Sg_max=0.3291` | Smoke/conservation evidence only. The materially different final gas saturation proves FIM and IMPES are not interchangeable correctness oracles here. |
-| Areal sweep smoke, 21x21x1, 0.25 d | N/A: no tracked OPM deck | `0.33 s` WASM; 1 substep; `Sw_max=0.3537` | `0.51 s` WASM; 37 adaptive substeps; `Sw_max=0.4137` | Finite/bounded smoke only; no OPM or analytical field-level acceptance band. |
+| Water-heavy pressure case, 12x12x3, 1 d | Corrected well-diameter oracle: `0.03-0.04 s` simulation; 1 step, 11 Newton, 12 evaluations, 13 Krylov iterations, 0 cuts | Default (`OpmAligned`), clean `663e380`: `~1.0 s` WASM, **4 substeps / 0 retries**, dt=[0.18,0.33] (`Legacy`: 24 substeps / 4 nonlinear retries, 4.6 s) | `2.35 s` WASM; 128 adaptive explicit substeps, finite/bounded state | FIM now within `4×` of Flow's single-substep solve (was `50` on the dirty-tree baseline). Final FIM pressure/rates still differ from Flow; IMPES remains a separate explicit-stability mechanism. |
+| Default gas-rate control, 10x10x3, 6 x 0.25 d | Not comparable: tracked Flow deck uses the typed RESV/unlimited-redissolution lifecycle absent from this browser preset | Clean `663e380`: 1 substep/step, 0 retries; steady GOR=80; `Sg_max=0.438` | `0.09 s` WASM last step; ~4 adaptive substeps/step; `Sg_max=0.329` | Smoke/conservation evidence only. The materially different final gas saturation proves FIM and IMPES are not interchangeable correctness oracles here. |
+| Areal sweep smoke, 21x21x1, 0.25 d | N/A: no tracked OPM deck | Clean `663e380`: `0.7 s` WASM; 6 substeps / 4 `linear-bad` (singularity backstop); `Sw_max=0.354` | `0.60 s` WASM; 37 adaptive substeps; `Sw_max=0.414` | Finite/bounded smoke only; no OPM or analytical field-level acceptance band. |
 | Buckley-Leverett benchmarks | Bundled `wf_bl1d` artifact is parsed and physically active, but no solver-to-Flow acceptance band is defined | Not qualified on the BL benchmark gate | `2.78 s` for the three-test debug suite; breakthrough relative error `4.1%` (Case A) and `9.1%` (Case B); finer dt improves both | IMPES has the strongest quantitative correctness evidence here because the oracle is analytical. Do not use the OPM artifact as a numerical acceptance gate until bands are defined. |
 
 ## Timing contract
@@ -22,8 +94,10 @@ correctness band against the named reference.
 - Native FIM times exclude Rust compilation. WASM times exclude module initialization and include
   only the requested `step()` calls. Native and WASM values should not be ratioed without naming
   the runtime surface.
-- Values are single-run observations on a dirty tree and therefore provisional. Use ranges where
-  a prior same-tree-equivalent run exists; do not treat sub-millisecond differences as meaningful.
+- The convergence re-baseline rows (control matrix, three-phase, areal, SPE) are single-run
+  observations on the **clean committed tree `663e380`** and are reproducible via the commands
+  above. The `Exact gas RESV` row and the `G4c6` reconciliation below still carry their earlier
+  `1db2db8` provenance until re-run; do not treat sub-100 ms differences as meaningful.
 
 ## G4c6 count reconciliation
 
@@ -48,13 +122,39 @@ matches the earlier `FIM-Y2D6` verdict and is not grounds to repeat or promote t
 ## Decision
 
 Stop treating exact gas as a greater-than-10x emergency: it is now roughly 2x Flow and has the
-best correctness oracle in the repository. The highest-value next convergence work is the
-water-heavy trajectory (`50` FIM substeps versus Flow's one), while IMPES remains the product
-solver and the preferred two-phase analytical path. Re-open exact-gas linear policy only with a
-new same-preconditioner capture showing a bounded recurrence or preconditioner change that was not
-already covered by `FIM-Y2D4` through `FIM-Y2D6`.
+best correctness oracle in the repository. The heavy water trajectory, previously the headline gap
+(`50` FIM substeps versus Flow's one), is now `4 substeps / 0 retries` on the clean-tree default —
+its remaining `4→1` gap is no longer the dominant convergence problem. The highest-value next
+convergence work is instead the **`linear-bad` singularity backstop on small well-dominated cases**
+(`22×22×1`, `23×23×1`, `sweep-areal`): the WATER-025 raw-saturation default drives cells onto a
+zero relperm-derivative endpoint, forming a singular Jacobian block that the load-bearing iterative
+fallback only catches after the fact. The scoped fix is the deferred relperm-endpoint
+regularization (`TODO.md:709`, `c2167f2`). IMPES remains the product solver and the preferred
+two-phase analytical path. Re-open exact-gas linear policy only with a new same-preconditioner
+capture showing a bounded recurrence or preconditioner change not already covered by `FIM-Y2D4`
+through `FIM-Y2D6`.
 
 ## Replay commands
+
+```bash
+# Clean-tree convergence re-baseline (rebuild wasm first)
+bash scripts/build-wasm.sh
+D() { node scripts/fim-wasm-diagnostic.mjs "$@" --diagnostic summary --no-json; }
+# two-phase control matrix
+D --preset water-pressure --grid 20x20x3 --steps 1 --dt 0.25
+D --preset water-pressure --grid 22x22x1 --steps 1 --dt 0.25
+D --preset water-pressure --grid 23x23x1 --steps 1 --dt 0.25
+D --preset water-pressure --grid 12x12x3 --steps 1 --dt 1        # heavy; add --legacy for the contrast
+# three-phase
+D --preset gas-rate     --grid 20x20x3 --steps 1 --dt 0.25
+D --preset gas-rate     --grid 10x10x3 --steps 6 --dt 0.25
+D --preset gas-pressure --grid 10x10x3 --steps 1 --dt 0.25
+D --preset gas-pressure --grid 12x12x3 --steps 1 --dt 1
+D --preset sweep-areal  --grid 21x21x1 --steps 1 --dt 0.25
+# IMPES contrast: append --solver impes to any of the above
+# SPE-suite (native)
+cargo test --manifest-path src/lib/ressim/Cargo.toml --release spe1_fim -- --nocapture
+```
 
 ```text
 # Exact gas FIM native
