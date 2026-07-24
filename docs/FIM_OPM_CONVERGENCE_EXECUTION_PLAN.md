@@ -739,6 +739,15 @@ counts move `8,5,4,4,4,4 -> 9,6,5,5,4,4`, farther from Flow's `7,5,4,3,4,3`; two
 also gain one or two accepted Newton iterations. The option is retained as a validated
 algorithm-correctness path, default-off. No CPR or nonlinear component changed.
 
+**Y2d5 promotion addendum (2026-07-24): PROMOTED AS RESSIM CORRECTNESS DEFAULT.** New evidence from
+the shipped `dep_pss` OpmAligned sensitivity satisfies the prior promotion concern at product scale.
+The historical recurrence's estimate collapsed to `1.344e-21` while the recomputed full residual
+remained `1.883e-7` (reduction `2.484e-2`), producing 543 accepted substeps and 398 linear retries at
+report step 24. With only true FGMRES changed, the exact 160-step run completes in `2.89 s`, one
+substep per report step, zero retries, with the bounded water/gas/heavy controls green. The old
+recurrence remains selectable only for diagnostic A/B. This supersedes the default-off decision;
+it does not supersede Y2d6 or claim that FGMRES matches Flow's selected linear stack.
+
 ### 7.7 Y2d6 source-complete OPM linear-lifecycle design
 
 Do not tune the true-FGMRES path next. The exact Flow oracle does not use it. Before implementing

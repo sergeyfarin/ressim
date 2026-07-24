@@ -146,4 +146,5 @@ describe('scenario-first run model', () => {
         expect(specs[0].deltaTDays).toBe(0.5);
         expect(scenario!.params.steps).not.toBe(7);
     });
+
 });

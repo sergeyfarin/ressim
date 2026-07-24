@@ -48,10 +48,13 @@ exact Flow oracle (`6` substeps, Newton `7/5/4/3/4/3`, zero cuts), isolated the 
 to the injector, refuted direct-vs-iterative linear quality as primary, and found a Newton update
 at `Sw=Swc` whose predicted saturation movement is discarded by ResSim's hard projection.
 
-**Current decision frontier (2026-07-15, superseded detail in the execution plan):** the complete Y2 tagged primary-variable lifecycle is
+**Current decision frontier (updated 2026-07-24, superseded detail in the execution plan):** the complete Y2 tagged primary-variable lifecycle is
 validated default-off and reaches the exact Flow gas substep count. Y2d5 proved that ResSim's
-historical fixed-left GMRES recurrence had masked that positive result: default-off true FGMRES
-removes every Y2 water linear retry, but exact-gas Newton counts remain above Flow and the heavy
+historical fixed-left GMRES recurrence had masked that positive result. The corrected flexible
+recurrence is now the product default after the shipped oil-depletion case exposed the same false
+residual convergence as a 543-substep/398-linear-retry shelf; the exact 160-step case now has one
+substep per report step and zero retries. This is a ResSim algorithm-contract correction, not OPM
+linear-stack parity. Exact-gas Newton counts remain above Flow and the heavy
 case remains seven substeps versus one. Y2d6 has now source-pinned the actual Flow 2026.04 linear
 lifecycle. The next bounded slice is Y2d6a capture payload sufficiency, because current artifacts
 lack storage derivatives for true-IMPES and conflate a material operator split: Flow factors fine

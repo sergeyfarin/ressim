@@ -133,6 +133,12 @@ Measured all 130 catalog cases headless in Node against the committed wasm
 FIM is out of the user path (IMPES ships). Do not chase small deltas; big OPM-architecture gaps
 matter more. Search `docs/FIM_EXPERIMENT_REGISTRY.md` by mechanism before any change.
 
+- [x] **Promote corrected flexible GMRES recurrence (2026-07-24).** The shipped oil pressure-
+  depletion FIM case exposed false convergence in the historical fixed-left recurrence with
+  input-dependent CPR: report step 24 fragmented into 543 accepts/398 linear retries. Correct
+  right-preconditioned FGMRES gives one substep/zero retries across all 160 report steps; the old
+  path remains explicit diagnostic A/B only. This is not a claim of Flow linear-stack parity.
+
 - [x] **2 hotspot-cooldown timestep tests — FIXED 2026-07-24 (stale tests, not a bug).**
   `changing_hotspot_resets_extra_growth_cooldown_budget` and
   `repeated_same_hotspot_extends_growth_cooldown_budget` asserted a pre-`89065164` (2026-04-08)

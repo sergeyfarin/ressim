@@ -139,9 +139,9 @@ pub struct ReservoirSimulator {
     /// `fim_opm_aligned_nonlinear` — evaluable under either flavor. Dev/diagnostic flag,
     /// default false = legacy behavior bit-identical.
     pub(crate) fim_nested_well_solve: bool,
-    /// Y2d5: opt into the corrected right-preconditioned flexible-GMRES recurrence while
-    /// retaining the existing CPR and nonlinear configuration. Dev/diagnostic flag; default
-    /// false preserves the historical solver for A/B validation.
+    /// Y2d5: use the corrected right-preconditioned flexible-GMRES recurrence while retaining the
+    /// existing CPR and nonlinear configuration. Enabled by default; `false` retains the
+    /// historical fixed-left recurrence for diagnostic A/B only.
     pub(crate) fim_true_fgmres: bool,
     /// Y2d6d native-only diagnostic routing for the complete Flow linear lifecycle.
     pub(crate) fim_flow_lifecycle: bool,
@@ -213,6 +213,12 @@ pub(crate) mod tests {
     mod runtime_api;
     mod three_phase;
     mod well_controls;
+
+    #[test]
+    fn simulator_defaults_to_flexible_gmres_for_input_dependent_cpr() {
+        let sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        assert!(sim.fim_true_fgmres);
+    }
 
     fn err_contains(result: Result<(), String>, expected: &str) {
         match result {

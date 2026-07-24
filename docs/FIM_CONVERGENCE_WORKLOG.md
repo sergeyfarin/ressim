@@ -5957,3 +5957,37 @@ single report step where Flow undershoots by `5.7%`. ResSim is already closer to
 truth than Flow's single step, so this is low priority; if pursued, it belongs with the timestep
 controller (first-step transient detection), not the reservoir model. No code changed; this is a
 refinement study on the tracked deck.
+
+## Pressure Depletion late producer transition (2026-07-24) — `FIM-FLAVOR-002`
+
+Provisional dirty-tree browser/WASM reproduction of the exact shipped `dep_pss` FIM sensitivity
+(`21x21x1`, `160 x 0.1 day`) localized the apparent hang to report step 24. OpmAligned was clean
+through step 23, then step 24 took `16.9 s`: `543` real accepted substeps, `398` linear-bad retries,
+accepted dt `5.09e-5..2.79e-4 day`, with the first failure dominated by producer `perf@1324`.
+Thus the cost is retry/timestep fragmentation at the pressure-controlled producer transition, not
+uniformly slow assembly or Krylov iteration.
+
+The exact same FIM/CPR equations with the Legacy nonlinear lifecycle completed all 160 report
+steps in `1.75 s`, with one accepted substep per report step, zero retries, no warning, final
+average pressure `100.086 bar`, and oil rate `0.325 Sm3/day`. A forced-direct comparison failed its
+initial solve on every attempt and lacked a comparable successful full-system residual report, so
+it is `INCONCLUSIVE` as a backend oracle and does not support a direct-versus-CPR verdict.
+
+The scenario-scoped Legacy override was measured but rejected as a product fix: it would mask the
+OPM-aligned defect. No routing change is retained. A step-24 OpmAligned trace then made the linear
+oracle valid and isolated the failure. At Newton evaluation 1, strict CNV/MB convergence was already
+met (`cnv=[1.860e-11,2.487e-9,0]`, `mb=[3.056e-12,2.613e-10,0]`), but the sourced OPM minimum of two
+applied Newton updates requires the second correction. The historical fixed-left recurrence reported
+an internal residual near `1.344e-21` while the recomputed full residual was `1.883e-7` (reduction
+`2.484e-2`, above `5e-3`). This is the Y2d3/Y2d4 signature: input-dependent CPR violates fixed-left
+GMRES's recurrence assumptions. Nested well solve did not change the `543/398` shelf; the existing
+right-preconditioned flexible recurrence removed it with all nonlinear semantics held fixed.
+
+Promoted the corrected recurrence to the simulator product default (historical recurrence remains an
+explicit diagnostic A/B option). With a freshly rebuilt WASM and no setter override, the exact
+`21x21x1`, `160 x 0.1 day` OpmAligned run completes in `2.89 s`: one real accepted substep per report
+step, zero retries, no warnings, final average pressure `100.000025 bar`, oil rate
+`9.3764e-5 Sm3/day`. The provisional dirty-tree control matrix also completes: water
+`20x20x3=1/0 retries`, `22x22x1=4/0L+1N`, `23x23x1=3/0L+1N`; gas `20x20x3=1/0`, exact six-step
+`10x10x3=1/0` on every step; heavy water `12x12x3=4/0`. This is a ResSim Krylov correctness
+promotion, not a claim that its linear stack is Flow's BiCGSTAB/CPRW/true-IMPES/AMG stack.

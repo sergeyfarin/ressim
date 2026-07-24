@@ -90,7 +90,7 @@ impl ReservoirSimulator {
             fim_trace_window_active: false,
             fim_opm_aligned_nonlinear: true,
             fim_nested_well_solve: false,
-            fim_true_fgmres: false,
+            fim_true_fgmres: true,
             fim_flow_lifecycle: false,
             fim_flow_resv_injector: false,
             fim_force_direct_linear: false,
@@ -317,8 +317,9 @@ impl ReservoirSimulator {
         self.fim_nested_well_solve = enabled;
     }
 
-    /// Y2d5 dev flag: use the corrected right-preconditioned flexible-GMRES recurrence without
-    /// changing the CPR or nonlinear configuration. Default false preserves historical routing.
+    /// Y2d5 diagnostic switch: use the corrected right-preconditioned flexible-GMRES recurrence
+    /// without changing the CPR or nonlinear configuration. This is enabled by default because
+    /// CPR is input-dependent; disabling it retains the historical fixed-left recurrence for A/B.
     #[wasm_bindgen(js_name = setFimTrueFgmres)]
     pub fn set_fim_true_fgmres(&mut self, enabled: bool) {
         self.fim_true_fgmres = enabled;

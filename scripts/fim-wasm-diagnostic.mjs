@@ -112,7 +112,8 @@ Options:
   --legacy                  use the Legacy nonlinear flavor (OpmAligned is now the default)
   --opm-aligned             Bundle N dev flag: OPM-aligned nonlinear layer (per-cell chopping)
   --nested-well-solve       Bundle W dev flag: converged per-well inner Newton solve
-  --true-fgmres             Y2d5 dev flag: corrected right-preconditioned flexible GMRES
+  --true-fgmres             corrected flexible GMRES (default; retained for compatibility)
+  --legacy-fgmres           historical fixed-left recurrence for diagnostic A/B only
   --list                    List presets
   --help                    Show this help
 
@@ -264,6 +265,9 @@ function parseArgs(argv) {
         break;
       case '--true-fgmres':
         options.trueFgmres = true;
+        break;
+      case '--legacy-fgmres':
+        options.legacyFgmres = true;
         break;
       case '--list':
         options.list = true;
@@ -714,7 +718,11 @@ async function main() {
   if (options.coreyTablePoints) {
     sim.setFimCoreyTablePoints(options.coreyTablePoints);
   }
-  if (options.trueFgmres) {
+  // Correct flexible GMRES is the product default. Keep both switches so historical traces can
+  // still be reproduced explicitly without making the broken recurrence normal behavior.
+  if (options.legacyFgmres) {
+    sim.setFimTrueFgmres(false);
+  } else if (options.trueFgmres) {
     sim.setFimTrueFgmres(true);
   }
 

@@ -50,8 +50,9 @@ export class ReservoirSimulator {
      */
     setFimOpmAlignedNonlinear(enabled: boolean): void;
     /**
-     * Y2d5 dev flag: use the corrected right-preconditioned flexible-GMRES recurrence without
-     * changing the CPR or nonlinear configuration. Default false preserves historical routing.
+     * Y2d5 diagnostic switch: use the corrected right-preconditioned flexible-GMRES recurrence
+     * without changing the CPR or nonlinear configuration. This is enabled by default because
+     * CPR is input-dependent; disabling it retains the historical fixed-left recurrence for A/B.
      */
     setFimTrueFgmres(enabled: boolean): void;
     setFluidCompressibilities(c_o: number, c_w: number): void;
