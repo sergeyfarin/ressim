@@ -62,17 +62,19 @@ Measured all 130 catalog cases headless in Node against the committed wasm
   unchanged (substep/solve/retry counts bit-identical before/after on all three cases below).
   Measured: `sweep_combined` 55.6 → 48.4 s, `sweep_areal/grid_high` 49.4 → 40.1 s,
   `spe1/grid_20` 26.1 → 25.0 s (equal step caps, sequential, no CPU contention).
-- [ ] **(MAJOR) The linear solver strategy is the real large-grid bottleneck.** `LinearSolverKind::DEFAULT`
-  is `FaerSparseLu` — a *direct* sparse LU rebuilt from scratch every substep. It is 73–80 % of runtime
-  on the ≥2000-cell cases and its cost grows superlinearly with cell count, so every future large case
-  inherits this. Two supporting observations: (a) `calculate_fluxes` assembles `diag_inv` and passes
-  `initial_guess` for an iterative solve, then the LU path **discards both** — the warm start from the
-  previous pressure is free and unused; (b) a probe forcing `BiCgStab` cut `spe1/grid_20` linear time
-  13.9 → 5.4 s, but needed ~119 Jacobi-preconditioned iterations per solve and was *slower* on the
-  300-cell base grid, so a blanket switch is not the answer. Wanted: a size-aware choice plus a
-  stronger preconditioner (ILU0/CPR) and warm starting. Note the per-solve `sprs → faer` triplet
-  rebuild + `to_col_major()` is also redone every substep against a fixed pattern and could reuse a
-  cached structure, refilling values only.
+- [x] **(MAJOR) Large-grid pressure solves now use a size-aware iterative strategy.** Grids with
+  at least 512 pressure rows use warm-started BiCGSTAB with scalar ILU(0); smaller systems retain
+  sparse LU, and any failed iterative solve falls back to LU before IMPES cuts the timestep. The
+  stopping test is RHS-relative like the LU residual check, so a good previous-pressure warm start
+  can terminate immediately instead of being required to reduce its already-small residual by
+  another `1e-7`. On clean commit `86e467c`, the committed replay
+  `node scripts/fim-wasm-diagnostic.mjs --preset water-rate --grid 48x48x1 --steps 100 --dt 2
+  --solver impes --diagnostic summary --no-json` took 3.35 s; the final dirty-tree replay took
+  2.08 s (provisional 1.61x wall-clock speedup) with identical printed rates and pressure range.
+  A provisional exact `spe1/grid_20` 4000-day replay completed its 1600-step loop in 62.8 s versus
+  the prior 162 s catalog-sweep measurement (~2.6x), but its temporary timing harness was not kept,
+  so treat that number as directional rather than a replayable baseline. Direct-vs-iterative tests
+  cover a 576-row nonsymmetric Cartesian pressure system at `1e-10` relative residual.
 - [ ] **(MINOR) `spe1 delta_t/delta_t_0_25` runs 16 000 outer steps for 4000 days** (61 s, 300 cells,
   ~1 substep per step). Given the adaptive loop already controls CFL, this variant mostly measures
   outer-loop overhead; confirm it still teaches what it claims to.

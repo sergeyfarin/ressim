@@ -2,15 +2,119 @@ use std::f64;
 
 use nalgebra::DVector;
 
+use sprs::CsMat;
+
 use super::{LinearSolveParams, LinearSolveResult, apply_jacobi_preconditioner, cs_mat_mul_vec};
 
-// BiCGSTAB with Jacobi preconditioning. Unlike PCG, this remains valid for the
-// mildly non-symmetric pressure matrices produced by upwinded multiphase flow.
+#[derive(Clone, Debug)]
+struct Ilu0Factors {
+    l_rows: Vec<Vec<(usize, f64)>>,
+    u_diag: Vec<f64>,
+    u_rows: Vec<Vec<(usize, f64)>>,
+}
+
+impl Ilu0Factors {
+    fn apply(&self, rhs: &DVector<f64>) -> DVector<f64> {
+        let mut y = DVector::zeros(rhs.len());
+        for row in 0..rhs.len() {
+            let mut sum = rhs[row];
+            for &(col, value) in &self.l_rows[row] {
+                sum -= value * y[col];
+            }
+            y[row] = sum;
+        }
+
+        let mut x = DVector::zeros(rhs.len());
+        for row in (0..rhs.len()).rev() {
+            let mut sum = y[row];
+            for &(col, value) in &self.u_rows[row] {
+                sum -= value * x[col];
+            }
+            x[row] = sum / self.u_diag[row];
+        }
+        x
+    }
+}
+
+fn row_entry(row: &[(usize, f64)], column: usize) -> f64 {
+    row.binary_search_by_key(&column, |&(index, _)| index)
+        .map(|index| row[index].1)
+        .unwrap_or(0.0)
+}
+
+/// Scalar ILU(0) for the IMPES pressure matrix.  The matrix is an ordered
+/// Cartesian stencil, so retaining its original sparsity captures the nearest-
+/// neighbor coupling without the superlinear fill cost of a direct LU.
+fn factorize_ilu0(matrix: &CsMat<f64>) -> Option<Ilu0Factors> {
+    if matrix.rows() == 0 || matrix.rows() != matrix.cols() {
+        return None;
+    }
+
+    let n = matrix.rows();
+    let mut l_rows: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
+    let mut u_diag = vec![0.0_f64; n];
+    let mut u_rows: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
+
+    for row_index in 0..n {
+        let row = matrix.outer_view(row_index)?;
+        let mut diagonal = 0.0;
+
+        for (column, value) in row.iter().filter(|(column, _)| *column < row_index) {
+            let mut updated = *value;
+            for &(k, l_ik) in &l_rows[row_index] {
+                if k >= column {
+                    break;
+                }
+                updated -= l_ik * row_entry(&u_rows[k], column);
+            }
+            let pivot = u_diag[column];
+            if !pivot.is_finite() || pivot.abs() <= f64::EPSILON {
+                return None;
+            }
+            l_rows[row_index].push((column, updated / pivot));
+        }
+
+        for (column, value) in row.iter().filter(|(column, _)| *column >= row_index) {
+            let mut updated = *value;
+            for &(k, l_ik) in &l_rows[row_index] {
+                updated -= l_ik * row_entry(&u_rows[k], column);
+            }
+            if column == row_index {
+                diagonal = updated;
+            } else {
+                u_rows[row_index].push((column, updated));
+            }
+        }
+
+        if !diagonal.is_finite() || diagonal.abs() <= f64::EPSILON {
+            return None;
+        }
+        u_diag[row_index] = diagonal;
+    }
+
+    Some(Ilu0Factors {
+        l_rows,
+        u_diag,
+        u_rows,
+    })
+}
+
+// BiCGSTAB with ILU(0) preconditioning and a Jacobi fallback when factorization
+// is unavailable. Unlike PCG, this remains valid for the mildly non-symmetric
+// pressure matrices produced by upwinded multiphase flow.
 pub(super) fn solve(params: &LinearSolveParams<'_>) -> LinearSolveResult {
+    let ilu0 = factorize_ilu0(params.matrix);
+    let apply_preconditioner = |rhs: &DVector<f64>| {
+        ilu0.as_ref().map_or_else(
+            || apply_jacobi_preconditioner(params.preconditioner_inv_diag, rhs),
+            |factors| factors.apply(rhs),
+        )
+    };
+
     let mut x = params.initial_guess.clone();
     let mut r = params.rhs - &cs_mat_mul_vec(params.matrix, &x);
-    let r0_norm = r.norm();
-    if r0_norm == 0.0 {
+    let rhs_norm = params.rhs.norm().max(f64::EPSILON);
+    if r.norm() / rhs_norm <= params.tolerance {
         return LinearSolveResult {
             solution: x,
             converged: true,
@@ -27,7 +131,7 @@ pub(super) fn solve(params: &LinearSolveParams<'_>) -> LinearSolveResult {
     let mut converged = false;
     let mut iter_count = 0;
     for it in 0..params.max_iterations {
-        if r.norm() / r0_norm < params.tolerance {
+        if r.norm() / rhs_norm <= params.tolerance {
             converged = true;
             break;
         }
@@ -46,7 +150,7 @@ pub(super) fn solve(params: &LinearSolveParams<'_>) -> LinearSolveResult {
         };
         p = &r + beta * (&p - omega * &v);
 
-        let p_hat = apply_jacobi_preconditioner(params.preconditioner_inv_diag, &p);
+        let p_hat = apply_preconditioner(&p);
         v = cs_mat_mul_vec(params.matrix, &p_hat);
         let r_hat_dot_v = r_hat.dot(&v);
         if !r_hat_dot_v.is_finite() || r_hat_dot_v.abs() < f64::EPSILON {
@@ -55,13 +159,13 @@ pub(super) fn solve(params: &LinearSolveParams<'_>) -> LinearSolveResult {
         }
         alpha = rho / r_hat_dot_v;
         let s = &r - alpha * &v;
-        if s.norm() / r0_norm < params.tolerance {
+        if s.norm() / rhs_norm <= params.tolerance {
             x += alpha * p_hat;
             converged = true;
             break;
         }
 
-        let s_hat = apply_jacobi_preconditioner(params.preconditioner_inv_diag, &s);
+        let s_hat = apply_preconditioner(&s);
         let t = cs_mat_mul_vec(params.matrix, &s_hat);
         let t_dot_t = t.dot(&t);
         if !t_dot_t.is_finite() || t_dot_t.abs() < f64::EPSILON {
