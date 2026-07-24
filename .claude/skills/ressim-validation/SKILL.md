@@ -63,6 +63,18 @@ cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_first_steps_conver
 cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_gas_injection_creates_free_gas -- --nocapture
 ```
 
+Black-oil acceptance replays (`#[ignore]`d — run explicitly, always `--release`; criteria and
+recorded baselines in `docs/BLACK_OIL_VALIDATION.md`):
+
+```bash
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml spe1_full_horizon_matches_published_reference -- --ignored --nocapture
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml spe1_areal_refinement_reference_error_replay -- --ignored --nocapture
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml physics_depletion_grid_convergence_fim -- --ignored --nocapture
+```
+
+The fast counterparts (`spe1_first_year_matches_published_reference`,
+`physics_depletion_grid_convergence_impes`) already run inside the `fim` / `impes` buckets above.
+
 Buckley-Leverett physics benchmarks (validated tolerances — the core scientific gate):
 
 ```bash
