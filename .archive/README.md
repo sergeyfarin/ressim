@@ -38,6 +38,14 @@ Also archived here: `PLAN.md` (historical scenario-first rewrite plan),
 `docs/REFACTOR_PLAN.md` (historical refactor plan), and
 `CODEX_FIM_DIALOGUE_03.07.2026.md` (historical design dialogue).
 
+### `docs/TODO_HISTORY_2026-07-24.md` — full prior TODO snapshot
+
+The 1,474-line `TODO.md` as it stood on 2026-07-24, before it was pruned to an
+open-items-only tracker. Preserves every completed Wave 0–4 entry and the full
+FIM experiment narrative (also summarized in `docs/FIM_EXPERIMENT_REGISTRY.md`).
+The live `TODO.md` now carries only open items, reprioritized so user-facing
+work leads and FIM convergence is a parked maintenance track.
+
 To resurrect any of these, `git mv` it back to its original location and re-add
 its row to `docs/DOCUMENTATION_INDEX.md`.
 

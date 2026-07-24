@@ -67,13 +67,9 @@ Why next:
 
 ### 3.1 Remove the remaining split brain — DONE 2026-07-17
 
-Full record: `docs/FRONTEND_EXECUTION_PLAN_2026-07.md` Wave 3, `TODO.md`.
-
-- Reference/comparison-run types (`BenchmarkFamily`, `BenchmarkVariant`, `BenchmarkReferenceDefinition`, etc.) moved into a dependency-free `src/lib/scenario/referenceTypes.ts`, owned by the scenario architecture as intended. Every consumer (`runModel.ts`, `benchmarkRunModel.ts`, `scenarioChartModel.ts`, `referenceChartConfig.ts`, `buildChartData.ts`, `ReferenceComparisonChart.svelte`) now imports from there directly.
-- `caseCatalog.ts` fully decoupled from `benchmarkCases.ts` (zero import coupling remains) — confirmed the dead `catalog.benchmarks`/`catalog.benchmarkVariants` fields had zero readers and removed them; the 3 consumers that read benchmark-family functions *through* `caseCatalog.ts`'s re-export now import `benchmarkCases.ts` directly.
-- The legacy benchmark-family system (5 cases predating scenario-first: `bl_case_a_refined`, `bl_case_b_refined`, `dietz_sq_center`, `dietz_sq_corner`, `fetkovich_exp`) was confirmed unreachable from the live UI (three independent checks, including a pre-existing architecture test) and **archived** to `.archive/` rather than deleted, per an explicit decision to keep them available for reference/possible re-implementation. `benchmarkCases.ts` is now a stub with identical exports and empty data — zero changes needed to any live consumer. 39 tests that used the archived data as fixtures for still-live code were `.skip()`-marked with a searchable tag, not deleted; see `.archive/README.md` and `TODO.md` for the coverage-gap follow-up.
-- `caseCatalog.ts` and `ReferenceExecutionCard.svelte` were **not** deleted: the former is Custom Mode's own live facet/toggle system (a separate, still-used feature, not benchmark-related once decoupled); the latter was already fully orphaned before this work and is unrelated to it.
-- `buildChartData.ts`'s per-family physics was found *already* extracted into `referenceOverlayBuilders.ts`/`sweepPanelBuilder.ts`/`axisAdapters.ts`/`analyticalParamAdapters.ts` (must have landed between the 2026-07-01 review and now without the review being updated) — no further file-splitting was done; see the frontend execution plan for the reasoning.
+The legacy benchmark-family system was archived and type ownership moved to
+`src/lib/scenario/referenceTypes.ts`. Full record: `docs/FRONTEND_EXECUTION_PLAN_2026-07.md` Wave 3
+and `.archive/docs/TODO_HISTORY_2026-07-24.md`.
 
 ### 3.2 Extract the output-selection view model
 

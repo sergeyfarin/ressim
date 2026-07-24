@@ -267,7 +267,7 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setFimEnabled(this.__wbg_ptr, enabled);
     }
     /**
-     * Bundle W dev flag (`docs/FIM_BUNDLE_W_PLAN.md`): replace
+     * Bundle W dev flag (`.archive/docs/FIM_BUNDLE_W_PLAN.md`): replace
      * `relax_well_state_toward_local_consistency` with the converged per-well inner Newton
      * solve. Independent of `setFimOpmAlignedNonlinear`. Default false = legacy.
      * @param {boolean} enabled
@@ -276,7 +276,7 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setFimNestedWellSolve(this.__wbg_ptr, enabled);
     }
     /**
-     * Bundle N dev flag (`docs/FIM_BUNDLE_N_DESIGN.md`): switch the FIM Newton loop to the
+     * Bundle N dev flag (`.archive/docs/FIM_BUNDLE_N_DESIGN.md`): switch the FIM Newton loop to the
      * OPM-aligned nonlinear layer (per-cell update chopping). Default false = legacy.
      * @param {boolean} enabled
      */
