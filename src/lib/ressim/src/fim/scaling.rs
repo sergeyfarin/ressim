@@ -103,7 +103,7 @@ pub(crate) struct VariableScaling {
 /// control slacks (the FB residual is already O(1)), else `|bhp|.max(1.0)`. `pub(crate)` so
 /// `fim/wells_inner.rs` (Bundle W) uses the identical formula for its inner-solve convergence
 /// check as the global assembly's `EquationScaling` uses — "inner converged" and "outer sees
-/// zero" must be the same statement (`docs/FIM_BUNDLE_W_PLAN.md` §5).
+/// zero" must be the same statement (`.archive/docs/FIM_BUNDLE_W_PLAN.md` §5).
 pub(crate) fn well_constraint_scale(bhp_bar: f64, control_slacks: Option<(f64, f64)>) -> f64 {
     if control_slacks.is_some() {
         1.0

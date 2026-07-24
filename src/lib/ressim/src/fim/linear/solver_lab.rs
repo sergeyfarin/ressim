@@ -3314,7 +3314,7 @@ fn solver_lab_compare_well_elimination() {
 /// options — well elimination included, matching `eliminate_wells: true`) so the timings
 /// reflect what the live path actually builds against. Decides whether P2 (LU factorization
 /// instead of an explicit dense inverse for the coarse pressure operator) matters independently
-/// of P1 (setup reuse) — see `docs/FIM_BUNDLE_P_PLAN.md`.
+/// of P1 (setup reuse) — see `.archive/docs/FIM_BUNDLE_P_PLAN.md`.
 ///
 /// Manual lab entry point; requires `FIM_CAPTURE_DIR` pointing at a captured corpus.
 #[test]
@@ -3545,7 +3545,7 @@ fn reduced_system_for_lab(
 /// solved directly on `i+k`. Pairs whose reduced systems don't share a key are skipped (the same
 /// rebuild-on-key-mismatch rule the live cache will use — no reuse would happen there anyway).
 ///
-/// Offline gate (`docs/FIM_BUNDLE_P_PLAN.md` P0.2): median inflation <= +2 iterations and no new
+/// Offline gate (`.archive/docs/FIM_BUNDLE_P_PLAN.md` P0.2): median inflation <= +2 iterations and no new
 /// convergence failures (fresh converged, reused did not) at k <= 30. Asserted, not just printed
 /// — a failure here means live wiring is not attempted and `FIM-BUNDLE-P` closes REFUTED.
 ///

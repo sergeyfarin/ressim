@@ -416,7 +416,7 @@ fn accepted_step_growth_decision(
     decision
 }
 
-/// Bundle N checkpoint 4 (N3, `OpmAligned` only, `docs/FIM_BUNDLE_N_DESIGN.md` §9.3/9.4): OPM
+/// Bundle N checkpoint 4 (N3, `OpmAligned` only, `.archive/docs/FIM_BUNDLE_N_DESIGN.md` §9.3/9.4): OPM
 /// shipped `time-step-control=pid+newtoniteration` defaults, verified from the installed
 /// `flow` binary and `opm-simulators` `release/2025.10/final` source at Bundle N step 0.
 const OPM_TIME_STEP_CONTROL_TOLERANCE: f64 = 0.1;
@@ -953,7 +953,7 @@ pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
 }
 
 impl ReservoirSimulator {
-    /// `FIM-DIAG-003` D0/D1 dev setter (`docs/FIM_DIAG_003_PLAN.md`): see
+    /// `FIM-DIAG-003` D0/D1 dev setter (`.archive/docs/FIM_DIAG_003_PLAN.md`): see
     /// `fim_force_direct_linear` doc comment. No wasm surface — set by the native repro test
     /// driver from `FIM_FORCE_DIRECT_LINEAR`, same pattern as `set_fim_nested_well_solve`.
     pub(crate) fn set_fim_force_direct_linear(&mut self, enabled: bool) {
@@ -3157,7 +3157,7 @@ mod phase5_repro {
         run_water_pressure_capture_driver(12, 12, 3, 1.0);
     }
 
-    /// Bundle N `docs/FIM_BUNDLE_N_DESIGN.md` §5 end-metric evaluation: the same heavy-case
+    /// Bundle N `.archive/docs/FIM_BUNDLE_N_DESIGN.md` §5 end-metric evaluation: the same heavy-case
     /// repro as `repro_water_pressure_12x12x3`, but with `OpmAligned` turned on. Native +
     /// `--release` so the run isn't gated by the wasm diagnostic runner's I/O-buffering/
     /// timeout issues that blocked live `--opm-aligned` measurement on this case at
@@ -3180,7 +3180,7 @@ mod phase5_repro {
     /// instead of the full text trace. Run with:
     /// `cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored --nocapture`
     ///
-    /// Late-window trace diagnostic (`docs/FIM_BUNDLE_N_DESIGN.md` §10, `fim::trace_sink`):
+    /// Late-window trace diagnostic (`.archive/docs/FIM_BUNDLE_N_DESIGN.md` §10, `fim::trace_sink`):
     /// this same driver is also the vehicle for both diagnostic passes, still on the
     /// production `step()` path — no code path change, only env vars:
     ///
@@ -3206,7 +3206,7 @@ mod phase5_repro {
     /// 100,000 cap so a windowed rerun can abort shortly after the window instead of running
     /// to completion. All four are no-ops when unset (see `fim::trace_sink`).
     ///
-    /// Bundle W (`docs/FIM_BUNDLE_W_PLAN.md` W4): `FIM_NESTED_WELL_SOLVE=1` additionally
+    /// Bundle W (`.archive/docs/FIM_BUNDLE_W_PLAN.md` W4): `FIM_NESTED_WELL_SOLVE=1` additionally
     /// enables the converged per-well inner Newton solve
     /// (`setFimNestedWellSolve`/`nested_well_solve`), independent of the trace env vars above —
     /// this is the §5 re-run vehicle for the mechanism this bundle targets, layered on the same
@@ -3263,11 +3263,11 @@ mod phase5_repro {
                 sim.set_fim_corey_table_points(points);
             }
         }
-        // Bundle W (`docs/FIM_BUNDLE_W_PLAN.md` W4): env-gated so this same driver, already the
+        // Bundle W (`.archive/docs/FIM_BUNDLE_W_PLAN.md` W4): env-gated so this same driver, already the
         // FIM-DIAG-002 re-baseline vehicle, is also the §5 re-run vehicle — no code path change.
         let nested_well_solve = std::env::var_os("FIM_NESTED_WELL_SOLVE").is_some();
         sim.set_fim_nested_well_solve(nested_well_solve);
-        // FIM-DIAG-003 D0/D1 (`docs/FIM_DIAG_003_PLAN.md`): same env-gated pattern, forces
+        // FIM-DIAG-003 D0/D1 (`.archive/docs/FIM_DIAG_003_PLAN.md`): same env-gated pattern, forces
         // every Newton linear solve through the exact direct backend for H1/H2 discrimination.
         let force_direct_linear = std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some();
         sim.set_fim_force_direct_linear(force_direct_linear);

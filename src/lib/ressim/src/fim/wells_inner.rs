@@ -1,4 +1,4 @@
-//! Bundle W (`docs/FIM_BUNDLE_W_PLAN.md`): the per-well local nonlinear system.
+//! Bundle W (`.archive/docs/FIM_BUNDLE_W_PLAN.md`): the per-well local nonlinear system.
 //!
 //! Plan §2's design constraint: the inner well solve must drive the SAME discrete residual
 //! rows the global assembler (`assembly_ad.rs`) uses for `well_constraint` +
@@ -220,7 +220,7 @@ pub(crate) fn assemble_well_local_system(
     }
 }
 
-/// OPM-verified inner-solve budget/tolerance/chop defaults (`docs/FIM_BUNDLE_W_PLAN.md` W0
+/// OPM-verified inner-solve budget/tolerance/chop defaults (`.archive/docs/FIM_BUNDLE_W_PLAN.md` W0
 /// appendix H, `BlackoilModelParameters.hpp`): `MaxInnerIterWells` = 50, `ToleranceWells` =
 /// 1e-4, `DbhpMaxRel` = 1.0.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -495,7 +495,7 @@ fn well_convergence_status(
 /// Converges one physical well's local system (`assemble_well_local_system`) via a bounded,
 /// chopped Newton loop, mutating `state.well_bhp[well_idx]` / `state.perforation_primaries`
 /// in place — same call shape as `relax_well_state_toward_local_consistency`, so this is a
-/// drop-in replacement at that call site (`docs/FIM_BUNDLE_W_PLAN.md` §5 item 1). Convergence
+/// drop-in replacement at that call site (`.archive/docs/FIM_BUNDLE_W_PLAN.md` §5 item 1). Convergence
 /// uses the identical `EquationScaling` family-scale formulas (`fim/scaling.rs`) the global
 /// assembly's convergence test uses, so "inner converged" and "outer sees zero" are the same
 /// statement (plan §5 item 2). On a singular local Jacobian or exhausted budget, the last
@@ -578,7 +578,7 @@ pub(crate) fn solve_wells_locally(
 /// Read-only check: is this one well converged at `state` as it stands, with no update applied?
 /// A single `assemble_well_local_system` call plus the shared `well_convergence_status` test —
 /// this is the outer-criteria counterpart of OPM's `getWellConvergence`
-/// (`docs/FIM_BUNDLE_W_PLAN.md` W0 appendix G), a pure convergence *test*, not a solve.
+/// (`.archive/docs/FIM_BUNDLE_W_PLAN.md` W0 appendix G), a pure convergence *test*, not a solve.
 pub(crate) fn well_is_converged(
     sim: &ReservoirSimulator,
     state: &FimState,

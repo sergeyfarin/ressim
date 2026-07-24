@@ -5,12 +5,12 @@ Use `docs/FIM_STATUS.md` for the current consolidated solver status.
 Use this worklog only for active observations, reproductions, traces, and next hypotheses while an issue is still live.
 
 Historical narrative was trimmed out of this file twice:
-- March 2026 tracker history from `TODO.md`: `docs/FIM_HISTORY_2026-03.md`
-- Full live worklog snapshot through 2026-04-06: `docs/FIM_CONVERGENCE_ARCHIVE_2026-03_to_2026-04-06.md`
+- March 2026 tracker history from `TODO.md`: `.archive/docs/FIM_HISTORY_2026-03.md`
+- Full live worklog snapshot through 2026-04-06: `.archive/docs/FIM_CONVERGENCE_ARCHIVE_2026-03_to_2026-04-06.md`
 - Water/gas shelf investigations, Phase 5 AD-assembler cutover, Phase 6 (legacy Jacobian
   retirement), Phase 7 (OPM-style Newton globalization), Phase 8 (hotspot state
   characterization), and the Hypothesis C row-scaling attempt (2026-04-08 through 2026-07-03):
-  `docs/FIM_CONVERGENCE_ARCHIVE_2026-04-08_to_2026-07-03.md`
+  `.archive/docs/FIM_CONVERGENCE_ARCHIVE_2026-04-08_to_2026-07-03.md`
 
 ## Active Scope
 - Keep this file limited to current-head repros, latest measurements, and next solver questions.
@@ -659,7 +659,7 @@ current state, and the Rust-ecosystem AMG constraint are in
 **loose** linear tolerance (`0.005` relative reduction, `maxiter: 20` for the CPR path) with block-ILU0 and
 TrueIMPES/QuasiIMPES weighting — tested and shipped as one matched set, not tuned as independent levers. AMG is
 explicitly out of scope (no wasm32-compatible pure-Rust crate exists; hand-rolling is ~1500-2000 LOC and not
-needed at current benchmark scale per the existing `docs/FIM_CPR_IMPROVEMENT_PLAN.md` finding).
+needed at current benchmark scale per the existing `.archive/docs/FIM_CPR_IMPROVEMENT_PLAN.md` finding).
 
 ### Step 10.0 — tolerance/budget translation, derived from real data (not pasted from OPM)
 
@@ -1088,8 +1088,8 @@ the pre-Phase-10 `26`) — **superseded by Task #38 below**, which found a mater
 ### Task #38 — user pointed at prior art (`FIM-DAMP-002`/`003`); re-swept `k` under the current bundle, found a new stable point
 
 User recollection, confirmed by a docs search: the "loosen the inflection chop" direction was already explored
-in depth in April 2026, well before this session — `docs/FIM_LINEAR_SOLVER_AUDIT.md` "Fix A3" and
-`docs/FIM_CHOP_WIDEN_EXPERIMENT.md`. Two directly relevant prior results:
+in depth in April 2026, well before this session — `.archive/docs/FIM_LINEAR_SOLVER_AUDIT.md` "Fix A3" and
+`.archive/docs/FIM_CHOP_WIDEN_EXPERIMENT.md`. Two directly relevant prior results:
 
 - **`FIM-DAMP-002` (REVERTED)**: removing the inflection chop entirely — full alignment with OPM, which has no
   equivalent mechanism — was tried on a dedicated branch (`experiment/fim-no-inflection-chop`) and failed on
@@ -1147,7 +1147,7 @@ methodology) has not been done and would be needed before treating `26` itself a
 ### Task #38 (continued, 2026-07-06) — fine-dt FOPT reference: `k=1.25` has a real accuracy cost
 
 Closed the gate this task's own writeup flagged as skipped: re-derived the April `FIM-DAMP-003` fine-dt
-methodology (`docs/FIM_CHOP_WIDEN_EXPERIMENT.md` "case 3") under the current bundle, commit `43c6a1d` plus
+methodology (`.archive/docs/FIM_CHOP_WIDEN_EXPERIMENT.md` "case 3") under the current bundle, commit `43c6a1d` plus
 the local `FW_INFLECTION_OVERSHOOT_FACTOR` edits described below (each rebuilt via `bash scripts/build-wasm.sh`
 before its run):
 
@@ -1284,7 +1284,7 @@ would have accepted many iterations earlier.
 **Conclusion → design doc:** the gap splits cleanly into a nonlinear-architecture half (30x:
 acceptance criteria + controller + global-scalar damping) and a per-iteration-cost half (24x:
 preconditioner rebuild). Both are addressed as two coherent bundles in
-`docs/FIM_BUNDLE_N_DESIGN.md` (this measurement is its motivating section). Per the standing
+`.archive/docs/FIM_BUNDLE_N_DESIGN.md` (this measurement is its motivating section). Per the standing
 user directive, neither bundle is to be implemented or judged mechanism-by-mechanism against
 current-architecture baselines.
 
@@ -1292,7 +1292,7 @@ current-architecture baselines.
 
 Cloned `opm-simulators` at `release/2025.10/final` (commit `b8b2b9e`, the exact release of the
 installed `/usr/bin/flow`) and extracted the verbatim formulas for every Bundle N item into
-`docs/FIM_BUNDLE_N_DESIGN.md` §9: CNV/MB convergence (incl. the per-cell pore-volume
+`.archive/docs/FIM_BUNDLE_N_DESIGN.md` §9: CNV/MB convergence (incl. the per-cell pore-volume
 normalization, `B_avg` FVF weighting, and the 3%-PV relaxed-CNV rule that fires at ANY
 iteration), per-cell `dsMax`/`dpMaxRel` chopping (incl. the implied `dSo = -(dSw+dSg)` term),
 the `pid+newtoniteration` controller (`min(PID, iteration-target)` with damping factors
@@ -1594,7 +1594,7 @@ targeted pass at the `linear-bad` finding before declaring N4 complete and movin
 ### Bundle N checkpoint 6 (2026-07-07) — N5 bug fix: wrong residual field, not a design gap
 
 Investigated checkpoint 5's open item (`23x23x1`'s `linear-bad` retries) directly. Root cause:
-N5's reduction check (`docs/FIM_BUNDLE_N_DESIGN.md` §9.5) used
+N5's reduction check (`.archive/docs/FIM_BUNDLE_N_DESIGN.md` §9.5) used
 `failure.outer_residual_norm / failure.rhs_norm`, but `outer_residual_norm` is computed at the
 TOP of `gmres_block_jacobi.rs`'s restart loop from the last COMMITTED solution — on a solve
 that never converges, this can stay pinned at the seed value (`rhs_norm`, i.e. the residual at
@@ -1797,7 +1797,7 @@ sliver of time) before attempting a further live fix.
 
 ### Bundle N disposition (2026-07-10) — parked; retrospective written
 
-Consolidated retrospective + recommended sequencing written to `docs/FIM_BUNDLE_N_DESIGN.md`
+Consolidated retrospective + recommended sequencing written to `.archive/docs/FIM_BUNDLE_N_DESIGN.md`
 §10 (what was established with evidence, disposition, and the P → diagnostic → W plan);
 `docs/FIM_STATUS.md` updated with a Bundle N section and reprioritized "Known Open Gaps"
 (Bundle P first, then the late-window diagnostic, then the nested well solve "Bundle W");
@@ -1865,7 +1865,7 @@ accuracy deltas, this is deferred, not urgent.
 
 ### Late-window trace diagnostic on the 18k pathology (2026-07-11)
 
-Per `docs/FIM_BUNDLE_N_DESIGN.md` §10's recommended sequencing (Bundle P → this diagnostic →
+Per `.archive/docs/FIM_BUNDLE_N_DESIGN.md` §10's recommended sequencing (Bundle P → this diagnostic →
 Bundle W) and `TODO.md` "FIM next steps" #2: two fixes for the heavy-case `OpmAligned`
 18,002-substep pathology were already honestly refuted (iteration-count decoupling — no-op by
 inspection; verbatim `dbhp-max-rel` BHP chop — bit-identical 18,002 rerun). Two refuted fixes is
@@ -1973,7 +1973,7 @@ not committed.
 ### Bundle W plan written (2026-07-11)
 
 Follow-up to the diagnostic above: full checkpointed implementation plan for the nested
-well-equation solve written to `docs/FIM_BUNDLE_W_PLAN.md`; registry row `FIM-BUNDLE-W` (OPEN)
+well-equation solve written to `.archive/docs/FIM_BUNDLE_W_PLAN.md`; registry row `FIM-BUNDLE-W` (OPEN)
 added. Key plan decisions, all downstream of `FIM-DIAG-002`'s finding: (1) the inner solve must
 drive the same assembled well residual rows as the global assembly (W1's bit-match agreement
 test encodes this), (2) the previously-refuted `dbhp-max-rel` chop is re-homed inside the inner
@@ -1986,7 +1986,7 @@ pathology, now sharpened by the diagnostic's standoff mechanism.
 
 ### Bundle W checkpoint W0: OPM source verification (2026-07-11, commit `2f0f284`)
 
-Full findings live as an appendix in `docs/FIM_BUNDLE_W_PLAN.md` ("Appendix: W0 OPM source
+Full findings live as an appendix in `.archive/docs/FIM_BUNDLE_W_PLAN.md` ("Appendix: W0 OPM source
 verification"); this entry is the worklog-discipline summary with the numbers that matter for
 later checkpoints. Verified against the pinned local checkout `OPM/opm-simulators`
 (`062cb19986aa8f11cffc30351fd2fee355d0ccb4`, tag `interim_release/2024.12-4152-g062cb1998`).
@@ -2059,7 +2059,7 @@ well-blind: `NonlinearSystemBlackOilReservoir::getConvergence`
 then `report += wellModel().getWellConvergence(...)` — the aggregate outer report does include a
 well term. In practice this rarely blocks anything extra (wells already converged via the inner
 loop by the time this runs), but "N1's acceptance excludes well/perforation rows entirely"
-(`docs/FIM_BUNDLE_N_DESIGN.md` §5.1) describes ResSim's `OpmAligned` simplification, not
+(`.archive/docs/FIM_BUNDLE_N_DESIGN.md` §5.1) describes ResSim's `OpmAligned` simplification, not
 literally OPM's structure — this is exactly the gap plan §5 step 3 proposes closing, now backed
 by a precise citation instead of an inference.
 
@@ -2365,7 +2365,7 @@ touched the flag-off path, so not repeated.
 
 ### Bundle W checkpoint W5: verdict — NOT PROMOTED, mechanism kept (2026-07-11)
 
-Applying the original Bundle N `docs/FIM_BUNDLE_N_DESIGN.md` §5 promotion rule (end metrics
+Applying the original Bundle N `.archive/docs/FIM_BUNDLE_N_DESIGN.md` §5 promotion rule (end metrics
 only, heavy-case substep/cut behavior in the `≤35` class or nothing) to the heavy case with W
 in: **FAILS** (`18,015` substeps). This is the same disposition shape as Bundle N itself: the
 targeted mechanism is real, independently validated three separate ways (W1's bit-exact
@@ -2500,7 +2500,7 @@ decide whether the stack promotes or the approach changes.
 
 ### FIM-DIAG-003 checkpoint D0: instrumentation (2026-07-11)
 
-Per `docs/FIM_DIAG_003_PLAN.md` D0. No-op gated; both additions are diagnostic-only and neither
+Per `.archive/docs/FIM_DIAG_003_PLAN.md` D0. No-op gated; both additions are diagnostic-only and neither
 touches the accept/retry decision.
 
 **1. Binding-criterion trace.** `cnv_mb_from_parts` (`fim/newton.rs`) now also computes, per
@@ -2540,7 +2540,7 @@ stack. Wired into the native repro driver
 
 ### FIM-DIAG-003 checkpoint D2: H3 MB formula audit (2026-07-11)
 
-Per `docs/FIM_DIAG_003_PLAN.md` D2. Static, line-by-line comparison of `cnv_mb_from_parts`
+Per `.archive/docs/FIM_DIAG_003_PLAN.md` D2. Static, line-by-line comparison of `cnv_mb_from_parts`
 (`fim/newton.rs:1846-` — updated line numbers post-D0) against the pinned OPM checkout at
 `OPM/opm-simulators` (verified `git log -1` = `062cb19986aa8f11cffc30351fd2fee355d0ccb4`,
 `interim_release/2024.12-4152-g062cb1998`, clean tree — this IS the tag the design doc cites).
@@ -2598,7 +2598,7 @@ Effort: ~1.5h (audit) vs the ~2-4h estimate.
 
 ### FIM-DIAG-003 checkpoint D1: H1 CONFIRMED, H2 REFUTED (2026-07-12)
 
-Per `docs/FIM_DIAG_003_PLAN.md` D1. Two windowed capped runs, native `--release`, commit
+Per `.archive/docs/FIM_DIAG_003_PLAN.md` D1. Two windowed capped runs, native `--release`, commit
 `a4fad1c` (D0+D2 checkpoint): `FIM_TRACE_SUBSTEP_START=980 FIM_MAX_SUBSTEPS=1000
 FIM_NESTED_WELL_SOLVE=1 cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib
 repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored --nocapture`, with/without
@@ -2649,7 +2649,7 @@ Effort: ~15 min setup + 76s + 172s run time + analysis, well under the ~1h estim
 
 ### FIM-DIAG-003 checkpoint D4: combination coverage (2026-07-12)
 
-Per `docs/FIM_DIAG_003_PLAN.md` D4, both items, using `scripts/fim-wasm-diagnostic.mjs`
+Per `.archive/docs/FIM_DIAG_003_PLAN.md` D4, both items, using `scripts/fim-wasm-diagnostic.mjs`
 (`--opm-aligned`/`--nested-well-solve` flags), commit `e12b95d`.
 
 **1. Legacy + `nested_well_solve` on the heavy case (never run before).** Raw summary line:
@@ -2666,7 +2666,7 @@ does only **7** before permanently stalling at `dt=6.1e-5` and having the remain
 timestep auto-filled by cheap plateau-replay bookkeeping (14,907 replayed units, vs Legacy's own
 2,060). **This is a regression, not a win** — `nested_well_solve` under Legacy causes a much
 *earlier and more severe* stall (dt collapses to the plateau floor after 7 real attempts instead
-of ~50), the opposite of the `docs/FIM_DIAG_003_PLAN.md` "possible independent win" framing
+of ~50), the opposite of the `.archive/docs/FIM_DIAG_003_PLAN.md` "possible independent win" framing
 (condition explicitly required "physics intact," which this fails). This is exactly the
 measurement trap the skill (`.claude/skills/fim-solver-debug/SKILL.md` "Reading the summary
 line") and the week retrospective (§2, "the measurement was blind") both warn about — do not
@@ -2696,7 +2696,7 @@ new registry rows needed beyond this record (kept as this checkpoint's own evide
 
 ### FIM-DIAG-003 checkpoint D3: OPM Flow differential trajectory (2026-07-12)
 
-Per `docs/FIM_DIAG_003_PLAN.md` D3, commit `c9d041e`. `/usr/bin/flow` (confirmed installed);
+Per `.archive/docs/FIM_DIAG_003_PLAN.md` D3, commit `c9d041e`. `/usr/bin/flow` (confirmed installed);
 `origin/fim-opm-continuation-plan` has the deck harness but is stale relative to current master
 (pre-dates most of `.claude/skills/`, several docs) — did **not** merge that branch; instead
 recreated the specific deck adapted from its `water-medium-step1` template and tracked it fresh
@@ -2762,7 +2762,7 @@ inherent numerical floor at this residual magnitude.
 
 ### FIM-DIAG-003 checkpoint D5: verdict + `FIM-NEWTON-008` (2026-07-12)
 
-Per `docs/FIM_DIAG_003_PLAN.md` D5, commit `08fe69b`.
+Per `.archive/docs/FIM_DIAG_003_PLAN.md` D5, commit `08fe69b`.
 
 **Verdict on H1/H2/H3**: the plan's three-way discrimination is complete and unanimous across
 three independent methods:
@@ -2829,11 +2829,11 @@ one refuted linear-tolerance concern closed (H2, D1), and the mechanism precisel
 future fix bundle (H1, D1+D3) — all without a single guess spent on the mechanism itself before
 the evidence was in hand.
 
-## Bundle X (`docs/FIM_BUNDLE_X_PLAN.md`): well-update ordering / well-fraction fidelity
+## Bundle X (`.archive/docs/FIM_BUNDLE_X_PLAN.md`): well-update ordering / well-fraction fidelity
 
 ### Bundle X checkpoint X0: stage-by-stage forensics — a DIFFERENT root cause than planned (2026-07-12)
 
-Per `docs/FIM_BUNDLE_X_PLAN.md` X0. Commit base `1fdd157`. Extended the D0 window instrumentation
+Per `.archive/docs/FIM_BUNDLE_X_PLAN.md` X0. Commit base `1fdd157`. Extended the D0 window instrumentation
 with a new `WELLJAC` trace line (`fim/newton.rs`, window-gated, no-op when inactive) dumping,
 per perforation, the `rate_consistency` row's own residual/diagonal plus its cell's water/oil/gas
 row residuals and their `d/dq`, `d/dp`, `d/dsw` couplings — read directly from `assembly.jacobian`
@@ -2927,13 +2927,13 @@ ordering change, but broader-reaching (it changes producer water-cut/GOR physics
 case with a producer, not just the heavy case) — needs the full control-matrix + locked-smoke +
 BL-benchmark gate, not just a capped heavy-case check, before any promotion decision.
 
-Plan doc (`docs/FIM_BUNDLE_X_PLAN.md`) updated to record this pivot; X1 retargeted from "pure
+Plan doc (`.archive/docs/FIM_BUNDLE_X_PLAN.md`) updated to record this pivot; X1 retargeted from "pure
 coupled well update" to "single-cell producer fraction," the original ordering probe kept as a
 secondary/fallback item.
 
 ### Bundle X checkpoint X1: single-cell producer fraction — the fix, decisive result (2026-07-12)
 
-Per `docs/FIM_BUNDLE_X_PLAN.md` X1 (retargeted per X0). Commit base `bb23c81`.
+Per `.archive/docs/FIM_BUNDLE_X_PLAN.md` X1 (retargeted per X0). Commit base `bb23c81`.
 
 **Implementation**: `perforation_control_cells` (`fim/wells.rs:822`) gained a dev flag
 (`fim_single_cell_producer_fraction`, default `false` = unchanged 3x3-window behavior). When set,
@@ -3022,7 +3022,7 @@ that had never been compared against OPM's actual source until D3/X0 did so dire
 
 ### Bundle X checkpoint X3: D3 oracle re-comparison, generality checks, stack promotion (2026-07-12)
 
-Per `docs/FIM_BUNDLE_X_PLAN.md` X3. Commit base `9bb4925`.
+Per `.archive/docs/FIM_BUNDLE_X_PLAN.md` X3. Commit base `9bb4925`.
 
 **D3 oracle re-comparison.** Full unwindowed `LEDGER` trace of the fixed run
 (`OpmAligned`+`nested_well_solve`+`single_cell_producer_fraction`, `FIM_TRACE_SUBSTEP_START=0`,

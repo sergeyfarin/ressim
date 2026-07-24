@@ -1,7 +1,7 @@
 # Comparison Toolbox Review — Findings and Forward Plan
 
 Date: 2026-07-01
-Status: current planning document. Supersedes no prior doc; consolidates findings that were scattered across `PLAN.md`, `docs/REFACTOR_PLAN.md`, `docs/OPM_FLOW_MINIMAL_MAPPING.md`, `docs/2.md`, `docs/20260426.md`, `ROADMAP.md`, and `TODO.md` into one place, and proposes what to do next.
+Status: current planning document. Supersedes no prior doc; consolidates findings that were scattered across `PLAN.md`, `.archive/docs/REFACTOR_PLAN.md`, `docs/OPM_FLOW_MINIMAL_MAPPING.md`, `docs/2.md`, `docs/20260426.md`, `ROADMAP.md`, and `TODO.md` into one place, and proposes what to do next.
 
 Scope of this review: frontend architecture, comparison/chart logic, scenario catalog, OPM Flow integration, and documentation hygiene. Per instruction, this review does **not** propose changes to the Rust/WASM physics core (`src/lib/ressim/src/`) itself, and does not touch FIM solver internals. Where FIM is mentioned, it is only in the context of product boundary and documentation load, not solver algorithm.
 
@@ -11,7 +11,7 @@ No code was changed while preparing this document. `node_modules` is not install
 
 ## 1. Executive summary
 
-The frontend has quietly outgrown its own documentation. `PLAN.md` describes a scenario-first rewrite as blocked mid-flight by a sandbox bug; `docs/REFACTOR_PLAN.md` describes an 8-phase refactor with "Phase 8 ← NOW" and a last-updated date of 2026-04-07. Neither is accurate today. The most recent commit (`4384fdf`, 2026-05-20, "migrate to scenario-first model") shows the scenario-first rewrite substantially landed: `ScenarioChart.svelte`, `scenarioChartModel.ts`, `src/lib/scenario/runModel.ts`, and `spatialViewModel.ts` all exist and are wired in. `App.svelte` is 286 lines, not the ~820 lines both planning docs describe.
+The frontend has quietly outgrown its own documentation. `PLAN.md` describes a scenario-first rewrite as blocked mid-flight by a sandbox bug; `.archive/docs/REFACTOR_PLAN.md` describes an 8-phase refactor with "Phase 8 ← NOW" and a last-updated date of 2026-04-07. Neither is accurate today. The most recent commit (`4384fdf`, 2026-05-20, "migrate to scenario-first model") shows the scenario-first rewrite substantially landed: `ScenarioChart.svelte`, `scenarioChartModel.ts`, `src/lib/scenario/runModel.ts`, and `spatialViewModel.ts` all exist and are wired in. `App.svelte` is 286 lines, not the ~820 lines both planning docs describe.
 
 What has **not** landed is the legacy-layer removal both plans call for: `benchmarkCases.ts`, `caseCatalog.ts`, `ReferenceComparisonChart.svelte` (588 lines), and `buildChartData.ts` (1,614 lines) are all still present and still doing the real work — `ScenarioChart.svelte` is a 126-line wrapper that, for every predefined scenario, delegates straight to `ReferenceComparisonChart`. So there are now **three** generations of chart-building code coexisting: the legacy benchmark-family path, the "Phase 4" `buildChartData.ts` orchestrator, and the new scenario-first shell. This is the single biggest architectural liability right now — not because any one file is broken, but because a change to comparison behavior has to be reasoned about across all three layers at once.
 
@@ -21,7 +21,7 @@ Recommended path, in priority order:
 
 1. Finish the OPM summary parser (Python side only) so `spe1_gas_injection` gets a real, non-stub OPM comparison. This is scoped, testable without touching Rust/WASM or FIM, and directly answers "interim solution: compare gas scenarios against precalculated OPM Flow."
 2. Add OPM decks/cases for `gas_injection` (three-phase, no black-oil PVT — closest thing OPM has is still a black-oil deck with `DISGAS`/`VAPOIL` off, or an oil-water-gas immiscible-style deck) so all three gas-flavored scenarios have a ground truth that isn't "wait for FIM."
-3. Retire the legacy benchmark layer (`benchmarkCases.ts`, `caseCatalog.ts`, the `ReferenceComparisonChart`/`buildChartData.ts` duo) in favor of the scenario-first path that already exists, closing the architecture gap documented (but not finished) in `docs/REFACTOR_PLAN.md` Phase 8 and `ROADMAP.md` Priority 3.1.
+3. Retire the legacy benchmark layer (`benchmarkCases.ts`, `caseCatalog.ts`, the `ReferenceComparisonChart`/`buildChartData.ts` duo) in favor of the scenario-first path that already exists, closing the architecture gap documented (but not finished) in `.archive/docs/REFACTOR_PLAN.md` Phase 8 and `ROADMAP.md` Priority 3.1.
 4. Once OPM ground truth exists for gas cases, redefine "gas scenario acceptance" against OPM rather than against FIM. This turns FIM convergence work into something you can pick up later without it gating product readiness — which is already the stated intent in `docs/FIM_DEFERRED_BACKLOG.md`, just not yet backed by real comparison data.
 5. Consolidate documentation: the FIM working-note pile (19 of 36 files in `docs/`) is disproportionate to FIM's current product priority, and `TODO.md` (666 lines) has drifted from its own stated "keep it short" policy.
 
@@ -33,7 +33,7 @@ Details, evidence, and a phased plan follow.
 
 ### 2.1 Frontend architecture is ahead of its own documentation
 
-| Claim in `PLAN.md` / `docs/REFACTOR_PLAN.md` | Actual state (checked 2026-07-01) |
+| Claim in `PLAN.md` / `.archive/docs/REFACTOR_PLAN.md` | Actual state (checked 2026-07-01) |
 |---|---|
 | Scenario-first rewrite blocked by a sandbox write bug; only `src/lib/scenario/` exists as an orphan module | `src/lib/scenario/runModel.ts` + test now wired into `ScenarioChart.svelte`, `scenarioChartModel.ts`, `navigationStore.svelte.ts`, `runtimeStore.svelte.ts` as of commit `4384fdf` (2026-05-20) |
 | `App.svelte` ~820 lines, "still a god file" | 286 lines |
@@ -42,7 +42,7 @@ Details, evidence, and a phased plan follow.
 | `RateChart.svelte` 1,419 lines, builds curves inline | 230 lines; `buildRateChartData.ts` (634 lines) now does the building, matching Phase 5 |
 | `3dview.svelte` monolith with FOV bug, `Array.isArray` bug, duplicated type | `spatialViewModel.ts` + `spatialViewModel.test.ts` now exist; did not re-audit whether every named bug is fixed — worth a focused pass, see §3 |
 
-Net: the team (or a prior agent session) executed most of `docs/REFACTOR_PLAN.md` without updating the plan doc to say so, and separately started (and got further with) the `PLAN.md` scenario-first rewrite without ever reconciling the two documents. Treat both `PLAN.md` and `docs/REFACTOR_PLAN.md` as **historical** now — they describe a state that no longer exists. Neither is listed as "historical" in `docs/DOCUMENTATION_INDEX.md` today; both should be, or archived outright once this review is read.
+Net: the team (or a prior agent session) executed most of `.archive/docs/REFACTOR_PLAN.md` without updating the plan doc to say so, and separately started (and got further with) the `PLAN.md` scenario-first rewrite without ever reconciling the two documents. Treat both `PLAN.md` and `.archive/docs/REFACTOR_PLAN.md` as **historical** now — they describe a state that no longer exists. Neither is listed as "historical" in `docs/DOCUMENTATION_INDEX.md` today; both should be, or archived outright once this review is read.
 
 ### 2.2 The chart/comparison layer has three generations coexisting
 
@@ -58,7 +58,7 @@ src/lib/catalog/benchmarkCases.ts              ~18.7 KB  (legacy, still imported
 src/lib/catalog/caseCatalog.ts                 ~11.2 KB  (legacy, still imported)
 ```
 
-`ScenarioChart.svelte` decides, per render, whether to show `ReferenceComparisonChart` (predefined scenario, comparison mode) or `RateChart` (custom mode / live mode) — this is the right shape. But `ReferenceComparisonChart` still gets its data from `buildChartData.ts`, a 1,614-line file that (per its own header comment) does BL, depletion, gas, sweep, published-reference, and preview handling all in one place — exactly the "does too much" file `docs/REFACTOR_PLAN.md` set out to eliminate in its own Phase 4/8. It was refactored once (from 2,560 lines down from `referenceComparisonModel.ts`) but not finished.
+`ScenarioChart.svelte` decides, per render, whether to show `ReferenceComparisonChart` (predefined scenario, comparison mode) or `RateChart` (custom mode / live mode) — this is the right shape. But `ReferenceComparisonChart` still gets its data from `buildChartData.ts`, a 1,614-line file that (per its own header comment) does BL, depletion, gas, sweep, published-reference, and preview handling all in one place — exactly the "does too much" file `.archive/docs/REFACTOR_PLAN.md` set out to eliminate in its own Phase 4/8. It was refactored once (from 2,560 lines down from `referenceComparisonModel.ts`) but not finished.
 
 Practical consequence: adding a new reference-source type (OPM-precomputed curves) means threading it through `buildChartData.ts`'s panel assembly, not just through the new scenario-first types. The plumbing for `opm-flow-precomputed` as a `ReferenceSourceType` already exists (`opmFlowArtifacts.ts`, referenced in `buildChartData.ts` and `scenarioChartModel.ts`) — so this is wired, just resting on the older, harder-to-maintain file.
 
@@ -115,7 +115,7 @@ Root-level clutter, unrelated to the documentation set but worth naming: `SPE1CA
 
 1. **OPM summary parsing is unimplemented.** `build_artifact()` never reads `flow` output. This is the single gap between "tooling exists" and "gas scenarios show real OPM comparison."
 2. **No OPM case for `gas_injection` or `gas_drive`.** Only `wf_bl1d` and `spe1_gas_injection` have decks. The two non-black-oil gas scenarios have no ground truth beyond the (partially-applicable, `gas_drive`'s is explicitly "not quantitatively accurate") analytical overlay.
-3. **`docs/DOCUMENTATION_INDEX.md` doesn't reflect reality.** `PLAN.md` and `docs/REFACTOR_PLAN.md` are listed nowhere in it (in fact `PLAN.md` isn't mentioned in the index at all, and `docs/REFACTOR_PLAN.md` isn't either), so a new contributor has no signal that both are stale. `docs/2.md` and `docs/20260426.md` are similarly invisible to the index.
+3. **`docs/DOCUMENTATION_INDEX.md` doesn't reflect reality.** `PLAN.md` and `.archive/docs/REFACTOR_PLAN.md` are listed nowhere in it (in fact `PLAN.md` isn't mentioned in the index at all, and `.archive/docs/REFACTOR_PLAN.md` isn't either), so a new contributor has no signal that both are stale. `docs/2.md` and `docs/20260426.md` are similarly invisible to the index.
 
 ### P1 — Architecture debt that will make P0 and future gas work harder
 
@@ -163,7 +163,7 @@ Lower priority / bigger lift, listed for completeness since you asked to think b
 - Add a scenario/artifact integrity test (ties into gap #6): every scenario with an OPM hook must resolve to an artifact with matching `scenarioKey`, and CI should fail loudly if an artifact regresses from `parsed` back to `deck-ready`.
 
 **Phase B — Chart/scenario architecture consolidation**
-- Finish `ROADMAP.md` Priority 3.1 / `docs/REFACTOR_PLAN.md` Phase 8: remove `benchmarkCases.ts`, `caseCatalog.ts`, and fold `ReferenceComparisonChart.svelte` + `buildChartData.ts` into the scenario-first path so `ScenarioChart.svelte` is the single real entrypoint, not a thin wrapper around the old one.
+- Finish `ROADMAP.md` Priority 3.1 / `.archive/docs/REFACTOR_PLAN.md` Phase 8: remove `benchmarkCases.ts`, `caseCatalog.ts`, and fold `ReferenceComparisonChart.svelte` + `buildChartData.ts` into the scenario-first path so `ScenarioChart.svelte` is the single real entrypoint, not a thin wrapper around the old one.
 - This should happen before or alongside Phase A's artifact-integrity test, since that test is much easier to write once there's one chart-building path instead of two.
 
 **Phase C — Gas/black-oil acceptance criteria against OPM**
@@ -173,7 +173,7 @@ Lower priority / bigger lift, listed for completeness since you asked to think b
 
 **Phase D — Documentation consolidation**
 - Move the 19 FIM-specific docs under a `docs/fim/` subdirectory (or equivalent grouping) so `docs/` at top level reflects product priority; update `docs/DOCUMENTATION_INDEX.md` accordingly.
-- Mark `PLAN.md` and `docs/REFACTOR_PLAN.md` as historical (or delete if fully superseded) once Phase B closes out the items they still list as open.
+- Mark `PLAN.md` and `.archive/docs/REFACTOR_PLAN.md` as historical (or delete if fully superseded) once Phase B closes out the items they still list as open.
 - Fold `docs/2.md` and `docs/20260426.md` into `docs/FIM_CONVERGENCE_WORKLOG.md` or the OPM mapping doc, since their content is real and useful but currently undiscoverable.
 - Prune `TODO.md`'s "Now" section back to the short, action-oriented format `FIM_STATUS.md` already asks for; move the timestamped micro-experiment narrative into `docs/FIM_CONVERGENCE_WORKLOG.md` where it belongs per stated policy.
 
@@ -187,4 +187,4 @@ Lower priority / bigger lift, listed for completeness since you asked to think b
 1. **Is `flow` (OPM Flow) available on your machine right now**, the way it was for the 2026-04-06 run that produced `SPE1CASE1.DBG`? Phase A's parser can be written and unit-tested against a fixture file here, but generating fresh real artifacts needs to happen where `flow` actually runs.
 2. **Sequencing preference: Phase A before Phase B, or the reverse?** I've proposed OPM-completion first since it's the most direct answer to your stated goal and is fully decoupled from the chart-architecture cleanup, but if you'd rather stop the architectural bleeding before adding more data sources through it, B-then-A is defensible too.
 3. **Which new scenarios from §4 actually interest you?** I ranked by comparison-framework fit, not by what you'll find most useful day to day — happy to reprioritize once I know which reservoir-engineering topics you care about covering next.
-4. **Documentation reorg (Phase D): comfortable with archiving/moving `PLAN.md`, `docs/REFACTOR_PLAN.md`, and the FIM doc pile, or would you rather I leave doc structure untouched and only add new docs going forward?** This review doesn't move anything yet — just flags it.
+4. **Documentation reorg (Phase D): comfortable with archiving/moving `PLAN.md`, `.archive/docs/REFACTOR_PLAN.md`, and the FIM doc pile, or would you rather I leave doc structure untouched and only add new docs going forward?** This review doesn't move anything yet — just flags it.

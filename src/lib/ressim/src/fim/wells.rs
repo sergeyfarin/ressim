@@ -807,7 +807,7 @@ pub(crate) fn geometric_well_index(
     Some(DARCY_METRIC_FACTOR * 2.0 * std::f64::consts::PI * k_avg * sim.dz_at(id) / denom)
 }
 
-/// `FIM-BUNDLE-X` (`docs/FIM_BUNDLE_X_PLAN.md`): uses only the perforated cell's own mobility,
+/// `FIM-BUNDLE-X` (`.archive/docs/FIM_BUNDLE_X_PLAN.md`): uses only the perforated cell's own mobility,
 /// matching OPM's `WellInterface::getMobility` and `perforation_control_cells` below (this
 /// function was a second, independent copy of the same pre-fix 3x3-areal-neighborhood logic —
 /// used by the legacy assembler's well source terms via `perforation_component_rates_sc_day`
@@ -841,7 +841,7 @@ pub(crate) fn producer_control_state(
 /// A perforation's phase-fraction mobility window: just the perforated cell itself, matching
 /// OPM's `WellInterface::getMobility` (`WellInterface_impl.hpp:2105-2143`, pinned `062cb1998`),
 /// which uses only the single connected cell's own mobility for every well type — no
-/// neighborhood at all. `FIM-BUNDLE-X` (`docs/FIM_BUNDLE_X_PLAN.md`) found and fixed a
+/// neighborhood at all. `FIM-BUNDLE-X` (`.archive/docs/FIM_BUNDLE_X_PLAN.md`) found and fixed a
 /// pre-FIM/pre-OPM-alignment design (`git log -S "producer_control_state"` → `d824f4f`) that
 /// blended a producer's fraction across a 3x3 areal neighborhood; that manufactured a spurious
 /// water withdrawal at any producer near — but not yet at — a saturation front, generating an

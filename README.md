@@ -4,7 +4,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 
 ## Current State
 
-- 13 canonical scenarios across waterflood, sweep, depletion, gas, and black-oil benchmark domains, including three "decision-insight" cases demonstrating history-match non-uniqueness, parameter-interaction amplification, and PVT representation risk.
+- 14 canonical scenarios across waterflood, sweep, depletion, gas, and black-oil benchmark domains, including three "decision-insight" cases demonstrating history-match non-uniqueness, parameter-interaction amplification, and PVT representation risk.
 - Two-phase oil/water IMPES workflow validated against Buckley-Leverett breakthrough references.
 - Analytical overlays for Buckley-Leverett, Craig areal sweep, Dykstra-Parsons vertical sweep, Stiles-style combined sweep, Dietz pseudo-steady-state depletion, Fetkovich decline, Arps decline, and Havlena-Odeh material-balance diagnostics.
 - Black-oil PVT mode is available for volatile-oil style studies through correlation-based or tabular PVT input.
@@ -154,17 +154,18 @@ src/
     ui/
     visualization/
     workers/
-docs/
+docs/                 # authoritative + active working docs (see DOCUMENTATION_INDEX.md)
   ARCHITECTURE_NOTES.md
   BENCHMARK_MODE_GUIDE.md
-  DELIVERED_WORK_2026_Q1.md
   DOCUMENTATION_INDEX.md
-  IMPLEMENTATION_REVIEW_2026-03-19.md
+  FIM_STATUS.md
+  SOLVER_COMPARISON_SUMMARY.md
   P4_TWO_PHASE_BENCHMARKS.md
   THREE_PHASE_IMPLEMENTATION_NOTES.md
-  TRANSMISSIBILITY_FACTOR.md
-  UNIT_REFERENCE.md
   UNIT_SYSTEM.md
+  ...
+.archive/             # superseded experiments, closed plans, historical snapshots
+  docs/               # (git-tracked, reversible; see .archive/README.md)
 ROADMAP.md
 TODO.md
 ```
@@ -176,7 +177,7 @@ TODO.md
 | `ROADMAP.md` | Future-facing roadmap and prioritization |
 | `TODO.md` | Active execution tracker |
 | `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
-| `docs/DELIVERED_WORK_2026_Q1.md` | Archived delivered work moved out of TODO |
+| `.archive/docs/DELIVERED_WORK_2026_Q1.md` | Archived delivered work moved out of TODO |
 | `docs/BENCHMARK_MODE_GUIDE.md` | Benchmark workflow semantics and chart behavior |
 | `docs/P4_TWO_PHASE_BENCHMARKS.md` | Buckley-Leverett benchmark methodology and tolerance policy |
 | `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase implementation details and remaining validation gaps |

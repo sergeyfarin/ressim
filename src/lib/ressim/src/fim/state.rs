@@ -9,7 +9,7 @@ use crate::fim::wells::{
 };
 
 /// Which well-state post-processing `apply_raw_update` applies after the raw Newton update.
-/// `docs/FIM_BUNDLE_W_PLAN.md` §5 item 1: Bundle W's `NestedSolve` replaces `Relax` as a
+/// `.archive/docs/FIM_BUNDLE_W_PLAN.md` §5 item 1: Bundle W's `NestedSolve` replaces `Relax` as a
 /// drop-in at the single call site (`apply_newton_update_frozen`), flag-gated.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum WellStateUpdateMode {

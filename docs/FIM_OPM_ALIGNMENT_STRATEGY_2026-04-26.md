@@ -23,7 +23,7 @@
   OPM architecture gap (`FIM-LINEAR-006`). After it lands, this doc's own plan says to revisit
   per-cell damping and dropping the inflection chop "in a clean state". Note the constraint
   recorded in the Phase 10 plan: no mature wasm32-compatible pure-Rust AMG crate exists;
-  hand-rolling is ~1500-2000 LOC. `docs/FIM_CPR_IMPROVEMENT_PLAN.md` Phase 3 has the design
+  hand-rolling is ~1500-2000 LOC. `.archive/docs/FIM_CPR_IMPROVEMENT_PLAN.md` Phase 3 has the design
   skeleton.
 
 On "track OPM closely vs. preserve ressim originality"

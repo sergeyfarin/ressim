@@ -124,17 +124,17 @@ pub struct ReservoirSimulator {
     last_solver_warning: String,
     last_fim_trace: String,
     capture_fim_trace: bool,
-    /// Late-window trace diagnostic (`docs/FIM_BUNDLE_N_DESIGN.md` §10): sticky flag set by the
+    /// Late-window trace diagnostic (`.archive/docs/FIM_BUNDLE_N_DESIGN.md` §10): sticky flag set by the
     /// native-only, env-gated `fim::trace_sink` once a substep's trial dt drops below
     /// `FIM_TRACE_DT_BELOW` (or the substep index reaches `FIM_TRACE_SUBSTEP_START`). While
     /// true, every `fim_trace!` line and the per-iteration `WELLTRACE` line stream to the
     /// `FIM_TRACE_FILE` sink. Always false when `FIM_TRACE_FILE` is unset — never set on wasm.
     fim_trace_window_active: bool,
-    /// Bundle N (`docs/FIM_BUNDLE_N_DESIGN.md`): opt into the OPM-aligned nonlinear layer
+    /// Bundle N (`.archive/docs/FIM_BUNDLE_N_DESIGN.md`): opt into the OPM-aligned nonlinear layer
     /// (per-cell update chopping instead of global-scalar damping). Dev/diagnostic flag,
     /// default false = legacy behavior bit-identical.
     pub(crate) fim_opm_aligned_nonlinear: bool,
-    /// Bundle W (`docs/FIM_BUNDLE_W_PLAN.md`): opt into the converged per-well inner Newton
+    /// Bundle W (`.archive/docs/FIM_BUNDLE_W_PLAN.md`): opt into the converged per-well inner Newton
     /// solve, replacing `relax_well_state_toward_local_consistency`. Independent of
     /// `fim_opm_aligned_nonlinear` — evaluable under either flavor. Dev/diagnostic flag,
     /// default false = legacy behavior bit-identical.
@@ -148,7 +148,7 @@ pub struct ReservoirSimulator {
     /// G4b0 native-only context capture for the narrowly-scoped Flow gas-RESV injector probe.
     /// Default false leaves every existing well/control/assembly path unchanged.
     pub(crate) fim_flow_resv_injector: bool,
-    /// `FIM-DIAG-003` D0/D1 (`docs/FIM_DIAG_003_PLAN.md`): force every Newton iteration's
+    /// `FIM-DIAG-003` D0/D1 (`.archive/docs/FIM_DIAG_003_PLAN.md`): force every Newton iteration's
     /// linear solve through the exact direct backend (`SparseLuDebug`) instead of the default
     /// iterative CPR/GMRES stack, to discriminate H1 (displaced well-cell standoff) from H2
     /// (linear-precision floor). Native diagnostic driver only, set via

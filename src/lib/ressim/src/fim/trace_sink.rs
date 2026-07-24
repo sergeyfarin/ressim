@@ -1,5 +1,5 @@
 //! Native-only, env-gated file trace sink for the heavy-case 18k-substep pathology
-//! (`docs/FIM_BUNDLE_N_DESIGN.md` §10 "Late-window trace diagnostic").
+//! (`.archive/docs/FIM_BUNDLE_N_DESIGN.md` §10 "Late-window trace diagnostic").
 //!
 //! `fim_trace!`'s existing in-memory `String` sink (`capture_fim_trace`,
 //! `ReservoirSimulator::append_fim_trace_line`) is unusable across an 18,002-substep run —

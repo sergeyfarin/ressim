@@ -1,6 +1,6 @@
 # ResSim Roadmap
 
-This roadmap is future-facing. Completed work has been moved out of `TODO.md` into `docs/DELIVERED_WORK_2026_Q1.md` so the active plan stays readable.
+This roadmap is future-facing. Completed work has been moved out of `TODO.md` into `.archive/docs/DELIVERED_WORK_2026_Q1.md` so the active plan stays readable.
 
 ## Prioritization Principles
 
@@ -137,4 +137,4 @@ The roadmap direction is consistent with the classic references already used by 
 
 ## Delivered Work
 
-Recent delivered work lives in `docs/DELIVERED_WORK_2026_Q1.md`.
+Recent delivered work lives in `.archive/docs/DELIVERED_WORK_2026_Q1.md`.

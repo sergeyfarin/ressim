@@ -1,6 +1,17 @@
 # FIM Status
 
 This is the consolidated current-state summary for the Rust FIM solver.
+
+> **2026-07-24 convergence re-baseline (clean tree `663e380`).** The full control matrix +
+> three-phase + SPE1 rows were re-measured on the committed default (`OpmAligned`); results live in
+> `docs/SOLVER_COMPARISON_SUMMARY.md` and **supersede the older substep counts quoted in the
+> historical narrative below** (e.g. the water-heavy `12x12x3/dt=1` case is now **4 substeps / 0
+> retries** on the default, not `50`; `Legacy` = 24; OPM Flow = 1). Exact gas stays ~2x Flow; SPE1
+> runs 1 substep/step uncut. The remaining default-path convergence gap is the `linear-bad`
+> singularity backstop on small well-dominated cases — see
+> `docs/FIM_RELPERM_ENDPOINT_SINGULARITY_ANALYSIS.md`. Numbers below this banner predate the
+> re-baseline and are kept for provenance.
+
 Current execution status: **WATER-005 validated default-off property replay, no direct-day
 promotion 2026-07-22**. Exact gas runs six uncut
 steps at roughly 2x Flow. On water-heavy, OPM endpoint-clipped saturation derivatives remove the
@@ -130,7 +141,7 @@ chopping incl. a `dbhp-max-rel` well-BHP chop, `pid+newtoniteration` controller,
 linear-failure handling, deletion of the Legacy compensating-mechanism stack) is fully
 implemented behind `FimNonlinearFlavor::OpmAligned` — **default `Legacy`, verified bit-identical
 no-op on every checkpoint** (`setFimOpmAlignedNonlinear` wasm setter / `--opm-aligned`
-diagnostic flag). Design + per-checkpoint evidence: `docs/FIM_BUNDLE_N_DESIGN.md`; registry row
+diagnostic flag). Design + per-checkpoint evidence: `.archive/docs/FIM_BUNDLE_N_DESIGN.md`; registry row
 `FIM-BUNDLE-N` (**REWORK REQUIRED**).
 
 Outcome in one paragraph: the ported mechanisms each did their job in isolation — per-cell
@@ -238,7 +249,7 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
    well/reservoir Newton coupling as a root blocker; `FIM-DIAG-002` (2026-07-11) diagnosed the
    exact mechanism (a persistent per-iteration disagreement between the raw Newton correction and
    `relax_well_state_toward_local_consistency`'s independently-derived rate, not a classical
-   oscillation); `docs/FIM_BUNDLE_W_PLAN.md` (W0-W5, all complete 2026-07-11) built and evaluated
+   oscillation); `.archive/docs/FIM_BUNDLE_W_PLAN.md` (W0-W5, all complete 2026-07-11) built and evaluated
    the fix. **Result**: the diagnosed standoff is genuinely fixed — a windowed trace on the real
    heavy-case trajectory confirms the well residual converges to machine epsilon within one
    iteration (was floored at a non-vanishing ~5e-5). **But the heavy-case `≤35`-substep gate
@@ -247,7 +258,7 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
    criterion plateau (gap #4 below) that now drives the identical `iters=20`/dt-collapse pattern
    for a different reason. `nested_well_solve` stays in the tree, default off, fully validated —
    the disposition mirrors Bundle N's own (real mechanism, insufficient alone). Full result:
-   `docs/FIM_BUNDLE_W_PLAN.md` §6 W4/W5; `docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle W checkpoint
+   `.archive/docs/FIM_BUNDLE_W_PLAN.md` §6 W4/W5; `docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle W checkpoint
    W0-W5"; registry `FIM-BUNDLE-W`.
 4. **Reservoir-side CNV/MB entry-criterion plateau under `OpmAligned` (new, `FIM-DIAG-003`,
    first observed 2026-07-11).** Exposed by closing gap #3: once wells stopped being the
@@ -260,7 +271,7 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
    week retrospective (worklog): **MB alone binds** (CNV passes by 160x; MB fails strict by
    1.41x, frozen = an invariant point of the iteration map), tiers verified identical to OPM's
    pinned source — so OPM's MB genuinely converges below `1e-7` here where ours cannot.
-   **Diagnostic complete (`docs/FIM_DIAG_003_PLAN.md` D0-D5, closed 2026-07-12), verdict
+   **Diagnostic complete (`.archive/docs/FIM_DIAG_003_PLAN.md` D0-D5, closed 2026-07-12), verdict
    unanimous: H1 (displaced standoff into well-cell MB rows) CONFIRMED, H2 (linear-precision
    floor) and H3 (MB formula fidelity) REFUTED.** D1's binding-cell trace: 100% of the frozen-MB
    iterations bind at the producer's own perforation cell (91%) or its immediate neighbor (9%),
@@ -275,7 +286,7 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
    regression once `real_accepted_substeps` is read correctly) and retracted the stale
    "`22x22x1` regression" claim (does not reproduce at current HEAD).
 
-   **GAP CLOSED (`docs/FIM_BUNDLE_X_PLAN.md`, `FIM-BUNDLE-X`, PROMOTED 2026-07-12).** `FIM-BUNDLE-X`'s
+   **GAP CLOSED (`.archive/docs/FIM_BUNDLE_X_PLAN.md`, `FIM-BUNDLE-X`, PROMOTED 2026-07-12).** `FIM-BUNDLE-X`'s
    own X0 checkpoint measured (not assumed) where first-order consistency actually breaks, and
    found a *different* root cause than the well-update-ordering hypothesis H1's framing implied:
    `perforation_control_cells` (`fim/wells.rs:822`) fed a producer's phase-fraction calculation a
@@ -328,10 +339,10 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
 - Strategy: `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md` (95%-track-OPM policy, Bundle A/B/C
   sequencing + 2026-07-05 status), `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` (gap decomposition +
   2026-07-05 triage)
-- Archives: `docs/FIM_CONVERGENCE_ARCHIVE_2026-04-08_to_2026-07-03.md` (shelf investigations,
-  AD cutover, Phases 5-8), `docs/FIM_CONVERGENCE_ARCHIVE_2026-03_to_2026-04-06.md`,
-  `docs/FIM_HISTORY_2026-03.md`
-- CPR/AMG design skeleton: `docs/FIM_CPR_IMPROVEMENT_PLAN.md`
+- Archives: `.archive/docs/FIM_CONVERGENCE_ARCHIVE_2026-04-08_to_2026-07-03.md` (shelf investigations,
+  AD cutover, Phases 5-8), `.archive/docs/FIM_CONVERGENCE_ARCHIVE_2026-03_to_2026-04-06.md`,
+  `.archive/docs/FIM_HISTORY_2026-03.md`
+- CPR/AMG design skeleton: `.archive/docs/FIM_CPR_IMPROVEMENT_PLAN.md`
 - Workflow: `.claude/skills/fim-solver-debug/SKILL.md` (control matrix, promotion discipline,
   known-reverted lever classes)
 

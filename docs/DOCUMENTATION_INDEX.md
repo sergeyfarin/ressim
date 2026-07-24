@@ -1,82 +1,105 @@
 # Documentation Index
 
-Use this file to decide which documents are authoritative, which are active working notes, and which are historical snapshots.
+Which documents are authoritative, which are active working notes, and where the historical
+material now lives. Last reorganized 2026-07-24 (doc cleanup: superseded experiment plans and
+dated snapshots moved to `.archive/`).
 
-## Authoritative References
+## Start here
 
 | Document | Use it for |
 |----------|------------|
-| `README.md` | Product overview, current feature state, quick start, and doc map |
+| `README.md` | Product overview, current feature state, quick start, doc map |
 | `ROADMAP.md` | Future-facing roadmap and priority order |
-| `TODO.md` | Active execution tracker only |
+| `TODO.md` | Active execution tracker only (short, action-oriented) |
+| `docs/DOCUMENTATION_INDEX.md` | This map |
+
+## Architecture & stable reference
+
+| Document | Use it for |
+|----------|------------|
 | `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
-| `docs/FIM_DEFERRED_BACKLOG.md` | Current product boundary for FIM and the deferred solver backlog |
-| `docs/FIM_STATUS.md` | Current consolidated FIM implementation state, blockers, validation entry points, and canonical source map |
-| `docs/FIM_EXPERIMENT_REGISTRY.md` | Searchable anti-repeat ledger of FIM convergence experiments, verdicts, retry conditions, and source-doc links |
-| `docs/FIM_CONVERGENCE_WORKLOG.md` | Active FIM investigation log for current-head traces and temporary hypotheses (Phase 9 onward) |
-| `docs/FIM_CONVERGENCE_ARCHIVE_2026-04-08_to_2026-07-03.md` | Archived worklog: shelf investigations, AD-assembler cutover, Phases 5-8, Hypothesis C |
-| `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md` | The 95%-track-OPM policy decision and Bundle A/B/C sequencing, with 2026-07-05 status addendum |
-| `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` | Six-item FIM-vs-OPM Newton-efficiency gap decomposition, with 2026-07-05 triage (4 of 6 closed) |
-| `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` | Active decision-frontier plan: Y2b2a backend-neutral oracle repair, corrected raw-state replay, dependency-aware OPM lifecycle gates, promotion matrix, and prescriptive simple-model handoff |
-| `docs/SOLVER_COMPARISON_SUMMARY.md` | Current OPM/FIM/IMPES scenario timing and correctness table, comparability limits, and replay commands |
-| `docs/FIM_Y2B3_PRIMARY_VARIABLE_LIFECYCLE_DESIGN.md` | Deck-scoped OPM `Sg`/`Rs` lifecycle map, ResSim fixed-layout dependency contract, empty-column invariant, and prescriptive Y2b3a-c implementation gates |
-| `docs/FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md` | Source-pinned Flow 2026.04 BiCGSTAB/true-IMPES/CPRW/paroverilu0/one-loop-AMG lifecycle, well-operator split, coupled capture gates, and IMPES applicability audit |
-| `docs/FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md` | G4a source-pinned, default-off design for the single-perforation Flow gas-RESV injector surface-primary/control/connection/source lifecycle and mandatory oracle |
-| `docs/FIM_G4B2_ATOMIC_ROUTE_READINESS_AUDIT.md` | G4b2 audit of every coupled state/control/assembly/source/update/scaling/linear/diagnostic path; records the pre-Newton safety block and the atomic-route prerequisites |
-| `docs/FIM_G4B2A_ATOMIC_ROUTE_IMPLEMENTATION_DESIGN.md` | G4b2a prescriptive typed-u, AD/legacy, update/scaling/Schur/trace implementation contract and non-live gates for the one-perf Flow RESV route |
-| `docs/FIM_BUNDLE_N_DESIGN.md` | Bundle N (OPM nonlinear layer): design, §9 verified OPM formulas, §5.1 failed end-metric evaluation, §10 retrospective/disposition — parked behind the `OpmAligned` flag |
-| `docs/FIM_BUNDLE_P_PLAN.md` | Bundle P (CPR setup reuse): REFUTED at P0 2026-07-10 (no failure-free reuse interval); P0 measurement tooling kept; superseded on the cost axis by `FIM-LINEAR-011` |
-| `docs/FIM_BUNDLE_W_PLAN.md` | Bundle W (nested well solve): EVALUATED 2026-07-11, mechanism validated (standoff fixed), NOT promoted — heavy-case gate failed on a newly-exposed second gap; kept inert behind `nested_well_solve` |
-| `docs/FIM_DIAG_003_PLAN.md` | FIM-DIAG-003 (MB plateau under `OpmAligned`): CLOSED 2026-07-12, D0-D5 complete — H1 confirmed three ways, H2/H3 refuted; mechanism located, fixed by Bundle X |
-| `docs/FIM_BUNDLE_X_PLAN.md` | Bundle X (producer-fraction fidelity): CLOSED/PROMOTED unconditional 2026-07-12 — 3x3-neighborhood producer fraction replaced by OPM's single-cell formula; heavy case 18,015→16 (`OpmAligned`+nested) / 52→25 (Legacy default) |
-| `docs/FIM_OPM_PARITY_PLAN.md` | Bundle Y evidence record and original Y0-Y4 roadmap; current execution order is owned by `FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` |
-| `docs/FIM_MIGRATION_PLAN.md` | File-by-file FIM cutover checklist, target solver architecture, and proposed Rust APIs |
-| `docs/FIM_CLEANUP_PLAN.md` | FIM doc/test/diagnostic cleanup sequence and ownership boundaries |
-| `docs/OPM_FLOW_MINIMAL_MAPPING.md` | Minimal OPM Flow to ResSim solver mapping and the concrete CPRW-first implementation plan |
-| `docs/DELIVERED_WORK_2026_Q1.md` | Archived delivered work moved out of TODO |
-| `docs/BENCHMARK_MODE_GUIDE.md` | Current benchmark workflow semantics and comparison behavior |
-| `docs/P4_TWO_PHASE_BENCHMARKS.md` | Buckley-Leverett benchmark methodology, tolerances, and current results |
-| `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase implementation details, conventions, and remaining validation gaps |
-| `docs/UNIT_SYSTEM.md` | Unit conventions, equations, and solver / PVT notes |
+| `docs/UNIT_SYSTEM.md` | Unit conventions, equations, solver / PVT notes |
 | `docs/UNIT_REFERENCE.md` | Quick unit lookup card |
 | `docs/TRANSMISSIBILITY_FACTOR.md` | Derivation of the transmissibility conversion factor |
-| `docs/SCENARIO_TERMINATION_POLICY.md` | Early-stop policy syntax, supported conditions, and runtime behavior |
-| `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` | 2026-07 findings and forward plan for comparison architecture, OPM Flow integration, and scenario coverage |
-| `docs/FRONTEND_EXECUTION_PLAN_2026-07.md` | Active ordered frontend execution plan (Waves 0–3): OPM parser completion, Tier-5 insight scenarios, scoped chart/catalog consolidation |
-| `docs/CASE_LIBRARY_ROADMAP.md` | Sourcing map for new scenarios/cases: SPE benchmarks, public field datasets, textbook cases, and selection criteria |
-| `docs/MULTI_SOURCE_COMPARISON_ROADMAP.md` | Comparison-axis roadmap: exhibits built from combinations of analytical / IMPES / FIM / OPM / published / fitted-proxy sources, plus the engineering gaps (dual-solver run sets, solver provenance) they need |
-| `docs/WAVE4_REVIEW_2026-07-19.md` | Open post-Wave-4 review findings (ranked, with mechanisms and fix directions) — headline: OPM artifact curves are filtered out of chart panels by layout curveKeys whitelists |
-| `.claude/skills/README.md` | Workflow skill library index (validation, engine changes, FIM debugging, frontend, scenarios, OPM pipeline) and how to use it with different agents |
+| `docs/BENCHMARK_MODE_GUIDE.md` | Benchmark workflow semantics and comparison behavior |
+| `docs/P4_TWO_PHASE_BENCHMARKS.md` | Buckley-Leverett benchmark methodology, tolerances, results |
+| `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase implementation details and remaining validation gaps |
+| `docs/SCENARIO_TERMINATION_POLICY.md` | Early-stop policy syntax, conditions, runtime behavior |
+| `docs/OPM_FLOW_MINIMAL_MAPPING.md` | Minimal OPM Flow → ResSim solver mapping and CPRW-first plan |
 
-## Current Repo-Level Facts
+## FIM — current truth
 
-- `src/lib/catalog/scenarios.ts` is the primary scenario registry.
-- There are 13 canonical scenarios under `src/lib/catalog/scenarios/` (2026-07-16/17: added `dep_nct`, `wf_tornado`, `dep_pvt` — see `docs/CASE_LIBRARY_ROADMAP.md` Tier 5).
-- `ScenarioPicker.svelte` is the main scenario-selection surface, driven entirely by `scenarios.ts` — it has no dependency on the case-library/benchmark-family system below.
-- The legacy benchmark-family system (`bl_case_a_refined`, `bl_case_b_refined`, `dietz_sq_center`, `dietz_sq_corner`, `fetkovich_exp`) was archived 2026-07-17 after being confirmed unreachable from the live UI — see `.archive/README.md`. Custom Mode's JSON facet catalog and starter presets were also archived 2026-07-20; production case definitions now live only in `src/lib/catalog/scenarios/`.
-- Public simulations execute directly in browser-side WASM through the IMPES path. Offline OPM Flow artifacts are precomputed reference data, not live browser simulation. Both committed OPM artifacts (`wf_bl1d`, `spe1_gas_injection`) are `status: "parsed"` with physically sane, non-zero series data as of 2026-07-18 (the earlier 2026-07-16 "parsed" claim was technically true but the underlying decks were dead-well runs — both `EQUIL` water-oil-contact bugs were found and fixed 2026-07-18; see TODO.md and `.claude/skills/opm-reference-pipeline/SKILL.md`).
-- Black-oil mode is implemented and exposed in the UI. SPE1 benchmark scenario is in place with published reference overlays and OPM Flow artifact hooks; quantitative acceptance criteria remain deferred.
-- Three-phase mode is implemented, but remains experimental because validation depth still trails the implementation.
+FIM is dev-only; public scenarios ship IMPES (`docs/FIM_DEFERRED_BACKLOG.md`). Search the registry
+**by mechanism name** before proposing any convergence change.
 
-## FIM Document Ownership
+| Document | Use it for |
+|----------|------------|
+| `docs/FIM_STATUS.md` | Consolidated FIM state, blockers, validation entry points, canonical source map |
+| `docs/FIM_EXPERIMENT_REGISTRY.md` | Searchable anti-repeat ledger of levers, verdicts, retry conditions |
+| `docs/FIM_CONVERGENCE_WORKLOG.md` | Active investigation log: current-head traces, temporary hypotheses |
+| `docs/SOLVER_COMPARISON_SUMMARY.md` | Current OPM/FIM/IMPES timing + convergence re-baseline (clean tree `663e380`, 2026-07-24) |
+| `docs/FIM_RELPERM_ENDPOINT_SINGULARITY_ANALYSIS.md` | Scoping + recommendation for the deferred relperm-endpoint singularity (do-not-do-Option-B verdict) |
+| `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md` | The 95%-track-OPM policy and Bundle A/B/C sequencing |
+| `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` | Six-item FIM-vs-OPM Newton-efficiency gap decomposition + triage |
+| `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` | Decision-frontier execution plan (oracle repair, raw-state replay, promotion matrix) |
+| `docs/FIM_OPM_PARITY_PLAN.md` | Bundle Y evidence record and original Y0–Y4 roadmap |
+| `docs/FIM_DEFERRED_BACKLOG.md` | Product boundary: why FIM is out of the user path and the gates to re-enter it |
 
-- `docs/FIM_STATUS.md`: current FIM truth, blockers, validation surface, and canonical links.
-- `docs/FIM_EXPERIMENT_REGISTRY.md`: short searchable verdicts for attempted or proposed convergence levers; check this before new FIM tuning.
-- `docs/FIM_CONVERGENCE_WORKLOG.md`: active current-head traces, detailed measurements, and temporary reasoning while an issue is live.
-- `docs/FIM_MIGRATION_PLAN.md`: target architecture and migration checklist, not a live debugging diary.
-- `TODO.md`: short active tasks only; do not add long FIM experiment narratives there.
+## FIM — design frontier (paused behind the WATER track)
 
-## Historical Snapshots
+Source-pinned, mostly default-off designs for the OPM gas-RESV injector / primary-variable
+lifecycle. Paused while the WATER-0xx / `OpmAligned`-default track is the active front (see
+`FIM_STATUS.md` top and `TODO.md`). Kept because they are prescriptive and not yet superseded.
 
-These files are useful context, but they are not live specs.
+| Document | Scope |
+|----------|-------|
+| `docs/FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md` | G4a single-perforation gas-RESV injector lifecycle design + oracle |
+| `docs/FIM_G4B2_ATOMIC_ROUTE_READINESS_AUDIT.md` | G4b2 coupled-path audit + pre-Newton safety block |
+| `docs/FIM_G4B2A_ATOMIC_ROUTE_IMPLEMENTATION_DESIGN.md` | G4b2a typed-u AD/legacy/Schur/trace implementation contract |
+| `docs/FIM_Y2B3_PRIMARY_VARIABLE_LIFECYCLE_DESIGN.md` | Deck-scoped OPM `Sg`/`Rs` lifecycle map + fixed-layout contract |
+| `docs/FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md` | Source-pinned Flow 2026.04 linear lifecycle + IMPES applicability audit |
 
-| Document | Status |
-|----------|--------|
-| `docs/FRONTEND_UI_AUDIT_2026-03-07.md` | Historical frontend audit that fed later refactoring work |
-| `docs/IMPLEMENTATION_REVIEW_2026-03-19.md` | Historical implementation review snapshot; some findings have since been closed |
-| `PLAN.md` | Historical scenario-first rewrite plan; superseded by work already landed (see `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` §2.1). Left in place pending author decision to archive or delete. |
-| `docs/REFACTOR_PLAN.md` | Historical refactor plan; most phases (0–7) are done and the file's own "last updated" date and "Phase 8 ← NOW" marker are stale (see `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` §2.1) |
+## Frontend / scenarios / comparison roadmaps
 
-## Maintenance Rule
+| Document | Use it for |
+|----------|------------|
+| `docs/FRONTEND_EXECUTION_PLAN_2026-07.md` | Active ordered frontend execution plan (Waves 0–3) |
+| `docs/CASE_LIBRARY_ROADMAP.md` | Sourcing map for new scenarios: SPE benchmarks, field datasets, textbook cases |
+| `docs/MULTI_SOURCE_COMPARISON_ROADMAP.md` | Comparison-axis roadmap across analytical/IMPES/FIM/OPM/published sources |
+| `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` | 2026-07 comparison-architecture findings and forward plan |
+| `docs/WAVE4_REVIEW_2026-07-19.md` | Open post-Wave-4 review findings (ranked) |
+| `.claude/skills/README.md` | Workflow skill library index |
 
-If a document stops describing the current implementation or current plan, either update it immediately or demote it to historical status. Do not leave half-current working documents in the authoritative set.
+## Archived material
+
+Moved out of the active tree 2026-07-24, git-tracked and reversible (`.archive/README.md` lists
+each file and why). Includes: closed FIM experiment plans (Bundle N/P/W/X, DIAG-003), the
+March–April design/audit/investigation docs and test-plan snapshots, the pre-existing FIM
+convergence archives + March history, and dated review snapshots. Their verdicts remain summarized
+in `FIM_EXPERIMENT_REGISTRY.md`; the docs themselves are provenance, not live specs.
+
+- `.archive/docs/` — archived `docs/` files (incl. `REFACTOR_PLAN.md`, historical refactor plan)
+- `.archive/PLAN.md` — historical scenario-first rewrite plan (superseded by landed work)
+- `.archive/CODEX_FIM_DIALOGUE_03.07.2026.md` — historical design dialogue
+
+## Current repo-level facts
+
+- `src/lib/catalog/scenarios/` is the primary scenario registry: **14 canonical scenario modules**
+  (`.ts`, excluding co-located `*.test.ts`).
+- `ScenarioPicker.svelte` is the only live case-selection surface, driven entirely by
+  `scenarios.ts`. The legacy benchmark-family system and Custom Mode's JSON facet catalog were
+  archived 2026-07 (`.archive/README.md`); production case definitions live only in
+  `src/lib/catalog/scenarios/`.
+- Public simulations execute in browser-side WASM through the **IMPES** path. Offline OPM Flow
+  artifacts are precomputed reference data, not live simulation. Both committed artifacts
+  (`wf_bl1d`, `spe1_gas_injection`) are `status: "parsed"` with physically sane series (dead-well
+  `EQUIL` bug fixed 2026-07-18).
+- Black-oil and three-phase modes are implemented and exposed; three-phase validation depth still
+  trails the implementation. SPE1 has published reference overlays and OPM artifact hooks;
+  quantitative acceptance criteria remain deferred.
+
+## Maintenance rule
+
+If a document stops describing the current implementation or plan, update it immediately or move it
+to `.archive/` (and note it in `.archive/README.md`). Do not leave half-current working documents
+in the authoritative set.

@@ -6,7 +6,7 @@ checkpoint order below is historical where later evidence supersedes it. The cur
 frontier is Y2b bound/update-policy parity, owned by
 `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`; follow that document before starting another
 solver change.
-Prerequisite evidence: `docs/FIM_DIAG_003_PLAN.md` (closed) and `docs/FIM_BUNDLE_X_PLAN.md`
+Prerequisite evidence: `.archive/docs/FIM_DIAG_003_PLAN.md` (closed) and `.archive/docs/FIM_BUNDLE_X_PLAN.md`
 (closed, PROMOTED unconditional). Baselines below re-derived on the committed tree at
 `53cae5c` (2026-07-12) — the exact runs are in the worklog note accompanying this plan's commit.
 
@@ -105,7 +105,7 @@ under-resourced CPR/GMRES budget.
 
 ~~The already-evidenced lever, executed per its own registry retry condition: promote
 `sum-rows` or `quasi-impes` (pick by OPM fidelity — OPM's `cprw` uses quasi-IMPES weighting;
-`docs/FIM_CPR_IMPROVEMENT_PLAN.md` has the design skeleton) to the live CPR path, flag-gated
+`.archive/docs/FIM_CPR_IMPROVEMENT_PLAN.md` has the design skeleton) to the live CPR path, flag-gated
 through the standard offline-lab-first workflow (the 54+13-system corpora already exist;
 re-capture on the post-X4 tree first since trajectories changed). Gates: offline lab
 non-regression, then full control matrix + locked smoke + BL benchmarks. Success metric:

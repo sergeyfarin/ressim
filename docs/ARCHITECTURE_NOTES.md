@@ -1,6 +1,6 @@
 # Architecture Notes
 
-This document tracks active architectural decisions that are still relevant. Historical implementation detail and delivered work have been moved out to `docs/DELIVERED_WORK_2026_Q1.md`.
+This document tracks active architectural decisions that are still relevant. Historical implementation detail and delivered work have been moved out to `.archive/docs/DELIVERED_WORK_2026_Q1.md`.
 
 ## Current Architecture Snapshot
 

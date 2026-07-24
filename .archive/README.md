@@ -1,7 +1,45 @@
 # Archive
 
 Code and data moved out of the active tree but kept for reference / possible
-re-implementation, rather than deleted outright.
+re-implementation, rather than deleted outright. Everything here is git-tracked
+and reversible with `git mv`.
+
+## `docs/` — superseded documentation (archived 2026-07-24)
+
+Documentation cleanup: closed experiments, superseded plans, and dated
+snapshots moved out of `docs/` so the active set only contains authoritative or
+in-progress material (see `docs/DOCUMENTATION_INDEX.md`). Verdicts for every
+archived FIM experiment remain summarized in `docs/FIM_EXPERIMENT_REGISTRY.md`;
+these files are provenance, not live specs.
+
+- **Closed FIM experiment plans** — `FIM_BUNDLE_N_DESIGN.md`,
+  `FIM_BUNDLE_P_PLAN.md`, `FIM_BUNDLE_W_PLAN.md`, `FIM_BUNDLE_X_PLAN.md`,
+  `FIM_DIAG_003_PLAN.md` (all evaluated/closed; registry rows retained).
+- **Superseded March–April design / audit / investigation docs** —
+  `FIM_MIGRATION_PLAN.md`, `FIM_PHASE2_EXECUTION_PLAN.md`,
+  `FIM_CPR_IMPROVEMENT_PLAN.md`, `FIM_LINEAR_SOLVER_AUDIT.md`,
+  `FIM_BYPASS_AUDIT.md`, `FIM_JACOBIAN_REUSE_INVESTIGATION.md`,
+  `FIM_SLICE_A_EXTRAPOLATION.md`, `FIM_CHOP_WIDEN_EXPERIMENT.md`,
+  `FIM_UPWINDING_FRONT_STABILITY.md`, `FIM_WIDE_ANGLE_ANALYSIS.md`,
+  `FIM_CONVERGENCE_IMPROVEMENTS.md`, `FIM_CLEANUP_PLAN.md`.
+- **Superseded test-planning / coverage snapshots** —
+  `FIM_PHYSICS_TEST_PLAN.md`, `FIM_TEST_CLASSIFICATION.md`,
+  `FIM_TEST_COMPLETENESS_REVIEW.md`, `SOLVER_TEST_COVERAGE_PLAN.md`,
+  `SOLVER_TEST_OWNERSHIP_INVENTORY.md`, `SOLVER_DIAGNOSTIC_COVERAGE_MATRIX.md`,
+  `SOLVER_LAYOUT_REFACTOR_PLAN.md`.
+- **Pre-existing history archives** (consolidated here) —
+  `FIM_CONVERGENCE_ARCHIVE_2026-03_to_2026-04-06.md`,
+  `FIM_CONVERGENCE_ARCHIVE_2026-04-08_to_2026-07-03.md`,
+  `FIM_HISTORY_2026-03.md`.
+- **Dated snapshots / reviews** — `FRONTEND_UI_AUDIT_2026-03-07.md`,
+  `IMPLEMENTATION_REVIEW_2026-03-19.md`, `DELIVERED_WORK_2026_Q1.md`.
+
+Also archived here: `PLAN.md` (historical scenario-first rewrite plan),
+`docs/REFACTOR_PLAN.md` (historical refactor plan), and
+`CODEX_FIM_DIALOGUE_03.07.2026.md` (historical design dialogue).
+
+To resurrect any of these, `git mv` it back to its original location and re-add
+its row to `docs/DOCUMENTATION_INDEX.md`.
 
 ## `src/lib/catalog/custom-mode/`
 

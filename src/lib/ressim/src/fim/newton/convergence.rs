@@ -347,7 +347,7 @@ pub(super) fn update_family_peak(
 
 /// OPM shipped convergence tolerances (Flow 2025.10 defaults, verified from the installed
 /// binary's `--help-all` and `opm-simulators` tag `release/2025.10/final` — see
-/// `docs/FIM_BUNDLE_N_DESIGN.md` §9.1). Used by the inert Bundle N checkpoint-1 diagnostic
+/// `.archive/docs/FIM_BUNDLE_N_DESIGN.md` §9.1). Used by the inert Bundle N checkpoint-1 diagnostic
 /// below; they do NOT participate in any accept/retry decision yet.
 const OPM_TOLERANCE_CNV: f64 = 1e-2;
 const OPM_TOLERANCE_CNV_RELAXED: f64 = 1.0;
@@ -610,7 +610,7 @@ pub(super) fn cnv_mb_from_parts(
 
 /// OPM shipped per-cell update-chopping limits (Flow 2025.10 defaults `--ds-max` /
 /// `--dp-max-rel`, verified from the installed binary and `blackoilnewtonmethod.hpp` at the
-/// pinned tag — `docs/FIM_BUNDLE_N_DESIGN.md` §9.2). Used by the `OpmAligned` nonlinear flavor.
+/// pinned tag — `.archive/docs/FIM_BUNDLE_N_DESIGN.md` §9.2). Used by the `OpmAligned` nonlinear flavor.
 pub(super) const OPM_DS_MAX: f64 = 0.2;
 const OPM_DP_MAX_REL: f64 = 0.3;
 /// OPM shipped well-BHP update-chopping limit (`--dbhp-max-rel`, default `1.0`, verified from

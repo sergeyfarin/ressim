@@ -20,7 +20,7 @@ use crate::timing::PerfTimer;
 // case (484 rows) onto the already-proven BiCGStab path. G4c5 subsequently validated the
 // previously-held exact 300-row gas case on seven sequential systems: zero coarse failures,
 // worst residual reduction 7.9e-7, and a >100x cost advantage over dense inversion.
-// See `docs/FIM_BUNDLE_P_PLAN.md` and the G4c5 worklog for the comparison numbers.
+// See `.archive/docs/FIM_BUNDLE_P_PLAN.md` and the G4c5 worklog for the comparison numbers.
 const PRESSURE_DIRECT_SOLVE_ROW_THRESHOLD: usize = 299;
 const PRESSURE_DEFECT_CORRECTION_MAX_ITERS: usize = 50;
 const PRESSURE_DEFECT_CORRECTION_REL_TOL: f64 = 1e-6;
