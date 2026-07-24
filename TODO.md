@@ -718,29 +718,28 @@ below is retained as Bundle N/Y history; it must not override this current seque
   fallback (`used_fallback`) and includes timing from both attempts. Relperm endpoint physics is
   intentionally unchanged; the root-cause fix that would make this fallback redundant is below.
 
-- [ ] **ROOT-CAUSE FIX (deferred): relperm-endpoint singularity under raw saturations.** WATER-025's
-  raw-saturation path can drive a cell onto the flat part of the relperm curve (`Sw` at/below `Swc`,
-  or at/above `1-Sor`), where `dkr/dSw = 0`. That makes a Jacobian block rank-deficient; the forced
-  direct sparse-LU (systems under the direct-solve threshold) then fails to factor it, reports
-  `reduction=1.0`, and collapses the timestep. Found via the OpmAligned-default regressions on small
-  1D/well-dominated cases (`simple_pressure_control`, `benchmark_like_substepping`,
-  `shared_block_multiwell`), currently handled by the **iterative fallback** in
-  `solve_linearized_system` (`fim/linear/mod.rs`; hardened above): on direct-factorization failure it
-  retries with the block-Jacobi/CPR backend, which needs no exact factorization.
-  That fallback is a **backstop, not a cure** — the singular Jacobian still forms; it is only caught
-  after the fact. The dependency chain is three links long: OpmAligned-default rests on WATER-025
-  raw saturations, which can go singular, which the fallback catches. Risks: (a) if the linear-solver
-  routing changes (e.g. the direct-solve threshold is raised, or the iterative path is "simplified"
-  away) the singularity resurfaces; (b) the iterative solve of a near-singular system is slower and
-  less accurate than a clean factorization.
-  **Root fix:** make the Jacobian non-singular at the source with a small relative-permeability
-  regularization below `Swc` / above `1-Sor` — a linear tail with a small non-zero slope instead of
-  the flat clamp (`s_eff.clamp(0,1)` in `relperm.rs::k_rw`/`k_ro`) — so `dkr/dSw` never hits exactly
-  zero on the raw path. Must be scoped so it does NOT move the validated Corey physics in-range
-  (relperm gates, Buckley-Leverett, the OpmAligned wasm baselines, and the WATER-025 areal win must
-  all hold), and small enough not to change produced rates. If done, the iterative fallback becomes
-  genuinely redundant rather than load-bearing. Until then, keep the fallback and the
-  `fim/linear/mod.rs` comment explaining why it is not generic defensive code.
+- [ ] **ROOT-CAUSE (deferred, re-scoped 2026-07-24): relperm-endpoint singularity under raw
+  saturations. Full analysis + recommendation: `docs/FIM_RELPERM_ENDPOINT_SINGULARITY_ANALYSIS.md`.**
+  WATER-025's raw-saturation path can drive a well-connected cell to/below `Swc` (or to/above
+  `1-Sor`), where the endpoint relperm slope is `0`. That makes a Jacobian block rank-deficient; the
+  forced direct sparse-LU on small systems then fails to factor it (`reduction=1.0`) and the
+  **iterative block-Jacobi/CPR fallback** in `solve_linearized_system` (`fim/linear/mod.rs`; hardened
+  in `c2167f2`) catches it. All affected cases (`simple_pressure_control`,
+  `benchmark_like_substepping`, `shared_block_multiwell`) **currently pass via that fallback** — this
+  is a robustness item, not a red gate. Re-baseline evidence: `22x22x1`=8, `23x23x1`=4,
+  `sweep-areal`=4 `linear-bad` retries vs Legacy's 0.
+  **CORRECTION to the earlier framing:** the default FIM path uses the 21-point tabulated SWOF law
+  (`DEFAULT_FIM_COREY_TABLE_POINTS=21`), so the live zero-slope is in `corey_table_derivatives` /
+  `corey_table_generic` (via `mobility.rs:161-225`), **not** the analytic `relperm.rs::k_rw`/`k_ro`
+  clamp the original entry named — editing that clamp alone would not remove the retries.
+  **Recommendation (see analysis doc): do NOT do the relperm-tail regularization (Option B).** OPM
+  has the same flat SWOF endpoints and never hits this because its linear stack is iterative; the
+  ResSim-specific trigger is the forced direct-LU on small systems, so the fallback is the
+  OPM-consistent behavior. If ever prioritized, prefer **Option A** (route small well-dominated /
+  endpoint-singular systems to the iterative CPR path proactively — zero physics change) over Option
+  B (bending validated OPM-aligned SWOF curves, which would move the WATER-005/025 water-MB match and
+  requires bit-parity edits across both relperm structs + Stone2). Until then keep the fallback and
+  its `fim/linear/mod.rs` comment.
 
 - [ ] **Objective-1 gap: ResSim over-predicts oil by `8-10%` versus Flow on all three quarter-day
   controls** (comparing `rate x dt` against `FOPT`, an approximation since ResSim's `oil=` is an
