@@ -159,8 +159,9 @@ impl FimRetryHotspot {
     }
 
     fn same_site(self, other: Self) -> bool {
+        // Lateral neighbours count as the same hotspot; vertically the region is
+        // layer-local, so `anchor_k` must match exactly (no vertical radius).
         const NON_GAS_MEMORY_LATERAL_RADIUS: usize = 1;
-        const NON_GAS_MEMORY_VERTICAL_RADIUS: usize = 0;
 
         match (self.memory_region, other.memory_region) {
             (
@@ -180,7 +181,7 @@ impl FimRetryHotspot {
                 left_well == right_well
                     && left_i.abs_diff(right_i) <= NON_GAS_MEMORY_LATERAL_RADIUS
                     && left_j.abs_diff(right_j) <= NON_GAS_MEMORY_LATERAL_RADIUS
-                    && left_k.abs_diff(right_k) <= NON_GAS_MEMORY_VERTICAL_RADIUS
+                    && left_k == right_k
             }
             _ => self.memory_region == other.memory_region,
         }
@@ -3070,7 +3071,7 @@ pub(crate) fn water024_oil_mb_line(
     const OIL: usize = 1;
     let n = state.cells.len();
     let inj = 0usize;
-    let prod = (sim.nx - 1) + sim.nx * ((sim.ny - 1) + sim.ny * 0);
+    let prod = sim.idx(sim.nx - 1, sim.ny - 1, 0);
     let mut net = 0.0_f64;
     let mut net_wells = 0.0_f64;
     let mut abs_sum = 0.0_f64;

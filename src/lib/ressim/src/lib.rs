@@ -286,7 +286,11 @@ pub(crate) mod tests {
         let cell_dy = 3048.0 / ny as f64;
         sim.set_cell_dimensions_per_layer(cell_dx, cell_dy, vec![6.096, 9.144, 15.24])
             .unwrap();
-        sim.set_fluid_properties(0.51, 0.318).unwrap();
+        // SPE1 oil/water viscosities in cP. `mu_w = 0.318` is a measured fluid
+        // property that happens to sit near 1/pi; it is not an approximation of it.
+        #[allow(clippy::approx_constant)]
+        const MU_W_CP: f64 = 0.318;
+        sim.set_fluid_properties(0.51, MU_W_CP).unwrap();
         sim.set_fluid_compressibilities(2.06e-4, 4.67e-5).unwrap();
         sim.pvt_table = Some(PvtTable::new(
             vec![
