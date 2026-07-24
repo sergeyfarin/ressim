@@ -18,6 +18,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 |--------|-----|------------------------------|-------|
 | Waterflood | `wf_bl1d` | Buckley-Leverett + Welge | 1D immiscible displacement baseline |
 | Waterflood | `wf_tornado` | None (simulation-only) | kv x density-contrast interaction — individually-small parameters combine into a dominant driver |
+| Waterflood | `wf_capillary` | Buckley-Leverett (as the zero-capillary limit) | Capillary front spreading against the BL shock, and telling capillary smearing apart from numerical dispersion |
 | Sweep | `sweep_areal` | Craig confined five-spot | Quarter-pattern style interpretation |
 | Sweep | `sweep_vertical` | Dykstra-Parsons | Non-communicating layered sweep baseline |
 | Sweep | `sweep_combined` | Stiles or Dykstra-Parsons combined with BL | Scenario-owned analytical method toggle |
