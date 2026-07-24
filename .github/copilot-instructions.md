@@ -62,7 +62,12 @@ See `README.md` for full feature list and `docs/` for technical deep-dives.
 1. **Minimal changes** — only touch files directly related to the task.
 2. **Preserve physics** — don't alter validated benchmark tolerances without explicit justification.
 3. **No new dependencies** unless essential; use existing libraries.
-4. **Worker safety** — state snapshots must be structured-cloneable.
+4. **Worker safety** — state snapshots must be structured-cloneable. Svelte 5 `$state` values are
+   deep Proxies and structured cloning rejects them (`DataCloneError: [object Array] could not be
+   cloned`), so never post a store value by reference. All worker sends go through
+   `RuntimeStoreImpl.#post()`, which applies `$state.snapshot()`; don't call `simWorker.postMessage`
+   directly. Payload builders must still copy arrays they pass through — the snapshot is a backstop,
+   not a licence to leak proxies into `buildCreatePayload`.
 5. **Avoid over-engineering** — don't add abstractions, error handling, or configurability beyond what the task requires.
 
 ## Known Constraints
@@ -70,6 +75,11 @@ See `README.md` for full feature list and `docs/` for technical deep-dives.
 - Three.js version pinned — do not upgrade.
 - WASM requires `wasm32-unknown-unknown` target.
 - Worker ↔ UI communication: structured cloning only.
+- **No runtime import cycles under `src/`.** A value-level cycle makes whichever module the bundler
+  enters first read the other's top-level `const`s from their temporal dead zone, throwing
+  `Cannot access 'X' before initialization` at load and blanking the app. Gated by
+  `pnpm run check:cycles` (part of `validate` / `validate:product`). Break a cycle by making the edge
+  `import type` or moving the shared value into a leaf module — not by reordering declarations.
 
 ## Working Style
 
