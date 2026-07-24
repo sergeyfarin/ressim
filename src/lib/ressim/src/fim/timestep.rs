@@ -2168,7 +2168,9 @@ mod tests {
 
         cooldown.note_retry_failure(&sim, &failure);
         cooldown.note_retry_accepted(0.25, 2);
-        assert_eq!(cooldown.clean_successes_remaining, 2);
+        // A repeated same-site hotspot extends the clean-success budget by 1
+        // (`extra_clean_successes_for_repeated_hotspot`, `2..=3 => 1`): 2 + 1 = 3.
+        assert_eq!(cooldown.clean_successes_remaining, 3);
         assert!(cooldown.trace_suffix().contains("repeats=2"));
     }
 
@@ -2475,12 +2477,15 @@ mod tests {
             &failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143),
         );
         cooldown.note_retry_accepted(0.25, 2);
-        assert_eq!(cooldown.clean_successes_remaining, 2);
+        // Two same-site failures extend the budget by 1 (`2..=3 => 1`): 2 + 1 = 3.
+        assert_eq!(cooldown.clean_successes_remaining, 3);
 
         cooldown.note_retry_failure(
             &sim,
             &failure_diagnostics(FimRetryFailureClass::NonlinearBad, 297, 99),
         );
+        // Moving to a new hotspot site resets the repeat counter, so the extra
+        // budget is dropped back to the baseline requirement (2 + 0).
         cooldown.note_retry_accepted(0.2, 2);
         assert_eq!(cooldown.clean_successes_remaining, 2);
         assert!(cooldown.trace_suffix().contains("row=297"));

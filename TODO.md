@@ -91,10 +91,18 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 FIM is out of the user path (IMPES ships). Do not chase small deltas; big OPM-architecture gaps
 matter more. Search `docs/FIM_EXPERIMENT_REGISTRY.md` by mechanism before any change.
 
-- [ ] **2 failing timestep tests** (verified red 2026-07-24, pre-existing, dev-only):
-  `fim::timestep::tests::changing_hotspot_resets_extra_growth_cooldown_budget` and
-  `repeated_same_hotspot_extends_growth_cooldown_budget`. (The other two of the old "3–4 failures"
-  group — the closed-system/rate_history contract tests — are now green, fixed by `f95e075`.)
+- [x] **2 hotspot-cooldown timestep tests — FIXED 2026-07-24 (stale tests, not a bug).**
+  `changing_hotspot_resets_extra_growth_cooldown_budget` and
+  `repeated_same_hotspot_extends_growth_cooldown_budget` asserted a pre-`89065164` (2026-04-08)
+  clean-success budget of `2`; that commit deliberately made a repeated same-site hotspot *extend*
+  the budget (`extra_clean_successes_for_repeated_hotspot`, `2..=3 => 1`) and added a sibling test
+  endorsing it, but left these two un-updated. Corrected the two expectations `2 → 3`.
+- [ ] **1 pre-existing failing timestep test (dev-only, unrelated to the above):**
+  `fim::timestep::tests::legacy_resv_failed_direct_fallback_is_rejected_before_state_update`
+  (`assert !linear.converged` at `timestep.rs:2015`). The failed legacy-RESV direct fallback now
+  *converges* where the test expects rejection — likely the iterative-fallback hardening (`c2167f2`)
+  interacting with the RESV path. Needs a scoped look: is the test stale (fallback is now legitimately
+  solving it) or is a bad-direct-solve being accepted? Not investigated yet.
 - [ ] **Relperm-endpoint singularity (re-scoped 2026-07-24).** The `linear-bad` backstop on small
   well-dominated cases (`22x22x1`, `23x23x1`, `sweep-areal`). **Recommendation: do not do the
   relperm-tail regularization (Option B); prefer proactive iterative routing (Option A) if ever
