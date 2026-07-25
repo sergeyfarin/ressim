@@ -5,6 +5,7 @@ import type {
     BenchmarkRunPolicy,
 } from './catalog/benchmarkCases';
 import type { AnalyticalMethod } from './catalog/scenarios';
+import { getAnalyticalMethodDescriptor } from './charts/analyticalMethodRegistry';
 
 export type BenchmarkCaseSnapshot = {
     grid: string;
@@ -122,16 +123,7 @@ function buildReferenceLabel(
     if (analyticalMethod === 'buckley-leverett' && referenceKind === 'numerical-refined') {
         return 'Refined numerical reference';
     }
-    if (analyticalMethod === 'buckley-leverett') {
-        return 'Buckley-Leverett reference solution';
-    }
-    if (analyticalMethod === 'gas-oil-bl') {
-        return 'Gas-oil Buckley-Leverett reference solution';
-    }
-    if (analyticalMethod === 'digitized-reference') {
-        return 'Published benchmark reference curves';
-    }
-    return 'Depletion reference solution';
+    return getAnalyticalMethodDescriptor(analyticalMethod).referenceLabel;
 }
 
 export function buildBenchmarkCaseSnapshot(params: Record<string, any>): BenchmarkCaseSnapshot {

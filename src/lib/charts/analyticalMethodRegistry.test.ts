@@ -1,0 +1,112 @@
+import { describe, expect, it } from 'vitest';
+import {
+    ANALYTICAL_METHOD_DESCRIPTORS,
+    getAnalyticalMethodDescriptor,
+    slotsForContext,
+} from './analyticalMethodRegistry';
+import { ANALYTICAL_OUTPUT_CONTRACTS, type AnalyticalMethod } from '../catalog/scenarios';
+
+const ALL_METHODS = Object.keys(ANALYTICAL_OUTPUT_CONTRACTS) as AnalyticalMethod[];
+
+describe('analyticalMethodRegistry', () => {
+    it('has a descriptor for every AnalyticalMethod', () => {
+        for (const method of ALL_METHODS) {
+            expect(ANALYTICAL_METHOD_DESCRIPTORS[method]?.method).toBe(method);
+        }
+    });
+
+    it('agrees with each method output contract on the native x-axis', () => {
+        // Two declarations of the same fact today: the scenario-facing contract
+        // in scenarios.ts and the chart-facing descriptor here. They must not
+        // drift while both exist.
+        for (const method of ALL_METHODS) {
+            expect(ANALYTICAL_METHOD_DESCRIPTORS[method].nativeXAxis)
+                .toBe(ANALYTICAL_OUTPUT_CONTRACTS[method].nativeXAxis);
+        }
+    });
+
+    it('marks the Buckley-Leverett family as pvi-native and the rest as time-native', () => {
+        expect(getAnalyticalMethodDescriptor('buckley-leverett').nativeXAxis).toBe('pvi');
+        expect(getAnalyticalMethodDescriptor('gas-oil-bl').nativeXAxis).toBe('pvi');
+        expect(getAnalyticalMethodDescriptor('depletion').nativeXAxis).toBe('time');
+        expect(getAnalyticalMethodDescriptor('well-test').nativeXAxis).toBe('time');
+    });
+
+    it('falls back to the no-reference descriptor for absent or unknown methods', () => {
+        for (const method of [null, undefined, 'not-a-method' as AnalyticalMethod]) {
+            const descriptor = getAnalyticalMethodDescriptor(method);
+            expect(descriptor.method).toBe('none');
+            expect(descriptor.slots).toEqual([]);
+            expect(descriptor.fromResult).toBeNull();
+            expect(descriptor.fromParams).toBeNull();
+        }
+    });
+
+    it('gives methods without a reference solution no curve slots', () => {
+        expect(getAnalyticalMethodDescriptor('none').slots).toEqual([]);
+        expect(getAnalyticalMethodDescriptor('digitized-reference').slots).toEqual([]);
+    });
+
+    it('gives every slot of a method with a reference solution a distinct curve key', () => {
+        for (const method of ALL_METHODS) {
+            const keys = ANALYTICAL_METHOD_DESCRIPTORS[method].slots.map((slot) => slot.curveKey);
+            expect(new Set(keys).size).toBe(keys.length);
+        }
+    });
+
+    it('routes the well-test flowing-BHP reference to the producer_bhp panel', () => {
+        // Not `diagnostics`: a drawdown test measures flowing pressure at the
+        // well, so its reference must never be drawn against average pressure.
+        const slot = getAnalyticalMethodDescriptor('well-test').slots
+            .find((candidate) => candidate.curveKey === 'producer-bhp-reference');
+        expect(slot?.panelKey).toBe('producer_bhp');
+    });
+
+    it('never draws a shared well-test overlay', () => {
+        // A drawdown reference depends on k, skin and rate — exactly what the
+        // well-test scenarios vary — so one shared curve would be wrong for
+        // every variant but one.
+        const descriptor = getAnalyticalMethodDescriptor('well-test');
+        expect(descriptor.resolveOverlayMode({ requested: 'shared', paramSets: [] })).toBe('per-result');
+        expect(slotsForContext(descriptor, 'shared')).toEqual([]);
+    });
+
+    it('honours an explicit shared/per-result request for the BL family', () => {
+        const descriptor = getAnalyticalMethodDescriptor('buckley-leverett');
+        expect(descriptor.resolveOverlayMode({ requested: 'shared', paramSets: [] })).toBe('shared');
+        expect(descriptor.resolveOverlayMode({ requested: 'per-result', paramSets: [] })).toBe('per-result');
+    });
+
+    it('infers per-result BL overlays when the variants differ in fractional-flow physics', () => {
+        const descriptor = getAnalyticalMethodDescriptor('buckley-leverett');
+        const base = { s_wc: 0.1, s_or: 0.1, n_w: 2, n_o: 2, k_rw_max: 1, k_ro_max: 1, mu_w: 0.5, mu_o: 1.0 };
+        expect(descriptor.resolveOverlayMode({
+            requested: 'auto',
+            paramSets: [base, { ...base }],
+        })).toBe('shared');
+        expect(descriptor.resolveOverlayMode({
+            requested: 'auto',
+            paramSets: [base, { ...base, mu_o: 5.0 }],
+        })).toBe('per-result');
+    });
+
+    // These two slots are deliberately narrower than their siblings, preserving
+    // pre-registry behavior. See the TODO.md "analytical slot-context
+    // asymmetries" item — they are candidates to widen, not settled design.
+    it('keeps the gas-oil cumulative-oil reference shared-only', () => {
+        const descriptor = getAnalyticalMethodDescriptor('gas-oil-bl');
+        const cumulativeKeys = (context: 'shared' | 'per-result' | 'pending' | 'preview') =>
+            slotsForContext(descriptor, context).map((slot) => slot.curveKey);
+        expect(cumulativeKeys('shared')).toContain('cum-oil-reference');
+        expect(cumulativeKeys('per-result')).not.toContain('cum-oil-reference');
+        expect(cumulativeKeys('preview')).not.toContain('cum-oil-reference');
+    });
+
+    it('omits the well-test oil-rate reference for still-pending variants', () => {
+        const descriptor = getAnalyticalMethodDescriptor('well-test');
+        expect(slotsForContext(descriptor, 'pending').map((slot) => slot.curveKey))
+            .toEqual(['producer-bhp-reference']);
+        expect(slotsForContext(descriptor, 'per-result').map((slot) => slot.curveKey))
+            .toEqual(['producer-bhp-reference', 'oil-rate-reference']);
+    });
+});

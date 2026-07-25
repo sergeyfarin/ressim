@@ -12,6 +12,7 @@
  */
 
 import type { BenchmarkFamily } from '../scenario/referenceTypes';
+import type { CurveConfig } from './chartTypes';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { RateChartPanelKey, RateChartXAxisMode } from './rateChartLayoutConfig';
 import {
@@ -27,16 +28,17 @@ import {
 } from './axisAdapters';
 import {
     buildDerivedRunSeries,
-    computeBLAnalyticalFromParams,
-    computeDepletionAnalyticalFromParams,
     computeDepletionTau,
-    computeGasOilBLAnalyticalFromParams,
     computeMbeDiagnostics,
-    computeWellTestFromParams,
-    hasDistinctBuckleyLeverettOverlays,
-    hasDistinctGasOilBLOverlays,
-    resolveOverlayMode,
 } from './analyticalParamAdapters';
+import {
+    getAnalyticalMethodDescriptor,
+    slotsForContext,
+    type AnalyticalCurveSet,
+    type AnalyticalCurveSlot,
+    type AnalyticalMethodDescriptor,
+    type AnalyticalOverlayContext,
+} from './analyticalMethodRegistry';
 import {
     appendSeries,
     compactCaseLabel,
@@ -53,13 +55,8 @@ import {
     type ReferenceComparisonSweepPanels,
     type ReferenceComparisonTheme,
 } from './referenceChartTypes';
-import {
-    buildBuckleyLeverettReference,
-    buildDepletionReference,
-    buildGasOilBLReference,
-    buildWellTestReference,
-} from './referenceOverlayBuilders';
 import { buildPreviewSweepPanels, buildSweepPanels } from './sweepPanelBuilder';
+import type { AnalyticalMethod } from '../catalog/scenarios';
 
 export { getReferenceComparisonCaseColor };
 export type {
@@ -256,6 +253,76 @@ function emptySweepPanels(): ReferenceComparisonSweepPanels {
 }
 
 /**
+ * Emits one analytical curve per registry slot into `panels`.
+ *
+ * All four overlay contexts share this: they differ only in label shape, color
+ * source and line weight, which the caller supplies. A slot whose curve the
+ * method did not produce (null/absent in the curve set) is skipped, matching the
+ * per-overlay-section null guards this replaced.
+ */
+function appendAnalyticalSlots(
+    panels: Record<RateChartPanelKey, ReferenceComparisonPanel>,
+    descriptor: AnalyticalMethodDescriptor,
+    context: AnalyticalOverlayContext,
+    curveSet: AnalyticalCurveSet,
+    style: (slot: AnalyticalCurveSlot) => CurveConfig,
+): void {
+    for (const slot of slotsForContext(descriptor, context)) {
+        const values = curveSet.values[slot.curveKey];
+        if (!values) continue;
+        appendSeries(panels[slot.panelKey], style(slot), curveSet.xValues, values);
+    }
+}
+
+/**
+ * Curve style for the `per-result` and `pending` contexts: one dashed curve per
+ * case in that case's color, grouped under its own legend toggle.
+ */
+function perCaseAnalyticalStyle(input: {
+    label: string;
+    caseKey: string;
+    color: string;
+}): (slot: AnalyticalCurveSlot) => CurveConfig {
+    const toggleLabel = compactCaseLabel(input.label);
+    return (slot) => ({
+        label: `${input.label} — Reference${slot.perCaseSuffix}`,
+        curveKey: slot.curveKey,
+        caseKey: input.caseKey,
+        toggleGroupKey: input.caseKey + '__ref',
+        toggleLabel,
+        legendSection: 'analytical',
+        legendSectionLabel: LEGEND_SECTIONS.analytical,
+        color: input.color,
+        borderWidth: 1.5,
+        borderDash: ANALYTICAL_DASH,
+        yAxisID: 'y',
+    });
+}
+
+/**
+ * Curve style for the `shared` context: a single neutral curve standing for
+ * every case, valid only when the analytical physics is identical across them.
+ */
+function sharedAnalyticalStyle(input: {
+    referenceColor: string;
+    legendGrey: string;
+}): (slot: AnalyticalCurveSlot) => CurveConfig {
+    return (slot) => ({
+        label: slot.sharedLabel,
+        curveKey: slot.curveKey,
+        toggleGroupKey: 'analytical-shared',
+        toggleLabel: 'Analytical solution',
+        legendSection: 'analytical',
+        legendSectionLabel: LEGEND_SECTIONS.analytical,
+        color: input.referenceColor,
+        legendColor: input.legendGrey,
+        borderWidth: ANALYTICAL_BORDER,
+        borderDash: ANALYTICAL_DASH,
+        yAxisID: 'y',
+    });
+}
+
+/**
  * Builds analytical-only preview panels before any simulation results exist.
  * Multi-variant arrays produce one colored curve per variant; single-variant
  * arrays use the neutral reference color.
@@ -263,7 +330,7 @@ function emptySweepPanels(): ReferenceComparisonSweepPanels {
 function buildAnalyticalPreviewPanels(
     variants: AnalyticalPreviewVariant[],
     xAxisMode: RateChartXAxisMode,
-    analyticalMethod: string,
+    analyticalMethod: AnalyticalMethod,
     theme: ReferenceComparisonTheme,
 ): Record<RateChartPanelKey, ReferenceComparisonPanel> {
     const panels: Record<RateChartPanelKey, ReferenceComparisonPanel> = {
@@ -280,182 +347,35 @@ function buildAnalyticalPreviewPanels(
         control_limits: createReferenceComparisonPanel(),
     };
 
-    if (variants.length === 0) return panels;
+    const descriptor = getAnalyticalMethodDescriptor(analyticalMethod);
+    if (variants.length === 0 || !descriptor.fromParams) return panels;
 
     const multiVariant = variants.length > 1;
     const neutralColor = getReferenceColor(theme);
     const legendGrey = getLegendGrey(theme);
-    const getColor = (index: number) =>
-        multiVariant ? getReferenceComparisonCaseColor(index) : neutralColor;
-    const labelPrefix = (variant: AnalyticalPreviewVariant) =>
-        multiVariant ? `${variant.label} — ` : '';
     const analyticalLabel = variants.length === 1
         ? 'Analytical solution'
         : `Analytical solution (${variants.length})`;
 
-    if (analyticalMethod === 'buckley-leverett' || analyticalMethod === 'waterflood') {
-        variants.forEach((variant, index) => {
-            const color = getColor(index);
-            const prefix = labelPrefix(variant);
-            const caseKey = multiVariant ? variant.variantKey : undefined;
-            const curves = computeBLAnalyticalFromParams(variant.params);
-            if (!curves) return;
-            appendSeries(panels.rates, {
-                label: `${prefix}Analytical Water Cut`,
-                curveKey: 'water-cut-reference',
-                ...(caseKey ? { caseKey } : {}),
-                toggleGroupKey: 'analytical',
-                toggleLabel: analyticalLabel,
-                color,
-                legendColor: legendGrey,
-                borderWidth: ANALYTICAL_BORDER,
-                borderDash: ANALYTICAL_DASH,
-                yAxisID: 'y',
-            }, curves.xValues, curves.waterCut);
-            appendSeries(panels.recovery, {
-                label: `${prefix}Analytical Recovery Factor`,
-                curveKey: 'recovery-factor-reference',
-                ...(caseKey ? { caseKey } : {}),
-                toggleGroupKey: 'analytical',
-                toggleLabel: analyticalLabel,
-                color,
-                legendColor: legendGrey,
-                borderWidth: ANALYTICAL_BORDER,
-                borderDash: ANALYTICAL_DASH,
-                yAxisID: 'y',
-            }, curves.xValues, curves.recovery);
-        });
-        return panels;
-    }
-
-    if (analyticalMethod === 'depletion') {
-        variants.forEach((variant, index) => {
-            const color = getColor(index);
-            const prefix = labelPrefix(variant);
-            const caseKey = multiVariant ? variant.variantKey : undefined;
-            const curves = computeDepletionAnalyticalFromParams(variant.params, xAxisMode);
-            if (!curves) return;
-            appendSeries(panels.rates, {
-                label: `${prefix}Analytical Oil Rate`,
-                curveKey: 'oil-rate-reference',
-                ...(caseKey ? { caseKey } : {}),
-                toggleGroupKey: 'analytical',
-                toggleLabel: analyticalLabel,
-                color,
-                legendColor: legendGrey,
-                borderWidth: ANALYTICAL_BORDER,
-                borderDash: ANALYTICAL_DASH,
-                yAxisID: 'y',
-            }, curves.xValues, curves.oilRates);
-            appendSeries(panels.recovery, {
-                label: `${prefix}Analytical Recovery Factor`,
-                curveKey: 'recovery-factor-reference',
-                ...(caseKey ? { caseKey } : {}),
-                toggleGroupKey: 'analytical',
-                toggleLabel: analyticalLabel,
-                color,
-                legendColor: legendGrey,
-                borderWidth: ANALYTICAL_BORDER,
-                borderDash: ANALYTICAL_DASH,
-                yAxisID: 'y',
-            }, curves.xValues, curves.recoveryValues);
-            appendSeries(panels.cumulative, {
-                label: `${prefix}Analytical Cum Oil`,
-                curveKey: 'cum-oil-reference',
-                ...(caseKey ? { caseKey } : {}),
-                toggleGroupKey: 'analytical',
-                toggleLabel: analyticalLabel,
-                color,
-                legendColor: legendGrey,
-                borderWidth: ANALYTICAL_BORDER,
-                borderDash: ANALYTICAL_DASH,
-                yAxisID: 'y',
-            }, curves.xValues, curves.cumulativeOilValues);
-            appendSeries(panels.diagnostics, {
-                label: `${prefix}Analytical Avg Pressure`,
-                curveKey: 'avg-pressure-reference',
-                ...(caseKey ? { caseKey } : {}),
-                toggleGroupKey: 'analytical',
-                toggleLabel: analyticalLabel,
-                color,
-                legendColor: legendGrey,
-                borderWidth: ANALYTICAL_BORDER,
-                borderDash: ANALYTICAL_DASH,
-                yAxisID: 'y',
-            }, curves.xValues, curves.avgPressureValues);
-        });
-        return panels;
-    }
-
-    if (analyticalMethod === 'well-test') {
-        variants.forEach((variant, index) => {
-            const color = getColor(index);
-            const prefix = labelPrefix(variant);
-            const caseKey = multiVariant ? variant.variantKey : undefined;
-            const curves = computeWellTestFromParams(variant.params, xAxisMode);
-            if (!curves) return;
-            appendSeries(panels.producer_bhp, {
-                label: `${prefix}Analytical Flowing BHP`,
-                curveKey: 'producer-bhp-reference',
-                ...(caseKey ? { caseKey } : {}),
-                toggleGroupKey: 'analytical',
-                toggleLabel: analyticalLabel,
-                color,
-                legendColor: legendGrey,
-                borderWidth: ANALYTICAL_BORDER,
-                borderDash: ANALYTICAL_DASH,
-                yAxisID: 'y',
-            }, curves.xValues, curves.flowingBhp);
-            appendSeries(panels.oil_rate, {
-                label: `${prefix}Analytical Oil Rate`,
-                curveKey: 'oil-rate-reference',
-                ...(caseKey ? { caseKey } : {}),
-                toggleGroupKey: 'analytical',
-                toggleLabel: analyticalLabel,
-                color,
-                legendColor: legendGrey,
-                borderWidth: ANALYTICAL_BORDER,
-                borderDash: ANALYTICAL_DASH,
-                yAxisID: 'y',
-            }, curves.xValues, curves.oilRates);
-        });
-        return panels;
-    }
-
-    if (analyticalMethod === 'gas-oil-bl') {
-        variants.forEach((variant, index) => {
-            const color = getColor(index);
-            const prefix = labelPrefix(variant);
-            const caseKey = multiVariant ? variant.variantKey : undefined;
-            const curves = computeGasOilBLAnalyticalFromParams(variant.params);
-            if (!curves) return;
-            appendSeries(panels.rates, {
-                label: `${prefix}Analytical Gas Cut`,
-                curveKey: 'gas-cut-reference',
-                ...(caseKey ? { caseKey } : {}),
-                toggleGroupKey: 'analytical',
-                toggleLabel: analyticalLabel,
-                color,
-                legendColor: legendGrey,
-                borderWidth: ANALYTICAL_BORDER,
-                borderDash: ANALYTICAL_DASH,
-                yAxisID: 'y',
-            }, curves.pviValues, curves.gasCut);
-            appendSeries(panels.recovery, {
-                label: `${prefix}Analytical Recovery Factor`,
-                curveKey: 'recovery-factor-reference',
-                ...(caseKey ? { caseKey } : {}),
-                toggleGroupKey: 'analytical',
-                toggleLabel: analyticalLabel,
-                color,
-                legendColor: legendGrey,
-                borderWidth: ANALYTICAL_BORDER,
-                borderDash: ANALYTICAL_DASH,
-                yAxisID: 'y',
-            }, curves.pviValues, curves.recovery);
-        });
-        return panels;
-    }
+    variants.forEach((variant, index) => {
+        const curveSet = descriptor.fromParams!(variant.params, xAxisMode);
+        if (!curveSet) return;
+        const color = multiVariant ? getReferenceComparisonCaseColor(index) : neutralColor;
+        const prefix = multiVariant ? `${variant.label} — ` : '';
+        const caseKey = multiVariant ? variant.variantKey : undefined;
+        appendAnalyticalSlots(panels, descriptor, 'preview', curveSet, (slot) => ({
+            label: `${prefix}${slot.previewLabel}`,
+            curveKey: slot.curveKey,
+            ...(caseKey ? { caseKey } : {}),
+            toggleGroupKey: 'analytical',
+            toggleLabel: analyticalLabel,
+            color,
+            legendColor: legendGrey,
+            borderWidth: ANALYTICAL_BORDER,
+            borderDash: ANALYTICAL_DASH,
+            yAxisID: 'y',
+        }));
+    });
 
     return panels;
 }
@@ -488,7 +408,7 @@ export function buildReferenceComparisonModel(input: {
     pendingPreviewVariants?: AnalyticalPreviewVariant[];
     /** Fallback single-curve preview (used when analyticalPerVariant is false). */
     previewBaseParams?: Record<string, any>;
-    previewAnalyticalMethod?: string;
+    previewAnalyticalMethod?: AnalyticalMethod;
 }): ReferenceComparisonModel {
     const family = input.family ?? null;
     const suppressPrimaryAnalyticalOverlays = family?.suppressPrimaryAnalyticalOverlays
@@ -497,30 +417,18 @@ export function buildReferenceComparisonModel(input: {
     const referenceColor = getReferenceColor(input.theme ?? 'dark');
     const legendGrey = getLegendGrey(input.theme ?? 'dark');
     const analyticalMethod = family?.analyticalMethod ?? input.previewAnalyticalMethod ?? null;
+    const descriptor = getAnalyticalMethodDescriptor(analyticalMethod);
     const requestedOverlayMode = family?.analyticalOverlayMode ?? 'auto';
     const usesRunMappedAnalyticalXAxis = requiresRunMappedAnalyticalXAxis(
-        analyticalMethod,
+        analyticalMethod ? descriptor.nativeXAxis : null,
         input.xAxisMode,
     );
-    const distinctBuckleyLeverettOverlays = hasDistinctBuckleyLeverettOverlays([
-        ...orderedResults.map((result) => result.params),
-        ...(input.pendingPreviewVariants ?? []).map((variant) => variant.params),
-    ]);
-    const distinctGasOilBLOverlays = hasDistinctGasOilBLOverlays([
-        ...orderedResults.map((result) => result.params),
-        ...(input.pendingPreviewVariants ?? []).map((variant) => variant.params),
-    ]);
-    const buckleyLeverettOverlayMode = resolveOverlayMode({
+    const overlayMode = descriptor.resolveOverlayMode({
         requested: requestedOverlayMode,
-        distinctByPhysics: distinctBuckleyLeverettOverlays,
-    });
-    const gasOilOverlayMode = resolveOverlayMode({
-        requested: requestedOverlayMode,
-        distinctByPhysics: distinctGasOilBLOverlays,
-    });
-    const depletionOverlayMode = resolveOverlayMode({
-        requested: requestedOverlayMode,
-        distinctByPhysics: false,
+        paramSets: [
+            ...orderedResults.map((result) => result.params),
+            ...(input.pendingPreviewVariants ?? []).map((variant) => variant.params),
+        ],
         analyticalPerVariant: input.analyticalPerVariant,
     });
     let hidesPendingAnalyticalWithoutMapping = false;
@@ -541,7 +449,7 @@ export function buildReferenceComparisonModel(input: {
 
     if (!family || orderedResults.length === 0) {
         if (orderedResults.length === 0 && input.previewAnalyticalMethod) {
-            if (requiresRunMappedAnalyticalXAxis(input.previewAnalyticalMethod, input.xAxisMode)) {
+            if (requiresRunMappedAnalyticalXAxis(descriptor.nativeXAxis, input.xAxisMode)) {
                 hidesPendingAnalyticalWithoutMapping = Boolean(
                     input.previewBaseParams || (input.previewVariantParams?.length ?? 0) > 0,
                 );
@@ -566,15 +474,15 @@ export function buildReferenceComparisonModel(input: {
                         ? [{ label: '', variantKey: 'base', params: input.previewBaseParams }]
                         : [];
             if (variants.length > 0) {
-                const analyticalPreviewVariants = input.previewAnalyticalMethod === 'buckley-leverett'
-                    && !usesRunMappedAnalyticalXAxis
-                    && buckleyLeverettOverlayMode === 'shared'
-                    ? [variants[0]]
-                    : input.previewAnalyticalMethod === 'gas-oil-bl'
-                    && !usesRunMappedAnalyticalXAxis
-                    && gasOilOverlayMode === 'shared'
-                    ? [variants[0]]
-                    : variants;
+                // A PVI-native solution that is identical across variants collapses
+                // to a single neutral preview curve; time-native methods keep one
+                // curve per variant because their solutions differ by construction.
+                const analyticalPreviewVariants =
+                    descriptor.nativeXAxis === 'pvi'
+                        && !usesRunMappedAnalyticalXAxis
+                        && overlayMode === 'shared'
+                        ? [variants[0]]
+                        : variants;
                 const previewPanels = suppressPrimaryAnalyticalOverlays
                     ? panels
                     : buildAnalyticalPreviewPanels(
@@ -1155,517 +1063,73 @@ export function buildReferenceComparisonModel(input: {
         };
     }
 
-    if (family.analyticalMethod === 'buckley-leverett' && !suppressPrimaryAnalyticalOverlays) {
-        const allSameAnalytical = buckleyLeverettOverlayMode === 'shared';
+    // ── Analytical reference overlays ──────────────────────────────────────
+    // Registry-driven (analyticalMethodRegistry.ts): the method descriptor owns
+    // which reference curves exist, which panel each lands in, and whether one
+    // shared curve or one curve per case is the correct representation. A method
+    // with no reference solution ('none', 'digitized-reference') has no slots and
+    // therefore emits nothing — it does not fall through to another method.
+    if (descriptor.fromResult && !suppressPrimaryAnalyticalOverlays) {
+        const useSharedOverlay = overlayMode === 'shared' && !usesRunMappedAnalyticalXAxis;
 
-        if (allSameAnalytical && !usesRunMappedAnalyticalXAxis) {
-            // Shared reference — one curve for all (analytical is grid/timestep-independent).
-            const refOverlay = buildBuckleyLeverettReference(baseResult, baseDerived, input.xAxisMode);
-            if (refOverlay.rates) {
-                appendSeries(panels.rates, {
-                    label: 'Reference Solution Water Cut',
-                    curveKey: 'water-cut-reference',
-                    toggleGroupKey: 'analytical-shared',
-                    toggleLabel: 'Analytical solution',
-                    legendSection: 'analytical',
-                    legendSectionLabel: LEGEND_SECTIONS.analytical,
-                    color: referenceColor,
-                    legendColor: legendGrey,
-                    borderWidth: ANALYTICAL_BORDER,
-                    borderDash: ANALYTICAL_DASH,
-                    yAxisID: 'y',
-                }, refOverlay.xValues, refOverlay.rates.values);
-            }
-            if (refOverlay.cumulative) {
-                appendSeries(panels.recovery, {
-                    label: 'Reference Solution Recovery',
-                    curveKey: 'recovery-factor-reference',
-                    toggleGroupKey: 'analytical-shared',
-                    toggleLabel: 'Analytical solution',
-                    legendSection: 'analytical',
-                    legendSectionLabel: LEGEND_SECTIONS.analytical,
-                    color: referenceColor,
-                    legendColor: legendGrey,
-                    borderWidth: ANALYTICAL_BORDER,
-                    borderDash: ANALYTICAL_DASH,
-                    yAxisID: 'y',
-                }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
+        if (useSharedOverlay) {
+            // One curve for all cases — valid only when the analytical physics is
+            // identical across them and no per-run axis remapping is needed.
+            const curveSet = descriptor.fromResult(baseResult, baseDerived, input.xAxisMode);
+            if (curveSet) {
+                appendAnalyticalSlots(
+                    panels,
+                    descriptor,
+                    'shared',
+                    curveSet,
+                    sharedAnalyticalStyle({ referenceColor, legendGrey }),
+                );
             }
         } else {
-            // Per-result analytical — either the analytical physics differs by case,
-            // or the selected x-axis requires remapping the same PVI solution onto
-            // each completed run's own time/injection history.
+            // Per-result — either the analytical physics differs by case, or the
+            // selected x-axis requires remapping the solution onto each completed
+            // run's own time/injection history.
             orderedResults.forEach((result, index) => {
                 const derived = derivedByKey.get(result.key);
                 if (!derived) return;
-                const color = getReferenceComparisonCaseColor(index);
-                const caseLabel = compactCaseLabel(result.label);
-                const refOverlay = buildBuckleyLeverettReference(result, derived, input.xAxisMode);
-                if (refOverlay.rates) {
-                    appendSeries(panels.rates, {
-                        label: `${result.label} — Reference`,
-                        curveKey: 'water-cut-reference',
+                const curveSet = descriptor.fromResult!(result, derived, input.xAxisMode);
+                if (!curveSet) return;
+                appendAnalyticalSlots(
+                    panels,
+                    descriptor,
+                    'per-result',
+                    curveSet,
+                    perCaseAnalyticalStyle({
+                        label: result.label,
                         caseKey: result.key,
-                        toggleGroupKey: result.key + '__ref',
-                        toggleLabel: caseLabel,
-                        legendSection: 'analytical',
-                        legendSectionLabel: LEGEND_SECTIONS.analytical,
-                        color,
-                        borderWidth: 1.5,
-                        borderDash: ANALYTICAL_DASH,
-                        yAxisID: 'y',
-                    }, refOverlay.xValues, refOverlay.rates.values);
-                }
-                if (refOverlay.cumulative) {
-                    appendSeries(panels.recovery, {
-                        label: `${result.label} — Reference Recovery`,
-                        curveKey: 'recovery-factor-reference',
-                        caseKey: result.key,
-                        toggleGroupKey: result.key + '__ref',
-                        toggleLabel: caseLabel,
-                        legendSection: 'analytical',
-                        legendSectionLabel: LEGEND_SECTIONS.analytical,
-                        color,
-                        borderWidth: 1.5,
-                        borderDash: ANALYTICAL_DASH,
-                        yAxisID: 'y',
-                    }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
-                }
+                        color: getReferenceComparisonCaseColor(index),
+                    }),
+                );
             });
 
-            // Analytical-only overlay for variants still queued/running.
-            // Color indices continue from orderedResults.length so each variant
-            // keeps the same color from initial preview → in-progress → completed.
+            // Analytical-only overlay for variants still queued/running. Color
+            // indices continue from orderedResults.length so each variant keeps
+            // the same color from preview → in-progress → completed.
             if (input.pendingPreviewVariants?.length) {
                 if (usesRunMappedAnalyticalXAxis) {
                     hidesPendingAnalyticalWithoutMapping = true;
-                }
-                if (!usesRunMappedAnalyticalXAxis) {
+                } else if (descriptor.fromParams) {
                     input.pendingPreviewVariants.forEach((variant, i) => {
-                        const color = getReferenceComparisonCaseColor(orderedResults.length + i);
-                        const curves = computeBLAnalyticalFromParams(variant.params);
-                        if (!curves) return;
-                        const vLabel = compactCaseLabel(variant.label);
-                        appendSeries(panels.rates, {
-                            label: `${variant.label} — Reference`,
-                            curveKey: 'water-cut-reference',
-                            caseKey: variant.variantKey,
-                            toggleGroupKey: variant.variantKey + '__ref',
-                            toggleLabel: vLabel,
-                            legendSection: 'analytical',
-                            legendSectionLabel: LEGEND_SECTIONS.analytical,
-                            color,
-                            borderWidth: 1.5,
-                            borderDash: ANALYTICAL_DASH,
-                            yAxisID: 'y',
-                        }, curves.xValues, curves.waterCut);
-                        appendSeries(panels.recovery, {
-                            label: `${variant.label} — Reference Recovery`,
-                            curveKey: 'recovery-factor-reference',
-                            caseKey: variant.variantKey,
-                            toggleGroupKey: variant.variantKey + '__ref',
-                            toggleLabel: vLabel,
-                            legendSection: 'analytical',
-                            legendSectionLabel: LEGEND_SECTIONS.analytical,
-                            color,
-                            borderWidth: 1.5,
-                            borderDash: ANALYTICAL_DASH,
-                            yAxisID: 'y',
-                        }, curves.xValues, curves.recovery);
+                        const curveSet = descriptor.fromParams!(variant.params, input.xAxisMode);
+                        if (!curveSet) return;
+                        appendAnalyticalSlots(
+                            panels,
+                            descriptor,
+                            'pending',
+                            curveSet,
+                            perCaseAnalyticalStyle({
+                                label: variant.label,
+                                caseKey: variant.variantKey,
+                                color: getReferenceComparisonCaseColor(orderedResults.length + i),
+                            }),
+                        );
                     });
                 }
-            }
-        }
-    } else if (family.analyticalMethod === 'gas-oil-bl') {
-        const allSameAnalytical = gasOilOverlayMode === 'shared';
-
-        if (allSameAnalytical && !usesRunMappedAnalyticalXAxis) {
-            const refOverlay = buildGasOilBLReference(baseResult, baseDerived, input.xAxisMode);
-            if (refOverlay.rates) {
-                appendSeries(panels.rates, {
-                    label: 'Reference Solution Gas Cut',
-                    curveKey: 'gas-cut-reference',
-                    toggleGroupKey: 'analytical-shared',
-                    toggleLabel: 'Analytical solution',
-                    legendSection: 'analytical',
-                    legendSectionLabel: LEGEND_SECTIONS.analytical,
-                    color: referenceColor,
-                    legendColor: legendGrey,
-                    borderWidth: ANALYTICAL_BORDER,
-                    borderDash: ANALYTICAL_DASH,
-                    yAxisID: 'y',
-                }, refOverlay.xValues, refOverlay.rates.values);
-            }
-            if (refOverlay.cumulative) {
-                appendSeries(panels.recovery, {
-                    label: 'Reference Solution Recovery',
-                    curveKey: 'recovery-factor-reference',
-                    toggleGroupKey: 'analytical-shared',
-                    toggleLabel: 'Analytical solution',
-                    legendSection: 'analytical',
-                    legendSectionLabel: LEGEND_SECTIONS.analytical,
-                    color: referenceColor,
-                    legendColor: legendGrey,
-                    borderWidth: ANALYTICAL_BORDER,
-                    borderDash: ANALYTICAL_DASH,
-                    yAxisID: 'y',
-                }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
-                appendSeries(panels.cumulative, {
-                    label: 'Reference Solution Cum Oil',
-                    curveKey: 'cum-oil-reference',
-                    toggleGroupKey: 'analytical-shared',
-                    toggleLabel: 'Analytical solution',
-                    legendSection: 'analytical',
-                    legendSectionLabel: LEGEND_SECTIONS.analytical,
-                    color: referenceColor,
-                    legendColor: legendGrey,
-                    borderWidth: ANALYTICAL_BORDER,
-                    borderDash: ANALYTICAL_DASH,
-                    yAxisID: 'y',
-                }, refOverlay.xValues, refOverlay.cumulative.cumulativeValues);
-            }
-        } else {
-            orderedResults.forEach((result, index) => {
-                const derived = derivedByKey.get(result.key);
-                if (!derived) return;
-                const color = getReferenceComparisonCaseColor(index);
-                const caseLabel = compactCaseLabel(result.label);
-                const refOverlay = buildGasOilBLReference(result, derived, input.xAxisMode);
-                if (refOverlay.rates) {
-                    appendSeries(panels.rates, {
-                        label: `${result.label} — Reference`,
-                        curveKey: 'gas-cut-reference',
-                        caseKey: result.key,
-                        toggleGroupKey: result.key + '__ref',
-                        toggleLabel: caseLabel,
-                        legendSection: 'analytical',
-                        legendSectionLabel: LEGEND_SECTIONS.analytical,
-                        color,
-                        borderWidth: 1.5,
-                        borderDash: ANALYTICAL_DASH,
-                        yAxisID: 'y',
-                    }, refOverlay.xValues, refOverlay.rates.values);
-                }
-                if (refOverlay.cumulative) {
-                    appendSeries(panels.recovery, {
-                        label: `${result.label} — Reference Recovery`,
-                        curveKey: 'recovery-factor-reference',
-                        caseKey: result.key,
-                        toggleGroupKey: result.key + '__ref',
-                        toggleLabel: caseLabel,
-                        legendSection: 'analytical',
-                        legendSectionLabel: LEGEND_SECTIONS.analytical,
-                        color,
-                        borderWidth: 1.5,
-                        borderDash: ANALYTICAL_DASH,
-                        yAxisID: 'y',
-                    }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
-                }
-            });
-
-            if (input.pendingPreviewVariants?.length) {
-                if (usesRunMappedAnalyticalXAxis) {
-                    hidesPendingAnalyticalWithoutMapping = true;
-                }
-                if (!usesRunMappedAnalyticalXAxis) {
-                    input.pendingPreviewVariants.forEach((variant, i) => {
-                        const color = getReferenceComparisonCaseColor(orderedResults.length + i);
-                        const curves = computeGasOilBLAnalyticalFromParams(variant.params);
-                        if (!curves) return;
-                        const vLabel = compactCaseLabel(variant.label);
-                        appendSeries(panels.rates, {
-                            label: `${variant.label} — Reference`,
-                            curveKey: 'gas-cut-reference',
-                            caseKey: variant.variantKey,
-                            toggleGroupKey: variant.variantKey + '__ref',
-                            toggleLabel: vLabel,
-                            legendSection: 'analytical',
-                            legendSectionLabel: LEGEND_SECTIONS.analytical,
-                            color,
-                            borderWidth: 1.5,
-                            borderDash: ANALYTICAL_DASH,
-                            yAxisID: 'y',
-                        }, curves.pviValues, curves.gasCut);
-                        appendSeries(panels.recovery, {
-                            label: `${variant.label} — Reference Recovery`,
-                            curveKey: 'recovery-factor-reference',
-                            caseKey: variant.variantKey,
-                            toggleGroupKey: variant.variantKey + '__ref',
-                            toggleLabel: vLabel,
-                            legendSection: 'analytical',
-                            legendSectionLabel: LEGEND_SECTIONS.analytical,
-                            color,
-                            borderWidth: 1.5,
-                            borderDash: ANALYTICAL_DASH,
-                            yAxisID: 'y',
-                        }, curves.pviValues, curves.recovery);
-                    });
-                }
-            }
-        }
-    } else if (family.analyticalMethod === 'well-test') {
-        // ── Well test (pressure transient) ─────────────────────────────────
-        // Always per-result: a drawdown reference depends on k, skin and rate,
-        // which is exactly what these scenarios vary, so a shared curve would
-        // be wrong for every variant but one.
-        orderedResults.forEach((result, index) => {
-            const derived = derivedByKey.get(result.key);
-            if (!derived) return;
-            const color = getReferenceComparisonCaseColor(index);
-            const caseLabel = compactCaseLabel(result.label);
-            const refOverlay = buildWellTestReference(result, derived, input.xAxisMode);
-            if (refOverlay.producerBhp) {
-                appendSeries(panels.producer_bhp, {
-                    label: `${result.label} — Reference Flowing BHP`,
-                    curveKey: 'producer-bhp-reference',
-                    caseKey: result.key,
-                    toggleGroupKey: result.key + '__ref',
-                    toggleLabel: caseLabel,
-                    legendSection: 'analytical',
-                    legendSectionLabel: LEGEND_SECTIONS.analytical,
-                    color,
-                    borderWidth: 1.5,
-                    borderDash: ANALYTICAL_DASH,
-                    yAxisID: 'y',
-                }, refOverlay.xValues, refOverlay.producerBhp.values);
-            }
-            if (refOverlay.rates) {
-                appendSeries(panels.oil_rate, {
-                    label: `${result.label} — Reference Oil Rate`,
-                    curveKey: 'oil-rate-reference',
-                    caseKey: result.key,
-                    toggleGroupKey: result.key + '__ref',
-                    toggleLabel: caseLabel,
-                    legendSection: 'analytical',
-                    legendSectionLabel: LEGEND_SECTIONS.analytical,
-                    color,
-                    borderWidth: 1.5,
-                    borderDash: ANALYTICAL_DASH,
-                    yAxisID: 'y',
-                }, refOverlay.xValues, refOverlay.rates.values);
-            }
-        });
-
-        // Analytical-only overlay for variants still queued/running.
-        if (input.pendingPreviewVariants?.length && !usesRunMappedAnalyticalXAxis) {
-            input.pendingPreviewVariants.forEach((variant, i) => {
-                const color = getReferenceComparisonCaseColor(orderedResults.length + i);
-                const curves = computeWellTestFromParams(variant.params, input.xAxisMode);
-                if (!curves) return;
-                appendSeries(panels.producer_bhp, {
-                    label: `${variant.label} — Reference Flowing BHP`,
-                    curveKey: 'producer-bhp-reference',
-                    caseKey: variant.variantKey,
-                    toggleGroupKey: variant.variantKey + '__ref',
-                    toggleLabel: compactCaseLabel(variant.label),
-                    legendSection: 'analytical',
-                    legendSectionLabel: LEGEND_SECTIONS.analytical,
-                    color,
-                    borderWidth: 1.5,
-                    borderDash: ANALYTICAL_DASH,
-                    yAxisID: 'y',
-                }, curves.xValues, curves.flowingBhp);
-            });
-        } else if (input.pendingPreviewVariants?.length) {
-            hidesPendingAnalyticalWithoutMapping = true;
-        }
-    } else {
-        // Depletion path.
-        if (depletionOverlayMode === 'per-result' || usesRunMappedAnalyticalXAxis) {
-            // Per-result analytical — each variant gets its own dashed reference curve
-            // in its case color so the user can directly compare sim vs. analytical.
-            orderedResults.forEach((result, index) => {
-                const derived = derivedByKey.get(result.key);
-                if (!derived) return;
-                const color = getReferenceComparisonCaseColor(index);
-                const caseLabel = compactCaseLabel(result.label);
-                const refOverlay = buildDepletionReference(result, derived, input.xAxisMode);
-                if (refOverlay.rates) {
-                    appendSeries(panels.rates, {
-                        label: `${result.label} — Reference`,
-                        curveKey: 'oil-rate-reference',
-                        caseKey: result.key,
-                        toggleGroupKey: result.key + '__ref',
-                        toggleLabel: caseLabel,
-                        legendSection: 'analytical',
-                        legendSectionLabel: LEGEND_SECTIONS.analytical,
-                        color,
-                        borderWidth: 1.5,
-                        borderDash: ANALYTICAL_DASH,
-                        yAxisID: 'y',
-                    }, refOverlay.xValues, refOverlay.rates.values);
-                }
-                if (refOverlay.cumulative) {
-                    appendSeries(panels.recovery, {
-                        label: `${result.label} — Reference Recovery`,
-                        curveKey: 'recovery-factor-reference',
-                        caseKey: result.key,
-                        toggleGroupKey: result.key + '__ref',
-                        toggleLabel: caseLabel,
-                        legendSection: 'analytical',
-                        legendSectionLabel: LEGEND_SECTIONS.analytical,
-                        color,
-                        borderWidth: 1.5,
-                        borderDash: ANALYTICAL_DASH,
-                        yAxisID: 'y',
-                    }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
-                    appendSeries(panels.cumulative, {
-                        label: `${result.label} — Reference Cum Oil`,
-                        curveKey: 'cum-oil-reference',
-                        caseKey: result.key,
-                        toggleGroupKey: result.key + '__ref',
-                        toggleLabel: caseLabel,
-                        legendSection: 'analytical',
-                        legendSectionLabel: LEGEND_SECTIONS.analytical,
-                        color,
-                        borderWidth: 1.5,
-                        borderDash: ANALYTICAL_DASH,
-                        yAxisID: 'y',
-                    }, refOverlay.xValues, refOverlay.cumulative.cumulativeValues);
-                }
-                if (refOverlay.diagnostics) {
-                    appendSeries(panels.diagnostics, {
-                        label: `${result.label} — Reference Pressure`,
-                        curveKey: 'avg-pressure-reference',
-                        caseKey: result.key,
-                        toggleGroupKey: result.key + '__ref',
-                        toggleLabel: caseLabel,
-                        legendSection: 'analytical',
-                        legendSectionLabel: LEGEND_SECTIONS.analytical,
-                        color,
-                        borderWidth: 1.5,
-                        borderDash: ANALYTICAL_DASH,
-                        yAxisID: 'y',
-                    }, refOverlay.xValues, refOverlay.diagnostics.values);
-                }
-            });
-
-            // Analytical-only overlay for variants still queued/running (pending).
-            if (input.pendingPreviewVariants?.length) {
-                if (usesRunMappedAnalyticalXAxis) {
-                    hidesPendingAnalyticalWithoutMapping = true;
-                }
-                if (!usesRunMappedAnalyticalXAxis) {
-                    input.pendingPreviewVariants.forEach((variant, i) => {
-                        const color = getReferenceComparisonCaseColor(orderedResults.length + i);
-                        const curves = computeDepletionAnalyticalFromParams(variant.params, input.xAxisMode);
-                        if (!curves) return;
-                        const vLabel = compactCaseLabel(variant.label);
-                        appendSeries(panels.rates, {
-                            label: `${variant.label} — Reference`,
-                            curveKey: 'oil-rate-reference',
-                            caseKey: variant.variantKey,
-                            toggleGroupKey: variant.variantKey + '__ref',
-                            toggleLabel: vLabel,
-                            legendSection: 'analytical',
-                            legendSectionLabel: LEGEND_SECTIONS.analytical,
-                            color,
-                            borderWidth: 1.5,
-                            borderDash: ANALYTICAL_DASH,
-                            yAxisID: 'y',
-                        }, curves.xValues, curves.oilRates);
-                        appendSeries(panels.recovery, {
-                            label: `${variant.label} — Reference Recovery`,
-                            curveKey: 'recovery-factor-reference',
-                            caseKey: variant.variantKey,
-                            toggleGroupKey: variant.variantKey + '__ref',
-                            toggleLabel: vLabel,
-                            legendSection: 'analytical',
-                            legendSectionLabel: LEGEND_SECTIONS.analytical,
-                            color,
-                            borderWidth: 1.5,
-                            borderDash: ANALYTICAL_DASH,
-                            yAxisID: 'y',
-                        }, curves.xValues, curves.recoveryValues);
-                        appendSeries(panels.cumulative, {
-                            label: `${variant.label} — Reference Cum Oil`,
-                            curveKey: 'cum-oil-reference',
-                            caseKey: variant.variantKey,
-                            toggleGroupKey: variant.variantKey + '__ref',
-                            toggleLabel: vLabel,
-                            legendSection: 'analytical',
-                            legendSectionLabel: LEGEND_SECTIONS.analytical,
-                            color,
-                            borderWidth: 1.5,
-                            borderDash: ANALYTICAL_DASH,
-                            yAxisID: 'y',
-                        }, curves.xValues, curves.cumulativeOilValues);
-                        appendSeries(panels.diagnostics, {
-                            label: `${variant.label} — Reference Pressure`,
-                            curveKey: 'avg-pressure-reference',
-                            caseKey: variant.variantKey,
-                            toggleGroupKey: variant.variantKey + '__ref',
-                            toggleLabel: vLabel,
-                            legendSection: 'analytical',
-                            legendSectionLabel: LEGEND_SECTIONS.analytical,
-                            color,
-                            borderWidth: 1.5,
-                            borderDash: ANALYTICAL_DASH,
-                            yAxisID: 'y',
-                        }, curves.xValues, curves.avgPressureValues);
-                    });
-                }
-            }
-        } else {
-            // Shared reference from base result — one curve for all cases.
-            const refOverlay = buildDepletionReference(baseResult, baseDerived, input.xAxisMode);
-            if (refOverlay.rates) {
-                appendSeries(panels.rates, {
-                    label: refOverlay.rates.label,
-                    curveKey: 'oil-rate-reference',
-                    toggleGroupKey: 'analytical-shared',
-                    toggleLabel: 'Analytical solution',
-                    legendSection: 'analytical',
-                    legendSectionLabel: LEGEND_SECTIONS.analytical,
-                    color: referenceColor,
-                    legendColor: legendGrey,
-                    borderWidth: ANALYTICAL_BORDER,
-                    borderDash: ANALYTICAL_DASH,
-                    yAxisID: 'y',
-                }, refOverlay.xValues, refOverlay.rates.values);
-            }
-            if (refOverlay.cumulative) {
-                appendSeries(panels.recovery, {
-                    label: refOverlay.cumulative.recoveryLabel,
-                    curveKey: 'recovery-factor-reference',
-                    toggleGroupKey: 'analytical-shared',
-                    toggleLabel: 'Analytical solution',
-                    legendSection: 'analytical',
-                    legendSectionLabel: LEGEND_SECTIONS.analytical,
-                    color: referenceColor,
-                    legendColor: legendGrey,
-                    borderWidth: ANALYTICAL_BORDER,
-                    borderDash: ANALYTICAL_DASH,
-                    yAxisID: 'y',
-                }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
-                appendSeries(panels.cumulative, {
-                    label: refOverlay.cumulative.cumulativeLabel,
-                    curveKey: 'cum-oil-reference',
-                    toggleGroupKey: 'analytical-shared',
-                    toggleLabel: 'Analytical solution',
-                    legendSection: 'analytical',
-                    legendSectionLabel: LEGEND_SECTIONS.analytical,
-                    color: referenceColor,
-                    legendColor: legendGrey,
-                    borderWidth: ANALYTICAL_BORDER,
-                    borderDash: ANALYTICAL_DASH,
-                    yAxisID: 'y',
-                }, refOverlay.xValues, refOverlay.cumulative.cumulativeValues);
-            }
-            if (refOverlay.diagnostics) {
-                appendSeries(panels.diagnostics, {
-                    label: refOverlay.diagnostics.label,
-                    curveKey: 'avg-pressure-reference',
-                    toggleGroupKey: 'analytical-shared',
-                    toggleLabel: 'Analytical solution',
-                    legendSection: 'analytical',
-                    legendSectionLabel: LEGEND_SECTIONS.analytical,
-                    color: referenceColor,
-                    legendColor: legendGrey,
-                    borderWidth: ANALYTICAL_BORDER,
-                    borderDash: ANALYTICAL_DASH,
-                    yAxisID: 'y',
-                }, refOverlay.xValues, refOverlay.diagnostics.values);
             }
         }
     }

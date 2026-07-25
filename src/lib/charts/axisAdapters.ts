@@ -223,21 +223,17 @@ export function interpolateXAxisAtTimes(
  * to be remapped from each completed simulation run's own axis values,
  * rather than plotted directly on their native PVI grid.
  *
+ * Takes the solution's native axis rather than the method name: which methods
+ * are PVI-native is declared once in `analyticalMethodRegistry.ts`, so this
+ * module stays a leaf and cannot drift out of sync with the method list.
  * BL-family solutions are natively PVI; any non-PVI axis requires run-based
- * remapping. Depletion solutions are natively in time; no remapping needed.
+ * remapping. Depletion and well-test solutions are natively in time.
  */
 export function requiresRunMappedAnalyticalXAxis(
-    analyticalMethod: string | null | undefined,
+    nativeXAxis: 'pvi' | 'time' | null | undefined,
     xAxisMode: RateChartXAxisMode,
 ): boolean {
-    if (
-        analyticalMethod === 'buckley-leverett' ||
-        analyticalMethod === 'waterflood' ||
-        analyticalMethod === 'gas-oil-bl'
-    ) {
-        return xAxisMode !== 'pvi';
-    }
-    return false;
+    return nativeXAxis === 'pvi' && xAxisMode !== 'pvi';
 }
 
 /**

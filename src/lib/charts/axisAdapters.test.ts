@@ -213,32 +213,26 @@ describe('interpolateXAxisAtTimes', () => {
 
 // ─── requiresRunMappedAnalyticalXAxis ────────────────────────────────────────
 
+// Takes the solution's native axis, not the method name — which methods are
+// PVI-native is declared once in analyticalMethodRegistry.ts and asserted there.
 describe('requiresRunMappedAnalyticalXAxis', () => {
-    it('returns false when method is buckley-leverett and axis is pvi', () => {
-        expect(requiresRunMappedAnalyticalXAxis('buckley-leverett', 'pvi')).toBe(false);
+    it('returns false when the solution is pvi-native and the axis is pvi', () => {
+        expect(requiresRunMappedAnalyticalXAxis('pvi', 'pvi')).toBe(false);
     });
 
-    it('returns true when method is buckley-leverett and axis is not pvi', () => {
-        expect(requiresRunMappedAnalyticalXAxis('buckley-leverett', 'time')).toBe(true);
-        expect(requiresRunMappedAnalyticalXAxis('buckley-leverett', 'cumInjection')).toBe(true);
-        expect(requiresRunMappedAnalyticalXAxis('buckley-leverett', 'logTime')).toBe(true);
+    it('returns true when the solution is pvi-native and the axis is not pvi', () => {
+        expect(requiresRunMappedAnalyticalXAxis('pvi', 'time')).toBe(true);
+        expect(requiresRunMappedAnalyticalXAxis('pvi', 'cumInjection')).toBe(true);
+        expect(requiresRunMappedAnalyticalXAxis('pvi', 'logTime')).toBe(true);
     });
 
-    it('returns true for waterflood alias on non-pvi axis', () => {
-        expect(requiresRunMappedAnalyticalXAxis('waterflood', 'time')).toBe(true);
+    it('returns false for a time-native solution on any axis', () => {
+        expect(requiresRunMappedAnalyticalXAxis('time', 'time')).toBe(false);
+        expect(requiresRunMappedAnalyticalXAxis('time', 'pvi')).toBe(false);
+        expect(requiresRunMappedAnalyticalXAxis('time', 'logTime')).toBe(false);
     });
 
-    it('returns true for gas-oil-bl on non-pvi axis', () => {
-        expect(requiresRunMappedAnalyticalXAxis('gas-oil-bl', 'time')).toBe(true);
-    });
-
-    it('returns false for depletion on any axis', () => {
-        expect(requiresRunMappedAnalyticalXAxis('depletion', 'time')).toBe(false);
-        expect(requiresRunMappedAnalyticalXAxis('depletion', 'pvi')).toBe(false);
-        expect(requiresRunMappedAnalyticalXAxis('depletion', 'logTime')).toBe(false);
-    });
-
-    it('returns false for null/undefined method', () => {
+    it('returns false when no native axis is known', () => {
         expect(requiresRunMappedAnalyticalXAxis(null, 'time')).toBe(false);
         expect(requiresRunMappedAnalyticalXAxis(undefined, 'pvi')).toBe(false);
     });

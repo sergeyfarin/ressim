@@ -69,25 +69,70 @@ Remaining (envelope limits, not validation debt):
 - `gas_injection` has no OPM reference of its own (covered indirectly by SPE1).
 - The +4 % cumulative-oil bias vs OPM on `gas_drive` is inside band but unexplained.
 
-### 1.3 Regression coverage gaps
+### 1.3 Regression coverage gaps — DONE 2026-07-25
 
-- Add missing comparison-model tests for preview-only cases, per-variant depletion analytics, and color-index stability.
-- Add a regression guard for the duplicated undersaturated `c_o = 1e-5 /bar` assumption shared by `physics/pvt.ts` and `analytical/materialBalance.ts`.
+Done:
+- **Comparison-model tests** added to `src/lib/charts/referenceComparisonModel.test.ts` (42 tests,
+  was 34): preview-only cases (declaration-order `colorIndex`, single-variant staying out of the
+  cases selector and drawn neutral, `previewBaseParams` fallback), per-variant depletion analytics
+  (one dashed reference per completed run vs. one shared `analytical-shared` curve, pending-variant
+  overlays), and color-index stability (a pending variant holds its declared palette slot across
+  0/1/2 completed runs, chip color equals its dashed-curve color and survives completion, palette
+  wraparound at index 20).
+- **`c_o` regression guard** in `src/lib/analytical/materialBalance.test.ts`: the numeric agreement
+  test is now backed by a source-shape guard (exactly one definition of
+  `DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR`, no re-introduced `c_o = 1e-5` literal in
+  either `physics/pvt.ts` or `analytical/materialBalance.ts`) and a cross-language check that the
+  Rust `FluidProperties::default_pvt()` `c_o` still equals the frontend constant.
+
+Replay: `pnpm run typecheck && pnpm run lint && pnpm test` — 726 passed / 15 skipped, measured
+2026-07-25 on the working tree that adds these tests (parent commit `e824198`).
 
 ## Priority 2: Analytical Method Integrity
 
 ### 2.1 Enforce one analytical method per scenario
 
-- Promote sweep to a first-class analytical family in scenario capabilities instead of partially piggybacking on Buckley-Leverett semantics.
-- Make invalid primary-rate and overlay combinations impossible at the type / config level, not just test-detected.
-- Route benchmark disclosure and comparison metadata through the same analytical-method contract.
+**Step 1 of 4 — DONE 2026-07-25: analytical-method registry.**
+
+`src/lib/charts/analyticalMethodRegistry.ts` is now the single routing table for the comparison
+chart stack. Each `AnalyticalMethod` declares its curve slots (panel + curve key + label per
+context), overlay builders, overlay-mode rule, native x-axis, panel presentation and disclosure
+wording. `buildChartData.ts` walks those slots in one generic loop instead of a four-way branch
+ladder repeated across four contexts, and `ReferenceComparisonChart.svelte`,
+`benchmarkDisclosure.ts` and `axisAdapters.ts` read the registry instead of carrying their own
+copies of the same branch. Adding an analytical method is now: write the overlay builder, add one
+registry entry.
+
+This also closed a real defect it exposed. The old branch ladder ended in a bare `else` that ran
+the *depletion* overlay path, so `wf_tornado` and `wf_bl1d_opm` — both `analyticalMethod: 'none'` —
+were rendering depletion recovery and cum-oil reference curves. Measured before/after and pinned by
+`referenceComparisonModel.test.ts` → "emits no analytical reference curves for a scenario with
+analyticalMethod none". Sweep scenarios were also silently building depletion overlays that
+`suppressPrimaryAnalyticalPanels()` then stripped; the rendered result there is unchanged.
+
+Replay: `pnpm run validate` — 737 passed / 15 skipped, measured 2026-07-25 on the working tree that
+adds the registry (parent commit `e824198`).
+
+Remaining:
+- **Step 2** — promote sweep to a first-class `'sweep'` analytical method instead of piggybacking on
+  Buckley-Leverett plus a `showSweepPanel` flag. Its descriptor declares no primary curve slots,
+  which deletes `suppressPrimaryAnalyticalOverlays`, the layout-substring inference in
+  `suppressesPrimaryAnalyticalOverlays()`, the negative validator in `validateScenarioChartLayout()`,
+  and the last `showSweepPanel === true` routing conditions.
+- **Step 3** — make invalid primary-rate and overlay combinations impossible at the type level: turn
+  `ScenarioCapabilities` into a discriminated union on `analyticalMethod` so `sweepGeometry` is
+  required-on-sweep and unrepresentable elsewhere, and `primaryRateCurve` narrows to the method's
+  supported set. Most of `validateScenarioCapabilities()` then becomes redundant.
+- **Step 4** — declare reference sources explicitly (one `referenceSources` list replacing
+  `publishedReferenceSeries`, `opmFlowReferenceArtifactKeys`, and the implicit scenario-key match in
+  `getOpmFlowPublishedReferenceSeries`), so a scenario file states which references its charts show.
 
 Why next:
 - This removes a class of ambiguous chart and policy behavior before more analytical methods are added.
 
 ### 2.2 Finish the sweep-method framework
 
-- Generalize the current `sweep_combined` Stiles / Dykstra-Parsons toggle so other sweep scenarios can opt into multiple analytical methods without custom wiring.
+- Generalize the current `sweep_combined` Stiles / Dykstra-Parsons toggle so other sweep scenarios can opt into multiple analytical methods without custom wiring. Blocked on 2.1 step 2: once `'sweep'` is a method, its capabilities carry `sweepMethods: SweepAnalyticalMethod[]` and the per-method label/summary/reference prose moves to a table beside `sweepEfficiency.ts`, so `sweep_areal` and `sweep_vertical` get the toggle without hand-written `analyticalOptions`.
 - Keep the semantics explicit: total recovery comparison can improve while decomposition panels remain teaching diagnostics.
 - Document the `sweep_areal` quarter-five-spot interpretation so users do not mistake the outer no-flow boundaries for a gridding bug.
 

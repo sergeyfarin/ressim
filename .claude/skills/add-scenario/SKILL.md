@@ -20,7 +20,13 @@ Scenarios are the product's core content unit: a self-describing definition that
    - Required: `key`, `label`, `description`, `analyticalMethodSummary`, `analyticalMethodReference` (cite the actual literature), `chartLayoutKey`, `capabilities`, `params`, `analyticalDef`, `liveChartPanels`, `sensitivities`, `defaultSensitivityDimensionKey`.
    - `capabilities` routes everything: `analyticalMethod`, `hasInjector`, `showSweepPanel`, `default3DScalar`, `requiresThreePhaseMode`.
 2. **Register** it in `src/lib/catalog/scenarios.ts` (import + registry entry). That file is the single source of truth.
-3. **Analytical wiring**: reuse an existing `analyticalDef` from `src/lib/catalog/analyticalAdapters.ts` if the method exists. A genuinely new method needs: the math in `src/lib/analytical/` with its own unit tests against known values, an adapter in `analyticalAdapters.ts`, and an entry in the `AnalyticalMethod` union — this is a bigger change; keep it a separate commit.
+3. **Analytical wiring**: reuse an existing `analyticalDef` from `src/lib/catalog/analyticalAdapters.ts` if the method exists. A genuinely new method needs, in order — this is a bigger change; keep it a separate commit:
+   - the math in `src/lib/analytical/` with its own unit tests against known values;
+   - an adapter in `analyticalAdapters.ts` (live path) and an overlay builder in `charts/referenceOverlayBuilders.ts` + a `compute…FromParams` in `charts/analyticalParamAdapters.ts` (comparison path);
+   - an entry in the `AnalyticalMethod` union and in `ANALYTICAL_OUTPUT_CONTRACTS` (`catalog/scenarios.ts`);
+   - **one `AnalyticalMethodDescriptor` in `charts/analyticalMethodRegistry.ts`** — curve slots, overlay builders, overlay-mode rule, native x-axis, panel presentation, disclosure label.
+
+   That last entry is the whole comparison-chart wiring. Do **not** add an `if (analyticalMethod === …)` branch to `buildChartData.ts`, `ReferenceComparisonChart.svelte` or `benchmarkDisclosure.ts` — they are registry-driven. See the `frontend-architecture` skill.
 4. **Charts**: pick or compose `liveChartPanels` from `src/lib/catalog/chartPanels/`; pick `chartLayoutKey` from `chartLayouts.ts`. Follow the `CurveConfig[]` / `toggleGroupKey` / `legendSection` pattern — never bypass `ChartSubPanel`.
 5. **Sensitivities**: dimension keys are `lower_snake`; variant keys are `{dim_abbrev}_{value_tag}` (`mob_favorable`, `sor_low`). Every variant needs a `paramPatch` and an honest `affectsAnalytical` flag.
    - `affectsAnalytical: true` is **test-enforced**: a contract test verifies the patch actually perturbs the analytical result. A variant that only changes `steps` or grid must be `false`.

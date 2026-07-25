@@ -7,6 +7,7 @@ import { buildBenchmarkRunResult } from '../benchmarkRunModel';
 import type { BenchmarkRunSpec } from '../benchmarkRunModel';
 import type { SimulatorSnapshot } from '../simulator-types';
 import { buildReferenceComparisonModel } from './buildChartData';
+import { getReferenceColor, getReferenceComparisonCaseColor } from './referenceChartTypes';
 
 // Live scenarios stand in for the archived bl_case_a_refined/dietz_sq_center
 // benchmark-family fixtures (see .archive/README.md, TODO.md): wf_bl1d for
@@ -1112,11 +1113,13 @@ describe('referenceComparisonModel', () => {
     });
 
     it('hides waterflood analytical preview curves on time axis until runs exist for remapping', () => {
+        // 'waterflood' was accepted here as an untyped alias for
+        // 'buckley-leverett'; previewAnalyticalMethod is now typed AnalyticalMethod.
         const model = buildReferenceComparisonModel({
             family: null,
             results: [],
             xAxisMode: 'time',
-            previewAnalyticalMethod: 'waterflood',
+            previewAnalyticalMethod: 'buckley-leverett',
             previewVariantParams: [
                 { label: 'Base', variantKey: 'base', params: { s_wc: 0.1, s_or: 0.1, n_w: 2, n_o: 2, k_rw_max: 1, k_ro_max: 1, mu_w: 0.5, mu_o: 1.0, initialSaturation: 0.1 } },
             ],
@@ -1662,5 +1665,292 @@ describe('referenceComparisonModel', () => {
 
         expect(completedModel.panels.rates.curves.filter((curve) => curve.curveKey === 'gas-cut-reference')).toHaveLength(1);
         expect(completedModel.panels.recovery.curves.filter((curve) => curve.curveKey === 'recovery-factor-reference')).toHaveLength(1);
+    });
+
+    // ── Preview-only cases (no completed runs) ────────────────────────────────
+
+    it('exposes preview-only cases with declaration-order color indices before any run completes', () => {
+        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const previewVariantParams = [
+            { label: '10 mD', variantKey: 'perm_low', params: { ...baseSpec.params, uniformPermX: 10, uniformPermY: 10 } },
+            { label: '100 mD', variantKey: 'perm_mid', params: { ...baseSpec.params } },
+            { label: '1000 mD', variantKey: 'perm_high', params: { ...baseSpec.params, uniformPermX: 1000, uniformPermY: 1000 } },
+        ];
+
+        const model = buildReferenceComparisonModel({
+            family: buildScenarioFamily('dep_pss'),
+            results: [],
+            xAxisMode: 'time',
+            analyticalPerVariant: true,
+            previewVariantParams,
+            previewAnalyticalMethod: 'depletion',
+        });
+
+        expect(model.previewCases).toEqual([
+            { key: 'perm_low', label: '10 mD', colorIndex: 0 },
+            { key: 'perm_mid', label: '100 mD', colorIndex: 1 },
+            { key: 'perm_high', label: '1000 mD', colorIndex: 2 },
+        ]);
+        // The cases selector paints each chip with getReferenceComparisonCaseColor(colorIndex),
+        // so the preview curve for the same variant must use that exact palette entry.
+        previewVariantParams.forEach((variant, index) => {
+            const curve = model.panels.rates.curves.find((c) => c.caseKey === variant.variantKey);
+            expect(curve?.color).toBe(getReferenceComparisonCaseColor(index));
+        });
+        expect(model.orderedResults).toHaveLength(0);
+        expect(model.axisMappingWarning).toBeNull();
+    });
+
+    it('leaves a single preview variant out of the cases selector and draws it neutral', () => {
+        const baseSpec = buildScenarioRunSpec('dep_pss');
+
+        const model = buildReferenceComparisonModel({
+            family: buildScenarioFamily('dep_pss'),
+            results: [],
+            xAxisMode: 'time',
+            theme: 'dark',
+            analyticalPerVariant: true,
+            previewVariantParams: [
+                { label: 'Base', variantKey: 'base', params: { ...baseSpec.params } },
+            ],
+            previewAnalyticalMethod: 'depletion',
+        });
+
+        // One variant is not a comparison — no toggle buttons, and the curve keeps the
+        // neutral high-contrast reference color rather than claiming palette slot 0.
+        expect(model.previewCases).toHaveLength(0);
+        const curve = model.panels.rates.curves.find((c) => c.curveKey === 'oil-rate-reference');
+        expect(curve).toBeDefined();
+        expect(curve?.caseKey).toBeUndefined();
+        expect(curve?.color).toBe(getReferenceColor('dark'));
+        expect(curve?.label).toBe('Analytical Oil Rate');
+    });
+
+    it('falls back to the single base preview when no variant params are supplied', () => {
+        const baseSpec = buildScenarioRunSpec('dep_pss');
+
+        const model = buildReferenceComparisonModel({
+            family: buildScenarioFamily('dep_pss'),
+            results: [],
+            xAxisMode: 'time',
+            previewBaseParams: { ...baseSpec.params },
+            previewAnalyticalMethod: 'depletion',
+        });
+
+        expect(model.previewCases).toHaveLength(0);
+        expect(model.panels.rates.curves.filter((c) => c.curveKey === 'oil-rate-reference')).toHaveLength(1);
+        expect(model.panels.diagnostics.curves.filter((c) => c.curveKey === 'avg-pressure-reference')).toHaveLength(1);
+        expect(model.panels.rates.series[0]?.length).toBeGreaterThan(0);
+    });
+
+    // ── Per-variant depletion analytics ───────────────────────────────────────
+
+    it('builds one dashed depletion reference per completed run when analytics are per-variant', () => {
+        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const lowSpec = buildVariantSpec(baseSpec, 'dep_pss_low', 'Low perm', { uniformPermX: 50, uniformPermY: 50 });
+        const highSpec = buildVariantSpec(baseSpec, 'dep_pss_high', 'High perm', { uniformPermX: 500, uniformPermY: 500 });
+        const results = [lowSpec, highSpec].map((spec) => buildBenchmarkRunResult({
+            spec,
+            rateHistory: buildDepletionReferenceRateHistory(spec.params),
+        }));
+
+        const model = buildReferenceComparisonModel({
+            family: buildScenarioFamily('dep_pss'),
+            results,
+            xAxisMode: 'time',
+            analyticalPerVariant: true,
+        });
+
+        for (const [panelKey, curveKey] of [
+            ['rates', 'oil-rate-reference'],
+            ['recovery', 'recovery-factor-reference'],
+            ['cumulative', 'cum-oil-reference'],
+            ['diagnostics', 'avg-pressure-reference'],
+        ] as const) {
+            const refCurves = model.panels[panelKey].curves.filter((c) => c.curveKey === curveKey);
+            expect(refCurves.map((c) => c.caseKey)).toEqual([lowSpec.key, highSpec.key]);
+            // Each reference shares its run's case color and sits in a per-case toggle group
+            // so a case can be hidden together with its own analytical curve.
+            refCurves.forEach((curve, index) => {
+                expect(curve.color).toBe(getReferenceComparisonCaseColor(index));
+                expect(curve.toggleGroupKey).toBe(`${results[index].key}__ref`);
+                expect(curve.borderDash).toBeDefined();
+            });
+        }
+    });
+
+    it('collapses depletion analytics to one shared reference when analytics are not per-variant', () => {
+        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const lowSpec = buildVariantSpec(baseSpec, 'dep_pss_low', 'Low perm', { uniformPermX: 50, uniformPermY: 50 });
+        const highSpec = buildVariantSpec(baseSpec, 'dep_pss_high', 'High perm', { uniformPermX: 500, uniformPermY: 500 });
+        const results = [lowSpec, highSpec].map((spec) => buildBenchmarkRunResult({
+            spec,
+            rateHistory: buildDepletionReferenceRateHistory(spec.params),
+        }));
+
+        const model = buildReferenceComparisonModel({
+            family: buildScenarioFamily('dep_pss'),
+            results,
+            xAxisMode: 'time',
+            analyticalPerVariant: false,
+        });
+
+        const refCurves = model.panels.rates.curves.filter((c) => c.curveKey === 'oil-rate-reference');
+        expect(refCurves).toHaveLength(1);
+        expect(refCurves[0].caseKey).toBeUndefined();
+        expect(refCurves[0].toggleGroupKey).toBe('analytical-shared');
+        // Both simulation curves stay per-case regardless of the analytical mode.
+        expect(model.panels.rates.curves.filter((c) => c.curveKey === 'oil-rate-sim').map((c) => c.caseKey))
+            .toEqual([lowSpec.key, highSpec.key]);
+    });
+
+    it('overlays per-variant depletion analytics for variants that are still pending', () => {
+        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const lowSpec = buildVariantSpec(baseSpec, 'dep_pss_low', 'Low perm', { uniformPermX: 50, uniformPermY: 50 });
+        const highSpec = buildVariantSpec(baseSpec, 'dep_pss_high', 'High perm', { uniformPermX: 500, uniformPermY: 500 });
+        const completed = buildBenchmarkRunResult({
+            spec: lowSpec,
+            rateHistory: buildDepletionReferenceRateHistory(lowSpec.params),
+        });
+        const pendingVariant = { label: highSpec.label, variantKey: highSpec.key, params: highSpec.params };
+
+        const model = buildReferenceComparisonModel({
+            family: buildScenarioFamily('dep_pss'),
+            results: [completed],
+            xAxisMode: 'time',
+            analyticalPerVariant: true,
+            previewVariantParams: [
+                { label: lowSpec.label, variantKey: lowSpec.key, params: lowSpec.params },
+                pendingVariant,
+            ],
+            pendingPreviewVariants: [pendingVariant],
+        });
+
+        expect(model.previewCases.map((entry) => entry.key)).toEqual([pendingVariant.variantKey]);
+
+        const refCurves = model.panels.rates.curves.filter((c) => c.curveKey === 'oil-rate-reference');
+        expect(refCurves.map((c) => c.caseKey)).toEqual([completed.key, pendingVariant.variantKey]);
+        const pendingIndex = model.panels.rates.curves.findIndex(
+            (c) => c.curveKey === 'oil-rate-reference' && c.caseKey === pendingVariant.variantKey,
+        );
+        expect(model.panels.rates.series[pendingIndex]?.length).toBeGreaterThan(0);
+        // No simulation curve exists yet for the pending variant — only its analytical overlay.
+        expect(model.panels.rates.curves.filter((c) => c.curveKey === 'oil-rate-sim').map((c) => c.caseKey))
+            .toEqual([completed.key]);
+        expect(model.axisMappingWarning).toBeNull();
+    });
+
+    // ── Color-index stability ─────────────────────────────────────────────────
+
+    it('keeps a pending variant on its declared color index after earlier variants complete', () => {
+        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const specs = [
+            buildVariantSpec(baseSpec, 'dep_pss_a', 'A', { uniformPermX: 50, uniformPermY: 50 }),
+            buildVariantSpec(baseSpec, 'dep_pss_b', 'B', { uniformPermX: 200, uniformPermY: 200 }),
+            buildVariantSpec(baseSpec, 'dep_pss_c', 'C', { uniformPermX: 500, uniformPermY: 500 }),
+        ];
+        const previewVariantParams = specs.map((spec) => ({
+            label: spec.label,
+            variantKey: spec.key,
+            params: spec.params,
+        }));
+
+        // Sweep progress: nothing done → first done → first two done. The third variant must
+        // hold palette slot 2 throughout, otherwise its chart color jumps as the sweep runs.
+        const colorIndexOfC: Array<number | undefined> = [0, 1, 2].map((completedCount) => {
+            const results = specs.slice(0, completedCount).map((spec) => buildBenchmarkRunResult({
+                spec,
+                rateHistory: buildDepletionReferenceRateHistory(spec.params),
+            }));
+            const model = buildReferenceComparisonModel({
+                family: buildScenarioFamily('dep_pss'),
+                results,
+                xAxisMode: 'time',
+                analyticalPerVariant: true,
+                previewVariantParams,
+                pendingPreviewVariants: previewVariantParams.slice(completedCount),
+                previewAnalyticalMethod: 'depletion',
+            });
+            return model.previewCases.find((entry) => entry.key === 'dep_pss_c')?.colorIndex;
+        });
+
+        expect(colorIndexOfC).toEqual([2, 2, 2]);
+    });
+
+    it('gives a completed run and its pending-preview chip the same palette color', () => {
+        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const specs = [
+            buildVariantSpec(baseSpec, 'dep_pss_a', 'A', { uniformPermX: 50, uniformPermY: 50 }),
+            buildVariantSpec(baseSpec, 'dep_pss_b', 'B', { uniformPermX: 500, uniformPermY: 500 }),
+        ];
+        const previewVariantParams = specs.map((spec) => ({
+            label: spec.label,
+            variantKey: spec.key,
+            params: spec.params,
+        }));
+
+        const midSweep = buildReferenceComparisonModel({
+            family: buildScenarioFamily('dep_pss'),
+            results: [buildBenchmarkRunResult({
+                spec: specs[0],
+                rateHistory: buildDepletionReferenceRateHistory(specs[0].params),
+            })],
+            xAxisMode: 'time',
+            analyticalPerVariant: true,
+            previewVariantParams,
+            pendingPreviewVariants: [previewVariantParams[1]],
+        });
+
+        // The chip color and the dashed analytical curve for the same pending variant must agree.
+        const chipColorIndex = midSweep.previewCases.find((entry) => entry.key === 'dep_pss_b')?.colorIndex;
+        expect(chipColorIndex).toBe(1);
+        const pendingCurve = midSweep.panels.rates.curves.find(
+            (c) => c.curveKey === 'oil-rate-reference' && c.caseKey === 'dep_pss_b',
+        );
+        expect(pendingCurve?.color).toBe(getReferenceComparisonCaseColor(chipColorIndex!));
+
+        // Once that variant completes it keeps the same color, so nothing recolors mid-sweep.
+        const completed = buildReferenceComparisonModel({
+            family: buildScenarioFamily('dep_pss'),
+            results: specs.map((spec) => buildBenchmarkRunResult({
+                spec,
+                rateHistory: buildDepletionReferenceRateHistory(spec.params),
+            })),
+            xAxisMode: 'time',
+            analyticalPerVariant: true,
+        });
+        expect(completed.panels.rates.curves.find(
+            (c) => c.curveKey === 'oil-rate-sim' && c.caseKey === 'dep_pss_b',
+        )?.color).toBe(getReferenceComparisonCaseColor(1));
+    });
+
+    // Before the analytical-method registry, buildChartData's if/else-if ladder
+    // ended in a bare `else` that ran the depletion overlay path, so a scenario
+    // declaring analyticalMethod: 'none' still got depletion recovery and
+    // cum-oil reference curves drawn against it (ROADMAP 2.1). A method with no
+    // reference solution must now emit nothing.
+    it('emits no analytical reference curves for a scenario with analyticalMethod none', () => {
+        const spec = buildScenarioRunSpec('wf_tornado');
+        const model = buildReferenceComparisonModel({
+            family: buildScenarioFamily('wf_tornado'),
+            results: [buildBenchmarkRunResult({
+                spec,
+                rateHistory: buildSyntheticWaterfloodRateHistory(spec.params, 0.35),
+            })],
+            xAxisMode: 'time',
+        });
+
+        const referenceCurveKeys = Object.values(model.panels)
+            .flatMap((panel) => panel?.curves ?? [])
+            .map((curve) => curve.curveKey ?? '')
+            .filter((curveKey) => curveKey.endsWith('-reference'));
+        expect(referenceCurveKeys).toEqual([]);
+    });
+
+    it('wraps case colors around the palette instead of returning undefined', () => {
+        const distinct = new Set(Array.from({ length: 20 }, (_, i) => getReferenceComparisonCaseColor(i)));
+        expect(distinct.size).toBe(20);
+        expect(getReferenceComparisonCaseColor(20)).toBe(getReferenceComparisonCaseColor(0));
+        expect(getReferenceComparisonCaseColor(41)).toBe(getReferenceComparisonCaseColor(1));
     });
 });

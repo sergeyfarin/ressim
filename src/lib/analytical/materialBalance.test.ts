@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFile } from 'node:fs/promises';
 import { calculateMaterialBalance, evaluateBlackOilPvt, type MaterialBalanceParams } from './materialBalance';
 import { generateBlackOilTable, DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR } from '../physics/pvt';
 
@@ -213,5 +214,37 @@ describe('undersaturated Bo shrinkage stays consistent between pvt.ts and materi
 
         expect(analyticalBo).toBeCloseTo(tableRowAtTestPressure.bo_m3m3, 9);
         expect(DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR).toBe(1e-5);
+    });
+
+    it('keeps both undersaturated-Bo call sites on the shared constant, with no re-introduced literal', async () => {
+        // Regression guard: the two files previously each carried their own `1e-5`. The numeric
+        // agreement above would still hold the moment a literal is pasted back in, so also assert
+        // the source shape: exactly one definition of the constant, and no bare literal next to a
+        // `c_o` in either consumer.
+        const [pvtSource, mbSource] = await Promise.all([
+            readFile(new URL('../physics/pvt.ts', import.meta.url), 'utf8'),
+            readFile(new URL('./materialBalance.ts', import.meta.url), 'utf8'),
+        ]);
+
+        const definitions = pvtSource.match(/export const DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR/g) ?? [];
+        expect(definitions).toHaveLength(1);
+        expect(mbSource).not.toMatch(/export const DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR/);
+        expect(mbSource).toMatch(/DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR/);
+
+        // `const c_o = 1e-5` / `c_o: 1e-5` style re-hardcoding in either file.
+        const hardcoded = /\bc_o\b\s*[:=]\s*1(\.0+)?e-0?5/;
+        expect(pvtSource).not.toMatch(hardcoded);
+        expect(mbSource).not.toMatch(hardcoded);
+    });
+
+    it('matches the Rust engine default oil compressibility', async () => {
+        // The engine's FluidProperties::default_pvt() and the frontend constant are independent
+        // declarations of the same assumption (docs/BLACK_OIL_VALIDATION.md §3). If they drift,
+        // an analytical material-balance overlay silently grades a simulation run against a
+        // different undersaturated PVT than the simulator used.
+        const engineSource = await readFile(new URL('../ressim/src/lib.rs', import.meta.url), 'utf8');
+        const match = engineSource.match(/fn default_pvt\(\) -> Self \{[\s\S]*?c_o:\s*([0-9eE.+-]+)\s*,/);
+        expect(match, 'FluidProperties::default_pvt() c_o not found in src/lib/ressim/src/lib.rs').not.toBeNull();
+        expect(Number(match![1])).toBe(DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR);
     });
 });

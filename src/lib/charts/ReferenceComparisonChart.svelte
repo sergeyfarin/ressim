@@ -36,6 +36,8 @@
         SCALE_SWEEP,
     } from './scalePresetRegistry';
     import { PANEL_DEFS } from './panelDefs';
+    import { getAnalyticalMethodDescriptor } from './analyticalMethodRegistry';
+    import type { AnalyticalMethod } from '../catalog/scenarios';
     import { resolveHistoryDivider } from './historyDivider';
     import type { HistoryWindow } from '../catalog/scenarios';
 
@@ -68,7 +70,7 @@
         pendingPreviewVariants?: AnalyticalPreviewVariant[];
         /** Single-curve fallback preview (analyticalPerVariant=false). */
         previewBaseParams?: Record<string, any>;
-        previewAnalyticalMethod?: string;
+        previewAnalyticalMethod?: AnalyticalMethod;
     } = $props();
 
     function createDefaultPanelExpandedState(): Record<RateChartPanelId, boolean> {
@@ -140,7 +142,9 @@
 
 
     $effect(() => {
-        if (isPreviewMode && (previewAnalyticalMethod === 'buckley-leverett' || previewAnalyticalMethod === 'waterflood' || previewAnalyticalMethod === 'gas-oil-bl')) {
+        // A PVI-native solution previews on its own axis until runs exist to
+        // remap it; the registry owns which methods those are.
+        if (isPreviewMode && getAnalyticalMethodDescriptor(previewAnalyticalMethod).nativeXAxis === 'pvi') {
             xAxisMode = 'pvi';
         }
     });
@@ -332,35 +336,29 @@
         };
     }
 
+    // Panel presentation comes from the active analytical method's descriptor
+    // (analyticalMethodRegistry.ts) layered over PANEL_DEFS. Two overrides stay
+    // here because they are not method-derived: sweep is still a capability flag
+    // rather than an analytical method (ROADMAP 2.1), and gas context is sniffed
+    // from run params.
     const panelFallbacks = $derived.by((): Record<RateChartPanelId, ChartPanelFallback> => {
-        const isBL = family?.analyticalMethod === 'buckley-leverett';
-        const isGasOilBL = family?.analyticalMethod === 'gas-oil-bl';
+        const presentation = getAnalyticalMethodDescriptor(family?.analyticalMethod).panelPresentation;
         const isSweep = family?.showSweepPanel === true;
         return {
             ...PANEL_DEFS,
             rates: {
                 ...PANEL_DEFS.rates,
-                title: isSweep ? 'Watercut' : isBL ? 'Breakthrough' : isGasOilBL ? 'Gas Breakthrough' : 'Oil Rate',
-                curveKeys: isSweep
-                    ? ['water-cut-sim']
-                    : isBL
-                    ? ['water-cut-sim', 'water-cut-reference']
-                    : isGasOilBL
-                    ? ['gas-cut-sim', 'gas-cut-reference']
-                    : ['oil-rate-sim', 'oil-rate-reference'],
-                scalePreset: (isBL || isGasOilBL) ? 'breakthrough' : 'rates',
-                allowLogToggle: family?.analyticalMethod === 'depletion',
+                ...presentation.rates,
+                ...(isSweep ? { title: 'Watercut', curveKeys: ['water-cut-sim'] } : {}),
             },
             cumulative: {
                 ...PANEL_DEFS.cumulative,
-                curveKeys: isSweep
-                    ? ['cum-oil-sim']
-                    : isBL
-                    ? ['cum-oil-sim', 'cum-oil-reference', 'cum-injection']
-                    : ['cum-oil-sim', 'cum-oil-reference'],
+                ...presentation.cumulative,
+                ...(isSweep ? { curveKeys: ['cum-oil-sim'] } : {}),
             },
             diagnostics: {
                 ...PANEL_DEFS.diagnostics,
+                ...presentation.diagnostics,
                 title: isGasContext ? 'Material Balance (P/z)' : 'Pressure',
                 curveKeys: isSweep
                     ? ['avg-pressure-sim']

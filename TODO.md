@@ -147,6 +147,13 @@ Measured all 130 catalog cases headless in Node against the committed wasm
   cleanly on the multi-generation chart stack without growing `buildChartData.ts` (forbidden by the
   frontend-architecture skill). Schedule a scoped ROADMAP P3.1 / COMPARISON_TOOLBOX Phase B pass
   before more chart features.
+- [ ] **Pending-overlay case colors are position-derived, not identity-derived.** In
+  `buildChartData.ts` the dashed overlay for a still-running variant takes
+  `getReferenceComparisonCaseColor(orderedResults.length + i)`, while its cases-selector chip takes
+  the variant's declaration index from `previewVariantParams`. Those agree only because sweeps
+  complete in declaration order; any out-of-order completion recolors the curve away from its chip.
+  Found while adding the ROADMAP 1.3 color-index-stability tests (2026-07-25) — the new tests pin
+  the in-order behavior, so the fix is to key both paths off the declaration map.
 - [ ] **The 2026-03-07 UI audit was never converted to backlog and is partially stale** (predates the
   scenario-first migration). Re-verify its 14 findings against the current UI before any UX pass;
   keep only survivors.
@@ -311,10 +318,23 @@ Open, blocked on an enabler:
   stability.
 - [ ] **Chart x-axis endpoints** (cumulative/time modes): prepend zero anchors, snap shared range/ticks
   to round values (no `70.00000000006`-style residues).
-- [ ] **Analytical-method integrity:** enforce method semantics at the scenario type level (sweep can't
-  inherit BL primary curves); generalize the `sweep_combined` toggle into a reusable sweep-method
-  framework; document `sweep_areal` as quarter-five-spot with no-flow outer boundaries; decide whether
-  `SwProfileChart` is restored or removed.
+- [ ] **Analytical-method integrity (ROADMAP 2.1).** Step 1 of 4 done 2026-07-25 — the
+  `src/lib/charts/analyticalMethodRegistry.ts` routing table. Remaining: promote `'sweep'` to a
+  first-class analytical method (deletes `suppressPrimaryAnalyticalOverlays` and its layout-substring
+  inference); make `ScenarioCapabilities` a discriminated union on `analyticalMethod`; collapse the
+  three reference-source fields into one declared `referenceSources` list. Then: generalize the
+  `sweep_combined` toggle into a reusable sweep-method framework; document `sweep_areal` as
+  quarter-five-spot with no-flow outer boundaries; decide whether `SwProfileChart` is restored or
+  removed.
+- [ ] **Analytical slot-context asymmetries, preserved not endorsed.** Building the method registry
+  surfaced two reference curves that appear in some overlay contexts but not others, with no stated
+  reason. Both were kept exactly as they were so the registry commit stayed a consolidation, and both
+  are pinned by `analyticalMethodRegistry.test.ts` so a change has to be deliberate:
+  - `gas-oil-bl` draws a `cum-oil-reference` in the `shared` context only — never per-result, pending
+    or preview — while `depletion` draws its cumulative in all four.
+  - `well-test` draws its `oil-rate-reference` per-result and in preview but not for still-pending
+    variants, while its `producer-bhp-reference` is drawn in all three.
+  Decide whether each is a deliberate teaching choice or an oversight, then widen or document.
 
 ## Priority 3 — FIM solver (dev-only, parked maintenance track)
 
