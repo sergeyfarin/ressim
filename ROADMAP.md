@@ -146,10 +146,31 @@ bearing check, since the strip pass was already removing exactly what is now nev
 Replay: `pnpm run validate` — 741 passed / 15 skipped, measured 2026-07-25 (parent commit `37f7583`).
 
 Remaining:
-- **Step 3** — make invalid primary-rate and overlay combinations impossible at the type level: turn
-  `ScenarioCapabilities` into a discriminated union on `analyticalMethod` so `sweepGeometry` is
-  required-on-sweep and unrepresentable elsewhere, and `primaryRateCurve` narrows to the method's
-  supported set. Most of `validateScenarioCapabilities()` then becomes redundant.
+**Step 3 of 4 — DONE 2026-07-25: capabilities are a discriminated union.**
+
+`ScenarioCapabilities` is now a union over `analyticalMethod`, with each arm's `primaryRateCurve`
+narrowed to that method's `supportedRateCurves` and `sweepGeometry` required on `'sweep'` and typed
+`never` elsewhere. The arms are *derived* from `ANALYTICAL_OUTPUT_CONTRACTS` via a mapped type
+rather than restated, so the contract table is the single source of the rule at both compile time
+and run time; the table switched from a type annotation to `as const satisfies` to keep its literal
+tuples.
+
+Three rules moved from runtime to compile time and their runtime checks are gone:
+unsupported `primaryRateCurve`, missing `sweepGeometry` on sweep, `sweepGeometry` on a non-sweep
+method. `validateScenarioCapabilities()` retains only the `runMode` / `default3DScalar` rule —
+`runMode` is a second, independent discriminant and crossing it with `analyticalMethod` would
+multiply the arms for one check. The three tests that used to construct invalid capabilities are now
+`@ts-expect-error` assertions, so `pnpm run typecheck` fails if any of them ever starts compiling.
+
+Verified by probe: `sweep`+geometry, BL+`water-cut`, depletion+`oil-rate`, none+`gas-cut` and
+bare `well-test` all compile; BL+`oil-rate`, gas-oil+`water-cut`, depletion+geometry and bare
+`sweep` are all rejected. Also fixed a stale test that claimed to cover "all AnalyticalMethod
+values" while hardcoding 4 of 7 — it had silently stopped covering `well-test` and
+`digitized-reference`.
+
+Replay: `pnpm run validate` — 743 passed / 15 skipped, measured 2026-07-25 (parent commit `0acba9f`).
+
+Remaining:
 - **Step 4** — declare reference sources explicitly (one `referenceSources` list replacing
   `publishedReferenceSeries`, `opmFlowReferenceArtifactKeys`, and the implicit scenario-key match in
   `getOpmFlowPublishedReferenceSeries`), so a scenario file states which references its charts show.
@@ -159,7 +180,7 @@ Why next:
 
 ### 2.2 Finish the sweep-method framework
 
-- Generalize the current `sweep_combined` Stiles / Dykstra-Parsons toggle so other sweep scenarios can opt into multiple analytical methods without custom wiring. Blocked on 2.1 step 2: once `'sweep'` is a method, its capabilities carry `sweepMethods: SweepAnalyticalMethod[]` and the per-method label/summary/reference prose moves to a table beside `sweepEfficiency.ts`, so `sweep_areal` and `sweep_vertical` get the toggle without hand-written `analyticalOptions`.
+- Generalize the current `sweep_combined` Stiles / Dykstra-Parsons toggle so other sweep scenarios can opt into multiple analytical methods without custom wiring. 2.1 step 2 unblocked this: now that `'sweep'` is a method, its capabilities can carry `sweepMethods: SweepAnalyticalMethod[]` and the per-method label/summary/reference prose moves to a table beside `sweepEfficiency.ts`, so `sweep_areal` and `sweep_vertical` get the toggle without hand-written `analyticalOptions`.
 - Keep the semantics explicit: total recovery comparison can improve while decomposition panels remain teaching diagnostics.
 - Document the `sweep_areal` quarter-five-spot interpretation so users do not mistake the outer no-flow boundaries for a gridding bug.
 

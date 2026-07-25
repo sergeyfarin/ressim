@@ -113,7 +113,13 @@ export type AnalyticalOutputContract = {
  * how results should be displayed by default. Scenarios inherit these defaults
  * and only override what they need.
  */
-export const ANALYTICAL_OUTPUT_CONTRACTS: Record<AnalyticalMethod, AnalyticalOutputContract> = {
+// `satisfies` rather than a type annotation: it enforces the contract shape while
+// preserving each entry's literal types, so `supportedRateCurves` stays a narrow
+// tuple (e.g. `readonly ['water-cut']`) instead of widening to
+// `readonly PrimaryRateCurve[]`. `ScenarioCapabilities` reads those tuples to
+// narrow `primaryRateCurve` per method, which makes this table the single source
+// of truth for the rule at both compile time and run time.
+export const ANALYTICAL_OUTPUT_CONTRACTS = {
     'buckley-leverett': {
         produces: ['water-cut', 'recovery', 'cum-oil'],
         supportedRateCurves: ['water-cut'],
@@ -181,7 +187,7 @@ export const ANALYTICAL_OUTPUT_CONTRACTS: Record<AnalyticalMethod, AnalyticalOut
         hasTau: false,
         defaultPanelExpansion: { rates: true, recovery: true, cumulative: false, diagnostics: false },
     },
-};
+} as const satisfies Record<AnalyticalMethod, AnalyticalOutputContract>;
 
 // ─── Analytical def — scenario-owned computation ─────────────────────────────
 
@@ -224,29 +230,12 @@ export type ScenarioAnalyticalDef = {
 
 // ─── Scenario capabilities ───────────────────────────────────────────────────
 
-/**
- * Scenario capability declarations — the single source of truth for all
- * behavioral routing. Fields derivable from `analyticalMethod` are optional
- * overrides; omitted fields inherit from ANALYTICAL_OUTPUT_CONTRACTS.
- *
- * Consumer code reads resolved capabilities via `resolveCapabilities()`.
- */
-export type ScenarioCapabilities = {
-    /** Which analytical reference model to use — the primary routing key. */
-    analyticalMethod: AnalyticalMethod;
-    /** Override the default primary rate curve for this analytical method. */
-    primaryRateCurve?: PrimaryRateCurve;
+/** Capability fields that mean the same thing for every analytical method. */
+type ScenarioCapabilitiesBase = {
     /** Override the native x-axis for this analytical method. */
     analyticalNativeXAxis?: 'pvi' | 'time';
     /** Override whether tau is meaningful for this analytical method. */
     hasTauDimensionlessTime?: boolean;
-    /**
-     * Sweep decomposition geometry. Required by — and only valid on — the
-     * 'sweep' analytical method, which is what turns the E_A / E_V / E_vol
-     * panels on. There is no separate `showSweepPanel` flag: sweep is a method,
-     * not a decoration on another method.
-     */
-    sweepGeometry?: SweepGeometry;
     /** Whether the scenario includes an active injector. */
     hasInjector: boolean;
     /** Default 3D scalar to show on load. */
@@ -260,6 +249,46 @@ export type ScenarioCapabilities = {
      */
     runMode?: 'live-worker' | 'prerun-artifacts';
 };
+
+/**
+ * The method-dependent half of a scenario's capabilities.
+ *
+ * `primaryRateCurve` is narrowed to whatever that method's entry in
+ * `ANALYTICAL_OUTPUT_CONTRACTS` lists as supported, so a depletion scenario
+ * cannot ask for a water-cut curve — that is a compile error, not a test
+ * failure. `sweepGeometry` is required on 'sweep' and typed `never` elsewhere,
+ * making "sweep panels without a geometry" and "geometry on a non-sweep method"
+ * both unrepresentable.
+ */
+type CapabilitiesForMethod<M extends AnalyticalMethod> = {
+    /** Which analytical reference model to use — the primary routing key. */
+    analyticalMethod: M;
+    /** Override the default primary rate curve; limited to this method's supported set. */
+    primaryRateCurve?: (typeof ANALYTICAL_OUTPUT_CONTRACTS)[M]['supportedRateCurves'][number];
+} & (M extends 'sweep'
+    ? {
+        /**
+         * Sweep decomposition geometry — which of the E_A / E_V / E_vol panels
+         * are physically meaningful. There is no separate `showSweepPanel`
+         * flag: sweep is a method, not a decoration on another method.
+         */
+        sweepGeometry: SweepGeometry;
+    }
+    : { sweepGeometry?: never });
+
+/**
+ * Scenario capability declarations — the single source of truth for all
+ * behavioral routing. Fields derivable from `analyticalMethod` are optional
+ * overrides; omitted fields inherit from ANALYTICAL_OUTPUT_CONTRACTS.
+ *
+ * A discriminated union over `analyticalMethod`, so the method's own contract
+ * constrains what the rest of the object may say.
+ *
+ * Consumer code reads resolved capabilities via `resolveCapabilities()`.
+ */
+export type ScenarioCapabilities = ScenarioCapabilitiesBase & {
+    [M in AnalyticalMethod]: CapabilitiesForMethod<M>;
+}[AnalyticalMethod];
 
 /** Fully resolved capabilities — all fields guaranteed present. */
 export type ResolvedCapabilities = {
@@ -280,14 +309,15 @@ export type ResolvedCapabilities = {
 /** Merge analytical method defaults with scenario overrides. */
 export function resolveCapabilities(caps: ScenarioCapabilities): ResolvedCapabilities {
     const contract = ANALYTICAL_OUTPUT_CONTRACTS[caps.analyticalMethod];
-    const isSweep = caps.analyticalMethod === 'sweep';
     return {
         analyticalMethod: caps.analyticalMethod,
         primaryRateCurve: caps.primaryRateCurve ?? contract.defaultPrimaryRateCurve,
         analyticalNativeXAxis: caps.analyticalNativeXAxis ?? contract.nativeXAxis,
         hasTauDimensionlessTime: caps.hasTauDimensionlessTime ?? contract.hasTau,
-        showSweepPanel: isSweep,
-        sweepGeometry: isSweep ? (caps.sweepGeometry ?? 'both') : null,
+        showSweepPanel: caps.analyticalMethod === 'sweep',
+        // No `?? 'both'` fallback: the union makes sweepGeometry mandatory on
+        // 'sweep' and absent elsewhere, so this discriminant check is exhaustive.
+        sweepGeometry: caps.analyticalMethod === 'sweep' ? caps.sweepGeometry : null,
         hasInjector: caps.hasInjector,
         default3DScalar: caps.default3DScalar,
         requiresThreePhaseMode: caps.requiresThreePhaseMode,
@@ -297,25 +327,19 @@ export function resolveCapabilities(caps: ScenarioCapabilities): ResolvedCapabil
 }
 
 /**
- * Validate that a scenario's capabilities are consistent with the analytical
- * method's output contract. Returns an array of error strings (empty = valid).
+ * Runtime capability checks that the type system cannot express.
+ *
+ * The three method-derived rules this used to carry — unsupported
+ * `primaryRateCurve`, missing `sweepGeometry` on sweep, and `sweepGeometry` on a
+ * non-sweep method — are now unrepresentable in `ScenarioCapabilities` itself,
+ * so they are compile errors rather than test failures.
+ *
+ * What remains is the `runMode` / `default3DScalar` rule. It is deliberately not
+ * folded into the union: `runMode` is a second, independent discriminant, and
+ * crossing it with `analyticalMethod` would multiply the arms for one rule.
  */
 export function validateScenarioCapabilities(caps: ScenarioCapabilities): string[] {
-    const contract = ANALYTICAL_OUTPUT_CONTRACTS[caps.analyticalMethod];
     const errors: string[] = [];
-    const effectiveRateCurve = caps.primaryRateCurve ?? contract.defaultPrimaryRateCurve;
-    if (!contract.supportedRateCurves.includes(effectiveRateCurve)) {
-        errors.push(
-            `analyticalMethod '${caps.analyticalMethod}' does not support primaryRateCurve '${effectiveRateCurve}' `
-            + `(supported: ${contract.supportedRateCurves.join(', ')})`,
-        );
-    }
-    if (caps.analyticalMethod === 'sweep' && !caps.sweepGeometry) {
-        errors.push("analyticalMethod 'sweep' scenarios must declare sweepGeometry.");
-    }
-    if (caps.analyticalMethod !== 'sweep' && caps.sweepGeometry) {
-        errors.push("sweepGeometry can only be set when analyticalMethod is 'sweep'.");
-    }
     if (caps.runMode === 'prerun-artifacts' && caps.default3DScalar !== null) {
         errors.push("prerun-artifacts scenarios must set default3DScalar to null (3D view is off).");
     }

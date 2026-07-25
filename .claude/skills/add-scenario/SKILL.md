@@ -18,7 +18,7 @@ Scenarios are the product's core content unit: a self-describing definition that
 1. **Create** `src/lib/catalog/scenarios/<key>.ts` exporting a `Scenario`.
    - Key convention: `{domain}_{physics_descriptor}` (`wf_bl1d`, `dep_pss`, `gas_injection`).
    - Required: `key`, `label`, `description`, `analyticalMethodSummary`, `analyticalMethodReference` (cite the actual literature), `chartLayoutKey`, `capabilities`, `params`, `analyticalDef`, `liveChartPanels`, `sensitivities`, `defaultSensitivityDimensionKey`.
-   - `capabilities` routes everything: `analyticalMethod`, `hasInjector`, `default3DScalar`, `requiresThreePhaseMode`. Sweep scenarios declare `analyticalMethod: 'sweep'` plus `sweepGeometry` — there is no `showSweepPanel` flag, and `sweepGeometry` is rejected on any other method.
+   - `capabilities` routes everything: `analyticalMethod`, `hasInjector`, `default3DScalar`, `requiresThreePhaseMode`. It is a **discriminated union on `analyticalMethod`**, so the compiler enforces the method's own rules: `primaryRateCurve` is narrowed to that method's `supportedRateCurves`, and `sweepGeometry` is required on `'sweep'` and rejected on every other method (there is no `showSweepPanel` flag). If an editor rejects your capabilities object, the scenario is wrong — don't cast around it.
 2. **Register** it in `src/lib/catalog/scenarios.ts` (import + registry entry). That file is the single source of truth.
 3. **Analytical wiring**: reuse an existing `analyticalDef` from `src/lib/catalog/analyticalAdapters.ts` if the method exists. A genuinely new method needs, in order — this is a bigger change; keep it a separate commit:
    - the math in `src/lib/analytical/` with its own unit tests against known values;

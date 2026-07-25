@@ -318,10 +318,10 @@ Open, blocked on an enabler:
   stability.
 - [ ] **Chart x-axis endpoints** (cumulative/time modes): prepend zero anchors, snap shared range/ticks
   to round values (no `70.00000000006`-style residues).
-- [ ] **Analytical-method integrity (ROADMAP 2.1).** Steps 1-2 of 4 done 2026-07-25 — the
-  `src/lib/charts/analyticalMethodRegistry.ts` routing table, and `'sweep'` as a first-class
-  analytical method (which deleted the suppress-then-strip machinery). Remaining: make
-  `ScenarioCapabilities` a discriminated union on `analyticalMethod`; collapse the
+- [ ] **Analytical-method integrity (ROADMAP 2.1).** Steps 1-3 of 4 done 2026-07-25 — the
+  `src/lib/charts/analyticalMethodRegistry.ts` routing table, `'sweep'` as a first-class analytical
+  method (which deleted the suppress-then-strip machinery), and `ScenarioCapabilities` as a
+  discriminated union derived from `ANALYTICAL_OUTPUT_CONTRACTS`. Remaining: collapse the
   three reference-source fields into one declared `referenceSources` list. Then: generalize the
   `sweep_combined` toggle into a reusable sweep-method framework; document `sweep_areal` as
   quarter-five-spot with no-flow outer boundaries; decide whether `SwProfileChart` is restored or

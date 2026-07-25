@@ -13,7 +13,9 @@ import {
     resolveCapabilities,
     validateScenarioChartLayout,
     validateScenarioCapabilities,
+    type ScenarioCapabilities,
     ANALYTICAL_OUTPUT_CONTRACTS,
+    type AnalyticalMethod,
     CHART_LAYOUTS,
 } from './scenarios';
 
@@ -493,38 +495,44 @@ describe('scenario capability validation', () => {
         expect(resolved.sweepGeometry).toBe('vertical');
     });
 
-    it('validateScenarioCapabilities catches invalid primaryRateCurve for analytical method', () => {
-        const errors = validateScenarioCapabilities({
+    // ── Compile-time capability rules ──────────────────────────────────────
+    // These three used to be runtime checks in validateScenarioCapabilities.
+    // ScenarioCapabilities is now a discriminated union over analyticalMethod,
+    // so they are compile errors instead. `@ts-expect-error` *is* the assertion:
+    // `pnpm run typecheck` fails if any of these ever starts compiling.
+    it('rejects a primaryRateCurve the analytical method cannot produce', () => {
+        // @ts-expect-error depletion supports primaryRateCurve 'oil-rate' only
+        const caps: ScenarioCapabilities = {
             analyticalMethod: 'depletion',
-            primaryRateCurve: 'water-cut', // depletion cannot produce water-cut
-           
+            primaryRateCurve: 'water-cut',
             hasInjector: false,
             default3DScalar: null,
             requiresThreePhaseMode: false,
-        });
-        expect(errors.length).toBeGreaterThan(0);
-        expect(errors[0]).toContain('water-cut');
+        };
+        expect(caps.analyticalMethod).toBe('depletion');
     });
 
-    it('validateScenarioCapabilities requires sweepGeometry for the sweep method', () => {
-        const errors = validateScenarioCapabilities({
+    it('requires sweepGeometry on the sweep method', () => {
+        // @ts-expect-error sweepGeometry is mandatory when analyticalMethod is 'sweep'
+        const caps: ScenarioCapabilities = {
             analyticalMethod: 'sweep',
             hasInjector: true,
             default3DScalar: null,
             requiresThreePhaseMode: false,
-        });
-        expect(errors).toContain("analyticalMethod 'sweep' scenarios must declare sweepGeometry.");
+        };
+        expect(caps.analyticalMethod).toBe('sweep');
     });
 
-    it('validateScenarioCapabilities rejects sweepGeometry on a non-sweep method', () => {
-        const errors = validateScenarioCapabilities({
+    it('rejects sweepGeometry on a non-sweep method', () => {
+        const caps: ScenarioCapabilities = {
             analyticalMethod: 'buckley-leverett',
+            // @ts-expect-error sweepGeometry is typed never off the sweep method
             sweepGeometry: 'areal',
             hasInjector: true,
             default3DScalar: null,
             requiresThreePhaseMode: false,
-        });
-        expect(errors).toContain("sweepGeometry can only be set when analyticalMethod is 'sweep'.");
+        };
+        expect(caps.analyticalMethod).toBe('buckley-leverett');
     });
 
     it('resolveCapabilities turns the sweep panels on for the sweep method only', () => {
@@ -552,10 +560,21 @@ describe('scenario capability validation', () => {
     });
 
     it('ANALYTICAL_OUTPUT_CONTRACTS covers all AnalyticalMethod values', () => {
-        const methods = ['buckley-leverett', 'gas-oil-bl', 'depletion', 'none'] as const;
+        // Previously hardcoded 4 of the 7 methods and silently stopped covering
+        // 'well-test' and 'digitized-reference' when they were added. Driven off
+        // the union's own keys now, so a new method cannot slip past it.
+        const methods = Object.keys(ANALYTICAL_OUTPUT_CONTRACTS) as AnalyticalMethod[];
+        expect(methods).toContain('sweep');
+        expect(methods).toContain('well-test');
         for (const method of methods) {
-            expect(ANALYTICAL_OUTPUT_CONTRACTS[method]).toBeDefined();
-            expect(ANALYTICAL_OUTPUT_CONTRACTS[method].supportedRateCurves.length).toBeGreaterThan(0);
+            const contract = ANALYTICAL_OUTPUT_CONTRACTS[method];
+            expect(contract, method).toBeDefined();
+            expect(contract.supportedRateCurves.length, method).toBeGreaterThan(0);
+            // ScenarioCapabilities narrows primaryRateCurve to supportedRateCurves,
+            // so a default outside that set would be unrepresentable in a scenario
+            // yet still returned by resolveCapabilities().
+            expect(contract.supportedRateCurves as readonly string[], method)
+                .toContain(contract.defaultPrimaryRateCurve);
         }
     });
 
