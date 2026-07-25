@@ -2,7 +2,6 @@ import type { BenchmarkFamily } from '../scenario/referenceTypes';
 import {
     getScenarioChartLayout,
     resolveCapabilities,
-    suppressesPrimaryAnalyticalOverlays,
     type Scenario,
     type ScenarioAnalyticalOption,
 } from '../catalog/scenarios';
@@ -73,7 +72,6 @@ export function buildScenarioComparisonFamily(input: {
             description: scenario.description,
             params: scenario.params,
         },
-        suppressPrimaryAnalyticalOverlays: suppressesPrimaryAnalyticalOverlays(chartLayout),
         showSweepPanel: resolved.showSweepPanel,
         sweepGeometry: resolved.sweepGeometry,
         sweepAnalyticalMethod: input.analyticalOption?.sweepMethod,

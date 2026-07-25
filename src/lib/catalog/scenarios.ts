@@ -45,6 +45,7 @@ import { spe1_gas_injection } from './scenarios/spe1_gas_injection';
 export type AnalyticalMethod =
     | 'buckley-leverett'
     | 'gas-oil-bl'
+    | 'sweep'
     | 'depletion'
     | 'well-test'
     | 'digitized-reference'
@@ -126,6 +127,21 @@ export const ANALYTICAL_OUTPUT_CONTRACTS: Record<AnalyticalMethod, AnalyticalOut
         supportedRateCurves: ['gas-cut'],
         nativeXAxis: 'pvi',
         defaultPrimaryRateCurve: 'gas-cut',
+        hasTau: false,
+        defaultPanelExpansion: { rates: true, recovery: true, cumulative: false, diagnostics: false },
+    },
+    'sweep': {
+        // Sweep correlations (Craig areal, Dykstra-Parsons / Stiles vertical)
+        // answer "what fraction of the pattern is contacted", not "what is the
+        // producing water cut at time t". They therefore produce no primary
+        // rate/recovery reference curve at all — their output is the dedicated
+        // E_A / E_V / E_vol sweep panels. The displacement inside the contacted
+        // region is Buckley-Leverett, but that is a fact about the correlation's
+        // internals, not a reference curve to draw against the simulation.
+        produces: ['sweep-areal', 'sweep-vertical', 'sweep-combined', 'sweep-rf'],
+        supportedRateCurves: ['water-cut'],
+        nativeXAxis: 'pvi',
+        defaultPrimaryRateCurve: 'water-cut',
         hasTau: false,
         defaultPanelExpansion: { rates: true, recovery: true, cumulative: false, diagnostics: false },
     },
@@ -224,9 +240,12 @@ export type ScenarioCapabilities = {
     analyticalNativeXAxis?: 'pvi' | 'time';
     /** Override whether tau is meaningful for this analytical method. */
     hasTauDimensionlessTime?: boolean;
-    /** Whether the sweep efficiency panel (E_A, E_V, E_vol) should be shown. */
-    showSweepPanel: boolean;
-    /** Scenario-defined sweep decomposition geometry. Drives panel visibility and semantics. */
+    /**
+     * Sweep decomposition geometry. Required by — and only valid on — the
+     * 'sweep' analytical method, which is what turns the E_A / E_V / E_vol
+     * panels on. There is no separate `showSweepPanel` flag: sweep is a method,
+     * not a decoration on another method.
+     */
     sweepGeometry?: SweepGeometry;
     /** Whether the scenario includes an active injector. */
     hasInjector: boolean;
@@ -261,13 +280,14 @@ export type ResolvedCapabilities = {
 /** Merge analytical method defaults with scenario overrides. */
 export function resolveCapabilities(caps: ScenarioCapabilities): ResolvedCapabilities {
     const contract = ANALYTICAL_OUTPUT_CONTRACTS[caps.analyticalMethod];
+    const isSweep = caps.analyticalMethod === 'sweep';
     return {
         analyticalMethod: caps.analyticalMethod,
         primaryRateCurve: caps.primaryRateCurve ?? contract.defaultPrimaryRateCurve,
         analyticalNativeXAxis: caps.analyticalNativeXAxis ?? contract.nativeXAxis,
         hasTauDimensionlessTime: caps.hasTauDimensionlessTime ?? contract.hasTau,
-        showSweepPanel: caps.showSweepPanel,
-        sweepGeometry: caps.showSweepPanel ? (caps.sweepGeometry ?? 'both') : null,
+        showSweepPanel: isSweep,
+        sweepGeometry: isSweep ? (caps.sweepGeometry ?? 'both') : null,
         hasInjector: caps.hasInjector,
         default3DScalar: caps.default3DScalar,
         requiresThreePhaseMode: caps.requiresThreePhaseMode,
@@ -290,11 +310,11 @@ export function validateScenarioCapabilities(caps: ScenarioCapabilities): string
             + `(supported: ${contract.supportedRateCurves.join(', ')})`,
         );
     }
-    if (caps.showSweepPanel && !caps.sweepGeometry) {
-        errors.push('showSweepPanel scenarios must declare sweepGeometry.');
+    if (caps.analyticalMethod === 'sweep' && !caps.sweepGeometry) {
+        errors.push("analyticalMethod 'sweep' scenarios must declare sweepGeometry.");
     }
-    if (!caps.showSweepPanel && caps.sweepGeometry) {
-        errors.push('sweepGeometry can only be set when showSweepPanel is true.');
+    if (caps.analyticalMethod !== 'sweep' && caps.sweepGeometry) {
+        errors.push("sweepGeometry can only be set when analyticalMethod is 'sweep'.");
     }
     if (caps.runMode === 'prerun-artifacts' && caps.default3DScalar !== null) {
         errors.push("prerun-artifacts scenarios must set default3DScalar to null (3D view is off).");
@@ -497,7 +517,6 @@ export type { ScenarioReferenceSource, ScenarioRunPolicy } from '../scenario/run
 /** Default capabilities for custom mode (no predefined scenario). */
 export const CUSTOM_MODE_CAPABILITIES: ScenarioCapabilities = {
     analyticalMethod: 'none',
-    showSweepPanel: false,
     sweepGeometry: undefined,
     hasInjector: true,
     default3DScalar: null,
@@ -657,26 +676,39 @@ export function getScenarioChartLayout(
 
 const PRIMARY_ANALYTICAL_PANEL_KEYS = ['rates', 'recovery', 'cumulative', 'diagnostics', 'oil_rate', 'producer_bhp', 'injector_bhp', 'control_limits'] as const;
 
-export function hasPrimaryAnalyticalReferenceCurves(layoutConfig: RateChartLayoutConfig): boolean {
-    return PRIMARY_ANALYTICAL_PANEL_KEYS.some((panelKey) => (
-        layoutConfig.rateChart?.panels?.[panelKey]?.curveKeys?.some((curveKey) => curveKey.includes('-reference'))
-    ));
-}
-
-export function suppressesPrimaryAnalyticalOverlays(layoutConfig: RateChartLayoutConfig): boolean {
-    return !hasPrimaryAnalyticalReferenceCurves(layoutConfig);
-}
-
-export function validateScenarioChartLayout(scenario: Pick<Scenario, 'key' | 'capabilities' | 'chartLayoutKey' | 'chartLayoutPatch' | 'sensitivities'>): string[] {
+/**
+ * Validates that a scenario's chart layout only asks for analytical reference
+ * curves its analytical method can actually produce.
+ *
+ * This used to be the inverse: a scenario opted *out* of unwanted overlays by
+ * omitting `-reference` curve keys from its layout, and the check was a negative
+ * one against `showSweepPanel`. Since sweep became a first-class analytical
+ * method with no primary curve slots, unwanted overlays are never built, so the
+ * layout can be checked positively — a layout naming a curve the method does not
+ * emit is a dead reference, not a suppression mechanism.
+ */
+export function validateScenarioChartLayout(
+    scenario: Pick<Scenario, 'key' | 'capabilities' | 'chartLayoutKey' | 'chartLayoutPatch' | 'sensitivities'>,
+    emittedReferenceCurveKeys: ReadonlySet<string>,
+): string[] {
     const errors: string[] = [];
     const dimensionKeys = [null, ...scenario.sensitivities.map((dimension) => dimension.key)];
 
     for (const dimensionKey of dimensionKeys) {
         const layout = getScenarioChartLayout(scenario, dimensionKey);
-        if (scenario.capabilities.showSweepPanel && hasPrimaryAnalyticalReferenceCurves(layout)) {
-            errors.push(
-                `scenario '${scenario.key}'${dimensionKey ? ` / ${dimensionKey}` : ''} must not include primary analytical reference curves when showSweepPanel is true.`,
-            );
+        for (const panelKey of PRIMARY_ANALYTICAL_PANEL_KEYS) {
+            const curveKeys = layout.rateChart?.panels?.[panelKey]?.curveKeys ?? [];
+            for (const curveKey of curveKeys) {
+                if (!curveKey.endsWith('-reference')) continue;
+                // Published/OPM series are appended by source, not by analytical
+                // method, so they are not the method's business.
+                if (curveKey.startsWith('published-')) continue;
+                if (emittedReferenceCurveKeys.has(curveKey)) continue;
+                errors.push(
+                    `scenario '${scenario.key}'${dimensionKey ? ` / ${dimensionKey}` : ''} panel '${panelKey}' asks for '${curveKey}', `
+                    + `which analyticalMethod '${scenario.capabilities.analyticalMethod}' does not produce.`,
+                );
+            }
         }
     }
 
@@ -685,8 +717,9 @@ export function validateScenarioChartLayout(scenario: Pick<Scenario, 'key' | 'ca
 
 export function getAnalyticalModeForMethod(method: AnalyticalMethod): AnalyticalMode {
     // Well test shares the coarse 'depletion' family: single producer, no
-    // injector, pressure-and-rate outputs on a time axis. The fine-grained
-    // routing is on `analyticalMethod`, not this coarse mode.
+    // injector, pressure-and-rate outputs on a time axis. Sweep shares the
+    // coarse 'waterflood' family. The fine-grained routing is on
+    // `analyticalMethod`, not this coarse mode.
     if (method === 'depletion' || method === 'well-test') return 'depletion';
     if (method === 'none') return 'none';
     if (method === 'digitized-reference') return 'none';
@@ -702,7 +735,7 @@ export function getScenarioGroup(scenario: Pick<Scenario, 'capabilities'>): Scen
     if (capabilities.requiresThreePhaseMode || capabilities.analyticalMethod === 'gas-oil-bl') {
         return 'gas';
     }
-    if (capabilities.showSweepPanel) return 'sweep';
+    if (capabilities.analyticalMethod === 'sweep') return 'sweep';
     if (capabilities.analyticalMethod === 'depletion' || capabilities.analyticalMethod === 'well-test') {
         return 'depletion';
     }

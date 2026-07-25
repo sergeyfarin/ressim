@@ -59,7 +59,6 @@ export const gas_drive: Scenario = {
     defaultSensitivityDimensionKey: 'sg_init',
     capabilities: {
         analyticalMethod: 'none',
-        showSweepPanel: false,
         hasInjector: false,
         default3DScalar: 'saturation_gas',
         requiresThreePhaseMode: true,

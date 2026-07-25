@@ -12,7 +12,6 @@ export const dep_decline: Scenario = {
     defaultSensitivityDimensionKey: 'permeability',
     capabilities: {
         analyticalMethod: 'depletion',
-        showSweepPanel: false,
         hasInjector: false,
         default3DScalar: null,
         requiresThreePhaseMode: false,

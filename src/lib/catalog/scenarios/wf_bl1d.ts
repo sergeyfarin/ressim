@@ -13,7 +13,6 @@ export const wf_bl1d: Scenario = {
     opmFlowReferenceArtifactKeys: ['wf_bl1d'],
     capabilities: {
         analyticalMethod: 'buckley-leverett',
-        showSweepPanel: false,
         hasInjector: true,
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,

@@ -136,8 +136,10 @@
         (Boolean(previewBaseParams) || (previewVariantParams?.length ?? 0) > 0),
     );
 
+    const activeDescriptor = $derived(getAnalyticalMethodDescriptor(family?.analyticalMethod));
+
     const showPerCaseAnalyticalIndicator = $derived(
-        analyticalPerVariant || family?.showSweepPanel === true,
+        analyticalPerVariant || activeDescriptor.producesSweepPanels,
     );
 
 
@@ -337,34 +339,31 @@
     }
 
     // Panel presentation comes from the active analytical method's descriptor
-    // (analyticalMethodRegistry.ts) layered over PANEL_DEFS. Two overrides stay
-    // here because they are not method-derived: sweep is still a capability flag
-    // rather than an analytical method (ROADMAP 2.1), and gas context is sniffed
-    // from run params.
+    // (analyticalMethodRegistry.ts) layered over PANEL_DEFS. Only the gas-context
+    // override stays here: it is sniffed from run params, not method-derived.
     const panelFallbacks = $derived.by((): Record<RateChartPanelId, ChartPanelFallback> => {
-        const presentation = getAnalyticalMethodDescriptor(family?.analyticalMethod).panelPresentation;
-        const isSweep = family?.showSweepPanel === true;
+        const presentation = activeDescriptor.panelPresentation;
         return {
             ...PANEL_DEFS,
             rates: {
                 ...PANEL_DEFS.rates,
                 ...presentation.rates,
-                ...(isSweep ? { title: 'Watercut', curveKeys: ['water-cut-sim'] } : {}),
             },
             cumulative: {
                 ...PANEL_DEFS.cumulative,
                 ...presentation.cumulative,
-                ...(isSweep ? { curveKeys: ['cum-oil-sim'] } : {}),
             },
             diagnostics: {
                 ...PANEL_DEFS.diagnostics,
                 ...presentation.diagnostics,
                 title: isGasContext ? 'Material Balance (P/z)' : 'Pressure',
-                curveKeys: isSweep
-                    ? ['avg-pressure-sim']
-                    : isGasContext
-                    ? ['p_z_sim', 'p_z_reference']
-                    : ['avg-pressure-sim', 'avg-pressure-reference'],
+                ...(presentation.diagnostics?.curveKeys
+                    ? {}
+                    : {
+                        curveKeys: isGasContext
+                            ? ['p_z_sim', 'p_z_reference']
+                            : ['avg-pressure-sim', 'avg-pressure-reference'],
+                    }),
                 scalePreset: 'pressure',
             },
         };

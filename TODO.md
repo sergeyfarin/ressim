@@ -318,10 +318,10 @@ Open, blocked on an enabler:
   stability.
 - [ ] **Chart x-axis endpoints** (cumulative/time modes): prepend zero anchors, snap shared range/ticks
   to round values (no `70.00000000006`-style residues).
-- [ ] **Analytical-method integrity (ROADMAP 2.1).** Step 1 of 4 done 2026-07-25 — the
-  `src/lib/charts/analyticalMethodRegistry.ts` routing table. Remaining: promote `'sweep'` to a
-  first-class analytical method (deletes `suppressPrimaryAnalyticalOverlays` and its layout-substring
-  inference); make `ScenarioCapabilities` a discriminated union on `analyticalMethod`; collapse the
+- [ ] **Analytical-method integrity (ROADMAP 2.1).** Steps 1-2 of 4 done 2026-07-25 — the
+  `src/lib/charts/analyticalMethodRegistry.ts` routing table, and `'sweep'` as a first-class
+  analytical method (which deleted the suppress-then-strip machinery). Remaining: make
+  `ScenarioCapabilities` a discriminated union on `analyticalMethod`; collapse the
   three reference-source fields into one declared `referenceSources` list. Then: generalize the
   `sweep_combined` toggle into a reusable sweep-method framework; document `sweep_areal` as
   quarter-five-spot with no-flow outer boundaries; decide whether `SwProfileChart` is restored or
@@ -334,6 +334,10 @@ Open, blocked on an enabler:
     or preview — while `depletion` draws its cumulative in all four.
   - `well-test` draws its `oil-rate-reference` per-result and in preview but not for still-pending
     variants, while its `producer-bhp-reference` is drawn in all three.
+  - `buckley-leverett` computes a cumulative-oil reference in `buildBuckleyLeverettReference()` that
+    no context ever draws. The `waterflood` layout asked for `cum-oil-reference` and got nothing;
+    that dead key was removed 2026-07-25 when the positive layout validator landed, but the
+    unreachable computation is still there.
   Decide whether each is a deliberate teaching choice or an oversight, then widen or document.
 
 ## Priority 3 — FIM solver (dev-only, parked maintenance track)

@@ -24,7 +24,6 @@ import {
     getDefaultVariantKeys,
     getScenarioWithVariantParams,
     resolveCapabilities,
-    suppressesPrimaryAnalyticalOverlays,
     type ScenarioAnalyticalOption,
     type ScenarioAnalyticalOutput,
 } from '../catalog/scenarios';
@@ -288,7 +287,6 @@ class NavigationStoreImpl {
             label: sc.label,
             description: sc.description,
             baseCase: { key: sc.key, label: sc.label, description: sc.description, params: sc.params },
-            suppressPrimaryAnalyticalOverlays: suppressesPrimaryAnalyticalOverlays(chartLayout),
             showSweepPanel: resolved.showSweepPanel,
             sweepGeometry: resolved.sweepGeometry,
             sweepAnalyticalMethod: this.activeAnalyticalOption?.sweepMethod,
@@ -308,7 +306,7 @@ class NavigationStoreImpl {
 
     // ===== $derived: Sweep / Analytical Config =====
 
-    showSweepPanel = $derived(this.activeScenarioObject?.capabilities.showSweepPanel ?? false);
+    showSweepPanel = $derived(this.activeScenarioObject?.capabilities.analyticalMethod === 'sweep');
 
     /** True when the active scenario ships precomputed (no live worker run, 3D off). */
     isPrerunScenario = $derived(

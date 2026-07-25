@@ -53,10 +53,20 @@ export const wf_tornado: Scenario = {
     analyticalMethodSummary: 'Simulation-only — no analytical overlay. 1D Buckley-Leverett does not model gravity cross-flow between layers, so no honest quantitative reference exists for this interaction (same precedent as gas_drive).',
     analyticalMethodReference: 'Dietz (1953); Zhou, Fayers & Muggeridge (1997); Shook, Li & Lake (1992).',
     chartLayoutKey: 'waterflood',
+    chartLayoutPatch: {
+        rateChart: {
+            panels: {
+                // analyticalMethod is 'none' — no analytical reference curves
+                // exist to select, so the shared waterflood layout's reference
+                // keys are dropped rather than left dangling.
+                rates: { curveKeys: ['water-cut-sim'] },
+                recovery: { curveKeys: ['recovery-factor-primary'] },
+            },
+        },
+    },
     defaultSensitivityDimensionKey: 'interaction',
     capabilities: {
         analyticalMethod: 'none',
-        showSweepPanel: false,
         hasInjector: true,
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,

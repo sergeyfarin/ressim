@@ -85,7 +85,6 @@ export const dep_welltest: Scenario = {
     defaultSensitivityDimensionKey: 'skin',
     capabilities: {
         analyticalMethod: 'well-test',
-        showSweepPanel: false,
         hasInjector: false,
         // No displacement front to look at — the 3D view has nothing to add
         // that the pressure transient does not say better.

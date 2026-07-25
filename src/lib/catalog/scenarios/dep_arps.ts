@@ -28,7 +28,6 @@ export const dep_arps: Scenario = {
     defaultSensitivityDimensionKey: 'arps_b',
     capabilities: {
         analyticalMethod: 'depletion',
-        showSweepPanel: false,
         hasInjector: false,
         default3DScalar: null,
         requiresThreePhaseMode: false,

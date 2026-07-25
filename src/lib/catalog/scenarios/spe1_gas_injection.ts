@@ -337,7 +337,6 @@ export const spe1_gas_injection: Scenario = {
     capabilities: {
         analyticalMethod: 'digitized-reference',
         primaryRateCurve: 'oil-rate',
-        showSweepPanel: false,
         hasInjector: true,
         default3DScalar: 'saturation_gas',
         requiresThreePhaseMode: true,

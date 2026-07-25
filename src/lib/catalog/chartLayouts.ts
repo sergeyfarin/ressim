@@ -28,7 +28,9 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
                 },
                 cumulative: {
                     title: 'Cum Oil',
-                    curveKeys: ['cum-oil-sim', 'cum-oil-reference'],
+                    // No 'cum-oil-reference': the Buckley-Leverett method emits
+                    // water-cut and recovery references only. See TODO.md.
+                    curveKeys: ['cum-oil-sim'],
                     scalePreset: 'cumulative_volumes',
                     expanded: false,
                 },

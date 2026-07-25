@@ -72,7 +72,6 @@ export const dep_pvt: Scenario = {
     defaultSensitivityDimensionKey: 'pvt_model',
     capabilities: {
         analyticalMethod: 'none',
-        showSweepPanel: false,
         hasInjector: false,
         default3DScalar: 'saturation_gas',
         requiresThreePhaseMode: true,

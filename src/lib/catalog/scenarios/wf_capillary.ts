@@ -71,7 +71,6 @@ export const wf_capillary: Scenario = {
     defaultSensitivityDimensionKey: 'capillary_strength',
     capabilities: {
         analyticalMethod: 'buckley-leverett',
-        showSweepPanel: false,
         hasInjector: true,
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,

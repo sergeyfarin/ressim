@@ -47,6 +47,32 @@ describe('analyticalMethodRegistry', () => {
         expect(getAnalyticalMethodDescriptor('digitized-reference').slots).toEqual([]);
     });
 
+    it('makes sweep a method with sweep panels and no primary curve slots', () => {
+        // Sweep used to declare analyticalMethod 'buckley-leverett' plus a
+        // showSweepPanel flag, so the stack built BL primary overlays and a
+        // separate strip pass removed them again. Declaring no slots means they
+        // are never built, which is what deleted the strip pass.
+        const sweep = getAnalyticalMethodDescriptor('sweep');
+        expect(sweep.producesSweepPanels).toBe(true);
+        expect(sweep.slots).toEqual([]);
+        expect(sweep.fromResult).toBeNull();
+        expect(sweep.fromParams).toBeNull();
+    });
+
+    it('gives sweep panels to sweep alone', () => {
+        for (const method of ALL_METHODS) {
+            expect(ANALYTICAL_METHOD_DESCRIPTORS[method].producesSweepPanels).toBe(method === 'sweep');
+        }
+    });
+
+    it('shows sweep the same simulation curves as a Buckley-Leverett waterflood', () => {
+        // The reference side differs; the simulation side does not.
+        expect(getAnalyticalMethodDescriptor('sweep').simulationCurveSet).toBe('water-cut');
+        expect(getAnalyticalMethodDescriptor('buckley-leverett').simulationCurveSet).toBe('water-cut');
+        expect(getAnalyticalMethodDescriptor('gas-oil-bl').simulationCurveSet).toBe('gas-cut');
+        expect(getAnalyticalMethodDescriptor('depletion').simulationCurveSet).toBe('oil-rate');
+    });
+
     it('gives every slot of a method with a reference solution a distinct curve key', () => {
         for (const method of ALL_METHODS) {
             const keys = ANALYTICAL_METHOD_DESCRIPTORS[method].slots.map((slot) => slot.curveKey);

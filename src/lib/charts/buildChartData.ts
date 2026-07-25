@@ -162,46 +162,6 @@ function appendPublishedReferenceSeries(
     }
 }
 
-function stripReferenceCurveKeys(
-    panel: ReferenceComparisonPanel,
-    excludedCurveKeys: Set<string>,
-): ReferenceComparisonPanel {
-    const keptEntries = panel.curves
-        .map((curve, index) => ({ curve, series: panel.series[index] ?? [] }))
-        .filter((entry) => !excludedCurveKeys.has(entry.curve.curveKey ?? entry.curve.label));
-    return {
-        curves: keptEntries.map((entry) => entry.curve),
-        series: keptEntries.map((entry) => entry.series),
-    };
-}
-
-function suppressPrimaryAnalyticalPanels(
-    panels: Record<RateChartPanelKey, ReferenceComparisonPanel>,
-): Record<RateChartPanelKey, ReferenceComparisonPanel> {
-    const excludedCurveKeys = new Set([
-        'oil-rate-reference',
-        'water-cut-reference',
-        'gas-cut-reference',
-        'recovery-factor-reference',
-        'cum-oil-reference',
-        'avg-pressure-reference',
-        'p_z_reference',
-    ]);
-    return {
-        rates: stripReferenceCurveKeys(panels.rates, excludedCurveKeys),
-        recovery: stripReferenceCurveKeys(panels.recovery, excludedCurveKeys),
-        cumulative: stripReferenceCurveKeys(panels.cumulative, excludedCurveKeys),
-        diagnostics: stripReferenceCurveKeys(panels.diagnostics, excludedCurveKeys),
-        gor: panels.gor,
-        volumes: panels.volumes,
-        oil_rate: stripReferenceCurveKeys(panels.oil_rate, excludedCurveKeys),
-        injection_rate: panels.injection_rate,
-        producer_bhp: panels.producer_bhp,
-        injector_bhp: panels.injector_bhp,
-        control_limits: panels.control_limits,
-    };
-}
-
 function emptyPanelMap(): ReferenceComparisonPanelMap {
     return {
         rates: createReferenceComparisonPanel(),
@@ -411,8 +371,6 @@ export function buildReferenceComparisonModel(input: {
     previewAnalyticalMethod?: AnalyticalMethod;
 }): ReferenceComparisonModel {
     const family = input.family ?? null;
-    const suppressPrimaryAnalyticalOverlays = family?.suppressPrimaryAnalyticalOverlays
-        ?? (family?.showSweepPanel === true);
     const orderedResults = orderResults(input.results, input.previewVariantParams);
     const referenceColor = getReferenceColor(input.theme ?? 'dark');
     const legendGrey = getLegendGrey(input.theme ?? 'dark');
@@ -483,14 +441,12 @@ export function buildReferenceComparisonModel(input: {
                         && overlayMode === 'shared'
                         ? [variants[0]]
                         : variants;
-                const previewPanels = suppressPrimaryAnalyticalOverlays
-                    ? panels
-                    : buildAnalyticalPreviewPanels(
-                        analyticalPreviewVariants,
-                        input.xAxisMode,
-                        input.previewAnalyticalMethod,
-                        input.theme ?? 'dark',
-                    );
+                const previewPanels = buildAnalyticalPreviewPanels(
+                    analyticalPreviewVariants,
+                    input.xAxisMode,
+                    input.previewAnalyticalMethod,
+                    input.theme ?? 'dark',
+                );
                 // Expose multi-variant preview entries so the cases selector can
                 // render toggle buttons even before any simulations have completed.
                 const previewCases: ReferenceComparisonPreviewCase[] = variants.length > 1
@@ -500,13 +456,10 @@ export function buildReferenceComparisonModel(input: {
                     orderedResults,
                     previewCases,
                     panels: (() => {
-                        const primaryPanels = suppressPrimaryAnalyticalOverlays
-                            ? suppressPrimaryAnalyticalPanels(previewPanels)
-                            : previewPanels;
-                        appendPublishedReferenceSeries(primaryPanels, family);
+                        appendPublishedReferenceSeries(previewPanels, family);
                         return combinePanelMaps({
-                            primary: primaryPanels,
-                            sweep: family?.showSweepPanel === true
+                            primary: previewPanels,
+                            sweep: descriptor.producesSweepPanels
                                 ? buildPreviewSweepPanels({
                                     variants,
                                     theme: input.theme ?? 'dark',
@@ -543,7 +496,7 @@ export function buildReferenceComparisonModel(input: {
         const defaultVisible = true;
         const caseLabel = compactCaseLabel(result.label);
 
-        if (family.analyticalMethod === 'buckley-leverett') {
+        if (descriptor.simulationCurveSet === 'water-cut') {
             appendSeries(panels.rates, {
                 label: `${result.label} Water Cut`,
                 curveKey: 'water-cut-sim',
@@ -677,7 +630,7 @@ export function buildReferenceComparisonModel(input: {
             return;
         }
 
-        if (family.analyticalMethod === 'gas-oil-bl') {
+        if (descriptor.simulationCurveSet === 'gas-cut') {
             const historyXAxis = interpolateXAxisAtTimes(derived.time, xValues, derived.historyTime);
             appendSeries(panels.rates, {
                 label: `${result.label} Gas Cut`,
@@ -835,7 +788,7 @@ export function buildReferenceComparisonModel(input: {
             return;
         }
 
-        // Depletion (and any future method): standard oil-rate + pressure panels.
+        // simulationCurveSet 'oil-rate': standard oil-rate + pressure panels.
         appendSeries(panels.rates, {
             label: `${result.label} Oil Rate`,
             curveKey: 'oil-rate-sim',
@@ -1069,7 +1022,7 @@ export function buildReferenceComparisonModel(input: {
     // shared curve or one curve per case is the correct representation. A method
     // with no reference solution ('none', 'digitized-reference') has no slots and
     // therefore emits nothing — it does not fall through to another method.
-    if (descriptor.fromResult && !suppressPrimaryAnalyticalOverlays) {
+    if (descriptor.fromResult) {
         const useSharedOverlay = overlayMode === 'shared' && !usesRunMappedAnalyticalXAxis;
 
         if (useSharedOverlay) {
@@ -1141,7 +1094,7 @@ export function buildReferenceComparisonModel(input: {
     const pendingPreviewCases: ReferenceComparisonPreviewCase[] =
         (input.pendingPreviewVariants?.length
             && ((input.analyticalPerVariant && !usesRunMappedAnalyticalXAxis)
-                || family.showSweepPanel === true))
+                || descriptor.producesSweepPanels))
             ? (() => {
                 const declOrder = new Map(
                     (input.previewVariantParams ?? []).map((v, i) => [v.variantKey, i]),
@@ -1154,7 +1107,7 @@ export function buildReferenceComparisonModel(input: {
             })()
             : [];
 
-    const sweepPanels = (family.showSweepPanel === true)
+    const sweepPanels = descriptor.producesSweepPanels
         ? buildSweepPanels({
             orderedResults,
             theme: input.theme ?? 'dark',
@@ -1167,17 +1120,13 @@ export function buildReferenceComparisonModel(input: {
         })
         : emptySweepPanels();
 
-    const visiblePanels = suppressPrimaryAnalyticalOverlays
-        ? suppressPrimaryAnalyticalPanels(panels)
-        : panels;
-
     // ── Published reference overlays (static benchmark data) ────────────────
-    appendPublishedReferenceSeries(visiblePanels, family);
+    appendPublishedReferenceSeries(panels, family);
 
     return {
         orderedResults,
         previewCases: pendingPreviewCases,
-        panels: combinePanelMaps({ primary: visiblePanels, sweep: sweepPanels }),
+        panels: combinePanelMaps({ primary: panels, sweep: sweepPanels }),
         axisMappingWarning: buildAnalyticalAxisWarning({
             usesRunMappedAnalyticalXAxis,
             hidesPendingAnalyticalWithoutMapping,

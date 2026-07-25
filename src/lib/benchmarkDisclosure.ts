@@ -109,21 +109,25 @@ function buildPermeabilitySummary(params: Record<string, any>): string {
     return `${mode} permeability`;
 }
 
+const SWEEP_METHOD_LABELS: Record<string, string> = {
+    stiles: 'Stiles',
+    'dykstra-parsons': 'Dykstra-Parsons',
+};
+
 function buildReferenceLabel(
     analyticalMethod: AnalyticalMethod,
     referenceKind: BenchmarkReferenceKind,
-    showSweepPanel = false,
     sweepAnalyticalMethod: string | null = null,
 ): string {
-    if (showSweepPanel) {
-        if (sweepAnalyticalMethod === 'stiles') return 'Sweep reference solution (Stiles)';
-        if (sweepAnalyticalMethod === 'dykstra-parsons') return 'Sweep reference solution (Dykstra-Parsons)';
-        return 'Sweep reference solution';
-    }
     if (analyticalMethod === 'buckley-leverett' && referenceKind === 'numerical-refined') {
         return 'Refined numerical reference';
     }
-    return getAnalyticalMethodDescriptor(analyticalMethod).referenceLabel;
+    const base = getAnalyticalMethodDescriptor(analyticalMethod).referenceLabel;
+    if (analyticalMethod !== 'sweep') return base;
+    // Sweep is the one method whose reference solution has a user-selectable
+    // correlation, so its label carries which one is active.
+    const correlation = SWEEP_METHOD_LABELS[sweepAnalyticalMethod ?? ''];
+    return correlation ? `${base} (${correlation})` : base;
 }
 
 export function buildBenchmarkCaseSnapshot(params: Record<string, any>): BenchmarkCaseSnapshot {
@@ -169,13 +173,11 @@ export function buildBenchmarkReferenceGuidance(input: {
     comparisonMetric: BenchmarkComparisonMetric | null;
     displayDefaults: BenchmarkDisplayDefaults | null;
     runPolicy: BenchmarkRunPolicy | null;
-    showSweepPanel?: boolean;
     sweepAnalyticalMethod?: string | null;
 }): BenchmarkReferenceGuidance {
     const reference = `Reference solution: ${buildReferenceLabel(
         input.analyticalMethod,
         input.referenceKind,
-        input.showSweepPanel ?? false,
         input.sweepAnalyticalMethod ?? null,
     )}.`;
     const metric = input.comparisonMetric

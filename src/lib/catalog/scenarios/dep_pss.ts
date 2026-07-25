@@ -12,7 +12,6 @@ export const dep_pss: Scenario = {
     defaultSensitivityDimensionKey: 'shape_factor',
     capabilities: {
         analyticalMethod: 'depletion',
-        showSweepPanel: false,
         hasInjector: false,
         default3DScalar: null,
         requiresThreePhaseMode: false,

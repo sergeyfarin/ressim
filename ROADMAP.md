@@ -113,12 +113,39 @@ analyticalMethod none". Sweep scenarios were also silently building depletion ov
 Replay: `pnpm run validate` — 737 passed / 15 skipped, measured 2026-07-25 on the working tree that
 adds the registry (parent commit `e824198`).
 
+**Step 2 of 4 — DONE 2026-07-25: sweep is a first-class analytical method.**
+
+`'sweep'` joined the `AnalyticalMethod` union with a descriptor that declares no primary curve
+slots, so the BL water-cut/recovery overlays are never built for a sweep scenario. That deleted the
+whole build-then-hide mechanism: `suppressPrimaryAnalyticalOverlays` (the field and every threading
+of it), `suppressesPrimaryAnalyticalOverlays()` / `hasPrimaryAnalyticalReferenceCurves()` (the
+layout-substring inference), `suppressPrimaryAnalyticalPanels()` / `stripReferenceCurveKeys()` (the
+strip pass), and the last `showSweepPanel === true` routing conditions.
+
+`showSweepPanel` is no longer a declared capability — it is derived from
+`analyticalMethod === 'sweep'` in `resolveCapabilities()`, so the live single-run path keeps its
+existing call sites with one source of truth. `sweepGeometry` is now required on sweep and rejected
+elsewhere. Which *simulation* curves a chart shows also became declared
+(`AnalyticalMethodDescriptor.simulationCurveSet`) rather than another branch on the method name;
+sweep and Buckley-Leverett share the water-cut set.
+
+`validateScenarioChartLayout()` flipped from a negative check ("sweep must not name reference
+curves") to a positive one ("a layout may only name reference curves its method actually emits").
+That immediately found three dead references and they are fixed here:
+- `wf_bl1d_opm` and `wf_tornado` (`analyticalMethod: 'none'`) shared the `waterflood` layout and
+  asked for BL water-cut/recovery references — the layout-side residue of the step-1 fix. Both now
+  patch those keys out.
+- the shared `waterflood` layout asked for `cum-oil-reference`, which the BL method has never
+  emitted in any overlay context. Dead key removed; the underlying asymmetry is logged in TODO.md.
+
+Verification: the three sweep scenarios' rendered comparison models — every panel, curve key, label,
+color, border, point count and endpoint values, on both the time and PVI axes — are byte-identical
+before and after, checked by diffing a dumped model against the parent commit. That is the load-
+bearing check, since the strip pass was already removing exactly what is now never built.
+
+Replay: `pnpm run validate` — 741 passed / 15 skipped, measured 2026-07-25 (parent commit `37f7583`).
+
 Remaining:
-- **Step 2** — promote sweep to a first-class `'sweep'` analytical method instead of piggybacking on
-  Buckley-Leverett plus a `showSweepPanel` flag. Its descriptor declares no primary curve slots,
-  which deletes `suppressPrimaryAnalyticalOverlays`, the layout-substring inference in
-  `suppressesPrimaryAnalyticalOverlays()`, the negative validator in `validateScenarioChartLayout()`,
-  and the last `showSweepPanel === true` routing conditions.
 - **Step 3** — make invalid primary-rate and overlay combinations impossible at the type level: turn
   `ScenarioCapabilities` into a discriminated union on `analyticalMethod` so `sweepGeometry` is
   required-on-sweep and unrepresentable elsewhere, and `primaryRateCurve` narrows to the method's

@@ -20,8 +20,7 @@ export const sweep_vertical: Scenario = {
     },
     defaultSensitivityDimensionKey: 'heterogeneity',
     capabilities: {
-        analyticalMethod: 'buckley-leverett',
-        showSweepPanel: true,
+        analyticalMethod: 'sweep',
         sweepGeometry: 'vertical',
         hasInjector: true,
         default3DScalar: 'saturation_water',

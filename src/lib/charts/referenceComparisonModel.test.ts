@@ -64,7 +64,7 @@ function buildScenarioFamily(scenarioKey: string, overrides: Record<string, unkn
         analyticalMethod: scenario.capabilities.analyticalMethod,
         chartLayoutKey: scenario.chartLayoutKey,
         chartLayoutPatch: scenario.chartLayoutPatch,
-        showSweepPanel: scenario.capabilities.showSweepPanel,
+        showSweepPanel: scenario.capabilities.analyticalMethod === 'sweep',
         sweepGeometry: (scenario.capabilities as { sweepGeometry?: string | null }).sweepGeometry ?? null,
         publishedReferenceSeries: scenario.publishedReferenceSeries,
         ...overrides,

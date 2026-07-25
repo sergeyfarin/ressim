@@ -45,8 +45,7 @@ export const sweep_combined: Scenario = {
     },
     defaultSensitivityDimensionKey: 'interaction_core',
     capabilities: {
-        analyticalMethod: 'buckley-leverett',
-        showSweepPanel: true,
+        analyticalMethod: 'sweep',
         sweepGeometry: 'both',
         hasInjector: true,
         default3DScalar: 'saturation_water',

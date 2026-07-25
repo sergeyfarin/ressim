@@ -25,10 +25,20 @@ export const wf_bl1d_opm: Scenario = {
     analyticalMethodSummary: 'Precomputed OPM Flow output — the bundled artifact is the exhibit content; no live analytical overlay is computed.',
     analyticalMethodReference: 'OPM Flow 2026.04 (Open Porous Media); deck per Buckley & Leverett (1942).',
     chartLayoutKey: 'waterflood',
+    chartLayoutPatch: {
+        rateChart: {
+            panels: {
+                // analyticalMethod is 'none' — no analytical reference curves
+                // exist to select, so the shared waterflood layout's reference
+                // keys are dropped rather than left dangling.
+                rates: { curveKeys: ['water-cut-sim'] },
+                recovery: { curveKeys: ['recovery-factor-primary'] },
+            },
+        },
+    },
     opmFlowReferenceArtifactKeys: ['wf_bl1d'],
     capabilities: {
         analyticalMethod: 'none',
-        showSweepPanel: false,
         hasInjector: true,
         default3DScalar: null,
         requiresThreePhaseMode: false,

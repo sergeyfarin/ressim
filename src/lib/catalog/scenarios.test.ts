@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getAnalyticalMethodDescriptor } from '../charts/analyticalMethodRegistry';
 import { calculateAnalyticalProduction } from '../analytical/fractionalFlow';
 import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
 import { computeCombinedSweep } from '../analytical/sweepEfficiency';
@@ -8,7 +9,6 @@ import {
     getScenarioChartLayout,
     getScenarioWithVariantParams,
     getScenarioGroup,
-    hasPrimaryAnalyticalReferenceCurves,
     listScenarios,
     resolveCapabilities,
     validateScenarioChartLayout,
@@ -398,11 +398,31 @@ describe('scenario capability validation', () => {
         }
     });
 
-    it('every scenario passes chart-layout validation against its analytical display contract', () => {
+    it('every scenario chart layout only asks for reference curves its method emits', () => {
         for (const scenario of listScenarios()) {
-            const errors = validateScenarioChartLayout(scenario);
+            const emitted = new Set(
+                getAnalyticalMethodDescriptor(scenario.capabilities.analyticalMethod)
+                    .slots.map((slot) => slot.curveKey),
+            );
+            const errors = validateScenarioChartLayout(scenario, emitted);
             expect(errors, `${scenario.key}: ${errors.join('; ')}`).toEqual([]);
         }
+    });
+
+    it('validateScenarioChartLayout flags a layout asking for a curve the method cannot produce', () => {
+        const sweepScenario = listScenarios().find((s) => s.capabilities.analyticalMethod === 'sweep')!;
+        // 'sweep' emits no primary reference curves at all, so any -reference key
+        // in its layout is a dead reference rather than something to suppress.
+        const errors = validateScenarioChartLayout(
+            {
+                ...sweepScenario,
+                chartLayoutPatch: {
+                    rateChart: { panels: { rates: { curveKeys: ['water-cut-sim', 'water-cut-reference'] } } },
+                },
+            },
+            new Set<string>(),
+        );
+        expect(errors.some((e) => e.includes('water-cut-reference'))).toBe(true);
     });
 
     it('every prerun-artifacts scenario declares bundled artifact keys and disables the 3D view (E7)', () => {
@@ -423,7 +443,7 @@ describe('scenario capability validation', () => {
     it('validateScenarioCapabilities rejects a prerun-artifacts scenario that leaves the 3D view on', () => {
         const errors = validateScenarioCapabilities({
             analyticalMethod: 'none',
-            showSweepPanel: false,
+           
             hasInjector: true,
             default3DScalar: 'saturation_water',
             requiresThreePhaseMode: false,
@@ -433,26 +453,26 @@ describe('scenario capability validation', () => {
     });
 
     it('resolveCapabilities defaults runMode to live-worker and honors prerun-artifacts', () => {
-        const live = resolveCapabilities({ analyticalMethod: 'buckley-leverett', showSweepPanel: false, hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false });
+        const live = resolveCapabilities({ analyticalMethod: 'buckley-leverett', hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false });
         expect(live.runMode).toBe('live-worker');
-        const prerun = resolveCapabilities({ analyticalMethod: 'none', showSweepPanel: false, hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false, runMode: 'prerun-artifacts' });
+        const prerun = resolveCapabilities({ analyticalMethod: 'none', hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false, runMode: 'prerun-artifacts' });
         expect(prerun.runMode).toBe('prerun-artifacts');
     });
 
     it('resolveCapabilities produces correct defaults for each analytical method', () => {
-        const bl = resolveCapabilities({ analyticalMethod: 'buckley-leverett', showSweepPanel: false, hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false });
+        const bl = resolveCapabilities({ analyticalMethod: 'buckley-leverett', hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false });
         expect(bl.primaryRateCurve).toBe('water-cut');
         expect(bl.analyticalNativeXAxis).toBe('pvi');
         expect(bl.hasTauDimensionlessTime).toBe(false);
         expect(bl.sweepGeometry).toBeNull();
 
-        const dep = resolveCapabilities({ analyticalMethod: 'depletion', showSweepPanel: false, hasInjector: false, default3DScalar: null, requiresThreePhaseMode: false });
+        const dep = resolveCapabilities({ analyticalMethod: 'depletion', hasInjector: false, default3DScalar: null, requiresThreePhaseMode: false });
         expect(dep.primaryRateCurve).toBe('oil-rate');
         expect(dep.analyticalNativeXAxis).toBe('time');
         expect(dep.hasTauDimensionlessTime).toBe(true);
         expect(dep.sweepGeometry).toBeNull();
 
-        const gasOil = resolveCapabilities({ analyticalMethod: 'gas-oil-bl', showSweepPanel: false, hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false });
+        const gasOil = resolveCapabilities({ analyticalMethod: 'gas-oil-bl', hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false });
         expect(gasOil.primaryRateCurve).toBe('gas-cut');
         expect(gasOil.analyticalNativeXAxis).toBe('pvi');
         expect(gasOil.sweepGeometry).toBeNull();
@@ -460,16 +480,15 @@ describe('scenario capability validation', () => {
 
     it('resolveCapabilities respects explicit overrides', () => {
         const resolved = resolveCapabilities({
-            analyticalMethod: 'buckley-leverett',
-            primaryRateCurve: 'oil-rate', // explicit override
+            analyticalMethod: 'sweep',
+            primaryRateCurve: 'water-cut',
             analyticalNativeXAxis: 'time', // explicit override
-            showSweepPanel: true,
             sweepGeometry: 'vertical',
             hasInjector: true,
             default3DScalar: null,
             requiresThreePhaseMode: false,
         });
-        expect(resolved.primaryRateCurve).toBe('oil-rate');
+        expect(resolved.primaryRateCurve).toBe('water-cut');
         expect(resolved.analyticalNativeXAxis).toBe('time');
         expect(resolved.sweepGeometry).toBe('vertical');
     });
@@ -478,7 +497,7 @@ describe('scenario capability validation', () => {
         const errors = validateScenarioCapabilities({
             analyticalMethod: 'depletion',
             primaryRateCurve: 'water-cut', // depletion cannot produce water-cut
-            showSweepPanel: false,
+           
             hasInjector: false,
             default3DScalar: null,
             requiresThreePhaseMode: false,
@@ -487,22 +506,48 @@ describe('scenario capability validation', () => {
         expect(errors[0]).toContain('water-cut');
     });
 
-    it('validateScenarioCapabilities requires sweepGeometry for sweep-panel scenarios', () => {
+    it('validateScenarioCapabilities requires sweepGeometry for the sweep method', () => {
         const errors = validateScenarioCapabilities({
-            analyticalMethod: 'buckley-leverett',
-            showSweepPanel: true,
+            analyticalMethod: 'sweep',
             hasInjector: true,
             default3DScalar: null,
             requiresThreePhaseMode: false,
         });
-        expect(errors).toContain('showSweepPanel scenarios must declare sweepGeometry.');
+        expect(errors).toContain("analyticalMethod 'sweep' scenarios must declare sweepGeometry.");
+    });
+
+    it('validateScenarioCapabilities rejects sweepGeometry on a non-sweep method', () => {
+        const errors = validateScenarioCapabilities({
+            analyticalMethod: 'buckley-leverett',
+            sweepGeometry: 'areal',
+            hasInjector: true,
+            default3DScalar: null,
+            requiresThreePhaseMode: false,
+        });
+        expect(errors).toContain("sweepGeometry can only be set when analyticalMethod is 'sweep'.");
+    });
+
+    it('resolveCapabilities turns the sweep panels on for the sweep method only', () => {
+        const sweep = resolveCapabilities({
+            analyticalMethod: 'sweep', sweepGeometry: 'vertical',
+            hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false,
+        });
+        expect(sweep.showSweepPanel).toBe(true);
+        expect(sweep.sweepGeometry).toBe('vertical');
+
+        const bl = resolveCapabilities({
+            analyticalMethod: 'buckley-leverett',
+            hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false,
+        });
+        expect(bl.showSweepPanel).toBe(false);
+        expect(bl.sweepGeometry).toBeNull();
     });
 
     it('resolved capabilities include defaultPanelExpansion from the output contract', () => {
-        const bl = resolveCapabilities({ analyticalMethod: 'buckley-leverett', showSweepPanel: false, hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false });
+        const bl = resolveCapabilities({ analyticalMethod: 'buckley-leverett', hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false });
         expect(bl.defaultPanelExpansion.diagnostics).toBe(false);
 
-        const dep = resolveCapabilities({ analyticalMethod: 'depletion', showSweepPanel: false, hasInjector: false, default3DScalar: null, requiresThreePhaseMode: false });
+        const dep = resolveCapabilities({ analyticalMethod: 'depletion', hasInjector: false, default3DScalar: null, requiresThreePhaseMode: false });
         expect(dep.defaultPanelExpansion.diagnostics).toBe(true);
     });
 
@@ -536,7 +581,7 @@ describe('scenario capability validation', () => {
         expect(arealLayout.rateChart?.panels?.sweep_vertical?.visible).toBe(false);
         expect(arealLayout.rateChart?.panels?.sweep_areal?.visible).toBe(true);
         expect(arealLayout.rateChart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim']);
-        expect(hasPrimaryAnalyticalReferenceCurves(arealLayout)).toBe(false);
+        expect(arealLayout.rateChart?.panels?.recovery?.curveKeys).toEqual(['recovery-factor-primary']);
 
         expect(combinedLayout.rateChart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim']);
         expect(combinedLayout.rateChart?.panels?.recovery?.curveKeys).toEqual(['recovery-factor-primary']);

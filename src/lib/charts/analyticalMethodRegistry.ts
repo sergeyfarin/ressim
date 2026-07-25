@@ -18,6 +18,11 @@
  *   - `nativeXAxis`       the axis the closed-form solution is expressed in
  *   - `panelPresentation` method-dependent panel titles / curve keys / scale preset
  *   - `referenceLabel`    disclosure wording for the reference solution
+ *   - `producesSweepPanels` whether its output is the E_A/E_V/E_vol panels instead
+ *
+ * A method with no reference solution ('none', 'digitized-reference', 'sweep')
+ * declares no slots and emits nothing. It must never fall through to another
+ * method's overlay path.
  *
  * `buildChartData.ts` then walks `slots` in a single generic loop. Adding a
  * method is: write its overlay builder in `referenceOverlayBuilders.ts` /
@@ -28,7 +33,7 @@
  * chart builder modules and cannot form a runtime import cycle.
  */
 
-import type { AnalyticalMethod, AnalyticalOverlayMode } from '../catalog/scenarios';
+import type { AnalyticalMethod, AnalyticalOverlayMode, PrimaryRateCurve } from '../catalog/scenarios';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { ChartPanelFallback } from './chartPanelSelection';
 import type { DerivedRunSeries } from './axisAdapters';
@@ -115,6 +120,18 @@ export type AnalyticalOverlayModeInput = {
 export type AnalyticalMethodDescriptor = {
     method: AnalyticalMethod;
     /**
+     * Whether this method's output is the dedicated E_A / E_V / E_vol sweep
+     * panels rather than primary rate/recovery overlays. True only for 'sweep'.
+     */
+    producesSweepPanels: boolean;
+    /**
+     * Which family of *simulation* curves this method's charts show. Sweep and
+     * Buckley-Leverett both show the water-cut set: a sweep chart compares
+     * contacted fraction against a waterflood's producing water cut, so the
+     * simulation side is identical even though the reference side is not.
+     */
+    simulationCurveSet: PrimaryRateCurve;
+    /**
      * Axis the closed-form solution is naturally expressed in. A 'pvi'-native
      * method plotted on any other axis must be remapped through a completed
      * run's own time/injection history; a 'time'-native one never is.
@@ -175,6 +192,8 @@ const NO_OVERLAY_PRESENTATION: AnalyticalMethodDescriptor['panelPresentation'] =
 
 const buckleyLeverett: AnalyticalMethodDescriptor = {
     method: 'buckley-leverett',
+    simulationCurveSet: 'water-cut',
+    producesSweepPanels: false,
     nativeXAxis: 'pvi',
     slots: [
         {
@@ -226,6 +245,8 @@ const buckleyLeverett: AnalyticalMethodDescriptor = {
 
 const gasOilBL: AnalyticalMethodDescriptor = {
     method: 'gas-oil-bl',
+    simulationCurveSet: 'gas-cut',
+    producesSweepPanels: false,
     nativeXAxis: 'pvi',
     slots: [
         {
@@ -293,6 +314,8 @@ const gasOilBL: AnalyticalMethodDescriptor = {
 
 const depletion: AnalyticalMethodDescriptor = {
     method: 'depletion',
+    simulationCurveSet: 'oil-rate',
+    producesSweepPanels: false,
     nativeXAxis: 'time',
     slots: [
         {
@@ -368,6 +391,8 @@ const depletion: AnalyticalMethodDescriptor = {
 
 const wellTest: AnalyticalMethodDescriptor = {
     method: 'well-test',
+    simulationCurveSet: 'oil-rate',
+    producesSweepPanels: false,
     nativeXAxis: 'time',
     slots: [
         {
@@ -413,6 +438,8 @@ const wellTest: AnalyticalMethodDescriptor = {
 
 const digitizedReference: AnalyticalMethodDescriptor = {
     method: 'digitized-reference',
+    simulationCurveSet: 'oil-rate',
+    producesSweepPanels: false,
     nativeXAxis: 'time',
     slots: [],
     fromResult: null,
@@ -424,6 +451,8 @@ const digitizedReference: AnalyticalMethodDescriptor = {
 
 const noMethod: AnalyticalMethodDescriptor = {
     method: 'none',
+    simulationCurveSet: 'oil-rate',
+    producesSweepPanels: false,
     nativeXAxis: 'time',
     slots: [],
     fromResult: null,
@@ -433,9 +462,52 @@ const noMethod: AnalyticalMethodDescriptor = {
     referenceLabel: 'Depletion reference solution',
 };
 
+/**
+ * Sweep correlations (Craig areal, Dykstra-Parsons / Stiles vertical).
+ *
+ * Before this became a method of its own, sweep scenarios declared
+ * `analyticalMethod: 'buckley-leverett'` — true of the correlation's internals,
+ * since displacement inside the contacted region is BL — plus a `showSweepPanel`
+ * capability flag. The stack then built BL water-cut and recovery reference
+ * curves and a second mechanism stripped them out again, deciding what to strip
+ * by scanning the chart layout for curve keys containing '-reference'.
+ *
+ * A sweep correlation answers "what fraction of the pattern is contacted", not
+ * "what is the producing water cut at time t", so it declares no primary curve
+ * slots. Nothing is built, so nothing needs stripping. The E_A / E_V / E_vol
+ * panels are assembled separately by `sweepPanelBuilder.ts`, which owns the
+ * geometry and Stiles/Dykstra-Parsons method choice.
+ */
+const sweep: AnalyticalMethodDescriptor = {
+    method: 'sweep',
+    simulationCurveSet: 'water-cut',
+    producesSweepPanels: true,
+    nativeXAxis: 'pvi',
+    slots: [],
+    fromResult: null,
+    fromParams: null,
+    resolveOverlayMode: () => 'per-result',
+    panelPresentation: {
+        rates: {
+            title: 'Watercut',
+            curveKeys: ['water-cut-sim'],
+            scalePreset: 'breakthrough',
+            allowLogToggle: false,
+        },
+        cumulative: {
+            curveKeys: ['cum-oil-sim'],
+        },
+        diagnostics: {
+            curveKeys: ['avg-pressure-sim'],
+        },
+    },
+    referenceLabel: 'Sweep reference solution',
+};
+
 export const ANALYTICAL_METHOD_DESCRIPTORS: Record<AnalyticalMethod, AnalyticalMethodDescriptor> = {
     'buckley-leverett': buckleyLeverett,
     'gas-oil-bl': gasOilBL,
+    'sweep': sweep,
     'depletion': depletion,
     'well-test': wellTest,
     'digitized-reference': digitizedReference,

@@ -41,7 +41,6 @@ export const dep_nct: Scenario = {
     historyWindow: { boundary: 12, axis: 'time', historyLabel: 'Matched history', forecastLabel: 'Forecast' },
     capabilities: {
         analyticalMethod: 'depletion',
-        showSweepPanel: false,
         hasInjector: false,
         default3DScalar: null,
         requiresThreePhaseMode: false,
