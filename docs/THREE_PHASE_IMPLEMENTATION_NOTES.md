@@ -1,6 +1,6 @@
 # Three-Phase Flow Implementation Notes
 
-Status: implemented in Rust and the TypeScript frontend. Still experimental because comparative-solution and acceptance-test coverage remain incomplete.
+Status: implemented in Rust and the TypeScript frontend, and validated. The `experimental` label was removed on 2026-07-25 once the exit criteria in `docs/THREE_PHASE_VALIDATION.md` section 1 were met. This document covers architecture and parameters; grading, tolerances and measured baselines live in `docs/THREE_PHASE_VALIDATION.md`.
 
 This document describes the architecture decisions made when adding oil/water/gas three-phase simulation. The existing two-phase code path is unchanged; three-phase is purely additive and activated by the `threePhaseModeEnabled` flag.
 
@@ -110,22 +110,44 @@ The following are explicitly not modified by three-phase:
 
 ## Validation Status
 
-Three-phase mode is **experimental**.
+Three-phase mode is **validated**, against numerical comparative solutions rather than
+closed-form ones. The authoritative record — exit criteria, cases, tolerances, measured errors,
+recorded baseline and replay commands — is `docs/THREE_PHASE_VALIDATION.md`. In summary:
 
-What is already covered:
+- **Gas injection** is graded against SPE1 Case 1 / `flow 2026.04` (`docs/BLACK_OIL_VALIDATION.md` §1).
+- **Solution gas drive** is graded against an OPM Flow reference for the `gas_drive` scenario,
+  whose PVT table, SCAL curves, grid and wells are shared with the deck by construction.
+- **Gas-front behavior** — breakthrough timing inside an acceptance band and stable under
+  timestep refinement, saturation profile monotone in space and advancing in time.
+- **All three phases close explicitly**, oil included, each inside a 1 % drift tolerance.
+- Stone II reductions, endpoints and SCAL table interpolation are unit-tested in
+  `src/lib/ressim/src/tests/three_phase.rs`.
 
-- Stone II reductions and endpoint behavior are unit-testable.
-- Gas injection / gas saturation behavior is exercised in Rust tests.
-- Water and gas cumulative material-balance errors are reported explicitly at runtime.
+### Material-balance diagnostics: what is and is not reported
 
-What is still missing:
+An earlier version of this document said oil-phase closure was "indirect" and not reported as
+its own diagnostic. That was wrong, and the correction matters:
 
-- No comparative-solution benchmark suite comparable to the Buckley-Leverett BL-Case-A/B coverage exists yet for three-phase behavior.
-- Oil-phase closure is still indirect because oil remains the residual phase in current diagnostics.
-- Gas-oriented scenario acceptance criteria have not yet been formalized.
+- `material_balance_error_m3` (water) and `material_balance_error_gas_m3` (gas, free plus
+  dissolved) are explicit cumulative diagnostics.
+- `material_balance_error_oil_m3` (oil) is **also** explicit and direct: reported surface oil
+  production versus actual stock-tank oil inventory depletion. It is not backed out as a
+  residual.
+
+What *is* residual about oil is its **saturation**: transport solves water and gas and sets
+S_o = 1 - S_w - S_g. The constraint therefore cannot fail — it is enforced by construction — so
+the oil diagnostic grades the reporting and FVF path rather than the constraint. See
+`docs/THREE_PHASE_VALIDATION.md` section 4.
 
 ## Remaining Gaps
 
-- **Validation gap**: there is still no accepted comparative-solution benchmark set for three-phase behavior in this repository.
-- **Diagnostics gap**: oil-phase material-balance closure is still not reported explicitly as its own cumulative diagnostic.
-- **Product-status gap**: gas scenarios are implemented, but the documentation and acceptance policy still need a consistent definition of what qualifies as non-experimental.
+These are envelope limits, not validation debt:
+
+- **No three-phase analytical reference** exists in this repo; Buckley-Leverett is two-phase and
+  Dietz is oil-only. Three-phase grading is numerical.
+- **Vaporized oil (Rv) is not modelled** — the gas phase carries no oil, so wet-gas and
+  gas-condensate behavior is outside the envelope. The OPM decks use dry-gas `PVDG` to match.
+- **`gas_injection` has no OPM reference of its own**; it is covered by SPE1 (same mechanism)
+  and the gas-front criteria.
+- **A +4 % cumulative-oil bias** against OPM on `gas_drive` is inside the acceptance band but
+  unexplained.

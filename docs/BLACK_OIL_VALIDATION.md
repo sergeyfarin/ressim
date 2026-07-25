@@ -213,8 +213,9 @@ tables.
 
 ## 4. Known gaps
 
-- Three-phase status is still `experimental`: the exit criteria and the gas-drive breakthrough /
-  Sg-evolution acceptance tests are open (`ROADMAP.md` 1.2).
+- Three-phase status is no longer `experimental` (2026-07-25): exit criteria, the gas-drive OPM
+  Flow comparative solution, and the breakthrough / Sg-evolution acceptance tests are recorded in
+  `docs/THREE_PHASE_VALIDATION.md`.
 - No SPE-style black-oil case beyond SPE1 (SPE9, volatile-oil style cases) is covered.
 - The IMPES/FIM answer gap on the depletion column (section 2) is unexplained.
 - Scenario-wiring regressions for SPE1 (published-reference panel placement, `cellDzPerLayer`,

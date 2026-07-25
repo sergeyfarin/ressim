@@ -316,7 +316,7 @@ pub(super) fn make_short_waterflood_1d_sim() -> ReservoirSimulator {
     sim
 }
 
-pub(super) fn make_3phase_gas_injection_sim(nx: usize, fim_enabled: bool) -> ReservoirSimulator {
+pub(crate) fn make_3phase_gas_injection_sim(nx: usize, fim_enabled: bool) -> ReservoirSimulator {
     let mut sim = ReservoirSimulator::new(nx, 1, 1, 0.2);
     sim.set_fim_enabled(fim_enabled);
     sim.set_three_phase_rel_perm_props(0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7)
@@ -334,7 +334,7 @@ pub(super) fn make_3phase_gas_injection_sim(nx: usize, fim_enabled: bool) -> Res
     sim
 }
 
-pub(super) fn total_gas_inventory_sc_all_cells(sim: &ReservoirSimulator) -> f64 {
+pub(crate) fn total_gas_inventory_sc_all_cells(sim: &ReservoirSimulator) -> f64 {
     (0..sim.nx * sim.ny * sim.nz)
         .map(|idx| {
             let pore_volume_m3 = sim.pore_volume_m3(idx).max(1e-9);

@@ -64,6 +64,12 @@ run_shared() {
 
 run_fim() {
     run_test spe1_first_year_matches_published_reference
+    # Three-phase acceptance criteria — docs/THREE_PHASE_VALIDATION.md.
+    run_test three_phase_gas_drive_matches_opm_flow_reference
+    run_test three_phase_gas_drive_liberates_solution_gas_as_pressure_falls
+    run_test three_phase_gas_flood_breakthrough_time_is_within_acceptance_band
+    run_test three_phase_gas_flood_saturation_front_is_monotone_and_advances
+    run_test three_phase_gas_flood_phase_closure_holds_for_all_three_phases
     run_test fim::tests::spe1::
     run_test fim::tests::wells::
     run_test dep_pss_fim_closed_system_depletion_invariants_hold

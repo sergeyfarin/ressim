@@ -36,14 +36,38 @@ Remaining:
 Why first:
 - In the reservoir-simulation literature, black-oil extensions are only meaningful when the pressure equation, PVT coupling, and material-balance behavior are benchmarked against accepted reference problems.
 
-### 1.2 Three-phase validation
+### 1.2 Three-phase validation — DONE 2026-07-25
 
-- Define the bar for leaving `experimental` status.
-- Add gas-injection and gas-drive acceptance tests that check breakthrough timing, gas saturation evolution, and phase-closure diagnostics.
-- Clarify what is and is not reported in current material-balance diagnostics: water and gas are explicit, oil is residual.
+Record: `docs/THREE_PHASE_VALIDATION.md` (exit criteria, acceptance criteria, measured
+baselines, replay commands, remaining envelope limits).
 
-Why first:
-- The code now contains more three-phase capability than the docs claim, but validation still lags implementation.
+Done:
+- **Exit criteria defined** as five conditions (`docs/THREE_PHASE_VALIDATION.md` §1) and met;
+  the `experimental` label was removed from README, the implementation notes, the case-library
+  roadmap and the `gas_drive` scenario copy.
+- **Solution-gas-drive comparative solution.** `gas_drive` was upgraded from constant-PVT
+  immiscible depletion to genuine black-oil (saturated start at the bubble point, Rs(P) from
+  `generateBlackOilTable`), a matching OPM Flow deck was added
+  (`tools/opm_flow/opm_flow_tool/cases.py::GAS_DRIVE`), and the parsed `flow 2026.04` series are
+  committed as `src/lib/catalog/opm-flow-results/gas_drive.json`. Acceptance: pressure 3 %, GOR
+  12 %, cumulative oil 8 %, oil rate 10 % while the rate is meaningful, oil/gas MB drift 1 %,
+  zero solver warnings. Worst measured: 1.59 % / 6.08 % / 4.32 % / 4.61 %.
+- **Gas-front acceptance tests** in `src/lib/ressim/src/tests/three_phase_acceptance.rs`:
+  breakthrough timing inside a 2–8 day band and unchanged under timestep halving; gas saturation
+  monotone in space and advancing monotonically in time; per-phase closure including oil.
+  All wired into the `fim` bucket of `scripts/validate-solver-coverage.sh`.
+- **Material-balance reporting clarified and corrected.** The old claim that oil is "residual"
+  in the diagnostics was wrong: `material_balance_error_oil_m3` is direct. What is residual is
+  the oil *saturation* in transport. Documented in `docs/THREE_PHASE_VALIDATION.md` §4.
+- **Producing-GOR reporting bug fixed.** GOR was forced to 0 below an absolute 10 Sm³/day oil
+  rate, blanking the diagnostic for most of a depleting gas-drive run. The floor is now a
+  divide-by-zero guard.
+
+Remaining (envelope limits, not validation debt):
+- No three-phase analytical reference exists; grading is against numerical references.
+- Vaporized oil (Rv) is not modelled, so wet-gas / gas-condensate is out of envelope.
+- `gas_injection` has no OPM reference of its own (covered indirectly by SPE1).
+- The +4 % cumulative-oil bias vs OPM on `gas_drive` is inside band but unexplained.
 
 ### 1.3 Regression coverage gaps
 

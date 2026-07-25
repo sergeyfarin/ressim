@@ -215,6 +215,7 @@ pub(crate) mod tests {
     mod runtime_api;
     mod spe1_acceptance;
     mod three_phase;
+    mod three_phase_acceptance;
     mod well_controls;
 
     #[test]

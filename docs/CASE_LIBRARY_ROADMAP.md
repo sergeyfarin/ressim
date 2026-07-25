@@ -7,7 +7,7 @@ Date: 2026-07-02; Tier 5 + enabler-gap sections added 2026-07-07; **Tier 7 gap a
 A good ResSim case has, in priority order:
 
 1. **An independent reference** — analytical solution, published benchmark results, or an OPM Flow run (see `.claude/skills/opm-reference-pipeline/`). No reference → teaching-only, label it honestly.
-2. **Physics inside the engine's envelope** — 3D Cartesian grid, two-phase O/W (validated), three-phase O/W/G (experimental), black-oil PVT, Peaceman wells, gravity, Brooks-Corey capillary. **Not supported:** radial grids/LGR, aquifer models, well schedules, compositional, thermal, polymer/chemical EOR, dual porosity, horizontal wells.
+2. **Physics inside the engine's envelope** — 3D Cartesian grid, two-phase O/W (validated), three-phase O/W/G (validated — `docs/THREE_PHASE_VALIDATION.md`), black-oil PVT, Peaceman wells, gravity, Brooks-Corey capillary. **Not supported:** radial grids/LGR, aquifer models, well schedules, compositional, thermal, polymer/chemical EOR, dual porosity, horizontal wells.
 3. **Browser-scale grid** — comfortably ≤ ~30k cells for interactive IMPES runs.
 4. **One clear teaching point** per sensitivity dimension.
 

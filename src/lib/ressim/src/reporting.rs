@@ -10,7 +10,15 @@ use crate::fim::wells::{
 use crate::well_control::ResolvedWellControl;
 use crate::{InjectedFluid, ReservoirSimulator};
 
-const MIN_GOR_OIL_RATE_SC_DAY: f64 = 10.0;
+/// Divide-by-zero guard for producing GOR [Sm³/day of surface oil].
+///
+/// This is deliberately a denormal-scale epsilon rather than a rate the user would
+/// recognise. It used to be 10 Sm³/day, which silently reported `producing_gor = 0` for any
+/// well below that rate — fine for a 3180 Sm³/day SPE1 producer, but wrong for a depleting
+/// solution-gas-drive well, whose GOR is *most* interesting exactly when the oil rate has
+/// decayed into single digits. A reported 0 now means "no surface oil production", not "no
+/// gas": with no oil in the denominator the ratio is genuinely undefined.
+const MIN_GOR_OIL_RATE_SC_DAY: f64 = 1e-9;
 
 /// Configuration for sweep efficiency diagnostics computed per time step.
 #[derive(Clone, Serialize, Deserialize)]

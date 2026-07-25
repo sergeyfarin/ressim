@@ -8,7 +8,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 - Two-phase oil/water IMPES workflow validated against Buckley-Leverett breakthrough references.
 - Analytical overlays for Buckley-Leverett, Craig areal sweep, Dykstra-Parsons vertical sweep, Stiles-style combined sweep, Dietz pseudo-steady-state depletion, Fetkovich decline, Arps decline, and Havlena-Odeh material-balance diagnostics.
 - Black-oil PVT mode is available for volatile-oil style studies through correlation-based or tabular PVT input.
-- Three-phase oil/water/gas flow is implemented, but still treated as experimental because comparative-solution validation is not complete.
+- Three-phase oil/water/gas flow is validated against comparative solutions: SPE1 Case 1 for gas injection and an OPM Flow reference for solution gas drive (`docs/THREE_PHASE_VALIDATION.md`).
 - Public app runs are IMPES-first while the FIM path is deferred to explicit developer diagnostics.
 - OPM Flow reference work is handled offline through precomputed artifacts; browser execution remains local WASM.
 
@@ -88,8 +88,8 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 - Craig areal sweep applies to confined five-spot style pattern assumptions. It is context, not a universal areal flood model.
 - Dykstra-Parsons assumes layered, non-communicating flow. When the simulator allows vertical communication, analytical sweep penalties are intentionally conservative.
 - Stiles-style combined sweep improves layered recovery interpretation, but it is still an analytical teaching aid rather than a substitute for full streamline or field-scale pattern modeling.
-- Three-phase mode remains experimental because validation depth still trails implementation breadth.
-- Material-balance diagnostics are partial by phase: water and gas cumulative closure are reported explicitly; oil remains the residual phase in current diagnostics.
+- Three-phase mode is graded against numerical references (OPM Flow, SPE1), not closed-form solutions — no analytical three-phase reference exists in this repo. Vaporized oil (Rv) is not modelled, so wet-gas and gas-condensate behavior is outside the envelope. See `docs/THREE_PHASE_VALIDATION.md` section 6.
+- Material-balance closure is reported explicitly for all three phases. Oil is the residual *saturation* in transport (S_o = 1 - S_w - S_g), but its diagnostic is direct: reported surface oil production versus actual stock-tank oil inventory depletion.
 - The Brooks-Corey capillary model is numerically capped at `20 x P_entry`. That cap is a stability safeguard, not a physical plateau.
 - Pore volume is held constant within each timestep. Rock compressibility enters the pressure equation accumulation term but does not update cell geometry. This is the standard IMPES simplification and is consistent with the compressibility magnitudes used.
 - Water density and viscosity are pressure-independent. This is adequate for the reservoir pressure and temperature ranges targeted by this simulator.
@@ -183,7 +183,8 @@ TODO.md
 | `docs/BENCHMARK_MODE_GUIDE.md` | Benchmark workflow semantics and chart behavior |
 | `docs/P4_TWO_PHASE_BENCHMARKS.md` | Buckley-Leverett benchmark methodology and tolerance policy |
 | `docs/BLACK_OIL_VALIDATION.md` | SPE1 acceptance criteria, black-oil grid convergence, solver safeguards |
-| `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase implementation details and remaining validation gaps |
+| `docs/THREE_PHASE_VALIDATION.md` | Three-phase exit criteria, OPM Flow / SPE1 acceptance, phase-closure diagnostics |
+| `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase implementation details and parameter reference |
 | `docs/UNIT_SYSTEM.md` | Unit conventions, equations, and PVT / solver notes |
 | `docs/DOCUMENTATION_INDEX.md` | Which documents are authoritative vs historical |
 

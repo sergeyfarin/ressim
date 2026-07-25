@@ -273,10 +273,28 @@ Open, blocked on an enabler:
   at `applySolverPolicy` in `src/lib/catalog/scenarios.ts` as the single source), and updated the
   `FIM_STATUS.md` current-state line. Historical mentions in `FIM_CONVERGENCE_WORKLOG.md`, the
   experiment registry, and dated review docs were left as provenance.
-- [ ] **Define three-phase `experimental` exit criteria** + acceptance tests for gas-injection and
+- [x] **Define three-phase `experimental` exit criteria** + acceptance tests for gas-injection and
   gas-drive (breakthrough timing, Sg evolution, phase-closure diagnostics).
-- [ ] **Reconcile three-phase docs with implemented state:** gas-oil capillary sign, `s_org`, explicit
-  gas MB reporting, oil-phase diagnostic limits.
+  Done 2026-07-25: five exit criteria defined and met in `docs/THREE_PHASE_VALIDATION.md`;
+  `gas_drive` upgraded to real black-oil and graded against a new OPM Flow reference deck;
+  gas-front and per-phase-closure gates added in `three_phase_acceptance.rs` and wired into the
+  `fim` bucket. `experimental` removed from README, implementation notes, case-library roadmap
+  and the `gas_drive` scenario copy.
+- [x] **Reconcile three-phase docs with implemented state:** explicit gas MB reporting,
+  oil-phase diagnostic limits.
+  Done 2026-07-25: `material_balance_error_oil_m3` is a *direct* diagnostic, not a residual —
+  the old "oil is residual" wording was wrong and is corrected in
+  `docs/THREE_PHASE_VALIDATION.md` §4, the implementation notes and README. Gas-oil capillary
+  sign and `s_org` wording were already consistent with `capillary.rs` / `relperm.rs`.
+- [ ] **Explain the +4 % cumulative-oil bias vs OPM Flow on `gas_drive`.** Inside the 8 %
+  acceptance band and monotone (+1.1 % at 10 d to +4.3 % at 600 d) while pressure and GOR
+  agreement *improve* with time, so it looks like an early-time displacement-efficiency
+  difference locked into the integral rather than an accumulating drift. Replay:
+  `three_phase_acceptance_error_replay`.
+- [ ] **`gas_injection` has no OPM Flow reference of its own.** Covered indirectly by SPE1 (same
+  mechanism, graded) and by the gas-front criteria, but a dedicated deck would close the last
+  three-phase scenario without a direct numerical reference. The pipeline now has a working
+  three-phase deck template (`GAS_DRIVE` in `tools/opm_flow/opm_flow_tool/cases.py`).
 - [ ] **SPE1:** add regression tests for scenario wiring / published-reference panel placement /
   `cellDzPerLayer` + per-layer completion payload; re-verify the comparison source/metric mapping
   (Case 1 vs 2, avg vs field pressure, producing GOR). Rate-target tuning is done — the engine is

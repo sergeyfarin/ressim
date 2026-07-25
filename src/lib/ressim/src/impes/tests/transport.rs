@@ -51,8 +51,15 @@ fn transport_reporting_reuses_rate_control_decision() {
     assert_eq!(latest.injector_bhp_limited_fraction, 0.0);
 }
 
+/// Producing GOR must be reported for a small-but-nonzero oil rate.
+///
+/// This used to assert `producing_gor == 0` below a 10 Sm³/day absolute floor. That floor
+/// hid the diagnostic exactly where it matters most — a depleting solution-gas-drive well
+/// whose oil rate has decayed into single digits still has a perfectly well-defined, and
+/// rising, GOR. A reported 0 now means "no surface oil production" only; see
+/// `reporting.rs::MIN_GOR_OIL_RATE_SC_DAY` and `docs/THREE_PHASE_VALIDATION.md`.
 #[test]
-fn producing_gor_is_zero_when_oil_rate_is_negligible() {
+fn producing_gor_is_reported_when_oil_rate_is_small_but_nonzero() {
     let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
     sim.set_three_phase_rel_perm_props(0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7)
         .unwrap();
@@ -106,6 +113,84 @@ fn producing_gor_is_zero_when_oil_rate_is_negligible() {
         .rate_history
         .last()
         .expect("rate history should have an entry");
+    assert!(
+        latest.total_production_oil > 0.0,
+        "fixture should still produce some oil: {}",
+        latest.total_production_oil
+    );
+    assert!(
+        latest.producing_gor.is_finite() && latest.producing_gor > 0.0,
+        "producing GOR should be reported for a small nonzero oil rate, got {}",
+        latest.producing_gor
+    );
+    // Rs is zero in this fixture, so there is no dissolved-gas term and the reported ratio
+    // must be exactly the free-gas rate over the oil rate.
+    assert!(
+        (latest.producing_gor - latest.total_production_gas / latest.total_production_oil).abs()
+            < 1e-9,
+        "producing GOR {} should equal gas/oil = {}",
+        latest.producing_gor,
+        latest.total_production_gas / latest.total_production_oil
+    );
+}
+
+/// The remaining reason `producing_gor` can be zero: no surface oil in the denominator at
+/// all, where the ratio is genuinely undefined rather than merely small.
+#[test]
+fn producing_gor_is_zero_when_there_is_no_oil_production() {
+    let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+    sim.set_three_phase_rel_perm_props(0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7)
+        .unwrap();
+    sim.set_three_phase_mode_enabled(true);
+    sim.set_initial_pressure(100.0);
+    sim.set_initial_saturation(0.10);
+    sim.pvt_table = Some(crate::pvt::PvtTable::new(
+        vec![crate::pvt::PvtRow {
+            p_bar: 100.0,
+            rs_m3m3: 0.0,
+            bo_m3m3: 1.2,
+            mu_o_cp: 1.0,
+            bg_m3m3: 0.25,
+            mu_g_cp: 0.02,
+        }],
+        sim.pvt.c_o,
+    ));
+    sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+    let id = sim.idx(0, 0, 0);
+    sim.pressure[id] = 300.0;
+    sim.sat_water[id] = 0.12;
+    sim.sat_gas[id] = 0.88;
+    sim.sat_oil[id] = 0.0;
+
+    let controls = vec![Some(ResolvedWellControl {
+        decision: WellControlDecision::Bhp { bhp_bar: 100.0 },
+        bhp_limited: false,
+        producer_state: Some(ProducerControlState {
+            water_fraction: 0.12,
+            oil_fraction: 0.0,
+            gas_fraction: 0.88,
+            oil_fvf: sim.get_b_o_cell(id, sim.pressure[id]).max(1e-9),
+            gas_fvf: sim.get_b_g(sim.pressure[id]).max(1e-9),
+            rs_sm3_sm3: sim.rs[id],
+        }),
+        flowing_bhp: None,
+    })];
+
+    sim.update_saturations_and_pressure(
+        &DVector::from_vec(vec![300.0]),
+        &vec![0.0],
+        &vec![0.0],
+        &vec![0.0],
+        &controls,
+        1.0,
+    );
+
+    let latest = sim
+        .rate_history
+        .last()
+        .expect("rate history should have an entry");
+    assert_eq!(latest.total_production_oil, 0.0);
     assert_eq!(latest.producing_gor, 0.0);
 }
 

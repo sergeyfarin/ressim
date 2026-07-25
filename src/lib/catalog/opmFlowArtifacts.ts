@@ -1,6 +1,7 @@
 import type { PublishedReferenceSeries } from './scenarios';
 import wfBl1dArtifact from './opm-flow-results/wf_bl1d.json';
 import spe1Artifact from './opm-flow-results/spe1_gas_injection.json';
+import gasDriveArtifact from './opm-flow-results/gas_drive.json';
 
 export type ReferenceSourceType =
     | 'analytical'
@@ -35,6 +36,7 @@ export type OpmFlowArtifact = {
 const ARTIFACTS = [
     wfBl1dArtifact as OpmFlowArtifact,
     spe1Artifact as OpmFlowArtifact,
+    gasDriveArtifact as OpmFlowArtifact,
 ];
 
 export function listOpmFlowArtifacts(): OpmFlowArtifact[] {
