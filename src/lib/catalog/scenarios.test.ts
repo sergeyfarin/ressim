@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getAnalyticalMethodDescriptor } from '../charts/analyticalMethodRegistry';
+import { listDeclaredOpmFlowArtifactKeys } from './opmFlowArtifacts';
 import { calculateAnalyticalProduction } from '../analytical/fractionalFlow';
 import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
 import { computeCombinedSweep } from '../analytical/sweepEfficiency';
@@ -432,8 +433,8 @@ describe('scenario capability validation', () => {
         expect(prerun.length, 'expected at least one prerun-artifacts scenario').toBeGreaterThan(0);
         for (const scenario of prerun) {
             expect(
-                scenario.opmFlowReferenceArtifactKeys?.length ?? 0,
-                `${scenario.key} must declare opmFlowReferenceArtifactKeys`,
+                listDeclaredOpmFlowArtifactKeys(scenario.referenceSources).length,
+                `${scenario.key} must declare an 'opm-flow' referenceSources entry`,
             ).toBeGreaterThan(0);
             expect(
                 scenario.capabilities.default3DScalar,

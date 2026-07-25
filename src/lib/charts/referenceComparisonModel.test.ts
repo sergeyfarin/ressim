@@ -3,6 +3,7 @@ import { calculateDepletionAnalyticalProduction } from '../analytical/depletionA
 import { calculateAnalyticalProduction, computeWelgeMetrics } from '../analytical/fractionalFlow';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import { getScenario, getScenarioChartLayout } from '../catalog/scenarios';
+import { resolveScenarioReferenceSeries } from '../catalog/opmFlowArtifacts';
 import { buildBenchmarkRunResult } from '../benchmarkRunModel';
 import type { BenchmarkRunSpec } from '../benchmarkRunModel';
 import type { SimulatorSnapshot } from '../simulator-types';
@@ -66,7 +67,7 @@ function buildScenarioFamily(scenarioKey: string, overrides: Record<string, unkn
         chartLayoutPatch: scenario.chartLayoutPatch,
         showSweepPanel: scenario.capabilities.analyticalMethod === 'sweep',
         sweepGeometry: (scenario.capabilities as { sweepGeometry?: string | null }).sweepGeometry ?? null,
-        publishedReferenceSeries: scenario.publishedReferenceSeries,
+        publishedReferenceSeries: resolveScenarioReferenceSeries(scenario.referenceSources),
         ...overrides,
     } as unknown as BenchmarkFamily;
 }
@@ -602,7 +603,7 @@ describe('referenceComparisonModel', () => {
                 key: scenario.key,
                 analyticalMethod: 'none',
                 showSweepPanel: false,
-                publishedReferenceSeries: scenario.publishedReferenceSeries,
+                publishedReferenceSeries: resolveScenarioReferenceSeries(scenario.referenceSources),
             } as unknown as BenchmarkFamily,
             results: [result],
             xAxisMode: 'time',
@@ -628,7 +629,7 @@ describe('referenceComparisonModel', () => {
             description: scenario.description,
             baseCase: { key: scenario.key, label: scenario.label, description: scenario.description, params: scenario.params },
             showSweepPanel: false,
-            publishedReferenceSeries: scenario.publishedReferenceSeries,
+            publishedReferenceSeries: resolveScenarioReferenceSeries(scenario.referenceSources),
         } as BenchmarkFamily;
 
         const model = buildReferenceComparisonModel({
@@ -685,7 +686,7 @@ describe('referenceComparisonModel', () => {
                 key: scenario.key,
                 analyticalMethod: 'none',
                 showSweepPanel: false,
-                publishedReferenceSeries: scenario.publishedReferenceSeries,
+                publishedReferenceSeries: resolveScenarioReferenceSeries(scenario.referenceSources),
             } as unknown as BenchmarkFamily,
             results: [result],
             xAxisMode: 'time',
@@ -700,7 +701,7 @@ describe('referenceComparisonModel', () => {
             key: scenario.key,
             analyticalMethod: 'none',
             showSweepPanel: false,
-            publishedReferenceSeries: scenario.publishedReferenceSeries,
+            publishedReferenceSeries: resolveScenarioReferenceSeries(scenario.referenceSources),
         } as unknown as BenchmarkFamily;
 
         const model = buildReferenceComparisonModel({
@@ -741,7 +742,7 @@ describe('referenceComparisonModel', () => {
                 key: scenario.key,
                 analyticalMethod: 'gas-oil-bl',
                 showSweepPanel: false,
-                publishedReferenceSeries: scenario.publishedReferenceSeries,
+                publishedReferenceSeries: resolveScenarioReferenceSeries(scenario.referenceSources),
             } as unknown as BenchmarkFamily,
             results: [result],
             xAxisMode: 'time',
@@ -778,7 +779,7 @@ describe('referenceComparisonModel', () => {
                 key: scenario.key,
                 analyticalMethod: 'none',
                 showSweepPanel: false,
-                publishedReferenceSeries: scenario.publishedReferenceSeries,
+                publishedReferenceSeries: resolveScenarioReferenceSeries(scenario.referenceSources),
             } as unknown as BenchmarkFamily,
             results: [result],
             xAxisMode: 'time',
@@ -859,7 +860,7 @@ describe('referenceComparisonModel', () => {
                 chartLayoutPatch: scenario!.chartLayoutPatch,
                 showSweepPanel: false,
                 sweepGeometry: null,
-                publishedReferenceSeries: scenario!.publishedReferenceSeries,
+                publishedReferenceSeries: resolveScenarioReferenceSeries(scenario!.referenceSources),
             } as unknown as BenchmarkFamily,
             results: [result],
             xAxisMode: 'time',

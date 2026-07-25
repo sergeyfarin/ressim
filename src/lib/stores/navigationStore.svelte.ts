@@ -46,7 +46,7 @@ import {
 import type { ParameterStore } from './parameterStore.svelte';
 import type { RuntimeStore } from './runtimeStore.svelte';
 import { getReferenceRateChartLayoutConfig } from '../charts/referenceChartConfig';
-import { getOpmFlowArtifactSeriesByKeys, getOpmFlowPublishedReferenceSeries } from '../catalog/opmFlowArtifacts';
+import { resolveScenarioReferenceSeries } from '../catalog/opmFlowArtifacts';
 import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
 import {
     computeSweepRecoveryFactor,
@@ -291,13 +291,7 @@ class NavigationStoreImpl {
             sweepGeometry: resolved.sweepGeometry,
             sweepAnalyticalMethod: this.activeAnalyticalOption?.sweepMethod,
             analyticalOverlayMode: activeDimension?.analyticalOverlayMode ?? 'auto',
-            publishedReferenceSeries: [
-                ...(sc.publishedReferenceSeries ?? []),
-                ...getOpmFlowPublishedReferenceSeries(sc.key),
-                ...(resolved.runMode === 'prerun-artifacts'
-                    ? getOpmFlowArtifactSeriesByKeys(sc.opmFlowReferenceArtifactKeys ?? [], { primary: true })
-                    : []),
-            ],
+            publishedReferenceSeries: resolveScenarioReferenceSeries(sc.referenceSources),
         } as BenchmarkFamily;
     });
 

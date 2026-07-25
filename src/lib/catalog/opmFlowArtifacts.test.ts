@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
     getOpmFlowArtifactsForScenario,
-    getOpmFlowPublishedReferenceSeries,
+    listDeclaredOpmFlowArtifactKeys,
+    resolveScenarioReferenceSeries,
     listOpmFlowArtifacts,
 } from './opmFlowArtifacts';
 import { getScenario, listScenarios } from './scenarios';
@@ -54,19 +55,47 @@ describe('OPM Flow precomputed artifacts', () => {
         }
     });
 
-    it('exposes real parsed series as chart curves for scenarios with a parsed artifact', () => {
+    it('resolves a declared opm-flow source into stamped chart curves', () => {
         expect(getOpmFlowArtifactsForScenario('wf_bl1d')).toHaveLength(1);
-        const series = getOpmFlowPublishedReferenceSeries('wf_bl1d');
+        const series = resolveScenarioReferenceSeries([{ kind: 'opm-flow', artifactKeys: ['wf_bl1d'] }]);
         expect(series.length).toBeGreaterThan(0);
         for (const s of series) {
             expect(s.sourceType).toBe('opm-flow-precomputed');
             expect(s.sourceArtifactKey).toBe('wf_bl1d');
+            // Overlay role leaves `primary` absent so the chart's `=== true` test reads false.
+            expect(s.primary).toBeUndefined();
         }
     });
 
-    it('every scenario opmFlowReferenceArtifactKeys entry resolves to an artifact whose scenarioKey matches the owning scenario', () => {
+    it('stamps primary only on the primary role', () => {
+        const primary = resolveScenarioReferenceSeries([
+            { kind: 'opm-flow', artifactKeys: ['wf_bl1d'], role: 'primary' },
+        ]);
+        expect(primary.length).toBeGreaterThan(0);
+        for (const s of primary) expect(s.primary).toBe(true);
+    });
+
+    it('resolves sources in declaration order and passes published series through untouched', () => {
+        const published = { panelKey: 'rates', label: 'Paper', curveKey: 'published-x', data: [{ x: 0, y: 1 }] };
+        const series = resolveScenarioReferenceSeries([
+            { kind: 'published', series: [published] },
+            { kind: 'opm-flow', artifactKeys: ['wf_bl1d'] },
+        ]);
+        expect(series[0]).toEqual(published);
+        expect(series[1].sourceType).toBe('opm-flow-precomputed');
+    });
+
+    it('never resolves an artifact a scenario did not declare', () => {
+        // The old path matched any artifact whose scenarioKey equalled the
+        // scenario key, so a chart could gain curves no scenario file mentioned.
+        expect(resolveScenarioReferenceSeries([])).toEqual([]);
+        expect(resolveScenarioReferenceSeries(undefined)).toEqual([]);
+        expect(resolveScenarioReferenceSeries([{ kind: 'opm-flow', artifactKeys: ['not-an-artifact'] }])).toEqual([]);
+    });
+
+    it("every scenario's declared opm-flow artifact keys resolve to an artifact owned by that scenario", () => {
         for (const scenario of listScenarios()) {
-            const keys = scenario.opmFlowReferenceArtifactKeys ?? [];
+            const keys = listDeclaredOpmFlowArtifactKeys(scenario.referenceSources);
             // Prerun-artifacts scenarios (E7) intentionally reuse an artifact owned
             // by a different (live) scenario's deck — the artifact IS the exhibit —
             // so the scenarioKey-match invariant only applies to live-worker scenarios.
@@ -75,7 +104,7 @@ describe('OPM Flow precomputed artifacts', () => {
                 const artifact = listOpmFlowArtifacts().find((a) => a.caseKey === caseKey);
                 expect(
                     artifact,
-                    `scenario '${scenario.key}' declares opmFlowReferenceArtifactKeys '${caseKey}' with no matching bundled artifact`,
+                    `scenario '${scenario.key}' declares opm-flow artifactKey '${caseKey}' with no matching bundled artifact`,
                 ).toBeDefined();
                 if (isPrerun) continue;
                 expect(

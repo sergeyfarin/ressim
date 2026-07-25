@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { listScenarios, getScenarioWithVariantParams } from '../catalog/scenarios';
-import { listOpmFlowArtifacts } from '../catalog/opmFlowArtifacts';
+import { listDeclaredOpmFlowArtifactKeys, listOpmFlowArtifacts } from '../catalog/opmFlowArtifacts';
 import { buildCreatePayloadForRun, buildScenarioRunSpecs } from './runModel';
 
 function firstDimensionAndVariant(scenarioKey: string) {
@@ -121,7 +121,7 @@ describe('scenario-first run model', () => {
             // Prerun-artifacts scenarios (E7) reuse another scenario's bundled
             // artifact by caseKey, so the same-scenario invariant is skipped for them.
             const isPrerun = scenario.capabilities.runMode === 'prerun-artifacts';
-            for (const artifactKey of scenario.opmFlowReferenceArtifactKeys ?? []) {
+            for (const artifactKey of listDeclaredOpmFlowArtifactKeys(scenario.referenceSources)) {
                 const artifact = artifactsByCase.get(artifactKey);
                 expect(artifact, `${scenario.key}:${artifactKey}`).toBeTruthy();
                 expect(artifact?.sourceType).toBe('opm-flow-precomputed');

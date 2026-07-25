@@ -170,10 +170,36 @@ values" while hardcoding 4 of 7 — it had silently stopped covering `well-test`
 
 Replay: `pnpm run validate` — 743 passed / 15 skipped, measured 2026-07-25 (parent commit `0acba9f`).
 
-Remaining:
-- **Step 4** — declare reference sources explicitly (one `referenceSources` list replacing
-  `publishedReferenceSeries`, `opmFlowReferenceArtifactKeys`, and the implicit scenario-key match in
-  `getOpmFlowPublishedReferenceSeries`), so a scenario file states which references its charts show.
+**Step 4 of 4 — DONE 2026-07-25: reference sources are declared.**
+
+One `Scenario.referenceSources` list replaces three mechanisms that between them made "which
+references does this chart show?" unanswerable from the scenario file:
+
+- `publishedReferenceSeries` — a static series array;
+- `opmFlowReferenceArtifactKeys` — an array that, despite the name, had **no effect at all on
+  live-worker scenarios**; only `prerun-artifacts` scenarios read it;
+- an implicit match of every bundled OPM artifact whose `scenarioKey` equalled the scenario's key.
+  That invisible third path is how live scenarios actually got their OPM overlays. `wf_bl1d`
+  declared `opmFlowReferenceArtifactKeys: ['wf_bl1d']` that did nothing, and received the same
+  artifact anyway through a name match nothing in the file mentioned.
+
+Now: `{ kind: 'published', series }` or `{ kind: 'opm-flow', artifactKeys, role?: 'overlay' |
+'primary' }`, resolved in declaration order by `resolveScenarioReferenceSeries()`. Nothing is
+matched implicitly — an artifact renders only where a scenario names it, which is now covered by a
+test.
+
+Verified: the resolved reference series for all 16 scenarios — source type, artifact key, panel,
+label, curve key, axis, primary flag, point count and endpoints — diff byte-identical before and
+after.
+
+Replay: `pnpm run validate` — 746 passed / 15 skipped, measured 2026-07-25 (parent commit `83bcb5e`).
+
+Priority 2.1 is complete. What it bought, end to end: adding an analytical method is one registry
+entry instead of edits across four modules; sweep is a method rather than a flag plus a
+build-then-strip pass; invalid capability combinations are compile errors; and every non-simulation
+curve on a chart is traceable to a line in the scenario file. Three latent defects surfaced and
+were fixed along the way (`'none'`-method scenarios rendering depletion overlays, dead layout
+reference keys, a stale contract-coverage test).
 
 Why next:
 - This removes a class of ambiguous chart and policy behavior before more analytical methods are added.

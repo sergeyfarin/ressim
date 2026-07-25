@@ -1,4 +1,4 @@
-import type { PublishedReferenceSeries } from './scenarios';
+import type { PublishedReferenceSeries, ScenarioReferenceSourceDef } from './scenarios';
 import wfBl1dArtifact from './opm-flow-results/wf_bl1d.json';
 import spe1Artifact from './opm-flow-results/spe1_gas_injection.json';
 import gasDriveArtifact from './opm-flow-results/gas_drive.json';
@@ -47,24 +47,12 @@ export function getOpmFlowArtifactsForScenario(scenarioKey: string): OpmFlowArti
     return ARTIFACTS.filter((artifact) => artifact.scenarioKey === scenarioKey);
 }
 
-export function getOpmFlowPublishedReferenceSeries(scenarioKey: string): PublishedReferenceSeries[] {
-    return getOpmFlowArtifactsForScenario(scenarioKey).flatMap((artifact) => {
-        if (artifact.status !== 'parsed') return [];
-        return artifact.series.map((series) => ({
-            ...series,
-            sourceType: 'opm-flow-precomputed' as const,
-            sourceArtifactKey: artifact.caseKey,
-        }));
-    });
-}
-
 /**
- * Resolve bundled OPM Flow artifact series by their case keys (not scenarioKey).
- * Used by prerun-artifacts scenarios, whose declared `opmFlowReferenceArtifactKeys`
- * map to artifacts by caseKey and are rendered as primary content when `primary`
- * is set. Silently skips keys with no parsed artifact.
+ * Resolve bundled OPM Flow artifact series by case key. Silently skips keys with
+ * no artifact or an unparsed one, so a deck that has not been run yet degrades to
+ * "no reference curves" rather than breaking the chart.
  */
-export function getOpmFlowArtifactSeriesByKeys(
+function getOpmFlowArtifactSeriesByKeys(
     caseKeys: readonly string[],
     options: { primary?: boolean } = {},
 ): PublishedReferenceSeries[] {
@@ -75,7 +63,37 @@ export function getOpmFlowArtifactSeriesByKeys(
             ...series,
             sourceType: 'opm-flow-precomputed' as const,
             sourceArtifactKey: artifact.caseKey,
-            primary: options.primary ?? false,
+            // Only stamped for primary content; an overlay leaves it absent so
+            // the chart's `primary === true` test reads false.
+            ...(options.primary ? { primary: true } : {}),
         }));
     });
+}
+
+/**
+ * Resolve a scenario's declared reference sources into the flat series list the
+ * chart layer consumes, in declaration order.
+ *
+ * This is the only path from a scenario to its non-simulation curves. There is
+ * deliberately no scenarioKey-based lookup: an artifact appears on a chart only
+ * because the scenario named it.
+ */
+export function resolveScenarioReferenceSeries(
+    sources: readonly ScenarioReferenceSourceDef[] | undefined,
+): PublishedReferenceSeries[] {
+    if (!sources?.length) return [];
+    return sources.flatMap((source) => (
+        source.kind === 'published'
+            ? [...source.series]
+            : getOpmFlowArtifactSeriesByKeys(source.artifactKeys, { primary: source.role === 'primary' })
+    ));
+}
+
+/** Case keys of every OPM artifact a scenario declares, in declaration order. */
+export function listDeclaredOpmFlowArtifactKeys(
+    sources: readonly ScenarioReferenceSourceDef[] | undefined,
+): string[] {
+    return (sources ?? []).flatMap((source) => (
+        source.kind === 'opm-flow' ? [...source.artifactKeys] : []
+    ));
 }

@@ -5,7 +5,7 @@ import {
     type Scenario,
     type ScenarioAnalyticalOption,
 } from '../catalog/scenarios';
-import { getOpmFlowArtifactSeriesByKeys, getOpmFlowPublishedReferenceSeries } from '../catalog/opmFlowArtifacts';
+import { resolveScenarioReferenceSeries } from '../catalog/opmFlowArtifacts';
 import type { CurveConfig } from './chartTypes';
 import type { RateChartLayoutConfig, RateChartPanelId, RateChartXAxisMode } from './rateChartLayoutConfig';
 
@@ -76,15 +76,6 @@ export function buildScenarioComparisonFamily(input: {
         sweepGeometry: resolved.sweepGeometry,
         sweepAnalyticalMethod: input.analyticalOption?.sweepMethod,
         analyticalOverlayMode: activeDimension?.analyticalOverlayMode ?? 'auto',
-        publishedReferenceSeries: [
-            ...(scenario.publishedReferenceSeries ?? []),
-            ...getOpmFlowPublishedReferenceSeries(scenario.key),
-            // Prerun-artifacts scenarios pull their bundled artifacts by the keys
-            // they declare (by artifact caseKey, not scenarioKey) and render them
-            // as primary content.
-            ...(resolved.runMode === 'prerun-artifacts'
-                ? getOpmFlowArtifactSeriesByKeys(scenario.opmFlowReferenceArtifactKeys ?? [], { primary: true })
-                : []),
-        ],
+        publishedReferenceSeries: resolveScenarioReferenceSeries(scenario.referenceSources),
     } as BenchmarkFamily;
 }

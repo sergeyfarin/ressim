@@ -54,7 +54,7 @@ export const gas_drive: Scenario = {
     description: 'Pressure depletion of a saturated black-oil reservoir. Initial pressure sits at the bubble point, so drawdown immediately liberates gas from solution: Rs falls, free gas builds past the critical gas saturation, and producing GOR climbs while oil rate declines. Vary the initial free-gas volume, the oil gravity, or the permeability to see how each changes the strength and timing of the gas-expansion drive.',
     analyticalMethodSummary: 'Simulation-only — no analytical overlay. The Dietz PSS depletion model used elsewhere in this catalog is oil-only and does not represent gas liberation, so no honest quantitative analytical reference exists for a solution-gas drive (same precedent as dep_pvt). The quantitative reference is the pre-run OPM Flow solution.',
     analyticalMethodReference: 'Craft & Hawkins, Applied Petroleum Reservoir Engineering (solution-gas-drive material balance); Standing (1947) correlations. Quantitative grading: docs/THREE_PHASE_VALIDATION.md.',
-    opmFlowReferenceArtifactKeys: ['gas_drive'],
+    referenceSources: [{ kind: 'opm-flow', artifactKeys: ['gas_drive'] }],
     chartLayoutKey: 'gas',
     defaultSensitivityDimensionKey: 'sg_init',
     capabilities: {

@@ -415,6 +415,37 @@ export type PublishedReferenceSeries = {
     primary?: boolean;
 };
 
+/**
+ * One declared source of non-simulation curves for a scenario's charts.
+ *
+ * This replaced three separate mechanisms that between them made "which
+ * references does this chart show?" unanswerable from the scenario file:
+ * a `publishedReferenceSeries` array, an `opmFlowReferenceArtifactKeys` array
+ * that only had an effect on `prerun-artifacts` scenarios, and — the invisible
+ * one — an implicit match of every bundled OPM artifact whose `scenarioKey`
+ * equalled the scenario's key, which is how live scenarios actually got their
+ * OPM overlays without saying so anywhere.
+ *
+ * Order is preserved: sources are resolved and concatenated as declared.
+ */
+export type ScenarioReferenceSourceDef =
+    | {
+        kind: 'opm-flow';
+        /** Bundled artifact case keys (`opm-flow-results/<caseKey>.json`). */
+        artifactKeys: readonly string[];
+        /**
+         * 'overlay' (default) — dashed reference beside the live simulation curves.
+         * 'primary' — solid content; the artifact *is* the exhibit, for
+         * `runMode: 'prerun-artifacts'` scenarios with no live run to compare to.
+         */
+        role?: 'overlay' | 'primary';
+    }
+    | {
+        kind: 'published';
+        /** Static digitized series from a paper or published benchmark. */
+        series: readonly PublishedReferenceSeries[];
+    };
+
 export type ScenarioTerminationCondition =
     | {
         kind: 'watercut-threshold';
@@ -498,12 +529,10 @@ export type Scenario = {
      */
     defaultSensitivityDimensionKey?: string;
     /**
-     * Static reference data from published benchmarks (e.g. Eclipse SPE1 results).
-     * Overlaid on charts as dashed reference curves alongside simulation output.
+     * Every non-simulation curve source this scenario's charts draw, in order.
+     * Nothing is matched implicitly: an OPM artifact appears only if listed here.
      */
-    publishedReferenceSeries?: PublishedReferenceSeries[];
-    /** Keys for offline OPM Flow artifacts that can provide precomputed reference curves. */
-    opmFlowReferenceArtifactKeys?: string[];
+    referenceSources?: ScenarioReferenceSourceDef[];
     /** Optional stop policy for terminating a run when a production condition is met. */
     terminationPolicy?: ScenarioTerminationPolicy;
     /** Optional history/forecast divider marker for the comparison chart. */

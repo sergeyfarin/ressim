@@ -10,7 +10,7 @@ export const wf_bl1d: Scenario = {
     analyticalMethodReference: 'Buckley and Leverett (1942); Welge (1952).',
     chartLayoutKey: 'waterflood',
     defaultSensitivityDimensionKey: 'mobility',
-    opmFlowReferenceArtifactKeys: ['wf_bl1d'],
+    referenceSources: [{ kind: 'opm-flow', artifactKeys: ['wf_bl1d'] }],
     capabilities: {
         analyticalMethod: 'buckley-leverett',
         hasInjector: true,

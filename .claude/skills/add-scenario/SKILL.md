@@ -32,7 +32,7 @@ Scenarios are the product's core content unit: a self-describing definition that
    - `affectsAnalytical: true` is **test-enforced**: a contract test verifies the patch actually perturbs the analytical result. A variant that only changes `steps` or grid must be `false`.
    - `analyticalOverlayMode`: `'per-result'` when the analytical curve changes per variant, `'shared'` for grid-convergence-style studies where the analytical reference is fixed.
 6. **Termination**: if the scenario should stop early (breakthrough, pressure floor), see `docs/SCENARIO_TERMINATION_POLICY.md`.
-7. **Optional references**: published data → `publishedReferenceSeries` (see `spe1_gas_injection.ts`); OPM Flow ground truth → `opmFlowReferenceArtifactKeys` + the `opm-reference-pipeline` skill.
+7. **Optional references**: one declared `referenceSources` list — `{ kind: 'published', series }` for digitized paper data, `{ kind: 'opm-flow', artifactKeys }` for bundled OPM Flow ground truth (add `role: 'primary'` when the artifact *is* the exhibit, i.e. `runMode: 'prerun-artifacts'`). Sources render in declaration order. Nothing is matched implicitly — an artifact appears only if the scenario names it. See `spe1_gas_injection.ts` (both kinds) and the `opm-reference-pipeline` skill.
 8. **Docs**: add a row to the scenario inventory table in `README.md`.
 
 ## Validation

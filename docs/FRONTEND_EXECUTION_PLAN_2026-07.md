@@ -30,7 +30,7 @@ CI Rust gate (`impes` bucket), 3D-view named-bug verification (all four already 
    ```
    Commit the regenerated `src/lib/catalog/opm-flow-results/*.json` with flow version + deck hash provenance intact.
 4. **W1.4 — Scenario↔artifact integrity test** (extend `src/lib/catalog/opmFlowArtifacts.test.ts`):
-   - every scenario `opmFlowReferenceArtifactKeys` entry resolves to a bundled artifact whose `scenarioKey` matches;
+   - every scenario `referenceSources` opm-flow `artifactKeys` entry resolves to a bundled artifact whose `scenarioKey` matches (field renamed from `opmFlowReferenceArtifactKeys` 2026-07-25, ROADMAP 2.1 step 4);
    - every artifact's `scenarioKey` resolves to a registered scenario;
    - a `PARSED_BASELINE` list of case keys that must never regress from `parsed` back to `deck-ready` (starts empty; add `wf_bl1d`, `spe1_gas_injection` in the same commit as W1.3's artifacts — keeps CI green before the real run).
 5. **W1.5 — Verify rendering**: unit test `getOpmFlowPublishedReferenceSeries` against a parsed fixture; visual check that both scenarios show dashed OPM curves in comparison charts.

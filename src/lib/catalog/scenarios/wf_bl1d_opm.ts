@@ -36,7 +36,9 @@ export const wf_bl1d_opm: Scenario = {
             },
         },
     },
-    opmFlowReferenceArtifactKeys: ['wf_bl1d'],
+    // runMode 'prerun-artifacts': the bundled OPM run IS the exhibit, so it is
+    // primary content rather than an overlay on a live simulation.
+    referenceSources: [{ kind: 'opm-flow', artifactKeys: ['wf_bl1d'], role: 'primary' }],
     capabilities: {
         analyticalMethod: 'none',
         hasInjector: true,

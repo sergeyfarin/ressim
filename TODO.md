@@ -318,14 +318,15 @@ Open, blocked on an enabler:
   stability.
 - [ ] **Chart x-axis endpoints** (cumulative/time modes): prepend zero anchors, snap shared range/ticks
   to round values (no `70.00000000006`-style residues).
-- [ ] **Analytical-method integrity (ROADMAP 2.1).** Steps 1-3 of 4 done 2026-07-25 — the
-  `src/lib/charts/analyticalMethodRegistry.ts` routing table, `'sweep'` as a first-class analytical
-  method (which deleted the suppress-then-strip machinery), and `ScenarioCapabilities` as a
-  discriminated union derived from `ANALYTICAL_OUTPUT_CONTRACTS`. Remaining: collapse the
-  three reference-source fields into one declared `referenceSources` list. Then: generalize the
-  `sweep_combined` toggle into a reusable sweep-method framework; document `sweep_areal` as
-  quarter-five-spot with no-flow outer boundaries; decide whether `SwProfileChart` is restored or
-  removed.
+- [x] **Analytical-method integrity (ROADMAP 2.1) — DONE 2026-07-25, all 4 steps.** The
+  `analyticalMethodRegistry.ts` routing table; `'sweep'` as a first-class analytical method (which
+  deleted the suppress-then-strip machinery); `ScenarioCapabilities` as a discriminated union
+  derived from `ANALYTICAL_OUTPUT_CONTRACTS`; and one declared `referenceSources` list replacing the
+  three reference-source mechanisms. Full record in `ROADMAP.md` §2.1.
+- [ ] **Sweep-method framework (ROADMAP 2.2), now unblocked.** Generalize the `sweep_combined`
+  Stiles / Dykstra-Parsons toggle into `sweepMethods` on the sweep capabilities arm; document
+  `sweep_areal` as quarter-five-spot with no-flow outer boundaries; decide whether `SwProfileChart`
+  is restored or removed.
 - [ ] **Analytical slot-context asymmetries, preserved not endorsed.** Building the method registry
   surfaced two reference curves that appear in some overlay contexts but not others, with no stated
   reason. Both were kept exactly as they were so the registry commit stayed a consolidation, and both

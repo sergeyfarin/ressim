@@ -333,7 +333,6 @@ export const spe1_gas_injection: Scenario = {
     analyticalMethodReference:
         'Odeh, A.S. (1981) "Comparison of Solutions to a Three-Dimensional Black-Oil Reservoir Simulation Problem", JPT, SPE 9723.',
     chartLayoutKey: 'spe1',
-    opmFlowReferenceArtifactKeys: ['spe1_gas_injection'],
     capabilities: {
         analyticalMethod: 'digitized-reference',
         primaryRateCurve: 'oil-rate',
@@ -341,13 +340,21 @@ export const spe1_gas_injection: Scenario = {
         default3DScalar: 'saturation_gas',
         requiresThreePhaseMode: true,
     },
-    publishedReferenceSeries: [
-        ECLIPSE_PRESSURE,
-        ECLIPSE_GOR,
-        SPE1_REF_OIL_RATE,
-        SPE1_INJECTION_RATE_TARGET,
-        SPE1_REF_PRODUCER_WBHP,
-        SPE1_REF_INJECTOR_WBHP,
+    // Two reference sources, drawn in this order: the digitized Eclipse/SPE1
+    // Case 1 curves, then the bundled OPM Flow run of the same deck.
+    referenceSources: [
+        {
+            kind: 'published',
+            series: [
+                ECLIPSE_PRESSURE,
+                ECLIPSE_GOR,
+                SPE1_REF_OIL_RATE,
+                SPE1_INJECTION_RATE_TARGET,
+                SPE1_REF_PRODUCER_WBHP,
+                SPE1_REF_INJECTOR_WBHP,
+            ],
+        },
+        { kind: 'opm-flow', artifactKeys: ['spe1_gas_injection'] },
     ],
     params: {
         // ── Grid: 10×10×3, non-uniform dz ──────────────────────────────
