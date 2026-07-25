@@ -47,6 +47,7 @@ Rules:
 
 - UI panels: `src/lib/ui/` (`modes/`, `sections/`, `controls/`, `cards/`, `feedback/`); composition contracts tested in `modePanel*.test.ts`.
 - 3D: `src/lib/visualization/` + `spatialViewModel.ts`. Three.js is version-sensitive — **never upgrade it casually**; keep the exact pin in `package.json`.
+- **Spatial vs run-results charts is the filing rule.** A run-results chart (`charts/`) shows one value per report step across a whole run. A spatial chart (`visualization/`) shows one value per cell at one instant and follows the 3D view's timestep and `showProperty` selectors — `SpatialProfileChart.svelte` + the pure `spatialProfileModel.ts`. Putting a snapshot view in `charts/` is what left the old `SwProfileChart` dormant: it had no timestep to follow.
 - Analytical TS modules: `src/lib/analytical/` — these mirror engine physics; changing them may desync from Rust (see `engine-physics-change` skill).
 
 ## Coding rules

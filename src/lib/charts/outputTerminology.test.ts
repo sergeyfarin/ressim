@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const comparisonChartSource = fs.readFileSync(path.join(__dirname, 'ReferenceComparisonChart.svelte'), 'utf8');
 const rateChartSource = fs.readFileSync(path.join(__dirname, 'RateChart.svelte'), 'utf8');
 const universalChartSource = fs.readFileSync(path.join(__dirname, 'UniversalChart.svelte'), 'utf8');
-const swProfileSource = fs.readFileSync(path.join(__dirname, 'SwProfileChart.svelte'), 'utf8');
+const spatialProfileSource = fs.readFileSync(path.join(__dirname, '..', 'visualization', 'SpatialProfileChart.svelte'), 'utf8');
 const appSource = fs.readFileSync(path.join(__dirname, '..', '..', 'App.svelte'), 'utf8');
 const threeDViewCardSource = fs.readFileSync(path.join(__dirname, '..', 'ui', 'cards', 'ThreeDViewCard.svelte'), 'utf8');
 
@@ -33,9 +33,12 @@ describe('output terminology copy', () => {
   it('uses reference-solution wording in output-side solution cards and profile copy', () => {
     expect(universalChartSource).toMatch(/Reference Solution: \{mismatchSummary\.pointsCompared\} pts/);
     expect(universalChartSource).not.toMatch(/Analytical: \{mismatchSummary\.pointsCompared\} pts/);
-    expect(swProfileSource).toMatch(/Reference Front Profile/);
-    expect(swProfileSource).toMatch(/reference flood-front profile/);
-    expect(swProfileSource).toMatch(/Reference front is near cell/);
-    expect(swProfileSource).not.toMatch(/Analytical Front Profile/);
+    // The Sw profile moved to the 3D group as SpatialProfileChart (it shows one
+    // snapshot, not a whole run) and now follows the shared property selector,
+    // so its copy is property-neutral apart from the flood-front overlay.
+    expect(spatialProfileSource).toMatch(/Reference Front Profile/);
+    expect(spatialProfileSource).toMatch(/Reference flood front at/);
+    expect(spatialProfileSource).toMatch(/Profile Along Grid Line/);
+    expect(spatialProfileSource).not.toMatch(/Analytical Front Profile/);
   });
 });

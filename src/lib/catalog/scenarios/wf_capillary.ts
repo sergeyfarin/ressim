@@ -57,9 +57,11 @@ import { waterfloodBLDef } from '../analyticalAdapters';
  *
  * NOT covered here: the gravity-capillary equilibrium *transition zone* — the
  * hydrostatic P_c(S_w) = drho.g.h profile and its Leverett J-function scaling.
- * That comparison is a saturation-versus-depth profile, and the chart stack is
- * time-series only (`SwProfileChart.svelte` is dormant and unwired). Tracked as
- * the open half of T7.4 in docs/CASE_LIBRARY_ROADMAP.md.
+ * That comparison is a saturation-versus-depth profile. The chart stack was
+ * time-series only when this case was written; since 2026-07-25 the 3D view
+ * carries `visualization/SpatialProfileChart.svelte`, which profiles any grid
+ * property along K against true depth, so the display side is no longer the
+ * blocker. Tracked as the open half of T7.4 in docs/CASE_LIBRARY_ROADMAP.md.
  */
 export const wf_capillary: Scenario = {
     key: 'wf_capillary',

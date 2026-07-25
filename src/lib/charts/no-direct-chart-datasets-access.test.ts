@@ -27,10 +27,12 @@ describe('code-style: chart.data.datasets access', () => {
     const files = listSourceFiles(path.join(repoRoot, 'src'))
       .filter((f) => !/node_modules/.test(f));
 
+    // `chart!?` so a non-null assertion or optional chain cannot slip past the
+    // rule — `chart!.data.datasets[i]` evaded the original patterns.
     const badPatterns = [
-      /for\s*\(const\s+dataset\s+of\s+chart\.data\.datasets\s*\)/g, // for-of iteration
-      /chart\.data\.datasets\s*\.forEach\s*\(/g, // forEach
-      /chart\.data\.datasets\s*\[/g, // direct bracket access
+      /for\s*\(const\s+dataset\s+of\s+chart!?\??\.data\.datasets\s*\)/g, // for-of iteration
+      /chart!?\??\.data\.datasets\s*\.forEach\s*\(/g, // forEach
+      /chart!?\??\.data\.datasets\s*\[/g, // direct bracket access
     ];
 
     const violations: string[] = [];

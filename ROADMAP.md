@@ -236,8 +236,13 @@ Why next:
 
 Replay: `pnpm run validate` — 757 passed / 15 skipped, measured 2026-07-25 (parent commit `50226a6`).
 
-Still open, and a product decision rather than an architectural one: whether `SwProfileChart` is
-restored or removed (tracked in `TODO.md`).
+`SwProfileChart` — the last item bundled into this section — was resolved 2026-07-25 by rebuilding
+it as `visualization/SpatialProfileChart.svelte` in the 3D group rather than the run-results charts.
+It was dormant because it was mis-filed: run-results charts show one value per report step across a
+run, this shows one value per cell at one instant, so it had no timestep to follow. It now reads the
+3D view's selected snapshot and property selector, covers pressure as well as all three saturations,
+and profiles along I/J/K in metres. That also cleared the display blocker on T7.4's
+gravity-capillary transition zone, which needed a saturation-vs-depth view.
 
 ## Priority 3: Scenario And Benchmark Architecture Consolidation
 

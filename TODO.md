@@ -183,9 +183,12 @@ Open, no engine gap (cheapest):
   front width. Claims guarded by `wf_capillary.test.ts`. Full table in `CASE_LIBRARY_ROADMAP.md`
   Tier 7 delivery record.
 - [ ] **T7.4 remainder: gravity-capillary transition zone** (hydrostatic P_c = Δρgh profile,
-  Leverett J). Blocked on a saturation-vs-depth profile chart — `SwProfileChart.svelte` exists but
-  is dormant and unwired. Related to the "restore or retire SwProfileChart" decision under
-  Priority 2.
+  Leverett J). **Display blocker cleared 2026-07-25**: `visualization/SpatialProfileChart.svelte`
+  profiles any grid property along K against true depth (per-layer `cellDzPerLayer`, not layer
+  index), which is the saturation-vs-depth view this case needed. What remains is the case itself —
+  gravity-capillary equilibrium initialisation and the Leverett J scaling — plus deciding whether
+  the analytical P_c(h) curve is drawn as a profile overlay (the chart currently overlays only the
+  BL flood front, along I).
 - [ ] **T7.11 grid-orientation effect — ATTEMPTED AND REFUTED 2026-07-24; reclassified.** A
   single-well-pair construction (same grid, wells moved edge-to-edge vs corner-to-corner, crossed
   with mobility ratio) was built, measured and discarded. Comparing at equal days is invalid under
@@ -328,10 +331,17 @@ Open, blocked on an enabler:
   deleted; `sweep_vertical` gains the toggle, `sweep_areal` deliberately does not (the two
   correlations are bit-identical at areal geometry — measured, pinned by test); `sweep_areal`
   documented as a quarter five-spot with symmetry-plane boundaries. Record in `ROADMAP.md` §2.2.
-- [ ] **Decide whether `SwProfileChart` is restored or removed.** Dormant since the scenario-first
-  migration — nothing routes to it. A product call, not an architectural one: either wire it to a
-  scenario that teaches the saturation profile, or delete it and its dead props. Was bundled into
-  the ROADMAP 2.2 line; split out 2026-07-25 because it is unrelated to sweep-method selection.
+- [x] **`SwProfileChart` decision — RESOLVED 2026-07-25: rebuilt in the 3D group.** It was dormant
+  because it was mis-filed: every run-results chart shows one number per report step across a run,
+  while this shows one number per cell at one instant, so it had no timestep to follow. Replaced by
+  `visualization/SpatialProfileChart.svelte` + the pure `spatialProfileModel.ts`, mounted under the
+  3D view, reading the 3D view's selected snapshot and property selector. Now covers pressure and
+  all three saturations (ternary draws all three), profiles along I/J/K against distance in metres,
+  and sources its BL front overlay from `analytical/fractionalFlow.ts` instead of a private copy.
+- [ ] **Spatial profile follow-ups.** (a) The BL flood-front overlay is the only reference curve it
+  draws, and only along I for water saturation — a depth profile has no analytical overlay yet
+  (see T7.4). (b) The profile line selection is component-local state; it resets on remount, and a
+  scenario may want to declare a default line rather than inheriting `producerJ` / top layer.
 - [ ] **Analytical slot-context asymmetries, preserved not endorsed.** Building the method registry
   surfaced two reference curves that appear in some overlay contexts but not others, with no stated
   reason. Both were kept exactly as they were so the registry commit stayed a consolidation, and both

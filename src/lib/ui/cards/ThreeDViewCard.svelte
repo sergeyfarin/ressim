@@ -2,6 +2,7 @@
     import type { Output3DSelection, OutputSelectionProfile } from '../../stores/navigationStore.svelte';
     import type { BenchmarkRunResult } from '../../benchmarkRunModel';
     import Button from '../controls/Button.svelte';
+    import SpatialProfileChart from '../../visualization/SpatialProfileChart.svelte';
 
     type ThreeDViewComponentType = typeof import('../../visualization/3dview.svelte').default;
 
@@ -103,6 +104,34 @@
                 wellState={selectedOutput3D.wellState}
             />
         {/key}
+
+        <!--
+            Cross-section of the same snapshot the 3D view is rendering. Reads
+            `selectedOutput3D.gridState` (the selected timestep) rather than the
+            profile selection's final grid, and shares `showProperty`, so the
+            timestep and property selectors drive both views together.
+        -->
+        <SpatialProfileChart
+            gridState={selectedOutput3D.gridState}
+            grid={{
+                nx: selectedOutput3D.nx,
+                ny: selectedOutput3D.ny,
+                nz: selectedOutput3D.nz,
+                cellDx: selectedOutput3D.cellDx,
+                cellDy: selectedOutput3D.cellDy,
+                cellDz: selectedOutput3D.cellDz,
+                cellDzPerLayer: selectedOutput3D.cellDzPerLayer,
+            }}
+            property={showProperty}
+            simTime={selectedOutput3D.replayTime ?? selectedOutputProfile.simTime}
+            sourceLabel={selectedOutput3D.sourceLabel}
+            {theme}
+            rockProps={selectedOutputProfile.rockProps}
+            fluidProps={selectedOutputProfile.fluidProps}
+            initialSaturation={selectedOutputProfile.initialSaturation}
+            injectionRate={selectedOutputProfile.injectionRate}
+            defaultJ={selectedOutputProfile.producerJ}
+        />
     {:else}
         <div
             class="flex items-center justify-center rounded border border-border bg-muted/20"
