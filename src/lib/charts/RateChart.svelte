@@ -20,6 +20,7 @@
         RateChartXAxisMode,
     } from "./rateChartLayoutConfig";
     import type { RateHistoryPoint, AnalyticalProductionPoint } from "../simulator-types";
+    import { DEFAULT_SWEEP_METHOD } from '../analytical/sweepMethods';
     import type { SweepAnalyticalMethod, SweepGeometry } from "../analytical/sweepEfficiency";
     import {
         computeCombinedSweep,
@@ -50,7 +51,7 @@
         layerThickness = 1,
         showSweepPanel = false,
         sweepGeometry = 'both',
-        sweepAnalyticalMethod = 'dykstra-parsons',
+        sweepAnalyticalMethod = DEFAULT_SWEEP_METHOD,
         sweepEfficiencySimSeries = null,
         sweepRFAnalytical = null,
     }: {

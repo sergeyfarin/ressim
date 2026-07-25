@@ -22,6 +22,9 @@ export const sweep_vertical: Scenario = {
     capabilities: {
         analyticalMethod: 'sweep',
         sweepGeometry: 'vertical',
+        // Dykstra-Parsons first to preserve this scenario's existing default.
+        // The choice is live here: max |Δ| ≈ 0.97 on E_V, 0.037 on RF.
+        sweepMethods: ['dykstra-parsons', 'stiles'],
         hasInjector: true,
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,

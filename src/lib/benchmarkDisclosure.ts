@@ -6,6 +6,8 @@ import type {
 } from './catalog/benchmarkCases';
 import type { AnalyticalMethod } from './catalog/scenarios';
 import { getAnalyticalMethodDescriptor } from './charts/analyticalMethodRegistry';
+import { SWEEP_METHODS } from './analytical/sweepMethods';
+import type { SweepAnalyticalMethod } from './analytical/sweepEfficiency';
 
 export type BenchmarkCaseSnapshot = {
     grid: string;
@@ -109,11 +111,6 @@ function buildPermeabilitySummary(params: Record<string, any>): string {
     return `${mode} permeability`;
 }
 
-const SWEEP_METHOD_LABELS: Record<string, string> = {
-    stiles: 'Stiles',
-    'dykstra-parsons': 'Dykstra-Parsons',
-};
-
 function buildReferenceLabel(
     analyticalMethod: AnalyticalMethod,
     referenceKind: BenchmarkReferenceKind,
@@ -126,7 +123,7 @@ function buildReferenceLabel(
     if (analyticalMethod !== 'sweep') return base;
     // Sweep is the one method whose reference solution has a user-selectable
     // correlation, so its label carries which one is active.
-    const correlation = SWEEP_METHOD_LABELS[sweepAnalyticalMethod ?? ''];
+    const correlation = SWEEP_METHODS[sweepAnalyticalMethod as SweepAnalyticalMethod]?.label;
     return correlation ? `${base} (${correlation})` : base;
 }
 

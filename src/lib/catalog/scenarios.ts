@@ -15,6 +15,7 @@
 
 import type { RateChartLayoutConfig } from '../charts/rateChartLayoutConfig';
 import type { SweepAnalyticalMethod, SweepGeometry } from '../analytical/sweepEfficiency';
+import { DEFAULT_SWEEP_METHOD, describeSweepMethod } from '../analytical/sweepMethods';
 import type { RateHistoryPoint } from '../simulator-types';
 import { getChartLayout, mergeChartLayoutConfig } from './chartLayouts';
 
@@ -73,6 +74,14 @@ export type ScenarioSolverPolicy = {
     comparisonSensitivityAvailable: boolean;
 };
 
+/**
+ * One selectable analytical variant for a scenario, as offered by the picker.
+ *
+ * Derived, never declared: `getScenarioAnalyticalOptions()` generates these from
+ * the scenario's capabilities. `sweep_combined` used to carry a hand-written
+ * array of these with the label/summary/citation prose inline, which is why the
+ * Stiles / Dykstra-Parsons choice existed on exactly one scenario.
+ */
 export type ScenarioAnalyticalOption = {
     key: string;
     label: string;
@@ -273,8 +282,19 @@ type CapabilitiesForMethod<M extends AnalyticalMethod> = {
          * flag: sweep is a method, not a decoration on another method.
          */
         sweepGeometry: SweepGeometry;
+        /**
+         * Selectable sweep correlations, most-preferred first — the first entry
+         * is the default. Omit (or give one entry) when the scenario has no
+         * meaningful choice; a toggle is only offered for two or more.
+         *
+         * Opt-in rather than automatic because the choice is not always live:
+         * at `sweepGeometry: 'areal'` the Stiles and Dykstra-Parsons paths are
+         * numerically identical, so offering the toggle there would be a control
+         * that does nothing. Pinned by `sweepMethods.test.ts`.
+         */
+        sweepMethods?: readonly SweepAnalyticalMethod[];
     }
-    : { sweepGeometry?: never });
+    : { sweepGeometry?: never; sweepMethods?: never });
 
 /**
  * Scenario capability declarations — the single source of truth for all
@@ -507,7 +527,6 @@ export type Scenario = {
     description: string;
     analyticalMethodSummary: string;
     analyticalMethodReference: string;
-    analyticalOptions?: ScenarioAnalyticalOption[];
     /** Complete, self-contained simulator parameter set. No shared base objects. */
     params: Record<string, unknown>;
     /** Key into CHART_LAYOUTS — selects the shared chart layout template for this scenario. */
@@ -766,6 +785,41 @@ export function validateScenarioChartLayout(
     }
 
     return errors;
+}
+
+/**
+ * The analytical variants a scenario offers, derived from its capabilities.
+ *
+ * Only the sweep method has a user-selectable variant today. Returns `[]` when
+ * there is no genuine choice — including a sweep scenario that declares one
+ * method, or none — so the picker shows a toggle exactly when one is warranted.
+ */
+export function getScenarioAnalyticalOptions(
+    scenario: Pick<Scenario, 'capabilities'> | null | undefined,
+): ScenarioAnalyticalOption[] {
+    const caps = scenario?.capabilities;
+    if (caps?.analyticalMethod !== 'sweep') return [];
+    const methods = caps.sweepMethods ?? [];
+    if (methods.length < 2) return [];
+    return methods.map((method, index) => ({
+        ...describeSweepMethod(method, caps.sweepGeometry),
+        sweepMethod: method,
+        // First declared entry is the default — no separate `default: true` flag
+        // to keep in sync with the ordering.
+        default: index === 0,
+    }));
+}
+
+/**
+ * The sweep correlation a scenario uses when the user has not chosen one.
+ * First declared entry wins; falls back to the engine-wide default.
+ */
+export function getDefaultSweepMethod(
+    scenario: Pick<Scenario, 'capabilities'> | null | undefined,
+): SweepAnalyticalMethod {
+    const caps = scenario?.capabilities;
+    if (caps?.analyticalMethod !== 'sweep') return DEFAULT_SWEEP_METHOD;
+    return caps.sweepMethods?.[0] ?? DEFAULT_SWEEP_METHOD;
 }
 
 export function getAnalyticalModeForMethod(method: AnalyticalMethod): AnalyticalMode {

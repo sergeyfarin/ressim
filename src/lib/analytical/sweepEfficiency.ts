@@ -18,6 +18,8 @@ import { computeBLRecoveryVsPVI, computeWelgeMetrics } from './fractionalFlow';
 
 export type SweepPoint = { pvi: number; efficiency: number };
 
+import { DEFAULT_SWEEP_METHOD } from './sweepMethods';
+
 export type SweepAnalyticalMethod = 'stiles' | 'dykstra-parsons';
 
 export type ArealSweepResult = {
@@ -910,7 +912,7 @@ export function computeCombinedSweep(
     pviMax: number = 3.0,
     nPoints: number = 200,
     geometry: SweepGeometry = 'both',
-    method: SweepAnalyticalMethod = 'dykstra-parsons',
+    method: SweepAnalyticalMethod = DEFAULT_SWEEP_METHOD,
 ): CombinedSweepResult {
     if (method === 'stiles') {
         const stiles = computeStilesSweepAnalytics(rock, fluid, permeabilities, layerThickness, pviMax, nPoints, geometry);
@@ -1005,7 +1007,7 @@ export function computeSweepRecoveryFactor(
     pviMax: number = 3.0,
     nPoints: number = 200,
     geometry: SweepGeometry = 'both',
-    method: SweepAnalyticalMethod = 'dykstra-parsons',
+    method: SweepAnalyticalMethod = DEFAULT_SWEEP_METHOD,
 ): SweepRFResult {
     if (method === 'stiles') {
         const stiles = computeStilesSweepAnalytics(rock, fluid, permeabilities, layerThickness, pviMax, nPoints, geometry);

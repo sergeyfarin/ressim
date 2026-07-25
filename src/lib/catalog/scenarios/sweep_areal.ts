@@ -5,8 +5,8 @@ import { waterfloodBLDef } from '../analyticalAdapters';
 export const sweep_areal: Scenario = {
     key: 'sweep_areal',
     label: 'Areal Sweep (XY)',
-    description: 'Five-spot pattern flood in 2D (XY). Areal sweep E_A at breakthrough is strongly controlled by end-point mobility ratio: E_A(BT) ≈ 0.70 at M = 1, dropping sharply for unfavourable M > 1.',
-    analyticalMethodSummary: 'Craig five-spot correlation — predicts E_A vs PVI for a homogeneous pattern. Heterogeneous variants show the additional sweep penalty on top of this baseline.',
+    description: 'Quarter five-spot pattern flood in 2D (XY): injector at one corner, producer at the diagonally opposite corner, with no-flow outer boundaries. Those boundaries are the pattern symmetry planes, not a gridding artefact — a confined five-spot repeats, so a quarter element with no flow across its edges is the standard unit, and Craig E_A applies to it directly. Areal sweep E_A at breakthrough is strongly controlled by end-point mobility ratio: E_A(BT) ≈ 0.70 at M = 1, dropping sharply for unfavourable M > 1.',
+    analyticalMethodSummary: 'Craig five-spot correlation — predicts E_A vs PVI for a homogeneous confined pattern, evaluated here on its quarter symmetry element. Heterogeneous variants show the additional sweep penalty on top of this baseline. E_A remains an analytical diagnostic decomposition view.',
     analyticalMethodReference: 'Craig (1971); Dyes, Caudle, and Erickson (1954).',
     chartLayoutKey: 'sweep',
     chartLayoutPatch: {
@@ -22,6 +22,12 @@ export const sweep_areal: Scenario = {
     capabilities: {
         analyticalMethod: 'sweep',
         sweepGeometry: 'areal',
+        // No `sweepMethods`: at areal-only geometry the Stiles and
+        // Dykstra-Parsons paths are numerically identical (measured: 0.0 on
+        // E_A, E_vol and RF across the whole PVI curve), because both defer to
+        // the same Craig five-spot correlation and neither has layers to
+        // resolve. A toggle here would be a control that does nothing.
+        // Pinned by sweepMethods.test.ts.
         hasInjector: true,
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,
@@ -59,7 +65,10 @@ export const sweep_areal: Scenario = {
         capillaryEnabled: false,
         capillaryPEntry: 0,
         capillaryLambda: 2,
-        // Grid: 21×21×1 five-spot, 420 m × 420 m × 10 m
+        // Grid: 21×21×1 quarter five-spot, 420 m × 420 m × 10 m.
+        // Injector (0,0) and producer (20,20) sit on opposite corners; the four
+        // outer boundaries are no-flow because they are the pattern's symmetry
+        // planes. See the scenario description.
         nx: 21,
         ny: 21,
         nz: 1,

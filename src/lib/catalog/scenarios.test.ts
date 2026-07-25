@@ -7,6 +7,7 @@ import { computeCombinedSweep } from '../analytical/sweepEfficiency';
 import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
 import {
     getScenario,
+    getScenarioAnalyticalOptions,
     getScenarioChartLayout,
     getScenarioWithVariantParams,
     getScenarioGroup,
@@ -111,7 +112,9 @@ describe('sweep scenario sensitivities', () => {
     it('exposes Stiles and Dykstra-Parsons analytical options for the combined sweep scenario', () => {
         const scenario = getScenario('sweep_combined');
 
-        expect(scenario?.analyticalOptions?.map((option) => [option.key, option.sweepMethod, option.default ?? false])).toEqual([
+        expect(getScenarioAnalyticalOptions(scenario).map(
+            (option) => [option.key, option.sweepMethod, option.default ?? false],
+        )).toEqual([
             ['stiles', 'stiles', true],
             ['dykstra', 'dykstra-parsons', false],
         ]);

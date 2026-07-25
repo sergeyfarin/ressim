@@ -20,6 +20,8 @@ import { evaluateAnalyticalStatus, type AnalyticalStatus } from '../warningPolic
 import {
     getDefaultScenarioAnalyticalMode,
     getScenario,
+    getScenarioAnalyticalOptions,
+    getDefaultSweepMethod,
     getScenarioChartLayout,
     getDefaultVariantKeys,
     getScenarioWithVariantParams,
@@ -245,7 +247,7 @@ class NavigationStoreImpl {
 
     activeAnalyticalOption = $derived.by((): ScenarioAnalyticalOption | null => {
         const scenario = this.activeScenarioObject;
-        const options = scenario?.analyticalOptions ?? [];
+        const options = getScenarioAnalyticalOptions(scenario);
         if (options.length === 0) return null;
         const selected = options.find((option) => option.key === this.activeAnalyticalOptionKey);
         if (selected) return selected;
@@ -317,7 +319,7 @@ class NavigationStoreImpl {
     sweepAnalyticalMethod = $derived.by((): SweepAnalyticalMethod => {
         return this.activeAnalyticalOption?.sweepMethod
             ?? (this.activeChartFamily as BenchmarkFamily | null)?.sweepAnalyticalMethod
-            ?? 'dykstra-parsons';
+            ?? getDefaultSweepMethod(this.activeScenarioObject);
     });
 
     analyticalPerVariant = $derived.by((): boolean => {
@@ -747,9 +749,7 @@ class NavigationStoreImpl {
         this.activeSensitivityDimensionKey = defaultDimKey;
         const defaultDim = scenario.sensitivities.find((d) => d.key === defaultDimKey) ?? null;
         this.activeVariantKeys = defaultDim ? getDefaultVariantKeys(defaultDim) : [];
-        this.activeAnalyticalOptionKey = scenario.analyticalOptions?.find((option) => option.default)?.key
-            ?? scenario.analyticalOptions?.[0]?.key
-            ?? null;
+        this.activeAnalyticalOptionKey = getScenarioAnalyticalOptions(scenario)[0]?.key ?? null;
 
         // Derive CaseMode from scenario capabilities.
         const nextMode: CaseMode = scenario.capabilities.requiresThreePhaseMode ? '3p'
@@ -792,7 +792,7 @@ class NavigationStoreImpl {
         const scenario = this.activeScenarioObject;
         if (!scenario) return;
         if (this.#runtime.referenceSweepRunning || this.#runtime.activeReferenceRunSpec) return;
-        if (!(scenario.analyticalOptions ?? []).some((option) => option.key === optionKey)) return;
+        if (!getScenarioAnalyticalOptions(scenario).some((option) => option.key === optionKey)) return;
         if (optionKey === this.activeAnalyticalOptionKey) return;
 
         this.activeComparisonSelection = buildComparisonSelection();

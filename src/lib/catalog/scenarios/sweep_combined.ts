@@ -8,23 +8,6 @@ export const sweep_combined: Scenario = {
     description: 'Volumetric sweep E_vol = E_A × E_V in a 3D five-spot-over-layers flood. Two axes: a 2×2 interaction matrix of mobility vs. layering, and a progressive sweep from ideal to fully-degraded conditions.',
     analyticalMethodSummary: 'Stiles layer-by-layer sweep: the total RF and combined E_vol use layer-by-layer Buckley-Leverett displacement inside the Craig-contacted region, while E_A and E_V remain analytical diagnostic decomposition views.',
     analyticalMethodReference: 'Stiles (1949); Craig (1971); Buckley and Leverett (1942); Welge (1952).',
-    analyticalOptions: [
-        {
-            key: 'stiles',
-            label: 'Stiles',
-            summary: 'Stiles layer-by-layer sweep: the total RF and combined E_vol use layer-by-layer Buckley-Leverett displacement inside the Craig-contacted region, while E_A and E_V remain analytical diagnostic decomposition views.',
-            reference: 'Stiles (1949); Craig (1971); Buckley and Leverett (1942); Welge (1952).',
-            sweepMethod: 'stiles',
-            default: true,
-        },
-        {
-            key: 'dykstra',
-            label: 'Dykstra-Parsons',
-            summary: 'Factorized sweep model: the total RF and combined E_vol come from Craig areal × Dykstra-Parsons vertical × BL displacement through the local-PVI approximation, while E_A and E_V remain analytical diagnostic decomposition views.',
-            reference: 'Craig (1971); Dykstra and Parsons (1950); Buckley and Leverett (1942); Welge (1952).',
-            sweepMethod: 'dykstra-parsons',
-        },
-    ],
     chartLayoutKey: 'sweep',
     chartLayoutPatch: {
         rateChart: {
@@ -47,6 +30,9 @@ export const sweep_combined: Scenario = {
     capabilities: {
         analyticalMethod: 'sweep',
         sweepGeometry: 'both',
+        // Stiles first: it is the default here. Both correlations move E_vol
+        // materially at this geometry (max |Δ| ≈ 0.12 on E_vol, 0.055 on RF).
+        sweepMethods: ['stiles', 'dykstra-parsons'],
         hasInjector: true,
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,

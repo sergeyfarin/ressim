@@ -3,7 +3,7 @@
   import Card from "../controls/Card.svelte";
   import ToggleGroup from "../controls/ToggleGroup.svelte";
   import WarningPolicyPanel from "../feedback/WarningPolicyPanel.svelte";
-  import { SCENARIOS, getScenario, getScenarioGroup, solverLabel, type Scenario, type ScenarioGroup } from "../../catalog/scenarios";
+  import { SCENARIOS, getScenario, getScenarioAnalyticalOptions, getScenarioGroup, solverLabel, type Scenario, type ScenarioGroup } from "../../catalog/scenarios";
   import type { WarningPolicy } from "../../warningPolicy";
 
   let {
@@ -66,22 +66,23 @@
     activeDimension?.variants.some((v) => v.affectsAnalytical) ?? false,
   );
 
+  // Analytical options are derived from the scenario's capabilities, not
+  // declared on it — see getScenarioAnalyticalOptions(). Empty when there is no
+  // genuine choice, which is what hides the toggle.
+  const analyticalOptions = $derived(getScenarioAnalyticalOptions(activeScenario));
+
   const activeAnalyticalOption = $derived.by(() => {
-    const options = activeScenario?.analyticalOptions ?? [];
-    if (options.length === 0) return null;
-    return options.find((option) => option.key === activeAnalyticalOptionKey)
-      ?? options.find((option) => option.default)
-      ?? options[0]
+    if (analyticalOptions.length === 0) return null;
+    return analyticalOptions.find((option) => option.key === activeAnalyticalOptionKey)
+      ?? analyticalOptions[0]
       ?? null;
   });
 
-  const analyticalOptionToggleOptions = $derived.by(() => {
-    return (activeScenario?.analyticalOptions ?? []).map((option) => ({
-      value: option.key,
-      label: option.label,
-      title: option.summary,
-    }));
-  });
+  const analyticalOptionToggleOptions = $derived.by(() => analyticalOptions.map((option) => ({
+    value: option.key,
+    label: option.label,
+    title: option.summary,
+  })));
 
   // Scenario groups by domain, ordered for display.
   const DOMAIN_GROUPS: { group: ScenarioGroup; label: string }[] = [

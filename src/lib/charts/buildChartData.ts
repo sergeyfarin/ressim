@@ -56,6 +56,7 @@ import {
     type ReferenceComparisonTheme,
 } from './referenceChartTypes';
 import { buildPreviewSweepPanels, buildSweepPanels } from './sweepPanelBuilder';
+import { DEFAULT_SWEEP_METHOD } from '../analytical/sweepMethods';
 import type { AnalyticalMethod } from '../catalog/scenarios';
 
 export { getReferenceComparisonCaseColor };
@@ -464,7 +465,7 @@ export function buildReferenceComparisonModel(input: {
                                     variants,
                                     theme: input.theme ?? 'dark',
                                     geometry: family?.sweepGeometry ?? 'both',
-                                    method: family?.sweepAnalyticalMethod ?? 'dykstra-parsons',
+                                    method: family?.sweepAnalyticalMethod ?? DEFAULT_SWEEP_METHOD,
                                 })
                                 : emptySweepPanels(),
                         });
@@ -1116,7 +1117,7 @@ export function buildReferenceComparisonModel(input: {
             xAxisMode: input.xAxisMode,
             derivedByKey,
             geometry: family.sweepGeometry ?? 'both',
-            method: family.sweepAnalyticalMethod ?? 'dykstra-parsons',
+            method: family.sweepAnalyticalMethod ?? DEFAULT_SWEEP_METHOD,
         })
         : emptySweepPanels();
 

@@ -323,10 +323,15 @@ Open, blocked on an enabler:
   deleted the suppress-then-strip machinery); `ScenarioCapabilities` as a discriminated union
   derived from `ANALYTICAL_OUTPUT_CONTRACTS`; and one declared `referenceSources` list replacing the
   three reference-source mechanisms. Full record in `ROADMAP.md` §2.1.
-- [ ] **Sweep-method framework (ROADMAP 2.2), now unblocked.** Generalize the `sweep_combined`
-  Stiles / Dykstra-Parsons toggle into `sweepMethods` on the sweep capabilities arm; document
-  `sweep_areal` as quarter-five-spot with no-flow outer boundaries; decide whether `SwProfileChart`
-  is restored or removed.
+- [x] **Sweep-method framework (ROADMAP 2.2) — DONE 2026-07-25.** `sweepMethods` on the sweep
+  capabilities arm + `analytical/sweepMethods.ts` for the prose; `Scenario.analyticalOptions`
+  deleted; `sweep_vertical` gains the toggle, `sweep_areal` deliberately does not (the two
+  correlations are bit-identical at areal geometry — measured, pinned by test); `sweep_areal`
+  documented as a quarter five-spot with symmetry-plane boundaries. Record in `ROADMAP.md` §2.2.
+- [ ] **Decide whether `SwProfileChart` is restored or removed.** Dormant since the scenario-first
+  migration — nothing routes to it. A product call, not an architectural one: either wire it to a
+  scenario that teaches the saturation profile, or delete it and its dead props. Was bundled into
+  the ROADMAP 2.2 line; split out 2026-07-25 because it is unrelated to sweep-method selection.
 - [ ] **Analytical slot-context asymmetries, preserved not endorsed.** Building the method registry
   surfaced two reference curves that appear in some overlay contexts but not others, with no stated
   reason. Both were kept exactly as they were so the registry commit stayed a consolidation, and both

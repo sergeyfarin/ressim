@@ -204,14 +204,40 @@ reference keys, a stale contract-coverage test).
 Why next:
 - This removes a class of ambiguous chart and policy behavior before more analytical methods are added.
 
-### 2.2 Finish the sweep-method framework
+### 2.2 Finish the sweep-method framework — DONE 2026-07-25
 
-- Generalize the current `sweep_combined` Stiles / Dykstra-Parsons toggle so other sweep scenarios can opt into multiple analytical methods without custom wiring. 2.1 step 2 unblocked this: now that `'sweep'` is a method, its capabilities can carry `sweepMethods: SweepAnalyticalMethod[]` and the per-method label/summary/reference prose moves to a table beside `sweepEfficiency.ts`, so `sweep_areal` and `sweep_vertical` get the toggle without hand-written `analyticalOptions`.
-- Keep the semantics explicit: total recovery comparison can improve while decomposition panels remain teaching diagnostics.
-- Document the `sweep_areal` quarter-five-spot interpretation so users do not mistake the outer no-flow boundaries for a gridding bug.
+- **Sweep-method selection is declared, not hand-written.** `sweepMethods` on the sweep capabilities
+  arm lists the selectable correlations, most-preferred first; the first entry is the default, so
+  there is no `default: true` flag to keep in sync with ordering.
+  `getScenarioAnalyticalOptions()` derives the picker's options from it and
+  `src/lib/analytical/sweepMethods.ts` owns each correlation's label, claim and citation.
+  `Scenario.analyticalOptions` is deleted — it existed only on `sweep_combined`, carrying that
+  scenario's prose inline, which is why the toggle was available on exactly one case.
+  `sweep_vertical` now offers the choice with no scenario-specific wiring.
 
-Why next:
-- Stiles is the right direction for layered floods, but the current implementation is still scenario-specific rather than framework-level.
+- **Offered only where the choice is live, measured not assumed.** At `sweepGeometry: 'areal'`
+  Stiles and Dykstra-Parsons are *numerically identical* — max |Δ| is exactly 0 on E_A, E_vol and RF
+  across the whole PVI curve, because with one layer Stiles has nothing to order and both defer to
+  the same Craig five-spot correlation. A toggle on `sweep_areal` would be a control that does
+  nothing, so it declares no `sweepMethods`. Where layers exist the choice is large: max |Δ| ≈ 0.97
+  on E_V and 0.037 on RF for `sweep_vertical`, 0.12 on E_vol and 0.055 on RF for `sweep_combined`.
+  Both facts are pinned by `src/lib/analytical/sweepMethods.test.ts`.
+
+- **Semantics stay explicit.** Every generated method summary ends with the decomposition caveat for
+  the components that scenario shows ("E_A and E_V remain analytical diagnostic decomposition
+  views"), so a better total-recovery comparison never reads as a promotion of the per-component
+  panels to predictions. Summaries are geometry-aware for the same reason: a vertical-only scenario
+  is not told its answer came from a Craig areal factor that is identically 1.
+
+- **`sweep_areal` documented as a quarter five-spot.** Injector at (0,0), producer at (20,20) of a
+  21×21 grid; the four outer boundaries are the pattern's symmetry planes, not a gridding artefact.
+  Stated in the scenario description and beside the grid params, since a confined five-spot repeats
+  and the quarter element is the standard unit Craig E_A applies to.
+
+Replay: `pnpm run validate` — 757 passed / 15 skipped, measured 2026-07-25 (parent commit `50226a6`).
+
+Still open, and a product decision rather than an architectural one: whether `SwProfileChart` is
+restored or removed (tracked in `TODO.md`).
 
 ## Priority 3: Scenario And Benchmark Architecture Consolidation
 
