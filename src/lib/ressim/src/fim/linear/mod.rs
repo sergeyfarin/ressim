@@ -269,12 +269,15 @@ fn solve_linearized_system_with_routing(
 ) -> FimLinearSolveReport {
     // Small systems solve directly. If the direct factorization hits a singular Jacobian (a
     // cell driven onto a zero relperm-derivative endpoint by the raw-saturation path can make a
-    // block rank-deficient), fall back to the iterative block-Jacobi/CPR backend, which does not
+    // block rank-deficient), fall back to the requested iterative CPR backend, which does not
     // require an exact factorization and lets the Newton iteration proceed instead of collapsing
     // the timestep. The recursive fallback call passes `allow_forced_direct = false` so it lands
-    // on the iterative dispatch below instead of re-selecting the forced direct path — on wasm
+    // on the iterative dispatch below instead of re-selecting the forced direct path. Preserve
+    // CPR when it was requested: downgrading a singular direct solve to plain GMRES/ILU0 discards
+    // the pressure coarse correction and causes avoidable retry storms in capillary waterfloods.
+    // On wasm,
     // `should_force_direct_solve` is true for any non-`SparseLuDebug` kind on a small system, so
-    // without that guard the `GmresIlu0` re-entry would recurse into dense LU until stack overflow.
+    // without that guard the iterative re-entry would recurse into dense LU until stack overflow.
     //
     // This fallback is load-bearing, not generic defensive code: it is what keeps the OpmAligned
     // default (WATER-026, which rests on WATER-025 raw saturations) converging on small
@@ -287,8 +290,11 @@ fn solve_linearized_system_with_routing(
         if direct.converged {
             return direct;
         }
-        let mut iterative_options = options.clone();
-        iterative_options.kind = FimLinearSolverKind::GmresIlu0;
+        let mut iterative_options = *options;
+        iterative_options.kind = match options.kind {
+            FimLinearSolverKind::FgmresCpr => FimLinearSolverKind::FgmresCpr,
+            _ => FimLinearSolverKind::GmresIlu0,
+        };
         let mut iterative = solve_linearized_system_with_routing(
             jacobian,
             rhs,
@@ -309,8 +315,11 @@ fn solve_linearized_system_with_routing(
         if direct.converged {
             return direct;
         }
-        let mut iterative_options = options.clone();
-        iterative_options.kind = FimLinearSolverKind::GmresIlu0;
+        let mut iterative_options = *options;
+        iterative_options.kind = match options.kind {
+            FimLinearSolverKind::FgmresCpr => FimLinearSolverKind::FgmresCpr,
+            _ => FimLinearSolverKind::GmresIlu0,
+        };
         let mut iterative = solve_linearized_system_with_routing(
             jacobian,
             rhs,
@@ -426,7 +435,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_forced_direct_solve_falls_back_once_and_reports_fallback() {
+    fn failed_forced_direct_solve_preserves_requested_cpr_fallback() {
         let mut tri = TriMatI::<f64, usize>::new((2, 2));
         tri.add_triplet(0, 0, 2.0);
         let jacobian = tri.to_csr();
@@ -444,8 +453,9 @@ mod tests {
             None,
         );
 
+        assert!(report.converged);
         assert!(report.used_fallback);
-        assert_eq!(report.backend_used, FimLinearSolverKind::GmresIlu0);
+        assert_eq!(report.backend_used, FimLinearSolverKind::FgmresCpr);
     }
 
     #[test]

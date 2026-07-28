@@ -5991,3 +5991,23 @@ step, zero retries, no warnings, final average pressure `100.000025 bar`, oil ra
 `20x20x3=1/0 retries`, `22x22x1=4/0L+1N`, `23x23x1=3/0L+1N`; gas `20x20x3=1/0`, exact six-step
 `10x10x3=1/0` on every step; heavy water `12x12x3=4/0`. This is a ResSim Krylov correctness
 promotion, not a claim that its linear stack is Flow's BiCGSTAB/CPRW/true-IMPES/AMG stack.
+### FIM-LINEAR-014 — capillary fallback routing (2026-07-28)
+
+The exact frontend case was initially not reproducible with the WASM diagnostic: its capillary
+boolean always passed `p_entry=0`. Added the `wf-capillary` preset and `--capillary-entry` so the
+runner now mirrors the catalog's 96x1x1, 40-bar-drawdown, Pe=3-bar configuration.
+
+On commit `444c30f0affbfa1334489562fc3d0bdb92de0177` with only that diagnostic tooling dirty, the
+first FIM step measured `15` accepted substeps, `12/0/0` retries, `outer_ms=3660`, and
+`lin_ms=3302`; capillary-off needed `3` substeps and one retry. Trace inspection showed forced
+dense LU rejecting endpoint-singular Jacobians and the fallback replacing requested `FgmresCpr`
+with plain `GmresIlu0`, which repeatedly exhausted its iteration budget. This is the routing defect
+anticipated by `FIM_RELPERM_ENDPOINT_SINGULARITY_ANALYSIS.md`, not capillary assembly cost.
+
+The fix preserves `FgmresCpr` after direct rejection while keeping `GmresIlu0` as fallback for
+explicit direct/GMRES requests. The focused singular-system test asserts a finite, converged CPR
+correction and backend-neutral report. Exact first-step replay becomes `1` substep, zero retries,
+`outer_ms=613.9`, `lin_ms=387.0`; step 10 is `1`/`0`/`27.2 ms`. The full 2,000-step replay reaches
+500 days without warnings and the final step remains one 0.25-day substep. Final FIM and IMPES
+results remain close (`avg_p 301.30/301.28`, oil `0.33/0.32`, injection `11.22/11.21`). SWOF,
+Newton acceptance, timestep control, and wells were held unchanged. Verdict: **PROMOTED**.

@@ -81,6 +81,22 @@ const PRESETS = {
     },
     configure: configureArealSweep,
   },
+  'wf-capillary': {
+    description: 'Exact Capillary Pressure vs. Buckley-Leverett catalog scenario',
+    defaults: {
+      nx: 96,
+      ny: 1,
+      nz: 1,
+      dt: 0.25,
+      steps: 2000,
+      wells: 'both',
+      control: 'pressure',
+      gravity: false,
+      capillary: true,
+      capillaryEntry: 3.0,
+    },
+    configure: configureWfCapillary,
+  },
 };
 
 function printHelp() {
@@ -100,6 +116,7 @@ Options:
   --control <mode>          pressure | rate
   --gravity <bool>          true | false
   --capillary <bool>        true | false
+  --capillary-entry <bar>   Brooks-Corey entry pressure when capillary is enabled
   --corey-table-points <n>  evaluate relperm from an n-knot piecewise-linear table sampled
                             from the Corey curves (OPM's SWOF representation); omit for analytic
   --diagnostic <mode>       quiet | summary | outer | step
@@ -224,6 +241,10 @@ function parseArgs(argv) {
         options.capillary = parseBool(next, '--capillary');
         index += 1;
         break;
+      case '--capillary-entry':
+        options.capillaryEntry = Number(next);
+        index += 1;
+        break;
       case '--diagnostic':
         options.diagnostic = next;
         index += 1;
@@ -309,6 +330,12 @@ function buildOptions(parsed) {
     throw new Error(`Invalid max saturation change: ${resolved.maxSatChange}`);
   }
   if (
+    resolved.capillaryEntry != null
+    && (!Number.isFinite(resolved.capillaryEntry) || resolved.capillaryEntry < 0)
+  ) {
+    throw new Error(`Invalid capillary entry pressure: ${resolved.capillaryEntry}`);
+  }
+  if (
     resolved.solver === 'impes'
     && (resolved.opmAligned || resolved.nestedWellSolve || resolved.trueFgmres)
   ) {
@@ -385,7 +412,7 @@ function configureCommonTwoPhase(sim, options, overrides = {}) {
   sim.setFluidCompressibilities(1e-5, 3e-6);
   sim.setRockProperties(1e-6, 0.0, 1.0, 1.0);
   sim.setFluidDensities(800.0, 1000.0);
-  sim.setCapillaryParams(options.capillary ? 0.0 : 0.0, options.capillary ? 2.0 : 1e-6);
+  sim.setCapillaryParams(options.capillary ? (options.capillaryEntry ?? 0.0) : 0.0, 2.0);
   sim.setGravityEnabled(options.gravity);
   sim.setPermeabilityPerLayer(
     new Float64Array(Array.from({ length: options.nz }, () => overrides.kx ?? 2000.0)),
@@ -488,6 +515,21 @@ function configureWaterfloodPressure(sim, options) {
 function configureWaterfloodRate(sim, options) {
   configureCommonTwoPhase(sim, options);
   setWells(sim, options, waterWellConfig(options));
+}
+
+function configureWfCapillary(sim, options) {
+  configureCommonTwoPhase(sim, options);
+  setWells(sim, options, {
+    injectorControl: 'pressure',
+    producerControl: 'pressure',
+    injectorTargetRate: 0.0,
+    producerTargetRate: 0.0,
+    injectorBhp: 320.0,
+    producerBhp: 280.0,
+    bhpMin: 280.0,
+    bhpMax: 320.0,
+    rateControlled: false,
+  });
 }
 
 function configureGasBase(sim, options) {

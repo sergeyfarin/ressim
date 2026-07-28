@@ -383,11 +383,15 @@ matter more. Search `docs/FIM_EXPERIMENT_REGISTRY.md` by mechanism before any ch
   Marked `#[ignore]` with a full comment. To revive the timestep-level orchestration check, build a
   fixture that deterministically forces a non-finite correction (or inject one) instead of relying on
   a physical case staying singular.
-- [ ] **Relperm-endpoint singularity (re-scoped 2026-07-24).** The `linear-bad` backstop on small
-  well-dominated cases (`22x22x1`, `23x23x1`, `sweep-areal`). **Recommendation: do not do the
-  relperm-tail regularization (Option B); prefer proactive iterative routing (Option A) if ever
-  prioritized.** Full analysis + why: `docs/FIM_RELPERM_ENDPOINT_SINGULARITY_ANALYSIS.md`. Keep the
-  load-bearing fallback and its `fim/linear/mod.rs` comment meanwhile.
+- [x] **Relperm-endpoint singularity routing — DONE 2026-07-28.** The user-visible
+  `wf_capillary` FIM comparison made the formerly low-priority backstop pathological: its first
+  0.25-day step took 15 substeps / 12 linear retries / 3.66 s. The forced dense solve correctly
+  rejected the endpoint-singular Jacobian, but fallback routing then discarded requested CPR and
+  used plain GMRES/ILU0. Preserving `FgmresCpr` on fallback gives 1 substep / 0 retries / 0.61 s;
+  the full 500-day run completes with one substep per outer step. SWOF/relperm physics is unchanged.
+  Exact replay: `node scripts/fim-wasm-diagnostic.mjs --preset wf-capillary --diagnostic summary
+  --no-json`. Experiment `FIM-LINEAR-014`; analysis updated in
+  `docs/FIM_RELPERM_ENDPOINT_SINGULARITY_ANALYSIS.md`.
 - [ ] **ResSim over-predicts oil ~8–10% vs Flow** on the quarter-day controls — consistent across
   grids, points at a systematic property/well difference, not the solver. Needs a proper cumulative
   (`FOPT`) comparison before attribution.

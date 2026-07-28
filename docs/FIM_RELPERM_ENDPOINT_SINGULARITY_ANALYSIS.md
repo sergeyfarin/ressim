@@ -1,8 +1,8 @@
 # FIM Relperm-Endpoint Singularity — Scoping Analysis
 
-Date: 2026-07-24. Tree: clean `eee4c14` (post convergence re-baseline). Status: **scoping only,
-no code change**. This doc backs the `TODO.md` "relperm-endpoint singularity" root-cause item and
-corrects a mis-scoping in its original framing.
+Date: 2026-07-24; resolved 2026-07-28 by `FIM-LINEAR-014`. Original scoping tree: clean `eee4c14`.
+The resolution preserves the requested CPR backend after a forced direct solve proves singular;
+it changes linear routing only, not SWOF/relperm physics.
 
 ## TL;DR
 
@@ -100,7 +100,26 @@ ResSim-specific direct-solve path is the wrong trade.
 | **B — relperm endpoint tail** | Small ε-slope tail on the **tabulated** endpoints (`corey_table_derivatives` + `corey_table_generic`), value/derivative consistent, then the analytic clamp for the non-default path. | Higher — moves validated OPM SWOF | Yes | The TODO's intent, re-targeted to the correct functions. |
 | **C — do nothing (current recommendation)** | Keep the load-bearing fallback and its `fim/linear/mod.rs` comment. Correct the mis-scoped TODO. | None | No (cases already pass) | The fallback is the OPM-consistent behavior. |
 
-## Recommendation
+## Resolution (2026-07-28)
+
+The `wf_capillary` frontend comparison made Option A worth prioritizing. The exact WASM replay on
+commit `444c30f0affbfa1334489562fc3d0bdb92de0177` (with only diagnostic tooling dirty) showed that
+the existing fallback did not actually preserve the requested iterative method: it changed
+`FgmresCpr` to plain `GmresIlu0`. The latter repeatedly exhausted its iteration budget, causing
+the timestep controller to fragment a 0.25-day step into 15 accepted substeps and 12 retries.
+
+`fim/linear/mod.rs` now preserves `FgmresCpr` when that was the requested backend; explicit direct
+or GMRES choices still fall back to `GmresIlu0`. Exact target replay:
+
+```text
+before: substeps=15 retries=12/0/0 outer_ms=3660.0 lin_ms=3302.0
+after:  substeps=1  retries=0/0/0  outer_ms=613.9  lin_ms=387.0
+```
+
+The full 2,000-step / 500-day replay completes without warnings and with one accepted substep per
+outer step at the final step. See registry row `FIM-LINEAR-014`.
+
+## Original recommendation
 
 **C now; A if/when prioritized; not B.** The fragility the TODO worried about — "if linear routing
 is simplified away, the singularity resurfaces" — is best addressed by making iterative routing
