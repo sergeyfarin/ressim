@@ -113,6 +113,10 @@ analyticalMethod none". Sweep scenarios were also silently building depletion ov
 Replay: `pnpm run validate` — 737 passed / 15 skipped, measured 2026-07-25 on the working tree that
 adds the registry (parent commit `e824198`).
 
+Catalog note (2026-07-28): both plumbing/interaction demonstrators named above were subsequently
+removed from the active picker. The method-registry regression remains covered with a retained
+`analyticalMethod: 'none'` black-oil interpretation case.
+
 **Step 2 of 4 — DONE 2026-07-25: sweep is a first-class analytical method.**
 
 `'sweep'` joined the `AnalyticalMethod` union with a descriptor that declares no primary curve
@@ -142,6 +146,9 @@ Verification: the three sweep scenarios' rendered comparison models — every pa
 color, border, point count and endpoint values, on both the time and PVI axes — are byte-identical
 before and after, checked by diffing a dumped model against the parent commit. That is the load-
 bearing check, since the strip pass was already removing exactly what is now never built.
+
+The two `analyticalMethod: 'none'` demonstrators in the historical bullet above were removed from
+the active catalog on 2026-07-28; the architecture and positive layout validation remain current.
 
 Replay: `pnpm run validate` — 741 passed / 15 skipped, measured 2026-07-25 (parent commit `37f7583`).
 
@@ -272,17 +279,14 @@ Why this block matters:
 - Add multi-case 3D inspection and synchronized case selection across charts, summaries, and spatial views.
 - Restore or explicitly retire the dormant saturation-profile path as part of the same output review.
 
-### 4.3 History/forecast divider on non-linear time axes (E5, deferred from TODO 2026-07-24)
+### 4.3 History/forecast divider on non-linear time axes (E5 — DONE 2026-07-28)
 
-- `resolveHistoryDivider` (`src/lib/charts/historyDivider.ts`) only matches `axis: 'time'`, so the
-  divider never draws on `dep_nct`, whose `fetkovich` layout opens on `xAxisMode: 'logTime'`.
-- `logTime` plots `log10(time)` on a linear scale, so a fix means treating `logTime` as time-family
-  with the boundary transformed to `Math.log10(boundary)` (guard `boundary > 0`).
-- Deferred rather than done: it is not settled that the divider is the right treatment for a
-  Fetkovich log-time plot at all. Decide the intended UX before touching the resolver.
-- Related, recorded so it is not assumed away: the divider exists only on the comparison-chart path
-  (`ReferenceComparisonChart`); the live single-run `RateChart`/`UniversalChart` path does not thread
-  `historyWindow`. Fine by design today.
+- `resolveHistoryDivider` maps a positive scenario time boundary to `Math.log10(boundary)` when the
+  active presentation axis is `logTime`; incompatible physical axes still suppress it.
+- `dep_nct` now renders its boundary on the default Fetkovich chart and labels the right side
+  "Reserves view" rather than implying that its still-identical production curves diverge.
+- The divider remains comparison-chart-only by design; a single live run has no multi-case matched
+  history / reserves comparison to communicate.
 
 ### 4.4 Export and persistence
 

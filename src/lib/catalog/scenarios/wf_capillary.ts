@@ -65,7 +65,13 @@ import { waterfloodBLDef } from '../analyticalAdapters';
  */
 export const wf_capillary: Scenario = {
     key: 'wf_capillary',
-    label: 'Capillary Pressure vs. Buckley-Leverett',
+    label: '1D Waterflood — Capillary Effects',
+    catalog: {
+        group: 'buckley-leverett-displacement',
+        role: 'simulation',
+        caseMode: 'wf',
+        parameterSummary: '1D oil–water displacement · Brooks–Corey capillarity · fixed zero-capillary BL reference',
+    },
     description: 'The same 1D waterflood as the Buckley-Leverett case, run with capillary pressure switched on. BL is the zero-capillary limit — it solves for a sharp shock and has no term that can respond to P_c at all, so its curve stays fixed while the simulated fronts move away from it. Stronger capillarity spreads the front: water imbibes ahead of where viscous flow alone would carry it, so first water arrives earlier, and the water cut then climbs more gradually. The second dimension is the one worth sitting with: a coarse grid with no capillarity produces a smeared front that looks very much like a fine grid with capillarity. One is physics and one is truncation error, and the water-cut curve alone does not tell you which you are looking at.',
     analyticalMethodSummary: 'Buckley-Leverett with Welge shock construction, shown as the zero-capillary reference. BL neglects the capillary term by construction, so the analytical curve is identical for every capillary variant — the departure of the simulated front from it is the measured quantity, not an error.',
     analyticalMethodReference: 'Buckley and Leverett (1942); Welge (1952); Leverett (1941), Trans. AIME 142; Brooks and Corey (1964), CSU Hydrology Paper 3.',
@@ -76,6 +82,11 @@ export const wf_capillary: Scenario = {
         hasInjector: true,
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,
+    },
+    solverPolicy: {
+        defaultSolver: 'impes',
+        rationale: 'IMPES is the interactive default for this oil/water capillary study; the FIM vs. IMPES sensitivity checks the same capillary physics under both formulations.',
+        comparisonSensitivityAvailable: true,
     },
     params: {
         // Fluid properties — matched to wf_bl1d so the two cases are comparable

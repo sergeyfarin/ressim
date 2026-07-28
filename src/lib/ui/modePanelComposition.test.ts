@@ -29,6 +29,18 @@ describe("Scenario picker composition", () => {
     expect(scenarioPickerSource).not.toMatch(/Execution Set/);
   });
 
+  it("presents the catalog as grouped cards with explicit input hierarchy", () => {
+    expect(scenarioPickerSource).toMatch(/auto-rows-fr/);
+    expect(scenarioPickerSource).toMatch(/grid-cols-\[repeat\(auto-fill,minmax\(16rem,18rem\)\)\]/);
+    expect(scenarioPickerSource).toMatch(/w-full whitespace-normal/);
+    expect(scenarioPickerSource).not.toMatch(/role !== 'simulation'/);
+    expect(scenarioPickerSource).toMatch(/Scenario Selection/);
+    expect(scenarioPickerSource).toMatch(/Scenario Description/);
+    expect(scenarioPickerSource).toMatch(/Sensitivity Selections/);
+    expect(scenarioPickerSource).not.toMatch(/Analytical\/Reference solution is fixed/);
+    expect(scenarioPickerSource).not.toMatch(/referenceCaveat/);
+  });
+
   it.skip("keeps the archived custom-mode renderer focused on section composition", () => {
     expect(scenarioSectionsSource).toMatch(/getModePanelSections\(\)/);
     expect(scenarioSectionsSource).toMatch(/<GeometrySection/);

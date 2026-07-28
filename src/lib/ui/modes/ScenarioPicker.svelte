@@ -3,7 +3,7 @@
   import Card from "../controls/Card.svelte";
   import ToggleGroup from "../controls/ToggleGroup.svelte";
   import WarningPolicyPanel from "../feedback/WarningPolicyPanel.svelte";
-  import { SCENARIOS, getScenario, getScenarioAnalyticalOptions, getScenarioGroup, solverLabel, type Scenario, type ScenarioGroup } from "../../catalog/scenarios";
+  import { SCENARIOS, SCENARIO_GROUPS, getScenario, getScenarioAnalyticalOptions, getScenarioGroup, solverLabel, type Scenario } from "../../catalog/scenarios";
   import type { WarningPolicy } from "../../warningPolicy";
 
   let {
@@ -53,19 +53,6 @@
     return activeVariantKeys.filter((k) => validKeys.has(k));
   });
 
-  // True if any selected variant in the active dimension updates the analytical solution.
-  const dimensionAffectsAnalytical = $derived.by(() => {
-    if (!activeDimension) return false;
-    return activeDimension.variants
-      .filter((v) => validActiveVariantKeys.includes(v.key))
-      .some((v) => v.affectsAnalytical);
-  });
-
-  // True if any variant in the dimension is analytical-affecting (used for footer text).
-  const anyVariantAffectsAnalytical = $derived(
-    activeDimension?.variants.some((v) => v.affectsAnalytical) ?? false,
-  );
-
   // Analytical options are derived from the scenario's capabilities, not
   // declared on it — see getScenarioAnalyticalOptions(). Empty when there is no
   // genuine choice, which is what hides the toggle.
@@ -84,78 +71,57 @@
     title: option.summary,
   })));
 
-  // Scenario groups by domain, ordered for display.
-  const DOMAIN_GROUPS: { group: ScenarioGroup; label: string }[] = [
-    { group: 'waterflood', label: 'Waterflood' },
-    { group: 'sweep',      label: 'Sweep' },
-    { group: 'depletion',  label: 'Depletion' },
-    { group: 'gas',        label: 'Gas' },
-  ];
-
-  function formatParamSummary(scenario: Scenario): string {
-    const p = scenario.params;
-    const nx = Number(p.nx ?? 1);
-    const ny = Number(p.ny ?? 1);
-    const nz = Number(p.nz ?? 1);
-    const dx = Number(p.cellDx ?? 1);
-    const lengthM = nx * dx;
-    const mu_o = Number(p.mu_o ?? 1).toFixed(1);
-    const mu_w = Number(p.mu_w ?? 0.5).toFixed(1);
-    const injEnabled = Boolean(p.injectorEnabled);
-    const pBhp = Number(p.producerBhp ?? 0);
-    const iBhp = Number(p.injectorBhp ?? 0);
-    const perm = Number(p.uniformPermX ?? 0);
-
-    const gridStr = `${nx}×${ny}×${nz} cells, ${lengthM}m`;
-    const fluidStr = `μ_o=${mu_o} μ_w=${mu_w} cp`;
-    const permStr = `k=${perm} mD`;
-    const wellStr = injEnabled
-      ? `BHP ${iBhp}→${pBhp} bar`
-      : `BHP ${pBhp} bar`;
-
-    return [gridStr, fluidStr, permStr, wellStr].join("  ·  ");
-  }
-
 </script>
 
 <Card class="p-0">
-  <!-- ── Scenario selector row ── -->
-  <div class="p-3 space-y-2">
-    <div class="ui-panel-kicker text-muted-foreground">Scenario</div>
-    <div class="flex flex-wrap items-start gap-2">
-
-      {#each DOMAIN_GROUPS as group}
-        {@const groupScenarios = SCENARIOS.filter((s) => getScenarioGroup(s) === group.group)}
+  <!-- ── Scenario selection ── -->
+  <div class="space-y-2 p-3">
+    <div class="ui-panel-kicker text-muted-foreground">Scenario Selection</div>
+    <div class="grid auto-rows-fr grid-cols-[repeat(auto-fill,minmax(16rem,18rem))] gap-2">
+      {#each SCENARIO_GROUPS as group}
+        {@const groupScenarios = SCENARIOS.filter((s) => getScenarioGroup(s) === group.key)}
         {#if groupScenarios.length > 0}
-          {#each groupScenarios as scenario}
-            <Button
-              size="sm"
-              variant={activeScenarioKey === scenario.key ? "default" : "outline"}
-              onclick={() => onSelectScenario(scenario.key)}
-            >
-              {scenario.label}
-              <span class="ml-1.5 rounded-sm bg-muted/60 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {solverLabel(scenario.solverPolicy.defaultSolver)}
-              </span>
-              {#if scenario.capabilities.runMode === 'prerun-artifacts'}
-                <span class="ml-1.5 rounded-sm bg-muted/60 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">Pre-run</span>
-              {/if}
-            </Button>
-          {/each}
+          <section
+            aria-labelledby={`scenario-group-${group.key}`}
+            class="flex h-full flex-col rounded-md border border-border/60 bg-muted/10 p-2.5"
+          >
+            <div class="mb-1.5">
+              <div id={`scenario-group-${group.key}`} class="text-[11px] font-semibold text-foreground">{group.label}</div>
+              <div class="ui-microcopy text-muted-foreground">{group.description}</div>
+            </div>
+            <div class="flex flex-1 flex-col gap-2">
+              {#each groupScenarios as scenario}
+                <Button
+                  size="sm"
+                  class="h-auto min-h-8 w-full whitespace-normal py-2 text-center leading-tight"
+                  variant={activeScenarioKey === scenario.key ? "default" : "outline"}
+                  onclick={() => onSelectScenario(scenario.key)}
+                >
+                  {scenario.label}
+                  {#if scenario.catalog.role === 'benchmark'}
+                    <span class="ml-1.5 rounded-sm bg-muted/60 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">{scenario.catalog.role}</span>
+                  {/if}
+                  {#if scenario.capabilities.runMode === 'prerun-artifacts'}
+                    <span class="ml-1.5 rounded-sm bg-muted/60 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">Pre-run</span>
+                  {/if}
+                </Button>
+              {/each}
+            </div>
+          </section>
         {/if}
       {/each}
-
     </div>
   </div>
 
   {#if activeScenario}
-    <!-- ── Concise parameter summary ── -->
-    <div class="border-t border-border/50 px-3 py-2">
-      <div class="flex items-start justify-between gap-2">
-        <div class="space-y-1">
-        <p class="ui-microcopy mt-0.5 font-mono text-muted-foreground/70">
-        {formatParamSummary(activeScenario)}
-      </p>
+    <!-- ── Scenario description ── -->
+    <div class="space-y-2 border-t border-border/50 px-3 py-3">
+      <div class="ui-panel-kicker text-muted-foreground">Scenario Description</div>
+      <div class="rounded-md border border-info/40 bg-info/5 p-2.5">
+        <div class="space-y-1.5">
+          <p class="ui-microcopy font-mono text-muted-foreground/70">
+            {activeScenario.catalog.parameterSummary}
+          </p>
           <p class="ui-microcopy text-foreground">{activeScenario.description}</p>
           <div class="ui-microcopy flex flex-wrap items-center gap-2 text-foreground">
             <span class="font-semibold">Numerical solver:</span>
@@ -179,20 +145,17 @@
             </span>
           </div>
         </div>
-        
       </div>
-      
     </div>
 
-    <!-- ── Sensitivity panel ── -->
+    <!-- ── Sensitivity selections ── -->
     {#if activeScenario.sensitivities.length > 0}
-      <div class="border-t border-border/50 px-3 py-2 space-y-2">
+      <div class="space-y-2 border-t border-border/50 px-3 py-3">
+        <div class="ui-panel-kicker text-muted-foreground">Sensitivity Selections</div>
 
         <!-- Dimension selector — only shown when there are multiple dimensions -->
         {#if activeScenario.sensitivities.length > 1}
-          <p class="ui-subsection-kicker text-muted-foreground">Sensitivities</p>
           <div class="flex flex-wrap items-center gap-2">
-            
             {#each activeScenario.sensitivities as dim}
               <Button
                 size="sm"
@@ -232,27 +195,17 @@
     {/if}
 
   {/if}
-  {#if warningPolicy || (activeDimension && !anyVariantAffectsAnalytical)}
-  <div class="px-3 pb-3 space-y-1.5">
-    {#if activeDimension && !anyVariantAffectsAnalytical}
-      <div class="rounded border border-info/70 bg-info/10 px-2.5 py-1.5 text-xs text-info">
-        Analytical/Reference solution is fixed — only simulation results change.
-      </div>
-    {/if}
-    {#if warningPolicy}
+  {#if warningPolicy}
+    <div class="space-y-1.5 px-3 pb-3">
       <WarningPolicyPanel
         policy={warningPolicy}
-        groups={["blockingValidation", "nonPhysical", "referenceCaveat", "advisory"]}
+        groups={["blockingValidation", "nonPhysical", "advisory"]}
         groupSources={{
           blockingValidation: ["validation"],
           nonPhysical: ["validation"],
-          referenceCaveat: ["analytical"],
           advisory: ["validation"],
         }}
       />
-    {/if}
-  </div>
+    </div>
   {/if}
-    
-  
 </Card>

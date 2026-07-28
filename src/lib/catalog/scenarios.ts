@@ -24,8 +24,6 @@ export { CHART_LAYOUTS, getChartLayout, mergeChartLayoutConfig } from './chartLa
 // ─── Per-scenario imports ────────────────────────────────────────────────────
 
 import { wf_bl1d } from './scenarios/wf_bl1d';
-import { wf_bl1d_opm } from './scenarios/wf_bl1d_opm';
-import { wf_tornado } from './scenarios/wf_tornado';
 import { wf_capillary } from './scenarios/wf_capillary';
 import { sweep_areal } from './scenarios/sweep_areal';
 import { sweep_vertical } from './scenarios/sweep_vertical';
@@ -55,8 +53,77 @@ export type AnalyticalMethod =
 /** Coarse analytical family used by the custom/editor UI. */
 export type AnalyticalMode = 'waterflood' | 'depletion' | 'none';
 
-/** Presentational scenario grouping used by ScenarioPicker. */
-export type ScenarioGroup = 'waterflood' | 'sweep' | 'depletion' | 'gas';
+/** Stable, explicit catalog taxonomy used by ScenarioPicker. */
+export type ScenarioGroup =
+    | 'buckley-leverett-displacement'
+    | 'sweep-efficiency'
+    | 'depletion-decline'
+    | 'pressure-transient'
+    | 'gas-black-oil'
+    | 'validation-benchmarks'
+    | 'other';
+
+/** What kind of product content the scenario represents. */
+export type ScenarioRole = 'simulation' | 'interpretation' | 'benchmark';
+
+/** Coarse application mode selected with the scenario. */
+export type ScenarioCaseMode = 'wf' | 'dep' | '3p';
+
+/**
+ * Catalog placement is declared by the scenario instead of inferred from its
+ * solver or analytical method. Those technical traits do not form a sound
+ * information architecture: a gas benchmark is still a benchmark, and a
+ * well test is not depletion merely because both have one producer.
+ */
+export type ScenarioCatalog = {
+    group: ScenarioGroup;
+    role: ScenarioRole;
+    caseMode: ScenarioCaseMode;
+    /** Scenario-owned concise picker copy; never reconstructed from guessed fields. */
+    parameterSummary: string;
+};
+
+export const SCENARIO_GROUPS: readonly {
+    key: ScenarioGroup;
+    label: string;
+    description: string;
+}[] = [
+    {
+        key: 'buckley-leverett-displacement',
+        label: 'Buckley–Leverett Displacement',
+        description: 'One-dimensional displacement fundamentals and departures from the Buckley–Leverett assumptions.',
+    },
+    {
+        key: 'sweep-efficiency',
+        label: 'Sweep Efficiency',
+        description: 'Areal, vertical, and combined reservoir contact during waterflooding.',
+    },
+    {
+        key: 'depletion-decline',
+        label: 'Depletion & Decline',
+        description: 'Pressure depletion, boundary-dominated decline, forecasting fits, and depletion non-uniqueness.',
+    },
+    {
+        key: 'pressure-transient',
+        label: 'Pressure-Transient Analysis',
+        description: 'Well-test interpretation workflows such as drawdown, buildup, Horner, and interference tests.',
+    },
+    {
+        key: 'gas-black-oil',
+        label: 'Gas-Dominated Recovery',
+        description: 'Gas injection and solution-gas drive recovery mechanisms.',
+    },
+    {
+        key: 'validation-benchmarks',
+        label: 'Validation Benchmarks',
+        description: 'Published comparative-solution and external-reference cases used to validate the simulator.',
+    },
+    {
+        key: 'other',
+        label: 'Other',
+        description: 'Cross-cutting interpretation cases awaiting a permanent catalog family.',
+    },
+] as const;
 
 /** Which primary rate curve to show in the "rates" chart panel. */
 export type PrimaryRateCurve = 'water-cut' | 'gas-cut' | 'oil-rate';
@@ -524,6 +591,8 @@ export type HistoryWindow = {
 export type Scenario = {
     key: string;
     label: string;
+    /** Explicit catalog placement, content role, app mode, and picker copy. */
+    catalog: ScenarioCatalog;
     description: string;
     analyticalMethodSummary: string;
     analyticalMethodReference: string;
@@ -535,6 +604,8 @@ export type Scenario = {
     chartLayoutPatch?: RateChartLayoutConfig;
     /** Behavioral capability declarations — single source of truth for all routing logic. */
     capabilities: ScenarioCapabilities;
+    /** Scenario-owned numerical formulation choice and user-facing rationale. */
+    solverPolicy: ScenarioSolverPolicy;
     /**
      * Sensitivity dimensions available for this scenario.
      * Empty array = no sensitivity study defined.
@@ -571,10 +642,8 @@ export type Scenario = {
     liveChartPanels?: import('../charts/universalChartTypes').UniversalPanelDef[];
 };
 
-/** Scenario after catalog-level solver policy has been applied. */
-export type CatalogScenario = Scenario & {
-    solverPolicy: ScenarioSolverPolicy;
-};
+/** Scenario after generic catalog enhancements (currently sensitivity injection). */
+export type CatalogScenario = Scenario;
 
 // Scenario-first product vocabulary. The older Scenario/Sensitivity names
 // remain exported while migration continues, but new frontend code should
@@ -601,8 +670,6 @@ export const CUSTOM_MODE_CAPABILITIES: ScenarioCapabilities = {
 
 const SOURCE_SCENARIOS: Scenario[] = [
     wf_bl1d,
-    wf_bl1d_opm,
-    wf_tornado,
     wf_capillary,
     sweep_areal,
     sweep_vertical,
@@ -639,30 +706,20 @@ function solverComparisonSensitivity(defaultSolver: SimulationSolver): Sensitivi
     };
 }
 
-function applySolverPolicy(source: Scenario): CatalogScenario {
-    const involvesGas = source.capabilities.requiresThreePhaseMode;
-    const defaultSolver: SimulationSolver = involvesGas ? 'fim' : 'impes';
-    const solverPolicy: ScenarioSolverPolicy = {
-        defaultSolver,
-        rationale: involvesGas
-            ? 'FIM is required for coupled free/dissolved-gas, PVT, phase-appearance, and well-control updates; IMPES gas transport remains an explicit approximation.'
-            : 'IMPES is the measured faster default for the catalog oil/water workload; use the FIM vs. IMPES sensitivity to compare formulations on this scenario.',
-        comparisonSensitivityAvailable: !involvesGas,
-    };
+function applyCatalogEnhancements(source: Scenario): CatalogScenario {
     return {
         ...source,
         params: {
             ...source.params,
-            fimEnabled: defaultSolver === 'fim',
+            fimEnabled: source.solverPolicy.defaultSolver === 'fim',
         },
-        sensitivities: involvesGas
-            ? [...source.sensitivities]
-            : [...source.sensitivities, solverComparisonSensitivity(defaultSolver)],
-        solverPolicy,
+        sensitivities: source.solverPolicy.comparisonSensitivityAvailable
+            ? [...source.sensitivities, solverComparisonSensitivity(source.solverPolicy.defaultSolver)]
+            : [...source.sensitivities],
     };
 }
 
-export const SCENARIOS: CatalogScenario[] = SOURCE_SCENARIOS.map(applySolverPolicy);
+export const SCENARIOS: CatalogScenario[] = SOURCE_SCENARIOS.map(applyCatalogEnhancements);
 
 // Freeze all scenario params objects to catch accidental in-place mutation early.
 // A mutation to one scenario's params cannot silently corrupt another.
@@ -837,16 +894,8 @@ export function getDefaultScenarioAnalyticalMode(caps: ScenarioCapabilities): An
     return getAnalyticalModeForMethod(caps.analyticalMethod);
 }
 
-export function getScenarioGroup(scenario: Pick<Scenario, 'capabilities'>): ScenarioGroup {
-    const { capabilities } = scenario;
-    if (capabilities.requiresThreePhaseMode || capabilities.analyticalMethod === 'gas-oil-bl') {
-        return 'gas';
-    }
-    if (capabilities.analyticalMethod === 'sweep') return 'sweep';
-    if (capabilities.analyticalMethod === 'depletion' || capabilities.analyticalMethod === 'well-test') {
-        return 'depletion';
-    }
-    return 'waterflood';
+export function getScenarioGroup(scenario: Pick<Scenario, 'catalog'>): ScenarioGroup {
+    return scenario.catalog.group;
 }
 
 export function listScenarios(): CatalogScenario[] {

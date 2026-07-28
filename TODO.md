@@ -36,9 +36,10 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   same ~day-1000 decline onset; `wf_bl1d` shows a proper BL front breaking through at ~14.5 d.
 
 ### Wave 4 follow-ups
-- Moved to `ROADMAP.md` §4.3 on 2026-07-24 (deferred as longer-term, pending a UX decision on whether
-  the divider belongs on a Fetkovich log-time plot at all): the E5 history/forecast divider not
-  showing on `dep_nct` under `xAxisMode: 'logTime'`, and its comparison-chart-only scope.
+- [x] **E5 log-time history divider (2026-07-28).** A scenario time boundary now maps to
+  `Math.log10(boundary)` on the log-time presentation axis (positive boundaries only), so the
+  `dep_nct` divider renders on its default chart. The case labels the right-hand region "Reserves
+  view" because its production curves remain matched; the divergence is OOIP/recovery factor.
 - [ ] **(MINOR, E7 cosmetic) 3D card hidden for pre-run scenarios leaves `xl:grid-cols-2` with one
   child** — empty right half on xl. Consider full-width chart when `isPrerunScenario`. Verify in
   `pnpm run dev`.
@@ -50,8 +51,6 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   `case.units` (TIME assumed days); (b) multi-page RSM merge success path has no real-data test;
   (c) `deckHash`/`flowVersion` stamped at build-artifacts time, not run time; (d) `find_summary_file`
   takes the first `*.RSM` glob match.
-- [ ] **(MINOR) `wf_tornado` runtime:** 4×800 steps of a 40×1×10 IMPES grid ≈ 4–5 s each headless —
-  visual check the sweep UX stays responsive.
 
 ### Large-grid IMPES runtime (headless catalog sweep, 2026-07-24)
 Measured all 130 catalog cases headless in Node against the committed wasm
@@ -160,19 +159,31 @@ Measured all 130 catalog cases headless in Node against the committed wasm
 
 ### Scenario library (Tier 5–7)
 
+- [x] **Scenario-library taxonomy and scenario-ownership audit (2026-07-28).** Removed the redundant
+  `wf_bl1d_opm` picker entry (the retained `wf_bl1d` uses its analytical reference) and withdrew
+  `wf_tornado` until an interaction-specific plot/workflow exists. Renamed the retained cases,
+  introduced six explicit future-facing catalog groups plus an orthogonal scenario role, rendered
+  real group headings, and moved picker summaries and solver policy/rationale into every scenario.
+  Removed the live gas-case key branch and duplicated scenario-to-chart adapter; added
+  `scenarioAgnosticArchitecture.test.ts` to reject future canonical-key branching. Ownership and
+  admission rules: `docs/SCENARIO_CATALOG_ARCHITECTURE.md`.
+
 Case IDs below are `docs/CASE_LIBRARY_ROADMAP.md` Tier 7 IDs (`T7.n`) — that doc holds the
 rationale and references; this list holds only the action and its blocker.
 
 - [x] **5.1 "Matched history, different reserves"** (N·c_t ambiguity) — shipped as `dep_nct.ts`.
-- [x] **5.2 "The tornado plot lies"** (kv/kh × density-contrast) — shipped as `wf_tornado.ts`. The
-  second candidate pair from 5.2 (capillary × layer contrast) was never built → now T7.16.
+- [x] **5.2 kv/kh × density-contrast experiment** — implemented and measured, then withdrawn from
+  the active catalog on 2026-07-28 because the product had no tornado/interaction-specific plot.
+  Re-admission requires a distinct interaction workflow; the second candidate pair (capillary ×
+  layer contrast) was never built → T7.16.
 - [x] **5.3 "Two fluid models, one calibration point"** (correlation vs lab-report PVT) — shipped as
   `dep_pvt.ts`. Still no OPM deck for this case (below).
 - [x] **E7 pre-run scenario class** — shipped as `capabilities.runMode: 'prerun-artifacts'`
-  (`scenarios.ts`), precedent `wf_bl1d_opm.ts`; validated by `scenarios.test.ts`. The multi-artifact
-  fan/ensemble half of the original E7 is split out as E8 and is still open.
-- [x] **E5 history/forecast divider** — shipped (`resolveHistoryDivider`); the `logTime` bug is
-  tracked under Wave 4 follow-ups above.
+  (`scenarios.ts`) and retained for future real multi-run exhibits. Its plumbing demonstrator
+  `wf_bl1d_opm` was removed from the user catalog on 2026-07-28 because a reference source alone
+  does not justify a second scenario. The multi-artifact fan/ensemble half is E8 and remains open.
+- [x] **E5 history/forecast divider** — shipped (`resolveHistoryDivider`), including log-time
+  mapping as of 2026-07-28.
 
 Open, no engine gap (cheapest):
 - [x] **T7.4 capillary waterflood — DONE 2026-07-24.** `scenarios/wf_capillary.ts` is the first
@@ -412,6 +423,12 @@ matter more. Search `docs/FIM_EXPERIMENT_REGISTRY.md` by mechanism before any ch
   phase in diagnostics.
 
 ## Housekeeping
+- [x] **Scenario picker density and hierarchy — DONE 2026-07-28.** Scenario families now render
+  as compact wrapping group cards, and the input surface has explicit
+  Scenario Selection, Scenario Description, and Sensitivity Selections sections. Fixed-reference
+  and analytical-applicability notices are omitted from the picker; actionable validation and
+  runtime warning policy remains a separate channel so current-input problems are not mistaken for
+  catalog prose. Solver badges are also omitted from catalog buttons and retained in the description.
 - [x] **No parity test between the tabulated-relperm value and derivative paths.** Found during the
   2026-07-24 dead-code review. `RockFluidProps::corey_table_derivatives` (analytic segment slopes)
   and `corey_table_generic` (what production differentiates via AD) are two independent

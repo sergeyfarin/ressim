@@ -4,7 +4,13 @@ import { depletionDef } from '../analyticalAdapters';
 
 export const dep_pss: Scenario = {
     key: 'dep_pss',
-    label: 'Pressure Depletion (Oil)',
+    label: 'Bounded Reservoir Depletion',
+    catalog: {
+        group: 'depletion-decline',
+        role: 'simulation',
+        caseMode: 'dep',
+        parameterSummary: 'Bounded single-well oil reservoir · transient-to-PSS response · Dietz shape-factor reference',
+    },
     description: 'Bounded square depletion with a single producer. The simulator shows an early spatial drawdown transient before approaching the Dietz pseudo-steady-state tail, so this scenario is used for bounded-flow shape-factor checks plus numerical-resolution studies rather than aggressive PI scaling sweeps.',
     analyticalMethodSummary: 'Dietz pseudo-steady-state productivity-index model — predicts the late-time exponential rate and pressure decline for the active well location, skin, and storage terms once the bounded system is in PSS.',
     analyticalMethodReference: 'Dietz (1965); standard pseudo-steady-state productivity-index formulation.',
@@ -15,6 +21,11 @@ export const dep_pss: Scenario = {
         hasInjector: false,
         default3DScalar: null,
         requiresThreePhaseMode: false,
+    },
+    solverPolicy: {
+        defaultSolver: 'impes',
+        rationale: 'IMPES is the validated interactive default for oil depletion; the FIM vs. IMPES axis compares the transient-to-PSS response directly.',
+        comparisonSensitivityAvailable: true,
     },
     params: {
         // Fluid

@@ -61,9 +61,9 @@ export function getReferenceRateChartLayoutConfig(input: {
         };
     }
 
-    const depletionXAxis = family.key === 'fetkovich_exp' ? 'logTime' : toXAxisMode(family.displayDefaults.xAxis);
-    const depletionXAxisOptions: RateChartXAxisMode[] = family.key === 'fetkovich_exp'
-        ? ['logTime', 'time', 'tD']
+    const depletionXAxis = toXAxisMode(family.displayDefaults.xAxis);
+    const depletionXAxisOptions: RateChartXAxisMode[] = depletionXAxis === 'tD'
+        ? ['tD', 'time', 'logTime']
         : ['time', 'tD', 'logTime'];
 
     return {
@@ -71,7 +71,7 @@ export function getReferenceRateChartLayoutConfig(input: {
             xAxisMode: depletionXAxis,
             xAxisOptions: depletionXAxisOptions,
             allowLogScale: true,
-            logScale: family.key === 'fetkovich_exp',
+            logScale: false,
             panelOrder: ['rates', 'cumulative', 'diagnostics'],
             panels: {
                 rates: {

@@ -9,6 +9,7 @@
         getConfiguredXAxisOptions,
         resolveChartPanelDefinition,
         resolveChartPanelLayout,
+        suppressInitialSpike,
         type ChartPanelEntry,
         type ChartPanelFallback,
         type ChartXAxisOption,
@@ -148,25 +149,6 @@
         // remap it; the registry owns which methods those are.
         if (isPreviewMode && getAnalyticalMethodDescriptor(previewAnalyticalMethod).nativeXAxis === 'pvi') {
             xAxisMode = 'pvi';
-        }
-    });
-
-    const isGasContext = $derived(
-        family?.analyticalMethod === 'gas-oil-bl' || 
-        family?.key === 'gas_drive' || 
-        family?.key === 'gas_injection' ||
-        (results[0]?.params?.injectedFluid === 'gas') ||
-        (results[0]?.params?.initialGasSaturation > 0) ||
-        (previewBaseParams?.injectedFluid === 'gas') ||
-        (previewBaseParams?.initialGasSaturation > 0)
-    );
-
-    $effect(() => {
-        if (isGasContext && layoutConfig?.rateChart?.panels?.diagnostics?.expanded === undefined) {
-            const currentExpanded = untrack(() => panelExpanded);
-            if (!currentExpanded.diagnostics) {
-                panelExpanded = { ...currentExpanded, diagnostics: true };
-            }
         }
     });
 
@@ -339,8 +321,8 @@
     }
 
     // Panel presentation comes from the active analytical method's descriptor
-    // (analyticalMethodRegistry.ts) layered over PANEL_DEFS. Only the gas-context
-    // override stays here: it is sniffed from run params, not method-derived.
+    // (analyticalMethodRegistry.ts) layered over PANEL_DEFS. Scenario-specific
+    // titles and curve choices are applied later from layoutConfig.
     const panelFallbacks = $derived.by((): Record<RateChartPanelId, ChartPanelFallback> => {
         const presentation = activeDescriptor.panelPresentation;
         return {
@@ -356,14 +338,6 @@
             diagnostics: {
                 ...PANEL_DEFS.diagnostics,
                 ...presentation.diagnostics,
-                title: isGasContext ? 'Material Balance (P/z)' : 'Pressure',
-                ...(presentation.diagnostics?.curveKeys
-                    ? {}
-                    : {
-                        curveKeys: isGasContext
-                            ? ['p_z_sim', 'p_z_reference']
-                            : ['avg-pressure-sim', 'avg-pressure-reference'],
-                    }),
                 scalePreset: 'pressure',
             },
         };
@@ -390,7 +364,15 @@
                     chartId: `comparison-${panelKey.replaceAll('_', '-')}`,
                     title: panelDefinition.title,
                     curves: panelDefinition.curves,
-                    series: panelDefinition.series,
+                    series: panelDefinition.series.map((series, index) => (
+                        (panelDefinition.curves[index]?.referenceSourceType === 'simulation'
+                            || panelDefinition.curves[index]?.curveKey?.endsWith('-sim'))
+                            ? suppressInitialSpike(
+                                series,
+                                layoutConfig?.rateChart?.panels?.[panelKey]?.suppressInitialSpikeAboveRatio,
+                            )
+                            : series
+                    )),
                     scales: panelDefinition.scales,
                     allowLogToggle: panelDefinition.allowLogToggle || panelLayout.allowLogToggle,
                     visible: panelLayout.visible,

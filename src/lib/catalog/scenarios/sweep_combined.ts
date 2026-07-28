@@ -4,7 +4,13 @@ import { waterfloodBLDef } from '../analyticalAdapters';
 
 export const sweep_combined: Scenario = {
     key: 'sweep_combined',
-    label: 'Combined Sweep (3D)',
+    label: 'Combined Sweep',
+    catalog: {
+        group: 'sweep-efficiency',
+        role: 'simulation',
+        caseMode: 'wf',
+        parameterSummary: 'Layered five-spot waterflood · combined areal and vertical sweep · interaction matrix',
+    },
     description: 'Volumetric sweep E_vol = E_A × E_V in a 3D five-spot-over-layers flood. Two axes: a 2×2 interaction matrix of mobility vs. layering, and a progressive sweep from ideal to fully-degraded conditions.',
     analyticalMethodSummary: 'Stiles layer-by-layer sweep: the total RF and combined E_vol use layer-by-layer Buckley-Leverett displacement inside the Craig-contacted region, while E_A and E_V remain analytical diagnostic decomposition views.',
     analyticalMethodReference: 'Stiles (1949); Craig (1971); Buckley and Leverett (1942); Welge (1952).',
@@ -36,6 +42,11 @@ export const sweep_combined: Scenario = {
         hasInjector: true,
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,
+    },
+    solverPolicy: {
+        defaultSolver: 'impes',
+        rationale: 'IMPES is the interactive default for the larger combined-sweep grid; the solver-comparison axis reuses the same analytical decomposition.',
+        comparisonSensitivityAvailable: true,
     },
     params: {
         // Fluid

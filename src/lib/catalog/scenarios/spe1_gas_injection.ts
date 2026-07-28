@@ -324,6 +324,12 @@ const SPE1_INJECTION_RATE_TARGET: PublishedReferenceSeries = {
 export const spe1_gas_injection: Scenario = {
     key: 'spe1_gas_injection',
     label: 'SPE1 Black-Oil Benchmark',
+    catalog: {
+        group: 'validation-benchmarks',
+        role: 'benchmark',
+        caseMode: '3p',
+        parameterSummary: 'SPE1 Case 1 · 10×10×3 black-oil gas injection · Eclipse and OPM Flow references',
+    },
     description:
         'SPE Comparative Solution Project #1 (Odeh, 1981): 10×10×3 black-oil reservoir with gas injection. ' +
         'Validates PVT coupling, dissolved-gas tracking, and three-phase transport against published Eclipse results. ' +
@@ -356,6 +362,11 @@ export const spe1_gas_injection: Scenario = {
         },
         { kind: 'opm-flow', artifactKeys: ['spe1_gas_injection'] },
     ],
+    solverPolicy: {
+        defaultSolver: 'fim',
+        rationale: 'FIM is the benchmark formulation for SPE1 because the case exercises coupled black-oil PVT, phase appearance, dissolved gas, and rate/BHP control switching.',
+        comparisonSensitivityAvailable: false,
+    },
     params: {
         // ── Grid: 10×10×3, non-uniform dz ──────────────────────────────
         nx: 10, ny: 10, nz: 3,

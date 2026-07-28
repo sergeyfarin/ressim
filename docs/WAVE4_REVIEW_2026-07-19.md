@@ -47,7 +47,7 @@ every future artifact. **Either way, add a post-filter render test**: model →
 `resolveChartPanelDefinition` with the scenario's real layout → assert non-empty — the entire gap
 class existed because every test stopped at model content.
 
-## 2. MAJOR (E5): divider never shows on dep_nct by default
+## 2. MAJOR (E5): divider never shows on dep_nct by default — CLOSED 2026-07-28
 
 The `fetkovich` layout opens with `xAxisMode: 'logTime'`
 (`src/lib/catalog/chartLayouts.ts:165`), and `resolveHistoryDivider`
@@ -60,6 +60,10 @@ unprompted.
 `Math.log10(boundary)`, not at `boundary`. Extend `resolveHistoryDivider` to treat `logTime` as
 time-family with a transformed boundary (guard `boundary > 0`) — do not merely widen the axis
 match.
+
+Closed exactly as specified in `resolveHistoryDivider`, with unit coverage for the transformed
+boundary and the non-positive guard. The scenario's right-side label is "Reserves view" to avoid
+claiming divergent production forecasts where only OOIP/recovery factor diverges.
 
 ## 3. MINOR (docs): scenario count stale, `wf_bl1d_opm` missing from inventory
 

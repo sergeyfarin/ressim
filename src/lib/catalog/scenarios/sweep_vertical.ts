@@ -4,7 +4,13 @@ import { waterfloodBLDef } from '../analyticalAdapters';
 
 export const sweep_vertical: Scenario = {
     key: 'sweep_vertical',
-    label: 'Vertical Sweep (XZ)',
+    label: 'Vertical Sweep',
+    catalog: {
+        group: 'sweep-efficiency',
+        role: 'simulation',
+        caseMode: 'wf',
+        parameterSummary: 'Layered waterflood · Dykstra–Parsons / Stiles vertical sweep · permeability contrast',
+    },
     description: 'Non-communicating layered reservoir (XZ). Higher permeability contrast V_DP causes earlier breakthrough in faster layers, reducing vertical sweep E_V.',
     analyticalMethodSummary: 'Dykstra-Parsons layered sweep model — predicts per-layer breakthrough ordering and combined E_V for the active layer permeabilities.',
     analyticalMethodReference: 'Dykstra and Parsons (1950).',
@@ -28,6 +34,11 @@ export const sweep_vertical: Scenario = {
         hasInjector: true,
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,
+    },
+    solverPolicy: {
+        defaultSolver: 'impes',
+        rationale: 'IMPES is the interactive default for this layered oil/water sweep case; the solver-comparison axis keeps geology and controls unchanged.',
+        comparisonSensitivityAvailable: true,
     },
     params: {
         // Fluid
@@ -164,11 +175,9 @@ export const sweep_vertical: Scenario = {
             ],
         },
         {
-            // T7.18 — the second combined-uncertainty case in the library, and
-            // deliberately the opposite sign to the first. wf_tornado shows two
-            // parameters whose combination is *worse* than the sum of their
-            // one-at-a-time effects; this one shows two whose combination is
-            // considerably better, because they compete for the same barrels.
+            // T7.18 — a combined-uncertainty case whose mechanisms mask one
+            // another: their joint penalty is smaller than the sum of the
+            // one-at-a-time effects because they compete for the same barrels.
             // Both are failures of one-at-a-time reasoning; only together do
             // they make the point that the direction of the error is not
             // predictable either. Measured 2026-07-24, see sweep_vertical.test.ts:

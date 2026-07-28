@@ -4,7 +4,13 @@ import { depletionDef } from '../analyticalAdapters';
 
 export const dep_decline: Scenario = {
     key: 'dep_decline',
-    label: 'Fetkovich Decline (Oil)',
+    label: 'Boundary-Dominated Decline — Fetkovich',
+    catalog: {
+        group: 'depletion-decline',
+        role: 'interpretation',
+        caseMode: 'dep',
+        parameterSummary: 'Finite constant-BHP oil reservoir · late-time exponential decline · Fetkovich reference',
+    },
     description: 'Constant-BHP production from a 1D finite reservoir. The simulator includes the early near-well transient, then settles into the boundary-dominated exponential decline assumed by Fetkovich; the analytical overlay is clipped to that late-time window and shown on log-time axes.',
     analyticalMethodSummary: 'Fetkovich exponential decline — late-time boundary-dominated rate and recovery reference curves for constant-BHP depletion, used here for clean PI/rate-scale sensitivities after the early transient has decayed.',
     analyticalMethodReference: 'Fetkovich (1971).',
@@ -15,6 +21,11 @@ export const dep_decline: Scenario = {
         hasInjector: false,
         default3DScalar: null,
         requiresThreePhaseMode: false,
+    },
+    solverPolicy: {
+        defaultSolver: 'impes',
+        rationale: 'IMPES is the fast default for this constant-PVT decline case; formulation comparison is available without changing the reference.',
+        comparisonSensitivityAvailable: true,
     },
     params: {
         // Fluid

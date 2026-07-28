@@ -22,8 +22,9 @@ export type ResolvedHistoryDivider = {
 
 /**
  * Resolve a scenario's `historyWindow` against the chart's active x-axis.
- * Returns null (divider suppressed) when the window is absent, the boundary is
- * non-finite, or the window is declared for a different axis than the one shown.
+ * Time windows are mapped onto log-time because logTime is a presentation of
+ * the same physical coordinate, not a different scenario axis. Other axis
+ * changes suppress the divider rather than inventing a conversion.
  */
 export function resolveHistoryDivider(
     window: HistoryWindow | null | undefined,
@@ -31,9 +32,14 @@ export function resolveHistoryDivider(
 ): ResolvedHistoryDivider | null {
     if (!window || !Number.isFinite(window.boundary)) return null;
     const axis = window.axis ?? 'time';
-    if (axis !== xAxisMode) return null;
+    const boundary = axis === 'time' && xAxisMode === 'logTime'
+        ? (window.boundary > 0 ? Math.log10(window.boundary) : Number.NaN)
+        : axis === xAxisMode
+            ? window.boundary
+            : Number.NaN;
+    if (!Number.isFinite(boundary)) return null;
     return {
-        boundary: window.boundary,
+        boundary,
         historyLabel: window.historyLabel ?? 'History',
         forecastLabel: window.forecastLabel ?? 'Forecast',
     };

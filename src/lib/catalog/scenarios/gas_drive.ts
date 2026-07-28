@@ -51,6 +51,12 @@ const PVT_TABLE_HEAVY = makeTable(22);
 export const gas_drive: Scenario = {
     key: 'gas_drive',
     label: 'Solution Gas Drive',
+    catalog: {
+        group: 'gas-black-oil',
+        role: 'simulation',
+        caseMode: '3p',
+        parameterSummary: 'Saturated black-oil depletion · solution-gas liberation · OPM Flow reference',
+    },
     description: 'Pressure depletion of a saturated black-oil reservoir. Initial pressure sits at the bubble point, so drawdown immediately liberates gas from solution: Rs falls, free gas builds past the critical gas saturation, and producing GOR climbs while oil rate declines. Vary the initial free-gas volume, the oil gravity, or the permeability to see how each changes the strength and timing of the gas-expansion drive.',
     analyticalMethodSummary: 'Simulation-only — no analytical overlay. The Dietz PSS depletion model used elsewhere in this catalog is oil-only and does not represent gas liberation, so no honest quantitative analytical reference exists for a solution-gas drive (same precedent as dep_pvt). The quantitative reference is the pre-run OPM Flow solution.',
     analyticalMethodReference: 'Craft & Hawkins, Applied Petroleum Reservoir Engineering (solution-gas-drive material balance); Standing (1947) correlations. Quantitative grading: docs/THREE_PHASE_VALIDATION.md.',
@@ -62,6 +68,11 @@ export const gas_drive: Scenario = {
         hasInjector: false,
         default3DScalar: 'saturation_gas',
         requiresThreePhaseMode: true,
+    },
+    solverPolicy: {
+        defaultSolver: 'fim',
+        rationale: 'FIM is required for coupled dissolved/free-gas evolution, phase appearance, black-oil PVT, and producing-GOR behavior during depletion.',
+        comparisonSensitivityAvailable: false,
     },
     params: {
         nx: 20, ny: 1, nz: 1,

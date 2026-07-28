@@ -4,6 +4,7 @@ import {
     getConfiguredXAxisOptions,
     resolveChartPanelDefinition,
     resolveChartPanelLayout,
+    suppressInitialSpike,
     type ChartPanelEntry,
 } from './chartPanelSelection';
 
@@ -14,6 +15,19 @@ type TestCurve = {
 };
 
 describe('chartPanelSelection', () => {
+    it('suppresses only an initial point above the configured next-point ratio', () => {
+        const spike = [{ x: 0, y: 9_100 }, { x: 1, y: 4_000 }, { x: 2, y: 3_900 }];
+        const ordinary = [{ x: 0, y: 7_900 }, { x: 1, y: 4_000 }, { x: 2, y: 3_900 }];
+
+        expect(suppressInitialSpike(spike, 2)).toEqual([
+            { x: 0, y: null },
+            { x: 1, y: 4_000 },
+            { x: 2, y: 3_900 },
+        ]);
+        expect(suppressInitialSpike(ordinary, 2)).toBe(ordinary);
+        expect(suppressInitialSpike(spike, undefined)).toBe(spike);
+    });
+
     it('filters x-axis options to the configured modes', () => {
         const options = getConfiguredXAxisOptions(
             [

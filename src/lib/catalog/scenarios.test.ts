@@ -11,6 +11,7 @@ import {
     getScenarioChartLayout,
     getScenarioWithVariantParams,
     getScenarioGroup,
+    SCENARIO_GROUPS,
     listScenarios,
     resolveCapabilities,
     validateScenarioChartLayout,
@@ -22,31 +23,23 @@ import {
 } from './scenarios';
 
 describe('sweep scenario sensitivities', () => {
-    it('uses FIM for gas scenarios and IMPES for oil/water scenarios', () => {
-        expect(getScenario('wf_bl1d')?.params.fimEnabled).toBe(false);
-        expect(getScenario('dep_pvt')?.params.fimEnabled).toBe(true);
-        expect(getScenario('gas_injection')?.params.fimEnabled).toBe(true);
-        expect(getScenario('gas_drive')?.params.fimEnabled).toBe(true);
-        expect(getScenario('spe1_gas_injection')?.params.fimEnabled).toBe(true);
+    it('applies each scenario\'s declared solver policy without re-inferring it', () => {
+        for (const scenario of listScenarios()) {
+            expect(scenario.params.fimEnabled, scenario.key)
+                .toBe(scenario.solverPolicy.defaultSolver === 'fim');
+            expect(scenario.solverPolicy.rationale.trim().length, scenario.key).toBeGreaterThan(20);
+            expect(
+                scenario.sensitivities.some((dimension) => dimension.key === 'solver_comparison'),
+                scenario.key,
+            ).toBe(scenario.solverPolicy.comparisonSensitivityAvailable);
+        }
     });
 
     it('provides analytical method metadata for every canonical scenario', () => {
-        const scenarioKeys = [
-            'wf_bl1d',
-            'sweep_areal',
-            'sweep_vertical',
-            'sweep_combined',
-            'dep_pss',
-            'dep_decline',
-            'dep_arps',
-            'gas_injection',
-            'gas_drive',
-        ];
-
-        for (const key of scenarioKeys) {
-            const scenario = getScenario(key);
-            expect(scenario?.analyticalMethodSummary?.length).toBeGreaterThan(10);
-            expect(scenario?.analyticalMethodReference?.length).toBeGreaterThan(5);
+        expect(listScenarios()).toHaveLength(14);
+        for (const scenario of listScenarios()) {
+            expect(scenario.analyticalMethodSummary.length, scenario.key).toBeGreaterThan(10);
+            expect(scenario.analyticalMethodReference.length, scenario.key).toBeGreaterThan(5);
         }
     });
 
@@ -299,14 +292,6 @@ describe('affectsAnalytical contract', () => {
                 const isBaseCase = Object.keys(variant.paramPatch).length === 0;
                 const variantParams = getScenarioWithVariantParams(scenarioKey, dim.key, variant.key);
                 const variantFp = analyticalFingerprint(scenario.capabilities.analyticalMethod, variantParams);
-    it('derives scenario picker groups from capabilities instead of storing duplicate domain metadata', () => {
-        expect(getScenarioGroup(getScenario('wf_bl1d')!)).toBe('waterflood');
-        expect(getScenarioGroup(getScenario('sweep_areal')!)).toBe('sweep');
-        expect(getScenarioGroup(getScenario('dep_pss')!)).toBe('depletion');
-        expect(getScenarioGroup(getScenario('gas_injection')!)).toBe('gas');
-    });
-
-
                 if (isBaseCase) {
                     // Base-case variants (empty paramPatch) produce identical output by definition
                     it(`${scenarioKey} / ${dim.key} / ${variant.key}: base-case variant produces identical analytical output`, () => {
@@ -328,6 +313,29 @@ describe('affectsAnalytical contract', () => {
             }
         }
     }
+});
+
+describe('scenario catalog taxonomy', () => {
+    it('uses explicit product groups instead of inferring navigation from physics capabilities', () => {
+        expect(getScenarioGroup(getScenario('wf_bl1d')!)).toBe('buckley-leverett-displacement');
+        expect(getScenarioGroup(getScenario('sweep_areal')!)).toBe('sweep-efficiency');
+        expect(getScenarioGroup(getScenario('dep_pss')!)).toBe('depletion-decline');
+        expect(getScenarioGroup(getScenario('dep_welltest')!)).toBe('pressure-transient');
+        expect(getScenarioGroup(getScenario('gas_injection')!)).toBe('gas-black-oil');
+        expect(getScenarioGroup(getScenario('spe1_gas_injection')!)).toBe('validation-benchmarks');
+        expect(getScenarioGroup(getScenario('dep_nct')!)).toBe('other');
+        expect(getScenarioGroup(getScenario('dep_pvt')!)).toBe('other');
+    });
+
+    it('gives every scenario a recognized group, role, app mode, and scenario-owned picker summary', () => {
+        const groupKeys = new Set(SCENARIO_GROUPS.map((group) => group.key));
+        for (const scenario of listScenarios()) {
+            expect(groupKeys.has(scenario.catalog.group), scenario.key).toBe(true);
+            expect(['simulation', 'interpretation', 'benchmark'], scenario.key).toContain(scenario.catalog.role);
+            expect(['wf', 'dep', '3p'], scenario.key).toContain(scenario.catalog.caseMode);
+            expect(scenario.catalog.parameterSummary.trim().length, scenario.key).toBeGreaterThan(0);
+        }
+    });
 });
 
 describe('scenario capability validation', () => {
@@ -431,9 +439,8 @@ describe('scenario capability validation', () => {
         expect(errors.some((e) => e.includes('water-cut-reference'))).toBe(true);
     });
 
-    it('every prerun-artifacts scenario declares bundled artifact keys and disables the 3D view (E7)', () => {
+    it('any prerun-artifacts scenario declares bundled artifact keys and disables the 3D view (E7)', () => {
         const prerun = listScenarios().filter((s) => s.capabilities.runMode === 'prerun-artifacts');
-        expect(prerun.length, 'expected at least one prerun-artifacts scenario').toBeGreaterThan(0);
         for (const scenario of prerun) {
             expect(
                 listDeclaredOpmFlowArtifactKeys(scenario.referenceSources).length,

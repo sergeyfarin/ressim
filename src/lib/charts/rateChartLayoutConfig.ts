@@ -61,6 +61,8 @@ export type RateChartPanelLayout = {
     allowLogToggle?: boolean;
     visible?: boolean;
     expanded?: boolean;
+    /** Hide the first point when it exceeds this multiple of the second point. */
+    suppressInitialSpikeAboveRatio?: number;
 };
 
 export type RateChartConfig = {

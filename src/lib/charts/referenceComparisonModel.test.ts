@@ -1931,9 +1931,9 @@ describe('referenceComparisonModel', () => {
     // cum-oil reference curves drawn against it (ROADMAP 2.1). A method with no
     // reference solution must now emit nothing.
     it('emits no analytical reference curves for a scenario with analyticalMethod none', () => {
-        const spec = buildScenarioRunSpec('wf_tornado');
+        const spec = buildScenarioRunSpec('dep_pvt');
         const model = buildReferenceComparisonModel({
-            family: buildScenarioFamily('wf_tornado'),
+            family: buildScenarioFamily('dep_pvt'),
             results: [buildBenchmarkRunResult({
                 spec,
                 rateHistory: buildSyntheticWaterfloodRateHistory(spec.params, 0.35),

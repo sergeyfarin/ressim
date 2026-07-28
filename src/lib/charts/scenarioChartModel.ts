@@ -53,9 +53,7 @@ export function buildScenarioComparisonFamily(input: {
         sensitivityAxes: [],
         reference: {
             kind: 'analytical' as const,
-            source: resolved.analyticalMethod === 'digitized-reference'
-                ? `${scenario.key}:digitized-reference`
-                : `${scenario.key}:analytical`,
+            source: `${scenario.key}:${resolved.analyticalMethod}`,
         },
         displayDefaults: { xAxis, panels },
         stylePolicy: {

@@ -17,7 +17,7 @@ Scenarios are the product's core content unit: a self-describing definition that
 
 1. **Create** `src/lib/catalog/scenarios/<key>.ts` exporting a `Scenario`.
    - Key convention: `{domain}_{physics_descriptor}` (`wf_bl1d`, `dep_pss`, `gas_injection`).
-   - Required: `key`, `label`, `description`, `analyticalMethodSummary`, `analyticalMethodReference` (cite the actual literature), `chartLayoutKey`, `capabilities`, `params`, `analyticalDef`, `liveChartPanels`, `sensitivities`, `defaultSensitivityDimensionKey`.
+   - Required: `key`, `label`, `catalog` (explicit group, role, case mode, picker summary), `description`, `analyticalMethodSummary`, `analyticalMethodReference` (cite the actual literature), `chartLayoutKey`, `capabilities`, scenario-owned `solverPolicy`, `params`, `analyticalDef`, `liveChartPanels`, `sensitivities`, `defaultSensitivityDimensionKey`.
    - `capabilities` routes everything: `analyticalMethod`, `hasInjector`, `default3DScalar`, `requiresThreePhaseMode`. It is a **discriminated union on `analyticalMethod`**, so the compiler enforces the method's own rules: `primaryRateCurve` is narrowed to that method's `supportedRateCurves`, and `sweepGeometry` (plus optional `sweepMethods`) is required on `'sweep'` and rejected on every other method (there is no `showSweepPanel` flag). If an editor rejects your capabilities object, the scenario is wrong — don't cast around it.
 2. **Register** it in `src/lib/catalog/scenarios.ts` (import + registry entry). That file is the single source of truth.
 3. **Analytical wiring**: reuse an existing `analyticalDef` from `src/lib/catalog/analyticalAdapters.ts` if the method exists. A genuinely new method needs, in order — this is a bigger change; keep it a separate commit:
@@ -28,6 +28,7 @@ Scenarios are the product's core content unit: a self-describing definition that
 
    That last entry is the whole comparison-chart wiring. Do **not** add an `if (analyticalMethod === …)` branch to `buildChartData.ts`, `ReferenceComparisonChart.svelte` or `benchmarkDisclosure.ts` — they are registry-driven. See the `frontend-architecture` skill.
 4. **Charts**: pick or compose `liveChartPanels` from `src/lib/catalog/chartPanels/`; pick `chartLayoutKey` from `chartLayouts.ts`. Follow the `CurveConfig[]` / `toggleGroupKey` / `legendSection` pattern — never bypass `ChartSubPanel`.
+   - All case-specific panel choices, curve selections, expansion state, labels and formatting overrides belong in the scenario's `chartLayoutPatch`; renderers must not branch on the scenario key.
 5. **Sweep scenarios**: list selectable correlations in `capabilities.sweepMethods`, most-preferred first (first = default). Labels, claims and citations come from `src/lib/analytical/sweepMethods.ts` — never restate them in the scenario file, and never add a `Scenario.analyticalOptions` array (the field is gone). Only declare two or more methods where the choice actually changes the curves: at `sweepGeometry: 'areal'` the correlations are numerically identical, so a toggle there would do nothing. Measure before offering one.
 6. **Sensitivities**: dimension keys are `lower_snake`; variant keys are `{dim_abbrev}_{value_tag}` (`mob_favorable`, `sor_low`). Every variant needs a `paramPatch` and an honest `affectsAnalytical` flag.
    - `affectsAnalytical: true` is **test-enforced**: a contract test verifies the patch actually perturbs the analytical result. A variant that only changes `steps` or grid must be `false`.
@@ -35,6 +36,7 @@ Scenarios are the product's core content unit: a self-describing definition that
 7. **Termination**: if the scenario should stop early (breakthrough, pressure floor), see `docs/SCENARIO_TERMINATION_POLICY.md`.
 8. **Optional references**: one declared `referenceSources` list — `{ kind: 'published', series }` for digitized paper data, `{ kind: 'opm-flow', artifactKeys }` for bundled OPM Flow ground truth (add `role: 'primary'` when the artifact *is* the exhibit, i.e. `runMode: 'prerun-artifacts'`). Sources render in declaration order. Nothing is matched implicitly — an artifact appears only if the scenario names it. See `spe1_gas_injection.ts` (both kinds) and the `opm-reference-pipeline` skill.
 9. **Docs**: add a row to the scenario inventory table in `README.md`.
+10. **Architecture**: a new top-level picker entry needs a distinct engineering question and a plot that answers it. A new reference source belongs on an existing scenario, and a parameter variation belongs in a sensitivity dimension. Never add a canonical scenario-key conditional outside `catalog/scenarios/`; `scenarioAgnosticArchitecture.test.ts` enforces this.
 
 ## Validation
 

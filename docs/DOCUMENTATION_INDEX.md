@@ -26,14 +26,15 @@ dated snapshots moved to `.archive/`).
 | `docs/BLACK_OIL_VALIDATION.md` | SPE1 acceptance criteria, depletion grid convergence, black-oil solver safeguards |
 | `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase implementation details and remaining validation gaps |
 | `docs/SCENARIO_TERMINATION_POLICY.md` | Early-stop policy syntax, conditions, runtime behavior |
+| `docs/SCENARIO_CATALOG_ARCHITECTURE.md` | Scenario ownership boundary, catalog taxonomy, and no-key-branching rule |
 | `docs/OPM_FLOW_MINIMAL_MAPPING.md` | Minimal OPM Flow → ResSim solver mapping and CPRW-first plan |
 
 ## FIM — current truth
 
-FIM ships in the user path since `b88ee28` (2026-07-24): gas/three-phase scenarios default to FIM,
-oil/water scenarios default to IMPES and expose a user-selectable "FIM vs. IMPES" sensitivity. The
-policy is applied centrally in `applySolverPolicy` (`src/lib/catalog/scenarios.ts`), not per
-scenario. Convergence work on FIM remains developer-driven (`docs/FIM_DEFERRED_BACKLOG.md`) — search
+FIM ships in the user path since `b88ee28` (2026-07-24). Each scenario now declares its solver
+policy and rationale explicitly; catalog assembly only applies that declaration and adds the generic
+comparison sensitivity when requested. Convergence work on FIM remains developer-driven
+(`docs/FIM_DEFERRED_BACKLOG.md`) — search
 the registry **by mechanism name** before proposing any convergence change.
 
 | Document | Use it for |
@@ -88,7 +89,7 @@ in `FIM_EXPERIMENT_REGISTRY.md`; the docs themselves are provenance, not live sp
 
 ## Current repo-level facts
 
-- `src/lib/catalog/scenarios/` is the primary scenario registry: **14 canonical scenario modules**
+- `src/lib/catalog/scenarios/` is the primary scenario registry: **14 active canonical scenarios**
   (`.ts`, excluding co-located `*.test.ts`).
 - `ScenarioPicker.svelte` is the only live case-selection surface, driven entirely by
   `scenarios.ts`. The legacy benchmark-family system and Custom Mode's JSON facet catalog were

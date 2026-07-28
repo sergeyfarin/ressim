@@ -5,17 +5,34 @@ import { waterfloodBLDef } from '../analyticalAdapters';
 export const wf_bl1d: Scenario = {
     key: 'wf_bl1d',
     label: '1D Waterflood',
+    catalog: {
+        group: 'buckley-leverett-displacement',
+        role: 'simulation',
+        caseMode: 'wf',
+        parameterSummary: '1D oil–water displacement · homogeneous rock · Buckley–Leverett + Welge reference',
+    },
     description: 'Viscous-dominated 1D displacement — no gravity or capillary pressure. The numerical shock front sharpens toward the analytical solution as grid resolution increases.',
     analyticalMethodSummary: 'Fractional-flow solution with Welge shock construction — predicts breakthrough timing and post-breakthrough recovery, independent of grid resolution.',
     analyticalMethodReference: 'Buckley and Leverett (1942); Welge (1952).',
     chartLayoutKey: 'waterflood',
+    chartLayoutPatch: {
+        rateChart: {
+            panels: {
+                oil_rate: { suppressInitialSpikeAboveRatio: 2 },
+            },
+        },
+    },
     defaultSensitivityDimensionKey: 'mobility',
-    referenceSources: [{ kind: 'opm-flow', artifactKeys: ['wf_bl1d'] }],
     capabilities: {
         analyticalMethod: 'buckley-leverett',
         hasInjector: true,
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,
+    },
+    solverPolicy: {
+        defaultSolver: 'impes',
+        rationale: 'IMPES is the fast, validated default for this oil/water displacement; the FIM vs. IMPES sensitivity holds the case inputs fixed for formulation comparison.',
+        comparisonSensitivityAvailable: true,
     },
     params: {
         // Fluid properties
@@ -92,7 +109,7 @@ export const wf_bl1d: Scenario = {
                     key: 'mob_favorable',
                     label: 'M ≈ 1  (μ_o = 0.5 cp)',
                     description: 'Near-unit mobility ratio — sharp, piston-like displacement. Best waterflood recovery.',
-                    paramPatch: { mu_o: 0.5, steps: 200 },
+                    paramPatch: { mu_o: 0.5 },
                     affectsAnalytical: true,
                 },
                 {

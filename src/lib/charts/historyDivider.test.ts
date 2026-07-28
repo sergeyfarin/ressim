@@ -18,6 +18,15 @@ describe('resolveHistoryDivider', () => {
         });
     });
 
+    it('maps a time boundary onto the log-time presentation axis', () => {
+        expect(resolveHistoryDivider(timeWindow, 'logTime')).toEqual({
+            boundary: Math.log10(12),
+            historyLabel: 'Matched history',
+            forecastLabel: 'Forecast',
+        });
+        expect(resolveHistoryDivider({ boundary: 0, axis: 'time' }, 'logTime')).toBeNull();
+    });
+
     it('defaults the axis to time and the labels when omitted', () => {
         expect(resolveHistoryDivider({ boundary: 5 }, 'time')).toEqual({
             boundary: 5,

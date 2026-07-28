@@ -25,7 +25,7 @@ import { generateBlackOilTable } from '../../physics/pvt';
  * distance from the bubble point) — undersaturated oil compressibility is
  * inherently a second-order effect on Bo (Bo = Bo_pb * exp(-c_o * dP)), so
  * even a 10x disagreement in c_o cannot produce a dramatic swing the way
- * OOIP/N ambiguity (dep_nct) or a kv/gravity interaction (wf_tornado) can.
+ * OOIP/N ambiguity or a strongly coupled gravity/vertical-flow interaction can.
  * That itself is the honest lesson: PVT-model risk from unmeasured
  * undersaturated compressibility is bounded, and matters most for large,
  * sustained excursions above the bubble point — not for typical depletion.
@@ -64,7 +64,13 @@ const PVT_TABLE_LAB_REPORT = generateBlackOilTable(
 
 export const dep_pvt: Scenario = {
     key: 'dep_pvt',
-    label: 'Two Fluid Models, One Calibration Point',
+    label: 'PVT Model Risk — One Calibration Point',
+    catalog: {
+        group: 'other',
+        role: 'interpretation',
+        caseMode: '3p',
+        parameterSummary: 'Black-oil blowdown · two PVT tables share one calibration point · pressure and GOR divergence',
+    },
     description: 'Single-well black-oil blowdown starting above the bubble point. Two PVT tables share the exact same bubble-point pressure, Rs, and Bo — the one point a flash test directly measures — but assume different undersaturated oil compressibility above it (a value no single flash test can pin down). Watch Avg Pressure and GOR diverge while undersaturated, then reconverge once pressure drops back below the bubble point into the shared, directly-calibrated branch. The divergence is real but modest — that bound is itself the lesson.',
     analyticalMethodSummary: 'Simulation-only — no analytical overlay. The Dietz PSS depletion model used elsewhere in this catalog is oil-only and does not represent gas liberation, so no honest quantitative reference exists for a black-oil blowdown (same precedent as gas_drive).',
     analyticalMethodReference: 'Standing (1947); McCain, "The Properties of Petroleum Fluids".',
@@ -75,6 +81,11 @@ export const dep_pvt: Scenario = {
         hasInjector: false,
         default3DScalar: 'saturation_gas',
         requiresThreePhaseMode: true,
+    },
+    solverPolicy: {
+        defaultSolver: 'fim',
+        rationale: 'FIM is required here because the exhibit depends on coupled black-oil PVT, gas liberation, phase appearance, and pressure-dependent well behavior.',
+        comparisonSensitivityAvailable: false,
     },
     params: {
         // Fluid

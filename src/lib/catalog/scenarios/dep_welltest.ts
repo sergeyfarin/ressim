@@ -77,7 +77,13 @@ import type { Scenario } from '../scenarios';
  */
 export const dep_welltest: Scenario = {
     key: 'dep_welltest',
-    label: 'Well Test — Drawdown',
+    label: 'Well-Test Drawdown',
+    catalog: {
+        group: 'pressure-transient',
+        role: 'interpretation',
+        caseMode: 'dep',
+        parameterSummary: '12-hour constant-rate drawdown · flowing BHP on log time · permeability and skin interpretation',
+    },
     description: 'A single well produced at constant rate into a reservoir at rest, which is how permeability and skin are actually measured in the field. On the log-time axis the flowing bottomhole pressure falls along a straight line whose slope depends only on k, h, viscosity and rate — not on anything about the grid — so any gap between the simulated and analytical curves is the simulator\'s near-well model rather than the physics. The skin axis shows the constant pressure offset a damaged or stimulated completion adds; the permeability axis changes the slope itself; and the grid axis asks the question the other two set up — does the Peaceman well index recover the right transient when the well sits in a 40 m cell?',
     analyticalMethodSummary: 'Line-source (Theis) solution for infinite-acting radial flow, evaluated at the wellbore with the thin-skin pressure drop. Valid only while the radius of investigation stays inside the no-flow boundary — about 0.5 days for these properties, which is why the test is short. The full exponential-integral form is plotted, not the semilog approximation.',
     analyticalMethodReference: 'Theis (1935), Trans. AGU 16; Horner (1951); Matthews and Russell (1967), SPE Monograph 1; Earlougher (1977), SPE Monograph 5; Peaceman (1978), SPEJ 18(3).',
@@ -90,6 +96,11 @@ export const dep_welltest: Scenario = {
         // that the pressure transient does not say better.
         default3DScalar: null,
         requiresThreePhaseMode: false,
+    },
+    solverPolicy: {
+        defaultSolver: 'impes',
+        rationale: 'IMPES is the interactive default for this short constant-rate transient; the solver axis exposes near-well formulation differences against one line-source reference.',
+        comparisonSensitivityAvailable: true,
     },
     params: {
         // Fluid

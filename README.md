@@ -4,7 +4,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 
 ## Current State
 
-- 14 canonical scenarios across waterflood, sweep, depletion, gas, and black-oil benchmark domains, including three "decision-insight" cases demonstrating history-match non-uniqueness, parameter-interaction amplification, and PVT representation risk.
+- 14 canonical scenarios organized explicitly as Buckley–Leverett displacement, sweep efficiency, depletion and decline, pressure-transient analysis, gas and black oil, and validation benchmarks.
 - Two-phase oil/water IMPES workflow validated against Buckley-Leverett breakthrough references.
 - Analytical overlays for Buckley-Leverett, Craig areal sweep, Dykstra-Parsons vertical sweep, Stiles-style combined sweep, Dietz pseudo-steady-state depletion, Fetkovich decline, Arps decline, and Havlena-Odeh material-balance diagnostics.
 - Black-oil PVT mode is available for volatile-oil style studies through correlation-based or tabular PVT input.
@@ -14,23 +14,22 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 
 ## Scenario Inventory
 
-| Domain | Key | Primary Analytical Reference | Notes |
-|--------|-----|------------------------------|-------|
-| Waterflood | `wf_bl1d` | Buckley-Leverett + Welge | 1D immiscible displacement baseline |
-| Waterflood | `wf_tornado` | None (simulation-only) | kv x density-contrast interaction — individually-small parameters combine into a dominant driver |
-| Waterflood | `wf_capillary` | Buckley-Leverett (as the zero-capillary limit) | Capillary front spreading against the BL shock, and telling capillary smearing apart from numerical dispersion |
-| Sweep | `sweep_areal` | Craig confined five-spot | Quarter-pattern style interpretation |
-| Sweep | `sweep_vertical` | Dykstra-Parsons | Non-communicating layered sweep baseline |
-| Sweep | `sweep_combined` | Stiles or Dykstra-Parsons combined with BL | Scenario-owned analytical method toggle |
-| Depletion | `dep_pss` | Dietz pseudo-steady-state | Shape factor varies with producer location |
-| Depletion | `dep_decline` | Fetkovich exponential decline | Constant-PVT decline reference |
-| Depletion | `dep_arps` | Arps decline + material balance diagnostics | Layered / volatile-oil style depletion study |
-| Depletion | `dep_nct` | Dietz PSS decline (shared reference) | N·c_t material-balance ambiguity — matched history, 4x different recovery factor |
-| Depletion | `dep_welltest` | Line-source (Theis) drawdown, Horner-style semilog analysis | Pressure-transient test — recover k and skin from the simulator's own flowing BHP, and see the near-well grid bias in the answer |
-| Gas | `gas_injection` | Gas-oil Buckley-Leverett | Three-phase gas injection with analytical breakthrough |
-| Gas | `gas_drive` | Simulation-first with p/z and MB diagnostics | Qualitative gas-drive study pending stronger validation |
-| Gas | `dep_pvt` | None (simulation-only) | Two black-oil PVT tables, one calibration point — undersaturated compressibility representation risk (three-phase, grouped under Gas) |
-| Benchmark | `spe1_gas_injection` | Published Eclipse results (Odeh, 1981) | SPE1 black-oil benchmark with per-layer dz, PVT table, single-layer wells |
+| Catalog group | Scenario | Key | Primary reference / purpose |
+|---|---|---|---|
+| Buckley–Leverett Displacement | 1D Waterflood | `wf_bl1d` | Buckley–Leverett + Welge analytical reference |
+| Buckley–Leverett Displacement | 1D Waterflood — Capillary Effects | `wf_capillary` | Departure from the zero-capillary BL limit; physical versus numerical front spreading |
+| Sweep Efficiency | Areal Sweep | `sweep_areal` | Craig confined five-spot correlation |
+| Sweep Efficiency | Vertical Sweep | `sweep_vertical` | Dykstra–Parsons / Stiles layered sweep |
+| Sweep Efficiency | Combined Sweep | `sweep_combined` | Combined areal and vertical contact with selectable layered correlation |
+| Depletion & Decline | Bounded Reservoir Depletion | `dep_pss` | Dietz pseudo-steady-state shape-factor response |
+| Depletion & Decline | Boundary-Dominated Decline — Fetkovich | `dep_decline` | Late-time exponential decline interpretation |
+| Depletion & Decline | Layered Depletion — Arps Fit | `dep_arps` | Arps fit to a commingled layered simulation |
+| Pressure-Transient Analysis | Well-Test Drawdown | `dep_welltest` | Line-source drawdown; permeability, skin, and near-well grid bias |
+| Gas-Dominated Recovery | Gas Injection | `gas_injection` | Gas-oil fractional-flow breakthrough |
+| Gas-Dominated Recovery | Solution Gas Drive | `gas_drive` | Black-oil depletion with OPM Flow reference |
+| Other | Same History, Different OOIP (N·cₜ) | `dep_nct` | Storage/reserves non-uniqueness; identical pressure/rate response with 4× OOIP spread |
+| Other | PVT Model Risk — One Calibration Point | `dep_pvt` | Two PVT representations constrained at one point |
+| Validation Benchmarks | SPE1 Black-Oil Benchmark | `spe1_gas_injection` | Published Eclipse and OPM Flow comparative-solution references |
 
 ## Implemented Capabilities
 

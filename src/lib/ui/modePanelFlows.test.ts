@@ -6,12 +6,12 @@ const scenarioPickerPath = path.join(__dirname, 'modes', 'ScenarioPicker.svelte'
 const scenarioPickerSource = fs.readFileSync(scenarioPickerPath, 'utf8');
 
 describe('scenario picker flows', () => {
-  it('keeps validation warnings scoped to the scenario picker warning surface', () => {
+  it('keeps actionable validation warnings scoped to the scenario picker warning surface', () => {
     expect(scenarioPickerSource).toMatch(/<WarningPolicyPanel/);
-    expect(scenarioPickerSource).toMatch(/groups=\{\["blockingValidation", "nonPhysical", "referenceCaveat", "advisory"\]\}/);
+    expect(scenarioPickerSource).toMatch(/groups=\{\["blockingValidation", "nonPhysical", "advisory"\]\}/);
     expect(scenarioPickerSource).toMatch(/blockingValidation: \["validation"\]/);
     expect(scenarioPickerSource).toMatch(/nonPhysical: \["validation"\]/);
-    expect(scenarioPickerSource).toMatch(/referenceCaveat: \["analytical"\]/);
+    expect(scenarioPickerSource).not.toMatch(/referenceCaveat/);
     expect(scenarioPickerSource).toMatch(/advisory: \["validation"\]/);
   });
 
@@ -29,9 +29,10 @@ describe('scenario picker flows', () => {
     expect(scenarioPickerSource).toMatch(/validActiveVariantKeys\.includes/);
   });
 
-  it('shows the selected numerical solver explicitly', () => {
+  it('shows the selected numerical solver in the description, not every catalog button', () => {
     expect(scenarioPickerSource).toMatch(/Numerical solver:/);
-    expect(scenarioPickerSource).toMatch(/scenario\.solverPolicy\.defaultSolver/);
+    expect(scenarioPickerSource).not.toMatch(/scenario\.solverPolicy\.defaultSolver/);
+    expect(scenarioPickerSource).toMatch(/activeScenario\.solverPolicy\.defaultSolver/);
     expect(scenarioPickerSource).toMatch(/activeScenario\.solverPolicy\.rationale/);
   });
 });

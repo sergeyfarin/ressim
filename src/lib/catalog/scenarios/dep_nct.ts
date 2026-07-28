@@ -28,7 +28,13 @@ import { depletionDef } from '../analyticalAdapters';
  */
 export const dep_nct: Scenario = {
     key: 'dep_nct',
-    label: 'Matched History, Different Reserves',
+    label: 'Same History, Different OOIP (N·cₜ)',
+    catalog: {
+        group: 'other',
+        role: 'interpretation',
+        caseMode: 'dep',
+        parameterSummary: 'Matched pressure and rate response · 4× OOIP range · storage / reserves non-uniqueness',
+    },
     description: 'Three reservoirs with the same permeability, geometry, and pressure/rate history — but 4x different oil in place. Porosity (∝ OOIP) and oil compressibility are scaled inversely to hold the Dietz/Fetkovich decline time constant τ = V_p·c_t/PI fixed. The result: identical pressure and rate curves, identical cumulative oil, but recovery factor ranges from ~0.9% to ~3.7% (small, early-life fractions of each tank over this run — the 4x spread between them is the point, not the absolute size). Pressure and rate history alone cannot distinguish OOIP from compressibility — this is the classic material-balance non-uniqueness (Dake 1978).',
     analyticalMethodSummary: 'Dietz pseudo-steady-state decline — the same analytical model as dep_decline, used here to show that its inputs (porosity, compressibility) are individually unconstrained by the rate/pressure history it reproduces.',
     analyticalMethodReference: 'Dake, L.P. (1978) "Fundamentals of Reservoir Engineering", ch. 3; Havlena, D. & Odeh, A.S. (1963) JPT 15(8); Tavassoli, Carter & King, SPE 86883 (2004).',
@@ -38,12 +44,17 @@ export const dep_nct: Scenario = {
     // as "observed history" that all three variants reproduce identically;
     // beyond it, the same matched history extrapolates to 4x-different remaining
     // reserves — the material-balance non-uniqueness this case exists to show.
-    historyWindow: { boundary: 12, axis: 'time', historyLabel: 'Matched history', forecastLabel: 'Forecast' },
+    historyWindow: { boundary: 12, axis: 'time', historyLabel: 'Matched history', forecastLabel: 'Reserves view' },
     capabilities: {
         analyticalMethod: 'depletion',
         hasInjector: false,
         default3DScalar: null,
         requiresThreePhaseMode: false,
+    },
+    solverPolicy: {
+        defaultSolver: 'impes',
+        rationale: 'IMPES is the default for this deliberately matched oil-depletion response; solver comparison must preserve the constructed N·cₜ ambiguity.',
+        comparisonSensitivityAvailable: true,
     },
     params: {
         // Fluid — base case matches dep_decline exactly

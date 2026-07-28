@@ -19,13 +19,13 @@ import {
 import { evaluateAnalyticalStatus, type AnalyticalStatus } from '../warningPolicy';
 import {
     getDefaultScenarioAnalyticalMode,
+    getAnalyticalModeForMethod,
     getScenario,
     getScenarioAnalyticalOptions,
     getDefaultSweepMethod,
     getScenarioChartLayout,
     getDefaultVariantKeys,
     getScenarioWithVariantParams,
-    resolveCapabilities,
     type ScenarioAnalyticalOption,
     type ScenarioAnalyticalOutput,
 } from '../catalog/scenarios';
@@ -48,7 +48,7 @@ import {
 import type { ParameterStore } from './parameterStore.svelte';
 import type { RuntimeStore } from './runtimeStore.svelte';
 import { getReferenceRateChartLayoutConfig } from '../charts/referenceChartConfig';
-import { resolveScenarioReferenceSeries } from '../catalog/opmFlowArtifacts';
+import { buildScenarioComparisonFamily } from '../charts/scenarioChartModel';
 import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
 import {
     computeSweepRecoveryFactor,
@@ -260,41 +260,13 @@ class NavigationStoreImpl {
     activeScenarioAsFamily = $derived.by((): BenchmarkFamily | null => {
         const sc = this.activeScenarioObject;
         if (!sc || this.isCustomMode) return null;
-        const resolved = resolveCapabilities(sc.capabilities);
-        const activeDimension = sc.sensitivities.find((d) => d.key === this.activeSensitivityDimensionKey) ?? null;
         const chartLayout = getScenarioChartLayout(sc, this.activeSensitivityDimensionKey);
-        const xAxis = resolved.analyticalNativeXAxis as BenchmarkFamily['displayDefaults']['xAxis'];
-        const panels = (resolved.primaryRateCurve === 'oil-rate'
-            ? ['oil-rate', 'cumulative-oil', 'decline-diagnostics']
-            : ['watercut-breakthrough', 'recovery', 'pressure']
-        ) as BenchmarkFamily['displayDefaults']['panels'][number][];
-        return {
-            key: sc.key,
-            baseCaseKey: sc.key,
-            analyticalMethod: resolved.analyticalMethod,
-            sensitivityAxes: [],
-            reference: {
-                kind: 'analytical' as const,
-                source: resolved.analyticalMethod === 'digitized-reference'
-                    ? `${sc.key}:digitized-reference`
-                    : `${sc.key}:analytical`,
-            },
-            displayDefaults: { xAxis, panels },
-            stylePolicy: {
-                colorBy: 'case' as const,
-                lineStyleBy: 'quantity-or-reference' as const,
-                separatePressurePanel: true,
-            },
-            runPolicy: 'compare-to-reference' as const,
-            label: sc.label,
-            description: sc.description,
-            baseCase: { key: sc.key, label: sc.label, description: sc.description, params: sc.params },
-            showSweepPanel: resolved.showSweepPanel,
-            sweepGeometry: resolved.sweepGeometry,
-            sweepAnalyticalMethod: this.activeAnalyticalOption?.sweepMethod,
-            analyticalOverlayMode: activeDimension?.analyticalOverlayMode ?? 'auto',
-            publishedReferenceSeries: resolveScenarioReferenceSeries(sc.referenceSources),
-        } as BenchmarkFamily;
+        return buildScenarioComparisonFamily({
+            scenario: sc,
+            activeDimensionKey: this.activeSensitivityDimensionKey,
+            analyticalOption: this.activeAnalyticalOption,
+            layoutConfig: chartLayout,
+        });
     });
 
     /** Chart-facing family: scenario adapter when in scenario mode, otherwise the library benchmark family. */
@@ -302,7 +274,7 @@ class NavigationStoreImpl {
 
     // ===== $derived: Sweep / Analytical Config =====
 
-    showSweepPanel = $derived(this.activeScenarioObject?.capabilities.analyticalMethod === 'sweep');
+    showSweepPanel = $derived(Boolean(this.activeScenarioAsFamily?.showSweepPanel));
 
     /** True when the active scenario ships precomputed (no live worker run, 3D off). */
     isPrerunScenario = $derived(
@@ -423,7 +395,9 @@ class NavigationStoreImpl {
             simTime: ref?.finalSnapshot?.time
                 ?? Number(ref?.rateHistory.at(-1)?.time ?? this.#runtime.simTime),
             injectionRate: Math.max(0, Number(ref?.rateHistory.at(-1)?.total_injection ?? this.#runtime.latestInjectionRate ?? 0)),
-            scenarioMode: ref?.analyticalMethod === 'depletion' ? 'depletion' : this.#params.analyticalMode,
+            scenarioMode: ref
+                ? getAnalyticalModeForMethod(ref.analyticalMethod)
+                : this.#params.analyticalMode,
             sourceLabel: ref ? ref.label : 'Live runtime',
             producerJ: Number(ref?.params.producerJ ?? this.#params.producerJ),
             initialSaturation: Number(ref?.params.initialSaturation ?? this.#params.initialSaturation),
@@ -475,13 +449,7 @@ class NavigationStoreImpl {
         if (ref) {
             const resultParams = ref.params ?? {};
             if (resultParams.injectedFluid === 'gas') return 'saturation_gas';
-            // Single-producer pressure cases (depletion, well test) have no
-            // displacement front worth showing; fall through to the scenario's
-            // own default rather than defaulting to water saturation.
-            if (ref.analyticalMethod !== 'depletion' && ref.analyticalMethod !== 'well-test') {
-                return 'saturation_water';
-            }
-            return null;
+            return this.activeScenarioObject?.capabilities.default3DScalar ?? null;
         }
         if (this.#params.injectedFluid === 'gas' && this.#params.threePhaseModeEnabled) {
             return 'saturation_gas';
@@ -751,9 +719,7 @@ class NavigationStoreImpl {
         this.activeVariantKeys = defaultDim ? getDefaultVariantKeys(defaultDim) : [];
         this.activeAnalyticalOptionKey = getScenarioAnalyticalOptions(scenario)[0]?.key ?? null;
 
-        // Derive CaseMode from scenario capabilities.
-        const nextMode: CaseMode = scenario.capabilities.requiresThreePhaseMode ? '3p'
-            : scenario.capabilities.analyticalMethod === 'buckley-leverett' ? 'wf' : 'dep';
+        const nextMode: CaseMode = scenario.catalog.caseMode;
         this.activeMode = nextMode;
         this.toggles = getDefaultToggles(nextMode);
         this.explicitLibraryEntryKey = null;

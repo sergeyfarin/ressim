@@ -34,6 +34,18 @@ export type ChartPanelFallback = {
     expanded?: boolean;
 };
 
+export function suppressInitialSpike<T extends { y: number | null }>(
+    series: T[],
+    ratio: number | undefined,
+): T[] {
+    if (ratio === undefined || ratio <= 1 || series.length < 2) return series;
+    const first = series[0]?.y;
+    const second = series[1]?.y;
+    if (first === null || first === undefined || second === null || second === undefined) return series;
+    if (!Number.isFinite(first) || !Number.isFinite(second) || second <= 0 || first <= ratio * second) return series;
+    return [{ ...series[0], y: null }, ...series.slice(1)];
+}
+
 type SelectableCurve = {
     label: string;
     curveKey?: string | null;

@@ -20,7 +20,13 @@ import { depletionDef } from '../analyticalAdapters';
  */
 export const dep_arps: Scenario = {
     key: 'dep_arps',
-    label: 'Arps Decline (Layered)',
+    label: 'Layered Depletion — Arps Fit',
+    catalog: {
+        group: 'depletion-decline',
+        role: 'interpretation',
+        caseMode: 'dep',
+        parameterSummary: 'Five commingled layers · composite depletion decline · Arps b-exponent fit',
+    },
     description: 'Commingled multi-layer depletion at constant BHP. Each layer declines exponentially with its own time constant; the composite rate follows Arps hyperbolic decline with 0 < b < 1. Vary the Arps b exponent to match the layered simulation.',
     analyticalMethodSummary: 'Arps (1945) generalised decline — exponential (b=0), hyperbolic (0<b<1), or harmonic (b=1) rate decline matched against commingled layered simulation.',
     analyticalMethodReference: 'Arps (1945); Fetkovich (1971).',
@@ -31,6 +37,11 @@ export const dep_arps: Scenario = {
         hasInjector: false,
         default3DScalar: null,
         requiresThreePhaseMode: false,
+    },
+    solverPolicy: {
+        defaultSolver: 'impes',
+        rationale: 'IMPES is the interactive default for the commingled layered depletion run; the solver axis leaves the Arps interpretation inputs unchanged.',
+        comparisonSensitivityAvailable: true,
     },
     params: {
         // Fluid

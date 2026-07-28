@@ -66,13 +66,17 @@ Tiers 1–4 are correctness/teaching cases: "does the simulator match the refere
 
 ### 5.1 "Matched history, different reserves" — N·c_t ambiguity (no engine gap, cheapest)
 
-**DONE** — shipped as `src/lib/catalog/scenarios/dep_nct.ts` ("Matched History, Different Reserves"), dimension `nct_ambiguity`, three equal-N·c_t variants.
+**DONE** — shipped as `src/lib/catalog/scenarios/dep_nct.ts` ("Same History, Different OOIP (N·cₜ)"), dimension `nct_ambiguity`, three equal-N·c_t variants.
 
 Undersaturated depletion under BHP control: pressure decline goes as ΔP ≈ Np/(N·c_t·B), so (OOIP, total compressibility) pairs with equal product produce near-identical pressure and rate history — but recovery factor Np/N differs by construction. Variants: 3 (N, c_t) pairs with equal N·c_t. Teaching point: pressure data alone cannot separate OOIP from compressibility (the classic material-balance non-uniqueness; Dake ch. 3, Havlena-Odeh 1963 — and the existing Havlena-Odeh diagnostics panel displays exactly the ambiguous quantity). Extends the `dep_*` family; analytics all exist. Needs only the history/forecast chart affordance (gap E5 below) to land the "match vs outcome" framing.
 
 ### 5.2 "The tornado plot lies" — interaction amplification (no engine gap)
 
-**DONE (kv/kh × density contrast pair only)** — shipped as `src/lib/catalog/scenarios/wf_tornado.ts`, dimension `interaction` (base / kv only / Δρ only / both). The **capillary entry pressure × layer contrast** pair below was never built and is carried forward as Tier 7.16.
+**MEASURED, THEN WITHDRAWN FROM THE ACTIVE CATALOG (2026-07-28).** The kv/kh × density-contrast
+pair was implemented as base / kv only / Δρ only / both, but the product presented ordinary
+time-series curves rather than the interaction/tornado view promised by the case. Preserve the
+finding as provenance; do not re-add it until an interaction-specific workflow exists. The
+**capillary entry pressure × layer contrast** pair was never built and remains Tier 7.16.
 
 One-at-a-time sensitivities (what a tornado chart encodes) miss interactions. Variant set: base / +A alone / +B alone / +A+B, where each single change moves RF little and the pair moves it a lot. Two candidate physics pairs, both in-envelope:
 - **kv/kh × density contrast** in a 2D vertical-section waterflood: raising kv/kh with weak gravity ≈ no RF change; raising density contrast alone modest; both together → Dietz gravity tongue, early breakthrough, large RF loss. References: Dietz (1953); Shook, Li & Lake (1992) scaling groups; Zhou, Fayers & Muggeridge (1997) gravity-viscous regime map.
@@ -104,7 +108,12 @@ The original framing (5–7 pseudo-component EOS matched to a full compositional
 
 **Product concept.** A scenario class that ships entirely precomputed: variants map to bundled artifact keys, charts replay artifact curves, the parameter panel is read-only (documents the deck), and the 3D view is off (or later fed by optional precomputed field snapshots). No live tweaking — and that's acceptable for cases whose teaching point is comparison between pre-defined runs. This removes the engine envelope as a constraint: anything OPM Flow can run offline — or anything with published result datasets — becomes eligible. The `opm-flow-precomputed` artifact plumbing (`src/lib/catalog/opmFlowArtifacts.ts`, `opmFlowReferenceArtifactKeys`, sourceType badges) already exists; the missing piece is a `runPolicy: 'prerun-artifacts'` that skips the worker (gap E7). Prerequisite for all OPM-generated entries: the summary parser stub (TODO.md).
 
-**Status (2026-07-24 audit): E7 has landed and the OPM summary parser is done.** `capabilities.runMode: 'prerun-artifacts'` exists in `src/lib/catalog/scenarios.ts` (validated: such scenarios must set `default3DScalar: null`), and `src/lib/catalog/scenarios/wf_bl1d_opm.ts` is the shipped precedent. Both committed artifacts are `status: "parsed"` with real series. **Every Tier 6 entry below is therefore unblocked on plumbing and waits only on data curation** — except the multi-artifact *ensemble/fan* rendering needed by 6.1 and 6.6, which is Tier 7 enabler E8.
+**Status (updated 2026-07-28): E7 plumbing remains available and the OPM summary parser is done.**
+`capabilities.runMode: 'prerun-artifacts'` remains validated, but its plumbing-only
+`wf_bl1d_opm` demonstrator was removed from the picker: the same artifact is already a reference
+source on `wf_bl1d`, and a reference source alone is not a distinct engineering scenario. The next
+consumer should be a genuine multi-run or external exhibit. Tier 6 remains unblocked on plumbing
+and waits on data curation, except for the ensemble/fan rendering needed by 6.1 and 6.6 (E8).
 
 Label these honestly in the UI (existing sourceType badge machinery): "precomputed with OPM Flow yyyy.mm, deck hash …" — provenance and dataset license recorded per case.
 
@@ -127,7 +136,7 @@ Tiers 1–6 were written as *sourcing* lists. This tier is the complement: an au
 
 Two structural findings frame the whole tier:
 
-- **Capillarity is shipped, validated and never used.** `capillaryEnabled: false` in all 14 scenarios; only `wf_tornado` and `spe1_gas_injection` enable gravity. An entire validated physics module is invisible to users.
+- **Closed 2026-07-24:** capillarity is now exercised by `wf_capillary`; the remaining capillary opportunity is the gravity-capillary transition-zone profile in T7.4.
 - **Every uncertainty case in the library renders as discrete labelled curves.** There is no ensemble/fan primitive, so no case can pose "P10/P50/P90" or "N realizations match, forecasts diverge". This blocks all of §7.D, not physics.
 
 ### 7.A — Analytical methods missing from `src/lib/analytical/`
@@ -164,7 +173,7 @@ T7.1 is the largest missing pillar of classical reservoir engineering in the pro
 | T7.14 | **Joint relperm-endpoint uncertainty** | `S_or` and Corey exponents exist as *separate* `wf_bl1d` dimensions, never as a joint RF fan with "would SCAL data resolve this?" framing |
 | T7.15 | **Well count / pattern density** | The library currently poses no development-*decision* question at all |
 
-### 7.D — Combined-uncertainty cases (highest impact; none shipped beyond `wf_tornado`)
+### 7.D — Combined-uncertainty cases (interaction exhibit withdrawn; T7.18 remains active)
 
 | ID | Case | Depends on |
 |---|---|---|
@@ -209,7 +218,7 @@ The bias converges monotonically with refinement but is still ~8 % at 10 m cells
 
 **T7.18 — SHIPPED, with its sign reversed by measurement.** New `endpoints_vs_geology` dimension on `sweep_vertical`: a 2x2 of Corey `n_o` (2 vs 4) against layer contrast (uniform vs V_DP ~ 0.8), plus `sweep_vertical.test.ts`.
 
-Written first as an *amplification* case by analogy with `wf_tornado`; the simulator refuted that and the case was rewritten around what it actually does. Measured at a common 0.625 PVI (recovery of mobile oil):
+Written first as an *amplification* case by analogy with the now-withdrawn kv/gravity interaction experiment; the simulator refuted that and the case was rewritten around what it actually does. Measured at a common 0.625 PVI (recovery of mobile oil):
 
 | variant | base | curve only | layers only | both |
 |---|---|---|---|---|
@@ -217,7 +226,7 @@ Written first as an *amplification* case by analogy with `wf_tornado`; the simul
 
 The individual penalties sum to -0.4935; the combined penalty is -0.3684. The two mechanisms **mask** each other — once a thief zone is bypassing most of the section, a worse oil curve has little left to spoil. The decision consequence is the teaching point: a one-at-a-time study values fixing the rock curve at 0.147 of mobile oil, while in the layered reservoir it returns 0.022, so a SCAL programme justified on the first number is over-valued ~7x.
 
-This makes the library's pair of interaction cases deliberately opposite in sign — `wf_tornado` under-predicts from one-at-a-time reasoning, `endpoints_vs_geology` over-predicts. Together they say the direction of the error is not guessable either. Second tell in the same dimension: the Dykstra-Parsons overlay moves for the geology variant and is completely blind to the Corey variant, because the Corey exponent is not one of its inputs (`affectsAnalytical: false` on that variant, correctly).
+The withdrawn kv/gravity experiment and active `endpoints_vs_geology` study have opposite interaction signs, so the direction cannot be guessed from one-at-a-time runs. Only the latter remains user-facing. Its second tell is unchanged: the Dykstra-Parsons overlay moves for geology and is blind to the Corey variant because the Corey exponent is not one of its inputs (`affectsAnalytical: false`, correctly).
 
 **T7.11 negative result — attempted, refuted, not shipped.** A `wf_orientation` scenario was built and measured: same 31x31 grid, same pore volume, wells moved between edge-to-edge ("parallel") and corner-to-corner ("diagonal"), crossed with favorable and adverse mobility ratio. The construction cannot demonstrate the classical effect, and the measurements say so:
 
@@ -239,9 +248,9 @@ T7.4 and T7.1 are done (days of work, zero engine risk, and T7.4 closes the ship
 | E2 | Declarative time-based well schedule in scenario params (`[{day, wellId, patch}]`) applied by the worker between report steps — wasm `setWellSchedule`/`setInjectedFluid` already exist, worker currently applies schedules once at create | 5.5 WAG, SPE9 | moderate |
 | E3 | Per-well injected fluid (currently one global `injected_fluid`) | simultaneous water+gas injector patterns only — NOT needed for single-injector WAG | moderate, defer |
 | E4 | Relperm hysteresis (Killough/Carlson) | quantitative WAG; scanning-curve teaching content | large |
-| E5 | History/forecast chart affordance: vertical divider + shaded history window, so "all variants match here, diverge there" reads at a glance | 5.1, 5.4, PUNQ-S3 | **LANDED** (`resolveHistoryDivider`; open bug: no `logTime` support — TODO.md) |
+| E5 | History/forecast chart affordance: vertical divider + shaded history window, so "all variants match here, diverge there" reads at a glance | 5.1, 5.4, PUNQ-S3 | **LANDED** (`resolveHistoryDivider`, including time-to-logTime boundary mapping as of 2026-07-28) |
 | E6 | Inactive-cell / null-block support | *live* PUNQ-S3, Norne-like sectors (pre-run versions don't need it) | moderate |
-| E7 | `runPolicy: 'prerun-artifacts'` scenario class — no worker run; variants map to bundled artifact keys; read-only parameter panel; 3D off | entire Tier 6 | **LANDED** as `capabilities.runMode`; precedent `wf_bl1d_opm.ts`. Multi-artifact fan/ensemble split out to E8 |
+| E7 | `runPolicy: 'prerun-artifacts'` scenario class — no worker run; variants map to bundled artifact keys; read-only parameter panel; 3D off | entire Tier 6 | **LANDED** as `capabilities.runMode`; no active plumbing-only demonstrator after the 2026-07-28 catalog review. Multi-artifact fan/ensemble split out to E8 |
 | E8 | **Ensemble / fan-curve chart primitive** — N realizations as a P10/P50/P90 band rather than N labelled curves, across both live variants and multiple pre-run artifacts | T7.19 and therefore all of Tier 7.D; Tier 6.1 PUNQ-S3, 6.6 Egg | large. Lands in `buildChartData.ts` as a new sequential section (which the frontend-architecture skill explicitly permits — what it forbids is inlining analytical-method physics there) plus band-fill support in `ChartSubPanel`/curve types. Needs visual verification, so it is not a headless-testable change |
 | E9 | Aquifer boundary model (analytical influx into boundary cells) | T7.2 water-drive gas, T7.3, T7.17, live 5.6 PUNQ-S3 | large (engine) |
 | E10 | Well-test analytical module (`src/lib/analytical/wellTest.ts`) + `AnalyticalMethod` union entry and adapter | T7.1 | **CLOSED 2026-07-24** — module, union entry, contract, adapters, overlay builder, `well_test` chart layout and scenario all landed |

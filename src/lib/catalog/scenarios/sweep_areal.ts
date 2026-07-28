@@ -4,7 +4,13 @@ import { waterfloodBLDef } from '../analyticalAdapters';
 
 export const sweep_areal: Scenario = {
     key: 'sweep_areal',
-    label: 'Areal Sweep (XY)',
+    label: 'Areal Sweep',
+    catalog: {
+        group: 'sweep-efficiency',
+        role: 'simulation',
+        caseMode: 'wf',
+        parameterSummary: 'Quarter five-spot waterflood · Craig areal-sweep correlation · mobility and heterogeneity studies',
+    },
     description: 'Quarter five-spot pattern flood in 2D (XY): injector at one corner, producer at the diagonally opposite corner, with no-flow outer boundaries. Those boundaries are the pattern symmetry planes, not a gridding artefact — a confined five-spot repeats, so a quarter element with no flow across its edges is the standard unit, and Craig E_A applies to it directly. Areal sweep E_A at breakthrough is strongly controlled by end-point mobility ratio: E_A(BT) ≈ 0.70 at M = 1, dropping sharply for unfavourable M > 1.',
     analyticalMethodSummary: 'Craig five-spot correlation — predicts E_A vs PVI for a homogeneous confined pattern, evaluated here on its quarter symmetry element. Heterogeneous variants show the additional sweep penalty on top of this baseline. E_A remains an analytical diagnostic decomposition view.',
     analyticalMethodReference: 'Craig (1971); Dyes, Caudle, and Erickson (1954).',
@@ -41,6 +47,11 @@ export const sweep_areal: Scenario = {
                 scope: 'producer',
             },
         ],
+    },
+    solverPolicy: {
+        defaultSolver: 'impes',
+        rationale: 'IMPES is the measured faster default for this oil/water pattern flood; a declared FIM vs. IMPES sensitivity is available for numerical comparison.',
+        comparisonSensitivityAvailable: true,
     },
     params: {
         // Fluid
