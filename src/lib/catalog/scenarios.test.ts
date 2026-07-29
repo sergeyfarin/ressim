@@ -4,6 +4,7 @@ import { listDeclaredOpmFlowArtifactKeys } from './opmFlowArtifacts';
 import { calculateAnalyticalProduction } from '../analytical/fractionalFlow';
 import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
 import { computeCombinedSweep } from '../analytical/sweepEfficiency';
+import { computeWellTestOnTimeAxis } from '../charts/analyticalParamAdapters';
 import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
 import {
     getScenario,
@@ -259,6 +260,7 @@ function depletionFingerprint(params: Record<string, unknown>): number[] {
         depletionRateScale: toNum(params.analyticalDepletionRateScale, 1),
         arpsB: toNum(params.analyticalArpsB, 0),
         layeredComposite: params.analyticalLayeredComposite === true,
+        model: params.analyticalDepletionModel === 'finite-slab' ? 'finite-slab' : 'tank',
         nx: params.nx != null ? toNum(params.nx, 1) : undefined,
         ny: params.ny != null ? toNum(params.ny, 1) : undefined,
         producerI: params.producerI != null ? toNum(params.producerI, 0) : undefined,
@@ -269,6 +271,13 @@ function depletionFingerprint(params: Record<string, unknown>): number[] {
 
 function analyticalFingerprint(analyticalMethod: string, params: Record<string, unknown>): number[] {
     if (analyticalMethod === 'depletion') return depletionFingerprint(params);
+    if (analyticalMethod === 'well-test') {
+        const result = computeWellTestOnTimeAxis(params, [0.5, 1, 2, 5]);
+        return result ? [
+            ...result.oilRate.map((value) => value ?? 0),
+            ...result.flowingBhp.map((value) => value ?? 0),
+        ] : [];
+    }
     // waterflood class covers both BL and sweep scenarios
     return [...blFingerprint(params), ...sweepFingerprint(params)];
 }
@@ -325,8 +334,8 @@ describe('scenario catalog taxonomy', () => {
         expect(getScenarioGroup(getScenario('dep_welltest')!)).toBe('pressure-transient');
         expect(getScenarioGroup(getScenario('gas_injection')!)).toBe('gas-black-oil');
         expect(getScenarioGroup(getScenario('spe1_gas_injection')!)).toBe('validation-benchmarks');
-        expect(getScenarioGroup(getScenario('dep_nct')!)).toBe('other');
-        expect(getScenarioGroup(getScenario('dep_pvt')!)).toBe('other');
+        expect(getScenarioGroup(getScenario('dep_nct')!)).toBe('depletion-decline');
+        expect(getScenarioGroup(getScenario('dep_pvt')!)).toBe('gas-black-oil');
     });
 
     it('gives every scenario a recognized group, role, app mode, and scenario-owned picker summary', () => {
@@ -367,10 +376,8 @@ describe('scenario capability validation', () => {
             ['grid', 'shared'],
         ]);
         expect(getScenario('dep_pss')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
-            ['shape_factor', 'per-result'],
             ['skin', 'per-result'],
-            ['compressibility', 'per-result'],
-            ['timestep', 'shared'],
+            ['production_rate', 'per-result'],
             ['grid_refinement', 'shared'],
         ]);
         expect(getScenario('dep_decline')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
@@ -688,14 +695,8 @@ describe('SPE1 scenario fidelity guards', () => {
 });
 
 describe('depletion scenario fidelity guards', () => {
-    it('uses resolution-oriented numerical sensitivities for the bounded PSS case', () => {
-        const fineTimestep = getScenarioWithVariantParams('dep_pss', 'timestep', 'dt_fine');
+    it('uses a fixed physical square for the Dietz PSS grid study', () => {
         const fineGrid = getScenarioWithVariantParams('dep_pss', 'grid_refinement', 'grid_fine');
-
-        expect(fineTimestep).toMatchObject({
-            delta_t_days: 0.05,
-            steps: 320,
-        });
         expect(fineGrid).toMatchObject({
             nx: 35,
             ny: 35,
@@ -722,8 +723,8 @@ describe('depletion scenario fidelity guards', () => {
             producerI: 23,
         });
         expect(coarseTimestep).toMatchObject({
-            delta_t_days: 0.25,
-            steps: 96,
+            delta_t_days: 0.1,
+            steps: 240,
         });
     });
 

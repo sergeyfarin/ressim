@@ -1,11 +1,11 @@
 /**
  * depletionLivePanels.ts — live chart panel definitions for depletion scenarios.
  *
- * Used by: dep_pss, dep_decline, dep_arps.
+ * Used by: dep_decline, dep_arps, dep_nct.
  *
  * Depletion has no injector so injection rate, VRR, and water-cut panels are omitted.
- * Analytical reference is the Dietz/Fetkovich depletion model, including the
- * exact independent-layer superposition used by dep_arps.
+ * Analytical references are the finite-slab transition or exact lumped-tank
+ * model, including the independent-layer superposition used by dep_arps.
  */
 
 import type { UniversalPanelDef } from '../../charts/universalChartTypes';

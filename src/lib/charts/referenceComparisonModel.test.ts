@@ -791,14 +791,14 @@ describe('referenceComparisonModel', () => {
     });
 
     it('builds depletion overlay panels with reference-solution oil-rate and pressure curves', () => {
-        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const baseSpec = buildScenarioRunSpec('dep_decline');
         const result = buildBenchmarkRunResult({
             spec: baseSpec,
             rateHistory: buildDepletionReferenceRateHistory(baseSpec.params),
         });
 
         const model = buildReferenceComparisonModel({
-            family: buildScenarioFamily('dep_pss'),
+            family: buildScenarioFamily('dep_decline'),
             results: [result],
             xAxisMode: 'tD',
         });
@@ -871,8 +871,8 @@ describe('referenceComparisonModel', () => {
         expect(referenceCurveIndex).toBeGreaterThanOrEqual(0);
         const referenceSeries = model.panels.rates.series[referenceCurveIndex];
         expect(referenceSeries).toBeDefined();
-        expect(referenceSeries.every((point) => (point.x ?? 0) >= 1)).toBe(true);
-        expect(referenceSeries[0]?.x).toBe(1);
+        expect(referenceSeries.every((point) => (point.x ?? 0) >= 0.15)).toBe(true);
+        expect(referenceSeries[0]?.x).toBe(0.25);
     });
 
     it('uses theme-aware reference-solution colors so overlays stay visible in both themes', () => {
@@ -1187,14 +1187,14 @@ describe('referenceComparisonModel', () => {
     });
 
     it('assigns shared metric keys so compared cases stay aligned within the same family', () => {
-        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const baseSpec = buildScenarioRunSpec('dep_decline');
         const result = buildBenchmarkRunResult({
             spec: baseSpec,
             rateHistory: buildDepletionReferenceRateHistory(baseSpec.params),
         });
 
         const model = buildReferenceComparisonModel({
-            family: buildScenarioFamily('dep_pss'),
+            family: buildScenarioFamily('dep_decline'),
             results: [result],
             xAxisMode: 'time',
         });
@@ -1672,7 +1672,7 @@ describe('referenceComparisonModel', () => {
     // ── Preview-only cases (no completed runs) ────────────────────────────────
 
     it('exposes preview-only cases with declaration-order color indices before any run completes', () => {
-        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const baseSpec = buildScenarioRunSpec('dep_decline');
         const previewVariantParams = [
             { label: '10 mD', variantKey: 'perm_low', params: { ...baseSpec.params, uniformPermX: 10, uniformPermY: 10 } },
             { label: '100 mD', variantKey: 'perm_mid', params: { ...baseSpec.params } },
@@ -1680,7 +1680,7 @@ describe('referenceComparisonModel', () => {
         ];
 
         const model = buildReferenceComparisonModel({
-            family: buildScenarioFamily('dep_pss'),
+            family: buildScenarioFamily('dep_decline'),
             results: [],
             xAxisMode: 'time',
             analyticalPerVariant: true,
@@ -1704,10 +1704,10 @@ describe('referenceComparisonModel', () => {
     });
 
     it('leaves a single preview variant out of the cases selector and draws it neutral', () => {
-        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const baseSpec = buildScenarioRunSpec('dep_decline');
 
         const model = buildReferenceComparisonModel({
-            family: buildScenarioFamily('dep_pss'),
+            family: buildScenarioFamily('dep_decline'),
             results: [],
             xAxisMode: 'time',
             theme: 'dark',
@@ -1729,10 +1729,10 @@ describe('referenceComparisonModel', () => {
     });
 
     it('falls back to the single base preview when no variant params are supplied', () => {
-        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const baseSpec = buildScenarioRunSpec('dep_decline');
 
         const model = buildReferenceComparisonModel({
-            family: buildScenarioFamily('dep_pss'),
+            family: buildScenarioFamily('dep_decline'),
             results: [],
             xAxisMode: 'time',
             previewBaseParams: { ...baseSpec.params },
@@ -1748,7 +1748,7 @@ describe('referenceComparisonModel', () => {
     // ── Per-variant depletion analytics ───────────────────────────────────────
 
     it('builds one dashed depletion reference per completed run when analytics are per-variant', () => {
-        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const baseSpec = buildScenarioRunSpec('dep_decline');
         const lowSpec = buildVariantSpec(baseSpec, 'dep_pss_low', 'Low perm', { uniformPermX: 50, uniformPermY: 50 });
         const highSpec = buildVariantSpec(baseSpec, 'dep_pss_high', 'High perm', { uniformPermX: 500, uniformPermY: 500 });
         const results = [lowSpec, highSpec].map((spec) => buildBenchmarkRunResult({
@@ -1757,7 +1757,7 @@ describe('referenceComparisonModel', () => {
         }));
 
         const model = buildReferenceComparisonModel({
-            family: buildScenarioFamily('dep_pss'),
+            family: buildScenarioFamily('dep_decline'),
             results,
             xAxisMode: 'time',
             analyticalPerVariant: true,
@@ -1782,7 +1782,7 @@ describe('referenceComparisonModel', () => {
     });
 
     it('collapses depletion analytics to one shared reference when analytics are not per-variant', () => {
-        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const baseSpec = buildScenarioRunSpec('dep_decline');
         const lowSpec = buildVariantSpec(baseSpec, 'dep_pss_low', 'Low perm', { uniformPermX: 50, uniformPermY: 50 });
         const highSpec = buildVariantSpec(baseSpec, 'dep_pss_high', 'High perm', { uniformPermX: 500, uniformPermY: 500 });
         const results = [lowSpec, highSpec].map((spec) => buildBenchmarkRunResult({
@@ -1791,7 +1791,7 @@ describe('referenceComparisonModel', () => {
         }));
 
         const model = buildReferenceComparisonModel({
-            family: buildScenarioFamily('dep_pss'),
+            family: buildScenarioFamily('dep_decline'),
             results,
             xAxisMode: 'time',
             analyticalPerVariant: false,
@@ -1807,7 +1807,7 @@ describe('referenceComparisonModel', () => {
     });
 
     it('overlays per-variant depletion analytics for variants that are still pending', () => {
-        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const baseSpec = buildScenarioRunSpec('dep_decline');
         const lowSpec = buildVariantSpec(baseSpec, 'dep_pss_low', 'Low perm', { uniformPermX: 50, uniformPermY: 50 });
         const highSpec = buildVariantSpec(baseSpec, 'dep_pss_high', 'High perm', { uniformPermX: 500, uniformPermY: 500 });
         const completed = buildBenchmarkRunResult({
@@ -1817,7 +1817,7 @@ describe('referenceComparisonModel', () => {
         const pendingVariant = { label: highSpec.label, variantKey: highSpec.key, params: highSpec.params };
 
         const model = buildReferenceComparisonModel({
-            family: buildScenarioFamily('dep_pss'),
+            family: buildScenarioFamily('dep_decline'),
             results: [completed],
             xAxisMode: 'time',
             analyticalPerVariant: true,
@@ -1845,7 +1845,7 @@ describe('referenceComparisonModel', () => {
     // ── Color-index stability ─────────────────────────────────────────────────
 
     it('keeps a pending variant on its declared color index after earlier variants complete', () => {
-        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const baseSpec = buildScenarioRunSpec('dep_decline');
         const specs = [
             buildVariantSpec(baseSpec, 'dep_pss_a', 'A', { uniformPermX: 50, uniformPermY: 50 }),
             buildVariantSpec(baseSpec, 'dep_pss_b', 'B', { uniformPermX: 200, uniformPermY: 200 }),
@@ -1865,7 +1865,7 @@ describe('referenceComparisonModel', () => {
                 rateHistory: buildDepletionReferenceRateHistory(spec.params),
             }));
             const model = buildReferenceComparisonModel({
-                family: buildScenarioFamily('dep_pss'),
+            family: buildScenarioFamily('dep_decline'),
                 results,
                 xAxisMode: 'time',
                 analyticalPerVariant: true,
@@ -1880,7 +1880,7 @@ describe('referenceComparisonModel', () => {
     });
 
     it('gives a completed run and its pending-preview chip the same palette color', () => {
-        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const baseSpec = buildScenarioRunSpec('dep_decline');
         const specs = [
             buildVariantSpec(baseSpec, 'dep_pss_a', 'A', { uniformPermX: 50, uniformPermY: 50 }),
             buildVariantSpec(baseSpec, 'dep_pss_b', 'B', { uniformPermX: 500, uniformPermY: 500 }),
@@ -1892,7 +1892,7 @@ describe('referenceComparisonModel', () => {
         }));
 
         const midSweep = buildReferenceComparisonModel({
-            family: buildScenarioFamily('dep_pss'),
+            family: buildScenarioFamily('dep_decline'),
             results: [buildBenchmarkRunResult({
                 spec: specs[0],
                 rateHistory: buildDepletionReferenceRateHistory(specs[0].params),
@@ -1913,7 +1913,7 @@ describe('referenceComparisonModel', () => {
 
         // Once that variant completes it keeps the same color, so nothing recolors mid-sweep.
         const completed = buildReferenceComparisonModel({
-            family: buildScenarioFamily('dep_pss'),
+            family: buildScenarioFamily('dep_decline'),
             results: specs.map((spec) => buildBenchmarkRunResult({
                 spec,
                 rateHistory: buildDepletionReferenceRateHistory(spec.params),

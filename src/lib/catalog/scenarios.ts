@@ -102,7 +102,7 @@ export const SCENARIO_GROUPS: readonly {
     {
         key: 'depletion-decline',
         label: 'Depletion & Decline',
-        description: 'Pressure depletion, boundary-dominated decline, forecasting fits, and depletion non-uniqueness.',
+        description: 'Flow-regime transition, tank material balance, PSS productivity, composite decline, and depletion non-uniqueness.',
     },
     {
         key: 'pressure-transient',
@@ -112,7 +112,7 @@ export const SCENARIO_GROUPS: readonly {
     {
         key: 'gas-black-oil',
         label: 'Gas-Dominated Recovery',
-        description: 'Gas injection and solution-gas drive recovery mechanisms.',
+        description: 'Gas injection, solution-gas drive, and black-oil PVT representation.',
     },
     {
         key: 'validation-benchmarks',

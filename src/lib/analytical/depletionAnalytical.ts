@@ -51,11 +51,41 @@ export type DepletionAnalyticalParams = {
     arpsB?: number;
     /** Use the exact sum of independent, boundary-dominated layer responses. */
     layeredComposite?: boolean;
+    /** Physical reference contract. Defaults to the lumped PSS tank. */
+    model?: "tank" | "finite-slab";
     nx?: number;
     ny?: number;
     producerI?: number;
     producerJ?: number;
 };
+
+type FiniteSlabMode = { lambda: number; coefficient: number };
+
+/**
+ * Eigenmodes for a finite linear reservoir with a no-flow outer boundary and
+ * a finite-productivity (Robin) producing boundary.  In dimensionless form
+ * the eigenvalues satisfy lambda.tan(lambda) = beta, where beta is the ratio
+ * of reservoir conductance to well resistance.  This retains the early
+ * distributed transient that a one-time-constant tank necessarily discards.
+ */
+export function finiteSlabModes(beta: number, count = 80): FiniteSlabMode[] {
+    const betaSafe = Math.max(1e-12, beta);
+    const modes: FiniteSlabMode[] = [];
+    for (let n = 0; n < count; n++) {
+        let lo = n * Math.PI + 1e-10;
+        let hi = n * Math.PI + Math.PI / 2 - 1e-10;
+        for (let iteration = 0; iteration < 80; iteration++) {
+            const mid = (lo + hi) / 2;
+            if (mid * Math.tan(mid) > betaSafe) hi = mid;
+            else lo = mid;
+        }
+        const lambda = (lo + hi) / 2;
+        const norm = 0.5 + Math.sin(2 * lambda) / (4 * lambda);
+        const coefficient = (Math.sin(lambda) / lambda) / norm;
+        modes.push({ lambda, coefficient });
+    }
+    return modes;
+}
 
 export type DepletionAnalyticalResult = {
     meta: DepletionAnalyticalMeta;
@@ -80,16 +110,36 @@ export function emptyDepletionAnalyticalResult(): DepletionAnalyticalResult {
 /**
  * Dietz shape factor C_A for known drainage geometries and well positions.
  *
- * For square drainage areas the well position determines C_A via log-linear
- * interpolation between the two tabulated endpoints:
+ * Only tabulated geometries are returned:
  *   - Center well: C_A = 30.8828  (Dietz 1965)
  *   - Corner well: C_A = 0.5598   (quarter-drainage symmetry)
  *
- * The interpolation variable is the Chebyshev (L∞) normalised distance of
- * the well from the grid centre — 0 at centre, 1 at corner.
+ * Arbitrary off-centre interpolation is intentionally unsupported: a shape
+ * factor is a global boundary-value result, not a quantity that can be safely
+ * interpolated from well coordinates.
  */
 const CA_SQUARE_CENTER = 30.8828;
 const CA_SQUARE_CORNER = 0.5598;
+
+export function dietzProductivityIndex(input: {
+    permeabilityMd: number;
+    thicknessM: number;
+    mobilityPerCp: number;
+    drainageAreaM2: number;
+    shapeFactor: number;
+    wellRadiusM: number;
+    skin: number;
+}): number {
+    const eulerGamma = 0.5772156649;
+    const denominator = 0.5 * Math.log(
+        (4 * Math.max(1e-12, input.drainageAreaM2)) /
+        (Math.max(1e-12, input.shapeFactor) * Math.exp(2 * eulerGamma) *
+            Math.max(1e-12, input.wellRadiusM * input.wellRadiusM)),
+    ) + input.skin;
+    return DARCY_METRIC_FACTOR * 2 * Math.PI * Math.max(0, input.permeabilityMd) *
+        Math.max(0, input.thicknessM) * Math.max(0, input.mobilityPerCp) /
+        Math.max(1e-9, denominator);
+}
 
 export function computeShapeFactor(input: {
     nxCells: number;
@@ -99,7 +149,7 @@ export function computeShapeFactor(input: {
     ny?: number;
     producerI?: number;
     producerJ?: number;
-}): { shapeFactor: number; shapeLabel: string } {
+}): { shapeFactor: number | null; shapeLabel: string } {
     const { nxCells, nyCells, aspectRatio, nx, ny, producerI, producerJ } = input;
 
     if (nyCells <= 1) {
@@ -125,28 +175,12 @@ export function computeShapeFactor(input: {
         const dy = cy > 0 ? Math.abs((producerJ as number) - cy) / cy : 0;
         const d = Math.min(1, Math.max(0, Math.max(dx, dy)));
 
-        // Log-linear interpolation between tabulated endpoints
-        const logCA =
-            Math.log(CA_SQUARE_CENTER) * (1 - d) +
-            Math.log(CA_SQUARE_CORNER) * d;
-        const shapeFactor = Math.exp(logCA);
-
-        if (d < 0.15) {
-            return { shapeFactor, shapeLabel: "Square (center)" };
-        } else if (d > 0.85) {
-            return { shapeFactor, shapeLabel: `Square (corner, C_A ≈ ${shapeFactor.toFixed(2)})` };
-        }
-        return { shapeFactor, shapeLabel: `Square (off-center, C_A ≈ ${shapeFactor.toFixed(2)})` };
+        if (d < 1e-9) return { shapeFactor: CA_SQUARE_CENTER, shapeLabel: "Square (center)" };
+        if (d > 1 - 1e-9) return { shapeFactor: CA_SQUARE_CORNER, shapeLabel: "Square (corner)" };
+        return { shapeFactor: null, shapeLabel: "Unsupported off-center square" };
     }
 
-    // Non-square rectangles — aspect-ratio based (no position adjustment yet)
-    if (aspectRatio >= 2.0 && aspectRatio < 5.0) {
-        return { shapeFactor: 10.84, shapeLabel: `Rectangle ${aspectRatio.toFixed(1)}:1` };
-    }
-    if (aspectRatio >= 5.0) {
-        return { shapeFactor: 2.36, shapeLabel: `Elongated ${aspectRatio.toFixed(0)}:1` };
-    }
-    return { shapeFactor: 10.84, shapeLabel: `Rectangle 1:${(1 / aspectRatio).toFixed(1)}` };
+    return { shapeFactor: null, shapeLabel: "Unsupported rectangular geometry" };
 }
 
 export function calculateDepletionAnalyticalProduction(
@@ -209,8 +243,15 @@ export function calculateDepletionAnalyticalProduction(
         producerI: params.producerI,
         producerJ: params.producerJ,
     });
+    if (shapeFactor === null) {
+        return {
+            meta: { ...emptyDepletionAnalyticalResult().meta, shapeLabel },
+            production: [],
+        };
+    }
 
     const layerOilPis: number[] = [];
+    const layerWellPis: number[] = [];
 
     for (let layerIndex = 0; layerIndex < nz; layerIndex++) {
         let permX = uniformPermX;
@@ -249,6 +290,7 @@ export function calculateDepletionAnalyticalProduction(
                     cellDz *
                     (kroAtInitialSw / muO)) /
                 piDenominator;
+            layerWellPis.push(peacemanPi);
 
             const wellResistance = Math.max(1e-12, 1 / peacemanPi);
             if (nxCells <= 1) {
@@ -264,18 +306,16 @@ export function calculateDepletionAnalyticalProduction(
                 oilPiForLayer = 1 / (linearResistance + wellResistance);
             }
         } else {
-            const eulerGamma = 0.5772156649;
-            const shapeDenominator =
-                0.5 *
-                Math.log((4 * drainageArea) / (shapeFactor * Math.exp(2 * eulerGamma) * wellRadiusSafe * wellRadiusSafe));
-            oilPiForLayer =
-                (DARCY_METRIC_FACTOR *
-                    2 *
-                    Math.PI *
-                    averagePerm *
-                    cellDz *
-                    (kroAtInitialSw / muO)) /
-                Math.max(1e-9, shapeDenominator + wellSkin);
+            oilPiForLayer = dietzProductivityIndex({
+                permeabilityMd: averagePerm,
+                thicknessM: cellDz,
+                mobilityPerCp: kroAtInitialSw / muO,
+                drainageAreaM2: drainageArea,
+                shapeFactor,
+                wellRadiusM: wellRadiusSafe,
+                skin: wellSkin,
+            });
+            layerWellPis.push(oilPiForLayer);
         }
 
         layerOilPis.push(Math.max(0, oilPiForLayer));
@@ -295,6 +335,16 @@ export function calculateDepletionAnalyticalProduction(
     const layerTimeConstants = layeredComposite
         ? layerOilPis.map((pi) => Math.max(1e-6, layerStorage / Math.max(1e-12, pi)))
         : undefined;
+    const finiteSlab = params.model === "finite-slab" && nz === 1 && shapeFactor === 0;
+    const finiteSlabPerm = Math.max(1e-6, uniformPermX);
+    const finiteSlabConductivity =
+        DARCY_METRIC_FACTOR * finiteSlabPerm * lengthY * cellDz * (kroAtInitialSw / muO);
+    const finiteSlabWellPi = Math.max(1e-12, layerWellPis[0] ?? oilPi);
+    const finiteSlabBeta = finiteSlabWellPi * lengthX / Math.max(1e-12, finiteSlabConductivity);
+    const finiteSlabDiffusivity =
+        DARCY_METRIC_FACTOR * finiteSlabPerm * (kroAtInitialSw / muO) /
+        Math.max(1e-12, reservoir.porosity * totalCompressibility);
+    const slabModes = finiteSlab ? finiteSlabModes(finiteSlabBeta) : [];
 
     // Arps decline exponent: b=0 exponential, 0<b<1 hyperbolic, b=1 harmonic.
     // Fetkovich (1980) shows b=0 for single-phase slightly-compressible bounded
@@ -311,7 +361,30 @@ export function calculateDepletionAnalyticalProduction(
         let oilRate: number;
         let cumulativeOil: number;
 
-        if (layeredComposite && layerTimeConstants) {
+        if (finiteSlab) {
+            let boundaryPressureFraction = 0;
+            let averagePressureFraction = 0;
+            for (const mode of slabModes) {
+                const decay = Math.exp(-Math.min(
+                    700,
+                    finiteSlabDiffusivity * mode.lambda * mode.lambda * time /
+                    (lengthX * lengthX),
+                ));
+                boundaryPressureFraction += mode.coefficient * Math.cos(mode.lambda) * decay;
+                averagePressureFraction +=
+                    mode.coefficient * (Math.sin(mode.lambda) / mode.lambda) * decay;
+            }
+            oilRate = finiteSlabWellPi * pressureDrop * boundaryPressureFraction;
+            const storage = poreVolume * totalCompressibility;
+            cumulativeOil = storage * pressureDrop * (1 - averagePressureFraction);
+            return [{
+                time,
+                oilRate: Math.max(0, oilRate),
+                waterRate: 0,
+                cumulativeOil: Math.max(0, cumulativeOil),
+                avgPressure: producerBhp + pressureDrop * averagePressureFraction,
+            }];
+        } else if (layeredComposite && layerTimeConstants) {
             oilRate = 0;
             cumulativeOil = 0;
             let pressureFraction = 0;
@@ -379,7 +452,7 @@ export function calculateDepletionAnalyticalProduction(
             shapeLabel,
             q0,
             tau,
-            arpsB: layeredComposite ? undefined : b,
+            arpsB: layeredComposite || finiteSlab ? undefined : b,
             layerTimeConstants,
         },
         production,

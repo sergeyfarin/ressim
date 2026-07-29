@@ -157,9 +157,11 @@ describe('dep_nct — N·c_t ambiguity scenario', () => {
         const rfBase = runVariantRecoveryFactor('nct_base');
         const rfLarge = runVariantRecoveryFactor('nct_large_reservoir');
 
-        expect(rfSmall).toBeCloseTo(0.0374, 3);
-        expect(rfBase).toBeCloseTo(0.0187, 3);
-        expect(rfLarge).toBeCloseTo(0.0093, 3);
-        expect(rfSmall / rfLarge).toBeCloseTo(4.0, 1);
+        expect(rfSmall).toBeCloseTo(0.0307, 3);
+        expect(rfBase).toBeCloseTo(0.0154, 3);
+        expect(rfLarge).toBeCloseTo(0.0077, 3);
+        // Compressibility changes the pressure-dependent cell PV slightly, so
+        // the fully discrete ratio is close to, but not identically, four.
+        expect(rfSmall / rfLarge).toBeCloseTo(4.06, 1);
     }, 30000);
 });

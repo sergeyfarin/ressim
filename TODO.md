@@ -17,6 +17,16 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **Depletion catalogue mixes incompatible analytical contracts (2026-07-29).** Replaced the
+  distributed-slab/single-exponential Fetkovich comparison with a finite-domain flow-regime
+  reference; turn the Dietz case into a constant-rate PSS productivity measurement; rebase the
+  N·c_t ambiguity exhibit on an exact lumped-tank contract; retain layered decline as exact tank
+  superposition. Keep solution-gas drive as a separate black-oil/FIM mechanism and revalidate its
+  gas evolution and committed OPM comparison rather than applying the oil-only depletion model.
+  Added headless WASM gates for the finite-slab rate and Dietz late-time flowing BHP contracts;
+  the curated FIM gate confirms solution-gas liberation, increasing free gas/GOR, phase closure,
+  material balance, and the committed Flow 2026.04 acceptance bands.
+
 - [x] **Layered depletion reference matched the wrong physical model (2026-07-29).** Replaced the
   repeated numerical runs behind the Arps-b picker with a fixed-total-PI layer-contrast experiment.
   Each layer is now a noncommunicating tank, and the quantitative reference sums its own PI/storage

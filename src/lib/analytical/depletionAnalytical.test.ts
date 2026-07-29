@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
     calculateDepletionAnalyticalProduction,
     computeShapeFactor,
+    dietzProductivityIndex,
     emptyDepletionAnalyticalResult,
+    finiteSlabModes,
+    type DepletionAnalyticalParams,
 } from './depletionAnalytical';
 
 describe('depletionAnalytical', () => {
@@ -176,15 +179,13 @@ describe('depletionAnalytical', () => {
         expect(result.shapeFactor).toBeCloseTo(30.8828, 2);
     });
 
-    it('computeShapeFactor gives intermediate value for off-center well', () => {
+    it('computeShapeFactor rejects unsourced off-center interpolation', () => {
         const offCenter = computeShapeFactor({
             nxCells: 21, nyCells: 21, aspectRatio: 1.0,
             nx: 21, ny: 21, producerI: 5, producerJ: 10,
         });
-        // Must be between corner and center values
-        expect(offCenter.shapeFactor).toBeGreaterThan(0.56);
-        expect(offCenter.shapeFactor).toBeLessThan(30.88);
-        expect(offCenter.shapeLabel).toContain('off-center');
+        expect(offCenter.shapeFactor).toBeNull();
+        expect(offCenter.shapeLabel).toContain('Unsupported');
     });
 
     // ── Arps decline tests ────────────────────────────────────────────────
@@ -538,5 +539,67 @@ describe('depletionAnalytical', () => {
             scaled.production[scaled.production.length - 1].cumulativeOil /
                 unscaled.production[unscaled.production.length - 1].cumulativeOil,
         ).toBeCloseTo(2, 12);
+    });
+});
+
+const finiteSlabParams: DepletionAnalyticalParams = {
+    reservoir: { length: 480, area: 100, porosity: 0.2 },
+    timeHistory: [1e-5, 0.1, 1, 10],
+    initialSaturation: 0.1,
+    nz: 1,
+    permMode: 'uniform',
+    uniformPermX: 20,
+    uniformPermY: 20,
+    layerPermsX: [], layerPermsY: [],
+    cellDx: 10, cellDy: 10, cellDz: 10,
+    wellRadius: 0.1, wellSkin: 0,
+    muO: 1, sWc: 0.1, sOr: 0.1, nO: 2,
+    c_o: 1e-5, c_w: 3e-6, cRock: 1e-6,
+    initialPressure: 1500, producerBhp: 50,
+    depletionRateScale: 1,
+    model: 'finite-slab', nx: 48, ny: 1, producerI: 47, producerJ: 0,
+};
+
+describe('finite-reservoir depletion reference', () => {
+    it('solves the Robin eigenvalue equation and produces ordered modes', () => {
+        const beta = 12.5;
+        const modes = finiteSlabModes(beta, 6);
+        expect(modes).toHaveLength(6);
+        for (let i = 0; i < modes.length; i++) {
+            expect(modes[i].lambda * Math.tan(modes[i].lambda)).toBeCloseTo(beta, 8);
+            if (i > 0) expect(modes[i].lambda).toBeGreaterThan(modes[i - 1].lambda);
+        }
+    });
+
+    it('conserves tank storage while rate and pressure decline monotonically', () => {
+        const result = calculateDepletionAnalyticalProduction(finiteSlabParams);
+        const storage = 480 * 100 * 0.2 * (0.9e-5 + 0.1 * 3e-6 + 1e-6);
+        for (const point of result.production) {
+            expect(point.cumulativeOil).toBeCloseTo(storage * (1500 - point.avgPressure), 9);
+        }
+        for (let i = 1; i < result.production.length; i++) {
+            expect(result.production[i].oilRate).toBeLessThan(result.production[i - 1].oilRate);
+            expect(result.production[i].avgPressure).toBeLessThan(result.production[i - 1].avgPressure);
+        }
+    });
+});
+
+describe('bounded PSS reference safeguards', () => {
+    it('refuses unsourced interpolation for an arbitrary off-centre well', () => {
+        expect(computeShapeFactor({
+            nxCells: 21, nyCells: 21, aspectRatio: 1,
+            nx: 21, ny: 21, producerI: 5, producerJ: 10,
+        })).toMatchObject({ shapeFactor: null });
+    });
+
+    it('makes Dietz PI linear in permeability and lower with positive skin', () => {
+        const base = {
+            permeabilityMd: 20, thicknessM: 10, mobilityPerCp: 1,
+            drainageAreaM2: 420 * 420, shapeFactor: 30.8828,
+            wellRadiusM: 0.1, skin: 0,
+        };
+        const pi = dietzProductivityIndex(base);
+        expect(dietzProductivityIndex({ ...base, permeabilityMd: 40 })).toBeCloseTo(2 * pi, 12);
+        expect(dietzProductivityIndex({ ...base, skin: 3 })).toBeLessThan(pi);
     });
 });

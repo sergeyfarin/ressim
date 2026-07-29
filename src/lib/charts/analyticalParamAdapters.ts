@@ -12,7 +12,11 @@
 
 import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
 import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
-import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
+import {
+    calculateDepletionAnalyticalProduction,
+    computeShapeFactor,
+    dietzProductivityIndex,
+} from '../analytical/depletionAnalytical';
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import {
     lineSourcePressure,
@@ -178,6 +182,7 @@ function buildDepletionParams(
         depletionRateScale: toFiniteNumber(params.analyticalDepletionRateScale, 1),
         arpsB: toFiniteNumber(params.analyticalArpsB, 0),
         layeredComposite: params.analyticalLayeredComposite === true,
+        model: params.analyticalDepletionModel === 'finite-slab' ? 'finite-slab' : 'tank',
         nx: toFiniteNumber(params.nx, 1),
         ny: toFiniteNumber(params.ny, 1),
         producerI: params.producerI != null ? toFiniteNumber(params.producerI, 0) : undefined,
@@ -493,6 +498,49 @@ export function computeWellTestOnTimeAxis(
     const props = extractWellTestProps(params);
     if (!(props.k > 0) || !(props.h > 0)) return null;
     const p_i = toFiniteNumber(params.initialPressure, 300);
+
+    if (params.analyticalPressureModel === 'dietz-pss') {
+        const nx = Math.max(1, Math.round(toFiniteNumber(params.nx, 1)));
+        const ny = Math.max(1, Math.round(toFiniteNumber(params.ny, 1)));
+        const dx = toFiniteNumber(params.cellDx, 1);
+        const dy = toFiniteNumber(params.cellDy, 1);
+        const lengthX = nx * dx;
+        const lengthY = ny * dy;
+        const shape = computeShapeFactor({
+            nxCells: nx,
+            nyCells: ny,
+            aspectRatio: lengthX / Math.max(1e-12, lengthY),
+            nx,
+            ny,
+            producerI: toFiniteNumber(params.producerI, (nx - 1) / 2),
+            producerJ: toFiniteNumber(params.producerJ, (ny - 1) / 2),
+        });
+        if (shape.shapeFactor === null) return null;
+        const pi = dietzProductivityIndex({
+            permeabilityMd: Math.sqrt(
+                toFiniteNumber(params.uniformPermX, 1) *
+                toFiniteNumber(params.uniformPermY, 1),
+            ),
+            thicknessM: getTotalThickness(params),
+            mobilityPerCp: 1 / Math.max(1e-12, toFiniteNumber(params.mu_o, 1)),
+            drainageAreaM2: lengthX * lengthY,
+            shapeFactor: shape.shapeFactor,
+            wellRadiusM: toFiniteNumber(params.well_radius, 0.1),
+            skin: toFiniteNumber(params.well_skin, 0),
+        });
+        const storage = getPoreVolume(params) * props.c_t;
+        const pssFrom = Math.max(0, toFiniteNumber(params.analyticalPssStartDays, 0));
+        return {
+            time: timeHistory,
+            flowingBhp: timeHistory.map((t) => {
+                if (t < pssFrom) return null;
+                return p_i - q * t / Math.max(1e-12, storage) - q / Math.max(1e-12, pi);
+            }),
+            oilRate: timeHistory.map(() => q),
+            semilogFromDay: pssFrom,
+            semilogSlopeBarPerCycle: 0,
+        };
+    }
 
     return {
         time: timeHistory,

@@ -110,6 +110,7 @@ export const depletionDef: ScenarioAnalyticalDef = {
         depletionRateScale: params.analyticalDepletionRateScale as number,
         arpsB: params.analyticalArpsB as number | undefined,
         layeredComposite: params.analyticalLayeredComposite === true,
+        model: params.analyticalDepletionModel === 'finite-slab' ? 'finite-slab' : 'tank',
         nx: params.nx as number,
         ny: params.ny as number,
         producerI: params.producerI as number,

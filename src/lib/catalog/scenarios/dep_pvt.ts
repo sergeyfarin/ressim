@@ -66,7 +66,7 @@ export const dep_pvt: Scenario = {
     key: 'dep_pvt',
     label: 'PVT Model Risk — One Calibration Point',
     catalog: {
-        group: 'other',
+        group: 'gas-black-oil',
         role: 'interpretation',
         caseMode: '3p',
         parameterSummary: 'Black-oil blowdown · two PVT tables share one calibration point · pressure and GOR divergence',

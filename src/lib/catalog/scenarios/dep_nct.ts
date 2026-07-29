@@ -5,8 +5,8 @@ import { depletionDef } from '../analyticalAdapters';
 /**
  * "Matched history, different reserves" — the N·c_t ambiguity.
  *
- * Physics basis: the Dietz/Fetkovich PSS decline time constant is
- * τ = V_p·c_t / PI (see dep_decline.ts). V_p = length·area·porosity scales
+ * Physics basis: the exact lumped-tank decline time constant is
+ * τ = V_p·c_t / PI. V_p = length·area·porosity scales
  * with OOIP; c_t = S_o·c_o + S_w·c_w + c_rock is total system compressibility.
  * Holding PI fixed (same permeability/geometry/skin) and scaling porosity
  * and c_o inversely so that porosity·c_t stays constant reproduces the same
@@ -30,17 +30,17 @@ export const dep_nct: Scenario = {
     key: 'dep_nct',
     label: 'Same History, Different OOIP (N·cₜ)',
     catalog: {
-        group: 'other',
+        group: 'depletion-decline',
         role: 'interpretation',
         caseMode: 'dep',
         parameterSummary: 'Matched pressure and rate response · 4× OOIP range · storage / reserves non-uniqueness',
     },
-    description: 'Three reservoirs with the same permeability, geometry, and pressure/rate history — but 4x different oil in place. Porosity (∝ OOIP) and oil compressibility are scaled inversely to hold the Dietz/Fetkovich decline time constant τ = V_p·c_t/PI fixed. The result: identical pressure and rate curves, identical cumulative oil, but recovery factor ranges from ~0.9% to ~3.7% (small, early-life fractions of each tank over this run — the 4x spread between them is the point, not the absolute size). Pressure and rate history alone cannot distinguish OOIP from compressibility — this is the classic material-balance non-uniqueness (Dake 1978).',
-    analyticalMethodSummary: 'Dietz pseudo-steady-state decline — the same analytical model as dep_decline, used here to show that its inputs (porosity, compressibility) are individually unconstrained by the rate/pressure history it reproduces.',
+    description: 'Three exact lumped tanks have the same permeability, geometry, pressure/rate history and cumulative oil, but 4x different oil in place. Porosity (∝ OOIP) and oil compressibility are scaled inversely to hold PV·c_t/PI fixed. Recovery factor therefore ranges from about 0.8% to 3.1%. Pressure and rate history alone cannot distinguish OOIP from compressibility — the classic material-balance non-uniqueness (Dake 1978).',
+    analyticalMethodSummary: 'Exact lumped-tank material balance with the simulator\'s Peaceman well connection. Holding PV·c_t and PI fixed makes pressure and rate histories non-unique in OOIP.',
     analyticalMethodReference: 'Dake, L.P. (1978) "Fundamentals of Reservoir Engineering", ch. 3; Havlena, D. & Odeh, A.S. (1963) JPT 15(8); Tavassoli, Carter & King, SPE 86883 (2004).',
     chartLayoutKey: 'fetkovich',
     defaultSensitivityDimensionKey: 'nct_ambiguity',
-    // Divide the ~24-day run (240 × 0.1 d) at its midpoint: up to day 12 reads
+    // Divide the 24-day run (960 × 0.025 d) at its midpoint: up to day 12 reads
     // as "observed history" that all three variants reproduce identically;
     // beyond it, the same matched history extrapolates to 4x-different remaining
     // reserves — the material-balance non-uniqueness this case exists to show.
@@ -56,7 +56,7 @@ export const dep_nct: Scenario = {
         rationale: 'IMPES is the default for this deliberately matched oil-depletion response.',
     },
     params: {
-        // Fluid — base case matches dep_decline exactly
+        // Fluid — exact single-tank depletion contract
         mu_w: 0.5,
         mu_o: 1.0,
         c_o: 1e-5,
@@ -78,12 +78,13 @@ export const dep_nct: Scenario = {
         capillaryEnabled: false,
         capillaryPEntry: 0,
         capillaryLambda: 2,
-        // Grid: same 1D slab as dep_decline (48 cells, 480 m x 10 m x 10 m)
-        nx: 48,
+        // One areally large cell: no unresolved within-reservoir gradient, so
+        // simulator and analytical model share the same tank storage and well PI.
+        nx: 1,
         ny: 1,
         nz: 1,
-        cellDx: 10,
-        cellDy: 10,
+        cellDx: 1000,
+        cellDy: 1000,
         cellDz: 10,
         permMode: 'uniform',
         uniformPermX: 20,
@@ -102,15 +103,16 @@ export const dep_nct: Scenario = {
         targetProducerRate: 0,
         injectorI: 0,
         injectorJ: 0,
-        producerI: 47,
+        producerI: 0,
         producerJ: 0,
         well_radius: 0.1,
         well_skin: 0,
-        analyticalDepletionStartDays: 1,
+        analyticalDepletionStartDays: 0,
+        analyticalDepletionModel: 'tank',
         // Numerics
         fimEnabled: false,
-        delta_t_days: 0.1,
-        steps: 240,
+        delta_t_days: 0.025,
+        steps: 960,
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 75,
         max_well_rate_change_fraction: 0.75,
@@ -137,21 +139,21 @@ export const dep_nct: Scenario = {
                 {
                     key: 'nct_small_reservoir',
                     label: 'φ = 0.10, c_o = 21.4e-6/bar  (small N, high c_t)',
-                    description: 'Small OOIP with high compressibility — same history, but every barrel produced is a much larger fraction of a smaller tank. RF ≈ 3.7%.',
+                    description: 'Small OOIP with high compressibility — same history, but every barrel produced is a much larger fraction of a smaller tank. RF ≈ 3.1%.',
                     paramPatch: { reservoirPorosity: 0.10, c_o: 2.1444444444444443e-5 },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'nct_base',
                     label: 'φ = 0.20, c_o = 10e-6/bar  (base)',
-                    description: 'Base case — matches dep_decline exactly.',
+                    description: 'Base exact-tank case.',
                     paramPatch: {},
                     affectsAnalytical: true,
                 },
                 {
                     key: 'nct_large_reservoir',
                     label: 'φ = 0.40, c_o = 4.3e-6/bar  (large N, low c_t)',
-                    description: 'Large OOIP with low compressibility — same history, but every barrel produced is a much smaller fraction of a bigger tank. RF ≈ 0.9%.',
+                    description: 'Large OOIP with low compressibility — same history, but every barrel produced is a much smaller fraction of a bigger tank. RF ≈ 0.8%.',
                     paramPatch: { reservoirPorosity: 0.40, c_o: 4.277777777777778e-6 },
                     affectsAnalytical: false,
                 },

@@ -4,15 +4,15 @@ import { depletionDef } from '../analyticalAdapters';
 
 export const dep_decline: Scenario = {
     key: 'dep_decline',
-    label: 'Boundary-Dominated Decline — Fetkovich',
+    label: 'Finite-Reservoir Transition — Fetkovich',
     catalog: {
         group: 'depletion-decline',
         role: 'interpretation',
         caseMode: 'dep',
-        parameterSummary: 'Finite constant-BHP oil reservoir · late-time exponential decline · Fetkovich reference',
+        parameterSummary: 'Finite constant-BHP slab · transient-to-boundary-dominated eigenfunction reference',
     },
-    description: 'Constant-BHP production from a 1D finite reservoir. The simulator includes the early near-well transient, then settles into the boundary-dominated exponential decline assumed by Fetkovich; the analytical overlay is clipped to that late-time window and shown on log-time axes.',
-    analyticalMethodSummary: 'Fetkovich exponential decline — late-time boundary-dominated rate and recovery reference curves for constant-BHP depletion, used here for clean PI/rate-scale sensitivities after the early transient has decayed.',
+    description: 'Constant-BHP production from a finite 1D reservoir. After the first three base timesteps—the Cartesian well block\'s startup response—the reference solves the distributed diffusion problem with a no-flow outer boundary and the same finite well productivity as a Robin boundary. Its eigenmodes cover spatial diffusion, boundary arrival, and the eventual single-mode exponential tail instead of imposing one tank exponential.',
+    analyticalMethodSummary: 'Finite-slab eigenfunction solution with finite well productivity. Fetkovich boundary-dominated exponential decline appears as the asymptotic first mode, not as a full-history tank approximation.',
     analyticalMethodReference: 'Fetkovich (1980), SPE-4629-PA.',
     chartLayoutKey: 'fetkovich',
     defaultSensitivityDimensionKey: 'permeability',
@@ -80,11 +80,12 @@ export const dep_decline: Scenario = {
         producerJ: 0,
         well_radius: 0.1,
         well_skin: 0,
-        analyticalDepletionStartDays: 1,
+        analyticalDepletionStartDays: 0.15,
+        analyticalDepletionModel: 'finite-slab',
         // Numerics
         fimEnabled: false,
-        delta_t_days: 0.1,
-        steps: 240,
+        delta_t_days: 0.05,
+        steps: 480,
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 75,
         max_well_rate_change_fraction: 0.75,
@@ -96,7 +97,7 @@ export const dep_decline: Scenario = {
         {
             key: 'permeability',
             label: 'Permeability  k',
-            description: 'PI ∝ k; time constant τ = V_p·c_t/PI ∝ 1/k. This scenario is the clean place to compare permeability-driven decline-rate scaling because the analytical overlay only starts once late-time boundary-dominated behavior is valid.',
+            description: 'Permeability changes both pressure diffusivity and well productivity, moving boundary arrival and the late-time eigenmode decline. The complete finite-domain reference updates for each variant.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {
@@ -109,7 +110,7 @@ export const dep_decline: Scenario = {
                 {
                     key: 'perm_base',
                     label: 'k = 20 mD  (base)',
-                    description: 'Base Fetkovich permeability — matches the reference decline curve.',
+                    description: 'Base finite-slab case.',
                     paramPatch: {},
                     affectsAnalytical: true,
                 },
@@ -125,7 +126,7 @@ export const dep_decline: Scenario = {
         {
             key: 'skin',
             label: 'Skin Factor  s',
-            description: 'Skin perturbs PI without changing reservoir storage, making it a clean late-time decline sensitivity alongside permeability.',
+            description: 'Skin changes the finite-productivity Robin boundary. It affects near-well drawdown and the eigenvalues without pretending the whole reservoir is a lumped tank.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {
@@ -159,23 +160,23 @@ export const dep_decline: Scenario = {
             variants: [
                 {
                     key: 'timestep_small',
-                    label: 'Δt = 0.05 days  (fine)',
-                    description: 'Fine timestep — best-resolved numerical reference for this decline case.',
-                    paramPatch: { delta_t_days: 0.05, steps: 480 },
+                    label: 'Δt = 0.025 days  (fine)',
+                    description: 'Fine timestep — best-resolved transition curve.',
+                    paramPatch: { delta_t_days: 0.025, steps: 960 },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'timestep_base',
-                    label: 'Δt = 0.1 days  (base)',
-                    description: 'Base timestep chosen to resolve the decline time constant without making the scenario heavy.',
+                    label: 'Δt = 0.05 days  (base)',
+                    description: 'Base timestep resolves boundary arrival and the decline tail.',
                     paramPatch: {},
                     affectsAnalytical: false,
                 },
                 {
                     key: 'timestep_large',
-                    label: 'Δt = 0.25 days  (coarse)',
-                    description: 'Coarser timestep — still usable, but early transient details begin to smear.',
-                    paramPatch: { delta_t_days: 0.25, steps: 96 },
+                    label: 'Δt = 0.1 days  (coarse)',
+                    description: 'Coarse diagnostic rung; visible separation is numerical damping, not different reservoir physics.',
+                    paramPatch: { delta_t_days: 0.1, steps: 240 },
                     affectsAnalytical: false,
                 },
             ],

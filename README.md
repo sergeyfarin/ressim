@@ -21,14 +21,14 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 | Sweep Efficiency | Areal Sweep | `sweep_areal` | Craig confined five-spot correlation |
 | Sweep Efficiency | Vertical Sweep | `sweep_vertical` | Dykstra–Parsons / Stiles layered sweep |
 | Sweep Efficiency | Combined Sweep | `sweep_combined` | Combined areal and vertical contact with selectable layered correlation |
-| Depletion & Decline | Bounded Reservoir Depletion | `dep_pss` | Dietz pseudo-steady-state shape-factor response |
-| Depletion & Decline | Boundary-Dominated Decline — Fetkovich | `dep_decline` | Late-time exponential decline interpretation |
+| Depletion & Decline | Dietz PSS Productivity | `dep_pss` | Constant-rate late-time flowing-BHP/shape-factor measurement |
+| Depletion & Decline | Finite-Reservoir Transition — Fetkovich | `dep_decline` | Finite-slab transient, boundary arrival, and asymptotic decline |
 | Depletion & Decline | Layered Depletion — Composite Decline | `dep_arps` | Exact superposition of noncommunicating layer declines at fixed total PI |
+| Depletion & Decline | Same History, Different OOIP (N·cₜ) | `dep_nct` | Exact-tank storage/reserves non-uniqueness with 4× OOIP spread |
 | Pressure-Transient Analysis | Well-Test Drawdown | `dep_welltest` | Line-source drawdown; permeability, skin, and near-well grid bias |
 | Gas-Dominated Recovery | Gas Injection | `gas_injection` | Gas-oil fractional-flow breakthrough |
 | Gas-Dominated Recovery | Solution Gas Drive | `gas_drive` | Black-oil depletion with OPM Flow reference |
-| Other | Same History, Different OOIP (N·cₜ) | `dep_nct` | Storage/reserves non-uniqueness; identical pressure/rate response with 4× OOIP spread |
-| Other | PVT Model Risk — One Calibration Point | `dep_pvt` | Two PVT representations constrained at one point |
+| Gas-Dominated Recovery | PVT Model Risk — One Calibration Point | `dep_pvt` | Two PVT representations constrained at one point |
 | Other | FIM vs. IMPES — Coarse Timestep | `solver_fim_impes` | Rate-controlled numerical-formulation comparison at deliberately coarse report steps |
 | Validation Benchmarks | SPE1 Black-Oil Benchmark | `spe1_gas_injection` | Published Eclipse and OPM Flow comparative-solution references |
 
