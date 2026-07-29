@@ -258,6 +258,7 @@ function depletionFingerprint(params: Record<string, unknown>): number[] {
         producerBhp: toNum(params.producerBhp, 100),
         depletionRateScale: toNum(params.analyticalDepletionRateScale, 1),
         arpsB: toNum(params.analyticalArpsB, 0),
+        layeredComposite: params.analyticalLayeredComposite === true,
         nx: params.nx != null ? toNum(params.nx, 1) : undefined,
         ny: params.ny != null ? toNum(params.ny, 1) : undefined,
         producerI: params.producerI != null ? toNum(params.producerI, 0) : undefined,
@@ -379,7 +380,6 @@ describe('scenario capability validation', () => {
             ['grid_refinement', 'shared'],
         ]);
         expect(getScenario('dep_arps')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
-            ['arps_b', 'per-result'],
             ['layer_contrast', 'per-result'],
         ]);
         expect(getScenario('gas_injection')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
@@ -725,5 +725,27 @@ describe('depletion scenario fidelity guards', () => {
             delta_t_days: 0.25,
             steps: 96,
         });
+    });
+
+    it('isolates layered-depletion contrast at fixed total PI', () => {
+        const variants = ['contrast_low', 'contrast_base', 'contrast_high'].map((variantKey) =>
+            getScenarioWithVariantParams('dep_arps', 'layer_contrast', variantKey),
+        );
+
+        for (const params of variants) {
+            const permsX = params.layerPermsX as number[];
+            expect(permsX.reduce((sum, permeability) => sum + permeability, 0)).toBeCloseTo(100, 4);
+            expect(params.layerPermsY).toEqual(permsX);
+            expect(params.layerPermsZ).toEqual([1e-9, 1e-9, 1e-9, 1e-9, 1e-9]);
+            expect(params.analyticalLayeredComposite).toBe(true);
+        }
+
+        const contrast = (params: Record<string, unknown>) => {
+            const permeabilities = params.layerPermsX as number[];
+            return Math.max(...permeabilities) / Math.min(...permeabilities);
+        };
+        expect(contrast(variants[0])).toBeCloseTo(3, 1);
+        expect(contrast(variants[1])).toBeCloseTo(20, 1);
+        expect(contrast(variants[2])).toBeCloseTo(100, 0);
     });
 });

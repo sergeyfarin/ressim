@@ -19,6 +19,7 @@ export type DepletionAnalyticalMeta = {
     q0?: number;
     tau?: number;
     arpsB?: number;
+    layerTimeConstants?: number[];
 };
 
 export type DepletionAnalyticalParams = {
@@ -48,6 +49,8 @@ export type DepletionAnalyticalParams = {
     producerBhp: number;
     depletionRateScale: number;
     arpsB?: number;
+    /** Use the exact sum of independent, boundary-dominated layer responses. */
+    layeredComposite?: boolean;
     nx?: number;
     ny?: number;
     producerI?: number;
@@ -207,7 +210,7 @@ export function calculateDepletionAnalyticalProduction(
         producerJ: params.producerJ,
     });
 
-    let totalOilPi = 0;
+    const layerOilPis: number[] = [];
 
     for (let layerIndex = 0; layerIndex < nz; layerIndex++) {
         let permX = uniformPermX;
@@ -247,11 +250,19 @@ export function calculateDepletionAnalyticalProduction(
                     (kroAtInitialSw / muO)) /
                 piDenominator;
 
-            const linearResistance =
-                lengthX /
-                (3 * averagePerm * crossSectionArea * DARCY_METRIC_FACTOR * (kroAtInitialSw / muO));
             const wellResistance = Math.max(1e-12, 1 / peacemanPi);
-            oilPiForLayer = 1 / (linearResistance + wellResistance);
+            if (nxCells <= 1) {
+                // A one-cell layer is a lumped tank: there is no additional
+                // within-layer pressure-gradient resistance beyond its well
+                // connection. This is the clean contract used by the layered
+                // composite-decline scenario.
+                oilPiForLayer = peacemanPi;
+            } else {
+                const linearResistance =
+                    lengthX /
+                    (3 * averagePerm * crossSectionArea * DARCY_METRIC_FACTOR * (kroAtInitialSw / muO));
+                oilPiForLayer = 1 / (linearResistance + wellResistance);
+            }
         } else {
             const eulerGamma = 0.5772156649;
             const shapeDenominator =
@@ -267,9 +278,10 @@ export function calculateDepletionAnalyticalProduction(
                 Math.max(1e-9, shapeDenominator + wellSkin);
         }
 
-        totalOilPi += Math.max(0, oilPiForLayer);
+        layerOilPis.push(Math.max(0, oilPiForLayer));
     }
 
+    const totalOilPi = layerOilPis.reduce((sum, pi) => sum + pi, 0);
     const oilPi = Math.max(1e-12, totalOilPi);
     const oilSaturation = 1 - sw;
     const totalCompressibility = Math.max(1e-12, oilSaturation * c_o + sw * c_w + cRock);
@@ -277,9 +289,15 @@ export function calculateDepletionAnalyticalProduction(
     const pressureDrop = Math.max(0, initialPressure - producerBhp);
     const q0 = oilPi * pressureDrop * Math.max(0, depletionRateScale);
     const Di = 1 / tau; // Initial decline rate [1/day]
+    const layeredComposite = params.layeredComposite === true && layerOilPis.length > 1;
+    const layerPoreVolume = poreVolume / Math.max(1, layerOilPis.length);
+    const layerStorage = Math.max(1e-12, layerPoreVolume * totalCompressibility);
+    const layerTimeConstants = layeredComposite
+        ? layerOilPis.map((pi) => Math.max(1e-6, layerStorage / Math.max(1e-12, pi)))
+        : undefined;
 
     // Arps decline exponent: b=0 exponential, 0<b<1 hyperbolic, b=1 harmonic.
-    // Fetkovich (1971) shows b=0 for single-phase slightly-compressible bounded
+    // Fetkovich (1980) shows b=0 for single-phase slightly-compressible bounded
     // reservoirs at constant BHP.  Values of b>0 arise from layered/commingled
     // production, multiphase flow, or heterogeneous reservoirs — Arps (1945).
     const b = Math.max(0, Math.min(1, params.arpsB ?? 0));
@@ -293,7 +311,31 @@ export function calculateDepletionAnalyticalProduction(
         let oilRate: number;
         let cumulativeOil: number;
 
-        if (b < 1e-8) {
+        if (layeredComposite && layerTimeConstants) {
+            oilRate = 0;
+            cumulativeOil = 0;
+            let pressureFraction = 0;
+
+            for (let layerIndex = 0; layerIndex < layerOilPis.length; layerIndex++) {
+                const layerPi = layerOilPis[layerIndex];
+                const layerTau = layerTimeConstants[layerIndex];
+                const expTerm = Math.exp(-Math.min(700, time / layerTau));
+                const layerQ0 = layerPi * pressureDrop * Math.max(0, depletionRateScale);
+                oilRate += layerQ0 * expTerm;
+                cumulativeOil += layerQ0 * layerTau * (1 - expTerm);
+                pressureFraction += expTerm / layerOilPis.length;
+            }
+
+            return [{
+                time,
+                oilRate,
+                waterRate: 0,
+                cumulativeOil,
+                // Equal-thickness layers have equal storage, so their mean
+                // pressures are volume-averaged rather than PI-weighted.
+                avgPressure: producerBhp + pressureDrop * pressureFraction,
+            }];
+        } else if (b < 1e-8) {
             // ── Exponential decline (b ≈ 0) ──────────────────────────────
             // q(t) = q_i · exp(−D_i·t)
             // N_p(t) = q_i/D_i · [1 − exp(−D_i·t)]
@@ -337,7 +379,8 @@ export function calculateDepletionAnalyticalProduction(
             shapeLabel,
             q0,
             tau,
-            arpsB: b,
+            arpsB: layeredComposite ? undefined : b,
+            layerTimeConstants,
         },
         production,
     };

@@ -4,7 +4,8 @@
  * Used by: dep_pss, dep_decline, dep_arps.
  *
  * Depletion has no injector so injection rate, VRR, and water-cut panels are omitted.
- * Analytical reference is the Dietz PSS / Arps decline model.
+ * Analytical reference is the Dietz/Fetkovich depletion model, including the
+ * exact independent-layer superposition used by dep_arps.
  */
 
 import type { UniversalPanelDef } from '../../charts/universalChartTypes';

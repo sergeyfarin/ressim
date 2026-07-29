@@ -23,7 +23,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 | Sweep Efficiency | Combined Sweep | `sweep_combined` | Combined areal and vertical contact with selectable layered correlation |
 | Depletion & Decline | Bounded Reservoir Depletion | `dep_pss` | Dietz pseudo-steady-state shape-factor response |
 | Depletion & Decline | Boundary-Dominated Decline — Fetkovich | `dep_decline` | Late-time exponential decline interpretation |
-| Depletion & Decline | Layered Depletion — Arps Fit | `dep_arps` | Arps fit to a commingled layered simulation |
+| Depletion & Decline | Layered Depletion — Composite Decline | `dep_arps` | Exact superposition of noncommunicating layer declines at fixed total PI |
 | Pressure-Transient Analysis | Well-Test Drawdown | `dep_welltest` | Line-source drawdown; permeability, skin, and near-well grid bias |
 | Gas-Dominated Recovery | Gas Injection | `gas_injection` | Gas-oil fractional-flow breakthrough |
 | Gas-Dominated Recovery | Solution Gas Drive | `gas_drive` | Black-oil depletion with OPM Flow reference |

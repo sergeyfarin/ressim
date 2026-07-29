@@ -373,6 +373,88 @@ describe('depletionAnalytical', () => {
         expect(har.production[lastIdx].cumulativeOil).toBeGreaterThan(hyp.production[lastIdx].cumulativeOil);
     });
 
+    it('sums independent layer exponentials instead of collapsing their time constants', () => {
+        const common = {
+            reservoir: { length: 480, area: 500, porosity: 0.2 } as const,
+            timeHistory: [0, 0.5, 2, 10],
+            initialSaturation: 0.1,
+            nz: 5,
+            permMode: 'perLayer',
+            uniformPermX: 20,
+            uniformPermY: 20,
+            layerPermsX: [30, 25, 20, 15, 10],
+            layerPermsY: [30, 25, 20, 15, 10],
+            cellDx: 10,
+            cellDy: 10,
+            cellDz: 10,
+            wellRadius: 0.1,
+            wellSkin: 0,
+            muO: 1,
+            sWc: 0.1,
+            sOr: 0.1,
+            nO: 2,
+            c_o: 1e-5,
+            c_w: 3e-6,
+            cRock: 1e-6,
+            initialPressure: 1500,
+            producerBhp: 50,
+            depletionRateScale: 1,
+        };
+
+        const composite = calculateDepletionAnalyticalProduction({
+            ...common,
+            layeredComposite: true,
+            arpsB: 1,
+        });
+        const collapsed = calculateDepletionAnalyticalProduction({
+            ...common,
+            layeredComposite: false,
+            arpsB: 0,
+        });
+
+        expect(composite.meta.arpsB).toBeUndefined();
+        expect(composite.meta.layerTimeConstants).toHaveLength(5);
+        expect(new Set(composite.meta.layerTimeConstants?.map((tau) => tau.toFixed(8))).size).toBe(5);
+        expect(composite.production[0].oilRate).toBeCloseTo(collapsed.production[0].oilRate, 10);
+        expect(composite.production[2].oilRate).not.toBeCloseTo(collapsed.production[2].oilRate, 4);
+    });
+
+    it('volume-averages layered pressure instead of deriving it from total PI', () => {
+        const result = calculateDepletionAnalyticalProduction({
+            reservoir: { length: 100, area: 200, porosity: 0.2 },
+            timeHistory: [1],
+            initialSaturation: 0.1,
+            nz: 2,
+            permMode: 'perLayer',
+            uniformPermX: 10,
+            uniformPermY: 10,
+            layerPermsX: [100, 1],
+            layerPermsY: [100, 1],
+            cellDx: 10,
+            cellDy: 10,
+            cellDz: 10,
+            wellRadius: 0.1,
+            wellSkin: 0,
+            muO: 1,
+            sWc: 0.1,
+            sOr: 0.1,
+            nO: 2,
+            c_o: 1e-5,
+            c_w: 3e-6,
+            cRock: 1e-6,
+            initialPressure: 300,
+            producerBhp: 100,
+            depletionRateScale: 1,
+            layeredComposite: true,
+        });
+
+        const [fastTau, slowTau] = result.meta.layerTimeConstants!;
+        const expectedPressure = 100 + 200 * (
+            Math.exp(-1 / fastTau) + Math.exp(-1 / slowTau)
+        ) / 2;
+        expect(result.production[0].avgPressure).toBeCloseTo(expectedPressure, 10);
+    });
+
     it('pressure tracks rate through PI for all Arps b values', () => {
         const baseParams = {
             reservoir: { length: 480, area: 100, porosity: 0.2 } as const,

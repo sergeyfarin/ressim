@@ -177,6 +177,7 @@ function buildDepletionParams(
         producerBhp: toFiniteNumber(params.producerBhp, 100),
         depletionRateScale: toFiniteNumber(params.analyticalDepletionRateScale, 1),
         arpsB: toFiniteNumber(params.analyticalArpsB, 0),
+        layeredComposite: params.analyticalLayeredComposite === true,
         nx: toFiniteNumber(params.nx, 1),
         ny: toFiniteNumber(params.ny, 1),
         producerI: params.producerI != null ? toFiniteNumber(params.producerI, 0) : undefined,

@@ -17,6 +17,12 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **Layered depletion reference matched the wrong physical model (2026-07-29).** Replaced the
+  repeated numerical runs behind the Arps-b picker with a fixed-total-PI layer-contrast experiment.
+  Each layer is now a noncommunicating tank, and the quantitative reference sums its own PI/storage
+  exponential and volume-averages layer pressure. Added a WASM replay gate across 3:1, 20:1, and
+  100:1 contrast; corrected the decline citation from Fetkovich's 1971 aquifer paper to SPE-4629
+  (1980).
 - [x] **3D camera fit adapts to model shape (2026-07-29).** Replaced the bounding-sphere camera
   distance and its large fixed multiplier with a projected bounding-box fit. Long, thin 1D grids
   now fill the canvas more closely, while XZ/vertical grids use their actual projected height and

@@ -3,35 +3,32 @@ import type { Scenario } from '../scenarios';
 import { depletionDef } from '../analyticalAdapters';
 
 /**
- * Arps Hyperbolic Decline scenario.
+ * Layered composite-decline scenario.
  *
  * Physics basis: a 5-layer commingled reservoir with permeability contrast
- * produces composite decline that looks hyperbolic — even though each layer
- * individually declines exponentially (Fetkovich 1971).  The superposition
- * of multiple exponential declines with different time constants τ_j = Vp_j·c_t/PI_j
- * yields an effective Arps b-parameter between 0 and 1.
- *
- * The sensitivity dimension varies the Arps b-parameter in the analytical
- * reference so the user can see which b value best matches the layered simulation.
+ * produces a composite decline that can resemble an Arps hyperbola over a
+ * finite window, even though each bounded layer eventually declines
+ * exponentially. The quantitative reference is the exact superposition of
+ * the five layer responses, not an imposed Arps exponent.
  *
  * Reference: Arps, J.J. (1945) "Analysis of Decline Curves", Trans. AIME 160.
- *            Fetkovich, M.J. (1971) "A Simplified Approach to Water Influx
- *            Calculations", JPT 23(7).
+ *            Fetkovich, M.J. (1980) "Decline Curve Analysis Using Type
+ *            Curves", JPT 32(6), SPE-4629-PA.
  */
 export const dep_arps: Scenario = {
     key: 'dep_arps',
-    label: 'Layered Depletion — Arps Fit',
+    label: 'Layered Depletion — Composite Decline',
     catalog: {
         group: 'depletion-decline',
         role: 'interpretation',
         caseMode: 'dep',
-        parameterSummary: 'Five commingled layers · composite depletion decline · Arps b-exponent fit',
+        parameterSummary: 'Five noncommunicating layers · fixed total PI · composite exponential decline',
     },
-    description: 'Commingled multi-layer depletion at constant BHP. Each layer declines exponentially with its own time constant; the composite rate follows Arps hyperbolic decline with 0 < b < 1. Vary the Arps b exponent to match the layered simulation.',
-    analyticalMethodSummary: 'Arps (1945) generalised decline — exponential (b=0), hyperbolic (0<b<1), or harmonic (b=1) rate decline matched against commingled layered simulation.',
-    analyticalMethodReference: 'Arps (1945); Fetkovich (1971).',
+    description: 'Five noncommunicating layers deplete through a commingled constant-BHP producer. Total productivity is held fixed while permeability contrast changes the spread of layer time constants. The reference sums the five boundary-dominated exponential responses exactly; its curved composite illustrates why an empirical Arps fit can appear hyperbolic only over a finite time window.',
+    analyticalMethodSummary: 'Exact superposition of five Fetkovich boundary-dominated exponential layer responses. Arps decline is an interpretation of the composite shape, not the quantitative reference.',
+    analyticalMethodReference: 'Arps (1945), SPE-945228-G; Fetkovich (1980), SPE-4629-PA.',
     chartLayoutKey: 'fetkovich',
-    defaultSensitivityDimensionKey: 'arps_b',
+    defaultSensitivityDimensionKey: 'layer_contrast',
     capabilities: {
         analyticalMethod: 'depletion',
         hasInjector: false,
@@ -65,23 +62,26 @@ export const dep_arps: Scenario = {
         capillaryEnabled: false,
         capillaryPEntry: 0,
         capillaryLambda: 2,
-        // Grid: 1D slab 48 cells × 1 × 5 layers, 480 m × 10 m × 50 m
-        // 5 layers with ~10:1 permeability contrast — produces b ≈ 0.3–0.5
-        // Layers arranged high-to-low (top = best): 100, 50, 20, 10, 5 mD
-        // This contrast is representative of a typical clastic sequence
-        // (Dykstra-Parsons V_DP ≈ 0.72)
-        nx: 48,
+        // Grid: five vertically stacked, noncommunicating tank cells. Large
+        // areal cells provide enough storage for the decline to remain visible
+        // over the interactive run while avoiding within-layer transients.
+        // Log-spaced layer permeabilities, normalised to a 20 mD arithmetic
+        // mean. The sensitivity changes contrast without changing total PI.
+        nx: 1,
         ny: 1,
         nz: 5,
-        cellDx: 10,
-        cellDy: 10,
+        cellDx: 1000,
+        cellDy: 1000,
         cellDz: 10,
         permMode: 'perLayer',
         uniformPermX: 20,
         uniformPermY: 20,
         uniformPermZ: 2,
-        layerPermsX: [100, 50, 20, 10, 5],
-        layerPermsY: [100, 50, 20, 10, 5],
+        layerPermsX: [53.98942, 25.53002, 12.0724, 5.70869, 2.69947],
+        layerPermsY: [53.98942, 25.53002, 12.0724, 5.70869, 2.69947],
+        // Suppress inter-layer crossflow so the numerical model satisfies the
+        // independent-layer assumption used by the analytical superposition.
+        layerPermsZ: [1e-9, 1e-9, 1e-9, 1e-9, 1e-9],
         // Initial conditions: high pressure reservoir depleting to low BHP
         initialPressure: 1500,
         initialSaturation: 0.1,
@@ -95,16 +95,16 @@ export const dep_arps: Scenario = {
         targetProducerRate: 0,
         injectorI: 0,
         injectorJ: 0,
-        producerI: 47,
+        producerI: 0,
         producerJ: 0,
         well_radius: 0.1,
         well_skin: 0,
-        // Analytical: default b = 0.4 as starting point for layered match
-        analyticalArpsB: 0.4,
+        analyticalLayeredComposite: true,
+        analyticalDepletionStartDays: 0,
         // Numerics
         fimEnabled: false,
-        delta_t_days: 0.25,
-        steps: 250,
+        delta_t_days: 0.025,
+        steps: 600,
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 75,
         max_well_rate_change_fraction: 0.75,
@@ -114,79 +114,36 @@ export const dep_arps: Scenario = {
     liveChartPanels: depletionLivePanels,
     sensitivities: [
         {
-            key: 'arps_b',
-            label: 'Arps b Exponent',
-            description: 'Arps decline exponent b controls the curvature of rate decline. b=0 is exponential (Fetkovich), b=1 is harmonic. For commingled layered reservoirs, b typically falls between 0.3 and 0.5. — Arps (1945)',
-            analyticalOverlayMode: 'per-result',
-            variants: [
-                {
-                    key: 'b_exponential',
-                    label: 'b = 0  (exponential)',
-                    description: 'Pure exponential decline — correct for single-layer PSS. Poor fit for layered systems.',
-                    paramPatch: { analyticalArpsB: 0 },
-                    affectsAnalytical: true,
-                },
-                {
-                    key: 'b_low',
-                    label: 'b = 0.3  (mild hyperbolic)',
-                    description: 'Mild hyperbolic — moderate layer contrast or partial heterogeneity.',
-                    paramPatch: { analyticalArpsB: 0.3 },
-                    affectsAnalytical: true,
-                },
-                {
-                    key: 'b_base',
-                    label: 'b = 0.5  (hyperbolic)',
-                    description: 'Mid-range hyperbolic — typical for commingled layered systems with ~10:1 perm contrast.',
-                    paramPatch: { analyticalArpsB: 0.5 },
-                    affectsAnalytical: true,
-                    enabledByDefault: true,
-                },
-                {
-                    key: 'b_high',
-                    label: 'b = 0.7  (strong hyperbolic)',
-                    description: 'Strong hyperbolic — high heterogeneity or volatile oil effects.',
-                    paramPatch: { analyticalArpsB: 0.7 },
-                    affectsAnalytical: true,
-                },
-                {
-                    key: 'b_harmonic',
-                    label: 'b = 1  (harmonic)',
-                    description: 'Harmonic decline — extreme case; rate decline inversely proportional to time.',
-                    paramPatch: { analyticalArpsB: 1.0 },
-                    affectsAnalytical: true,
-                },
-            ],
-        },
-        {
             key: 'layer_contrast',
             label: 'Layer Contrast',
-            description: 'Permeability contrast between layers controls the effective Arps b. Higher contrast → more spread in layer time constants → higher effective b.',
+            description: 'Permeability contrast changes only the spread of layer decline time constants. Every case retains a 20 mD arithmetic mean and the same total initial PI, so differences reflect heterogeneity rather than a hidden productivity change.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'contrast_low',
                     label: 'Low contrast  (3:1)',
-                    description: 'Mild heterogeneity — layers from 30 to 10 mD. Effective b ≈ 0.1–0.2.',
+                    description: 'Mild heterogeneity with a 20 mD mean; the composite stays close to one exponential.',
                     paramPatch: {
-                        layerPermsX: [30, 25, 20, 15, 10],
-                        layerPermsY: [30, 25, 20, 15, 10],
+                        layerPermsX: [32.1625, 24.43822, 18.56903, 14.10942, 10.72083],
+                        layerPermsY: [32.1625, 24.43822, 18.56903, 14.10942, 10.72083],
                     },
                     affectsAnalytical: true,
                 },
                 {
                     key: 'contrast_base',
                     label: 'Moderate contrast  (20:1)',
-                    description: 'Base case — layers from 100 to 5 mD (V_DP ≈ 0.72). Effective b ≈ 0.3–0.5.',
+                    description: 'Base log-spaced layering with a 20 mD mean and a wider spread of decline times.',
                     paramPatch: {},
                     affectsAnalytical: true,
+                    enabledByDefault: true,
                 },
                 {
                     key: 'contrast_high',
                     label: 'High contrast  (100:1)',
-                    description: 'Strong heterogeneity — layers from 500 to 5 mD (V_DP ≈ 0.87). Effective b ≈ 0.5–0.7.',
+                    description: 'Strong heterogeneity at the same 20 mD mean; fast layers deplete early while slow layers sustain the tail.',
                     paramPatch: {
-                        layerPermsX: [500, 100, 20, 10, 5],
-                        layerPermsY: [500, 100, 20, 10, 5],
+                        layerPermsX: [68.59414, 21.69137, 6.85941, 2.16914, 0.68594],
+                        layerPermsY: [68.59414, 21.69137, 6.85941, 2.16914, 0.68594],
                     },
                     affectsAnalytical: true,
                 },

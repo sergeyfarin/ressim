@@ -109,6 +109,7 @@ export const depletionDef: ScenarioAnalyticalDef = {
         producerBhp: params.producerBhp as number,
         depletionRateScale: params.analyticalDepletionRateScale as number,
         arpsB: params.analyticalArpsB as number | undefined,
+        layeredComposite: params.analyticalLayeredComposite === true,
         nx: params.nx as number,
         ny: params.ny as number,
         producerI: params.producerI as number,

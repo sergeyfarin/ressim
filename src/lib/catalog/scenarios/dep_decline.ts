@@ -13,7 +13,7 @@ export const dep_decline: Scenario = {
     },
     description: 'Constant-BHP production from a 1D finite reservoir. The simulator includes the early near-well transient, then settles into the boundary-dominated exponential decline assumed by Fetkovich; the analytical overlay is clipped to that late-time window and shown on log-time axes.',
     analyticalMethodSummary: 'Fetkovich exponential decline — late-time boundary-dominated rate and recovery reference curves for constant-BHP depletion, used here for clean PI/rate-scale sensitivities after the early transient has decayed.',
-    analyticalMethodReference: 'Fetkovich (1971).',
+    analyticalMethodReference: 'Fetkovich (1980), SPE-4629-PA.',
     chartLayoutKey: 'fetkovich',
     defaultSensitivityDimensionKey: 'permeability',
     capabilities: {
