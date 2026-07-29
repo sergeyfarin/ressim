@@ -17,6 +17,10 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **3D camera fit adapts to model shape (2026-07-29).** Replaced the bounding-sphere camera
+  distance and its large fixed multiplier with a projected bounding-box fit. Long, thin 1D grids
+  now fill the canvas more closely, while XZ/vertical grids use their actual projected height and
+  retain a consistent safety margin.
 - [x] **Well-Test drawdown presentation (2026-07-29).** Restored the scenario's intentionally
   absent 3D default because rate-controlled skin variants have the same reservoir pressure field;
   made flowing BHP the sole expanded and explicitly visible chart, demoted constant oil rate to a

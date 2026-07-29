@@ -30,6 +30,7 @@
         WellStateEntry,
     } from "../simulator-types";
     import ToggleGroup from "../ui/controls/ToggleGroup.svelte";
+    import { fitPerspectiveCameraToBox } from "./cameraFit";
     import { getPressureMaxFromHistorySlice as getHistoryPressureMax } from "./spatialViewModel";
 
     type HistoryEntry = SimulatorSnapshot;
@@ -772,16 +773,6 @@
         // Store radius for dynamic clipping updates
         modelRadius = radius;
 
-        const verticalFov = (perspectiveCamera.fov * Math.PI) / 180;
-        const horizontalFov =
-            2 *
-            Math.atan(Math.tan(verticalFov * 0.5) * perspectiveCamera.aspect);
-        const fitDistanceV =
-            radius / Math.max(Math.sin(verticalFov * 0.5), 1e-3);
-        const fitDistanceH =
-            radius / Math.max(Math.sin(horizontalFov * 0.5), 1e-3);
-        const fitDistance = Math.max(fitDistanceV, fitDistanceH) * 2.1;
-
         const dirX = 1.2;
         const dirY = -1.8;
         const dirZ = 0.8;
@@ -789,6 +780,12 @@
         const ux = dirX / dirLen;
         const uy = dirY / dirLen;
         const uz = dirZ / dirLen;
+        const fitDistance = fitPerspectiveCameraToBox({
+            halfExtents: [halfX, halfY, halfZ],
+            cameraDirection: [ux, uy, uz],
+            verticalFovRadians: (perspectiveCamera.fov * Math.PI) / 180,
+            aspect,
+        });
 
         perspectiveCamera.position.set(
             ux * fitDistance,
