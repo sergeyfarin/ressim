@@ -447,6 +447,32 @@ describe('scenario capability validation', () => {
         }
     });
 
+    it('every live scenario declares the spatial property that best exposes its physics', () => {
+        const expectedDefaults = {
+            wf_bl1d: 'saturation_water',
+            wf_capillary: 'saturation_water',
+            sweep_areal: 'saturation_water',
+            sweep_vertical: 'saturation_water',
+            sweep_combined: 'saturation_water',
+            dep_pss: 'pressure',
+            dep_decline: 'pressure',
+            dep_arps: 'pressure',
+            dep_nct: 'pressure',
+            dep_welltest: 'pressure',
+            // Black-oil depletion is a gas-liberation exhibit, unlike the oil-only depletion cases.
+            dep_pvt: 'saturation_gas',
+            gas_injection: 'saturation_gas',
+            gas_drive: 'saturation_gas',
+            spe1_gas_injection: 'saturation_gas',
+            // This formulation comparison is a two-phase waterflood.
+            solver_fim_impes: 'saturation_water',
+        } as const;
+
+        expect(Object.fromEntries(
+            listScenarios().map((scenario) => [scenario.key, scenario.capabilities.default3DScalar]),
+        )).toEqual(expectedDefaults);
+    });
+
     it('validateScenarioCapabilities rejects a prerun-artifacts scenario that leaves the 3D view on', () => {
         const errors = validateScenarioCapabilities({
             analyticalMethod: 'none',

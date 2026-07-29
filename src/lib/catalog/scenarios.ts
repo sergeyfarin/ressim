@@ -159,7 +159,7 @@ export type ScenarioAnalyticalOption = {
 };
 
 /** Default 3D scalar property to display when a scenario loads. */
-export type Default3DScalar = 'saturation_water' | 'saturation_gas' | null;
+export type Default3DScalar = 'pressure' | 'saturation_water' | 'saturation_gas' | null;
 
 // ─── Analytical output contract ──────────────────────────────────────────────
 

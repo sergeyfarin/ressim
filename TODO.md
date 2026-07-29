@@ -20,7 +20,9 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 - [x] **Spatial-view controls and profile alignment (2026-07-28).** Moved the shared property
   selector and legend range onto one compact row below the 3D canvas, followed by the live/scenario
   result selector and timestep scrubber; made the profile heading reflect the selected property;
-  reduced the 3D canvas height by 25%.
+  reduced the 3D canvas height by 25%. Scenario definitions now explicitly default the shared 3D
+  and profile selector to water saturation for waterflood/sweep cases, pressure for oil-only
+  depletion and pressure-transient cases, and gas saturation for gas/black-oil cases.
 
 ### SPE1 reference data (2026-07-24)
 - [x] **SPE1 published oil-rate/BHP overlays were wrong.** The 4-point "Brontosaurus" samples showed

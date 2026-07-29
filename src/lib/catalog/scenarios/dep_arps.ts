@@ -35,7 +35,7 @@ export const dep_arps: Scenario = {
     capabilities: {
         analyticalMethod: 'depletion',
         hasInjector: false,
-        default3DScalar: null,
+        default3DScalar: 'pressure',
         requiresThreePhaseMode: false,
     },
     solverPolicy: {

@@ -92,9 +92,7 @@ export const dep_welltest: Scenario = {
     capabilities: {
         analyticalMethod: 'well-test',
         hasInjector: false,
-        // No displacement front to look at — the 3D view has nothing to add
-        // that the pressure transient does not say better.
-        default3DScalar: null,
+        default3DScalar: 'pressure',
         requiresThreePhaseMode: false,
     },
     solverPolicy: {
