@@ -88,13 +88,15 @@ describe('analyticalMethodRegistry', () => {
         expect(slot?.panelKey).toBe('producer_bhp');
     });
 
-    it('never draws a shared well-test overlay', () => {
-        // A drawdown reference depends on k, skin and rate — exactly what the
-        // well-test scenarios vary — so one shared curve would be wrong for
-        // every variant but one.
+    it('honours a shared well-test reference for numerical-only studies', () => {
+        // Skin/permeability studies request per-result curves, while a grid
+        // study holds the analytical physics fixed and requests one shared
+        // reference rather than three coincident copies.
         const descriptor = getAnalyticalMethodDescriptor('well-test');
-        expect(descriptor.resolveOverlayMode({ requested: 'shared', paramSets: [] })).toBe('per-result');
-        expect(slotsForContext(descriptor, 'shared')).toEqual([]);
+        expect(descriptor.resolveOverlayMode({ requested: 'shared', paramSets: [] })).toBe('shared');
+        expect(descriptor.resolveOverlayMode({ requested: 'per-result', paramSets: [] })).toBe('per-result');
+        expect(slotsForContext(descriptor, 'shared').map((slot) => slot.curveKey))
+            .toEqual(['producer-bhp-reference', 'oil-rate-reference']);
     });
 
     it('honours an explicit shared/per-result request for the BL family', () => {

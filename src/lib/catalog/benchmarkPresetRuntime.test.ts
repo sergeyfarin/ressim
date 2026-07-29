@@ -581,6 +581,28 @@ describe('frontend benchmark preset runtime coverage', () => {
     simulator.free();
   });
 
+  it('preserves the Well-Test reservoir-rate target through the worker-style payload', async () => {
+    await ensureWasmReady();
+
+    const flowingBhps = ['skin_stimulated', 'skin_clean', 'skin_damaged'].map((variantKey) => {
+      const params = getScenarioWithVariantParams('dep_welltest', 'skin', variantKey);
+      const payload = buildBenchmarkCreatePayload(params);
+      const simulator = configureSimulatorFromPayload(payload);
+
+      simulator.step(Number(params.delta_t_days));
+      const producer = (simulator.getWellState() as Array<Record<string, unknown>>)
+        .find((well) => well.injector === false);
+      const flowingBhp = Number(producer?.flowing_bhp);
+      simulator.free();
+
+      expect(flowingBhp).toBeLessThan(Number(params.initialPressure) - 1);
+      return flowingBhp;
+    });
+
+    expect(flowingBhps[0]).toBeGreaterThan(flowingBhps[1]);
+    expect(flowingBhps[1]).toBeGreaterThan(flowingBhps[2]);
+  });
+
   it('WASM bindings create free gas for a minimal three-phase gas-injection case', async () => {
     await ensureWasmReady();
 

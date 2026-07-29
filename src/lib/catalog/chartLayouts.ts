@@ -214,19 +214,25 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: false,
             logScale: false,
-            panelOrder: ['producer_bhp', 'oil_rate', 'diagnostics', 'control_limits'],
+            panelOrder: ['producer_bhp', 'diagnostics', 'oil_rate', 'control_limits'],
             panels: {
                 producer_bhp: {
                     title: 'Flowing BHP',
                     curveKeys: ['producer-bhp-sim', 'producer-bhp-reference'],
                     scalePreset: 'pressure',
+                    // The shared producer-BHP panel is hidden by default;
+                    // well-test interpretation makes it the primary exhibit.
+                    visible: true,
                     expanded: true,
                 },
                 oil_rate: {
-                    title: 'Oil Rate',
+                    title: 'Oil Rate (Control Check)',
                     curveKeys: ['oil-rate-sim', 'oil-rate-reference'],
                     scalePreset: 'rates',
-                    expanded: true,
+                    // Constant rate is the imposed test condition, not the
+                    // response being interpreted. Keep it available to verify
+                    // control without letting coincident flat lines dominate.
+                    expanded: false,
                 },
                 diagnostics: {
                     title: 'Average Reservoir Pressure',
@@ -238,6 +244,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
                     title: 'Control-Limit Fraction',
                     curveKeys: ['producer-bhp-limited-sim'],
                     scalePreset: 'fraction',
+                    visible: true,
                     expanded: false,
                 },
             },

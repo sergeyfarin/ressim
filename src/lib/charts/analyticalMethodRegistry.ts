@@ -401,7 +401,7 @@ const wellTest: AnalyticalMethodDescriptor = {
             sharedLabel: 'Reference Solution Flowing BHP',
             perCaseSuffix: ' Flowing BHP',
             previewLabel: 'Analytical Flowing BHP',
-            contexts: ['per-result', 'pending', 'preview'],
+            contexts: ['shared', 'per-result', 'pending', 'preview'],
         },
         {
             // No 'pending' context, matching the pre-registry behavior: a queued
@@ -413,7 +413,7 @@ const wellTest: AnalyticalMethodDescriptor = {
             sharedLabel: 'Reference Solution Oil Rate',
             perCaseSuffix: ' Oil Rate',
             previewLabel: 'Analytical Oil Rate',
-            contexts: ['per-result', 'preview'],
+            contexts: ['shared', 'per-result', 'preview'],
         },
     ],
     fromResult: (result, derived, xAxisMode) => fromOverlay(
@@ -428,10 +428,10 @@ const wellTest: AnalyticalMethodDescriptor = {
             'oil-rate-reference': curves.oilRates,
         });
     },
-    // Always per-result: a drawdown reference depends on k, skin and rate, which
-    // is exactly what these scenarios vary, so a shared curve would be wrong for
-    // every variant but one.
-    resolveOverlayMode: () => 'per-result',
+    // Skin/permeability studies request per-result curves because their
+    // references move. Grid studies explicitly request one shared reference:
+    // their analytical physics is unchanged and duplicate curves add clutter.
+    resolveOverlayMode: ({ requested }) => requested === 'shared' ? 'shared' : 'per-result',
     panelPresentation: NO_OVERLAY_PRESENTATION,
     referenceLabel: 'Well-test reference solution',
 };

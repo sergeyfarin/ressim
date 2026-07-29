@@ -458,7 +458,8 @@ describe('scenario capability validation', () => {
             dep_decline: 'pressure',
             dep_arps: 'pressure',
             dep_nct: 'pressure',
-            dep_welltest: 'pressure',
+            // Skin changes flowing BHP, not the rate-controlled pressure field.
+            dep_welltest: null,
             // Black-oil depletion is a gas-liberation exhibit, unlike the oil-only depletion cases.
             dep_pvt: 'saturation_gas',
             gas_injection: 'saturation_gas',
@@ -621,6 +622,15 @@ describe('scenario capability validation', () => {
         });
         expect(CHART_LAYOUTS.oil_depletion.rateChart?.xAxisRangePolicy).toEqual({
             mode: 'data-extent',
+        });
+        expect(CHART_LAYOUTS.well_test.rateChart).toMatchObject({
+            panelOrder: ['producer_bhp', 'diagnostics', 'oil_rate', 'control_limits'],
+            panels: {
+                producer_bhp: { visible: true, expanded: true },
+                oil_rate: { expanded: false },
+                diagnostics: { expanded: false },
+                control_limits: { visible: true, expanded: false },
+            },
         });
     });
 

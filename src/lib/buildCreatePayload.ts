@@ -117,7 +117,13 @@ function buildLegacyWellDefinitions(input: {
       schedule: {
         controlMode: input.producerControlMode,
         targetRate: input.targetProducerRate,
-        targetSurfaceRate: input.targetProducerSurfaceRate,
+        // A zero surface target is the UI/catalog sentinel for "not set".
+        // Serializing it into an explicit schedule would take precedence over
+        // the reservoir-volume target and silently turn a positive-rate well
+        // into a zero-rate well.
+        targetSurfaceRate: input.targetProducerSurfaceRate > 0
+          ? input.targetProducerSurfaceRate
+          : undefined,
         bhpLimit: input.bhpMin,
         enabled: true,
       } satisfies SimulatorWellSchedule,
@@ -140,7 +146,9 @@ function buildLegacyWellDefinitions(input: {
       schedule: {
         controlMode: input.injectorControlMode,
         targetRate: input.targetInjectorRate,
-        targetSurfaceRate: input.targetInjectorSurfaceRate,
+        targetSurfaceRate: input.targetInjectorSurfaceRate > 0
+          ? input.targetInjectorSurfaceRate
+          : undefined,
         bhpLimit: input.bhpMax,
         enabled: input.injectorEnabled,
       } satisfies SimulatorWellSchedule,

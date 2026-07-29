@@ -17,6 +17,18 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **Well-Test drawdown presentation (2026-07-29).** Restored the scenario's intentionally
+  absent 3D default because rate-controlled skin variants have the same reservoir pressure field;
+  made flowing BHP the sole expanded and explicitly visible chart, demoted constant oil rate to a
+  collapsed control check, and made the grid-resolution study render its unchanged analytical
+  solution once rather than as three coincident per-result curves. The explicit visibility matters
+  because dedicated BHP panels are hidden in the shared fallback presentation.
+- [x] **Positive reservoir-rate targets overridden by zero surface-rate sentinels (2026-07-29).**
+  Legacy-generated explicit well schedules serialized the UI's unset `targetSurfaceRate = 0` and
+  the well controller correctly gave it precedence over `targetRate`. Rate-controlled catalog
+  wells therefore ran at zero rate (the Well-Test BHP stayed at its 300-bar initial pressure).
+  Generated schedules now omit non-positive surface targets so the intended reservoir target is
+  used; genuinely zero-rate schedules remain expressible through `targetRate: 0`.
 - [x] **Spatial-view controls and profile alignment (2026-07-28).** Moved the shared property
   selector and legend range onto one compact row below the 3D canvas, followed by the live/scenario
   result selector and timestep scrubber; made the profile heading reflect the selected property;

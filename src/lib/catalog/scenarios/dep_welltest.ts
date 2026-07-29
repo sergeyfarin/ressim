@@ -92,7 +92,11 @@ export const dep_welltest: Scenario = {
     capabilities: {
         analyticalMethod: 'well-test',
         hasInjector: false,
-        default3DScalar: 'pressure',
+        // Skin is the default sensitivity, and under rate control it changes
+        // flowing BHP without changing the reservoir pressure field. A default
+        // pressure view would therefore show three effectively identical
+        // spatial results and imply that the sensitivity has no effect.
+        default3DScalar: null,
         requiresThreePhaseMode: false,
     },
     solverPolicy: {

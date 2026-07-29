@@ -81,6 +81,24 @@ describe('buildCreatePayloadFromState', () => {
     expect(payload.targetProducerSurfaceRate).toBe(34)
   })
 
+  it('does not let unset surface targets override positive reservoir-rate well schedules', () => {
+    const payload = buildCreatePayloadFromState({
+      nx: 3,
+      ny: 3,
+      nz: 1,
+      injectorEnabled: false,
+      producerControlMode: 'rate',
+      targetProducerRate: 100,
+      targetProducerSurfaceRate: 0,
+    }) as SimulatorCreatePayload
+
+    expect(payload.wells?.[0]?.schedule).toMatchObject({
+      controlMode: 'rate',
+      targetRate: 100,
+    })
+    expect(payload.wells?.[0]?.schedule?.targetSurfaceRate).toBeUndefined()
+  })
+
   it('defaults fimEnabled to false and preserves explicit FIM opt-in', () => {
     const defaultPayload = buildCreatePayloadFromState({
       nx: 1,

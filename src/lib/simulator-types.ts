@@ -235,6 +235,8 @@ export interface WellStateEntry {
   j: number;
   k: number;
   bhp?: number;
+  /** Solved flowing pressure; differs from `bhp` for a rate-controlled well. */
+  flowing_bhp?: number;
   injector?: boolean;
   rate_o?: number;
   rate_w?: number;
