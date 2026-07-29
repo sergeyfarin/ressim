@@ -64,6 +64,38 @@ export function getPressureMaxFromHistorySlice(input: {
     return Number.isFinite(max) ? max : null;
 }
 
+export type PressureDisplayRange = { min: number; max: number };
+
+/**
+ * Resolve a stable, pre-run pressure envelope from the configured controls.
+ * Each active well contributes its configured BHP: a setpoint under pressure
+ * control and the fallback limit under rate control. Disabled wells are ignored.
+ */
+export function resolvePressureDisplayRange(
+    params: Record<string, unknown>,
+): PressureDisplayRange {
+    const initial = Number(params.initialPressure);
+    const fallbackInitial = Number.isFinite(initial) ? initial : 0;
+    const candidates = [fallbackInitial];
+
+    if (params.producerEnabled !== false) {
+        const producerPressure = Number(params.producerBhp);
+        if (Number.isFinite(producerPressure)) candidates.push(producerPressure);
+    }
+
+    if (params.injectorEnabled !== false) {
+        const injectorPressure = Number(params.injectorBhp);
+        if (Number.isFinite(injectorPressure)) candidates.push(injectorPressure);
+    }
+
+    const min = Math.min(...candidates);
+    const max = Math.max(...candidates);
+    if (max > min) return { min, max };
+
+    const pad = Math.max(Math.abs(initial) * 0.05, 1);
+    return { min: min - pad, max: max + pad };
+}
+
 export function buildLayerThicknesses(input: {
     nz: number;
     cellDz: number;

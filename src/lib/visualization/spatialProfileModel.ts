@@ -11,12 +11,18 @@
  * Pure: no Chart.js, no Svelte, no DOM. `SpatialProfileChart.svelte` renders it.
  */
 
-import type { GridState } from '../simulator-types';
+import type { GridState, RateHistoryPoint } from '../simulator-types';
 import { buildLayerThicknesses } from './spatialViewModel';
-import { computeWelgeMetrics, type FluidProps, type RockProps } from '../analytical/fractionalFlow';
+import {
+    computeWelgeMetrics,
+    dfw_dSw,
+    type FluidProps,
+    type RockProps,
+} from '../analytical/fractionalFlow';
 
 /** Which grid direction the profile runs along. */
-export type SpatialProfileAxis = 'i' | 'j' | 'k';
+export type SpatialProfileAxis = 'i' | 'j' | 'k' | 'well-path';
+export type SpatialProfileLayerSelection = number | 'average';
 
 /**
  * The property to profile. Deliberately the same union as the 3D view's
@@ -59,6 +65,7 @@ const AXIS_LABELS: Record<SpatialProfileAxis, string> = {
     i: 'Distance along I (m)',
     j: 'Distance along J (m)',
     k: 'Depth along K (m)',
+    'well-path': 'Distance from injector to producer (m)',
 };
 
 const SATURATION_SERIES: Record<
@@ -77,6 +84,7 @@ function clampIndex(value: number, count: number): number {
 
 /** Number of cells along an axis. */
 export function axisLength(grid: SpatialProfileGrid, axis: SpatialProfileAxis): number {
+    if (axis === 'well-path') return 0;
     const count = axis === 'i' ? grid.nx : axis === 'j' ? grid.ny : grid.nz;
     return Math.max(0, Math.round(Number(count) || 0));
 }
@@ -87,6 +95,7 @@ export function axisLength(grid: SpatialProfileGrid, axis: SpatialProfileAxis): 
  * layer number.
  */
 export function axisDistances(grid: SpatialProfileGrid, axis: SpatialProfileAxis): number[] {
+    if (axis === 'well-path') return [];
     const count = axisLength(grid, axis);
     if (axis === 'k') {
         const thicknesses = buildLayerThicknesses({
@@ -120,14 +129,28 @@ export function buildSpatialProfile(input: {
     fixedI: number;
     fixedJ: number;
     fixedK: number;
+    layerSelection?: SpatialProfileLayerSelection;
+    injectorI?: number;
+    injectorJ?: number;
+    producerI?: number;
+    producerJ?: number;
     property: SpatialProfileProperty;
 }): SpatialProfileResult {
     const { grid, axis, property } = input;
     const nx = Math.max(0, Math.round(Number(grid.nx) || 0));
     const ny = Math.max(0, Math.round(Number(grid.ny) || 0));
     const nz = Math.max(0, Math.round(Number(grid.nz) || 0));
-    const count = axisLength(grid, axis);
-    const distances = axisDistances(grid, axis);
+    const path = axis === 'well-path'
+        ? buildWellPath(grid, input.injectorI ?? 0, input.injectorJ ?? 0,
+            input.producerI ?? nx - 1, input.producerJ ?? ny - 1)
+        : [];
+    const count = axis === 'well-path' ? path.length : axisLength(grid, axis);
+    const distances = axis === 'well-path'
+        ? path.map((cell, index) => index === 0 ? 0 : Math.hypot(
+            (cell.i - path[0].i) * grid.cellDx,
+            (cell.j - path[0].j) * grid.cellDy,
+        ))
+        : axisDistances(grid, axis);
 
     const isPressure = property === 'pressure';
     const isTernary = property === 'saturation_ternary';
@@ -172,12 +195,21 @@ export function buildSpatialProfile(input: {
         const source = input.gridState?.[entry.key] as Float64Array | undefined;
         const values: Array<number | null> = [];
         for (let step = 0; step < count; step += 1) {
-            const i = axis === 'i' ? step : fixedI;
-            const j = axis === 'j' ? step : fixedJ;
-            const k = axis === 'k' ? step : fixedK;
-            const cell = k * nx * ny + j * nx + i;
-            const raw = source?.[cell];
-            values.push(Number.isFinite(raw) ? Number(raw) : null);
+            const i = axis === 'well-path' ? path[step].i : axis === 'i' ? step : fixedI;
+            const j = axis === 'well-path' ? path[step].j : axis === 'j' ? step : fixedJ;
+            const averageLayers = input.layerSelection === 'average' && axis !== 'k';
+            const layers = averageLayers ? Array.from({ length: nz }, (_, k) => k) : [
+                axis === 'k' ? step : clampIndex(
+                    typeof input.layerSelection === 'number' ? input.layerSelection : fixedK,
+                    nz,
+                ),
+            ];
+            const samples = layers
+                .map((k) => source?.[k * nx * ny + j * nx + i])
+                .filter((raw): raw is number => Number.isFinite(raw));
+            values.push(samples.length > 0
+                ? samples.reduce((sum, raw) => sum + Number(raw), 0) / samples.length
+                : null);
         }
         return { key: entry.seriesKey, label: entry.label, values };
     });
@@ -185,10 +217,38 @@ export function buildSpatialProfile(input: {
     return { ...base, series };
 }
 
+/** Rasterized cell path joining two wells in the XY plane. */
+export function buildWellPath(
+    grid: SpatialProfileGrid,
+    injectorI: number,
+    injectorJ: number,
+    producerI: number,
+    producerJ: number,
+): Array<{ i: number; j: number }> {
+    let i = clampIndex(injectorI, grid.nx);
+    let j = clampIndex(injectorJ, grid.ny);
+    const endI = clampIndex(producerI, grid.nx);
+    const endJ = clampIndex(producerJ, grid.ny);
+    const di = Math.abs(endI - i);
+    const dj = Math.abs(endJ - j);
+    const stepI = i < endI ? 1 : -1;
+    const stepJ = j < endJ ? 1 : -1;
+    let error = di - dj;
+    const cells: Array<{ i: number; j: number }> = [];
+    while (true) {
+        cells.push({ i, j });
+        if (i === endI && j === endJ) break;
+        const twiceError = 2 * error;
+        if (twiceError > -dj) { error -= dj; i += stepI; }
+        if (twiceError < di) { error += di; j += stepJ; }
+    }
+    return cells;
+}
+
 // ─── Buckley-Leverett flood-front overlay ────────────────────────────────────
 
 export type FloodFrontOverlay = {
-    /** Step profile: shock saturation behind the front, initial ahead of it. */
+    /** BL rarefaction behind the shock and initial saturation ahead of it. */
     values: Array<number | null>;
     /** Front position along the axis, metres. */
     frontDistance: number;
@@ -196,8 +256,26 @@ export type FloodFrontOverlay = {
     initialSw: number;
 };
 
+/** Injected reservoir volume through a selected replay time, using report-step rates. */
+export function cumulativeInjectedVolume(
+    rateHistory: RateHistoryPoint[],
+    simTime: number,
+): number {
+    if (!(simTime > 0)) return 0;
+    let volume = 0;
+    let previousTime = 0;
+    for (const point of rateHistory) {
+        const pointTime = Math.max(previousTime, Math.min(simTime, Number(point.time) || 0));
+        const rate = Math.max(0, Number(point.total_injection) || 0);
+        volume += rate * Math.max(0, pointTime - previousTime);
+        previousTime = pointTime;
+        if (previousTime >= simTime) break;
+    }
+    return volume;
+}
+
 /**
- * Piston-like BL front for the water-saturation profile, at the snapshot time.
+ * Buckley–Leverett water-saturation profile at the snapshot time.
  *
  * Only meaningful along I in a scenario being flooded — it is the same Welge
  * construction the rate charts use for breakthrough, evaluated in space instead
@@ -215,11 +293,11 @@ export function buildFloodFrontOverlay(input: {
     rock: RockProps;
     fluid: FluidProps;
     initialSaturation: number;
-    injectionRate: number;
-    simTime: number;
+    porosity: number;
+    injectedVolume: number;
 }): FloodFrontOverlay | null {
     if (input.axis !== 'i' || input.property !== 'saturation_water') return null;
-    if (!(input.injectionRate > 0) || !(input.simTime > 0)) return null;
+    if (!(input.injectedVolume > 0) || !(input.porosity > 0)) return null;
 
     const nx = Math.max(0, Math.round(Number(input.grid.nx) || 0));
     if (nx === 0) return null;
@@ -245,12 +323,33 @@ export function buildFloodFrontOverlay(input: {
     );
 
     const length = nx * Math.max(1e-9, Number(input.grid.cellDx) || 1);
-    const frontVelocity = (input.injectionRate / crossSection) * Math.max(0, dfwShock);
-    const frontDistance = Math.max(0, Math.min(length, frontVelocity * input.simTime));
+    const poreVolumesInjected = input.injectedVolume
+        / Math.max(1e-12, input.porosity * crossSection * length);
+    const unclampedFrontDistance = length * poreVolumesInjected * Math.max(0, dfwShock);
+    const frontDistance = Math.max(0, Math.min(length, unclampedFrontDistance));
+
+    const maxSw = 1 - input.rock.s_or;
+    const slopeAtMaxSw = dfw_dSw(maxSw, input.rock, input.fluid, 1e-5);
+    function saturationBehindShock(targetSlope: number): number {
+        if (targetSlope >= dfwShock) return shockSw;
+        if (targetSlope <= slopeAtMaxSw) return maxSw;
+        let lo = shockSw;
+        let hi = maxSw;
+        for (let iteration = 0; iteration < 60; iteration += 1) {
+            const mid = 0.5 * (lo + hi);
+            if (dfw_dSw(mid, input.rock, input.fluid, 1e-5) > targetSlope) lo = mid;
+            else hi = mid;
+        }
+        return 0.5 * (lo + hi);
+    }
 
     const distances = axisDistances(input.grid, 'i');
     return {
-        values: distances.map((x) => (x <= frontDistance ? shockSw : initialSw)),
+        values: distances.map((x) => {
+            if (x > unclampedFrontDistance) return initialSw;
+            const dimensionlessDistance = x / length;
+            return saturationBehindShock(dimensionlessDistance / poreVolumesInjected);
+        }),
         frontDistance,
         shockSw,
         initialSw,

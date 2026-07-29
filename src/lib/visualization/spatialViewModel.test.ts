@@ -6,6 +6,7 @@ import {
     getPressureMaxFromHistorySlice,
     selectActiveGrid,
     selectActiveWellState,
+    resolvePressureDisplayRange,
 } from './spatialViewModel';
 import type { GridState, SimulatorSnapshot } from '../simulator-types';
 
@@ -51,5 +52,27 @@ describe('spatialViewModel', () => {
     it('builds per-layer visual thicknesses with fallback values', () => {
         expect(buildLayerThicknesses({ nz: 3, cellDz: 2, cellDzPerLayer: [1, 0, 4], visualExaggeration: 10 })).toEqual([10, 20, 40]);
         expect(getExpectedCellCount({ nx: 2, ny: 3, nz: 4 })).toBe(24);
+    });
+
+    it('sets the pressure display range from initial pressure and active pressure controls', () => {
+        expect(resolvePressureDisplayRange({
+            initialPressure: 1500,
+            producerEnabled: true,
+            producerControlMode: 'pressure',
+            producerBhp: 50,
+            injectorEnabled: false,
+            injectorBhp: 2000,
+        })).toEqual({ min: 50, max: 1500 });
+    });
+
+    it('uses configured well limits for rate-controlled wells', () => {
+        expect(resolvePressureDisplayRange({
+            initialPressure: 300,
+            producerControlMode: 'rate',
+            producerBhp: 100,
+            injectorEnabled: true,
+            injectorControlMode: 'rate',
+            injectorBhp: 500,
+        })).toEqual({ min: 100, max: 500 });
     });
 });

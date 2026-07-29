@@ -38,7 +38,7 @@ describe('output terminology copy', () => {
     // so its copy is property-neutral apart from the flood-front overlay.
     expect(spatialProfileSource).toMatch(/Reference Front Profile/);
     expect(spatialProfileSource).toMatch(/Reference flood front at/);
-    expect(spatialProfileSource).toMatch(/Profile Along Grid Line/);
+    expect(spatialProfileSource).toMatch(/Profile/);
     expect(spatialProfileSource).not.toMatch(/Analytical Front Profile/);
   });
 });

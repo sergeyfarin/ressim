@@ -56,7 +56,8 @@ import {
     type SweepGeometry,
     type SweepRFResult,
 } from '../analytical/sweepEfficiency';
-import type { GridState, WellState, SimulatorSnapshot } from '../simulator-types';
+import type { GridState, WellState, SimulatorSnapshot, RateHistoryPoint } from '../simulator-types';
+import { resolvePressureDisplayRange, type PressureDisplayRange } from '../visualization/spatialViewModel';
 
 // ---------- Presentation-layer types (live in nav store; used by App.svelte) ----------
 
@@ -64,9 +65,11 @@ export type OutputSelectionProfile = {
     gridState: GridState | null;
     nx: number; ny: number; nz: number;
     cellDx: number; cellDy: number; cellDz: number;
-    simTime: number; injectionRate: number;
+    simTime: number; porosity: number; rateHistory: RateHistoryPoint[];
     scenarioMode: 'waterflood' | 'depletion' | 'none';
-    sourceLabel: string; producerJ: number; initialSaturation: number;
+    sourceLabel: string;
+    injectorI: number; injectorJ: number; producerI: number; producerJ: number;
+    initialSaturation: number;
     rockProps: RockProps; fluidProps: FluidProps;
 };
 
@@ -76,6 +79,7 @@ export type Output3DSelection = {
     cellDx: number; cellDy: number; cellDz: number; cellDzPerLayer: number[];
     gridState: GridState | null;
     wellState: WellState | null;
+    pressureDisplayRange: PressureDisplayRange;
     replayTime: number | null;
     currentIndex: number;
     sourceLabel: string;
@@ -394,11 +398,15 @@ class NavigationStoreImpl {
             cellDz: Number(ref?.params.cellDz ?? this.#params.cellDz),
             simTime: ref?.finalSnapshot?.time
                 ?? Number(ref?.rateHistory.at(-1)?.time ?? this.#runtime.simTime),
-            injectionRate: Math.max(0, Number(ref?.rateHistory.at(-1)?.total_injection ?? this.#runtime.latestInjectionRate ?? 0)),
+            porosity: Number(ref?.params.reservoirPorosity ?? this.#params.reservoirPorosity),
+            rateHistory: ref?.rateHistory ?? this.#runtime.rateHistory,
             scenarioMode: ref
                 ? getAnalyticalModeForMethod(ref.analyticalMethod)
                 : this.#params.analyticalMode,
             sourceLabel: ref ? ref.label : 'Live runtime',
+            injectorI: Number(ref?.params.injectorI ?? this.#params.injectorI),
+            injectorJ: Number(ref?.params.injectorJ ?? this.#params.injectorJ),
+            producerI: Number(ref?.params.producerI ?? this.#params.producerI),
             producerJ: Number(ref?.params.producerJ ?? this.#params.producerJ),
             initialSaturation: Number(ref?.params.initialSaturation ?? this.#params.initialSaturation),
             rockProps: {
@@ -418,10 +426,12 @@ class NavigationStoreImpl {
 
     selectedOutput3D = $derived.by((): Output3DSelection => {
         const ref = this.activeSelectedReferenceResult;
+        const outputParams = (ref?.params ?? this.#params) as Record<string, unknown>;
         const history = ref?.history ?? this.#runtime.history;
         const currentIndex = history.length === 0
             ? -1
             : Math.max(0, Math.min(this.#runtime.currentIndex, history.length - 1));
+        const selectedSnapshot = currentIndex >= 0 ? history[currentIndex] : null;
         const cellDzPerLayerRaw = ref?.params.cellDzPerLayer ?? this.#params.cellDzPerLayer;
         return {
             history,
@@ -434,8 +444,15 @@ class NavigationStoreImpl {
             cellDzPerLayer: Array.isArray(cellDzPerLayerRaw)
                 ? cellDzPerLayerRaw.map((v) => Number(v))
                 : [],
-            gridState: ref?.finalSnapshot?.grid ?? this.#runtime.gridStateRaw ?? null,
-            wellState: ref?.finalSnapshot?.wells ?? this.#runtime.wellStateRaw ?? null,
+            gridState: selectedSnapshot?.grid
+                ?? ref?.finalSnapshot?.grid
+                ?? this.#runtime.gridStateRaw
+                ?? null,
+            wellState: selectedSnapshot?.wells
+                ?? ref?.finalSnapshot?.wells
+                ?? this.#runtime.wellStateRaw
+                ?? null,
+            pressureDisplayRange: resolvePressureDisplayRange(outputParams),
             replayTime: currentIndex >= 0 && currentIndex < history.length
                 ? history[currentIndex]?.time ?? null
                 : ref?.finalSnapshot?.time ?? this.#runtime.replayTime,

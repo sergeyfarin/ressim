@@ -4,6 +4,8 @@ import {
     axisLength,
     buildFloodFrontOverlay,
     buildSpatialProfile,
+    buildWellPath,
+    cumulativeInjectedVolume,
     type SpatialProfileGrid,
 } from './spatialProfileModel';
 import type { GridState } from '../simulator-types';
@@ -125,38 +127,91 @@ describe('buildSpatialProfile', () => {
         expect(profile.series[0].values).toEqual([null, null, null, null]);
         expect(profile.distances).toEqual([5, 15, 25, 35]);
     });
+
+    it('averages horizontal profiles through every K layer by default mode', () => {
+        const profile = buildSpatialProfile({
+            gridState, grid: GRID, axis: 'i', fixedI: 0, fixedJ: 2, fixedK: 0,
+            layerSelection: 'average', property: 'pressure',
+        });
+        expect(profile.series[0].values).toEqual([70, 71, 72, 73]);
+    });
+
+    it('can replace the column average with a particular K layer', () => {
+        const profile = buildSpatialProfile({
+            gridState, grid: GRID, axis: 'i', fixedI: 0, fixedJ: 2, fixedK: 0,
+            layerSelection: 1, property: 'pressure',
+        });
+        expect(profile.series[0].values).toEqual([120, 121, 122, 123]);
+    });
+
+    it('profiles the rasterized injector-to-producer diagonal', () => {
+        const profile = buildSpatialProfile({
+            gridState, grid: GRID, axis: 'well-path', fixedI: 0, fixedJ: 0, fixedK: 0,
+            layerSelection: 0, injectorI: 0, injectorJ: 0, producerI: 3, producerJ: 2,
+            property: 'pressure',
+        });
+        expect(buildWellPath(GRID, 0, 0, 3, 2)).toEqual([
+            { i: 0, j: 0 }, { i: 1, j: 1 }, { i: 2, j: 1 }, { i: 3, j: 2 },
+        ]);
+        expect(profile.series[0].values).toEqual([0, 11, 12, 23]);
+        expect(profile.distances.at(-1)).toBeCloseTo(50, 8);
+    });
 });
 
 describe('buildFloodFrontOverlay', () => {
     const base = {
         grid: GRID, axis: 'i' as const, property: 'saturation_water' as const,
         rock: ROCK, fluid: FLUID, initialSaturation: 0.2,
-        injectionRate: 100, simTime: 10,
+        porosity: 0.2, injectedVolume: 1_000,
     };
 
-    it('draws a step from shock saturation behind the front to initial ahead of it', () => {
+    it('integrates pressure-controlled injection only through the selected replay time', () => {
+        const history = [
+            { time: 2, total_injection: 100 },
+            { time: 5, total_injection: 80 },
+            { time: 10, total_injection: 40 },
+        ];
+        expect(cumulativeInjectedVolume(history, 4)).toBe(360);
+        expect(cumulativeInjectedVolume(history, 10)).toBe(640);
+    });
+
+    it('draws the rarefaction behind the shock and initial saturation ahead of it', () => {
         const overlay = buildFloodFrontOverlay(base)!;
         expect(overlay).not.toBeNull();
         expect(overlay.shockSw).toBeGreaterThan(overlay.initialSw);
-        const behind = overlay.values.filter((v) => v === overlay.shockSw).length;
-        const ahead = overlay.values.filter((v) => v === overlay.initialSw).length;
-        expect(behind + ahead).toBe(GRID.nx);
+        const finite = overlay.values.filter((value): value is number => value !== null);
+        expect(finite[0]).toBeGreaterThan(overlay.shockSw);
+        expect(finite.at(-1)).toBe(overlay.initialSw);
+        expect(finite.every((value, index) => index === 0 || value <= finite[index - 1])).toBe(true);
     });
 
     it('advances the front monotonically with time and stops at the outlet', () => {
-        const early = buildFloodFrontOverlay({ ...base, simTime: 1 })!;
-        const later = buildFloodFrontOverlay({ ...base, simTime: 5 })!;
-        const huge = buildFloodFrontOverlay({ ...base, simTime: 1e6 })!;
+        const early = buildFloodFrontOverlay({ ...base, injectedVolume: 100 })!;
+        const later = buildFloodFrontOverlay({ ...base, injectedVolume: 500 })!;
+        const huge = buildFloodFrontOverlay({ ...base, injectedVolume: 1e9 })!;
         expect(later.frontDistance).toBeGreaterThan(early.frontDistance);
         expect(huge.frontDistance).toBeCloseTo(GRID.nx * GRID.cellDx, 6);
+    });
+
+    it('keeps a post-breakthrough analytical profile visible after the shock exits', () => {
+        const overlay = buildFloodFrontOverlay({ ...base, injectedVolume: 1e9 })!;
+        const finite = overlay.values.filter((value): value is number => value !== null);
+        expect(finite.every((value) => value > overlay.initialSw)).toBe(true);
+        expect(finite[0]).toBeGreaterThanOrEqual(finite.at(-1)!);
+    });
+
+    it('uses pore volume rather than bulk volume for front position', () => {
+        const porous = buildFloodFrontOverlay({ ...base, porosity: 0.2 })!;
+        const bulkVolumeMistake = buildFloodFrontOverlay({ ...base, porosity: 1 })!;
+        expect(porous.frontDistance).toBeCloseTo(5 * bulkVolumeMistake.frontDistance, 8);
     });
 
     it('is hidden wherever a flood front is not the right reference', () => {
         // Not a displacement axis, not the water saturation, not injecting, not started.
         expect(buildFloodFrontOverlay({ ...base, axis: 'k' })).toBeNull();
         expect(buildFloodFrontOverlay({ ...base, property: 'pressure' })).toBeNull();
-        expect(buildFloodFrontOverlay({ ...base, injectionRate: 0 })).toBeNull();
-        expect(buildFloodFrontOverlay({ ...base, simTime: 0 })).toBeNull();
+        expect(buildFloodFrontOverlay({ ...base, injectedVolume: 0 })).toBeNull();
+        expect(buildFloodFrontOverlay({ ...base, porosity: 0 })).toBeNull();
     });
 
     it('scales the front position by the true cross-section, including per-layer dz', () => {

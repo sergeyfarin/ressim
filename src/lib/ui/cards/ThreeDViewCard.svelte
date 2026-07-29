@@ -65,6 +65,7 @@
                 bind:showProperty
                 bind:legendFixedMin
                 bind:legendFixedMax
+                pressureDisplayRange={selectedOutput3D.pressureDisplayRange}
                 s_wc={selectedOutputProfile.rockProps.s_wc}
                 s_or={selectedOutputProfile.rockProps.s_or}
                 currentIndex={selectedOutput3D.currentIndex}
@@ -149,14 +150,19 @@
                 cellDzPerLayer: selectedOutput3D.cellDzPerLayer,
             }}
             property={showProperty}
+            pressureDisplayRange={selectedOutput3D.pressureDisplayRange}
             simTime={selectedOutput3D.replayTime ?? selectedOutputProfile.simTime}
             sourceLabel={selectedOutput3D.sourceLabel}
             {theme}
             rockProps={selectedOutputProfile.rockProps}
             fluidProps={selectedOutputProfile.fluidProps}
             initialSaturation={selectedOutputProfile.initialSaturation}
-            injectionRate={selectedOutputProfile.injectionRate}
-            defaultJ={selectedOutputProfile.producerJ}
+            porosity={selectedOutputProfile.porosity}
+            rateHistory={selectedOutputProfile.rateHistory}
+            injectorI={selectedOutputProfile.injectorI}
+            injectorJ={selectedOutputProfile.injectorJ}
+            producerI={selectedOutputProfile.producerI}
+            producerJ={selectedOutputProfile.producerJ}
         />
     {:else}
         <div

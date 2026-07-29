@@ -13,7 +13,7 @@
      * water saturation, fixed to the k = 0 plane, indexed by cell number, and
      * carried its own copies of the fractional-flow relations.
      */
-    import { onMount, onDestroy } from "svelte";
+    import { onMount, onDestroy, untrack } from "svelte";
     import { Chart, registerables } from "chart.js";
     import {
         applyThemeToChart,
@@ -23,12 +23,15 @@
         axisLength,
         buildFloodFrontOverlay,
         buildSpatialProfile,
+        cumulativeInjectedVolume,
         type SpatialProfileAxis,
         type SpatialProfileGrid,
+        type SpatialProfileLayerSelection,
         type SpatialProfileProperty,
     } from "./spatialProfileModel";
-    import type { GridState } from "../simulator-types";
+    import type { GridState, RateHistoryPoint } from "../simulator-types";
     import type { FluidProps, RockProps } from "../analytical/fractionalFlow";
+    import type { PressureDisplayRange } from "./spatialViewModel";
 
     let {
         gridState = null,
@@ -40,8 +43,13 @@
         rockProps,
         fluidProps,
         initialSaturation = 0.2,
-        injectionRate = 0,
-        defaultJ = 0,
+        porosity = 0,
+        rateHistory = [],
+        injectorI = 0,
+        injectorJ = 0,
+        producerI = grid.nx - 1,
+        producerJ = 0,
+        pressureDisplayRange,
     }: {
         gridState?: GridState | null;
         grid: SpatialProfileGrid;
@@ -52,9 +60,13 @@
         rockProps: RockProps;
         fluidProps: FluidProps;
         initialSaturation?: number;
-        injectionRate?: number;
-        /** Producer row — the most useful default line through a pattern flood. */
-        defaultJ?: number;
+        porosity?: number;
+        rateHistory?: RateHistoryPoint[];
+        injectorI?: number;
+        injectorJ?: number;
+        producerI?: number;
+        producerJ?: number;
+        pressureDisplayRange?: PressureDisplayRange;
     } = $props();
 
     const SERIES_COLORS: Record<string, string> = {
@@ -68,18 +80,31 @@
     let canvas = $state<HTMLCanvasElement | null>(null);
     let chart = $state<Chart<"line", Array<number | null>, string> | null>(null);
 
-    let axis = $state<SpatialProfileAxis>("i");
+    const isOneDimensional = $derived(
+        [grid.nx, grid.ny, grid.nz].filter((count) => count > 1).length <= 1,
+    );
+    const hasDiagonalWellPath = $derived(
+        grid.nx > 1 && grid.ny > 1 && injectorI !== producerI && injectorJ !== producerJ,
+    );
+    let axis = $state<SpatialProfileAxis>(untrack(() =>
+        grid.nx > 1 && grid.ny > 1 && injectorI !== producerI && injectorJ !== producerJ
+            ? "well-path"
+            : grid.nx > 1 ? "i" : grid.ny > 1 ? "j" : "k",
+    ));
     let userI = $state<number | null>(null);
     let userJ = $state<number | null>(null);
     let userK = $state<number | null>(null);
+    let layerSelection = $state<SpatialProfileLayerSelection>(
+        untrack(() => grid.nz > 1 ? "average" : 0),
+    );
 
-    // Selected line, clamped to the live grid. Falls back to the producer row
-    // on J and the top layer on K, which is the section most cases want first.
+    // Ordinary areal profiles pass through the producer. Corner-to-corner
+    // floods use the explicit well path instead.
     const fixedI = $derived(
-        Math.max(0, Math.min(grid.nx - 1, userI ?? Math.floor(grid.nx / 2))),
+        Math.max(0, Math.min(grid.nx - 1, userI ?? producerI)),
     );
     const fixedJ = $derived(
-        Math.max(0, Math.min(grid.ny - 1, userJ ?? defaultJ)),
+        Math.max(0, Math.min(grid.ny - 1, userJ ?? producerJ)),
     );
     const fixedK = $derived(Math.max(0, Math.min(grid.nz - 1, userK ?? 0)));
 
@@ -91,6 +116,11 @@
             fixedI,
             fixedJ,
             fixedK,
+            layerSelection,
+            injectorI,
+            injectorJ,
+            producerI,
+            producerJ,
             property,
         }),
     );
@@ -103,15 +133,16 @@
             rock: rockProps,
             fluid: fluidProps,
             initialSaturation,
-            injectionRate,
-            simTime,
+            porosity,
+            injectedVolume: cumulativeInjectedVolume(rateHistory, simTime),
         }),
     );
 
     /** The two indices held constant, as editable controls. */
     const heldAxes = $derived(
-        (["i", "j", "k"] as const)
+        (axis === "well-path" ? [] : (["i", "j", "k"] as const))
             .filter((candidate) => candidate !== axis)
+            .filter((candidate) => candidate !== "k")
             .map((candidate) => ({
                 axis: candidate,
                 label: candidate.toUpperCase(),
@@ -140,7 +171,7 @@
                 interaction: { mode: "index", intersect: false },
                 plugins: {
                     legend: {
-                        display: true,
+                        display: false,
                         labels: {
                             boxWidth: 10,
                             font: { family: "'JetBrains Mono', monospace", size: 10 },
@@ -205,8 +236,11 @@
         const scales = chart.options.scales as Record<string, any>;
         scales.x.title.text = profile.axisLabel;
         scales.y.title.text = profile.valueLabel;
-        scales.y.min = profile.valueRange?.[0];
-        scales.y.max = profile.valueRange?.[1];
+        const valueRange = property === "pressure" && pressureDisplayRange
+            ? [pressureDisplayRange.min, pressureDisplayRange.max]
+            : profile.valueRange;
+        scales.y.min = valueRange?.[0];
+        scales.y.max = valueRange?.[1];
 
         applyThemeToChart(chart, theme);
         chart.update("none");
@@ -214,7 +248,7 @@
 
     $effect(() => {
         // Redraw on any input that changes the rendered profile.
-        void [profile, frontOverlay, theme];
+        void [profile, frontOverlay, theme, pressureDisplayRange];
         redraw();
     });
 </script>
@@ -223,13 +257,14 @@
     <div class="p-3 md:p-4">
         <div class="mb-2 flex flex-wrap items-end gap-3">
             <div class="min-w-0">
-                <h4 class="text-xs font-semibold">{profile.valueLabel} Profile Along Grid Line</h4>
+                <h4 class="text-xs font-semibold">{profile.valueLabel} Profile</h4>
                 <p class="text-[11px] opacity-70">
                     {sourceLabel} snapshot at t = {simTime.toFixed(2)} d — follows the 3D
                     property and timestep selectors.
                 </p>
             </div>
 
+            {#if !isOneDimensional}
             <div class="ml-auto flex flex-wrap items-end gap-2">
                 <label class="flex flex-col gap-0.5">
                     <span class="text-[10px] uppercase tracking-wide opacity-70">Axis</span>
@@ -237,11 +272,29 @@
                         class="h-7 rounded-md border border-input bg-transparent px-2 text-xs"
                         bind:value={axis}
                     >
-                        <option value="i">I</option>
-                        <option value="j">J</option>
-                        <option value="k">K</option>
+                        {#if grid.nx > 1}<option value="i">I</option>{/if}
+                        {#if grid.ny > 1}<option value="j">J</option>{/if}
+                        {#if grid.nz > 1}<option value="k">K</option>{/if}
+                        {#if hasDiagonalWellPath}
+                            <option value="well-path">Injector → producer</option>
+                        {/if}
                     </select>
                 </label>
+
+                {#if grid.nz > 1 && axis !== "k"}
+                    <label class="flex flex-col gap-0.5">
+                        <span class="text-[10px] uppercase tracking-wide opacity-70">Layers</span>
+                        <select
+                            class="h-7 rounded-md border border-input bg-transparent px-2 text-xs"
+                            bind:value={layerSelection}
+                        >
+                            <option value="average">Column average</option>
+                            {#each Array.from({ length: grid.nz }, (_, k) => k) as k}
+                                <option value={k}>K = {k}</option>
+                            {/each}
+                        </select>
+                    </label>
+                {/if}
 
                 {#each heldAxes as held (held.axis)}
                     <label class="flex flex-col gap-0.5">
@@ -262,6 +315,7 @@
                     </label>
                 {/each}
             </div>
+            {/if}
         </div>
 
         <div style="position: relative; height: min(28vh, 240px); width: 100%;">

@@ -7,6 +7,10 @@ const cardSrc = fs.readFileSync(
     'utf8',
 );
 const chartSrc = fs.readFileSync(path.join(__dirname, 'SpatialProfileChart.svelte'), 'utf8');
+const navStoreSrc = fs.readFileSync(
+    path.join(__dirname, '..', 'stores', 'navigationStore.svelte.ts'),
+    'utf8',
+);
 const chartsDir = path.join(__dirname, '..', 'charts');
 
 describe('spatial profile wiring', () => {
@@ -25,6 +29,8 @@ describe('spatial profile wiring', () => {
         // latter would silently freeze the profile at the end of the run.
         expect(/gridState=\{selectedOutput3D\.gridState\}/.test(cardSrc)).toBe(true);
         expect(/gridState=\{selectedOutputProfile\.gridState\}/.test(cardSrc)).toBe(false);
+        expect(navStoreSrc).toMatch(/const selectedSnapshot = currentIndex >= 0 \? history\[currentIndex\] : null/);
+        expect(navStoreSrc).toMatch(/gridState: selectedSnapshot\?\.grid/);
     });
 
     it('shares the 3D property selector rather than hardcoding a property', () => {
@@ -34,6 +40,18 @@ describe('spatial profile wiring', () => {
     it('takes its snapshot time from the replay position when one is selected', () => {
         expect(/simTime=\{selectedOutput3D\.replayTime \?\? selectedOutputProfile\.simTime\}/.test(cardSrc))
             .toBe(true);
+    });
+
+    it('passes both well coordinates so areal profiles can follow the displacement path', () => {
+        expect(cardSrc).toMatch(/injectorI=\{selectedOutputProfile\.injectorI\}/);
+        expect(cardSrc).toMatch(/injectorJ=\{selectedOutputProfile\.injectorJ\}/);
+        expect(cardSrc).toMatch(/producerI=\{selectedOutputProfile\.producerI\}/);
+        expect(cardSrc).toMatch(/producerJ=\{selectedOutputProfile\.producerJ\}/);
+    });
+
+    it('hides the chart legend and offers column averaging for layered grids', () => {
+        expect(chartSrc).toMatch(/display:\s*false/);
+        expect(chartSrc).toMatch(/Column average/);
     });
 
     it('delegates extraction and front construction to the pure model', () => {

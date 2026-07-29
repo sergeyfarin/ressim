@@ -31,7 +31,7 @@
     } from "../simulator-types";
     import ToggleGroup from "../ui/controls/ToggleGroup.svelte";
     import { fitPerspectiveCameraToBox } from "./cameraFit";
-    import { getPressureMaxFromHistorySlice as getHistoryPressureMax } from "./spatialViewModel";
+    import type { PressureDisplayRange } from "./spatialViewModel";
 
     type HistoryEntry = SimulatorSnapshot;
 
@@ -70,6 +70,7 @@
     export let sourceLabel: string = "Live runtime";
     export let legendFixedMin: number = 0;
     export let legendFixedMax: number = 1;
+    export let pressureDisplayRange: PressureDisplayRange | null = null;
     export let s_wc: number = 0.1;
     export let s_or: number = 0.1;
     // export let playing = false;
@@ -375,31 +376,6 @@
         return values.filter((value) => Number.isFinite(value));
     }
 
-    function getHistoryPropertyRange(
-        property: PropertyKey,
-    ): { min: number; max: number } | null {
-        const historyGrids = getValidHistoryGrids();
-        if (historyGrids.length === 0) return null;
-
-        let min = Number.POSITIVE_INFINITY;
-        let max = Number.NEGATIVE_INFINITY;
-
-        for (const grid of historyGrids) {
-            if (!grid.pressure) continue;
-            for (let i = 0; i < grid.pressure.length; i++) {
-                const value = getCellPropertyValue(grid, i, property);
-                if (!Number.isFinite(value)) continue;
-                if (value < min) min = value;
-                if (value > max) max = value;
-            }
-        }
-
-        if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-            return null;
-        }
-        return { min, max };
-    }
-
     function getCellPropertyValue(
         grid: GridState | null | undefined,
         index: number,
@@ -535,11 +511,10 @@
         }
 
         if (property === "pressure") {
-            const historyRange = getHistoryPropertyRange("pressure");
-            if (historyRange) {
+            if (pressureDisplayRange && pressureDisplayRange.max > pressureDisplayRange.min) {
                 return {
-                    min: roundLegendBound(historyRange.min, false),
-                    max: roundLegendBound(historyRange.max, true),
+                    min: roundLegendBound(pressureDisplayRange.min, false),
+                    max: roundLegendBound(pressureDisplayRange.max, true),
                 };
             }
             const values = getPropertyValuesFromGrid(activeGrid, property);
@@ -808,13 +783,11 @@
     }
 
     let lastModelLegendKey = "";
-    let pressureHistoryScanCount = 0;
-
     function getLegendContextKey(property: PropertyKey): string {
         const dimsKey = getDimensionsKey();
 
         if (property === "pressure") {
-            return `${property}|${dimsKey}`;
+            return `${property}|${dimsKey}|${pressureDisplayRange?.min ?? "auto"}|${pressureDisplayRange?.max ?? "auto"}`;
         }
         if (
             property === "saturation_water" ||
@@ -832,16 +805,8 @@
         return `${property}|${dimsKey}|${staticRefLen}`;
     }
 
-    function getPressureMaxFromHistorySlice(startIdx: number): number | null {
-        return getHistoryPressureMax({
-            history,
-            startIndex: startIdx,
-            expectedCellCount: getExpectedCellCount(),
-        });
-    }
-
     // Auto legend policy:
-    // - pressure: initialize min/max from full history once, then only raise max as new history arrives.
+    // - pressure: stable pre-run range from the scenario's well controls.
     // - saturation: fixed by Swc/Sor model endpoints.
     // - permeability/porosity: recalc only when static context changes.
     $: if (activeGrid) {
@@ -851,33 +816,6 @@
         if (contextChanged) {
             applyModelLegendRange();
             lastModelLegendKey = contextKey;
-            pressureHistoryScanCount = history.length;
-        } else if (showProperty === "pressure") {
-            if (history.length < pressureHistoryScanCount) {
-                applyModelLegendRange();
-                pressureHistoryScanCount = history.length;
-            } else if (history.length > pressureHistoryScanCount) {
-                const incrementalMax = getPressureMaxFromHistorySlice(
-                    pressureHistoryScanCount,
-                );
-                if (incrementalMax != null) {
-                    const currentMin = Number(legendFixedMin);
-                    const currentMax = Number(legendFixedMax);
-                    const baseMin = Number.isFinite(currentMin)
-                        ? currentMin
-                        : getModelLegendRange("pressure").min;
-                    const baseMax = Number.isFinite(currentMax)
-                        ? currentMax
-                        : getModelLegendRange("pressure").max;
-                    legendFixedMin = baseMin;
-                    legendFixedMax = Math.max(
-                        baseMax,
-                        incrementalMax,
-                        baseMin + 1e-6,
-                    );
-                }
-                pressureHistoryScanCount = history.length;
-            }
         }
     }
 
@@ -985,6 +923,7 @@
         newCamera.position.set(gridSize * 1.2, -gridSize * 1.8, gridSize * 0.8);
         newCamera.up.set(0, 0, 1);
         newCamera.lookAt(0, 0, 0);
+        // newCamera.zoom = 1;
 
         camera = newCamera;
 

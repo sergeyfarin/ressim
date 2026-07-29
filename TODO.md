@@ -21,6 +21,22 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   distance and its large fixed multiplier with a projected bounding-box fit. Long, thin 1D grids
   now fill the canvas more closely, while XZ/vertical grids use their actual projected height and
   retain a consistent safety margin.
+- [x] **Stable pressure scale shared by 3D and spatial profile (2026-07-29).** Pressure now uses a
+  pre-run physical envelope derived consistently from initial reservoir pressure and active well
+  controls (pressure setpoints, or BHP limits for rate control). The scale no longer depends on the
+  snapshots received so far, and the profile shares the 3D range while manual legend edits remain
+  available.
+- [x] **Buckley–Leverett spatial front used bulk rather than pore velocity (2026-07-29).**
+  Corrected the saturation-profile reference overlay to divide injected volume by porosity and to
+  integrate the pressure-controlled injection history through the selected replay time. Replaced
+  the old piston-step drawing with the complete BL rarefaction/shock profile so the analytical
+  curve remains visible and physical after breakthrough. The rate, water-cut, and recovery overlays
+  already used injected pore volume and were unaffected.
+- [x] **Spatial-profile geometry and replay correctness (2026-07-29).** Removed the redundant
+  legend; hid path controls for 1D grids; made ordinary XY profiles pass through the producer and
+  corner-pattern profiles follow the injector-to-producer diagonal; defaulted layered horizontal
+  profiles to a K-column average with an explicit layer override. Completed-run replay now selects
+  the indexed history grid/wells instead of pairing the indexed time with the final snapshot.
 - [x] **Well-Test drawdown presentation (2026-07-29).** Restored the scenario's intentionally
   absent 3D default because rate-controlled skin variants have the same reservoir pressure field;
   made flowing BHP the sole expanded and explicitly visible chart, demoted constant oil rate to a
