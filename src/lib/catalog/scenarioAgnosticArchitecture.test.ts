@@ -41,7 +41,7 @@ describe('scenario-agnostic frontend architecture', () => {
             'utf8',
         );
         expect(chartSource).toContain("curveKey?.endsWith('-sim')");
-        expect(chartSource).toContain('suppressInitialSpikeAboveRatio');
+        expect(chartSource).toContain('suppressLeadingOutliers');
     });
 
     it('does not branch on canonical scenario keys outside scenario definitions', () => {

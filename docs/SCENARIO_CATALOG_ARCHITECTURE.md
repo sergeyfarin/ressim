@@ -29,9 +29,9 @@ Some behavior is not scenario-specific and remains shared:
   primitives. A scenario selects a preset and owns any case-specific patch.
 - the warning policy contains parameter-validity and runtime rules that apply equally to Custom
   Mode and predefined cases. A warning relevant only to one scenario belongs in its definition.
-- catalog assembly may apply a declared policy mechanically, such as adding the generic
-  FIM-vs-IMPES sensitivity when `comparisonSensitivityAvailable` is true. It must not decide the
-  policy from gas flags, analytical method, or the scenario key.
+- catalog assembly registers scenario definitions without adding case content. Sensitivity
+  dimensions and variants are complete in the owning scenario module; shared run code only
+  interprets declarative properties such as `variesSolver`.
 
 ## Catalog taxonomy
 
@@ -52,5 +52,6 @@ the navigation hierarchy from conflating physical domain with the purpose of the
 
 A new top-level scenario needs a distinct engineering question and a plot capable of answering it.
 A new reference implementation belongs in `referenceSources`; a parameter variation belongs in a
-sensitivity dimension; neither alone justifies another picker entry. Numerical grid, timestep, and
-solver variants should remain secondary validation sensitivities rather than new scenarios.
+sensitivity dimension; neither alone justifies another picker entry. A numerical comparison may be
+a top-level interpretation scenario only when the formulation itself is the engineering question,
+the case parameters make its consequence visible, and the chart is configured to show that result.

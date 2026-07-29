@@ -161,7 +161,7 @@ export function buildScenarioRunSpecs(input: {
             familyKey: scenario.key,
             analyticalMethod: scenario.capabilities.analyticalMethod,
             variantKey: variant.key,
-            variantLabel: dimension.key === 'solver_comparison'
+            variantLabel: dimension.variesSolver
                 ? variant.label
                 : `${variant.label} · ${solverName}`,
             label: `${scenario.label} — ${variant.label} [${solverName}]`,

@@ -85,8 +85,7 @@ export const wf_capillary: Scenario = {
     },
     solverPolicy: {
         defaultSolver: 'impes',
-        rationale: 'IMPES is the interactive default for this oil/water capillary study; the FIM vs. IMPES sensitivity checks the same capillary physics under both formulations.',
-        comparisonSensitivityAvailable: true,
+        rationale: 'IMPES is the interactive default for this oil/water capillary study.',
     },
     params: {
         // Fluid properties — matched to wf_bl1d so the two cases are comparable

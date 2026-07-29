@@ -99,8 +99,7 @@ export const dep_welltest: Scenario = {
     },
     solverPolicy: {
         defaultSolver: 'impes',
-        rationale: 'IMPES is the interactive default for this short constant-rate transient; the solver axis exposes near-well formulation differences against one line-source reference.',
-        comparisonSensitivityAvailable: true,
+        rationale: 'IMPES is the interactive default for this short constant-rate transient.',
     },
     params: {
         // Fluid

@@ -34,16 +34,37 @@ export type ChartPanelFallback = {
     expanded?: boolean;
 };
 
-export function suppressInitialSpike<T extends { y: number | null }>(
+export function suppressLeadingOutliers<T extends { y: number | null }>(
     series: T[],
-    ratio: number | undefined,
+    policy: { medianRatio: number; maxLeadingFraction?: number } | undefined,
 ): T[] {
-    if (ratio === undefined || ratio <= 1 || series.length < 2) return series;
-    const first = series[0]?.y;
-    const second = series[1]?.y;
-    if (first === null || first === undefined || second === null || second === undefined) return series;
-    if (!Number.isFinite(first) || !Number.isFinite(second) || second <= 0 || first <= ratio * second) return series;
-    return [{ ...series[0], y: null }, ...series.slice(1)];
+    if (!policy || policy.medianRatio <= 1 || series.length < 5) return series;
+
+    const operatingValues = series
+        .map((point) => point.y)
+        .filter((value): value is number => value !== null && Number.isFinite(value) && value > 0)
+        .sort((left, right) => left - right);
+    if (operatingValues.length < 5) return series;
+
+    const middle = Math.floor(operatingValues.length / 2);
+    const median = operatingValues.length % 2 === 0
+        ? ((operatingValues[middle - 1] ?? 0) + (operatingValues[middle] ?? 0)) / 2
+        : (operatingValues[middle] ?? 0);
+    if (median <= 0) return series;
+
+    const threshold = median * policy.medianRatio;
+    const maxLeadingFraction = Math.min(Math.max(policy.maxLeadingFraction ?? 0.1, 0), 0.5);
+    const maxLeadingCount = Math.max(1, Math.floor(series.length * maxLeadingFraction));
+    let leadingCount = 0;
+    while (leadingCount < series.length) {
+        const value = series[leadingCount]?.y;
+        if (value === null || value === undefined || !Number.isFinite(value) || value <= threshold) break;
+        leadingCount += 1;
+    }
+
+    // Do not partially trim a long, genuinely declining high-rate period.
+    if (leadingCount === 0 || leadingCount > maxLeadingCount || leadingCount === series.length) return series;
+    return series.map((point, index) => index < leadingCount ? { ...point, y: null } : point);
 }
 
 type SelectableCurve = {

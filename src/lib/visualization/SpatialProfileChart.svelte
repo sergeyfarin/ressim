@@ -223,7 +223,7 @@
     <div class="p-3 md:p-4">
         <div class="mb-2 flex flex-wrap items-end gap-3">
             <div class="min-w-0">
-                <h4 class="text-xs font-semibold">Profile Along Grid Line</h4>
+                <h4 class="text-xs font-semibold">{profile.valueLabel} Profile Along Grid Line</h4>
                 <p class="text-[11px] opacity-70">
                     {sourceLabel} snapshot at t = {simTime.toFixed(2)} d — follows the 3D
                     property and timestep selectors.

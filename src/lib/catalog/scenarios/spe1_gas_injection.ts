@@ -365,7 +365,6 @@ export const spe1_gas_injection: Scenario = {
     solverPolicy: {
         defaultSolver: 'fim',
         rationale: 'FIM is the benchmark formulation for SPE1 because the case exercises coupled black-oil PVT, phase appearance, dissolved gas, and rate/BHP control switching.',
-        comparisonSensitivityAvailable: false,
     },
     params: {
         // ── Grid: 10×10×3, non-uniform dz ──────────────────────────────

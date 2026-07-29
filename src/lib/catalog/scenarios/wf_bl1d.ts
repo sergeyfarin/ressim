@@ -18,7 +18,9 @@ export const wf_bl1d: Scenario = {
     chartLayoutPatch: {
         rateChart: {
             panels: {
-                oil_rate: { suppressInitialSpikeAboveRatio: 2 },
+                oil_rate: {
+                    suppressLeadingOutliers: { medianRatio: 2, maxLeadingFraction: 0.1 },
+                },
             },
         },
     },
@@ -31,8 +33,7 @@ export const wf_bl1d: Scenario = {
     },
     solverPolicy: {
         defaultSolver: 'impes',
-        rationale: 'IMPES is the fast, validated default for this oil/water displacement; the FIM vs. IMPES sensitivity holds the case inputs fixed for formulation comparison.',
-        comparisonSensitivityAvailable: true,
+        rationale: 'IMPES is the fast, validated default for this oil/water displacement.',
     },
     params: {
         // Fluid properties

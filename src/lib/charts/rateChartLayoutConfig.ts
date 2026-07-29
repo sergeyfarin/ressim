@@ -61,8 +61,14 @@ export type RateChartPanelLayout = {
     allowLogToggle?: boolean;
     visible?: boolean;
     expanded?: boolean;
-    /** Hide the first point when it exceeds this multiple of the second point. */
-    suppressInitialSpikeAboveRatio?: number;
+    /**
+     * Suppress a short leading transient whose values exceed a robust median
+     * operating rate. Opt-in because a high initial rate can be real physics.
+     */
+    suppressLeadingOutliers?: {
+        medianRatio: number;
+        maxLeadingFraction?: number;
+    };
 };
 
 export type RateChartConfig = {

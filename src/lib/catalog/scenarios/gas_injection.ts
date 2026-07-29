@@ -34,7 +34,6 @@ export const gas_injection: Scenario = {
     solverPolicy: {
         defaultSolver: 'fim',
         rationale: 'FIM is required for coupled gas/oil transport and stable gas-front propagation; the explicit IMPES gas path is not offered as an equivalent catalog sensitivity.',
-        comparisonSensitivityAvailable: false,
     },
     params: {
         nx: 50, ny: 1, nz: 1,

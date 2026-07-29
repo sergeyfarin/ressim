@@ -17,6 +17,11 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **Spatial-view controls and profile alignment (2026-07-28).** Moved the shared property
+  selector and legend range onto one compact row below the 3D canvas, followed by the live/scenario
+  result selector and timestep scrubber; made the profile heading reflect the selected property;
+  reduced the 3D canvas height by 25%.
+
 ### SPE1 reference data (2026-07-24)
 - [x] **SPE1 published oil-rate/BHP overlays were wrong.** The 4-point "Brontosaurus" samples showed
   oil rate ≈ flat to 1826 d (3155.9 Sm³/d); the real SPE1 Case 1 producer hits its 1000 psia BHP
@@ -210,8 +215,12 @@ Open, no engine gap (cheapest):
   E11 (multi-well patterns) for the real Yanosik-McCracken construction; do not retry with a single
   well pair.** Full record in `CASE_LIBRARY_ROADMAP.md` Tier 7.
 - [ ] **T7.12 numerical vs physical dispersion** framing on the existing `wf_bl1d` grid ladder.
-- [ ] **T7.13 IMPES-vs-FIM as a user-visible solver-choice sensitivity** — reuses the ~10 % liberated
-  gas disagreement recorded in `docs/BLACK_OIL_VALIDATION.md` §2 (also a Priority-2 defect below).
+- [x] **T7.13 IMPES-vs-FIM formulation comparison — DONE 2026-07-28.** Removed the generic injected
+  solver sensitivity from all catalog cases and added `solver_fim_impes` under Other. The dedicated
+  24-cell rate-controlled waterflood uses 5-day report steps so the formulation is visible: the
+  configuration probe ended at 100 days near 315.4 bar / 0.429 oil rate for FIM versus 299.9 bar /
+  0.322 for IMPES, with no solver warning. This is labelled a numerical exhibit, not an analytical
+  correctness oracle.
 - [ ] **T7.14 joint relperm-endpoint uncertainty**, **T7.15 pattern density**.
 - [x] **T7.18 endpoints × V_DP — DONE 2026-07-24.** `endpoints_vs_geology` dimension on
   `sweep_vertical` + `sweep_vertical.test.ts`. Drafted as an amplification case by analogy with
@@ -290,8 +299,7 @@ Open, blocked on an enabler:
   Gas/three-phase scenarios (incl. `spe1_gas_injection`) have defaulted to FIM since `b88ee28`.
   Reconcile the doc with the shipped solver policy.
   Done 2026-07-24: rewrote the "FIM — current truth" preamble in `DOCUMENTATION_INDEX.md`, replaced
-  the "Product Boundary" section of `FIM_DEFERRED_BACKLOG.md` with the shipped solver policy (pointing
-  at `applySolverPolicy` in `src/lib/catalog/scenarios.ts` as the single source), and updated the
+  the "Product Boundary" section of `FIM_DEFERRED_BACKLOG.md` with the then-shipped solver policy, and updated the
   `FIM_STATUS.md` current-state line. Historical mentions in `FIM_CONVERGENCE_WORKLOG.md`, the
   experiment registry, and dated review docs were left as provenance.
 - [x] **Define three-phase `experimental` exit criteria** + acceptance tests for gas-injection and

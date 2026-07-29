@@ -4,10 +4,13 @@ FIM is in the user-facing product path as of `b88ee28` (2026-07-24). This file t
 
 ## Solver Policy (shipped)
 
-Applied centrally by `applySolverPolicy` in `src/lib/catalog/scenarios.ts`; scenarios do not set `fimEnabled` themselves.
+Declared completely in each module under `src/lib/catalog/scenarios/`; catalog assembly does not
+inject solver parameters or sensitivities.
 
-- Gas / three-phase scenarios (`requiresThreePhaseMode`) default to FIM: `gas_injection`, `gas_drive`, `spe1_gas_injection`.
-- Oil/water scenarios default to IMPES, and each gets a public `solver_comparison` ("FIM vs. IMPES") sensitivity.
+- Gas / three-phase scenarios default to FIM: `gas_injection`, `gas_drive`, `spe1_gas_injection`.
+- Ordinary oil/water scenarios default to IMPES and do not carry a generic solver sensitivity.
+- `solver_fim_impes` is the single public formulation comparison. Its scenario-owned sensitivity
+  holds a coarse, rate-controlled waterflood fixed and changes only `fimEnabled`.
 - Every scenario carries a `solverPolicy` with a user-visible rationale, surfaced in scenario cards and run labels.
 
 ## Later FIM Work

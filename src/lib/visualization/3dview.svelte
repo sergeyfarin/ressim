@@ -71,11 +71,9 @@
     export let legendFixedMax: number = 1;
     export let s_wc: number = 0.1;
     export let s_or: number = 0.1;
-    export let replayTime: number | null = null;
     // export let playing = false;
     // export let playSpeed = 2;
     // export let showDebugState = false;
-    export let onApplyHistoryIndex: (index: number) => void = () => {};
     // export let onPrev: () => void = () => {};
     // export let onNext: () => void = () => {};
     // export let onTogglePlay: () => void = () => {};
@@ -586,13 +584,6 @@
         const range = getModelLegendRange(showProperty);
         legendFixedMin = range.min;
         legendFixedMax = range.max;
-    }
-
-    function applySliderValue(event: Event) {
-        const input = event.currentTarget as HTMLInputElement;
-        const nextIndex = Math.max(0, Math.min(history.length - 1, Math.round(Number(input.value))));
-        currentIndex = Number.isFinite(nextIndex) ? nextIndex : -1;
-        if (currentIndex >= 0) onApplyHistoryIndex(currentIndex);
     }
 
     function formatLegendValue(property: PropertyKey, value: number): string {
@@ -1624,46 +1615,19 @@
             {sourceLabel} spatial snapshot and well placement.
         </p>
     </div>
-    <div class="flex items-center gap-4 w-full px-1">
-        <input
-            type="range"
-            class="time-slider flex-1"
-            min="0"
-            max={Math.max(0, history.length - 1)}
-            bind:value={currentIndex}
-            disabled={history.length === 0}
-            oninput={applySliderValue}
-            onchange={applySliderValue}
-        />
-        <div
-            class="flex flex-col items-end text-right min-w-35 select-none"
-        >
-            <div class="text-[12px] font-mono font-medium text-foreground">
-                Snapshot <span class="text-primary">{currentIndex}</span><span
-                    class="text-muted-foreground"
-                >
-                    / {Math.max(0, history.length - 1)}</span
-                >
-                {#if replayTime !== null}
-                    {@const hrs = replayTime * 24}
-                    {@const yrs = replayTime / 365.25}
-                    <span class="text-muted-foreground ml-1">
-                        ({replayTime < 1
-                            ? `${hrs.toFixed(1)} hrs`
-                            : replayTime > 365
-                              ? `${yrs.toFixed(1)} yrs`
-                              : `${replayTime.toFixed(1)} days`})
-                    </span>
-                {/if}
+    <div style="position:relative;">
+        <div class="viz" bind:this={canvasContainer}></div>
+        {#if tooltipVisible}
+            <div
+                style="position:absolute; left:{tooltipX}px; top:{tooltipY}px; background:rgba(0,0,0,0.85); color:#fff; padding:6px 8px; border-radius:4px; font-size:11px; pointer-events:none; white-space:nowrap; line-height:1.5; z-index:1000; border:1px solid rgba(255,255,255,0.15);"
+            >
+                {@html tooltipContent}
             </div>
-        </div>
+        {/if}
     </div>
-    <div
-        class="flex flex-wrap items-center gap-4 mt-2 mb-2 w-full justify-between"
-    >
+    <div class="mt-3 flex w-full flex-wrap items-center gap-3 px-1">
         <ToggleGroup options={showPropertyOptions} bind:value={showProperty} />
-
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-3">
             <div
                 class={`legend ${isTernaryBlend(showProperty) ? "legend--ternary" : ""}`}
                 style="margin:0;"
@@ -1728,16 +1692,6 @@
             {/if}
         </div>
     </div>
-    <div style="position:relative;">
-        <div class="viz" bind:this={canvasContainer}></div>
-        {#if tooltipVisible}
-            <div
-                style="position:absolute; left:{tooltipX}px; top:{tooltipY}px; background:rgba(0,0,0,0.85); color:#fff; padding:6px 8px; border-radius:4px; font-size:11px; pointer-events:none; white-space:nowrap; line-height:1.5; z-index:1000; border:1px solid rgba(255,255,255,0.15);"
-            >
-                {@html tooltipContent}
-            </div>
-        {/if}
-    </div>
 </div>
 
 <style>
@@ -1745,7 +1699,7 @@
     .viz {
         border: 1px solid #ddd;
         width: 100%;
-        height: clamp(383px, 56vh, 660px);
+        height: clamp(287.25px, 42vh, 495px);
         position: relative;
         background: #fff;
     }

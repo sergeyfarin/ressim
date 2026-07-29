@@ -85,7 +85,6 @@ export const dep_pvt: Scenario = {
     solverPolicy: {
         defaultSolver: 'fim',
         rationale: 'FIM is required here because the exhibit depends on coupled black-oil PVT, gas liberation, phase appearance, and pressure-dependent well behavior.',
-        comparisonSensitivityAvailable: false,
     },
     params: {
         // Fluid

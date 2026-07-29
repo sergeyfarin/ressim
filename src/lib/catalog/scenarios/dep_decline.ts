@@ -24,8 +24,7 @@ export const dep_decline: Scenario = {
     },
     solverPolicy: {
         defaultSolver: 'impes',
-        rationale: 'IMPES is the fast default for this constant-PVT decline case; formulation comparison is available without changing the reference.',
-        comparisonSensitivityAvailable: true,
+        rationale: 'IMPES is the fast default for this constant-PVT decline case.',
     },
     params: {
         // Fluid

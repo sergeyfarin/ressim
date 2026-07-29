@@ -24,8 +24,7 @@ export const dep_pss: Scenario = {
     },
     solverPolicy: {
         defaultSolver: 'impes',
-        rationale: 'IMPES is the validated interactive default for oil depletion; the FIM vs. IMPES axis compares the transient-to-PSS response directly.',
-        comparisonSensitivityAvailable: true,
+        rationale: 'IMPES is the validated interactive default for oil depletion.',
     },
     params: {
         // Fluid

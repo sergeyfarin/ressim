@@ -39,25 +39,20 @@ describe('scenario-first run model', () => {
         }
     });
 
-    it('adds an explicit FIM-vs-IMPES sensitivity to every oil/water scenario only', () => {
-        for (const scenario of listScenarios()) {
-            const dimension = scenario.sensitivities.find((candidate) => candidate.key === 'solver_comparison');
-            if (scenario.capabilities.requiresThreePhaseMode) {
-                expect(dimension, scenario.key).toBeUndefined();
-                continue;
-            }
-            expect(dimension?.variants.map((variant) => [variant.label, variant.paramPatch.fimEnabled]), scenario.key).toEqual([
-                ['IMPES', false],
-                ['FIM', true],
-            ]);
-        }
+    it('runs the dedicated scenario-owned FIM-vs-IMPES comparison', () => {
+        const scenario = listScenarios().find((candidate) => candidate.key === 'solver_fim_impes');
+        const dimension = scenario?.sensitivities.find((candidate) => candidate.variesSolver);
+        expect(dimension?.variants.map((variant) => [variant.label, variant.paramPatch.fimEnabled])).toEqual([
+            ['IMPES', false],
+            ['FIM', true],
+        ]);
     });
 
     it('keeps each scenario default solver across ordinary sensitivities', () => {
         for (const scenario of listScenarios()) {
             const expectedFim = scenario.solverPolicy.defaultSolver === 'fim';
             for (const dimension of scenario.sensitivities) {
-                if (dimension.key === 'solver_comparison') continue;
+                if (dimension.variesSolver) continue;
                 for (const variant of dimension.variants) {
                     const params = getScenarioWithVariantParams(scenario.key, dimension.key, variant.key);
                     expect(params.fimEnabled, `${scenario.key}/${dimension.key}/${variant.key}`).toBe(expectedFim);
@@ -68,13 +63,13 @@ describe('scenario-first run model', () => {
 
     it('includes the numerical solver in scenario run metadata', () => {
         const specs = buildScenarioRunSpecs({
-            scenarioKey: 'wf_bl1d',
+            scenarioKey: 'solver_fim_impes',
             dimensionKey: 'solver_comparison',
             variantKeys: ['solver_impes', 'solver_fim'],
         });
         expect(specs.map((spec) => [spec.solver, spec.variantLabel, spec.label])).toEqual([
-            ['impes', 'IMPES', '1D Waterflood — IMPES [IMPES]'],
-            ['fim', 'FIM', '1D Waterflood — FIM [FIM]'],
+            ['impes', 'IMPES', 'FIM vs. IMPES — Coarse Timestep — IMPES [IMPES]'],
+            ['fim', 'FIM', 'FIM vs. IMPES — Coarse Timestep — FIM [FIM]'],
         ]);
     });
 

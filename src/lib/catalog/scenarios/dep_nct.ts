@@ -53,8 +53,7 @@ export const dep_nct: Scenario = {
     },
     solverPolicy: {
         defaultSolver: 'impes',
-        rationale: 'IMPES is the default for this deliberately matched oil-depletion response; solver comparison must preserve the constructed N·cₜ ambiguity.',
-        comparisonSensitivityAvailable: true,
+        rationale: 'IMPES is the default for this deliberately matched oil-depletion response.',
     },
     params: {
         // Fluid — base case matches dep_decline exactly

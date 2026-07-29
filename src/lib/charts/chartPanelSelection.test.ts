@@ -4,7 +4,7 @@ import {
     getConfiguredXAxisOptions,
     resolveChartPanelDefinition,
     resolveChartPanelLayout,
-    suppressInitialSpike,
+    suppressLeadingOutliers,
     type ChartPanelEntry,
 } from './chartPanelSelection';
 
@@ -15,17 +15,33 @@ type TestCurve = {
 };
 
 describe('chartPanelSelection', () => {
-    it('suppresses only an initial point above the configured next-point ratio', () => {
-        const spike = [{ x: 0, y: 9_100 }, { x: 1, y: 4_000 }, { x: 2, y: 3_900 }];
-        const ordinary = [{ x: 0, y: 7_900 }, { x: 1, y: 4_000 }, { x: 2, y: 3_900 }];
+    it('suppresses a short leading outlier cluster against the median operating rate', () => {
+        const transient = [
+            { x: 0, y: 9_100 }, { x: 1, y: 4_000 },
+            ...Array.from({ length: 38 }, (_, index) => ({ x: index + 2, y: 100 + index % 3 })),
+        ];
+        const filtered = suppressLeadingOutliers(transient, {
+            medianRatio: 2,
+            maxLeadingFraction: 0.1,
+        });
 
-        expect(suppressInitialSpike(spike, 2)).toEqual([
+        expect(filtered.slice(0, 3)).toEqual([
             { x: 0, y: null },
-            { x: 1, y: 4_000 },
-            { x: 2, y: 3_900 },
+            { x: 1, y: null },
+            { x: 2, y: 100 },
         ]);
-        expect(suppressInitialSpike(ordinary, 2)).toBe(ordinary);
-        expect(suppressInitialSpike(spike, undefined)).toBe(spike);
+        expect(suppressLeadingOutliers(transient, undefined)).toBe(transient);
+    });
+
+    it('does not partially suppress a sustained high-rate decline', () => {
+        const decline = Array.from({ length: 40 }, (_, index) => ({
+            x: index,
+            y: index < 10 ? 1_000 - index * 50 : 100,
+        }));
+        expect(suppressLeadingOutliers(decline, {
+            medianRatio: 2,
+            maxLeadingFraction: 0.1,
+        })).toBe(decline);
     });
 
     it('filters x-axis options to the configured modes', () => {

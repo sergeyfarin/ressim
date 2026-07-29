@@ -4,12 +4,12 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 
 ## Current State
 
-- 14 canonical scenarios organized explicitly as Buckley–Leverett displacement, sweep efficiency, depletion and decline, pressure-transient analysis, gas and black oil, and validation benchmarks.
+- 15 canonical scenarios organized explicitly as Buckley–Leverett displacement, sweep efficiency, depletion and decline, pressure-transient analysis, gas and black oil, validation benchmarks, and cross-cutting interpretation cases.
 - Two-phase oil/water IMPES workflow validated against Buckley-Leverett breakthrough references.
 - Analytical overlays for Buckley-Leverett, Craig areal sweep, Dykstra-Parsons vertical sweep, Stiles-style combined sweep, Dietz pseudo-steady-state depletion, Fetkovich decline, Arps decline, and Havlena-Odeh material-balance diagnostics.
 - Black-oil PVT mode is available for volatile-oil style studies through correlation-based or tabular PVT input.
 - Three-phase oil/water/gas flow is validated against comparative solutions: SPE1 Case 1 for gas injection and an OPM Flow reference for solution gas drive (`docs/THREE_PHASE_VALIDATION.md`).
-- Public app runs are IMPES-first while the FIM path is deferred to explicit developer diagnostics.
+- Two-phase cases use scenario-declared IMPES defaults, while black-oil cases and the dedicated solver-formulation exhibit expose FIM in the public app.
 - OPM Flow reference work is handled offline through precomputed artifacts; browser execution remains local WASM.
 
 ## Scenario Inventory
@@ -29,6 +29,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 | Gas-Dominated Recovery | Solution Gas Drive | `gas_drive` | Black-oil depletion with OPM Flow reference |
 | Other | Same History, Different OOIP (N·cₜ) | `dep_nct` | Storage/reserves non-uniqueness; identical pressure/rate response with 4× OOIP spread |
 | Other | PVT Model Risk — One Calibration Point | `dep_pvt` | Two PVT representations constrained at one point |
+| Other | FIM vs. IMPES — Coarse Timestep | `solver_fim_impes` | Rate-controlled numerical-formulation comparison at deliberately coarse report steps |
 | Validation Benchmarks | SPE1 Black-Oil Benchmark | `spe1_gas_injection` | Published Eclipse and OPM Flow comparative-solution references |
 
 ## Implemented Capabilities

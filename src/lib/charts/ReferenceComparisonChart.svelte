@@ -9,7 +9,7 @@
         getConfiguredXAxisOptions,
         resolveChartPanelDefinition,
         resolveChartPanelLayout,
-        suppressInitialSpike,
+        suppressLeadingOutliers,
         type ChartPanelEntry,
         type ChartPanelFallback,
         type ChartXAxisOption,
@@ -367,9 +367,9 @@
                     series: panelDefinition.series.map((series, index) => (
                         (panelDefinition.curves[index]?.referenceSourceType === 'simulation'
                             || panelDefinition.curves[index]?.curveKey?.endsWith('-sim'))
-                            ? suppressInitialSpike(
+                            ? suppressLeadingOutliers(
                                 series,
-                                layoutConfig?.rateChart?.panels?.[panelKey]?.suppressInitialSpikeAboveRatio,
+                                layoutConfig?.rateChart?.panels?.[panelKey]?.suppressLeadingOutliers,
                             )
                             : series
                     )),

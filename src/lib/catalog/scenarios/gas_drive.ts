@@ -72,7 +72,6 @@ export const gas_drive: Scenario = {
     solverPolicy: {
         defaultSolver: 'fim',
         rationale: 'FIM is required for coupled dissolved/free-gas evolution, phase appearance, black-oil PVT, and producing-GOR behavior during depletion.',
-        comparisonSensitivityAvailable: false,
     },
     params: {
         nx: 20, ny: 1, nz: 1,

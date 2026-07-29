@@ -37,8 +37,7 @@ export const sweep_vertical: Scenario = {
     },
     solverPolicy: {
         defaultSolver: 'impes',
-        rationale: 'IMPES is the interactive default for this layered oil/water sweep case; the solver-comparison axis keeps geology and controls unchanged.',
-        comparisonSensitivityAvailable: true,
+        rationale: 'IMPES is the interactive default for this layered oil/water sweep case.',
     },
     params: {
         // Fluid

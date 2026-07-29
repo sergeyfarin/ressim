@@ -40,8 +40,7 @@ export const dep_arps: Scenario = {
     },
     solverPolicy: {
         defaultSolver: 'impes',
-        rationale: 'IMPES is the interactive default for the commingled layered depletion run; the solver axis leaves the Arps interpretation inputs unchanged.',
-        comparisonSensitivityAvailable: true,
+        rationale: 'IMPES is the interactive default for the commingled layered depletion run.',
     },
     params: {
         // Fluid

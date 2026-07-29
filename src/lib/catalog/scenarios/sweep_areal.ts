@@ -50,8 +50,7 @@ export const sweep_areal: Scenario = {
     },
     solverPolicy: {
         defaultSolver: 'impes',
-        rationale: 'IMPES is the measured faster default for this oil/water pattern flood; a declared FIM vs. IMPES sensitivity is available for numerical comparison.',
-        comparisonSensitivityAvailable: true,
+        rationale: 'IMPES is the measured faster default for this oil/water pattern flood.',
     },
     params: {
         // Fluid
@@ -109,8 +108,8 @@ export const sweep_areal: Scenario = {
         well_skin: 0,
         // Numerics
         fimEnabled: false,
-        delta_t_days: 0.25,
-        steps: 2500,
+        delta_t_days: 5,
+        steps: 80,
         max_sat_change_per_step: 0.01,
         max_pressure_change_per_step: 50,
         max_well_rate_change_fraction: 1.0,
@@ -129,21 +128,21 @@ export const sweep_areal: Scenario = {
                     key: 'mob_favorable',
                     label: 'M ≈ 0.5  (μ_o = 0.25 cp)',
                     description: 'Favourable mobility — high areal sweep, late breakthrough, piston-like.',
-                    paramPatch: { mu_o: 0.25, steps: 1300 },
+                    paramPatch: { mu_o: 0.25 },
                     affectsAnalytical: true,
                 },
                 {
                     key: 'mob_unit',
                     label: 'M ≈ 2  (μ_o = 1.0 cp)',
                     description: 'Moderate mobility ratio — base case. E_A(BT) ≈ 0.58.',
-                    paramPatch: { steps: 2500 },
+                    paramPatch: {  },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'mob_unfavorable',
                     label: 'M ≈ 10  (μ_o = 5.0 cp)',
                     description: 'Strongly unfavourable — viscous channelling, early breakthrough, poor areal sweep.',
-                    paramPatch: { mu_o: 5.0, steps: 5000 },
+                    paramPatch: { mu_o: 5.0, steps: 160 },
                     affectsAnalytical: true,
                 },
             ],

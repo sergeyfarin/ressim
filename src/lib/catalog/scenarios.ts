@@ -37,6 +37,7 @@ import { dep_pvt } from './scenarios/dep_pvt';
 import { gas_injection } from './scenarios/gas_injection';
 import { gas_drive } from './scenarios/gas_drive';
 import { spe1_gas_injection } from './scenarios/spe1_gas_injection';
+import { solver_fim_impes } from './scenarios/solver_fim_impes';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -138,7 +139,6 @@ export type SimulationSolver = 'impes' | 'fim';
 export type ScenarioSolverPolicy = {
     defaultSolver: SimulationSolver;
     rationale: string;
-    comparisonSensitivityAvailable: boolean;
 };
 
 /**
@@ -459,6 +459,8 @@ export type SensitivityDimension = {
     label: string;
     description: string;
     variants: SensitivityVariant[];
+    /** True when the variants deliberately select different numerical solvers. */
+    variesSolver?: boolean;
     /**
      * How comparison-chart analytical overlays should be grouped when this
      * dimension is active. `auto` falls back to physics-signature inference;
@@ -642,7 +644,7 @@ export type Scenario = {
     liveChartPanels?: import('../charts/universalChartTypes').UniversalPanelDef[];
 };
 
-/** Scenario after generic catalog enhancements (currently sensitivity injection). */
+/** Registered, self-contained scenario definition. */
 export type CatalogScenario = Scenario;
 
 // Scenario-first product vocabulary. The older Scenario/Sensitivity names
@@ -683,43 +685,10 @@ const SOURCE_SCENARIOS: Scenario[] = [
     gas_injection,
     gas_drive,
     spe1_gas_injection,
+    solver_fim_impes,
 ];
 
-function solverComparisonSensitivity(defaultSolver: SimulationSolver): SensitivityDimension {
-    const orderedSolvers: SimulationSolver[] = defaultSolver === 'impes'
-        ? ['impes', 'fim']
-        : ['fim', 'impes'];
-    return {
-        key: 'solver_comparison',
-        label: 'FIM vs. IMPES',
-        description: 'Run the same oil/water case with both numerical formulations. Physics inputs, grid, wells, timestep, and analytical reference stay fixed.',
-        analyticalOverlayMode: 'shared',
-        variants: orderedSolvers.map((solver) => ({
-            key: `solver_${solver}`,
-            label: solver.toUpperCase(),
-            description: solver === 'fim'
-                ? 'Fully implicit coupled pressure/saturation Newton solve.'
-                : 'Implicit pressure with explicit saturation transport.',
-            paramPatch: { fimEnabled: solver === 'fim' },
-            affectsAnalytical: false,
-        })),
-    };
-}
-
-function applyCatalogEnhancements(source: Scenario): CatalogScenario {
-    return {
-        ...source,
-        params: {
-            ...source.params,
-            fimEnabled: source.solverPolicy.defaultSolver === 'fim',
-        },
-        sensitivities: source.solverPolicy.comparisonSensitivityAvailable
-            ? [...source.sensitivities, solverComparisonSensitivity(source.solverPolicy.defaultSolver)]
-            : [...source.sensitivities],
-    };
-}
-
-export const SCENARIOS: CatalogScenario[] = SOURCE_SCENARIOS.map(applyCatalogEnhancements);
+export const SCENARIOS: CatalogScenario[] = SOURCE_SCENARIOS;
 
 // Freeze all scenario params objects to catch accidental in-place mutation early.
 // A mutation to one scenario's params cannot silently corrupt another.

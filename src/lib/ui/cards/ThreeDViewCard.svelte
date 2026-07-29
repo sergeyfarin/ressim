@@ -41,44 +41,14 @@
         onSelectResult,
         onClearResult,
     }: Props = $props();
+
+    function applyHistorySlider(event: Event): void {
+        const nextIndex = Number((event.currentTarget as HTMLInputElement).value);
+        if (Number.isFinite(nextIndex)) onApplyHistoryIndex(nextIndex);
+    }
 </script>
 
 <div class="p-4 md:p-5">
-    {#if activeReferenceResults.length > 0}
-        <div class="mb-3 flex flex-wrap items-center gap-1.5">
-            <button
-                type="button"
-                class={`px-2 py-1 text-[11px] font-medium rounded-md border transition-colors ${
-                    activePrimaryComparisonResultKey === null
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-transparent text-muted-foreground border-border hover:bg-muted/50 hover:text-foreground"
-                }`}
-                onclick={onClearResult}
-            >
-                Live runtime
-            </button>
-            {#each activeReferenceResults as result}
-                <button
-                    type="button"
-                    class={`px-2 py-1 text-[11px] font-medium rounded-md border transition-colors ${
-                        activePrimaryComparisonResultKey === result.key
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "bg-transparent text-muted-foreground border-border hover:bg-muted/50 hover:text-foreground"
-                    }`}
-                    onclick={() => onSelectResult(result.key)}
-                >
-                    {result.variantKey === null ? "Base" : (result.variantLabel ?? result.label)}
-                </button>
-            {/each}
-        </div>
-    {:else}
-        <div class="mb-3">
-            <span class="ui-chip border border-border/70 bg-background text-muted-foreground">
-                Live runtime
-            </span>
-        </div>
-    {/if}
-
     {#if ThreeDViewComponent}
         {#key `${selectedOutput3D.nx}-${selectedOutput3D.ny}-${selectedOutput3D.nz}-${selectedOutput3D.cellDz}-${selectedOutput3D.cellDzPerLayer.join(",")}-${vizRevision}-${activePrimaryComparisonResultKey ?? "live"}`}
             <ThreeDViewComponent
@@ -98,12 +68,68 @@
                 s_wc={selectedOutputProfile.rockProps.s_wc}
                 s_or={selectedOutputProfile.rockProps.s_or}
                 currentIndex={selectedOutput3D.currentIndex}
-                replayTime={selectedOutput3D.replayTime}
-                onApplyHistoryIndex={onApplyHistoryIndex}
                 history={selectedOutput3D.history}
                 wellState={selectedOutput3D.wellState}
             />
         {/key}
+
+        <div class="mt-3 flex flex-col gap-3 px-1">
+            <div class="flex flex-wrap items-center gap-1.5">
+                <button
+                    type="button"
+                    class={`px-2 py-1 text-[11px] font-medium rounded-md border transition-colors ${
+                        activePrimaryComparisonResultKey === null
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-transparent text-muted-foreground border-border hover:bg-muted/50 hover:text-foreground"
+                    }`}
+                    onclick={onClearResult}
+                >
+                    Live runtime
+                </button>
+                {#each activeReferenceResults as result}
+                    <button
+                        type="button"
+                        class={`px-2 py-1 text-[11px] font-medium rounded-md border transition-colors ${
+                            activePrimaryComparisonResultKey === result.key
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-transparent text-muted-foreground border-border hover:bg-muted/50 hover:text-foreground"
+                        }`}
+                        onclick={() => onSelectResult(result.key)}
+                    >
+                        {result.variantKey === null ? "Base" : (result.variantLabel ?? result.label)}
+                    </button>
+                {/each}
+            </div>
+
+            <div class="flex w-full items-center gap-4">
+                <input
+                    type="range"
+                    class="time-slider flex-1"
+                    min="0"
+                    max={Math.max(0, selectedOutput3D.history.length - 1)}
+                    value={selectedOutput3D.currentIndex}
+                    disabled={selectedOutput3D.history.length === 0}
+                    oninput={applyHistorySlider}
+                    onchange={applyHistorySlider}
+                />
+                <div class="min-w-35 select-none text-right text-[12px] font-mono font-medium text-foreground">
+                    Snapshot <span class="text-primary">{selectedOutput3D.currentIndex}</span><span class="text-muted-foreground">
+                        / {Math.max(0, selectedOutput3D.history.length - 1)}</span
+                    >
+                    {#if selectedOutput3D.replayTime !== null}
+                        {@const hrs = selectedOutput3D.replayTime * 24}
+                        {@const yrs = selectedOutput3D.replayTime / 365.25}
+                        <span class="ml-1 text-muted-foreground">
+                            ({selectedOutput3D.replayTime < 1
+                                ? `${hrs.toFixed(1)} hrs`
+                                : selectedOutput3D.replayTime > 365
+                                  ? `${yrs.toFixed(1)} yrs`
+                                  : `${selectedOutput3D.replayTime.toFixed(1)} days`})
+                        </span>
+                    {/if}
+                </div>
+            </div>
+        </div>
 
         <!--
             Cross-section of the same snapshot the 3D view is rendering. Reads

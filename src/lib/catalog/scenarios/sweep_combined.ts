@@ -45,8 +45,7 @@ export const sweep_combined: Scenario = {
     },
     solverPolicy: {
         defaultSolver: 'impes',
-        rationale: 'IMPES is the interactive default for the larger combined-sweep grid; the solver-comparison axis reuses the same analytical decomposition.',
-        comparisonSensitivityAvailable: true,
+        rationale: 'IMPES is the interactive default for the larger combined-sweep grid.',
     },
     params: {
         // Fluid

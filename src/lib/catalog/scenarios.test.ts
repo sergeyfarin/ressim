@@ -22,21 +22,24 @@ import {
     CHART_LAYOUTS,
 } from './scenarios';
 
-describe('sweep scenario sensitivities', () => {
-    it('applies each scenario\'s declared solver policy without re-inferring it', () => {
+describe('scenario sensitivities', () => {
+    it('uses each scenario\'s declared solver policy without injecting sensitivities', () => {
         for (const scenario of listScenarios()) {
             expect(scenario.params.fimEnabled, scenario.key)
                 .toBe(scenario.solverPolicy.defaultSolver === 'fim');
             expect(scenario.solverPolicy.rationale.trim().length, scenario.key).toBeGreaterThan(20);
-            expect(
-                scenario.sensitivities.some((dimension) => dimension.key === 'solver_comparison'),
-                scenario.key,
-            ).toBe(scenario.solverPolicy.comparisonSensitivityAvailable);
         }
+
+        const solverDimensions = listScenarios().flatMap((scenario) =>
+            scenario.sensitivities
+                .filter((dimension) => dimension.variesSolver)
+                .map((dimension) => [scenario.key, dimension.key]),
+        );
+        expect(solverDimensions).toEqual([['solver_fim_impes', 'solver_comparison']]);
     });
 
     it('provides analytical method metadata for every canonical scenario', () => {
-        expect(listScenarios()).toHaveLength(14);
+        expect(listScenarios()).toHaveLength(15);
         for (const scenario of listScenarios()) {
             expect(scenario.analyticalMethodSummary.length, scenario.key).toBeGreaterThan(10);
             expect(scenario.analyticalMethodReference.length, scenario.key).toBeGreaterThan(5);
@@ -62,7 +65,6 @@ describe('sweep scenario sensitivities', () => {
             'areal_heterogeneity',
             'sor',
             'grid_resolution',
-            'solver_comparison',
         ]);
 
         const arealAxis = scenario?.sensitivities.find((dimension) => dimension.key === 'areal_heterogeneity');
@@ -120,7 +122,6 @@ describe('sweep scenario sensitivities', () => {
         expect(scenario?.sensitivities.map((dimension) => dimension.key)).toEqual([
             'interaction_core',
             'sweep_ladder',
-            'solver_comparison',
         ]);
 
         const interactionAxis = scenario?.sensitivities.find((dimension) => dimension.key === 'interaction_core');
@@ -357,14 +358,12 @@ describe('scenario capability validation', () => {
             ['areal_heterogeneity', 'shared'],
             ['sor', 'per-result'],
             ['grid_resolution', 'shared'],
-            ['solver_comparison', 'shared'],
         ]);
         expect(getScenario('wf_bl1d')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['mobility', 'per-result'],
             ['corey_no', 'per-result'],
             ['sor', 'per-result'],
             ['grid', 'shared'],
-            ['solver_comparison', 'shared'],
         ]);
         expect(getScenario('dep_pss')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['shape_factor', 'per-result'],
@@ -372,19 +371,16 @@ describe('scenario capability validation', () => {
             ['compressibility', 'per-result'],
             ['timestep', 'shared'],
             ['grid_refinement', 'shared'],
-            ['solver_comparison', 'shared'],
         ]);
         expect(getScenario('dep_decline')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['permeability', 'per-result'],
             ['skin', 'per-result'],
             ['timestep', 'shared'],
             ['grid_refinement', 'shared'],
-            ['solver_comparison', 'shared'],
         ]);
         expect(getScenario('dep_arps')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['arps_b', 'per-result'],
             ['layer_contrast', 'per-result'],
-            ['solver_comparison', 'shared'],
         ]);
         expect(getScenario('gas_injection')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['mobility', 'per-result'],
@@ -396,12 +392,10 @@ describe('scenario capability validation', () => {
             ['heterogeneity', 'per-result'],
             ['mobility', 'per-result'],
             ['endpoints_vs_geology', 'per-result'],
-            ['solver_comparison', 'shared'],
         ]);
         expect(getScenario('sweep_combined')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['interaction_core', 'per-result'],
             ['sweep_ladder', 'shared'],
-            ['solver_comparison', 'shared'],
         ]);
     });
 
