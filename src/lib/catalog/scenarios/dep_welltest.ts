@@ -100,8 +100,8 @@ export const dep_welltest: Scenario = {
         requiresThreePhaseMode: false,
     },
     solverPolicy: {
-        defaultSolver: 'impes',
-        rationale: 'IMPES is the interactive default for this short constant-rate transient.',
+        defaultSolver: 'fim',
+        rationale: 'FIM solver required to capture initial pressure response rather than starting from initial reservoir pressure. FIM vs. IMPES sensitivity illustates the difference.',
     },
     params: {
         // Fluid
@@ -161,9 +161,9 @@ export const dep_welltest: Scenario = {
         well_radius: 0.1,
         well_skin: 0,
         // Numerics — 100 x 0.005 d = 0.5 days (12 hours), two log cycles.
-        fimEnabled: false,
-        delta_t_days: 0.005,
-        steps: 100,
+        fimEnabled: true,
+        delta_t_days: 0.02,
+        steps: 120,
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 75,
         max_well_rate_change_fraction: 1.0,
@@ -236,9 +236,9 @@ export const dep_welltest: Scenario = {
             variants: [
                 {
                     key: 'grid_coarse',
-                    label: '21 x 21  (40 m cells)',
-                    description: '840 m domain in 40 m blocks — the well lives in a block 400 times wider than its own diameter.',
-                    paramPatch: { nx: 21, ny: 21, cellDx: 40, cellDy: 40, producerI: 10, producerJ: 10 },
+                    label: '11 x 11  (80 m cells)',
+                    description: '840 m domain in 80 m blocks — the well lives in a block 800 times wider than its own diameter.',
+                    paramPatch: { nx: 11, ny: 11, cellDx: 80, cellDy: 80, producerI: 5, producerJ: 5 },
                     affectsAnalytical: false,
                 },
                 {
@@ -253,6 +253,28 @@ export const dep_welltest: Scenario = {
                     label: '81 x 81  (10 m cells)',
                     description: 'Four times as many cells for the same domain. If the Peaceman index is doing its job, this should not move the flowing-pressure curve much — that is the result worth checking, not assuming.',
                     paramPatch: { nx: 81, ny: 81, cellDx: 10, cellDy: 10, producerI: 40, producerJ: 40 },
+                    affectsAnalytical: false,
+                },
+            ],
+        },
+        {
+            key: 'fim_impes',
+            label: 'FIM vs. IMPES',
+            description: 'FIM vs. IMPES solver.',
+            analyticalOverlayMode: 'shared',
+            variants: [
+                {
+                    key: 'solver_impes',
+                    label: 'IMPES',
+                    description: 'Implicit pressure followed by explicit saturation transport, with stability-driven internal subdivision.',
+                    paramPatch: { fimEnabled: false },
+                    affectsAnalytical: false,
+                },
+                {
+                    key: 'solver_fim',
+                    label: 'FIM',
+                    description: 'Fully implicit coupled pressure/saturation Newton solve at the same 5-day report timestep.',
+                    paramPatch: { fimEnabled: true },
                     affectsAnalytical: false,
                 },
             ],
