@@ -40,7 +40,7 @@ describe('scenario sensitivities', () => {
     });
 
     it('provides analytical method metadata for every canonical scenario', () => {
-        expect(listScenarios()).toHaveLength(15);
+        expect(listScenarios()).toHaveLength(14);
         for (const scenario of listScenarios()) {
             expect(scenario.analyticalMethodSummary.length, scenario.key).toBeGreaterThan(10);
             expect(scenario.analyticalMethodReference.length, scenario.key).toBeGreaterThan(5);
@@ -334,7 +334,6 @@ describe('scenario catalog taxonomy', () => {
         expect(getScenarioGroup(getScenario('dep_welltest')!)).toBe('pressure-transient');
         expect(getScenarioGroup(getScenario('gas_injection')!)).toBe('gas-black-oil');
         expect(getScenarioGroup(getScenario('spe1_gas_injection')!)).toBe('validation-benchmarks');
-        expect(getScenarioGroup(getScenario('dep_nct')!)).toBe('depletion-decline');
         expect(getScenarioGroup(getScenario('dep_pvt')!)).toBe('gas-black-oil');
     });
 
@@ -464,7 +463,6 @@ describe('scenario capability validation', () => {
             dep_pss: 'pressure',
             dep_decline: 'pressure',
             dep_arps: 'pressure',
-            dep_nct: 'pressure',
             // Skin changes flowing BHP, not the rate-controlled pressure field.
             dep_welltest: null,
             // Black-oil depletion is a gas-liberation exhibit, unlike the oil-only depletion cases.

@@ -49,6 +49,10 @@ class existed because every test stopped at model content.
 
 ## 2. MAJOR (E5): divider never shows on dep_nct by default — CLOSED 2026-07-28
 
+**Later disposition (2026-07-30):** `dep_nct` was withdrawn from the active catalog. The divider
+implementation remains reusable, but fixing its log-time position did not solve the case's missing
+reserves/identifiability result view. See `docs/CASE_LIBRARY_ROADMAP.md` Tier 5.1.
+
 The `fetkovich` layout opens with `xAxisMode: 'logTime'`
 (`src/lib/catalog/chartLayouts.ts:165`), and `resolveHistoryDivider`
 (`src/lib/charts/historyDivider.ts`) only matches `axis: 'time'` against `'time'`. The user must

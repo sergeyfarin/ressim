@@ -4,7 +4,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 
 ## Current State
 
-- 15 canonical scenarios organized explicitly as Buckley–Leverett displacement, sweep efficiency, depletion and decline, pressure-transient analysis, gas and black oil, validation benchmarks, and cross-cutting interpretation cases.
+- 14 canonical scenarios organized explicitly as Buckley–Leverett displacement, sweep efficiency, depletion and decline, pressure-transient analysis, gas and black oil, validation benchmarks, and cross-cutting interpretation cases.
 - Two-phase oil/water IMPES workflow validated against Buckley-Leverett breakthrough references.
 - Analytical overlays for Buckley-Leverett, Craig areal sweep, Dykstra-Parsons vertical sweep, Stiles-style combined sweep, Dietz pseudo-steady-state depletion, Fetkovich decline, Arps decline, and Havlena-Odeh material-balance diagnostics.
 - Black-oil PVT mode is available for volatile-oil style studies through correlation-based or tabular PVT input.
@@ -24,7 +24,6 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 | Depletion & Decline | Dietz PSS Productivity | `dep_pss` | Constant-rate late-time flowing-BHP/shape-factor measurement |
 | Depletion & Decline | Finite-Reservoir Transition — Fetkovich | `dep_decline` | Finite-slab transient, boundary arrival, and asymptotic decline |
 | Depletion & Decline | Layered Depletion — Composite Decline | `dep_arps` | Exact superposition of noncommunicating layer declines at fixed total PI |
-| Depletion & Decline | Same History, Different OOIP (N·cₜ) | `dep_nct` | Exact-tank storage/reserves non-uniqueness with 4× OOIP spread |
 | Pressure-Transient Analysis | Well-Test Drawdown | `dep_welltest` | Line-source drawdown; permeability, skin, and near-well grid bias |
 | Gas-Dominated Recovery | Gas Injection | `gas_injection` | Gas-oil fractional-flow breakthrough |
 | Gas-Dominated Recovery | Solution Gas Drive | `gas_drive` | Black-oil depletion with OPM Flow reference |

@@ -47,6 +47,11 @@ CI Rust gate (`impes` bucket), 3D-view named-bug verification (all four already 
 
 ### W2.1 — `dep_nct` "Matched history, different reserves" (Tier 5.1)
 
+> Historical implementation plan, superseded 2026-07-30: the resulting scenario was withdrawn
+> because ordinary time-series panels and a history divider did not expose the OOIP/reserves
+> decision. See `docs/CASE_LIBRARY_ROADMAP.md` Tier 5.1 for the plot prerequisites and re-admission
+> gate.
+
 - Base: clone the `dep_decline`/`dep_arps` family (constant-PVT depletion, BHP producer, PSS-dominated run length).
 - Dimension `nct_ambiguity`, 3 variants with equal `N·c_t` product but different splits: vary pore volume (porosity and/or dz) against compressibility (`c_o`/`rock_compressibility`) inversely. Same pressure/rate history, different RF = Np/N by construction. `affectsAnalytical: true` (tau changes inputs), `analyticalOverlayMode: 'per-result'`.
 - Panels: pressure + recovery + existing MB diagnostics (Havlena-Odeh via `analyticalParamAdapters.ts` shows exactly the ambiguous quantity).

@@ -89,7 +89,7 @@ Cheap to build (pure TS, no engine work), and they teach model-hierarchy judgmen
 | Exhibit | Sources | Teaching point | Feasibility |
 |---|---|---|---|
 | F1. **CRM vs full simulation** | S6(CRM)+S2/S4 | Capacitance-resistance model fitted to rate history reproduces interwell connectivity without a grid — where does it break? | CRM fit is a small least-squares in TS |
-| F2. **MB straight-line on simulator output** | S6(Havlena-Odeh)+S2+S1 | Extends `dep_nct`: fit the straight line to "observed" sim data, recover N·c_t, show the non-uniqueness *as a fitting exercise* | Mostly exists in MB diagnostics |
+| F2. **MB straight-line on simulator output** | S6(Havlena-Odeh)+S2+S1 | Supplies part of the result workflow required before the withdrawn `dep_nct` concept can return: fit the straight line to "observed" sim data, recover N·c_t, and show the non-uniqueness *as a fitting exercise* | Mostly exists in MB diagnostics |
 | F3. **Arps fit vs physics** | S6(fit)+S2+S1(Fetkovich) | Empirical decline vs the physics that generates it; extrapolation risk beyond the fit window (pairs with E5 divider) | `dep_arps` groundwork exists |
 
 ### G. Ensembles — same source, many instances (S4×N, S5×N)

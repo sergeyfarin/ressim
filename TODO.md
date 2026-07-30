@@ -92,9 +92,9 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ### Wave 4 follow-ups
 - [x] **E5 log-time history divider (2026-07-28).** A scenario time boundary now maps to
-  `Math.log10(boundary)` on the log-time presentation axis (positive boundaries only), so the
-  `dep_nct` divider renders on its default chart. The case labels the right-hand region "Reserves
-  view" because its production curves remain matched; the divergence is OOIP/recovery factor.
+  `Math.log10(boundary)` on the log-time presentation axis (positive boundaries only). Originally
+  demonstrated by `dep_nct`; that case was withdrawn on 2026-07-30 because a correctly positioned
+  divider still did not provide the required reserves/identifiability result view.
 - [ ] **(MINOR, E7 cosmetic) 3D card hidden for pre-run scenarios leaves `xl:grid-cols-2` with one
   child** — empty right half on xl. Consider full-width chart when `isPrerunScenario`. Verify in
   `pnpm run dev`.
@@ -226,7 +226,13 @@ Measured all 130 catalog cases headless in Node against the committed wasm
 Case IDs below are `docs/CASE_LIBRARY_ROADMAP.md` Tier 7 IDs (`T7.n`) — that doc holds the
 rationale and references; this list holds only the action and its blocker.
 
-- [x] **5.1 "Matched history, different reserves"** (N·c_t ambiguity) — shipped as `dep_nct.ts`.
+- [ ] **5.1 "Matched history, different reserves"** (N·c_t ambiguity) — withdrawn from the active
+  catalog on 2026-07-30. Do not restore the scenario until a purpose-built
+  reserves/identifiability result view can show OOIP, c_t, N·c_t, cumulative oil, recovery factor,
+  and remaining/abandonment reserves side by side. Re-entry also requires one product-consistent
+  OOIP definition and simulator-history tests that quantify pressure/rate/cumulative mismatch on
+  linear and logarithmic plots. Full rationale and admission gate:
+  `docs/CASE_LIBRARY_ROADMAP.md` Tier 5.1.
 - [x] **5.2 kv/kh × density-contrast experiment** — implemented and measured, then withdrawn from
   the active catalog on 2026-07-28 because the product had no tornado/interaction-specific plot.
   Re-admission requires a distinct interaction workflow; the second candidate pair (capillary ×

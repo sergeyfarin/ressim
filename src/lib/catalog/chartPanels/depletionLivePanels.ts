@@ -1,7 +1,7 @@
 /**
  * depletionLivePanels.ts — live chart panel definitions for depletion scenarios.
  *
- * Used by: dep_decline, dep_arps, dep_nct.
+ * Used by: dep_decline, dep_arps.
  *
  * Depletion has no injector so injection rate, VRR, and water-cut panels are omitted.
  * Analytical references are the finite-slab transition or exact lumped-tank

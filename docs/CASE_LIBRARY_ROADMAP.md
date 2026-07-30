@@ -66,9 +66,28 @@ Tiers 1–4 are correctness/teaching cases: "does the simulator match the refere
 
 ### 5.1 "Matched history, different reserves" — N·c_t ambiguity (no engine gap, cheapest)
 
-**DONE** — shipped as `src/lib/catalog/scenarios/dep_nct.ts` ("Same History, Different OOIP (N·cₜ)"), dimension `nct_ambiguity`, three equal-N·c_t variants.
+**WITHDRAWN FROM THE ACTIVE CATALOG (2026-07-30).** The equal-N·c_t tank construction was
+scientifically useful, but the available time-series presentation did not demonstrate the decision
+insight. Rate, pressure, and cumulative-production curves were designed to remain matched on both
+sides of an arbitrary history divider; a log-rate view merely magnified small simulator differences
+that were not covered by the scenario's analytical-only curve-equality test. The recovery-factor
+test also used `1 - S_wc - S_or` as its OOIP saturation term while the product uses
+`1 - initialSaturation`, so its locked percentages did not match the UI definition.
 
-Undersaturated depletion under BHP control: pressure decline goes as ΔP ≈ Np/(N·c_t·B), so (OOIP, total compressibility) pairs with equal product produce near-identical pressure and rate history — but recovery factor Np/N differs by construction. Variants: 3 (N, c_t) pairs with equal N·c_t. Teaching point: pressure data alone cannot separate OOIP from compressibility (the classic material-balance non-uniqueness; Dake ch. 3, Havlena-Odeh 1963 — and the existing Havlena-Odeh diagnostics panel displays exactly the ambiguous quantity). Extends the `dep_*` family; analytics all exist. Needs only the history/forecast chart affordance (gap E5 below) to land the "match vs outcome" framing.
+**Re-admission prerequisites:** first provide a scenario-owned reserves/identifiability result view,
+not another ordinary time-series panel. It must show each interpretation's OOIP, total
+compressibility, N·c_t, cumulative oil, recovery factor, and remaining/abandonment reserves together;
+make the matched observation window and the reserves consequence explicit without implying a
+divergent rate forecast; and quantify the maximum simulated pressure/rate/cumulative mismatch on
+linear and logarithmic presentations. Only then rebuild the case with one canonical OOIP definition,
+tests against the actual simulator histories, and text whose numerical claims are generated from the
+same result model shown in the UI.
+
+Candidate basis: undersaturated depletion under BHP control, where pressure decline goes as ΔP ≈
+Np/(N·c_t·B), so (OOIP, total compressibility) pairs with equal product can produce near-identical
+pressure and rate history while recovery factor Np/N differs by construction. Teaching point:
+pressure/rate data alone cannot separate OOIP from compressibility when total compressibility is not
+independently constrained (Dake ch. 3; Havlena-Odeh 1963).
 
 ### 5.2 "The tornado plot lies" — interaction amplification (no engine gap)
 
@@ -178,7 +197,7 @@ T7.1 is the largest missing pillar of classical reservoir engineering in the pro
 | ID | Case | Depends on |
 |---|---|---|
 | T7.16 | **Capillary entry pressure × layer contrast** — capillary crossflow is invisible homogeneous, decisive layered (Willhite §5). The unbuilt half of Tier 5.2 | T7.4 (turn capillarity on somewhere first) |
-| T7.17 | **Aquifer strength × OOIP** — the two-parameter `dep_nct`: near-perfect history equifinality, factor-2 reserves spread | T7.3 |
+| T7.17 | **Aquifer strength × OOIP** — a future two-parameter successor to the withdrawn `dep_nct`: near-perfect history equifinality, factor-2 reserves spread | T7.3 |
 | T7.18 | **Relperm endpoints × heterogeneity (V_DP)** — sweep loss attributable to rock curves vs. geology is not separable from production data | none |
 | T7.19 | **Ensemble / fan-chart affordance** — N-realization P10/P50/P90 band plus "history shaded, forecast diverging" | E8 (below). **Prerequisite for all of 7.D and for Tier 6.1/6.6** |
 

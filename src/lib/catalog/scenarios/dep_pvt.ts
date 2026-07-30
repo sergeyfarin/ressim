@@ -32,7 +32,7 @@ import { generateBlackOilTable } from '../../physics/pvt';
  *
  * References: Standing (1947) correlations; McCain, "The Properties of
  * Petroleum Fluids" on undersaturated-oil PVT uncertainty; the general
- * "representation risk" framing extends dep_nct's material-balance
+ * "representation risk" framing complements the material-balance
  * non-uniqueness point to the PVT-table axis.
  *
  * No analytical reference: this is a three-phase black-oil blowdown: the

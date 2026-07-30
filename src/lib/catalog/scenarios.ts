@@ -31,7 +31,6 @@ import { sweep_combined } from './scenarios/sweep_combined';
 import { dep_pss } from './scenarios/dep_pss';
 import { dep_arps } from './scenarios/dep_arps';
 import { dep_decline } from './scenarios/dep_decline';
-import { dep_nct } from './scenarios/dep_nct';
 import { dep_welltest } from './scenarios/dep_welltest';
 import { dep_pvt } from './scenarios/dep_pvt';
 import { gas_injection } from './scenarios/gas_injection';
@@ -573,7 +572,7 @@ export type ScenarioTerminationPolicy = {
 /**
  * Optional "history / forecast" split marker for the comparison chart. Renders
  * a shaded history region up to `boundary` plus a divider line, so match-then-
- * forecast cases (e.g. dep_nct now, Tavassoli/PUNQ-S3 later) can visually
+ * forecast cases (for example a future Tavassoli/PUNQ-S3 case) can visually
  * separate the observed-history window from the extrapolated forecast.
  */
 export type HistoryWindow = {
@@ -679,7 +678,6 @@ const SOURCE_SCENARIOS: Scenario[] = [
     dep_pss,
     dep_decline,
     dep_arps,
-    dep_nct,
     dep_welltest,
     dep_pvt,
     gas_injection,

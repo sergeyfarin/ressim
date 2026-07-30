@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import initWasm, { ReservoirSimulator } from './ressim/pkg/simulator.js';
 
 // E1: exercises the additive `setPermeabilityField` wasm setter directly (the
-// same real-engine pattern as wf_tornado.test.ts / dep_nct.test.ts). A full
+// same real-engine pattern as the catalog's focused WASM scenario tests). A full
 // `cargo test` is not a valid gate here (SPE1/FIM tests hang), so this drives
 // the compiled binding instead.
 
