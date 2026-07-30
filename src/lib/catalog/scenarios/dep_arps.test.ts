@@ -79,7 +79,7 @@ function configureAndRun(params: Record<string, unknown>) {
     return rateHistory;
 }
 
-function analyticalFor(params: Record<string, unknown>, times: number[]) {
+function analyticalFor(params: Record<string, unknown>, times: number[], minTimeDays?: number) {
     return calculateDepletionAnalyticalProduction({
         reservoir: {
             length: Number(params.nx) * Number(params.cellDx),
@@ -87,7 +87,7 @@ function analyticalFor(params: Record<string, unknown>, times: number[]) {
             porosity: Number(params.reservoirPorosity),
         },
         timeHistory: times,
-        minTimeDays: Number(params.analyticalDepletionStartDays),
+        minTimeDays: minTimeDays ?? Number(params.analyticalDepletionStartDays),
         initialSaturation: Number(params.initialSaturation),
         nz: Number(params.nz),
         permMode: String(params.permMode),
@@ -119,13 +119,18 @@ function analyticalFor(params: Record<string, unknown>, times: number[]) {
 }
 
 describe('layered composite depletion scenario', () => {
-    it('keeps the numerical and exact layer-superposition decline in the same regime', async () => {
+    it('approaches the late-time layer-superposition decline after the spatial transient', async () => {
         await ensureWasmReady();
 
         for (const variantKey of ['contrast_low', 'contrast_base', 'contrast_high']) {
             const params = getScenarioWithVariantParams('dep_arps', 'layer_contrast', variantKey);
             const numerical = configureAndRun(params);
             const reference = analyticalFor(params, numerical.map((point) => Number(point.time)));
+            const fullReference = analyticalFor(
+                params,
+                numerical.map((point) => Number(point.time)),
+                0,
+            );
             const numericalAfterTransient = numerical.filter(
                 (point) => Number(point.time) >= Number(params.analyticalDepletionStartDays),
             );
@@ -145,10 +150,19 @@ describe('layered composite depletion scenario', () => {
                     Number(point.avg_reservoir_pressure) - Number(reference[index]?.avgPressure),
                 ),
             );
+            const earlyRelativeErrors = numerical
+                .filter((point) => Number(point.time) < Number(params.analyticalDepletionStartDays))
+                .map((point, index) => {
+                    const numericalRate = Number(point.total_production_oil);
+                    const referenceRate = Number(fullReference[index]?.oilRate);
+                    return Math.abs(numericalRate - referenceRate) / Math.max(referenceRate, 1e-12);
+                });
             expect(finalNumerical).toBeGreaterThan(0);
             expect(finalReference).toBeGreaterThan(0);
+            expect(Math.max(...earlyRelativeErrors)).toBeGreaterThan(0.08);
+            expect(Math.max(...earlyRelativeErrors)).toBeGreaterThan(Math.max(...relativeErrors) * 4);
             expect(Math.max(...relativeErrors)).toBeLessThan(0.03);
-            expect(Math.max(...pressureErrors)).toBeLessThan(30);
+            expect(Math.max(...pressureErrors)).toBeLessThan(5);
             expect(finalNumerical / finalReference).toBeGreaterThan(0.97);
             expect(finalNumerical / finalReference).toBeLessThan(1.03);
         }
@@ -162,7 +176,10 @@ describe('layered composite depletion scenario', () => {
             const params = getScenarioWithVariantParams('dep_arps', 'vertical_communication', variantKey);
             const numerical = configureAndRun(params);
             const reference = analyticalFor(params, numerical.map((point) => Number(point.time)));
-            const relativeErrors = numerical.map((point, index) => {
+            const numericalAfterTransient = numerical.filter(
+                (point) => Number(point.time) >= Number(params.analyticalDepletionStartDays),
+            );
+            const relativeErrors = numericalAfterTransient.map((point, index) => {
                 const numericalRate = Number(point.total_production_oil);
                 const referenceRate = Number(reference[index]?.oilRate);
                 return Math.abs(numericalRate - referenceRate) / Math.max(referenceRate, 1e-12);
@@ -171,7 +188,9 @@ describe('layered composite depletion scenario', () => {
         }
 
         expect(errors[0]).toBeLessThan(0.03);
-        expect(errors[2]).toBeGreaterThan(errors[0] * 2);
-        expect(errors[2]).toBeGreaterThan(0.05);
+        expect(errors[1]).toBeGreaterThan(errors[0] * 1.5);
+        expect(errors[1]).toBeLessThan(0.05);
+        expect(errors[2]).toBeGreaterThan(errors[1] * 10);
+        expect(errors[2]).toBeGreaterThan(0.4);
     }, 30_000);
 });

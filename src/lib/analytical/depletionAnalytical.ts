@@ -49,7 +49,7 @@ export type DepletionAnalyticalParams = {
     producerBhp: number;
     depletionRateScale: number;
     arpsB?: number;
-    /** Use the exact sum of independent, boundary-dominated layer responses. */
+    /** Superpose independent, boundary-dominated layer responses. */
     layeredComposite?: boolean;
     /** Physical reference contract. Defaults to the lumped PSS tank. */
     model?: "tank" | "finite-slab";
@@ -336,7 +336,7 @@ export function calculateDepletionAnalyticalProduction(
                 // A one-cell layer is a lumped tank: there is no additional
                 // within-layer pressure-gradient resistance beyond its well
                 // connection. This is the clean contract used by the layered
-                // composite-decline scenario.
+                // lumped-depletion contract.
                 oilPiForLayer = peacemanPi;
             } else {
                 const linearResistance =

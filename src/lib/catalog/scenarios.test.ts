@@ -752,6 +752,9 @@ describe('depletion scenario fidelity guards', () => {
             expect(params.layerPermsY).toEqual(permsX);
             expect(params.layerPermsZ).toEqual([1e-9, 1e-9, 1e-9, 1e-9, 1e-9]);
             expect(params.analyticalLayeredComposite).toBe(true);
+            expect(params).toMatchObject({ nx: 9, ny: 9, nz: 5, producerI: 4, producerJ: 4 });
+            expect(Number(params.nx) * Number(params.cellDx)).toBeCloseTo(1000, 8);
+            expect(Number(params.ny) * Number(params.cellDy)).toBeCloseTo(1000, 8);
         }
 
         const contrast = (params: Record<string, unknown>) => {

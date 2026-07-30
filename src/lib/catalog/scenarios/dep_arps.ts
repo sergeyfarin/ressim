@@ -8,8 +8,9 @@ import { depletionDef } from '../analyticalAdapters';
  * Physics basis: a 5-layer commingled reservoir with permeability contrast
  * produces a composite decline that can resemble an Arps hyperbola over a
  * finite window, even though each bounded layer eventually declines
- * exponentially. The quantitative reference is the exact superposition of
- * the five layer responses, not an imposed Arps exponent.
+ * exponentially. The quantitative reference is the late-time superposition
+ * of five Dietz/Fetkovich boundary-dominated layer responses, not an imposed
+ * Arps exponent.
  *
  * Reference: Arps, J.J. (1945) "Analysis of Decline Curves", Trans. AIME 160.
  *            Fetkovich, M.J. (1980) "Decline Curve Analysis Using Type
@@ -22,10 +23,10 @@ export const dep_arps: Scenario = {
         group: 'depletion-decline',
         role: 'interpretation',
         caseMode: 'dep',
-        parameterSummary: 'Five noncommunicating layers · fixed total PI · composite exponential decline',
+        parameterSummary: '9×9×5 grid · five layered flow units · centered commingled producer',
     },
-    description: 'Five layers deplete through a commingled constant-BHP producer. In the reference-valid limit they are noncommunicating: total productivity is fixed while permeability contrast changes the spread of layer time constants, and the exact superposition can resemble an Arps hyperbola over a finite window. A separate vertical-communication sensitivity deliberately enables crossflow and shows where that independent-layer analytical model ceases to apply.',
-    analyticalMethodSummary: 'Exact superposition of five Fetkovich boundary-dominated exponential layer responses. Arps decline is an interpretation of the composite shape, not the quantitative reference.',
+    description: 'A spatial 1 km square reservoir with five layers depletes through a centered, fully penetrating constant-BHP producer. Early radial-to-boundary pressure propagation is resolved numerically; after boundary-dominated flow begins, the noncommunicating-layer result approaches a Dietz/Fetkovich exponential superposition. Fixed-mean layer contrast changes the spread of decline time constants, while a separate vertical-communication study deliberately violates the independent-layer reference.',
+    analyticalMethodSummary: 'Late-time superposition of five Dietz centered-square productivity/storage responses. The overlay begins only after the early spatial transient; Arps decline is an interpretation of the composite shape, not the quantitative reference.',
     analyticalMethodReference: 'Arps (1945), SPE-945228-G; Fetkovich (1980), SPE-4629-PA.',
     chartLayoutKey: 'fetkovich',
     defaultSensitivityDimensionKey: 'layer_contrast',
@@ -62,16 +63,15 @@ export const dep_arps: Scenario = {
         capillaryEnabled: false,
         capillaryPEntry: 0,
         capillaryLambda: 2,
-        // Grid: five vertically stacked, noncommunicating tank cells. Large
-        // areal cells provide enough storage for the decline to remain visible
-        // over the interactive run while avoiding within-layer transients.
+        // Grid: a spatial 1 km x 1 km x 50 m reservoir. Each layer has a
+        // resolved areal pressure field and a centered producer completion.
         // Log-spaced layer permeabilities, normalised to a 20 mD arithmetic
         // mean. The sensitivity changes contrast without changing total PI.
-        nx: 1,
-        ny: 1,
+        nx: 9,
+        ny: 9,
         nz: 5,
-        cellDx: 1000,
-        cellDy: 1000,
+        cellDx: 111.11111111111111,
+        cellDy: 111.11111111111111,
         cellDz: 10,
         permMode: 'perLayer',
         uniformPermX: 20,
@@ -95,16 +95,18 @@ export const dep_arps: Scenario = {
         targetProducerRate: 0,
         injectorI: 0,
         injectorJ: 0,
-        producerI: 0,
-        producerJ: 0,
+        producerI: 4,
+        producerJ: 4,
         well_radius: 0.1,
         well_skin: 0,
         analyticalLayeredComposite: true,
-        analyticalDepletionStartDays: 0,
+        // Dietz/Fetkovich is a boundary-dominated reference, not an
+        // early-time radial-flow solution. Hide it during pressure propagation.
+        analyticalDepletionStartDays: 12,
         // Numerics
         fimEnabled: false,
-        delta_t_days: 0.025,
-        steps: 600,
+        delta_t_days: 0.2,
+        steps: 300,
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 75,
         max_well_rate_change_fraction: 0.75,
@@ -152,7 +154,7 @@ export const dep_arps: Scenario = {
         {
             key: 'vertical_communication',
             label: 'Inter-layer Communication',
-            description: 'The exact composite reference assumes noncommunicating layers. Increasing vertical permeability deliberately violates that assumption: crossflow redistributes pressure between fast and slow layers, so numerical departure from the shared no-crossflow reference is the expected limitation signal, not simulator error.',
+            description: 'The late-time composite reference assumes noncommunicating layers. Increasing kv/kh deliberately violates that assumption: crossflow redistributes pressure between fast and slow layers, so numerical departure from the shared no-crossflow reference is the expected limitation signal, not simulator error.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {
@@ -164,16 +166,16 @@ export const dep_arps: Scenario = {
                 },
                 {
                     key: 'communication_weak',
-                    label: 'Weak crossflow  (k_z = 10⁻⁵ mD)',
+                    label: 'Weak crossflow  (kv/kh = 10⁻⁵)',
                     description: 'Small vertical communication begins to couple the layer pressure histories.',
-                    paramPatch: { layerPermsZ: [1e-5, 1e-5, 1e-5, 1e-5, 1e-5] },
+                    paramPatch: { layerPermsZ: [5.398942e-4, 2.553002e-4, 1.20724e-4, 5.70869e-5, 2.69947e-5] },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'communication_strong',
-                    label: 'Strong crossflow  (k_z = 10⁻³ mD)',
-                    description: 'Communicating layers violate exact independent-tank superposition and should visibly depart from its analytical rate and pressure curves.',
-                    paramPatch: { layerPermsZ: [1e-3, 1e-3, 1e-3, 1e-3, 1e-3] },
+                    label: 'Strong crossflow  (kv/kh = 0.001)',
+                    description: 'Communicating layers violate the independent-layer late-time superposition and should visibly depart from its analytical rate and pressure curves.',
+                    paramPatch: { layerPermsZ: [5.398942e-2, 2.553002e-2, 1.20724e-2, 5.70869e-3, 2.69947e-3] },
                     affectsAnalytical: false,
                 },
             ],

@@ -17,6 +17,12 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **Layered composite decline used five areal lumped cells (2026-07-30).** Replaced the
+  `1×1×5` tank stack with a `9×9×5` centered-well reservoir at the same physical dimensions.
+  The numerical model now resolves areal pressure propagation and boundary arrival; its analytical
+  overlay is explicitly late-time Dietz/Fetkovich layer superposition. Crossflow cases now use
+  dimensionless `kv/kh` scales rather than geometry-dependent trace permeability labels.
+
 - [x] **Chart panels enforce one physical property (2026-07-30).** Split depletion pressure,
   MBE OOIP ratio, and drive indices into dedicated panels; split Dietz PSS productivity and
   inferred shape factor into separate panels and axes. Catalog validation now rejects unknown
