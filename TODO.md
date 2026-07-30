@@ -519,11 +519,12 @@ matter more. Search `docs/FIM_EXPERIMENT_REGISTRY.md` by mechanism before any ch
   phase in diagnostics.
 
 ## Housekeeping
-- [x] **Solution Gas Drive lacked a defensible analytical context curve.** Added a pressure-stepped
-  Tarner–Tracy volumetric tank model on 2026-07-30 for recovery, cumulative oil, and producing GOR.
-  ResSim FIM sensitivity results remain primary; the OPM Flow benchmark is retained but disabled by
-  default. The tank curve is mapped through each run's average-pressure history and is explicitly not
-  presented as an independent rate/time or spatial reference.
+- [x] **Tarner–Tracy applicability review for Solution Gas Drive.** Evaluated and removed on
+  2026-07-30: at the OPM pressure checkpoints the tank GOR starts near 176 versus OPM's 433 m³/m³,
+  crosses later, and ends near 672 versus 520. ResSim itself stays within 6.1% of OPM and improves to
+  0.12%, so the mismatch is the uniform-pressure/saturation tank assumption against localized BHP
+  drawdown and initially mobile free gas—not a numerical-model failure. FIM sensitivities remain
+  primary; OPM remains available but disabled by default.
 - [x] **Log-time comparison charts left bundled OPM/published curves on raw time.** Fixed
   2026-07-30 by mapping static time-reference x values through `log10(time)` alongside numerical
   series, including reference-only previews; non-positive time points are omitted from the domain.

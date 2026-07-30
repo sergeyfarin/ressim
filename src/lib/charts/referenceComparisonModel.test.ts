@@ -586,29 +586,17 @@ describe('referenceComparisonModel', () => {
         ]);
     });
 
-    it('shows Tarner–Tracy beside solution-gas-drive FIM results and keeps OPM hidden by default', () => {
-        const scenario = getScenario('gas_drive')!;
-        const spec = buildScenarioRunSpec('gas_drive');
-        const result = buildBenchmarkRunResult({
-            spec,
-            rateHistory: [
-                { time: 10, total_injection: 0, total_production_liquid: 100, total_production_oil: 100, total_production_gas: 40_000, avg_reservoir_pressure: 190 },
-                { time: 100, total_injection: 0, total_production_liquid: 50, total_production_oil: 50, total_production_gas: 25_000, avg_reservoir_pressure: 150 },
-                { time: 300, total_injection: 0, total_production_liquid: 10, total_production_oil: 10, total_production_gas: 6_000, avg_reservoir_pressure: 110 },
-            ],
-        });
+    it('keeps solution-gas-drive OPM optional and emits no analytical curves', () => {
         const model = buildReferenceComparisonModel({
             family: buildScenarioFamily('gas_drive'),
-            results: [result],
+            results: [],
             xAxisMode: 'time',
         });
-
-        expect(model.panels.recovery.curves.some((curve) => curve.curveKey === 'recovery-factor-reference')).toBe(true);
-        expect(model.panels.cumulative.curves.some((curve) => curve.curveKey === 'cum-oil-reference')).toBe(true);
-        expect(model.panels.gor.curves.some((curve) => curve.curveKey === 'gor-reference')).toBe(true);
         expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'opm-gor')?.defaultVisible).toBe(false);
-        expect(scenario.capabilities.analyticalMethod).toBe('tarner-tracy');
+        expect(Object.values(model.panels).flatMap((panel) => panel?.curves ?? [])
+            .filter((curve) => curve.referenceSourceType === 'analytical')).toEqual([]);
     });
+
 
     it('exposes producer and injector BHP-limit diagnostics on the control-limits panel', () => {
         const scenario = getScenario('spe1_gas_injection')!;

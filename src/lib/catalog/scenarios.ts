@@ -45,7 +45,6 @@ import { solver_fim_impes } from './scenarios/solver_fim_impes';
 export type AnalyticalMethod =
     | 'buckley-leverett'
     | 'gas-oil-bl'
-    | 'tarner-tracy'
     | 'sweep'
     | 'depletion'
     | 'well-test'
@@ -212,14 +211,6 @@ export const ANALYTICAL_OUTPUT_CONTRACTS = {
         defaultPrimaryRateCurve: 'gas-cut',
         hasTau: false,
         defaultPanelExpansion: { rates: true, recovery: true, cumulative: false, diagnostics: false },
-    },
-    'tarner-tracy': {
-        produces: ['recovery', 'cum-oil', 'gor'],
-        supportedRateCurves: ['oil-rate'],
-        nativeXAxis: 'time',
-        defaultPrimaryRateCurve: 'oil-rate',
-        hasTau: false,
-        defaultPanelExpansion: { rates: true, recovery: true, cumulative: false, diagnostics: true },
     },
     'sweep': {
         // Sweep correlations (Craig areal, Dykstra-Parsons / Stiles vertical)

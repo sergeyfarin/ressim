@@ -418,26 +418,26 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: true,
             logScale: false,
-            panelOrder: ['rates', 'recovery', 'gor', 'cumulative', 'diagnostics'],
+            panelOrder: ['gor', 'recovery', 'rates', 'cumulative', 'diagnostics'],
             panels: {
                 rates: {
                     title: 'Oil Rate',
                     curveKeys: ['oil-rate-sim'],
                     scalePreset: 'rates',
                     allowLogToggle: true,
-                    expanded: true,
-                },
-                recovery: {
-                    title: 'Recovery Factor',
-                    curveKeys: ['recovery-factor-primary'],
-                    scalePreset: 'recovery',
-                    expanded: true,
+                    expanded: false,
                 },
                 gor: {
                     title: 'Producing GOR',
                     curveKeys: ['gor-sim'],
                     scalePreset: 'gor',
                     visible: true,
+                    expanded: true,
+                },
+                recovery: {
+                    title: 'Recovery Factor',
+                    curveKeys: ['recovery-factor-primary'],
+                    scalePreset: 'recovery',
                     expanded: true,
                 },
                 cumulative: {

@@ -10,8 +10,6 @@
  */
 
 import { calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
-import { calculateTarnerTracy } from '../analytical/tarnerTracy';
-import type { PvtRow } from '../simulator-types';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import {
     computeBLAnalyticalFromParams,
@@ -214,39 +212,5 @@ export function buildGasOilBLReference(
         },
         diagnostics: null,
         xValues: buildXAxisValues(derived, xAxisMode),
-    };
-}
-
-// ─── Tarner–Tracy solution-gas-drive tank model ─────────────────────────────
-
-export function buildTarnerTracyReference(
-    baseResult: BenchmarkRunResult,
-    derived: DerivedRunSeries,
-    xAxisMode: RateChartXAxisMode,
-): {
-    xValues: Array<number | null>;
-    recovery: Array<number | null>;
-    cumulativeOil: Array<number | null>;
-    producingGor: Array<number | null>;
-} | null {
-    const table = baseResult.params.pvtTable as PvtRow[] | undefined;
-    if (!Array.isArray(table) || table.length < 2) return null;
-
-    const points = calculateTarnerTracy({
-        pressureBar: derived.pressure,
-        pvtTable: table,
-        initialPressureBar: toFiniteNumber(baseResult.params.initialPressure, 0),
-        poreVolumeM3: getPoreVolume(baseResult.params),
-        initialWaterSaturation: toFiniteNumber(baseResult.params.initialSaturation, 0.2),
-        initialGasSaturation: toFiniteNumber(baseResult.params.initialGasSaturation, 0),
-        rock: extractGasOilRockProps(baseResult.params),
-    });
-    if (!points.length) return null;
-
-    return {
-        xValues: buildXAxisValues(derived, xAxisMode),
-        recovery: points.map((point) => point.recoveryFactor),
-        cumulativeOil: points.map((point) => point.cumulativeOilM3),
-        producingGor: points.map((point) => point.producingGorM3M3),
     };
 }
