@@ -17,6 +17,10 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **Scenario routing tests inferred the solver from phase count (2026-07-30).** The run-model
+  contract now follows each scenario's authoritative `solverPolicy`, allowing the two-phase
+  capillary case to deliberately use FIM while ordinary sensitivities retain that default.
+
 - [x] **Simulation legends repeated the numerical solver (2026-07-30).** Run labels now use the
   scenario and declared sensitivity variant without appending FIM/IMPES. Solver names remain in
   the dedicated FIM-vs-IMPES sensitivity because they are the variant names there.

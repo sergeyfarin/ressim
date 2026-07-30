@@ -84,8 +84,8 @@ export const wf_capillary: Scenario = {
         requiresThreePhaseMode: false,
     },
     solverPolicy: {
-        defaultSolver: 'impes',
-        rationale: 'IMPES is the interactive default for this oil/water capillary study.',
+        defaultSolver: 'fim',
+        rationale: 'FIM is the default because it couples the capillary-pressure saturation gradient into the nonlinear pressure and transport solve.',
     },
     params: {
         // Fluid properties — matched to wf_bl1d so the two cases are comparable
@@ -148,9 +148,9 @@ export const wf_capillary: Scenario = {
         well_radius: 0.1,
         well_skin: 0,
         // Numerics
-        fimEnabled: false,
-        delta_t_days: 0.25,
-        steps: 2000,
+        fimEnabled: true,
+        delta_t_days: 2.5,
+        steps: 200,
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 75,
         max_well_rate_change_fraction: 0.75,

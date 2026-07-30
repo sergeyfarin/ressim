@@ -31,11 +31,10 @@ function assertWellBounds(params: Record<string, unknown>) {
 }
 
 describe('scenario-first run model', () => {
-    it('routes gas scenarios to FIM and oil/water scenarios to IMPES by default', () => {
+    it('routes every scenario through its declared default solver', () => {
         for (const scenario of listScenarios()) {
-            const expectedFim = scenario.capabilities.requiresThreePhaseMode;
+            const expectedFim = scenario.solverPolicy.defaultSolver === 'fim';
             expect(scenario.params.fimEnabled, scenario.key).toBe(expectedFim);
-            expect(scenario.solverPolicy.defaultSolver, scenario.key).toBe(expectedFim ? 'fim' : 'impes');
         }
     });
 
@@ -107,7 +106,8 @@ describe('scenario-first run model', () => {
                 referenceSource: expect.objectContaining({ source: expect.any(String) }),
             });
             const payload = buildCreatePayloadForRun(specs[0]);
-            expect(payload.fimEnabled, scenario.key).toBe(scenario.capabilities.requiresThreePhaseMode);
+            expect(payload.fimEnabled, scenario.key)
+                .toBe(scenario.solverPolicy.defaultSolver === 'fim');
             expect(payload.nx, scenario.key).toBeGreaterThan(0);
             expect(payload.ny, scenario.key).toBeGreaterThan(0);
             expect(payload.nz, scenario.key).toBeGreaterThan(0);

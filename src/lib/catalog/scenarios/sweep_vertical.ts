@@ -96,8 +96,8 @@ export const sweep_vertical: Scenario = {
         well_skin: 0,
         // Numerics
         fimEnabled: false,
-        delta_t_days: 0.25,
-        steps: 500,
+        delta_t_days: 0.5,
+        steps: 300,
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 75,
         max_well_rate_change_fraction: 0.75,
