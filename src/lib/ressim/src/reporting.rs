@@ -329,17 +329,21 @@ impl ReservoirSimulator {
         actual_oil_removed_sc: f64,
         actual_change_gas_sc: f64,
     ) {
-        // Publish the pressure each well actually flowed at this step. For a
-        // rate-controlled well this is the only place it survives: the solve
-        // computes it to meet the rate target and then discards it, and
-        // `Well::bhp` keeps holding the configured limit. Reporting-only —
-        // nothing downstream in the solve reads `flowing_bhp` back.
-        for (w_idx, well) in self.wells.iter_mut().enumerate() {
-            well.flowing_bhp = well_controls
-                .get(w_idx)
-                .and_then(|control| *control)
-                .and_then(|control| control.flowing_bhp)
-                .filter(|bhp| bhp.is_finite());
+        // The controls used to assemble and transport the IMPES substep were
+        // resolved from its beginning pressure and remain the authority for
+        // rate/material-balance reporting below. Flowing BHP is a diagnostic
+        // plotted at the accepted end-of-step timestamp, however, so resolve
+        // only that value again from the accepted pressure. Publishing the
+        // assembly-time value creates a one-report-step lag in well tests.
+        let flowing: Vec<Option<f64>> = self
+            .wells
+            .iter()
+            .map(|well| self.resolve_well_control_for_pressures(well, &self.pressure))
+            .map(|control| control.and_then(|resolved| resolved.flowing_bhp))
+            .map(|bhp| bhp.filter(|value| value.is_finite()))
+            .collect();
+        for (well, bhp) in self.wells.iter_mut().zip(flowing) {
+            well.flowing_bhp = bhp;
         }
 
         let n_cells = self.nx * self.ny * self.nz;

@@ -10,15 +10,16 @@ import type { Scenario } from '../scenarios';
  * flowing bottomhole pressure falls along a straight line on a semilog plot,
  * and the slope of that line gives permeability while its one-hour intercept
  * gives skin. Everything a simulator does near a well — the Peaceman well
- * index, the grid resolution around the completion, the timestep — shows up
- * here as an error in a number an engineer would report.
+ * index and the timestep — shows up here as an error in a number an engineer
+ * would report.
  *
  * Analytical reference: the line-source (Theis) solution, `analytical/wellTest.ts`.
  * The overlay is the full exponential-integral form rather than the semilog
  * approximation, so it stays correct at the earliest times on the log axis
  * where the two differ. The module also exposes `semilogValidFromTime`, which
- * for this scenario's properties is ~1e-6 days — the whole test is inside the
- * infinite-acting radial period, by design.
+ * for this scenario's properties is ~1e-6 days. The early part of the test is
+ * interpreted in the infinite-acting radial period; the longer tail is kept
+ * deliberately so the no-flow box boundary becomes visible.
  *
  * Construction
  * ------------
@@ -27,13 +28,15 @@ import type { Scenario } from '../scenarios';
  * a measurement of the reservoir's response to one well, and anything else
  * flowing would superpose onto the transient being interpreted.
  *
- * Two bounds set the run length, and both are checked:
+ * Two time scales shape the run:
  *   - The radius of investigation, 2.sqrt(eta.t), must stay inside the
  *     no-flow boundary or the response stops being infinite-acting and the
  *     semilog line bends. With eta ~= 44,400 m2/day, r_inv reaches ~298 m at
- *     0.5 days against a 410 m half-domain, so the 12-hour test stays radial.
- *   - The timestep has to resolve the early-time decade: at dt = 0.005 days
- *     the test spans two full log cycles, which is what a slope needs.
+ *     0.5 days against a 410 m half-domain. The run continues to 2.4 days so
+ *     that departure from the infinite-reservoir reference is visible.
+ *   - The 0.02-day report timestep still resolves the early semilog window;
+ *     interpretation tests discard startup points and stop before boundary
+ *     arrival.
  *
  * The base permeability is deliberately low (10 mD). At the catalog's more
  * typical few-hundred mD the diffusivity is so high that the pressure front
@@ -43,27 +46,6 @@ import type { Scenario } from '../scenarios';
  * Rate control is not optional here. `computeWellTestOnTimeAxis` returns null
  * for a BHP-controlled case rather than inventing a rate, so a variant that
  * switched to pressure control would silently lose its overlay.
- *
- * What the interpretation actually returns (measured 2026-07-24)
- * ------------------------------------------------------------
- * `dep_welltest.test.ts` runs the simulated drawdown through the same analysis
- * a user would apply — fit the semilog line, take k from the slope and s from
- * the one-hour intercept — and the round trip does not come back exact:
- *
- *   grid          40 m       20 m       10 m      (true k = 10 mD, s = 0)
- *   recovered k   8.674      9.118      9.209  mD
- *   recovered s  -0.997     -0.665     -0.597
- *
- * So the simulator, read as an instrument, reports permeability ~9 % low on
- * the base grid and a slightly stimulated well that is not stimulated. The
- * bias shrinks monotonically with refinement but is still there at 10 m cells.
- * Across the skin ladder the recovered permeability is *identical to three
- * decimals* for s = -2, 0 and +5, which is the slope/offset separation the
- * scenario claims, holding exactly.
- *
- * This is a property of the case worth showing rather than tuning away: it is
- * what a coarse Cartesian grid plus a Peaceman well index does to a number an
- * engineer would put in a report.
  *
  * Engine dependency: this scenario needs `Well::flowing_bhp`, added 2026-07-24.
  * The pre-existing `bhp` field is the well's configured target-or-limit and
@@ -82,10 +64,10 @@ export const dep_welltest: Scenario = {
         group: 'pressure-transient',
         role: 'interpretation',
         caseMode: 'dep',
-        parameterSummary: '12-hour constant-rate drawdown · flowing BHP on log time · permeability and skin interpretation',
+        parameterSummary: '2.4-day constant-rate drawdown · radial-flow interpretation followed by box-boundary arrival',
     },
-    description: 'A single well produced at constant rate into a reservoir at rest, which is how permeability and skin are actually measured in the field. On the log-time axis the flowing bottomhole pressure falls along a straight line whose slope depends only on k, h, viscosity and rate — not on anything about the grid — so any gap between the simulated and analytical curves is the simulator\'s near-well model rather than the physics. The skin axis shows the constant pressure offset a damaged or stimulated completion adds; the permeability axis changes the slope itself; and the grid axis asks the question the other two set up — does the Peaceman well index recover the right transient when the well sits in a 40 m cell?',
-    analyticalMethodSummary: 'Line-source (Theis) solution for infinite-acting radial flow, evaluated at the wellbore with the thin-skin pressure drop. Valid only while the radius of investigation stays inside the no-flow boundary — about 0.5 days for these properties, which is why the test is short. The full exponential-integral form is plotted, not the semilog approximation.',
+    description: 'A single well produced at constant rate into a reservoir at rest, which is how permeability and skin are measured in the field. On the log-time axis the early flowing bottomhole pressure follows a straight line whose slope depends on k, h, viscosity and rate. The skin axis moves that line by a constant pressure offset, while the permeability axis changes its slope. The numerical run intentionally continues beyond the infinite-acting period: when the pressure disturbance reaches the closed square boundary, numerical BHP falls below the infinite-reservoir reference and exposes boundary-dominated flow.',
+    analyticalMethodSummary: 'Line-source (Theis) solution for infinite-acting radial flow, evaluated at the wellbore with the thin-skin pressure drop. It is the interpretation reference before the radius of investigation reaches the no-flow boundary; the 2.4-day numerical tail deliberately exceeds that validity window to show boundary arrival. The full exponential-integral form is plotted, not the semilog approximation.',
     analyticalMethodReference: 'Theis (1935), Trans. AGU 16; Horner (1951); Matthews and Russell (1967), SPE Monograph 1; Earlougher (1977), SPE Monograph 5; Peaceman (1978), SPEJ 18(3).',
     chartLayoutKey: 'well_test',
     defaultSensitivityDimensionKey: 'skin',
@@ -100,8 +82,8 @@ export const dep_welltest: Scenario = {
         requiresThreePhaseMode: false,
     },
     solverPolicy: {
-        defaultSolver: 'fim',
-        rationale: 'FIM solver required to capture initial pressure response rather than starting from initial reservoir pressure. FIM vs. IMPES sensitivity illustates the difference.',
+        defaultSolver: 'impes',
+        rationale: 'IMPES resolves the pressure equation implicitly and reports rate-controlled BHP from the accepted end-of-step pressure.',
     },
     params: {
         // Fluid
@@ -144,8 +126,8 @@ export const dep_welltest: Scenario = {
         initialPressure: 300,
         initialSaturation: 0.2,
         // Wells: one rate-controlled producer, no injector. The BHP floor is
-        // set well below the expected flowing pressure (~228 bar at the end of
-        // the test) so the rate target is never clipped — a well that hits its
+        // set well below the expected flowing pressure throughout the test so
+        // the rate target is never clipped — a well that hits its
         // BHP limit is no longer a constant-rate test and the analysis breaks.
         injectorEnabled: false,
         injectorControlMode: 'pressure',
@@ -160,8 +142,9 @@ export const dep_welltest: Scenario = {
         producerJ: 20,
         well_radius: 0.1,
         well_skin: 0,
-        // Numerics — 100 x 0.005 d = 0.5 days (12 hours), two log cycles.
-        fimEnabled: true,
+        // Numerics — 120 x 0.02 d = 2.4 days. The early samples cover the
+        // radial-flow interpretation window and the tail shows boundary arrival.
+        fimEnabled: false,
         delta_t_days: 0.02,
         steps: 120,
         max_sat_change_per_step: 0.05,
@@ -202,80 +185,29 @@ export const dep_welltest: Scenario = {
         {
             key: 'permeability',
             label: 'Permeability  k',
-            description: 'Permeability sets the slope of the semilog line: m = ln(10).q.mu/(4.pi.C.k.h), so halving k doubles the slope. Unlike skin, it changes the shape of the response rather than offsetting it — which is exactly why the two can be told apart. Note that the diffusivity also scales with k, so the higher-permeability variants push the radius of investigation towards the no-flow boundary sooner; at 40 mD the late part of the test is approaching the limit of the infinite-acting assumption.',
+            description: 'Permeability sets the slope of the semilog line: m = ln(10).q.mu/(4.pi.C.k.h), so halving k doubles the slope. Unlike skin, it changes the shape of the response rather than offsetting it. Diffusivity also scales with k, so higher permeability reaches the no-flow boundary earlier and bends away from the infinite-reservoir reference sooner.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'perm_tight',
                     label: 'k = 5 mD  (tight)',
-                    description: 'Twice the slope of the base case, and the transient stays radial for the whole test.',
+                    description: 'Twice the early radial-flow slope of the base case, with later boundary arrival than the other variants.',
                     paramPatch: { uniformPermX: 5, uniformPermY: 5, uniformPermZ: 5 },
                     affectsAnalytical: true,
                 },
                 {
                     key: 'perm_base',
                     label: 'k = 10 mD  (base)',
-                    description: 'The base case. Radius of investigation reaches roughly 300 m by the end of the 12-hour test, comfortably inside the 410 m half-domain.',
+                    description: 'The base case. Its early radial-flow interval is followed by a visible closed-boundary departure.',
                     paramPatch: {},
                     affectsAnalytical: true,
                 },
                 {
                     key: 'perm_good',
                     label: 'k = 40 mD  (good)',
-                    description: 'A quarter of the base slope, but four times the diffusivity: the pressure front reaches the boundary within the test window, so watch the late-time data bend away from the straight line. That bend is boundary-dominated flow, not a bad simulation.',
+                    description: 'A quarter of the base slope but four times the diffusivity, so the pressure front reaches the boundary earliest. The late bend is boundary-dominated flow, not a bad simulation.',
                     paramPatch: { uniformPermX: 40, uniformPermY: 40, uniformPermZ: 40 },
                     affectsAnalytical: true,
-                },
-            ],
-        },
-        {
-            key: 'near_well_grid',
-            label: 'Near-Well Grid Resolution',
-            description: 'The question the other two axes set up. The analytical solution knows about a 0.1 m wellbore; the coarse grid represents that well as a source term in a 40 m block, and the Peaceman well index is what reconciles the two. The reference curve is identical for all three variants — permeability, thickness, rate and skin are unchanged — so any spread here is purely the near-well numerics. The domain is held at ~820 m and the producer stays at the grid centre in every variant. Measured on this build: interpreting the simulated drawdown returns 8.67, 9.12 and 9.21 mD at 40, 20 and 10 m cells against a true 10 mD, and an apparent skin of -1.00, -0.67 and -0.60 against a true zero. The bias converges the right way but is still ~8 % at 10 m — worth knowing before trusting a simulated pressure transient to the second digit.',
-            analyticalOverlayMode: 'shared',
-            variants: [
-                {
-                    key: 'grid_coarse',
-                    label: '11 x 11  (80 m cells)',
-                    description: '840 m domain in 80 m blocks — the well lives in a block 800 times wider than its own diameter.',
-                    paramPatch: { nx: 11, ny: 11, cellDx: 80, cellDy: 80, producerI: 5, producerJ: 5 },
-                    affectsAnalytical: false,
-                },
-                {
-                    key: 'grid_base',
-                    label: '41 x 41  (20 m cells, base)',
-                    description: 'The base grid.',
-                    paramPatch: {},
-                    affectsAnalytical: false,
-                },
-                {
-                    key: 'grid_fine',
-                    label: '81 x 81  (10 m cells)',
-                    description: 'Four times as many cells for the same domain. If the Peaceman index is doing its job, this should not move the flowing-pressure curve much — that is the result worth checking, not assuming.',
-                    paramPatch: { nx: 81, ny: 81, cellDx: 10, cellDy: 10, producerI: 40, producerJ: 40 },
-                    affectsAnalytical: false,
-                },
-            ],
-        },
-        {
-            key: 'fim_impes',
-            label: 'FIM vs. IMPES',
-            description: 'FIM vs. IMPES solver.',
-            analyticalOverlayMode: 'shared',
-            variants: [
-                {
-                    key: 'solver_impes',
-                    label: 'IMPES',
-                    description: 'Implicit pressure followed by explicit saturation transport, with stability-driven internal subdivision.',
-                    paramPatch: { fimEnabled: false },
-                    affectsAnalytical: false,
-                },
-                {
-                    key: 'solver_fim',
-                    label: 'FIM',
-                    description: 'Fully implicit coupled pressure/saturation Newton solve at the same 5-day report timestep.',
-                    paramPatch: { fimEnabled: true },
-                    affectsAnalytical: false,
                 },
             ],
         },

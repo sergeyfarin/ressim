@@ -73,12 +73,12 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   corner-pattern profiles follow the injector-to-producer diagonal; defaulted layered horizontal
   profiles to a K-column average with an explicit layer override. Completed-run replay now selects
   the indexed history grid/wells instead of pairing the indexed time with the final snapshot.
-- [x] **Well-Test drawdown presentation (2026-07-29).** Restored the scenario's intentionally
+- [x] **Well-Test drawdown presentation (2026-07-30).** Restored the scenario's intentionally
   absent 3D default because rate-controlled skin variants have the same reservoir pressure field;
-  made flowing BHP the sole expanded and explicitly visible chart, demoted constant oil rate to a
-  collapsed control check, and made the grid-resolution study render its unchanged analytical
-  solution once rather than as three coincident per-result curves. The explicit visibility matters
-  because dedicated BHP panels are hidden in the shared fallback presentation.
+  made flowing BHP the sole expanded and explicitly visible chart and demoted constant oil rate to
+  a collapsed control check. Removed the visually coincident grid-resolution sensitivity, retained
+  the 2.4-day tail so closed-boundary arrival is visible, and fixed IMPES to publish rate-controlled
+  BHP from the accepted end-of-step pressure instead of the beginning-of-step control state.
 - [x] **Positive reservoir-rate targets overridden by zero surface-rate sentinels (2026-07-29).**
   Legacy-generated explicit well schedules serialized the UI's unset `targetSurfaceRate = 0` and
   the well controller correctly gave it precedence over `targetRate`. Rate-controlled catalog
@@ -312,11 +312,10 @@ Open, needs a new analytical module:
   `DARCY_METRIC_FACTOR`), plus full wiring: `'well-test'` as a first-class `AnalyticalMethod`, param
   adapters, `buildWellTestReference`, a `buildChartData` branch, a `well_test` log-time layout, and
   the `dep_welltest` scenario. Not piggybacked on `depletion` — see ROADMAP Priority 2.1.
-  Measured (`dep_welltest.test.ts`): interpreting the simulated drawdown returns k = 8.674 / 9.118 /
-  9.209 mD at 40 / 20 / 10 m cells against a true 10 mD, and apparent skin −1.00 / −0.67 / −0.60
-  against a true 0 — a real near-well grid bias, converging with refinement, documented in the
-  scenario rather than tuned away. Recovered k is identical to three decimals across the skin
-  ladder, so the slope/offset separation holds exactly.
+  `dep_welltest.test.ts` interprets the pre-boundary numerical window and verifies the permeability
+  ladder plus skin/slope separation. The visually coincident grid-resolution exhibit was removed;
+  the shipped run instead continues to 2.4 days so departure from the infinite-reservoir reference
+  makes closed-boundary arrival explicit.
 - [ ] **T7.2 dry-gas p/z + gas-cap blowdown** — extends `materialBalance.ts`, which already carries
   `m`/`driveIndex_gasCap` with no scenario exercising them. Water-drive variant needs E9.
   Now the cheapest remaining analytical case, since T7.1 closed.

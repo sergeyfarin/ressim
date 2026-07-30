@@ -75,3 +75,40 @@ fn pressure_resolve_on_substep_produces_physical_results() {
         );
     }
 }
+
+#[test]
+fn rate_controlled_flowing_bhp_is_reported_from_accepted_pressure() {
+    let mut sim = ReservoirSimulator::new(3, 3, 1, 0.2);
+    sim.set_fim_enabled(false);
+    sim.set_initial_pressure(300.0);
+    sim.set_permeability_per_layer(vec![10.0], vec![10.0], vec![10.0])
+        .unwrap();
+    sim.set_well_control_modes("pressure".to_string(), "rate".to_string());
+    sim.set_target_well_rates(0.0, 1.0).unwrap();
+    sim.set_well_bhp_limits(0.0, 500.0).unwrap();
+    sim.add_well(1, 1, 0, 50.0, 0.1, 0.0, false).unwrap();
+
+    let initial_control = sim
+        .resolve_well_control_for_pressures(&sim.wells[0], &sim.pressure)
+        .and_then(|control| control.flowing_bhp)
+        .expect("initial rate control should resolve a flowing BHP");
+
+    sim.step(0.02);
+
+    let accepted_control = sim
+        .resolve_well_control_for_pressures(&sim.wells[0], &sim.pressure)
+        .and_then(|control| control.flowing_bhp)
+        .expect("accepted rate control should resolve a flowing BHP");
+    let reported = sim.wells[0]
+        .flowing_bhp
+        .expect("the accepted step should publish flowing BHP");
+
+    assert!(
+        accepted_control < initial_control,
+        "drawdown should move BHP below its initial-state value"
+    );
+    assert!(
+        (reported - accepted_control).abs() < 1e-10,
+        "reported BHP {reported} must match accepted-state BHP {accepted_control}, not initial-state BHP {initial_control}"
+    );
+}
