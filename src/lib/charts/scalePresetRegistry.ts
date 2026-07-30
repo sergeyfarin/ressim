@@ -58,6 +58,31 @@ export const SCALE_PRESSURE = {
     },
 };
 
+/** Dietz PSS comparison: productivity on the left, inferred shape factor on the right. */
+export const SCALE_PRODUCTIVITY = {
+    y: {
+        type: 'linear',
+        display: true,
+        position: 'left',
+        min: 0,
+        alignToPixels: true,
+        title: { display: true, text: 'Productivity Index (m³/day/bar)' },
+        ticks: { count: 6 },
+        _auto: true,
+    },
+    y1: {
+        type: 'linear',
+        display: true,
+        position: 'right',
+        min: 0,
+        alignToPixels: true,
+        title: { display: true, text: 'Dietz Shape Factor C_A' },
+        grid: { drawOnChartArea: false },
+        ticks: { count: 6 },
+        _auto: true,
+    },
+};
+
 export const SCALE_GOR = {
     y: {
         type: 'linear',

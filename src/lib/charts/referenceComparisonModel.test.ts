@@ -1747,6 +1747,29 @@ describe('referenceComparisonModel', () => {
 
     // ── Per-variant depletion analytics ───────────────────────────────────────
 
+    it('previews Dietz PSS productivity and shape factor on separate axes', () => {
+        const baseSpec = buildScenarioRunSpec('dep_pss');
+        const model = buildReferenceComparisonModel({
+            family: buildScenarioFamily('dep_pss'),
+            results: [],
+            xAxisMode: 'time',
+            previewBaseParams: { ...baseSpec.params },
+            previewAnalyticalMethod: 'well-test',
+        });
+
+        const productivity = model.panels.diagnostics.curves.find(
+            (curve) => curve.curveKey === 'pss-productivity-reference',
+        );
+        const shapeFactor = model.panels.diagnostics.curves.find(
+            (curve) => curve.curveKey === 'pss-shape-factor-reference',
+        );
+        expect(productivity?.yAxisID).toBe('y');
+        expect(shapeFactor?.yAxisID).toBe('y1');
+        expect(model.panels.diagnostics.series).toHaveLength(2);
+        expect(model.panels.diagnostics.series[0].some((point) => point.y !== null)).toBe(true);
+        expect(model.panels.diagnostics.series[1].some((point) => point.y === 30.8828)).toBe(true);
+    });
+
     it('builds one dashed depletion reference per completed run when analytics are per-variant', () => {
         const baseSpec = buildScenarioRunSpec('dep_decline');
         const lowSpec = buildVariantSpec(baseSpec, 'dep_pss_low', 'Low perm', { uniformPermX: 50, uniformPermY: 50 });

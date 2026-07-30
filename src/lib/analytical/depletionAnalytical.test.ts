@@ -4,6 +4,7 @@ import {
     calculateDepletionAnalyticalProduction,
     computeShapeFactor,
     dietzProductivityIndex,
+    dietzShapeFactorFromProductivityIndex,
     emptyDepletionAnalyticalResult,
     finiteSlabModes,
     type DepletionAnalyticalParams,
@@ -75,7 +76,7 @@ describe('depletionAnalytical', () => {
         const drainageArea = 100 * 100;
         const kroAtInitialSw = 0.875 ** 2;
         const denominator =
-            0.5 * Math.log((4 * drainageArea) / (shapeFactor * Math.exp(2 * eulerGamma) * 0.1 * 0.1));
+            0.5 * Math.log((4 * drainageArea) / (shapeFactor * Math.exp(eulerGamma) * 0.1 * 0.1));
         const expectedJ =
             (expectedFactor * 2 * Math.PI * 100 * 10 * kroAtInitialSw) /
             denominator;
@@ -601,5 +602,18 @@ describe('bounded PSS reference safeguards', () => {
         const pi = dietzProductivityIndex(base);
         expect(dietzProductivityIndex({ ...base, permeabilityMd: 40 })).toBeCloseTo(2 * pi, 12);
         expect(dietzProductivityIndex({ ...base, skin: 3 })).toBeLessThan(pi);
+    });
+
+    it('recovers the tabulated shape factor from Dietz productivity', () => {
+        const base = {
+            permeabilityMd: 20, thicknessM: 10, mobilityPerCp: 1,
+            drainageAreaM2: 420 * 420, shapeFactor: 30.8828,
+            wellRadiusM: 0.1, skin: 0,
+        };
+        const productivityIndex = dietzProductivityIndex(base);
+        expect(dietzShapeFactorFromProductivityIndex({
+            ...base,
+            productivityIndex,
+        })).toBeCloseTo(base.shapeFactor, 8);
     });
 });

@@ -32,6 +32,7 @@
         SCALE_CUMULATIVE_VOLUMES,
         SCALE_CUMULATIVE,
         SCALE_PRESSURE,
+        SCALE_PRODUCTIVITY,
         SCALE_GOR,
         SCALE_FRACTION,
         SCALE_SWEEP,
@@ -255,6 +256,7 @@
         if (scalePreset === 'sweep_rf') return SCALE_SWEEP;
         if (scalePreset === 'breakthrough') return breakthroughScales;
         if (scalePreset === 'pressure') return SCALE_PRESSURE;
+        if (scalePreset === 'productivity') return SCALE_PRODUCTIVITY;
         if (scalePreset === 'gor') return SCALE_GOR;
         if (scalePreset === 'diagnostics') return diagnosticsScales;
         if (scalePreset === 'fraction') return SCALE_FRACTION;

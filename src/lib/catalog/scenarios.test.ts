@@ -387,6 +387,7 @@ describe('scenario capability validation', () => {
         ]);
         expect(getScenario('dep_arps')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['layer_contrast', 'per-result'],
+            ['vertical_communication', 'shared'],
         ]);
         expect(getScenario('gas_injection')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['mobility', 'per-result'],
@@ -719,6 +720,9 @@ describe('depletion scenario fidelity guards', () => {
             nx: 24,
             cellDx: 20,
             producerI: 23,
+            well_skin: -0.4581453659370775,
+            delta_t_days: 0.2,
+            steps: 120,
         });
         expect(coarseTimestep).toMatchObject({
             delta_t_days: 0.1,

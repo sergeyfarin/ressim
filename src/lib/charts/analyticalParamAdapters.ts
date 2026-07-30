@@ -16,6 +16,7 @@ import {
     calculateDepletionAnalyticalProduction,
     computeShapeFactor,
     dietzProductivityIndex,
+    dietzShapeFactorFromProductivityIndex,
 } from '../analytical/depletionAnalytical';
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import {
@@ -492,6 +493,8 @@ export function computeWellTestOnTimeAxis(
     oilRate: Array<number | null>;
     semilogFromDay: number;
     semilogSlopeBarPerCycle: number;
+    pssProductivity: Array<number | null>;
+    pssShapeFactor: Array<number | null>;
 } | null {
     const q = getWellTestRate(params);
     if (!Number.isFinite(q)) return null;
@@ -539,6 +542,8 @@ export function computeWellTestOnTimeAxis(
             oilRate: timeHistory.map(() => q),
             semilogFromDay: pssFrom,
             semilogSlopeBarPerCycle: 0,
+            pssProductivity: timeHistory.map((t) => t >= pssFrom ? pi : null),
+            pssShapeFactor: timeHistory.map((t) => t >= pssFrom ? shape.shapeFactor : null),
         };
     }
 
@@ -551,6 +556,8 @@ export function computeWellTestOnTimeAxis(
         oilRate: timeHistory.map(() => q),
         semilogFromDay: semilogValidFromTime(props),
         semilogSlopeBarPerCycle: semilogSlope(q, props),
+        pssProductivity: timeHistory.map(() => null),
+        pssShapeFactor: timeHistory.map(() => null),
     };
 }
 
@@ -566,6 +573,8 @@ export function computeWellTestFromParams(
     xValues: (number | null)[];
     flowingBhp: (number | null)[];
     oilRates: (number | null)[];
+    pssProductivity: (number | null)[];
+    pssShapeFactor: (number | null)[];
 } | null {
     const steps = toFiniteNumber(params.steps, 200);
     const dt = toFiniteNumber(params.delta_t_days, 0.01);
@@ -579,7 +588,97 @@ export function computeWellTestFromParams(
         )),
         flowingBhp: solution.flowingBhp,
         oilRates: solution.oilRate,
+        pssProductivity: solution.pssProductivity,
+        pssShapeFactor: solution.pssShapeFactor,
     };
+}
+
+export type DietzPssSimulationDiagnostics = {
+    time: number[];
+    drawdown: Array<number | null>;
+    productivity: Array<number | null>;
+    shapeFactor: Array<number | null>;
+};
+
+function interpolateAtTime(
+    sourceTime: number[],
+    sourceValues: Array<number | null>,
+    targetTime: number,
+): number | null {
+    let previous = -1;
+    for (let index = 0; index < sourceTime.length; index += 1) {
+        const time = sourceTime[index];
+        const value = sourceValues[index];
+        if (!Number.isFinite(time) || !Number.isFinite(value)) continue;
+        if (time >= targetTime) {
+            if (previous < 0 || time === targetTime) return Number(value);
+            const t0 = sourceTime[previous];
+            const v0 = Number(sourceValues[previous]);
+            const fraction = (targetTime - t0) / Math.max(1e-12, time - t0);
+            return v0 + fraction * (Number(value) - v0);
+        }
+        previous = index;
+    }
+    return previous >= 0 && Number.isFinite(sourceValues[previous])
+        ? Number(sourceValues[previous])
+        : null;
+}
+
+/**
+ * Recover the PSS pressure gap, productivity and effective Dietz C_A directly
+ * from a completed numerical run. Values are aligned to snapshot history,
+ * because flowing BHP is a well-state observable rather than a rate-history
+ * field. Early transient points are intentionally null until the scenario's
+ * declared PSS onset.
+ */
+export function computeDietzPssSimulationDiagnostics(
+    result: BenchmarkRunResult,
+    derived: DerivedRunSeries,
+): DietzPssSimulationDiagnostics | null {
+    const params = result.params;
+    if (String(params.analyticalPressureModel) !== 'dietz-pss') return null;
+
+    const pssFrom = Math.max(0, toFiniteNumber(params.analyticalPssStartDays, 0));
+    const area = Math.max(1e-12,
+        toFiniteNumber(params.nx, 1) * toFiniteNumber(params.cellDx, 1) *
+        toFiniteNumber(params.ny, 1) * toFiniteNumber(params.cellDy, 1),
+    );
+    const permeability = Math.sqrt(
+        toFiniteNumber(params.uniformPermX, 1) * toFiniteNumber(params.uniformPermY, 1),
+    );
+    const thickness = getTotalThickness(params);
+    const mobility = 1 / Math.max(1e-12, toFiniteNumber(params.mu_o, 1));
+    const wellRadius = toFiniteNumber(params.well_radius, 0.1);
+    const skin = toFiniteNumber(params.well_skin, 0);
+
+    const drawdown: Array<number | null> = [];
+    const productivity: Array<number | null> = [];
+    const shapeFactor: Array<number | null> = [];
+    for (let index = 0; index < derived.historyTime.length; index += 1) {
+        const time = derived.historyTime[index];
+        const pressure = interpolateAtTime(derived.time, derived.pressure, time);
+        const rate = interpolateAtTime(derived.time, derived.oilRate, time);
+        const bhp = derived.producerBhp[index];
+        const gap = Number.isFinite(pressure) && Number.isFinite(bhp)
+            ? Number(pressure) - Number(bhp)
+            : null;
+        const pi = time >= pssFrom && Number.isFinite(rate) && Number.isFinite(gap) && Number(gap) > 1e-12
+            ? Number(rate) / Number(gap)
+            : null;
+        drawdown.push(gap);
+        productivity.push(pi);
+        shapeFactor.push(pi === null ? null : dietzShapeFactorFromProductivityIndex({
+            productivityIndex: pi,
+            permeabilityMd: permeability,
+            thicknessM: thickness,
+            mobilityPerCp: mobility,
+            drainageAreaM2: area,
+            wellRadiusM: wellRadius,
+            skin,
+        }));
+    }
+
+    return { time: [...derived.historyTime], drawdown, productivity, shapeFactor };
 }
 
 // ─── Material balance diagnostics ─────────────────────────────────────────────

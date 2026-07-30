@@ -17,6 +17,15 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **Depletion comparisons expose their actual analytical observables and limits (2026-07-30).**
+  Corrected the Dietz inflow constant from `exp(2γ)` to the standard
+  `exp(γ)=1.781`, added numerical PI/effective-C_A curves and a centered-square grid-convergence
+  gate, and made grid resolution the default Dietz comparison. Fetkovich grid variants now hold
+  physical well PI fixed with compensating Peaceman skin and scale timestep with cell size; the
+  gate verifies fine grid/timestep convergence against one fixed finite-slab reference. Layered
+  depletion now includes an intentional vertical-crossflow sensitivity that departs from the
+  shared noncommunicating-layer solution, making its validity limit visible rather than implicit.
+
 - [x] **Depletion catalogue mixes incompatible analytical contracts (2026-07-29).** Replaced the
   distributed-slab/single-exponential Fetkovich comparison with a finite-domain flow-regime
   reference; turn the Dietz case into a constant-rate PSS productivity measurement; rebase the

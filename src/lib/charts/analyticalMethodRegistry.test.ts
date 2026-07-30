@@ -96,7 +96,12 @@ describe('analyticalMethodRegistry', () => {
         expect(descriptor.resolveOverlayMode({ requested: 'shared', paramSets: [] })).toBe('shared');
         expect(descriptor.resolveOverlayMode({ requested: 'per-result', paramSets: [] })).toBe('per-result');
         expect(slotsForContext(descriptor, 'shared').map((slot) => slot.curveKey))
-            .toEqual(['producer-bhp-reference', 'oil-rate-reference']);
+            .toEqual([
+                'producer-bhp-reference',
+                'oil-rate-reference',
+                'pss-productivity-reference',
+                'pss-shape-factor-reference',
+            ]);
     });
 
     it('honours an explicit shared/per-result request for the BL family', () => {
@@ -133,8 +138,17 @@ describe('analyticalMethodRegistry', () => {
     it('omits the well-test oil-rate reference for still-pending variants', () => {
         const descriptor = getAnalyticalMethodDescriptor('well-test');
         expect(slotsForContext(descriptor, 'pending').map((slot) => slot.curveKey))
-            .toEqual(['producer-bhp-reference']);
+            .toEqual([
+                'producer-bhp-reference',
+                'pss-productivity-reference',
+                'pss-shape-factor-reference',
+            ]);
         expect(slotsForContext(descriptor, 'per-result').map((slot) => slot.curveKey))
-            .toEqual(['producer-bhp-reference', 'oil-rate-reference']);
+            .toEqual([
+                'producer-bhp-reference',
+                'oil-rate-reference',
+                'pss-productivity-reference',
+                'pss-shape-factor-reference',
+            ]);
     });
 });

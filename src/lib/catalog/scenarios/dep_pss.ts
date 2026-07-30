@@ -9,18 +9,42 @@ import type { Scenario } from '../scenarios';
  */
 export const dep_pss: Scenario = {
     key: 'dep_pss',
-    label: 'Dietz PSS Productivity',
+    label: 'Dietz Shape Factor — PSS Productivity',
     catalog: {
         group: 'depletion-decline',
         role: 'benchmark',
         caseMode: 'dep',
-        parameterSummary: 'Closed square · constant-rate producer · late-time Dietz PI measurement',
+        parameterSummary: 'Closed square · constant-rate producer · numerical C_A convergence',
     },
-    description: 'A constant-rate producer in a closed square reservoir. After the pressure disturbance reaches all boundaries, the gap between average reservoir pressure and flowing BHP becomes the Dietz pseudo-steady drawdown q/J. The analytical BHP is deliberately hidden before that late-time window: Dietz is not an early-time transient solution and is not used here as a full-history decline curve.',
-    analyticalMethodSummary: 'Dietz pseudo-steady-state productivity: average pressure declines by closed-tank material balance while flowing BHP is p̄ − q/J_Dietz after the declared PSS onset.',
-    analyticalMethodReference: 'Dietz (1965), Determination of Average Reservoir Pressure from Build-Up Surveys; Peaceman (1978), SPEJ 18(3).',
+    description: 'A constant-rate producer in a closed square reservoir. After the pressure disturbance reaches all boundaries, the pressure gap p̄−p_wf gives the numerical PSS productivity J=q/(p̄−p_wf); inverting the Dietz equation gives an effective shape factor that should approach the tabulated centered-square value C_A=30.8828 as the grid is refined. The analytical curves are deliberately hidden before day 1 because Dietz is not an early-time transient solution.',
+    analyticalMethodSummary: 'Dietz pseudo-steady-state productivity and its inverse: average pressure declines by material balance, p_wf=p̄−q/J_Dietz, and the numerical J recovers an effective C_A for comparison with the centered-square value 30.8828.',
+    analyticalMethodReference: 'Dietz (1965), Determination of Average Reservoir Pressure from Build-Up Surveys; Dake (1978), Fundamentals of Reservoir Engineering; Peaceman (1978), SPEJ 18(3).',
     chartLayoutKey: 'well_test',
-    defaultSensitivityDimensionKey: 'skin',
+    chartLayoutPatch: {
+        rateChart: {
+            xAxisMode: 'time',
+            xAxisOptions: ['time', 'logTime'],
+            panelOrder: ['diagnostics', 'producer_bhp', 'oil_rate', 'control_limits'],
+            panels: {
+                diagnostics: {
+                    title: 'PSS Productivity & Dietz Shape Factor',
+                    curveKeys: [
+                        'pss-productivity-sim',
+                        'pss-productivity-reference',
+                        'pss-shape-factor-sim',
+                        'pss-shape-factor-reference',
+                    ],
+                    scalePreset: 'productivity',
+                    expanded: true,
+                },
+                producer_bhp: {
+                    title: 'Flowing BHP (supporting check)',
+                    expanded: false,
+                },
+            },
+        },
+    },
+    defaultSensitivityDimensionKey: 'grid_refinement',
     capabilities: {
         analyticalMethod: 'well-test',
         hasInjector: false,
@@ -90,7 +114,7 @@ export const dep_pss: Scenario = {
         {
             key: 'grid_refinement',
             label: 'Grid Refinement',
-            description: 'The physical square and analytical Dietz solution stay fixed; only the Cartesian representation of the centre well changes.',
+            description: 'The physical 420 m square, centered well, and analytical C_A=30.8828 stay fixed. Coarse-grid separation is numerical well-block/spatial-discretisation error; convergence toward the shared analytical PI and C_A is the primary exhibit.',
             analyticalOverlayMode: 'shared',
             variants: [
                 { key: 'grid_coarse', label: '15×15', description: 'Coarse 420 m square.', paramPatch: { nx: 15, ny: 15, cellDx: 28, cellDy: 28, producerI: 7, producerJ: 7 }, affectsAnalytical: false },

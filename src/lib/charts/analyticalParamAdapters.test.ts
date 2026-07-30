@@ -23,6 +23,8 @@ import {
     computeGasOilBLAnalyticalFromParams,
     computeDepletionTau,
     computeDepletionAnalyticalFromParams,
+    computeWellTestOnTimeAxis,
+    computeDietzPssSimulationDiagnostics,
     MIN_GOR_OIL_RATE_SM3_DAY,
     buildDerivedRunSeries,
 } from './analyticalParamAdapters';
@@ -502,6 +504,65 @@ describe('computeDepletionAnalyticalFromParams', () => {
 });
 
 // ─── MIN_GOR_OIL_RATE_SM3_DAY ─────────────────────────────────────────────────
+
+describe('computeWellTestOnTimeAxis — Dietz PSS diagnostics', () => {
+    it('hides the reference before PSS and exposes analytical PI and C_A afterwards', () => {
+        const solution = computeWellTestOnTimeAxis(baseParams({
+            analyticalPressureModel: 'dietz-pss', analyticalPssStartDays: 1,
+            producerControlMode: 'rate', targetProducerRate: 10,
+            initialPressure: 300,
+            uniformPermX: 20, uniformPermY: 20,
+            c_o: 1e-5, c_w: 3e-6, rock_compressibility: 1e-6,
+            nx: 21, ny: 21, cellDx: 20, cellDy: 20, cellDz: 10,
+            producerI: 10, producerJ: 10,
+            well_radius: 0.1, well_skin: 0, mu_o: 1,
+        }), [0.5, 1, 2]);
+
+        expect(solution).not.toBeNull();
+        expect(solution?.pssProductivity[0]).toBeNull();
+        expect(solution?.pssShapeFactor[0]).toBeNull();
+        expect(solution?.pssProductivity[1]).toBeGreaterThan(0);
+        expect(solution?.pssShapeFactor.slice(1)).toEqual([30.8828, 30.8828]);
+    });
+
+    it('recovers numerical PI and C_A from average pressure and flowing BHP', () => {
+        const params = baseParams({
+            analyticalPressureModel: 'dietz-pss', analyticalPssStartDays: 1,
+            producerControlMode: 'rate', targetProducerRate: 10,
+            initialPressure: 300,
+            uniformPermX: 20, uniformPermY: 20,
+            c_o: 1e-5, c_w: 3e-6, rock_compressibility: 1e-6,
+            nx: 21, ny: 21, cellDx: 20, cellDy: 20, cellDz: 10,
+            producerI: 10, producerJ: 10,
+            well_radius: 0.1, well_skin: 0, mu_o: 1,
+        });
+        const reference = computeWellTestOnTimeAxis(params, [1, 2])!;
+        const pi = Number(reference.pssProductivity[0]);
+        const pressures = [290, 280];
+        const result = makeResult({
+            analyticalMethod: 'well-test', params,
+            rateHistory: pressures.map((pressure, index) => ({
+                time: index + 1,
+                total_production_oil: 10,
+                total_production_liquid: 10,
+                total_injection: 0,
+                avg_reservoir_pressure: pressure,
+            })),
+            pressureSeries: pressures,
+            watercutSeries: [0, 0], recoverySeries: [0, 0], pviSeries: [0, 0],
+            history: pressures.map((pressure, index) => ({
+                time: index + 1,
+                wells: [{ injector: false, flowing_bhp: pressure - 10 / pi }],
+            } as any)),
+        });
+        const diagnostics = computeDietzPssSimulationDiagnostics(result, buildDerivedRunSeries(result));
+
+        expect(diagnostics?.productivity[0]).toBeCloseTo(pi, 10);
+        expect(diagnostics?.productivity[1]).toBeCloseTo(pi, 10);
+        expect(diagnostics?.shapeFactor[0]).toBeCloseTo(30.8828, 8);
+        expect(diagnostics?.shapeFactor[1]).toBeCloseTo(30.8828, 8);
+    });
+});
 
 describe('MIN_GOR_OIL_RATE_SM3_DAY', () => {
     it('is a positive number', () => {

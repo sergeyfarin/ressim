@@ -32,6 +32,27 @@ function run(params: Record<string, any>) {
     return history;
 }
 
+function meanRateError(
+    numerical: Array<Record<string, number>>,
+    referenceParams: Record<string, any>,
+): number {
+    const compared = numerical.filter(
+        (point) => point.time >= Number(referenceParams.analyticalDepletionStartDays),
+    );
+    const reference = depletionDef.fn(depletionDef.inputsFromParams({
+        analyticalDepletionRateScale: 1,
+        ...referenceParams,
+    }, compared as any)).production;
+    const errors = compared.flatMap((point, index) => {
+        const analytical = reference[index]?.oilRate;
+        if (
+            !Number.isFinite(analytical) || analytical <= reference[0].oilRate * 0.01
+        ) return [];
+        return [Math.abs(point.total_production_oil - analytical) / analytical];
+    });
+    return errors.reduce((sum, error) => sum + error, 0) / errors.length;
+}
+
 describe('finite-reservoir Fetkovich transition', () => {
     it('tracks the finite-slab reference through transient and boundary-dominated flow', async () => {
         await ensureReady();
@@ -52,4 +73,21 @@ describe('finite-reservoir Fetkovich transition', () => {
             expect(Math.max(...errors), key).toBeLessThan(0.25);
         }
     }, 30_000);
+
+    it('exposes numerical-resolution error against one fixed physical reference', async () => {
+        await ensureReady();
+        const base = getScenarioWithVariantParams('dep_decline', 'grid_refinement', 'grid_base');
+
+        const gridErrors = ['grid_coarse', 'grid_base', 'grid_fine'].map((key) => {
+            const params = getScenarioWithVariantParams('dep_decline', 'grid_refinement', key);
+            return meanRateError(run(params), { ...base, delta_t_days: params.delta_t_days, steps: params.steps });
+        });
+        const timestepErrors = ['timestep_small', 'timestep_base', 'timestep_large'].map((key) => {
+            const params = getScenarioWithVariantParams('dep_decline', 'timestep', key);
+            return meanRateError(run(params), params);
+        });
+
+        expect(gridErrors[2], JSON.stringify(gridErrors)).toBeLessThan(gridErrors[0]);
+        expect(timestepErrors[0], JSON.stringify(timestepErrors)).toBeLessThan(timestepErrors[2]);
+    }, 60_000);
 });

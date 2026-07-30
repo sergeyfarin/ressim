@@ -28,6 +28,7 @@ import {
 } from './axisAdapters';
 import {
     buildDerivedRunSeries,
+    computeDietzPssSimulationDiagnostics,
     computeDepletionTau,
     computeMbeDiagnostics,
 } from './analyticalParamAdapters';
@@ -256,7 +257,7 @@ function perCaseAnalyticalStyle(input: {
         color: input.color,
         borderWidth: 1.5,
         borderDash: ANALYTICAL_DASH,
-        yAxisID: 'y',
+        yAxisID: slot.yAxisID ?? 'y',
     });
 }
 
@@ -279,7 +280,7 @@ function sharedAnalyticalStyle(input: {
         legendColor: input.legendGrey,
         borderWidth: ANALYTICAL_BORDER,
         borderDash: ANALYTICAL_DASH,
-        yAxisID: 'y',
+        yAxisID: slot.yAxisID ?? 'y',
     });
 }
 
@@ -334,7 +335,7 @@ function buildAnalyticalPreviewPanels(
             legendColor: legendGrey,
             borderWidth: ANALYTICAL_BORDER,
             borderDash: ANALYTICAL_DASH,
-            yAxisID: 'y',
+            yAxisID: slot.yAxisID ?? 'y',
         }));
     });
 
@@ -930,6 +931,42 @@ export function buildReferenceComparisonModel(input: {
             producerValues: derived.producerBhpLimitedFraction,
             injectorValues: derived.injectorBhpLimitedFraction,
         });
+
+        const dietzPss = computeDietzPssSimulationDiagnostics(result, derived);
+        if (dietzPss) {
+            const diagnosticXAxis = interpolateXAxisAtTimes(
+                derived.time,
+                xValues,
+                dietzPss.time,
+            );
+            appendSeries(panels.diagnostics, {
+                label: `${result.label} Numerical PI`,
+                curveKey: 'pss-productivity-sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: LEGEND_SECTIONS.sim,
+                color,
+                borderWidth: simBorderWidth(result.variantKey),
+                yAxisID: 'y',
+                defaultVisible,
+            }, diagnosticXAxis, dietzPss.productivity);
+            appendSeries(panels.diagnostics, {
+                label: `${result.label} Inferred C_A`,
+                curveKey: 'pss-shape-factor-sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: LEGEND_SECTIONS.sim,
+                color,
+                borderWidth: 1.6,
+                borderDash: AUXILIARY_DASH,
+                yAxisID: 'y1',
+                defaultVisible,
+            }, diagnosticXAxis, dietzPss.shapeFactor);
+        }
 
         // ── MBE diagnostics (Havlena-Odeh) ─────────────────────────────────
         if (analyticalMethod === 'depletion') {

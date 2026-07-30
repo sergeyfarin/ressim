@@ -130,15 +130,54 @@ export function dietzProductivityIndex(input: {
     wellRadiusM: number;
     skin: number;
 }): number {
+    // Dietz's gamma is exp(Euler-Mascheroni) = 1.781, not exp(2*gamma).
+    // See Dake's semi-steady inflow equation: 4A / (gamma C_A r_w^2).
     const eulerGamma = 0.5772156649;
     const denominator = 0.5 * Math.log(
         (4 * Math.max(1e-12, input.drainageAreaM2)) /
-        (Math.max(1e-12, input.shapeFactor) * Math.exp(2 * eulerGamma) *
+        (Math.max(1e-12, input.shapeFactor) * Math.exp(eulerGamma) *
             Math.max(1e-12, input.wellRadiusM * input.wellRadiusM)),
     ) + input.skin;
     return DARCY_METRIC_FACTOR * 2 * Math.PI * Math.max(0, input.permeabilityMd) *
         Math.max(0, input.thicknessM) * Math.max(0, input.mobilityPerCp) /
         Math.max(1e-9, denominator);
+}
+
+/**
+ * Invert the Dietz PSS productivity equation to recover the effective shape
+ * factor represented by a measured productivity index. This is the useful
+ * numerical comparison quantity: a finite-volume run should approach the
+ * tabulated C_A as its late-time pressure field reaches PSS and the grid is
+ * refined.
+ */
+export function dietzShapeFactorFromProductivityIndex(input: {
+    productivityIndex: number;
+    permeabilityMd: number;
+    thicknessM: number;
+    mobilityPerCp: number;
+    drainageAreaM2: number;
+    wellRadiusM: number;
+    skin: number;
+}): number | null {
+    const {
+        productivityIndex, permeabilityMd, thicknessM, mobilityPerCp,
+        drainageAreaM2, wellRadiusM, skin,
+    } = input;
+    if (
+        !(productivityIndex > 0) || !(permeabilityMd > 0) || !(thicknessM > 0) ||
+        !(mobilityPerCp > 0) || !(drainageAreaM2 > 0) || !(wellRadiusM > 0)
+    ) return null;
+
+    const numerator = DARCY_METRIC_FACTOR * 2 * Math.PI * permeabilityMd *
+        thicknessM * mobilityPerCp;
+    const dietzDenominator = numerator / productivityIndex;
+    const exponent = 2 * (dietzDenominator - skin);
+    if (!Number.isFinite(exponent) || exponent > 700 || exponent < -700) return null;
+
+    const eulerGamma = 0.5772156649;
+    const shapeFactor = (4 * drainageAreaM2) /
+        (Math.exp(eulerGamma) * wellRadiusM * wellRadiusM * Math.exp(exponent));
+    return Number.isFinite(shapeFactor) && shapeFactor > 0 ? shapeFactor : null;
 }
 
 export function computeShapeFactor(input: {

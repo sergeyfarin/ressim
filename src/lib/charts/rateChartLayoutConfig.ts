@@ -41,7 +41,7 @@ export const DEFAULT_RATE_CHART_PANEL_ORDER: RateChartPanelId[] = [
     'sweep_combined_mobile_oil',
 ];
 
-export type RateChartScalePreset = 'rates' | 'cumulative' | 'cumulative_volumes' | 'diagnostics' | 'breakthrough' | 'pressure' | 'gor' | 'recovery' | 'sweep' | 'sweep_rf' | 'fraction';
+export type RateChartScalePreset = 'rates' | 'cumulative' | 'cumulative_volumes' | 'diagnostics' | 'breakthrough' | 'pressure' | 'productivity' | 'gor' | 'recovery' | 'sweep' | 'sweep_rf' | 'fraction';
 
 export type RateChartXAxisRangePolicy =
     | { mode: 'data-extent' }

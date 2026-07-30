@@ -36,13 +36,14 @@
 import type { AnalyticalMethod, AnalyticalOverlayMode, PrimaryRateCurve } from '../catalog/scenarios';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { ChartPanelFallback } from './chartPanelSelection';
-import type { DerivedRunSeries } from './axisAdapters';
+import { buildXAxisValues, type DerivedRunSeries } from './axisAdapters';
 import type { RateChartPanelId, RateChartPanelKey, RateChartXAxisMode } from './rateChartLayoutConfig';
 import {
     computeBLAnalyticalFromParams,
     computeDepletionAnalyticalFromParams,
     computeGasOilBLAnalyticalFromParams,
     computeWellTestFromParams,
+    computeWellTestOnTimeAxis,
     hasDistinctBuckleyLeverettOverlays,
     hasDistinctGasOilBLOverlays,
     resolveOverlayMode,
@@ -93,6 +94,8 @@ export type AnalyticalCurveSlot = {
     previewLabel: string;
     /** Contexts this curve appears in. */
     contexts: readonly AnalyticalOverlayContext[];
+    /** Optional non-primary axis for mixed-unit diagnostic panels. */
+    yAxisID?: 'y' | 'y1';
 };
 
 /**
@@ -415,17 +418,43 @@ const wellTest: AnalyticalMethodDescriptor = {
             previewLabel: 'Analytical Oil Rate',
             contexts: ['shared', 'per-result', 'preview'],
         },
+        {
+            panelKey: 'diagnostics',
+            curveKey: 'pss-productivity-reference',
+            sharedLabel: 'Dietz Productivity Index',
+            perCaseSuffix: ' Dietz PI',
+            previewLabel: 'Analytical Dietz PI',
+            contexts: ['shared', 'per-result', 'pending', 'preview'],
+        },
+        {
+            panelKey: 'diagnostics',
+            curveKey: 'pss-shape-factor-reference',
+            sharedLabel: 'Dietz Shape Factor C_A',
+            perCaseSuffix: ' Dietz C_A',
+            previewLabel: 'Analytical Dietz C_A',
+            contexts: ['shared', 'per-result', 'pending', 'preview'],
+            yAxisID: 'y1',
+        },
     ],
-    fromResult: (result, derived, xAxisMode) => fromOverlay(
-        buildWellTestReference(result, derived, xAxisMode),
-        { rates: 'oil-rate-reference', producerBhp: 'producer-bhp-reference' },
-    ),
+    fromResult: (result, derived, xAxisMode) => {
+        const overlay = buildWellTestReference(result, derived, xAxisMode);
+        const solution = computeWellTestOnTimeAxis(result.params, derived.time);
+        if (!solution) return null;
+        return curveSet(buildXAxisValues(derived, xAxisMode), {
+            'producer-bhp-reference': overlay.producerBhp?.values ?? null,
+            'oil-rate-reference': overlay.rates?.values ?? null,
+            'pss-productivity-reference': solution.pssProductivity,
+            'pss-shape-factor-reference': solution.pssShapeFactor,
+        });
+    },
     fromParams: (params, xAxisMode) => {
         const curves = computeWellTestFromParams(params, xAxisMode);
         if (!curves) return null;
         return curveSet(curves.xValues, {
             'producer-bhp-reference': curves.flowingBhp,
             'oil-rate-reference': curves.oilRates,
+            'pss-productivity-reference': curves.pssProductivity,
+            'pss-shape-factor-reference': curves.pssShapeFactor,
         });
     },
     // Skin/permeability studies request per-result curves because their

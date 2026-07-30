@@ -101,7 +101,7 @@ export const SCENARIO_GROUPS: readonly {
     {
         key: 'depletion-decline',
         label: 'Depletion & Decline',
-        description: 'Flow-regime transition, tank material balance, PSS productivity, composite decline, and depletion non-uniqueness.',
+        description: 'Flow-regime transition, Dietz PSS geometry/productivity, composite decline, and depletion interpretation.',
     },
     {
         key: 'pressure-transient',

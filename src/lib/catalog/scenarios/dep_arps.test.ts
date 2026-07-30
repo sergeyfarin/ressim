@@ -153,4 +153,25 @@ describe('layered composite depletion scenario', () => {
             expect(finalNumerical / finalReference).toBeLessThan(1.03);
         }
     }, 30_000);
+
+    it('shows analytical-model breakdown when vertical crossflow is enabled', async () => {
+        await ensureWasmReady();
+        const errors: number[] = [];
+
+        for (const variantKey of ['communication_isolated', 'communication_weak', 'communication_strong']) {
+            const params = getScenarioWithVariantParams('dep_arps', 'vertical_communication', variantKey);
+            const numerical = configureAndRun(params);
+            const reference = analyticalFor(params, numerical.map((point) => Number(point.time)));
+            const relativeErrors = numerical.map((point, index) => {
+                const numericalRate = Number(point.total_production_oil);
+                const referenceRate = Number(reference[index]?.oilRate);
+                return Math.abs(numericalRate - referenceRate) / Math.max(referenceRate, 1e-12);
+            });
+            errors.push(Math.max(...relativeErrors));
+        }
+
+        expect(errors[0]).toBeLessThan(0.03);
+        expect(errors[2]).toBeGreaterThan(errors[0] * 2);
+        expect(errors[2]).toBeGreaterThan(0.05);
+    }, 30_000);
 });
