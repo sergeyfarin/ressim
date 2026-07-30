@@ -61,16 +61,31 @@ describe('scenario-first run model', () => {
         }
     });
 
-    it('includes the numerical solver in scenario run metadata', () => {
+    it('keeps solver names only when the sensitivity names them', () => {
         const specs = buildScenarioRunSpecs({
             scenarioKey: 'solver_fim_impes',
             dimensionKey: 'solver_comparison',
             variantKeys: ['solver_impes', 'solver_fim'],
         });
         expect(specs.map((spec) => [spec.solver, spec.variantLabel, spec.label])).toEqual([
-            ['impes', 'IMPES', 'FIM vs. IMPES — Coarse Timestep — IMPES [IMPES]'],
-            ['fim', 'FIM', 'FIM vs. IMPES — Coarse Timestep — FIM [FIM]'],
+            ['impes', 'IMPES', 'FIM vs. IMPES — Coarse Timestep — IMPES'],
+            ['fim', 'FIM', 'FIM vs. IMPES — Coarse Timestep — FIM'],
         ]);
+    });
+
+    it('does not append the default solver to ordinary sensitivity labels', () => {
+        const { scenario, dimension, variant } = firstDimensionAndVariant('wf_bl1d');
+        expect(dimension?.variesSolver).not.toBe(true);
+
+        const [spec] = buildScenarioRunSpecs({
+            scenarioKey: scenario!.key,
+            dimensionKey: dimension!.key,
+            variantKeys: [variant!.key],
+        });
+
+        expect(spec.variantLabel).toBe(variant!.label);
+        expect(spec.label).toBe(`${scenario!.label} — ${variant!.label}`);
+        expect(spec.label).not.toMatch(/\[(?:FIM|IMPES)\]$| · (?:FIM|IMPES)$/);
     });
 
     it('builds scenario-native run specs and simulator payloads for each predefined scenario', () => {

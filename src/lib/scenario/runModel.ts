@@ -12,7 +12,6 @@ import {
     getScenario,
     getScenarioWithVariantParams,
     solverFromParams,
-    solverLabel,
     type AnalyticalMethod,
     type Scenario,
     type SimulationSolver,
@@ -147,7 +146,6 @@ export function buildScenarioRunSpecs(input: {
         if (!variant) continue;
         const params = getScenarioWithVariantParams(scenario.key, dimension.key, variant.key);
         const solver = solverFromParams(params);
-        const solverName = solverLabel(solver);
         const runPolicy = buildScenarioRunPolicy({
             params,
             baseParams: scenario.params,
@@ -161,10 +159,8 @@ export function buildScenarioRunSpecs(input: {
             familyKey: scenario.key,
             analyticalMethod: scenario.capabilities.analyticalMethod,
             variantKey: variant.key,
-            variantLabel: dimension.variesSolver
-                ? variant.label
-                : `${variant.label} · ${solverName}`,
-            label: `${scenario.label} — ${variant.label} [${solverName}]`,
+            variantLabel: variant.label,
+            label: `${scenario.label} — ${variant.label}`,
             description: variant.description,
             params,
             steps: runPolicy.steps,

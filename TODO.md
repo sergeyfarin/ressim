@@ -17,6 +17,10 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **Simulation legends repeated the numerical solver (2026-07-30).** Run labels now use the
+  scenario and declared sensitivity variant without appending FIM/IMPES. Solver names remain in
+  the dedicated FIM-vs-IMPES sensitivity because they are the variant names there.
+
 - [x] **Analytical sweep-method toggle discarded numerical results (2026-07-30).** Switching
   between Dykstra-Parsons and Stiles now preserves completed simulation runs and rebuilds only the
   analytical overlays. Scenario, sensitivity-dimension, and variant changes retain their existing
