@@ -131,7 +131,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: true,
             logScale: false,
-            panelOrder: ['rates', 'recovery', 'cumulative', 'diagnostics'],
+            panelOrder: ['rates', 'recovery', 'cumulative', 'diagnostics', 'mbe_ooip', 'drive_indices'],
             panels: {
                 rates: {
                     title: 'Oil Rate',
@@ -153,10 +153,24 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
                     expanded: false,
                 },
                 diagnostics: {
-                    title: 'Pressure & MBE',
-                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference', 'mbe-ooip-ratio', 'drive-compaction', 'drive-oil-expansion', 'drive-gas-cap'],
+                    title: 'Average Reservoir Pressure',
+                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
                     scalePreset: 'pressure',
                     expanded: true,
+                },
+                mbe_ooip: {
+                    title: 'Material-Balance OOIP Ratio',
+                    curveKeys: ['mbe-ooip-ratio'],
+                    scalePreset: 'ratio',
+                    visible: true,
+                    expanded: false,
+                },
+                drive_indices: {
+                    title: 'Material-Balance Drive Indices',
+                    curveKeys: ['drive-compaction', 'drive-oil-expansion', 'drive-gas-cap'],
+                    scalePreset: 'fraction',
+                    visible: true,
+                    expanded: false,
                 },
             },
         },
@@ -169,7 +183,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: true,
             logScale: true,
-            panelOrder: ['rates', 'recovery', 'cumulative', 'diagnostics'],
+            panelOrder: ['rates', 'recovery', 'cumulative', 'diagnostics', 'mbe_ooip', 'drive_indices'],
             panels: {
                 rates: {
                     title: 'Oil Rate',
@@ -191,10 +205,24 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
                     expanded: false,
                 },
                 diagnostics: {
-                    title: 'Pressure & MBE',
-                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference', 'mbe-ooip-ratio', 'drive-compaction', 'drive-oil-expansion', 'drive-gas-cap'],
+                    title: 'Average Reservoir Pressure',
+                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
                     scalePreset: 'pressure',
                     expanded: true,
+                },
+                mbe_ooip: {
+                    title: 'Material-Balance OOIP Ratio',
+                    curveKeys: ['mbe-ooip-ratio'],
+                    scalePreset: 'ratio',
+                    visible: true,
+                    expanded: false,
+                },
+                drive_indices: {
+                    title: 'Material-Balance Drive Indices',
+                    curveKeys: ['drive-compaction', 'drive-oil-expansion', 'drive-gas-cap'],
+                    scalePreset: 'fraction',
+                    visible: true,
+                    expanded: false,
                 },
             },
         },

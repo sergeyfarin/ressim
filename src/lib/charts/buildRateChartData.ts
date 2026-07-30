@@ -28,6 +28,8 @@ import {
     SCALE_CUMULATIVE,
     SCALE_PRESSURE,
     SCALE_PRODUCTIVITY,
+    SCALE_SHAPE_FACTOR,
+    SCALE_RATIO,
     SCALE_GOR,
     SCALE_FRACTION,
     SCALE_SWEEP,
@@ -625,6 +627,8 @@ export function buildGetScalePresetConfig(normalizeRates: boolean): (preset: str
         if (scalePreset === 'breakthrough') return breakthroughScales;
         if (scalePreset === 'pressure') return SCALE_PRESSURE;
         if (scalePreset === 'productivity') return SCALE_PRODUCTIVITY;
+        if (scalePreset === 'shape_factor') return SCALE_SHAPE_FACTOR;
+        if (scalePreset === 'ratio') return SCALE_RATIO;
         if (scalePreset === 'gor') return SCALE_GOR;
         if (scalePreset === 'cumulative') return SCALE_CUMULATIVE;
         if (scalePreset === 'cumulative_volumes') return SCALE_CUMULATIVE_VOLUMES;

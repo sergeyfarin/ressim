@@ -13,7 +13,8 @@
  * Sensitivity variant keys:   {dim_abbrev}_{value_tag} (e.g. mob_favorable, sor_low)
  */
 
-import type { RateChartLayoutConfig } from '../charts/rateChartLayoutConfig';
+import { DEFAULT_RATE_CHART_PANEL_ORDER, type RateChartLayoutConfig } from '../charts/rateChartLayoutConfig';
+import { validateSinglePropertyPanel } from '../charts/curvePropertyRegistry';
 import type { SweepAnalyticalMethod, SweepGeometry } from '../analytical/sweepEfficiency';
 import { DEFAULT_SWEEP_METHOD, describeSweepMethod } from '../analytical/sweepMethods';
 import type { RateHistoryPoint } from '../simulator-types';
@@ -770,8 +771,6 @@ export function getScenarioChartLayout(
     );
 }
 
-const PRIMARY_ANALYTICAL_PANEL_KEYS = ['rates', 'recovery', 'cumulative', 'diagnostics', 'oil_rate', 'producer_bhp', 'injector_bhp', 'control_limits'] as const;
-
 /**
  * Validates that a scenario's chart layout only asks for analytical reference
  * curves its analytical method can actually produce.
@@ -792,8 +791,11 @@ export function validateScenarioChartLayout(
 
     for (const dimensionKey of dimensionKeys) {
         const layout = getScenarioChartLayout(scenario, dimensionKey);
-        for (const panelKey of PRIMARY_ANALYTICAL_PANEL_KEYS) {
+        for (const panelKey of DEFAULT_RATE_CHART_PANEL_ORDER) {
             const curveKeys = layout.rateChart?.panels?.[panelKey]?.curveKeys ?? [];
+            for (const propertyError of validateSinglePropertyPanel(panelKey, curveKeys)) {
+                errors.push(`scenario '${scenario.key}'${dimensionKey ? ` / ${dimensionKey}` : ''} ${propertyError}`);
+            }
             for (const curveKey of curveKeys) {
                 if (!curveKey.endsWith('-reference')) continue;
                 // Published/OPM series are appended by source, not by analytical

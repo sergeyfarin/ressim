@@ -440,6 +440,17 @@ describe('scenario capability validation', () => {
         expect(errors.some((e) => e.includes('water-cut-reference'))).toBe(true);
     });
 
+    it('validateScenarioChartLayout rejects panels that mix physical properties', () => {
+        const scenario = listScenarios()[0];
+        const errors = validateScenarioChartLayout({
+            ...scenario,
+            chartLayoutPatch: {
+                rateChart: { panels: { diagnostics: { curveKeys: ['avg-pressure-sim', 'mbe-ooip-ratio'] } } },
+            },
+        }, new Set<string>());
+        expect(errors.some((error) => error.includes('mixes properties'))).toBe(true);
+    });
+
     it('any prerun-artifacts scenario declares bundled artifact keys and disables the 3D view (E7)', () => {
         const prerun = listScenarios().filter((s) => s.capabilities.runMode === 'prerun-artifacts');
         for (const scenario of prerun) {

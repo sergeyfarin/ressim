@@ -170,6 +170,10 @@ function emptyPanelMap(): ReferenceComparisonPanelMap {
         recovery: createReferenceComparisonPanel(),
         cumulative: createReferenceComparisonPanel(),
         diagnostics: createReferenceComparisonPanel(),
+        mbe_ooip: createReferenceComparisonPanel(),
+        drive_indices: createReferenceComparisonPanel(),
+        pss_productivity: createReferenceComparisonPanel(),
+        pss_shape_factor: createReferenceComparisonPanel(),
         gor: createReferenceComparisonPanel(),
         volumes: createReferenceComparisonPanel(),
         oil_rate: createReferenceComparisonPanel(),
@@ -195,6 +199,10 @@ function combinePanelMaps(input: {
         recovery: input.primary.recovery,
         cumulative: input.primary.cumulative,
         diagnostics: input.primary.diagnostics,
+        mbe_ooip: input.primary.mbe_ooip,
+        drive_indices: input.primary.drive_indices,
+        pss_productivity: input.primary.pss_productivity,
+        pss_shape_factor: input.primary.pss_shape_factor,
         gor: input.primary.gor,
         volumes: input.primary.volumes,
         oil_rate: input.primary.oil_rate,
@@ -300,6 +308,10 @@ function buildAnalyticalPreviewPanels(
         recovery: createReferenceComparisonPanel(),
         cumulative: createReferenceComparisonPanel(),
         diagnostics: createReferenceComparisonPanel(),
+        mbe_ooip: createReferenceComparisonPanel(),
+        drive_indices: createReferenceComparisonPanel(),
+        pss_productivity: createReferenceComparisonPanel(),
+        pss_shape_factor: createReferenceComparisonPanel(),
         gor: createReferenceComparisonPanel(),
         volumes: createReferenceComparisonPanel(),
         oil_rate: createReferenceComparisonPanel(),
@@ -398,6 +410,10 @@ export function buildReferenceComparisonModel(input: {
         recovery: createReferenceComparisonPanel(),
         cumulative: createReferenceComparisonPanel(),
         diagnostics: createReferenceComparisonPanel(),
+        mbe_ooip: createReferenceComparisonPanel(),
+        drive_indices: createReferenceComparisonPanel(),
+        pss_productivity: createReferenceComparisonPanel(),
+        pss_shape_factor: createReferenceComparisonPanel(),
         gor: createReferenceComparisonPanel(),
         volumes: createReferenceComparisonPanel(),
         oil_rate: createReferenceComparisonPanel(),
@@ -939,7 +955,7 @@ export function buildReferenceComparisonModel(input: {
                 xValues,
                 dietzPss.time,
             );
-            appendSeries(panels.diagnostics, {
+            appendSeries(panels.pss_productivity, {
                 label: `${result.label} Numerical PI`,
                 curveKey: 'pss-productivity-sim',
                 caseKey: result.key,
@@ -952,7 +968,7 @@ export function buildReferenceComparisonModel(input: {
                 yAxisID: 'y',
                 defaultVisible,
             }, diagnosticXAxis, dietzPss.productivity);
-            appendSeries(panels.diagnostics, {
+            appendSeries(panels.pss_shape_factor, {
                 label: `${result.label} Inferred C_A`,
                 curveKey: 'pss-shape-factor-sim',
                 caseKey: result.key,
@@ -963,7 +979,7 @@ export function buildReferenceComparisonModel(input: {
                 color,
                 borderWidth: 1.6,
                 borderDash: AUXILIARY_DASH,
-                yAxisID: 'y1',
+                yAxisID: 'y',
                 defaultVisible,
             }, diagnosticXAxis, dietzPss.shapeFactor);
         }
@@ -971,7 +987,7 @@ export function buildReferenceComparisonModel(input: {
         // ── MBE diagnostics (Havlena-Odeh) ─────────────────────────────────
         if (analyticalMethod === 'depletion') {
             const mbe = computeMbeDiagnostics(result, derived);
-            appendSeries(panels.diagnostics, {
+            appendSeries(panels.mbe_ooip, {
                 label: `${result.label} MBE OOIP Ratio`,
                 curveKey: 'mbe-ooip-ratio',
                 caseKey: result.key,
@@ -982,12 +998,12 @@ export function buildReferenceComparisonModel(input: {
                 color,
                 borderWidth: 1.6,
                 borderDash: [2, 3],
-                yAxisID: 'y1',
+                yAxisID: 'y',
                 defaultVisible: false,
             }, xValues, mbe.ooipRatio);
 
             // ── Drive mechanism indices ─────────────────────────────────────
-            appendSeries(panels.diagnostics, {
+            appendSeries(panels.drive_indices, {
                 label: `${result.label} Drive: Compaction`,
                 curveKey: 'drive-compaction',
                 caseKey: result.key,
@@ -997,10 +1013,10 @@ export function buildReferenceComparisonModel(input: {
                 legendSectionLabel: LEGEND_SECTIONS.driveIndices,
                 color: '#e67e22',
                 borderWidth: 1.4,
-                yAxisID: 'y1',
+                yAxisID: 'y',
                 defaultVisible: false,
             }, xValues, mbe.driveCompaction);
-            appendSeries(panels.diagnostics, {
+            appendSeries(panels.drive_indices, {
                 label: `${result.label} Drive: Oil Expansion`,
                 curveKey: 'drive-oil-expansion',
                 caseKey: result.key,
@@ -1010,10 +1026,10 @@ export function buildReferenceComparisonModel(input: {
                 legendSectionLabel: LEGEND_SECTIONS.driveIndices,
                 color: '#27ae60',
                 borderWidth: 1.4,
-                yAxisID: 'y1',
+                yAxisID: 'y',
                 defaultVisible: false,
             }, xValues, mbe.driveOilExpansion);
-            appendSeries(panels.diagnostics, {
+            appendSeries(panels.drive_indices, {
                 label: `${result.label} Drive: Gas Cap`,
                 curveKey: 'drive-gas-cap',
                 caseKey: result.key,
@@ -1023,7 +1039,7 @@ export function buildReferenceComparisonModel(input: {
                 legendSectionLabel: LEGEND_SECTIONS.driveIndices,
                 color: '#2980b9',
                 borderWidth: 1.4,
-                yAxisID: 'y1',
+                yAxisID: 'y',
                 defaultVisible: false,
             }, xValues, mbe.driveGasCap);
         }

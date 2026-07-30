@@ -419,7 +419,7 @@ const wellTest: AnalyticalMethodDescriptor = {
             contexts: ['shared', 'per-result', 'preview'],
         },
         {
-            panelKey: 'diagnostics',
+            panelKey: 'pss_productivity',
             curveKey: 'pss-productivity-reference',
             sharedLabel: 'Dietz Productivity Index',
             perCaseSuffix: ' Dietz PI',
@@ -427,13 +427,12 @@ const wellTest: AnalyticalMethodDescriptor = {
             contexts: ['shared', 'per-result', 'pending', 'preview'],
         },
         {
-            panelKey: 'diagnostics',
+            panelKey: 'pss_shape_factor',
             curveKey: 'pss-shape-factor-reference',
             sharedLabel: 'Dietz Shape Factor C_A',
             perCaseSuffix: ' Dietz C_A',
             previewLabel: 'Analytical Dietz C_A',
             contexts: ['shared', 'per-result', 'pending', 'preview'],
-            yAxisID: 'y1',
         },
     ],
     fromResult: (result, derived, xAxisMode) => {

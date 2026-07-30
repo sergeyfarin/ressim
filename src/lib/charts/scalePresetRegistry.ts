@@ -58,7 +58,6 @@ export const SCALE_PRESSURE = {
     },
 };
 
-/** Dietz PSS comparison: productivity on the left, inferred shape factor on the right. */
 export const SCALE_PRODUCTIVITY = {
     y: {
         type: 'linear',
@@ -70,16 +69,23 @@ export const SCALE_PRODUCTIVITY = {
         ticks: { count: 6 },
         _auto: true,
     },
-    y1: {
-        type: 'linear',
-        display: true,
-        position: 'right',
-        min: 0,
+};
+
+export const SCALE_SHAPE_FACTOR = {
+    y: {
+        type: 'linear', display: true, position: 'left', min: 0,
         alignToPixels: true,
         title: { display: true, text: 'Dietz Shape Factor C_A' },
-        grid: { drawOnChartArea: false },
-        ticks: { count: 6 },
-        _auto: true,
+        ticks: { count: 6 }, _auto: true,
+    },
+};
+
+export const SCALE_RATIO = {
+    y: {
+        type: 'linear', display: true, position: 'left', min: 0,
+        alignToPixels: true,
+        title: { display: true, text: 'OOIP Estimate / Input OOIP' },
+        ticks: { count: 6 }, _auto: true,
     },
 };
 

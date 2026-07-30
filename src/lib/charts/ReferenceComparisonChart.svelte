@@ -33,6 +33,8 @@
         SCALE_CUMULATIVE,
         SCALE_PRESSURE,
         SCALE_PRODUCTIVITY,
+        SCALE_SHAPE_FACTOR,
+        SCALE_RATIO,
         SCALE_GOR,
         SCALE_FRACTION,
         SCALE_SWEEP,
@@ -257,6 +259,8 @@
         if (scalePreset === 'breakthrough') return breakthroughScales;
         if (scalePreset === 'pressure') return SCALE_PRESSURE;
         if (scalePreset === 'productivity') return SCALE_PRODUCTIVITY;
+        if (scalePreset === 'shape_factor') return SCALE_SHAPE_FACTOR;
+        if (scalePreset === 'ratio') return SCALE_RATIO;
         if (scalePreset === 'gor') return SCALE_GOR;
         if (scalePreset === 'diagnostics') return diagnosticsScales;
         if (scalePreset === 'fraction') return SCALE_FRACTION;

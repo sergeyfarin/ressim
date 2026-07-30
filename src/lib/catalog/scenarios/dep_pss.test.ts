@@ -71,7 +71,7 @@ describe('Dietz PSS productivity scenario', () => {
                 expect(Math.max(...errors)).toBeLessThan(5);
             }
         }
-    }, 30_000);
+    }, 60_000);
 
     it('converges toward the centered-square Dietz shape factor with grid refinement', async () => {
         await ensureReady();

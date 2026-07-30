@@ -17,6 +17,11 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **Chart panels enforce one physical property (2026-07-30).** Split depletion pressure,
+  MBE OOIP ratio, and drive indices into dedicated panels; split Dietz PSS productivity and
+  inferred shape factor into separate panels and axes. Catalog validation now rejects unknown
+  curve classifications and any scenario/sensitivity panel that mixes semantic properties.
+
 - [x] **Depletion comparisons expose their actual analytical observables and limits (2026-07-30).**
   Corrected the Dietz inflow constant from `exp(2γ)` to the standard
   `exp(γ)=1.781`, added numerical PI/effective-C_A curves and a centered-square grid-convergence

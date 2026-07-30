@@ -24,17 +24,20 @@ export const dep_pss: Scenario = {
         rateChart: {
             xAxisMode: 'time',
             xAxisOptions: ['time', 'logTime'],
-            panelOrder: ['diagnostics', 'producer_bhp', 'oil_rate', 'control_limits'],
+            panelOrder: ['pss_productivity', 'pss_shape_factor', 'producer_bhp', 'oil_rate', 'control_limits'],
             panels: {
-                diagnostics: {
-                    title: 'PSS Productivity & Dietz Shape Factor',
-                    curveKeys: [
-                        'pss-productivity-sim',
-                        'pss-productivity-reference',
-                        'pss-shape-factor-sim',
-                        'pss-shape-factor-reference',
-                    ],
+                pss_productivity: {
+                    title: 'PSS Productivity Index',
+                    curveKeys: ['pss-productivity-sim', 'pss-productivity-reference'],
                     scalePreset: 'productivity',
+                    visible: true,
+                    expanded: true,
+                },
+                pss_shape_factor: {
+                    title: 'Dietz Shape Factor C_A',
+                    curveKeys: ['pss-shape-factor-sim', 'pss-shape-factor-reference'],
+                    scalePreset: 'shape_factor',
+                    visible: true,
                     expanded: true,
                 },
                 producer_bhp: {

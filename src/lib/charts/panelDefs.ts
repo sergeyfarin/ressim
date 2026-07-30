@@ -36,9 +36,33 @@ export const PANEL_DEFS: Record<RateChartPanelId, ChartPanelFallback> = {
         expanded: false,
     },
     diagnostics: {
-        title: 'Diagnostics',
-        scalePreset: 'diagnostics',
+        title: 'Average Pressure',
+        scalePreset: 'pressure',
         visible: true,
+        expanded: false,
+    },
+    mbe_ooip: {
+        title: 'MBE OOIP Ratio',
+        scalePreset: 'ratio',
+        visible: false,
+        expanded: false,
+    },
+    drive_indices: {
+        title: 'Drive Indices',
+        scalePreset: 'fraction',
+        visible: false,
+        expanded: false,
+    },
+    pss_productivity: {
+        title: 'PSS Productivity Index',
+        scalePreset: 'productivity',
+        visible: false,
+        expanded: false,
+    },
+    pss_shape_factor: {
+        title: 'Dietz Shape Factor',
+        scalePreset: 'shape_factor',
+        visible: false,
         expanded: false,
     },
     gor: {
