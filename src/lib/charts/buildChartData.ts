@@ -161,6 +161,7 @@ function appendPublishedReferenceSeries(
             borderDash: isPrimary ? undefined : PUBLISHED_DASH,
             yAxisID: series.yAxisID ?? 'y',
             pointRadius: 0,
+            defaultVisible: series.defaultVisible,
         }, series.data.map((pt) => (
             xAxisMode === 'logTime'
                 ? (pt.x > 0 ? Math.log10(pt.x) : null)

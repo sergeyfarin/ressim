@@ -3,6 +3,7 @@ import { getAnalyticalMethodDescriptor } from '../charts/analyticalMethodRegistr
 import { listDeclaredOpmFlowArtifactKeys } from './opmFlowArtifacts';
 import { calculateAnalyticalProduction } from '../analytical/fractionalFlow';
 import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
+import { calculateTarnerTracy } from '../analytical/tarnerTracy';
 import { computeCombinedSweep } from '../analytical/sweepEfficiency';
 import { computeWellTestOnTimeAxis } from '../charts/analyticalParamAdapters';
 import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
@@ -271,6 +272,26 @@ function depletionFingerprint(params: Record<string, unknown>): number[] {
 
 function analyticalFingerprint(analyticalMethod: string, params: Record<string, unknown>): number[] {
     if (analyticalMethod === 'depletion') return depletionFingerprint(params);
+    if (analyticalMethod === 'tarner-tracy') {
+        const points = calculateTarnerTracy({
+            pressureBar: [toNum(params.initialPressure, 200), 150, 100],
+            pvtTable: params.pvtTable as import('../simulator-types').PvtRow[],
+            initialPressureBar: toNum(params.initialPressure, 200),
+            poreVolumeM3: toNum(params.nx, 1) * toNum(params.ny, 1) * toNum(params.nz, 1)
+                * toNum(params.cellDx, 1) * toNum(params.cellDy, 1) * toNum(params.cellDz, 1)
+                * toNum(params.reservoirPorosity, 0.2),
+            initialWaterSaturation: toNum(params.initialSaturation, 0.2),
+            initialGasSaturation: toNum(params.initialGasSaturation, 0),
+            rock: {
+                s_wc: toNum(params.s_wc, 0.2),
+                s_gc: toNum(params.s_gc, 0.05), s_gr: toNum(params.s_gr, 0.05),
+                s_org: toNum(params.s_org, 0.2), n_o: toNum(params.n_o, 2),
+                n_g: toNum(params.n_g, 1.5), k_ro_max: toNum(params.k_ro_max, 1),
+                k_rg_max: toNum(params.k_rg_max, 0.8),
+            },
+        });
+        return points.flatMap((point) => [point.recoveryFactor, point.producingGorM3M3]);
+    }
     if (analyticalMethod === 'well-test') {
         const result = computeWellTestOnTimeAxis(params, [0.5, 1, 2, 5]);
         return result ? [
@@ -288,7 +309,7 @@ function arraysEqual(a: number[], b: number[], tol = 1e-12): boolean {
 }
 
 describe('affectsAnalytical contract', () => {
-    const analyticalScenarios = ['wf_bl1d', 'sweep_areal', 'sweep_vertical', 'sweep_combined', 'dep_pss', 'dep_decline', 'dep_arps'];
+    const analyticalScenarios = ['wf_bl1d', 'sweep_areal', 'sweep_vertical', 'sweep_combined', 'dep_pss', 'dep_decline', 'dep_arps', 'gas_drive'];
 
     for (const scenarioKey of analyticalScenarios) {
         const scenario = getScenario(scenarioKey)!;

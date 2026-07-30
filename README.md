@@ -26,7 +26,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 | Depletion & Decline | Layered Depletion — Composite Decline | `dep_arps` | Spatial layered depletion approaching a late-time Dietz/Fetkovich superposition, plus a crossflow limitation study |
 | Pressure-Transient Analysis | Well-Test Drawdown | `dep_welltest` | Line-source drawdown; permeability, skin, and near-well grid bias |
 | Gas-Dominated Recovery | Gas Injection | `gas_injection` | Gas-oil fractional-flow breakthrough |
-| Gas-Dominated Recovery | Solution Gas Drive | `gas_drive` | Black-oil depletion with OPM Flow reference |
+| Gas-Dominated Recovery | Solution Gas Drive | `gas_drive` | Tarner–Tracy tank model + black-oil FIM; optional OPM Flow benchmark |
 | Gas-Dominated Recovery | PVT Model Risk — One Calibration Point | `dep_pvt` | Two PVT representations constrained at one point |
 | Other | FIM vs. IMPES — Coarse Timestep | `solver_fim_impes` | Rate-controlled numerical-formulation comparison at deliberately coarse report steps |
 | Validation Benchmarks | SPE1 Black-Oil Benchmark | `spe1_gas_injection` | Published Eclipse and OPM Flow comparative-solution references |
@@ -87,7 +87,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 - Craig areal sweep applies to confined five-spot style pattern assumptions. It is context, not a universal areal flood model.
 - Dykstra-Parsons assumes layered, non-communicating flow. When the simulator allows vertical communication, analytical sweep penalties are intentionally conservative.
 - Stiles-style combined sweep improves layered recovery interpretation, but it is still an analytical teaching aid rather than a substitute for full streamline or field-scale pattern modeling.
-- Three-phase mode is graded against numerical references (OPM Flow, SPE1), not closed-form solutions — no analytical three-phase reference exists in this repo. Vaporized oil (Rv) is not modelled, so wet-gas and gas-condensate behavior is outside the envelope. See `docs/THREE_PHASE_VALIDATION.md` section 6.
+- Three-phase mode is graded quantitatively against numerical references (OPM Flow, SPE1). The solution-gas-drive scenario additionally includes a Tarner–Tracy volumetric tank model as a mechanism-level analytical reference; it is not a spatial simulator oracle. Vaporized oil (Rv) is not modelled, so wet-gas and gas-condensate behavior is outside the envelope. See `docs/THREE_PHASE_VALIDATION.md` section 6.
 - Material-balance closure is reported explicitly for all three phases. Oil is the residual *saturation* in transport (S_o = 1 - S_w - S_g), but its diagnostic is direct: reported surface oil production versus actual stock-tank oil inventory depletion.
 - The Brooks-Corey capillary model is numerically capped at `20 x P_entry`. That cap is a stability safeguard, not a physical plateau.
 - Pore volume is held constant within each timestep. Rock compressibility enters the pressure equation accumulation term but does not update cell geometry. This is the standard IMPES simplification and is consistent with the compressibility magnitudes used.

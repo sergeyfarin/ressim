@@ -3,6 +3,15 @@ import { buildScenarioComparisonFamily } from './scenarioChartModel';
 import { getScenario } from '../catalog/scenarios';
 
 describe('buildScenarioComparisonFamily', () => {
+    it('retains gas-drive OPM as a benchmark-only overlay disabled by default', () => {
+        const scenario = getScenario('gas_drive')!;
+        const family = buildScenarioComparisonFamily({ scenario })!;
+        const opmSeries = family.publishedReferenceSeries!.filter(
+            (series) => series.sourceType === 'opm-flow-precomputed',
+        );
+        expect(opmSeries.length).toBeGreaterThan(0);
+        expect(opmSeries.every((series) => series.defaultVisible === false)).toBe(true);
+    });
     it('merges real parsed OPM Flow series for spe1_gas_injection alongside its digitized Eclipse references', () => {
         const scenario = getScenario('spe1_gas_injection');
         const family = buildScenarioComparisonFamily({ scenario });

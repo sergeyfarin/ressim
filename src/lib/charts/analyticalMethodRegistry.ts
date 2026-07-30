@@ -52,6 +52,7 @@ import {
     buildBuckleyLeverettReference,
     buildDepletionReference,
     buildGasOilBLReference,
+    buildTarnerTracyReference,
     buildWellTestReference,
 } from './referenceOverlayBuilders';
 import type { AnalyticalOverlay } from './referenceChartTypes';
@@ -315,6 +316,66 @@ const gasOilBL: AnalyticalMethodDescriptor = {
     referenceLabel: 'Gas-oil Buckley-Leverett reference solution',
 };
 
+const tarnerTracy: AnalyticalMethodDescriptor = {
+    method: 'tarner-tracy',
+    simulationCurveSet: 'oil-rate',
+    producesSweepPanels: false,
+    nativeXAxis: 'time',
+    slots: [
+        {
+            panelKey: 'recovery',
+            curveKey: 'recovery-factor-reference',
+            sharedLabel: 'Tarner–Tracy Recovery',
+            perCaseSuffix: ' Tarner–Tracy Recovery',
+            previewLabel: 'Tarner–Tracy Recovery',
+            contexts: ['per-result'],
+        },
+        {
+            panelKey: 'cumulative',
+            curveKey: 'cum-oil-reference',
+            sharedLabel: 'Tarner–Tracy Cum Oil',
+            perCaseSuffix: ' Tarner–Tracy Cum Oil',
+            previewLabel: 'Tarner–Tracy Cum Oil',
+            contexts: ['per-result'],
+        },
+        {
+            panelKey: 'gor',
+            curveKey: 'gor-reference',
+            sharedLabel: 'Tarner–Tracy GOR',
+            perCaseSuffix: ' Tarner–Tracy GOR',
+            previewLabel: 'Tarner–Tracy GOR',
+            contexts: ['per-result'],
+        },
+    ],
+    fromResult: (result, derived, xAxisMode) => {
+        const curves = buildTarnerTracyReference(result, derived, xAxisMode);
+        if (!curves) return null;
+        return curveSet(curves.xValues, {
+            'recovery-factor-reference': curves.recovery,
+            'cum-oil-reference': curves.cumulativeOil,
+            'gor-reference': curves.producingGor,
+        });
+    },
+    // A pressure-stepped tank model needs a completed run's average-pressure
+    // path to place its pressure-domain prediction on time/log-time axes.
+    fromParams: null,
+    resolveOverlayMode: () => 'per-result',
+    panelPresentation: {
+        recovery: {
+            curveKeys: ['recovery-factor-primary', 'recovery-factor-reference'],
+        },
+        cumulative: {
+            curveKeys: ['cum-oil-sim', 'cum-oil-reference'],
+        },
+        gor: {
+            title: 'Producing GOR',
+            curveKeys: ['gor-sim', 'gor-reference'],
+            scalePreset: 'gor',
+        },
+    },
+    referenceLabel: 'Tarner–Tracy solution-gas-drive tank model',
+};
+
 const depletion: AnalyticalMethodDescriptor = {
     method: 'depletion',
     simulationCurveSet: 'oil-rate',
@@ -535,6 +596,7 @@ const sweep: AnalyticalMethodDescriptor = {
 export const ANALYTICAL_METHOD_DESCRIPTORS: Record<AnalyticalMethod, AnalyticalMethodDescriptor> = {
     'buckley-leverett': buckleyLeverett,
     'gas-oil-bl': gasOilBL,
+    'tarner-tracy': tarnerTracy,
     'sweep': sweep,
     'depletion': depletion,
     'well-test': wellTest,

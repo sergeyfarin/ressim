@@ -54,7 +54,7 @@ export function getOpmFlowArtifactsForScenario(scenarioKey: string): OpmFlowArti
  */
 function getOpmFlowArtifactSeriesByKeys(
     caseKeys: readonly string[],
-    options: { primary?: boolean } = {},
+    options: { primary?: boolean; defaultVisible?: boolean } = {},
 ): PublishedReferenceSeries[] {
     return caseKeys.flatMap((caseKey) => {
         const artifact = ARTIFACTS.find((candidate) => candidate.caseKey === caseKey);
@@ -66,6 +66,7 @@ function getOpmFlowArtifactSeriesByKeys(
             // Only stamped for primary content; an overlay leaves it absent so
             // the chart's `primary === true` test reads false.
             ...(options.primary ? { primary: true } : {}),
+            ...(options.defaultVisible === false ? { defaultVisible: false } : {}),
         }));
     });
 }
@@ -85,7 +86,10 @@ export function resolveScenarioReferenceSeries(
     return sources.flatMap((source) => (
         source.kind === 'published'
             ? [...source.series]
-            : getOpmFlowArtifactSeriesByKeys(source.artifactKeys, { primary: source.role === 'primary' })
+            : getOpmFlowArtifactSeriesByKeys(source.artifactKeys, {
+                primary: source.role === 'primary',
+                defaultVisible: source.defaultVisible,
+            })
     ));
 }
 
