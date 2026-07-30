@@ -134,6 +134,7 @@ function appendBhpLimitDiagnostics(
 function appendPublishedReferenceSeries(
     panels: Record<RateChartPanelKey, ReferenceComparisonPanel>,
     family: BenchmarkFamily | null,
+    xAxisMode: RateChartXAxisMode,
 ) {
     if (!family?.publishedReferenceSeries?.length) return;
 
@@ -160,7 +161,11 @@ function appendPublishedReferenceSeries(
             borderDash: isPrimary ? undefined : PUBLISHED_DASH,
             yAxisID: series.yAxisID ?? 'y',
             pointRadius: 0,
-        }, series.data.map((pt) => pt.x), series.data.map((pt) => pt.y));
+        }, series.data.map((pt) => (
+            xAxisMode === 'logTime'
+                ? (pt.x > 0 ? Math.log10(pt.x) : null)
+                : pt.x
+        )), series.data.map((pt) => pt.y));
     }
 }
 
@@ -433,7 +438,7 @@ export function buildReferenceComparisonModel(input: {
                     orderedResults,
                     previewCases: [],
                     panels: (() => {
-                        appendPublishedReferenceSeries(panels, family);
+                        appendPublishedReferenceSeries(panels, family, input.xAxisMode);
                         return combinePanelMaps({ primary: panels });
                     })(),
                     axisMappingWarning: buildAnalyticalAxisWarning({
@@ -474,7 +479,7 @@ export function buildReferenceComparisonModel(input: {
                     orderedResults,
                     previewCases,
                     panels: (() => {
-                        appendPublishedReferenceSeries(previewPanels, family);
+                        appendPublishedReferenceSeries(previewPanels, family, input.xAxisMode);
                         return combinePanelMaps({
                             primary: previewPanels,
                             sweep: descriptor.producesSweepPanels
@@ -491,7 +496,7 @@ export function buildReferenceComparisonModel(input: {
                 };
             }
         }
-        appendPublishedReferenceSeries(panels, family);
+        appendPublishedReferenceSeries(panels, family, input.xAxisMode);
         return {
             orderedResults,
             previewCases: [],
@@ -1175,7 +1180,7 @@ export function buildReferenceComparisonModel(input: {
         : emptySweepPanels();
 
     // ── Published reference overlays (static benchmark data) ────────────────
-    appendPublishedReferenceSeries(panels, family);
+    appendPublishedReferenceSeries(panels, family, input.xAxisMode);
 
     return {
         orderedResults,

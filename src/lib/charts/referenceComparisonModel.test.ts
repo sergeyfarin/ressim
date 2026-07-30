@@ -553,6 +553,39 @@ describe('referenceComparisonModel', () => {
         expect(model.panels.producer_bhp.curves.find((curve) => curve.curveKey === 'producer-bhp-sim')?.borderDash).toBeUndefined();
     });
 
+    it('maps bundled time-reference curves onto the selected log-time axis', () => {
+        const family = {
+            key: 'log_time_reference_test',
+            analyticalMethod: 'none',
+            showSweepPanel: false,
+            publishedReferenceSeries: [{
+                panelKey: 'diagnostics',
+                label: 'OPM Pressure',
+                curveKey: 'opm-pressure',
+                sourceType: 'opm-flow-precomputed',
+                data: [
+                    { x: 0, y: 200 },
+                    { x: 1, y: 190 },
+                    { x: 100, y: 150 },
+                ],
+            }],
+        } as unknown as BenchmarkFamily;
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [],
+            xAxisMode: 'logTime',
+        });
+
+        const referenceIndex = model.panels.diagnostics.curves.findIndex(
+            (curve) => curve.curveKey === 'opm-pressure',
+        );
+        expect(model.panels.diagnostics.series[referenceIndex]).toEqual([
+            { x: 0, y: 190 },
+            { x: 2, y: 150 },
+        ]);
+    });
+
     it('exposes producer and injector BHP-limit diagnostics on the control-limits panel', () => {
         const scenario = getScenario('spe1_gas_injection')!;
         const spec = {

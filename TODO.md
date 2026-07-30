@@ -519,6 +519,9 @@ matter more. Search `docs/FIM_EXPERIMENT_REGISTRY.md` by mechanism before any ch
   phase in diagnostics.
 
 ## Housekeeping
+- [x] **Log-time comparison charts left bundled OPM/published curves on raw time.** Fixed
+  2026-07-30 by mapping static time-reference x values through `log10(time)` alongside numerical
+  series, including reference-only previews; non-positive time points are omitted from the domain.
 - [x] **Scenario picker density and hierarchy — DONE 2026-07-28.** Scenario families now render
   as compact wrapping group cards, and the input surface has explicit
   Scenario Selection, Scenario Description, and Sensitivity Selections sections. Fixed-reference
