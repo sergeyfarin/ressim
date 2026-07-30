@@ -17,6 +17,11 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **Analytical sweep-method toggle discarded numerical results (2026-07-30).** Switching
+  between Dykstra-Parsons and Stiles now preserves completed simulation runs and rebuilds only the
+  analytical overlays. Scenario, sensitivity-dimension, and variant changes retain their existing
+  numerical-result invalidation because those selections can change simulator inputs.
+
 - [x] **Layered composite decline used five areal lumped cells (2026-07-30).** Replaced the
   `1×1×5` tank stack with a `9×9×5` centered-well reservoir at the same physical dimensions.
   The numerical model now resolves areal pressure propagation and boundary arrival; its analytical

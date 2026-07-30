@@ -779,7 +779,10 @@ class NavigationStoreImpl {
         if (optionKey === this.activeAnalyticalOptionKey) return;
 
         this.activeComparisonSelection = buildComparisonSelection();
-        this.#runtime.clearReferenceRunnerState(true);
+        // Numerical runs are independent of the analytical correlation used
+        // to interpret them, so preserve completed results and rebuild only
+        // the analytical overlay when switching methods.
+        this.#runtime.clearReferenceRunnerState(false);
         this.activeAnalyticalOptionKey = optionKey;
     }
 

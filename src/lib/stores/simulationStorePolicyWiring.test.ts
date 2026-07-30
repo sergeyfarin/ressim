@@ -73,6 +73,10 @@ describe('simulation store policy wiring', () => {
     expect(storeSource).toMatch(/toggleScenarioVariant\(variantKey: string\)[\s\S]*this\.activeComparisonSelection = buildComparisonSelection\(\);[\s\S]*this\.#runtime\.clearReferenceRunnerState\(true\);/);
   });
 
+  it('preserves numerical results when only the analytical sweep method changes', () => {
+    expect(storeSource).toMatch(/selectAnalyticalOption\(optionKey: string\)[\s\S]*this\.activeComparisonSelection = buildComparisonSelection\(\);[\s\S]*this\.#runtime\.clearReferenceRunnerState\(false\);[\s\S]*this\.activeAnalyticalOptionKey = optionKey;/);
+  });
+
   it('exposes compatibility navigation state alongside legacy mode state', () => {
     expect(storeSource).not.toMatch(/buildScenarioNavigationState/);
     expect(storeSource).toMatch(/resolveProductFamily/);
