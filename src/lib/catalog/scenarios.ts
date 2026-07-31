@@ -316,6 +316,13 @@ type ScenarioCapabilitiesBase = {
     hasInjector: boolean;
     /** Default 3D scalar to show on load. */
     default3DScalar: Default3DScalar;
+    /** Scenario-owned semantics for the spatial profile below the 3D view. */
+    spatialProfile?: {
+        /** Preferred profile axis when this scenario is entered. */
+        defaultAxis?: 'i' | 'j' | 'k' | 'well-path';
+        /** User-facing name for the coordinate path represented by `well-path`. */
+        wellPathLabel?: string;
+    };
     /** Whether the gas domain tab gate applies (scenario only visible in 3-phase mode). */
     requiresThreePhaseMode: boolean;
     /**
@@ -387,6 +394,7 @@ export type ResolvedCapabilities = {
     sweepGeometry: SweepGeometry | null;
     hasInjector: boolean;
     default3DScalar: Default3DScalar;
+    spatialProfile: ScenarioCapabilitiesBase['spatialProfile'];
     requiresThreePhaseMode: boolean;
     runMode: 'live-worker' | 'prerun-artifacts';
     /** Panel expansion defaults from the analytical output contract. */
@@ -407,6 +415,7 @@ export function resolveCapabilities(caps: ScenarioCapabilities): ResolvedCapabil
         sweepGeometry: caps.analyticalMethod === 'sweep' ? caps.sweepGeometry : null,
         hasInjector: caps.hasInjector,
         default3DScalar: caps.default3DScalar,
+        spatialProfile: caps.spatialProfile,
         requiresThreePhaseMode: caps.requiresThreePhaseMode,
         runMode: caps.runMode ?? 'live-worker',
         defaultPanelExpansion: contract.defaultPanelExpansion,
@@ -429,6 +438,9 @@ export function validateScenarioCapabilities(caps: ScenarioCapabilities): string
     const errors: string[] = [];
     if (caps.runMode === 'prerun-artifacts' && caps.default3DScalar !== null) {
         errors.push("prerun-artifacts scenarios must set default3DScalar to null (3D view is off).");
+    }
+    if (caps.spatialProfile?.defaultAxis === 'well-path' && !caps.spatialProfile.wellPathLabel?.trim()) {
+        errors.push("spatialProfile.defaultAxis 'well-path' requires a wellPathLabel.");
     }
     return errors;
 }

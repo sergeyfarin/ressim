@@ -41,6 +41,8 @@
         grid,
         property = "saturation_water",
         reference = null,
+        defaultAxis = null,
+        wellPathLabel = "Diagonal",
         simTime = 0,
         sourceLabel = "Live runtime",
         theme = "dark",
@@ -59,6 +61,8 @@
         grid: SpatialProfileGrid;
         property?: SpatialProfileProperty;
         reference?: SpatialProfileReference | null;
+        defaultAxis?: SpatialProfileAxis | null;
+        wellPathLabel?: string;
         simTime?: number;
         sourceLabel?: string;
         theme?: "dark" | "light";
@@ -91,7 +95,7 @@
     const hasDiagonalWellPath = $derived(
         grid.nx > 1 && grid.ny > 1 && injectorI !== producerI && injectorJ !== producerJ,
     );
-    let axis = $state<SpatialProfileAxis>(untrack(() => defaultSpatialProfileAxis(grid, reference)));
+    let axis = $state<SpatialProfileAxis>(untrack(() => defaultSpatialProfileAxis(grid, defaultAxis)));
     let userI = $state<number | null>(null);
     let userJ = $state<number | null>(null);
     let userK = $state<number | null>(null);
@@ -298,7 +302,7 @@
                         {#if grid.ny > 1}<option value="j">J</option>{/if}
                         {#if grid.nz > 1}<option value="k">K</option>{/if}
                         {#if hasDiagonalWellPath}
-                            <option value="well-path">Injector → producer</option>
+                            <option value="well-path">{wellPathLabel}</option>
                         {/if}
                     </select>
                 </label>

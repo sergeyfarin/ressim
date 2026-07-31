@@ -344,6 +344,7 @@ export const spe1_gas_injection: Scenario = {
         primaryRateCurve: 'oil-rate',
         hasInjector: true,
         default3DScalar: 'saturation_gas',
+        spatialProfile: { defaultAxis: 'i', wellPathLabel: 'Injector → producer' },
         requiresThreePhaseMode: true,
     },
     // Two reference sources, drawn in this order: the digitized Eclipse/SPE1

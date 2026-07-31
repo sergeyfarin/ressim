@@ -79,6 +79,7 @@ export const dep_welltest: Scenario = {
         // pressure view would therefore show three effectively identical
         // spatial results and imply that the sensitivity has no effect.
         default3DScalar: null,
+        spatialProfile: { defaultAxis: 'i', wellPathLabel: 'Diagonal' },
         requiresThreePhaseMode: false,
     },
     solverPolicy: {

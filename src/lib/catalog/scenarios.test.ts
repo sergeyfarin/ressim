@@ -413,6 +413,36 @@ describe('scenario capability validation', () => {
         }
     });
 
+    it('declares spatial-profile path semantics in scenarios that expose a diagonal path', () => {
+        for (const key of ['dep_arps', 'dep_pss', 'dep_welltest']) {
+            expect(getScenario(key)?.capabilities.spatialProfile).toEqual({
+                defaultAxis: 'i',
+                wellPathLabel: 'Diagonal',
+            });
+        }
+        expect(getScenario('spe1_gas_injection')?.capabilities.spatialProfile).toEqual({
+            defaultAxis: 'i',
+            wellPathLabel: 'Injector → producer',
+        });
+        for (const key of ['sweep_areal', 'sweep_combined']) {
+            expect(getScenario(key)?.capabilities.spatialProfile).toEqual({
+                defaultAxis: 'well-path',
+                wellPathLabel: 'Injector → producer',
+            });
+        }
+    });
+
+    it('rejects a scenario that defaults to an unnamed spatial path', () => {
+        const errors = validateScenarioCapabilities({
+            analyticalMethod: 'none',
+            hasInjector: false,
+            default3DScalar: 'pressure',
+            spatialProfile: { defaultAxis: 'well-path' },
+            requiresThreePhaseMode: false,
+        });
+        expect(errors).toContain("spatialProfile.defaultAxis 'well-path' requires a wellPathLabel.");
+    });
+
     it('every scenario chart layout only asks for reference curves its method emits', () => {
         for (const scenario of listScenarios()) {
             const emitted = new Set(

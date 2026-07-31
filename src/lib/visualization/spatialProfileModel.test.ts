@@ -46,13 +46,10 @@ describe('axis geometry', () => {
         expect(defaultSpatialProfileAxis({ ...GRID, nx: 1, ny: 1 })).toBe('k');
     });
 
-    it('defaults areal and combined sweep references to the injector-producer path', () => {
-        expect(defaultSpatialProfileAxis(GRID, {
-            kind: 'sweep', geometry: 'areal', layerPermeabilities: [100],
-        })).toBe('well-path');
-        expect(defaultSpatialProfileAxis(GRID, {
-            kind: 'sweep', geometry: 'both', layerPermeabilities: [100, 50],
-        })).toBe('well-path');
+    it('honors a scenario-owned preferred axis when the grid supports it', () => {
+        expect(defaultSpatialProfileAxis(GRID, 'well-path')).toBe('well-path');
+        expect(defaultSpatialProfileAxis(GRID, 'j')).toBe('j');
+        expect(defaultSpatialProfileAxis({ ...GRID, ny: 1 }, 'j')).toBe('i');
     });
 
     it('reports the cell count along each axis', () => {

@@ -43,9 +43,12 @@ describe('spatial profile wiring', () => {
         expect(chartSrc).toMatch(/buildSweepDiagonalOverlay/);
     });
 
-    it('remounts local axis state when the spatial reference geometry changes', () => {
-        expect(cardSrc).toMatch(/\{#key selectedOutputProfile\.spatialReference\?\.kind === "sweep"/);
-        expect(cardSrc).toMatch(/`sweep-\$\{selectedOutputProfile\.spatialReference\.geometry\}`/);
+    it('routes scenario-owned axis defaults and path semantics into local profile state', () => {
+        expect(cardSrc).toMatch(/defaultAxis=\{selectedOutputProfile\.spatialProfileDefaultAxis\}/);
+        expect(cardSrc).toMatch(/wellPathLabel=\{selectedOutputProfile\.spatialProfileWellPathLabel\}/);
+        expect(cardSrc).toMatch(/spatialProfileDefaultAxis \?\? "auto"/);
+        expect(cardSrc).toMatch(/spatialProfileWellPathLabel/);
+        expect(chartSrc).toMatch(/<option value="well-path">\{wellPathLabel\}<\/option>/);
     });
 
     it('takes its snapshot time from the replay position when one is selected', () => {

@@ -98,6 +98,11 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   by reference geometry so entering areal or combined sweep resets stale component-local I/J/K
   state to the diagonal default, while result and sensitivity changes within that geometry keep
   the user's current profile selection.
+- [x] **Scenario-owned spatial-profile path semantics (2026-07-31).** Added explicit preferred
+  axes and path labels to every scenario that exposes a diagonal/path control. Depletion now calls
+  its coordinate path `Diagonal`; injection cases retain `Injector → producer`; sweep scenarios
+  continue to default to that path. Grid-derived axis availability, layer selection, and parameter-
+  derived endpoints remain shared geometry behavior rather than scenario-key branches.
 - [x] **Well-Test drawdown presentation (2026-07-30).** Restored the scenario's intentionally
   absent 3D default because rate-controlled skin variants have the same reservoir pressure field;
   made flowing BHP the sole expanded and explicitly visible chart and demoted constant oil rate to

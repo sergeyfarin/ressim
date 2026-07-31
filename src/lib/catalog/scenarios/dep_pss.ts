@@ -52,6 +52,7 @@ export const dep_pss: Scenario = {
         analyticalMethod: 'well-test',
         hasInjector: false,
         default3DScalar: 'pressure',
+        spatialProfile: { defaultAxis: 'i', wellPathLabel: 'Diagonal' },
         requiresThreePhaseMode: false,
     },
     solverPolicy: {

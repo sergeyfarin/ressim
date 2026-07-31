@@ -70,6 +70,8 @@ export type OutputSelectionProfile = {
     simTime: number; porosity: number; rateHistory: RateHistoryPoint[];
     scenarioMode: 'waterflood' | 'depletion' | 'none';
     spatialReference: SpatialProfileReference | null;
+    spatialProfileDefaultAxis: 'i' | 'j' | 'k' | 'well-path' | null;
+    spatialProfileWellPathLabel: string;
     sourceLabel: string;
     injectorI: number; injectorJ: number; producerI: number; producerJ: number;
     initialSaturation: number;
@@ -419,6 +421,11 @@ class NavigationStoreImpl {
                     layerPermeabilities: getLayerPermeabilities(outputParams),
                 }
                 : scenarioMode === 'waterflood' ? { kind: 'buckley-leverett' } : null,
+            spatialProfileDefaultAxis: scenarioCaps?.spatialProfile?.defaultAxis ?? null,
+            spatialProfileWellPathLabel: scenarioCaps?.spatialProfile?.wellPathLabel
+                ?? (scenarioCaps?.hasInjector || this.#params.injectorEnabled
+                    ? 'Injector → producer'
+                    : 'Diagonal'),
             sourceLabel: ref ? ref.label : 'Live runtime',
             injectorI: Number(ref?.params.injectorI ?? this.#params.injectorI),
             injectorJ: Number(ref?.params.injectorJ ?? this.#params.injectorJ),

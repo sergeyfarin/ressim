@@ -77,9 +77,12 @@ export type SpatialProfileGrid = {
 /** Pick the analytical displacement path appropriate to the active scenario. */
 export function defaultSpatialProfileAxis(
     grid: SpatialProfileGrid,
-    reference?: SpatialProfileReference | null,
+    preferredAxis?: SpatialProfileAxis | null,
 ): SpatialProfileAxis {
-    if (reference?.kind === 'sweep' && grid.nx > 1 && grid.ny > 1) return 'well-path';
+    if (preferredAxis === 'well-path' && grid.nx > 1 && grid.ny > 1) return 'well-path';
+    if (preferredAxis === 'i' && grid.nx > 1) return 'i';
+    if (preferredAxis === 'j' && grid.ny > 1) return 'j';
+    if (preferredAxis === 'k' && grid.nz > 1) return 'k';
     return grid.nx > 1 ? 'i' : grid.ny > 1 ? 'j' : 'k';
 }
 

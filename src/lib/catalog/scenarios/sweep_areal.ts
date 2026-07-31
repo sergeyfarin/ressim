@@ -36,6 +36,10 @@ export const sweep_areal: Scenario = {
         // Pinned by sweepMethods.test.ts.
         hasInjector: true,
         default3DScalar: 'saturation_water',
+        spatialProfile: {
+            defaultAxis: 'well-path',
+            wellPathLabel: 'Injector → producer',
+        },
         requiresThreePhaseMode: false,
     },
     terminationPolicy: {

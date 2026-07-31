@@ -138,9 +138,7 @@
             profile selection's final grid, and shares `showProperty`, so the
             timestep and property selectors drive both views together.
         -->
-        {#key selectedOutputProfile.spatialReference?.kind === "sweep"
-            ? `sweep-${selectedOutputProfile.spatialReference.geometry}`
-            : (selectedOutputProfile.spatialReference?.kind ?? "none")}
+        {#key `${selectedOutputProfile.spatialProfileDefaultAxis ?? "auto"}-${selectedOutputProfile.spatialProfileWellPathLabel}`}
         <SpatialProfileChart
             gridState={selectedOutput3D.gridState}
             grid={{
@@ -154,6 +152,8 @@
             }}
             property={showProperty}
             reference={selectedOutputProfile.spatialReference}
+            defaultAxis={selectedOutputProfile.spatialProfileDefaultAxis}
+            wellPathLabel={selectedOutputProfile.spatialProfileWellPathLabel}
             pressureDisplayRange={selectedOutput3D.pressureDisplayRange}
             simTime={selectedOutput3D.replayTime ?? selectedOutputProfile.simTime}
             sourceLabel={selectedOutput3D.sourceLabel}

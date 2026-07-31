@@ -41,6 +41,10 @@ export const sweep_combined: Scenario = {
         sweepMethods: ['stiles', 'dykstra-parsons'],
         hasInjector: true,
         default3DScalar: 'saturation_water',
+        spatialProfile: {
+            defaultAxis: 'well-path',
+            wellPathLabel: 'Injector → producer',
+        },
         requiresThreePhaseMode: false,
     },
     solverPolicy: {
