@@ -9,8 +9,13 @@ inject solver parameters or sensitivities.
 
 - Gas / three-phase scenarios default to FIM: `gas_injection`, `gas_drive`, `spe1_gas_injection`.
 - Ordinary oil/water scenarios default to IMPES and do not carry a generic solver sensitivity.
-- `solver_fim_impes` is the single public formulation comparison. Its scenario-owned sensitivity
-  holds a coarse, rate-controlled waterflood fixed and changes only `fimEnabled`.
+- `wf_bl1d`'s `solver_formulation` dimension is the single public formulation comparison, folded in
+  from the standalone `solver_fim_impes` scenario on 2026-07-31. It holds the 1D waterflood fixed
+  and varies only `fimEnabled` and the report timestep (0.25 d and 5 d), so the four runs are judged
+  against the timestep-independent Buckley-Leverett reference instead of only against each other.
+  Measured over the 50-day flood: the formulations agree to 0.97% in cumulative oil at 0.25-day
+  steps, while coarsening to 5-day steps costs IMPES 8.8% of its own fine-step recovery against
+  FIM's 3.1%.
 - Every scenario carries a `solverPolicy` with a user-visible rationale, surfaced in scenario cards and run labels.
 
 ## Later FIM Work

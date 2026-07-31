@@ -17,6 +17,16 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **FIM-vs-IMPES was a standalone scenario that could not name a winner (2026-07-31).**
+  `solver_fim_impes` declared `analyticalMethod: 'none'` and stated outright that no curve was
+  promoted as the oracle, so it could only show that the two formulations differ. Folded into
+  `wf_bl1d` as the `solver_formulation` dimension (IMPES/FIM × 0.25-day/5-day steps), where the
+  Buckley-Leverett reference is independent of both grid and timestep and the four runs are judged
+  against it. Measured over the 50-day flood: 0.97% apart in cumulative oil at 0.25-day steps;
+  coarsening to 5-day steps costs IMPES 8.8% of its own fine-step recovery against FIM's 3.1%, so
+  the formulations end 7.4% apart. The scenario's own test was ported rather than dropped. The
+  emptied `Other` catalog group was removed.
+
 - [x] **Depletion catalog split one continuum across two groups (2026-07-31).** `dep_welltest` sat
   in `pressure-transient` while `dep_pss`/`dep_decline`/`dep_arps` sat in `depletion-decline`,
   although the four are one well's pressure history in sequence. Merged into

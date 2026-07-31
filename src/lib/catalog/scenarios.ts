@@ -37,7 +37,6 @@ import { dep_pvt } from './scenarios/dep_pvt';
 import { gas_injection } from './scenarios/gas_injection';
 import { gas_drive } from './scenarios/gas_drive';
 import { spe1_gas_injection } from './scenarios/spe1_gas_injection';
-import { solver_fim_impes } from './scenarios/solver_fim_impes';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,8 +59,7 @@ export type ScenarioGroup =
     | 'sweep-efficiency'
     | 'flow-regimes-decline'
     | 'gas-black-oil'
-    | 'validation-benchmarks'
-    | 'other';
+    | 'validation-benchmarks';
 
 /** What kind of product content the scenario represents. */
 export type ScenarioRole = 'simulation' | 'interpretation' | 'benchmark';
@@ -117,11 +115,6 @@ export const SCENARIO_GROUPS: readonly {
         key: 'validation-benchmarks',
         label: 'Validation Benchmarks',
         description: 'Published comparative-solution and external-reference cases used to validate the simulator.',
-    },
-    {
-        key: 'other',
-        label: 'Other',
-        description: 'Cross-cutting interpretation cases awaiting a permanent catalog family.',
     },
 ] as const;
 
@@ -699,7 +692,6 @@ const SOURCE_SCENARIOS: Scenario[] = [
     gas_injection,
     gas_drive,
     spe1_gas_injection,
-    solver_fim_impes,
 ];
 
 export const SCENARIOS: CatalogScenario[] = SOURCE_SCENARIOS;

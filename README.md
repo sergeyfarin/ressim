@@ -4,7 +4,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 
 ## Current State
 
-- 14 canonical scenarios organized explicitly as Buckley–Leverett displacement, sweep efficiency, flow regimes and decline, gas and black oil, validation benchmarks, and cross-cutting interpretation cases.
+- 13 canonical scenarios organized explicitly as Buckley–Leverett displacement, sweep efficiency, flow regimes and decline, gas and black oil, and validation benchmarks.
 - Two-phase oil/water IMPES workflow validated against Buckley-Leverett breakthrough references.
 - Analytical overlays for Buckley-Leverett, Craig areal sweep, Dykstra-Parsons vertical sweep, Stiles-style combined sweep, Dietz pseudo-steady-state depletion, Fetkovich decline, Arps decline, and Havlena-Odeh material-balance diagnostics.
 - Black-oil PVT mode is available for volatile-oil style studies through correlation-based or tabular PVT input.
@@ -16,7 +16,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 
 | Catalog group | Scenario | Key | Primary reference / purpose |
 |---|---|---|---|
-| Buckley–Leverett Displacement | 1D Waterflood | `wf_bl1d` | Buckley–Leverett + Welge analytical reference |
+| Buckley–Leverett Displacement | 1D Waterflood | `wf_bl1d` | Buckley–Leverett + Welge analytical reference; also hosts the FIM-vs-IMPES formulation comparison |
 | Buckley–Leverett Displacement | 1D Waterflood — Capillary Effects | `wf_capillary` | Departure from the zero-capillary BL limit; physical versus numerical front spreading |
 | Sweep Efficiency | Areal Sweep | `sweep_areal` | Craig confined five-spot correlation |
 | Sweep Efficiency | Vertical Sweep | `sweep_vertical` | Dykstra–Parsons / Stiles layered sweep |
@@ -28,7 +28,6 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 | Gas-Dominated Recovery | Gas Injection | `gas_injection` | Gas-oil fractional-flow breakthrough |
 | Gas-Dominated Recovery | Solution Gas Drive | `gas_drive` | Black-oil FIM sensitivities; optional OPM Flow benchmark |
 | Gas-Dominated Recovery | PVT Model Risk — One Calibration Point | `dep_pvt` | Two PVT representations constrained at one point |
-| Other | FIM vs. IMPES — Coarse Timestep | `solver_fim_impes` | Rate-controlled numerical-formulation comparison at deliberately coarse report steps |
 | Validation Benchmarks | SPE1 Black-Oil Benchmark | `spe1_gas_injection` | Published Eclipse and OPM Flow comparative-solution references |
 
 ## Implemented Capabilities

@@ -36,11 +36,11 @@ describe('scenario sensitivities', () => {
                 .filter((dimension) => dimension.variesSolver)
                 .map((dimension) => [scenario.key, dimension.key]),
         );
-        expect(solverDimensions).toEqual([['solver_fim_impes', 'solver_comparison']]);
+        expect(solverDimensions).toEqual([['wf_bl1d', 'solver_formulation']]);
     });
 
     it('provides analytical method metadata for every canonical scenario', () => {
-        expect(listScenarios()).toHaveLength(14);
+        expect(listScenarios()).toHaveLength(13);
         for (const scenario of listScenarios()) {
             expect(scenario.analyticalMethodSummary.length, scenario.key).toBeGreaterThan(10);
             expect(scenario.analyticalMethodReference.length, scenario.key).toBeGreaterThan(5);
@@ -372,6 +372,7 @@ describe('scenario capability validation', () => {
             ['mobility', 'per-result'],
             ['corey_no', 'per-result'],
             ['sor', 'per-result'],
+            ['solver_formulation', 'shared'],
             ['grid', 'shared'],
         ]);
         expect(getScenario('dep_pss')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
@@ -521,7 +522,6 @@ describe('scenario capability validation', () => {
             gas_drive: 'saturation_gas',
             spe1_gas_injection: 'saturation_gas',
             // This formulation comparison is a two-phase waterflood.
-            solver_fim_impes: 'saturation_water',
         } as const;
 
         expect(Object.fromEntries(

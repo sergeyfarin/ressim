@@ -43,7 +43,13 @@ The visible group is explicit metadata, not a physics inference:
    flow, pseudo-steady productivity, boundary-dominated decline, and layered superposition.
 4. **Gas-Dominated Recovery** — gas injection and solution-gas drive mechanisms.
 5. **Validation Benchmarks** — published or external comparative solutions such as SPE1 and future SPE10/SPE9 cases.
-6. **Other** — cross-cutting interpretation cases awaiting a permanent family.
+
+Removed 2026-07-31: an **Other** group holding only the FIM-vs-IMPES comparison. That case was a
+variation of two parameters on an existing scenario rather than a distinct question, and as a
+standalone case it declared no analytical method, so it could show that the formulations differ but
+never which was closer to truth. It is now `wf_bl1d`'s `solver_formulation` dimension, judged
+against the Buckley-Leverett reference. Reinstate a holding group only for a case that genuinely
+has no family, not for one that has no reference.
 
 Merged 2026-07-31: a separate **Pressure-Transient Analysis** group held only the drawdown case,
 splitting a single physical continuum in two — the same well, the same geometry, read in a
