@@ -160,75 +160,92 @@ fn solver_timestep_refinement_probe() {
     }
 }
 
-/// Front-sharpness probe: saturation profile at a fixed time for both formulations across
-/// report-step sizes, plus the internal substep sizes each solver actually used.
+/// Front-sharpness probe: the saturation profile at a fixed time for both formulations across
+/// report-step sizes, with the internal substep sizes and Courant numbers each solver actually
+/// used. `#[ignore]`d measurement, not a gate. Recorded results are in `TODO.md`; rerun with
+/// `cargo test --release --manifest-path src/lib/ressim/Cargo.toml solver_front_sharpness_probe -- --ignored --nocapture`.
 #[test]
 #[ignore]
 fn solver_front_sharpness_probe() {
     const SAMPLE_TIME_DAYS: f64 = 10.0;
     println!(
-        "\n solver  report_dt  substeps  max_sub_dt  mean_sub_dt  max_cfl  lead_cell  width_cells"
+        "\n solver  report_dt  substeps  max_sub_dt  mean_sub_dt  max_cfl  lead_cell  shock_width_cells"
     );
     let mut profiles: Vec<(String, Vec<f64>)> = Vec::new();
 
-    for &fim in &[false, true] {
-        for &report_dt in &[0.25_f64, 1.0, 5.0] {
-            let mut sim = build_waterflood();
-            sim.set_fim_enabled(fim);
-            let steps = (SAMPLE_TIME_DAYS / report_dt).round() as usize;
-            for _ in 0..steps {
-                sim.step(report_dt);
-            }
-
-            // Substep sizes from the rate-history timestamps.
-            let mut previous = 0.0;
-            let mut sub_dts = Vec::new();
-            for point in &sim.rate_history {
-                sub_dts.push(point.time - previous);
-                previous = point.time;
-            }
-            let max_sub = sub_dts.iter().cloned().fold(0.0_f64, f64::max);
-            let mean_sub = sub_dts.iter().sum::<f64>() / sub_dts.len() as f64;
-
-            // Courant number of the largest substep at the injector-side pore volume.
-            // v = q_inj / (A phi); C = v dt / dx.
-            let q_res = sim
-                .rate_history
-                .last()
-                .map(|p| p.total_injection_reservoir)
-                .unwrap_or(0.0);
-            let area = 10.0 * 1.0;
-            let velocity = q_res / (area * 0.2);
-            let max_cfl = velocity * max_sub / 10.0;
-
-            // Front geometry: leading edge (last cell above S_wc + 0.02) and the width of the
-            // transition from S_w = 0.45 back to that leading edge.
-            let n = sim.nx;
-            let lead = (0..n).filter(|&i| sim.sat_water[i] > 0.12).count();
-            let sharp = (0..n).filter(|&i| sim.sat_water[i] > 0.45).count();
-            let label = format!("{}@{}", if fim { "FIM" } else { "IMPES" }, report_dt);
-            println!(
-                "  {:5}  {:8.2}  {:8}  {:10.4}  {:11.4}  {:7.3}  {:9}  {:11}",
-                if fim { "FIM" } else { "IMPES" },
-                report_dt,
-                sim.rate_history.len(),
-                max_sub,
-                mean_sub,
-                max_cfl,
-                lead,
-                lead.saturating_sub(sharp)
-            );
-            profiles.push((label, (0..n).map(|i| sim.sat_water[i]).collect()));
+    for &(fim, report_dt) in &[
+        (false, 0.25_f64),
+        (false, 5.0),
+        (true, 5.0),
+        (true, 0.25),
+        (true, 0.05),
+        (true, 0.02),
+    ] {
+        let mut sim = build_waterflood();
+        sim.set_fim_enabled(fim);
+        let steps = (SAMPLE_TIME_DAYS / report_dt).round() as usize;
+        for _ in 0..steps {
+            sim.step(report_dt);
         }
+
+        // Substep sizes from the rate-history timestamps.
+        let mut previous = 0.0;
+        let mut sub_dts = Vec::new();
+        for point in &sim.rate_history {
+            sub_dts.push(point.time - previous);
+            previous = point.time;
+        }
+        let max_sub = sub_dts.iter().cloned().fold(0.0_f64, f64::max);
+        let mean_sub = sub_dts.iter().sum::<f64>() / sub_dts.len() as f64;
+
+        // Courant number of the largest substep at the injector-side pore volume.
+        // v = q_inj / (A phi); C = v dt / dx.
+        let q_res = sim
+            .rate_history
+            .last()
+            .map(|p| p.total_injection_reservoir)
+            .unwrap_or(0.0);
+        let area = 10.0 * 1.0;
+        let velocity = q_res / (area * 0.2);
+        let max_cfl = velocity * max_sub / 10.0;
+
+        // Front geometry: leading edge = cells above S_wc + 0.02.
+        let n = sim.nx;
+        let lead = (0..n).filter(|&i| sim.sat_water[i] > 0.12).count();
+        // Interpolated shock width: distance between the S_w = 0.45 and S_w = 0.15
+        // crossings, in cells. The analytical shock is a discontinuity (width 0).
+        let crossing = |target: f64| -> f64 {
+            for i in 0..n - 1 {
+                let (a, b) = (sim.sat_water[i], sim.sat_water[i + 1]);
+                if a >= target && b < target {
+                    return i as f64 + (a - target) / (a - b).max(1e-12);
+                }
+            }
+            f64::NAN
+        };
+        let shock_width = crossing(0.15) - crossing(0.45);
+        let label = format!("{}@{}", if fim { "FIM" } else { "IMPES" }, report_dt);
+        println!(
+            "  {:5}  {:8.2}  {:8}  {:10.4}  {:11.4}  {:7.3}  {:9}  {:17.2}",
+            if fim { "FIM" } else { "IMPES" },
+            report_dt,
+            sim.rate_history.len(),
+            max_sub,
+            mean_sub,
+            max_cfl,
+            lead,
+            shock_width
+        );
+        profiles.push((label, (0..n).map(|i| sim.sat_water[i]).collect()));
     }
 
-    println!("\n S_w profile at t={SAMPLE_TIME_DAYS} d (cells 20..60)");
+    println!("\n S_w profile at t={SAMPLE_TIME_DAYS} d (cells 50..80)");
     print!("  cell ");
     for (label, _) in &profiles {
         print!("{label:>12}");
     }
     println!();
-    for cell in 20..60 {
+    for cell in 50..80 {
         print!("  {cell:4} ");
         for (_, profile) in &profiles {
             print!("{:12.4}", profile[cell]);

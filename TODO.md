@@ -17,6 +17,26 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **Catalog taxonomy: group by what the run can be checked against (2026-07-31).** `Gas Injection`
+  sat in `gas-black-oil` although it carries a real analytical solution — `gas-oil-bl`, the same
+  Buckley–Leverett/Welge fractional-flow construction as `wf_bl1d`, differing only in phase pair and
+  in defaulting to FIM. Moved to `buckley-leverett-displacement` (group description widened to name
+  both water–oil and gas–oil). That left `gas_drive` and `dep_pvt` — the catalog's only two
+  `analyticalMethod: 'none'` scenarios — as the whole of `gas-black-oil`, so the group was replaced
+  by `simulation-only` / "Simulation Only — No Analytical Reference", which states the property that
+  actually distinguishes them: the simulation is the only curve on the chart. `spe1_gas_injection`
+  deliberately stays in `validation-benchmarks` — it has digitized Eclipse *and* OPM Flow references,
+  so it is the opposite of reference-less.
+- [x] **SPE1 `kz_ratio` sensitivity removed (2026-07-31).** SPE1 does not specify kz, so varying
+  k_v/k_h changed the physical case rather than its discretization, while every variant was still
+  drawn against the published Case 1 reference curves — comparing a different reservoir to SPE1's
+  answer. The remaining `grid` and `delta_t` dimensions hold the deck fixed and refine only the
+  numerics, which is what a benchmark sensitivity is for.
+- [x] **`runModel.test.ts` solver-variant assertions were stale (2026-07-31).** The two
+  `solver_formulation` cases still enumerated the pre-`9657eee` two-variant list (`'IMPES'`, `'FIM'`)
+  after the 5-day rungs and relabelling landed, so `pnpm test` was red on the committed tree
+  independently of the catalog work. Updated both to the four-variant list.
+
 - [x] **Sweep-efficiency panels had no numerical curve because the runs never asked for the metrics
   (2026-07-31).** `sweepConfig` was attached only in `RuntimeStore.buildCreatePayload` (the
   interactive path). Sensitivity and comparison runs go through
@@ -598,6 +618,34 @@ Open, blocked on an enabler:
 
 FIM is out of the user path (IMPES ships). Do not chase small deltas; big OPM-architecture gaps
 matter more. Search `docs/FIM_EXPERIMENT_REGISTRY.md` by mechanism before any change.
+
+- [x] **Front sharpness: IMPES step-invariant, FIM smears with the step — VERIFIED CORRECT
+  (2026-07-31).** Asked whether FIM's smoother front at coarse steps indicates a defect. It does
+  not: it is the textbook numerical-diffusion signature of upwind advection, `D ∝ (1 − C)` explicit
+  vs `D ∝ (1 + C)` implicit, with `C` the Courant number. Measured at t = 10 d, 96 cells, shock
+  width = interpolated distance between the `S_w = 0.45` and `S_w = 0.15` crossings
+  (`impes::tests::reporting::solver_front_sharpness_probe`, `--ignored --release`):
+
+  | solver | report dt | max substep | max CFL | shock width |
+  |---|---|---|---|---|
+  | IMPES | 0.25 | 0.0428 | 0.16 | 1.94 cells |
+  | IMPES | 5.0 | 0.0438 | 0.16 | 1.93 cells |
+  | FIM | 5.0 | 1.0000 | 3.62 | 4.28 cells |
+  | FIM | 0.25 | 0.1650 | 0.61 | 3.65 cells |
+  | FIM | 0.05 | 0.0500 | 0.18 | 3.18 cells |
+  | FIM | 0.02 | 0.0200 | 0.07 | 2.76 cells |
+
+  IMPES is invariant because it is CFL-locked — it *cannot* take the 5-day step, so the report step
+  is a sampling choice only (profiles agree to 4 decimals). FIM is unconditionally stable, so a
+  coarse report step lets it reach `C = 3.6` and pay `(1 + C)` in diffusion. Forcing FIM to smaller
+  steps sharpens it monotonically (4.28 → 2.76), i.e. it converges the right way, which is the
+  evidence that the FIM discretization is sound rather than over-diffusive by construction. The
+  residual gap at matched Courant number (FIM 2.76 at C = 0.07 vs IMPES 1.94 at C = 0.16) is the
+  expected implicit-vs-explicit offset — `(1 + 0.07)/(1 − 0.16) = 1.27` predicted vs 1.42 observed —
+  plus fully implicit end-of-step mobility upwinding. Against the analytical BL shock (a
+  discontinuity, width 0) IMPES is the more accurate front here. This is the standard reason
+  fully implicit simulators need small steps or higher-order/TVD transport for sharp fronts, and it
+  is a genuinely good teaching exhibit for the `solver_formulation` sensitivity.
 
 - [ ] **FIM is report-step sensitive on `wf_bl1d` where IMPES is not, via substep fragmentation
   (measured 2026-07-31, on the IMPES reporting/throughput fix above).** Surfaced by the user's new

@@ -40,9 +40,11 @@ describe('scenario-first run model', () => {
 
     it('runs the scenario-owned FIM-vs-IMPES comparison inside the 1D waterflood', () => {
         // Folded in from the standalone solver_fim_impes scenario 2026-07-31:
-        // as a wf_bl1d dimension the four variants are judged against the
+        // as a wf_bl1d dimension the variants are judged against the
         // timestep-independent Buckley-Leverett reference rather than only
-        // against each other.
+        // against each other. The 5-day rungs cross solver with report step,
+        // which is what separates the two formulations here: IMPES is
+        // CFL-locked and so step-invariant, FIM is not.
         const scenario = listScenarios().find((candidate) => candidate.key === 'wf_bl1d');
         const dimension = scenario?.sensitivities.find((candidate) => candidate.variesSolver);
         expect(dimension?.variants.map((variant) => [
@@ -50,8 +52,10 @@ describe('scenario-first run model', () => {
             variant.paramPatch.fimEnabled ?? false,
             variant.paramPatch.delta_t_days ?? scenario?.params.delta_t_days,
         ])).toEqual([
-            ['IMPES', false, 0.25],
-            ['FIM', true, 0.25],
+            ['IMPES 0.25-day steps (base)', false, 0.25],
+            ['FIM 0.25-day steps', true, 0.25],
+            ['IMPES 5-day steps', false, 5],
+            ['FIM 5-day steps', true, 5],
         ]);
     });
 
@@ -104,8 +108,8 @@ describe('scenario-first run model', () => {
             variantKeys: ['solver_impes_base', 'solver_fim_base'],
         });
         expect(specs.map((spec) => [spec.solver, spec.variantLabel, spec.label])).toEqual([
-            ['impes', 'IMPES', '1D Waterflood — IMPES'],
-            ['fim', 'FIM', '1D Waterflood — FIM'],
+            ['impes', 'IMPES 0.25-day steps (base)', '1D Waterflood — IMPES 0.25-day steps (base)'],
+            ['fim', 'FIM 0.25-day steps', '1D Waterflood — FIM 0.25-day steps'],
         ]);
     });
 

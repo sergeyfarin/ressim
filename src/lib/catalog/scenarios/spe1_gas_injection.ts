@@ -515,38 +515,12 @@ export const spe1_gas_injection: Scenario = {
                 },
             ],
         },
-        {
-            key: 'kz_ratio',
-            label: 'Vertical Permeability (k_v/k_h)',
-            description: 'SPE1 does not specify kz. Vary the vertical-to-horizontal permeability ratio to explore its effect on gas override and breakthrough timing.',
-            variants: [
-                {
-                    key: 'kz_01',
-                    label: 'k_v/k_h = 0.1',
-                    description: 'Low vertical permeability — restricts gravity override, delays gas breakthrough in the producer layer.',
-                    paramPatch: {
-                        layerPermsZ: [50, 5, 20],
-                    },
-                    affectsAnalytical: false,
-                },
-                {
-                    key: 'kz_10',
-                    label: 'k_v/k_h = 1.0  (base)',
-                    description: 'Isotropic — OPM default assumption.',
-                    paramPatch: {},
-                    affectsAnalytical: false,
-                },
-                {
-                    key: 'kz_03',
-                    label: 'k_v/k_h = 0.3',
-                    description: 'Moderate vertical restriction — common in layered clastics.',
-                    paramPatch: {
-                        layerPermsZ: [150, 15, 60],
-                    },
-                    affectsAnalytical: false,
-                },
-            ],
-        },
+        // A `kz_ratio` dimension (k_v/k_h = 0.1 / 0.3 / 1.0) was removed here: SPE1 does not
+        // specify kz, so varying it changes the physical case rather than the discretization
+        // of it, and every variant was still drawn against the published Case 1 references —
+        // comparing a different reservoir to SPE1's answer. The two dimensions that remain
+        // hold the deck fixed and refine only the numerics, which is what a benchmark
+        // sensitivity is for.
         {
             key: 'delta_t',
             label: 'Time Step',

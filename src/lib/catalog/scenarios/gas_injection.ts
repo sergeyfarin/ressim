@@ -6,7 +6,7 @@ export const gas_injection: Scenario = {
     key: 'gas_injection',
     label: 'Gas Injection',
     catalog: {
-        group: 'gas-black-oil',
+        group: 'buckley-leverett-displacement',
         role: 'simulation',
         caseMode: '3p',
         parameterSummary: '1D gas–oil displacement · gas breakthrough · gas-oil fractional-flow reference',

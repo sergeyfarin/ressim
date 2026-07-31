@@ -58,7 +58,7 @@ export type ScenarioGroup =
     | 'buckley-leverett-displacement'
     | 'sweep-efficiency'
     | 'flow-regimes-decline'
-    | 'gas-black-oil'
+    | 'simulation-only'
     | 'validation-benchmarks';
 
 /** What kind of product content the scenario represents. */
@@ -89,7 +89,7 @@ export const SCENARIO_GROUPS: readonly {
     {
         key: 'buckley-leverett-displacement',
         label: 'Buckley–Leverett Displacement',
-        description: 'One-dimensional displacement fundamentals and departures from the Buckley–Leverett assumptions.',
+        description: 'One-dimensional displacement fundamentals and departures from the Buckley–Leverett assumptions, in both water–oil and gas–oil systems.',
     },
     {
         key: 'sweep-efficiency',
@@ -107,9 +107,13 @@ export const SCENARIO_GROUPS: readonly {
         description: 'A well\'s pressure history from infinite-acting transient flow through pseudo-steady productivity to boundary-dominated and layered decline.',
     },
     {
-        key: 'gas-black-oil',
-        label: 'Gas-Dominated Recovery',
-        description: 'Gas injection, solution-gas drive, and black-oil PVT representation.',
+        // Grouped by what the reader can and cannot check the run against, not by physics:
+        // these cases have no closed-form solution and no digitized external reference, so
+        // the simulation is the only curve on the chart. Sensitivities here explore model
+        // behaviour rather than measure error against a reference.
+        key: 'simulation-only',
+        label: 'Simulation Only — No Analytical Reference',
+        description: 'Solution-gas drive and black-oil PVT representation — cases with no closed-form or published reference solution, where the simulation stands alone.',
     },
     {
         key: 'validation-benchmarks',

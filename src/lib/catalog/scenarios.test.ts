@@ -332,9 +332,10 @@ describe('scenario catalog taxonomy', () => {
         expect(getScenarioGroup(getScenario('sweep_areal')!)).toBe('sweep-efficiency');
         expect(getScenarioGroup(getScenario('dep_pss')!)).toBe('flow-regimes-decline');
         expect(getScenarioGroup(getScenario('dep_welltest')!)).toBe('flow-regimes-decline');
-        expect(getScenarioGroup(getScenario('gas_injection')!)).toBe('gas-black-oil');
+        expect(getScenarioGroup(getScenario('gas_injection')!)).toBe('buckley-leverett-displacement');
         expect(getScenarioGroup(getScenario('spe1_gas_injection')!)).toBe('validation-benchmarks');
-        expect(getScenarioGroup(getScenario('dep_pvt')!)).toBe('gas-black-oil');
+        expect(getScenarioGroup(getScenario('dep_pvt')!)).toBe('simulation-only');
+        expect(getScenarioGroup(getScenario('gas_drive')!)).toBe('simulation-only');
     });
 
     it('gives every scenario a recognized group, role, app mode, and scenario-owned picker summary', () => {
