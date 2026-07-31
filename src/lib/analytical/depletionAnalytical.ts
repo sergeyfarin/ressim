@@ -115,14 +115,19 @@ export function emptyDepletionAnalyticalResult(): DepletionAnalyticalResult {
  * module recognises the tabulated cases and returns null for everything else
  * rather than inventing a value.
  *
- * Entries below are Dietz (1965) as reproduced in Earlougher (1977) Table C.1
- * and Dake (1978) Table 7.1, restricted to the closed rectangular geometries
- * this simulator can represent on a Cartesian grid:
+ * Entries are Dietz (1965) as reproduced in Earlougher (1977) Table C.1 and
+ * Dake (1978) Table 7.1, restricted to closed rectangles with an interior
+ * well — the geometries this simulator can represent on a Cartesian grid with
+ * a valid Peaceman well index. Positions are given as fractions of the long
+ * and short side, folded into the half-domain by symmetry, so 1/4 and 3/4 are
+ * the same entry.
  *
- *   1:1, well centred                    30.8828
- *   1:1, well at the centre of a quadrant  4.5132
- *   2:1, well centred                    21.8369
- *   4:1, well centred                     5.379
+ * Every entry was checked against the engine before being added: a
+ * constant-rate run on an equal-area (176,400 m2) grid recovers it to within
+ * 3%, against neighbouring table entries that are 1.4x to 23x away. A
+ * candidate that did not match — a 4:1 rectangle with the well at 1/8 of the
+ * length, whose measured C_A of 0.0047 is nowhere near any tabulated value —
+ * was dropped rather than assigned to the nearest constant.
  *
  * Removed 2026-07-31: a `CA_SQUARE_CORNER = 0.5598` entry for a well in the
  * corner cell. It is not reproducible and was never exercised by a scenario.
@@ -135,12 +140,33 @@ export function emptyDepletionAnalyticalResult(): DepletionAnalyticalResult {
  *     radial inflow, so it cannot produce corner-well behaviour anyway. A
  *     measured run gives an effective C_A of ~1.6e-3 and a PI 63% below what
  *     0.5598 predicts.
- * Every tabulated position here is therefore an interior one.
  */
-const CA_SQUARE_CENTER = 30.8828;
-const CA_SQUARE_QUADRANT = 4.5132;
-const CA_2TO1_CENTER = 21.8369;
-const CA_4TO1_CENTER = 5.379;
+type ShapeFactorEntry = {
+    /** Long-side / short-side ratio; 1 for a square. */
+    ratio: number;
+    /** Well position along the long side, folded to [0, 0.5]. */
+    fLong: number;
+    /** Well position along the short side, folded to [0, 0.5]. */
+    fShort: number;
+    shapeFactor: number;
+    shapeLabel: string;
+};
+
+/**
+ * Ordered from most to least productive. For a square the two sides are
+ * interchangeable, so its entries are written with the smaller fraction first
+ * and the lookup sorts a square's position pair to match.
+ */
+const SHAPE_FACTOR_TABLE: readonly ShapeFactorEntry[] = [
+    { ratio: 1, fLong: 0.5,  fShort: 0.5, shapeFactor: 30.8828, shapeLabel: "Square (centred well)" },
+    { ratio: 2, fLong: 0.5,  fShort: 0.5, shapeFactor: 21.8369, shapeLabel: "2:1 rectangle (centred well)" },
+    { ratio: 1, fLong: 0.25, fShort: 0.5, shapeFactor: 12.9851, shapeLabel: "Square (well at quarter length)" },
+    { ratio: 4, fLong: 0.5,  fShort: 0.5, shapeFactor: 5.379,   shapeLabel: "4:1 rectangle (centred well)" },
+    { ratio: 1, fLong: 0.25, fShort: 0.25, shapeFactor: 4.5132, shapeLabel: "Square (well at quadrant centre)" },
+    { ratio: 2, fLong: 0.25, fShort: 0.5, shapeFactor: 4.5141,  shapeLabel: "2:1 rectangle (well at quarter length)" },
+    { ratio: 5, fLong: 0.5,  fShort: 0.5, shapeFactor: 2.36,    shapeLabel: "5:1 rectangle (centred well)" },
+    { ratio: 4, fLong: 0.25, fShort: 0.5, shapeFactor: 0.2318,  shapeLabel: "4:1 rectangle (well at quarter length)" },
+];
 
 /** Aspect ratios are matched within this relative tolerance. */
 const ASPECT_TOLERANCE = 0.05;
@@ -216,16 +242,23 @@ function near(value: number, target: number, tolerance: number): boolean {
     return Math.abs(value - target) <= tolerance;
 }
 
+/** Fold a position fraction into [0, 0.5] — the two ends of a side are equivalent. */
+function foldPosition(fraction: number): number {
+    return Math.min(fraction, 1 - fraction);
+}
+
 /**
  * Dietz shape factor for a closed rectangular drainage area.
  *
  * `aspectRatio` is lengthX/lengthY; the well position is given as grid indices
  * and converted to cell-centre fractions of each side. The long side is
- * normalised to x so a 2:1 and a 1:2 rectangle resolve to the same entry.
+ * normalised to x so a 2:1 and a 1:2 rectangle resolve to the same entry, and
+ * positions are folded by symmetry so a well at 1/4 or 3/4 of a side is one
+ * case.
  *
  * Returns `shapeFactor: null` with an explanatory label for any geometry or
- * position outside the table — callers must handle that rather than assume a
- * square.
+ * position outside `SHAPE_FACTOR_TABLE` — callers must handle that rather than
+ * assume a square.
  */
 export function computeShapeFactor(input: {
     nxCells: number;
@@ -259,35 +292,28 @@ export function computeShapeFactor(input: {
     // Normalise so x is the long side.
     const elongated = aspectRatio >= 1;
     const ratio = elongated ? aspectRatio : 1 / aspectRatio;
-    const fLong = elongated ? rawFx : rawFy;
-    const fShort = elongated ? rawFy : rawFx;
+    let fLong = foldPosition(elongated ? rawFx : rawFy);
+    let fShort = foldPosition(elongated ? rawFy : rawFx);
 
-    const centred =
-        near(fLong, 0.5, POSITION_TOLERANCE) && near(fShort, 0.5, POSITION_TOLERANCE);
-
-    if (near(ratio, 1, ASPECT_TOLERANCE)) {
-        if (centred) {
-            return { shapeFactor: CA_SQUARE_CENTER, shapeLabel: "Square (centred well)" };
-        }
-        // Centre of any quadrant — the four positions are symmetry-equivalent.
-        const quarterLong = near(fLong, 0.25, POSITION_TOLERANCE) || near(fLong, 0.75, POSITION_TOLERANCE);
-        const quarterShort = near(fShort, 0.25, POSITION_TOLERANCE) || near(fShort, 0.75, POSITION_TOLERANCE);
-        if (quarterLong && quarterShort) {
-            return { shapeFactor: CA_SQUARE_QUADRANT, shapeLabel: "Square (well at quadrant centre)" };
-        }
-        return { shapeFactor: null, shapeLabel: "Unsupported off-centre square" };
+    // A square has no long side, so its two fractions are interchangeable.
+    const isSquare = near(ratio, 1, ASPECT_TOLERANCE);
+    if (isSquare && fLong > fShort) {
+        [fLong, fShort] = [fShort, fLong];
     }
 
-    if (centred && near(ratio, 2, ASPECT_TOLERANCE * 2)) {
-        return { shapeFactor: CA_2TO1_CENTER, shapeLabel: "2:1 rectangle (centred well)" };
-    }
-    if (centred && near(ratio, 4, ASPECT_TOLERANCE * 4)) {
-        return { shapeFactor: CA_4TO1_CENTER, shapeLabel: "4:1 rectangle (centred well)" };
+    for (const entry of SHAPE_FACTOR_TABLE) {
+        if (!near(ratio, entry.ratio, ASPECT_TOLERANCE * entry.ratio)) continue;
+        if (!near(fLong, entry.fLong, POSITION_TOLERANCE)) continue;
+        if (!near(fShort, entry.fShort, POSITION_TOLERANCE)) continue;
+        return { shapeFactor: entry.shapeFactor, shapeLabel: entry.shapeLabel };
     }
 
+    const ratioKnown = SHAPE_FACTOR_TABLE.some(
+        (entry) => near(ratio, entry.ratio, ASPECT_TOLERANCE * entry.ratio),
+    );
     return {
         shapeFactor: null,
-        shapeLabel: centred ? "Unsupported aspect ratio" : "Unsupported off-centre rectangle",
+        shapeLabel: ratioKnown ? "Unsupported well position" : "Unsupported aspect ratio",
     };
 }
 

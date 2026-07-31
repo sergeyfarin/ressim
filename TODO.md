@@ -17,6 +17,17 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **`dep_pss` grid-refinement dimension illustrated nothing (2026-07-31).** Inferred `C_A` moved
+  from +3.3% to +2.6% across 7×7 → 35×35 on the fixed 420 m square: a 0.7% span presented as a
+  convergence study. The residual bias is not discretisation at all but the pressure dependence of
+  the fluid properties over a depleting run, so refinement cannot remove it. Dimension deleted and
+  replaced with `well_position`, which moves `C_A` 30.8828 → 12.9851 → 4.5132 on one fixed square.
+
+- [x] **Dietz `C_A` simulation curves were drawn with the auxiliary dot-dash (2026-07-31).** Against
+  the project convention (simulation solid, analytical dashed, dotted reserved for genuinely
+  auxiliary series) the `pss-shape-factor-sim` series used `AUXILIARY_DASH` at reduced width. Now
+  solid at `simBorderWidth`, matching every other simulation curve.
+
 - [x] **`dep_pss` had no time-varying or falsifiable exhibit (2026-07-31).** The case plotted the
   productivity index and the inferred Dietz `C_A` — algebraic inverses of one another, both
   constant in time by construction — while its only real transient, the approach to

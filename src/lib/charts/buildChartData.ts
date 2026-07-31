@@ -1003,8 +1003,7 @@ export function buildReferenceComparisonModel(input: {
                 legendSection: 'sim',
                 legendSectionLabel: LEGEND_SECTIONS.sim,
                 color,
-                borderWidth: 1.6,
-                borderDash: AUXILIARY_DASH,
+                borderWidth: simBorderWidth(result.variantKey),
                 yAxisID: 'y',
                 defaultVisible,
             }, diagnosticXAxis, dietzPss.shapeFactor);

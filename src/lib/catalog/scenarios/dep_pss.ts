@@ -21,37 +21,45 @@ import type { Scenario } from '../scenarios';
  * A single centred square makes the shape factor an input, not a result: the
  * analytical curve is a horizontal line at the constant the reference was
  * handed, and the productivity index is constant in time by construction, so
- * nothing on the chart moves. The four shipped geometries all enclose the
- * same 176,400 m2 and produce at the same rate, so the only thing separating
- * them is C_A, which spans 30.88 down to 4.51 — a factor of 6.8.
+ * nothing on the chart moves. The shipped geometries all enclose the same
+ * 176,400 m2 and produce at the same rate, so the only thing separating them
+ * is C_A — and across the two geometry dimensions it spans 30.8828 down to
+ * 0.2318, a factor of 133.
  *
- * That factor compresses hard through the logarithm: a 6.8x change in C_A is
- * only a ~13% change in productivity. This is the honest lesson of the Dietz
- * equation and the reason the inferred-C_A panel is kept alongside the
- * productivity panel rather than instead of it. The C_A panel is the
- * *sensitive* view — it exponentially amplifies a small productivity error —
+ * That range compresses hard through the logarithm: 133x in C_A is a 35%
+ * change in productivity, and the 6.8x between a centred and a quadrant well
+ * is only 13%. This is the honest lesson of the Dietz equation, and the
+ * reason the inferred-C_A panel is kept alongside the productivity panel
+ * rather than instead of it. The C_A panel is the *sensitive* view — it
+ * exponentially amplifies a small productivity error, and separates the cases
+ * by two orders of magnitude where the drawdown panel separates them by 35% —
  * while the drawdown panel is the *physical* one.
  *
- * Geometries (all 176,400 m2, all single-layer, all 40 m3/day):
+ * Geometries (all 176,400 m2, all single-layer, all 40 m3/day). Measured
+ * values are constant-rate runs on this scenario's own parameters:
  *
- *   grid      cell        well        A-ratio   C_A tabulated   C_A measured
- *   21 x 21   20 x 20     centred      1:1        30.8828          31.14
- *   27 x 11   22 x 27     centred      2:1        21.8369          22.02
- *   35 x  7   24 x 30     centred      4:1         5.379             5.41
- *   22 x 22   19.09 sq.   quadrant     1:1         4.5132            4.55
+ *   grid      cell           well           A-ratio   C_A tab.   C_A meas.
+ *   21 x 21   20    sq.      centred         1:1      30.8828      31.7
+ *   22 x 11   27    sq.      centred         2:1      21.8369      22.1
+ *   22 x 21   19.09 x 20     quarter length  1:1      12.9851      13.3
+ *   28 x  7   30    sq.      centred         4:1       5.379        5.41
+ *   22 x 22   19.09 sq.      quadrant        1:1       4.5132       4.65
+ *   35 x  7   26.83 sq.      centred         5:1       2.36         2.41
+ *   22 x 11   38.18 x 19.09  quarter length  4:1       0.2318       0.236
  *
- * Measured values are from constant-rate runs on this scenario's own
- * parameters, sampled at the end of the constant-rate period. Every geometry
- * recovers its tabulated C_A within 1% and its tabulated productivity index
- * within 0.1%. The small residual bias is positive in every case: it is
- * well-block discretisation error amplified by the inversion, which is what
- * the grid-refinement dimension isolates.
+ * Every entry lands within 3% of its tabulated value, against neighbouring
+ * table entries 1.4x to 23x away, so the match is unambiguous. The bias is
+ * positive in every case and does not shrink with refinement (7x7 to 35x35 on
+ * the square moves it only from +3.3% to +2.6%): it is not grid error but the
+ * pressure dependence of the fluid properties over a depleting run, which is
+ * why this case ships no grid-refinement dimension. A candidate 4:1 geometry
+ * with the well at 1/8 of the length was measured at C_A = 0.0047, matched no
+ * tabulated entry, and was dropped rather than assigned to the nearest one.
  *
- * The quadrant well sits on a 22 x 22 grid rather than the base 21 x 21 so
- * that a cell centre falls exactly on the quarter point (5.5/22 = 0.25).
- * Position accuracy matters more than it looks: placing the same well on the
- * 21 x 21 grid puts it 4.8% off the quarter point, which is a 29% error in
- * inferred C_A.
+ * Off-centre wells sit on grids sized so that a cell centre falls exactly on
+ * the quarter point (5.5/22 = 0.25). Position accuracy matters more than it
+ * looks: placing the same well on the base 21 x 21 grid puts it 4.8% off the
+ * quarter point, which is a 29% error in inferred C_A.
  *
  * What actually moves in time
  * ---------------------------
@@ -93,7 +101,7 @@ import type { Scenario } from '../scenarios';
  * Build-Up Surveys, JPT 17(8); Earlougher (1977), Advances in Well Test
  * Analysis, SPE Monograph 5, Table C.1; Dake (1978), Fundamentals of
  * Reservoir Engineering, ch. 7; Peaceman (1978), SPEJ 18(3) for the well
- * index whose error the refinement dimension exposes.
+ * index this case depends on.
  */
 export const dep_pss: Scenario = {
     key: 'dep_pss',
@@ -104,7 +112,7 @@ export const dep_pss: Scenario = {
         caseMode: 'dep',
         parameterSummary: 'Equal-area closed geometries · constant-rate producer · C_A from measured drawdown',
     },
-    description: 'A constant-rate producer in a closed reservoir, run across four drainage geometries of identical area: a centred square, 2:1 and 4:1 rectangles, and a square with the well at a quadrant centre. Once boundaries are felt, the steady gap p̄−p_wf gives the numerical productivity J=q/(p̄−p_wf), and inverting the Dietz equation recovers an effective shape factor to compare with the tabulated C_A of 30.8828, 21.8369, 5.379 and 4.5132. The drawdown panel plots from t=0 so the approach to pseudo-steady state — later for elongated and off-centre geometries — is visible; the productivity and C_A panels stay blank through the transient, where they have no meaning. The run continues until the producer reaches its BHP floor, and the analytical curves stop there rather than outliving the constant-rate premise.',
+    description: 'A constant-rate producer in a closed reservoir, run across drainage geometries of identical area: squares and 2:1, 4:1 and 5:1 rectangles, with the well centred, at a quarter length, or at a quadrant centre. Once boundaries are felt, the steady gap p̄−p_wf gives the numerical productivity J=q/(p̄−p_wf), and inverting the Dietz equation recovers an effective shape factor to compare with the tabulated C_A, which spans 30.8828 down to 0.2318 across the shipped cases. The drawdown panel plots from t=0 so the approach to pseudo-steady state — later for elongated and off-centre geometries — is visible; the productivity and C_A panels stay blank through the transient, where they have no meaning. The run continues until the producer reaches its BHP floor, and the analytical curves stop there rather than outliving the constant-rate premise.',
     analyticalMethodSummary: 'Dietz pseudo-steady-state productivity and its inverse: average pressure declines by material balance, p_wf=p̄−q/J_Dietz with J_Dietz from the tabulated C_A for each geometry, and the numerical J recovers an effective C_A for comparison. Curves terminate at the analytically predicted end of the constant-rate period.',
     analyticalMethodReference: 'Dietz (1965), JPT 17(8); Earlougher (1977), Advances in Well Test Analysis, SPE Monograph 5, Table C.1; Dake (1978), Fundamentals of Reservoir Engineering, ch. 7; Peaceman (1978), SPEJ 18(3).',
     chartLayoutKey: 'well_test',
@@ -208,7 +216,7 @@ export const dep_pss: Scenario = {
         {
             key: 'drainage_shape',
             label: 'Drainage Geometry',
-            description: 'Four closed geometries of identical 176,400 m² area produced at the same rate through the same completion. Only the shape term C_A differs — 30.8828, 21.8369, 5.379, 4.5132 — so the separation between the drawdown curves is purely geometric. Elongated drainage and off-centre wells also reach pseudo-steady state later, visible as a delayed approach on the drawdown panel.',
+            description: 'Five closed geometries of identical 176,400 m² area, produced at the same rate through the same completion. Only the shape term C_A differs — 30.8828, 21.8369, 5.379, 2.36, 0.2318 — so the whole separation between the drawdown curves is geometric. Elongation costs productivity, and elongation combined with an off-centre well compounds: the last variant is the table\'s worst representable case at 133× below the square. Elongated geometries also reach pseudo-steady state later, visible as a delayed approach on the drawdown panel.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {
@@ -220,22 +228,58 @@ export const dep_pss: Scenario = {
                 },
                 {
                     key: 'geom_2to1',
-                    label: '2:1 rectangle, centred',
-                    description: '594 m × 297 m, same area and same centred well. C_A = 21.8369: a longer drainage path costs productivity even before the well moves.',
-                    paramPatch: { nx: 27, ny: 11, cellDx: 22, cellDy: 27, producerI: 13, producerJ: 5 },
+                    label: '2:1 rectangle',
+                    description: '594 m × 297 m, same area, well still centred. C_A = 21.8369: a longer drainage path costs productivity before the well moves at all.',
+                    paramPatch: { nx: 22, ny: 11, cellDx: 27, cellDy: 27, producerI: 10, producerJ: 5 },
                     affectsAnalytical: true,
                 },
                 {
                     key: 'geom_4to1',
-                    label: '4:1 rectangle, centred',
+                    label: '4:1 rectangle',
                     description: '840 m × 210 m, same area. C_A = 5.379 — a 5.7× drop from the square, and a visibly later approach to pseudo-steady state.',
-                    paramPatch: { nx: 35, ny: 7, cellDx: 24, cellDy: 30, producerI: 17, producerJ: 3 },
+                    paramPatch: { nx: 28, ny: 7, cellDx: 30, cellDy: 30, producerI: 13, producerJ: 3 },
                     affectsAnalytical: true,
                 },
                 {
-                    key: 'geom_quadrant',
-                    label: 'Square, well at quadrant centre',
-                    description: 'The base square with the well moved to the centre of one quadrant. C_A = 4.5132: an off-centre well in a square is as costly as a 4:1 rectangle. The 22×22 grid places a cell centre exactly on the quarter point.',
+                    key: 'geom_5to1',
+                    label: '5:1 rectangle',
+                    description: '939 m × 188 m, same area. C_A = 2.36. The trend with elongation is steep and shows no sign of flattening.',
+                    paramPatch: { nx: 35, ny: 7, cellDx: 26.8328, cellDy: 26.8328, producerI: 17, producerJ: 3 },
+                    affectsAnalytical: true,
+                },
+                {
+                    key: 'geom_4to1_offset',
+                    label: '4:1 rectangle, well off-centre',
+                    description: 'The same 840 m × 210 m rectangle with the well moved to a quarter of its length. C_A = 0.2318 — 133× below the square, and the largest drawdown penalty this table can express with an interior well. The 22×11 grid is chosen so a cell centre lands exactly on the quarter point: on the 28×7 grid used for the centred case the nearest cell sits at 0.232 of the length, which is a 37% error in inferred C_A.',
+                    paramPatch: { nx: 22, ny: 11, cellDx: 840 / 22, cellDy: 210 / 11, producerI: 5, producerJ: 5 },
+                    affectsAnalytical: true,
+                },
+            ],
+        },
+        {
+            key: 'well_position',
+            label: 'Well Position',
+            description: 'One 420 m square, one rate, one completion — only the well moves. C_A falls 30.8828 → 12.9851 → 4.5132 as the well leaves the centre, because a well closer to a no-flow boundary has to pull the same rate through a less symmetric drainage volume. This isolates position from shape, which the geometry dimension varies together.',
+            analyticalOverlayMode: 'per-result',
+            variants: [
+                {
+                    key: 'pos_centred',
+                    label: 'Centred (base)',
+                    description: 'Well at the centre of the square. C_A = 30.8828.',
+                    paramPatch: {},
+                    affectsAnalytical: true,
+                },
+                {
+                    key: 'pos_quarter',
+                    label: 'Quarter length, centred across',
+                    description: 'Well at a quarter of one side, still centred on the other. C_A = 12.9851.',
+                    paramPatch: { nx: 22, ny: 21, cellDx: 420 / 22, cellDy: 20, producerI: 5, producerJ: 10 },
+                    affectsAnalytical: true,
+                },
+                {
+                    key: 'pos_quadrant',
+                    label: 'Quadrant centre',
+                    description: 'Well at the centre of one quadrant — off-centre in both directions. C_A = 4.5132, as costly as a 4:1 rectangle with a centred well.',
                     paramPatch: { nx: 22, ny: 22, cellDx: 420 / 22, cellDy: 420 / 22, producerI: 5, producerJ: 5 },
                     affectsAnalytical: true,
                 },
@@ -244,23 +288,12 @@ export const dep_pss: Scenario = {
         {
             key: 'skin',
             label: 'Skin Factor s',
-            description: 'Skin adds a wellbore pressure drop that changes the PSS drawdown without touching the closed-reservoir pressure decline. It is the control for the geometry sweep: skin moves the drawdown and productivity panels but leaves the inferred C_A panel flat, because the inversion divides skin back out. Geometry and completion are separable, and this dimension is what shows it.',
+            description: 'Skin adds a wellbore pressure drop that changes the PSS drawdown without touching the closed-reservoir pressure decline. It is the control for the two geometry dimensions: skin moves the drawdown and productivity panels but leaves the inferred C_A panel flat, because the inversion divides skin back out. Geometry and completion are separable, and this dimension is what shows it.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 { key: 'skin_stimulated', label: 's = −1', description: 'Stimulated completion: smaller PSS drawdown, same C_A.', paramPatch: { well_skin: -1 }, affectsAnalytical: true },
                 { key: 'skin_clean', label: 's = 0 (base)', description: 'Clean completion.', paramPatch: {}, affectsAnalytical: true },
                 { key: 'skin_damaged', label: 's = +3', description: 'Damaged completion: larger PSS drawdown, same C_A, and the BHP floor is reached sooner.', paramPatch: { well_skin: 3 }, affectsAnalytical: true },
-            ],
-        },
-        {
-            key: 'grid_refinement',
-            label: 'Grid Refinement',
-            description: 'The physical 420 m square, centred well and analytical C_A = 30.8828 stay fixed, so every separation between the curves is numerical well-block and spatial-discretisation error. The inferred C_A is biased high by about 0.9% on the coarse grid and 0.8% on the fine one: a sub-percent productivity error, amplified by the inversion and shrinking monotonically with refinement. It is a small effect here by design — the geometries above are resolved well enough that shape, not the grid, sets the answer.',
-            analyticalOverlayMode: 'shared',
-            variants: [
-                { key: 'grid_coarse', label: '15×15', description: 'Coarse 420 m square.', paramPatch: { nx: 15, ny: 15, cellDx: 28, cellDy: 28, producerI: 7, producerJ: 7 }, affectsAnalytical: false },
-                { key: 'grid_base', label: '21×21 (base)', description: 'Base grid.', paramPatch: {}, affectsAnalytical: false },
-                { key: 'grid_fine', label: '35×35', description: 'Fine 420 m square.', paramPatch: { nx: 35, ny: 35, cellDx: 12, cellDy: 12, producerI: 17, producerJ: 17 }, affectsAnalytical: false },
             ],
         },
     ],

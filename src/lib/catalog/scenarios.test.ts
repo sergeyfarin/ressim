@@ -376,8 +376,8 @@ describe('scenario capability validation', () => {
         ]);
         expect(getScenario('dep_pss')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['drainage_shape', 'per-result'],
+            ['well_position', 'per-result'],
             ['skin', 'per-result'],
-            ['grid_refinement', 'shared'],
         ]);
         expect(getScenario('dep_decline')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['permeability', 'per-result'],
@@ -743,16 +743,26 @@ describe('SPE1 scenario fidelity guards', () => {
 });
 
 describe('depletion scenario fidelity guards', () => {
-    it('uses a fixed physical square for the Dietz PSS grid study', () => {
-        const fineGrid = getScenarioWithVariantParams('dep_pss', 'grid_refinement', 'grid_fine');
-        expect(fineGrid).toMatchObject({
-            nx: 35,
-            ny: 35,
-            cellDx: 12,
-            cellDy: 12,
-            producerI: 17,
-            producerJ: 17,
-        });
+    it('holds drainage area fixed across every Dietz PSS geometry', () => {
+        // The shape factor is only isolated if area, rate and completion are
+        // constant, so a geometry variant that changed the pore volume would
+        // silently confound the exhibit with a material-balance difference.
+        const area = (params: Record<string, any>) =>
+            Number(params.nx) * Number(params.cellDx) * Number(params.ny) * Number(params.cellDy);
+        const base = area(getScenarioWithVariantParams('dep_pss', 'drainage_shape', 'geom_square'));
+        expect(base).toBeCloseTo(176_400, 0);
+
+        for (const [dimension, keys] of [
+            ['drainage_shape', ['geom_2to1', 'geom_4to1', 'geom_5to1', 'geom_4to1_offset']],
+            ['well_position', ['pos_quarter', 'pos_quadrant']],
+        ] as const) {
+            for (const key of keys) {
+                const params = getScenarioWithVariantParams('dep_pss', dimension, key);
+                expect(Math.abs(area(params) / base - 1), key).toBeLessThan(0.002);
+                expect(params.targetProducerRate, key).toBe(40);
+                expect(params.well_skin, key).toBe(0);
+            }
+        }
     });
 
     it('keeps Fetkovich decline sensitivities in a numerically resolved range', () => {

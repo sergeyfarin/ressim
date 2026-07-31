@@ -111,10 +111,19 @@ function expectFlowingBhpMatchesReference(params: Record<string, any>, samples: 
 }
 
 describe('Dietz PSS productivity scenario', () => {
-    it('recovers the tabulated shape factor of every drainage geometry', async () => {
+    it('recovers the tabulated shape factor of every geometry and well position', async () => {
         await ensureReady();
-        for (const key of ['geom_square', 'geom_2to1', 'geom_4to1', 'geom_quadrant']) {
-            const params = getScenarioWithVariantParams('dep_pss', 'drainage_shape', key);
+        const cases: Array<[string, string]> = [
+            ['drainage_shape', 'geom_square'],
+            ['drainage_shape', 'geom_2to1'],
+            ['drainage_shape', 'geom_4to1'],
+            ['drainage_shape', 'geom_5to1'],
+            ['drainage_shape', 'geom_4to1_offset'],
+            ['well_position', 'pos_quarter'],
+            ['well_position', 'pos_quadrant'],
+        ];
+        for (const [dimension, key] of cases) {
+            const params = getScenarioWithVariantParams('dep_pss', dimension, key);
             const expected = tabulatedShapeFactor(params);
             expect(expected, key).not.toBeNull();
 
@@ -147,7 +156,7 @@ describe('Dietz PSS productivity scenario', () => {
             const numericalPi = final.oilRate / (final.avgPressure - final.bhp);
             expect(Math.abs(numericalPi - analyticalPi) / analyticalPi, key).toBeLessThan(0.01);
         }
-    }, 180_000);
+    }, 300_000);
 
     it('separates geometry from completion: skin moves productivity but not inferred C_A', async () => {
         await ensureReady();
@@ -168,27 +177,6 @@ describe('Dietz PSS productivity scenario', () => {
         // stays put. This is the claim the scenario's skin dimension makes.
         const spread = (Math.max(...shapeFactors) - Math.min(...shapeFactors)) / Math.min(...shapeFactors);
         expect(spread).toBeLessThan(0.05);
-    }, 180_000);
-
-    it('converges toward the centred-square Dietz shape factor with grid refinement', async () => {
-        await ensureReady();
-        const errors: number[] = [];
-
-        for (const key of ['grid_coarse', 'grid_base', 'grid_fine']) {
-            const params = getScenarioWithVariantParams('dep_pss', 'grid_refinement', key);
-            const window = pssWindow(params, run(params));
-            const inferred = window.slice(-20)
-                .map((sample) => inferShapeFactor(params, sample))
-                .filter((value): value is number => value !== null);
-            const mean = inferred.reduce((sum, value) => sum + value, 0) / inferred.length;
-
-            const expected = tabulatedShapeFactor(params);
-            expect(expected, key).not.toBeNull();
-            errors.push(Math.abs(mean - Number(expected)) / Number(expected));
-        }
-
-        expect(errors[2]).toBeLessThan(errors[0]);
-        expect(errors[2]).toBeLessThan(0.15);
     }, 180_000);
 
     it('stops the analytical reference at the end of the constant-rate period', async () => {

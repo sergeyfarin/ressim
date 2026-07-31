@@ -178,12 +178,43 @@ describe('depletionAnalytical', () => {
                 { nxCells: 35, nyCells: 7, aspectRatio: (35 * 24) / (7 * 30), nx: 35, ny: 7, producerI: 17, producerJ: 3 },
                 5.379, '4:1 rectangle (centred well)',
             ],
+            [
+                'square, well at quarter length',
+                { nxCells: 22, nyCells: 21, aspectRatio: 1, nx: 22, ny: 21, producerI: 5, producerJ: 10 },
+                12.9851, 'Square (well at quarter length)',
+            ],
+            [
+                '2:1 rectangle, well at quarter length',
+                { nxCells: 22, nyCells: 11, aspectRatio: 2, nx: 22, ny: 11, producerI: 5, producerJ: 5 },
+                4.5141, '2:1 rectangle (well at quarter length)',
+            ],
+            [
+                '5:1 rectangle, centred',
+                { nxCells: 35, nyCells: 7, aspectRatio: 5, nx: 35, ny: 7, producerI: 17, producerJ: 3 },
+                2.36, '5:1 rectangle (centred well)',
+            ],
+            [
+                '4:1 rectangle, well at quarter length',
+                { nxCells: 28, nyCells: 7, aspectRatio: 4, nx: 28, ny: 7, producerI: 6, producerJ: 3 },
+                0.2318, '4:1 rectangle (well at quarter length)',
+            ],
         ];
         for (const [label, input, expected, expectedLabel] of cases) {
             const result = computeShapeFactor(input);
             expect(result.shapeFactor, label).toBeCloseTo(expected, 3);
             expect(result.shapeLabel, label).toBe(expectedLabel);
         }
+    });
+
+    it('computeShapeFactor folds mirrored well positions onto one entry', () => {
+        const nearEnd = computeShapeFactor({
+            nxCells: 22, nyCells: 11, aspectRatio: 2, nx: 22, ny: 11, producerI: 5, producerJ: 5,
+        });
+        const farEnd = computeShapeFactor({
+            nxCells: 22, nyCells: 11, aspectRatio: 2, nx: 22, ny: 11, producerI: 16, producerJ: 5,
+        });
+        expect(farEnd.shapeFactor).toBe(nearEnd.shapeFactor);
+        expect(nearEnd.shapeFactor).toBeCloseTo(4.5141, 4);
     });
 
     it('computeShapeFactor is orientation-symmetric for rectangles', () => {
@@ -200,7 +231,7 @@ describe('depletionAnalytical', () => {
     it('computeShapeFactor rejects an off-centre rectangle and an untabulated aspect ratio', () => {
         expect(computeShapeFactor({
             nxCells: 27, nyCells: 11, aspectRatio: 2, nx: 27, ny: 11, producerI: 4, producerJ: 5,
-        })).toMatchObject({ shapeFactor: null, shapeLabel: 'Unsupported off-centre rectangle' });
+        })).toMatchObject({ shapeFactor: null, shapeLabel: 'Unsupported well position' });
 
         expect(computeShapeFactor({
             nxCells: 27, nyCells: 9, aspectRatio: 3, nx: 27, ny: 9, producerI: 13, producerJ: 4,
@@ -217,7 +248,7 @@ describe('depletionAnalytical', () => {
     it('computeShapeFactor rejects unsourced off-center interpolation', () => {
         const offCenter = computeShapeFactor({
             nxCells: 21, nyCells: 21, aspectRatio: 1.0,
-            nx: 21, ny: 21, producerI: 5, producerJ: 10,
+            nx: 21, ny: 21, producerI: 3, producerJ: 10,
         });
         expect(offCenter.shapeFactor).toBeNull();
         expect(offCenter.shapeLabel).toContain('Unsupported');
@@ -623,7 +654,7 @@ describe('bounded PSS reference safeguards', () => {
     it('refuses unsourced interpolation for an arbitrary off-centre well', () => {
         expect(computeShapeFactor({
             nxCells: 21, nyCells: 21, aspectRatio: 1,
-            nx: 21, ny: 21, producerI: 5, producerJ: 10,
+            nx: 21, ny: 21, producerI: 3, producerJ: 10,
         })).toMatchObject({ shapeFactor: null });
     });
 

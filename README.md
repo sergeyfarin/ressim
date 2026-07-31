@@ -21,7 +21,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 | Sweep Efficiency | Areal Sweep | `sweep_areal` | Craig confined five-spot correlation |
 | Sweep Efficiency | Vertical Sweep | `sweep_vertical` | Dykstra–Parsons / Stiles layered sweep |
 | Sweep Efficiency | Combined Sweep | `sweep_combined` | Combined areal and vertical contact with selectable layered correlation |
-| Depletion & Decline | Dietz Shape Factor — PSS Productivity | `dep_pss` | Equal-area drainage geometries; C_A recovered from the measured PSS drawdown |
+| Depletion & Decline | Dietz Shape Factor — PSS Productivity | `dep_pss` | Equal-area drainage geometries and well positions; C_A recovered from the measured PSS drawdown |
 | Depletion & Decline | Finite-Reservoir Transition — Fetkovich | `dep_decline` | Finite-slab transient, boundary arrival, and asymptotic decline |
 | Depletion & Decline | Layered Depletion — Composite Decline | `dep_arps` | Spatial layered depletion approaching a late-time Dietz/Fetkovich superposition, plus a crossflow limitation study |
 | Pressure-Transient Analysis | Well-Test Drawdown | `dep_welltest` | Line-source drawdown; permeability, skin, and near-well grid bias |
