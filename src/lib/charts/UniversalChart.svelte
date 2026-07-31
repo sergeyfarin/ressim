@@ -59,7 +59,8 @@
 
     // ── Chart UI state ────────────────────────────────────────────────────────
     let xAxisMode = $state<RateChartXAxisMode>("time");
-    let logScale = $state(false);
+    // Log scaling is per panel — see ReferenceComparisonChart for the rationale.
+    let panelLogScale = $state<Record<string, boolean>>({});
     let normalizeRates = $state(false);
 
     // ── Panel expand / collapse state ─────────────────────────────────────────
@@ -225,11 +226,26 @@
         const next = coerceChartAxisState({
             xAxisMode,
             xAxisOptions: configuredXAxisOptions,
-            logScale,
+            logScale: false,
             allowLogScale: layoutConfig?.rateChart?.allowLogScale,
         });
         if (next.xAxisMode !== xAxisMode) xAxisMode = next.xAxisMode;
-        if (next.logScale !== logScale) logScale = next.logScale;
+    });
+
+    $effect(() => {
+        const config = layoutConfig?.rateChart;
+        if (!config) return;
+        const current = untrack(() => panelLogScale);
+        const next = { ...current };
+        for (const [panelKey, panelLayout] of Object.entries(config.panels ?? {})) {
+            const panelLog = panelLayout?.logScale ?? config.logScale;
+            if (panelLog !== undefined) {
+                next[panelKey] = config.allowLogScale === false ? false : panelLog;
+            }
+        }
+        if (Object.keys(next).some((key) => current[key] !== next[key])) {
+            panelLogScale = next;
+        }
     });
 </script>
 
@@ -276,7 +292,7 @@
             seriesData={panel.series}
             scaleConfigs={panel.scales}
             {theme}
-            bind:logScale
+            bind:logScale={panelLogScale[panel.key]}
             allowLogToggle={layoutConfig?.rateChart?.allowLogScale ?? panel.allowLogToggle}
             xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}

@@ -17,6 +17,15 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **Chart y-axis log scaling was chart-wide, not per panel (2026-07-31).** One `logScale`
+  `$state` in `ReferenceComparisonChart` and `UniversalChart` was bound into every `ChartSubPanel`,
+  so toggling log on one panel changed all of them — panels that carry different properties over
+  different dynamic ranges. Now keyed per panel like `panelExpanded`, with a per-panel
+  `logScale` layout field that falls back to the chart-level flag, so every existing layout keeps
+  its prior default. First consumer: `dep_pss`'s C_A panel, where the shipped geometries span
+  30.8828 to 0.2318 and a linear axis from zero collapses the four least productive onto the
+  baseline.
+
 - [x] **`dep_pss` grid-refinement dimension illustrated nothing (2026-07-31).** Inferred `C_A` moved
   from +3.3% to +2.6% across 7×7 → 35×35 on the fixed 420 m square: a 0.7% span presented as a
   convergence study. The residual bias is not discretisation at all but the pressure dependence of

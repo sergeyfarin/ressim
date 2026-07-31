@@ -64,6 +64,13 @@ export type RateChartPanelLayout = {
     curveLabels?: string[];
     scalePreset?: RateChartScalePreset;
     allowLogToggle?: boolean;
+    /**
+     * Default y-axis scaling for this panel. Log scaling is per panel — a
+     * shape factor spanning two orders of magnitude and a drawdown spanning
+     * 35% do not belong on the same axis type. Falls back to the chart-level
+     * `logScale` when unset.
+     */
+    logScale?: boolean;
     visible?: boolean;
     expanded?: boolean;
     /**

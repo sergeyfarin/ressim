@@ -83,6 +83,12 @@
         ) as Record<RateChartPanelId, boolean>;
     }
 
+    function createDefaultPanelLogScaleState(): Record<RateChartPanelId, boolean> {
+        return Object.fromEntries(
+            DEFAULT_RATE_CHART_PANEL_ORDER.map((panelKey) => [panelKey, false]),
+        ) as Record<RateChartPanelId, boolean>;
+    }
+
     function equalPanelExpandedState(
         left: Record<RateChartPanelId, boolean>,
         right: Record<RateChartPanelId, boolean>,
@@ -92,7 +98,9 @@
 
     let xAxisMode = $state<RateChartXAxisMode>('time');
     const resolvedHistoryDivider = $derived(resolveHistoryDivider(historyWindow, xAxisMode));
-    let logScale = $state(false);
+    // Log scaling is per panel: panels on one chart carry different properties
+    // over different dynamic ranges, so one shared axis type cannot suit them.
+    let panelLogScale = $state<Record<RateChartPanelId, boolean>>(createDefaultPanelLogScaleState());
     let panelExpanded = $state<Record<RateChartPanelId, boolean>>(createDefaultPanelExpandedState());
     let visibleCaseKeys = $state<Record<string, boolean>>({});
     let caseSelectorSignature = $state('');
@@ -122,16 +130,26 @@
         const config = layoutConfig?.rateChart;
         if (!config) return;
         if (config.xAxisMode !== undefined) xAxisMode = config.xAxisMode;
-        if (config.logScale !== undefined) logScale = config.logScale;
         const currentExpanded = untrack(() => panelExpanded);
         const nextExpanded = { ...currentExpanded };
+        const currentLogScale = untrack(() => panelLogScale);
+        const nextLogScale = { ...currentLogScale };
         const panelOrder = config.panelOrder ?? DEFAULT_RATE_CHART_PANEL_ORDER;
         for (const panelKey of panelOrder) {
             const expanded = config.panels?.[panelKey]?.expanded;
             if (expanded !== undefined) nextExpanded[panelKey] = expanded;
+            // Panel default wins; the chart-level flag seeds panels that do
+            // not state their own, preserving each layout's prior behaviour.
+            const panelLog = config.panels?.[panelKey]?.logScale ?? config.logScale;
+            if (panelLog !== undefined) {
+                nextLogScale[panelKey] = config.allowLogScale === false ? false : panelLog;
+            }
         }
         if (!equalPanelExpandedState(currentExpanded, nextExpanded)) {
             panelExpanded = nextExpanded;
+        }
+        if (DEFAULT_RATE_CHART_PANEL_ORDER.some((key) => currentLogScale[key] !== nextLogScale[key])) {
+            panelLogScale = nextLogScale;
         }
     });
 
@@ -291,12 +309,11 @@
         const nextAxisState = coerceChartAxisState({
             xAxisMode,
             xAxisOptions,
-            logScale,
+            logScale: false,
             allowLogScale: layoutConfig?.rateChart?.allowLogScale,
         });
 
         if (nextAxisState.xAxisMode !== xAxisMode) xAxisMode = nextAxisState.xAxisMode;
-        if (nextAxisState.logScale !== logScale) logScale = nextAxisState.logScale;
     });
 
     function buildPanelEntries(panelKey: RateChartPanelId): Array<ChartPanelEntry<NonNullable<(typeof overlayModel.panels)[RateChartPanelId]>['curves'][number], NonNullable<(typeof overlayModel.panels)[RateChartPanelId]>['series'][number]>> {
@@ -567,7 +584,7 @@
             seriesData={panel.series}
             scaleConfigs={panel.scales}
             {theme}
-            bind:logScale
+            bind:logScale={panelLogScale[panel.key]}
             allowLogToggle={layoutConfig?.rateChart?.allowLogScale ?? panel.allowLogToggle}
             xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}

@@ -120,6 +120,7 @@ export const dep_pss: Scenario = {
         rateChart: {
             xAxisMode: 'logTime',
             xAxisOptions: ['logTime', 'time'],
+            allowLogScale: true,
             panelOrder: [
                 'pss_drawdown', 'pss_shape_factor', 'pss_productivity',
                 'producer_bhp', 'diagnostics', 'oil_rate', 'control_limits',
@@ -136,6 +137,12 @@ export const dep_pss: Scenario = {
                     title: 'Inferred Dietz Shape Factor C_A',
                     curveKeys: ['pss-shape-factor-sim', 'pss-shape-factor-reference'],
                     scalePreset: 'shape_factor',
+                    // C_A spans 30.8828 to 0.2318 across the shipped geometries.
+                    // On a linear axis from zero the four least productive cases
+                    // collapse onto the baseline; the quantity lives inside a
+                    // logarithm, so a log axis is its natural presentation.
+                    logScale: true,
+                    allowLogToggle: true,
                     visible: true,
                     expanded: true,
                 },
