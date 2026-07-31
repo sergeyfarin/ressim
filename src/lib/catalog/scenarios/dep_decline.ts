@@ -4,9 +4,9 @@ import { depletionDef } from '../analyticalAdapters';
 
 export const dep_decline: Scenario = {
     key: 'dep_decline',
-    label: 'Finite-Reservoir Transition — Fetkovich',
+    label: 'Boundary-Dominated Decline (Fetkovich)',
     catalog: {
-        group: 'depletion-decline',
+        group: 'flow-regimes-decline',
         role: 'interpretation',
         caseMode: 'dep',
         parameterSummary: 'Finite constant-BHP slab · transient-to-boundary-dominated eigenfunction reference',

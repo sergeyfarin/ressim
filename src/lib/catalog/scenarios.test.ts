@@ -330,8 +330,8 @@ describe('scenario catalog taxonomy', () => {
     it('uses explicit product groups instead of inferring navigation from physics capabilities', () => {
         expect(getScenarioGroup(getScenario('wf_bl1d')!)).toBe('buckley-leverett-displacement');
         expect(getScenarioGroup(getScenario('sweep_areal')!)).toBe('sweep-efficiency');
-        expect(getScenarioGroup(getScenario('dep_pss')!)).toBe('depletion-decline');
-        expect(getScenarioGroup(getScenario('dep_welltest')!)).toBe('pressure-transient');
+        expect(getScenarioGroup(getScenario('dep_pss')!)).toBe('flow-regimes-decline');
+        expect(getScenarioGroup(getScenario('dep_welltest')!)).toBe('flow-regimes-decline');
         expect(getScenarioGroup(getScenario('gas_injection')!)).toBe('gas-black-oil');
         expect(getScenarioGroup(getScenario('spe1_gas_injection')!)).toBe('validation-benchmarks');
         expect(getScenarioGroup(getScenario('dep_pvt')!)).toBe('gas-black-oil');

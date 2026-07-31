@@ -105,9 +105,9 @@ import type { Scenario } from '../scenarios';
  */
 export const dep_pss: Scenario = {
     key: 'dep_pss',
-    label: 'Dietz Shape Factor — PSS Productivity',
+    label: 'Drainage Geometry & Productivity (Dietz)',
     catalog: {
-        group: 'depletion-decline',
+        group: 'flow-regimes-decline',
         role: 'benchmark',
         caseMode: 'dep',
         parameterSummary: 'Equal-area closed geometries · constant-rate producer · C_A from measured drawdown',
@@ -121,9 +121,13 @@ export const dep_pss: Scenario = {
             xAxisMode: 'logTime',
             xAxisOptions: ['logTime', 'time'],
             allowLogScale: true,
+            // Physical panels first — the drawdown that defines the case, then
+            // the pressures it is built from. The two inverted diagnostics sit
+            // at the bottom, collapsed: they are how you would *report* the
+            // result, not how you would read it.
             panelOrder: [
-                'pss_drawdown', 'pss_shape_factor', 'pss_productivity',
-                'producer_bhp', 'diagnostics', 'oil_rate', 'control_limits',
+                'pss_drawdown', 'producer_bhp', 'diagnostics', 'oil_rate',
+                'pss_productivity', 'pss_shape_factor',
             ],
             panels: {
                 pss_drawdown: {
@@ -133,29 +137,10 @@ export const dep_pss: Scenario = {
                     visible: true,
                     expanded: true,
                 },
-                pss_shape_factor: {
-                    title: 'Inferred Dietz Shape Factor C_A',
-                    curveKeys: ['pss-shape-factor-sim', 'pss-shape-factor-reference'],
-                    scalePreset: 'shape_factor',
-                    // C_A spans 30.8828 to 0.2318 across the shipped geometries.
-                    // On a linear axis from zero the four least productive cases
-                    // collapse onto the baseline; the quantity lives inside a
-                    // logarithm, so a log axis is its natural presentation.
-                    logScale: true,
-                    allowLogToggle: true,
+                producer_bhp: {
+                    title: 'Flowing BHP',
                     visible: true,
                     expanded: true,
-                },
-                pss_productivity: {
-                    title: 'PSS Productivity Index',
-                    curveKeys: ['pss-productivity-sim', 'pss-productivity-reference'],
-                    scalePreset: 'productivity',
-                    visible: true,
-                    expanded: false,
-                },
-                producer_bhp: {
-                    title: 'Flowing BHP (material balance)',
-                    expanded: false,
                 },
                 diagnostics: {
                     title: 'Average Reservoir Pressure',
@@ -165,6 +150,36 @@ export const dep_pss: Scenario = {
                 oil_rate: {
                     title: 'Oil Rate (end of constant-rate period)',
                     expanded: false,
+                },
+                pss_productivity: {
+                    title: 'PSS Productivity Index (diagnostic)',
+                    curveKeys: ['pss-productivity-sim', 'pss-productivity-reference'],
+                    scalePreset: 'productivity',
+                    visible: true,
+                    expanded: false,
+                },
+                pss_shape_factor: {
+                    title: 'Inferred Dietz Shape Factor C_A (diagnostic)',
+                    curveKeys: ['pss-shape-factor-sim', 'pss-shape-factor-reference'],
+                    scalePreset: 'shape_factor',
+                    // C_A spans 30.8828 to 0.2318 across the shipped geometries.
+                    // On a linear axis from zero the four least productive cases
+                    // collapse onto the baseline; the quantity lives inside a
+                    // logarithm, so a log axis is its natural presentation.
+                    logScale: true,
+                    allowLogToggle: true,
+                    // Collapsed by default: an effective shape factor recovered
+                    // by inverting a productivity measurement needs explaining
+                    // before it means anything. The drawdown and BHP panels
+                    // above carry the same information directly.
+                    visible: true,
+                    expanded: false,
+                },
+                // The producer only leaves rate control in the last day of the
+                // run, so a control-limit fraction is zero across essentially
+                // the whole chart. The oil-rate panel shows the same handover.
+                control_limits: {
+                    visible: false,
                 },
             },
         },

@@ -59,9 +59,9 @@ import type { Scenario } from '../scenarios';
  */
 export const dep_welltest: Scenario = {
     key: 'dep_welltest',
-    label: 'Well-Test Drawdown',
+    label: 'Transient Radial Flow (Theis)',
     catalog: {
-        group: 'pressure-transient',
+        group: 'flow-regimes-decline',
         role: 'interpretation',
         caseMode: 'dep',
         parameterSummary: '2.4-day constant-rate drawdown · radial-flow interpretation followed by box-boundary arrival',

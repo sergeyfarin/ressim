@@ -17,6 +17,27 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **Depletion catalog split one continuum across two groups (2026-07-31).** `dep_welltest` sat
+  in `pressure-transient` while `dep_pss`/`dep_decline`/`dep_arps` sat in `depletion-decline`,
+  although the four are one well's pressure history in sequence. Merged into
+  `flow-regimes-decline` ("Flow Regimes & Decline"), ordered transient → pseudo-steady →
+  boundary-dominated → layered, with each scenario renamed to state its subject and carry its
+  analytical method in brackets: Transient Radial Flow (Theis), Drainage Geometry & Productivity
+  (Dietz), Boundary-Dominated Decline (Fetkovich), Layered Depletion (Arps). The now-empty
+  `pressure-transient` group was removed; re-add it when buildup/Horner cases land.
+
+- [x] **App.svelte passed 17 undeclared props to ScenarioChart (2026-07-31).** `rateHistory`,
+  `analyticalMeta`, `rockProps`, `fluidProps`, the sweep group and others were left over from an
+  earlier ScenarioChart API and had no matching `$props()` entries, so every one was silently
+  discarded — one of the two long-standing `svelte-check` errors. Removed; the surviving wiring
+  passes `selectedOutputProfile` whole to `ThreeDViewCard`. `svelte-check` is now clean at
+  0 errors / 0 warnings (was 2 errors).
+
+- [x] **Chart.js custom-plugin options were untyped (2026-07-31).** `options.plugins.historyDivider`
+  failed `svelte-check` because Chart.js keys plugin options by a registry that a locally declared
+  plugin has no entry in. Added the library's own `declare module` augmentation rather than casting
+  the options object, which would have silenced real errors elsewhere in it.
+
 - [x] **Chart y-axis log scaling was chart-wide, not per panel (2026-07-31).** One `logScale`
   `$state` in `ReferenceComparisonChart` and `UniversalChart` was bound into every `ChartSubPanel`,
   so toggling log on one panel changed all of them — panels that carry different properties over

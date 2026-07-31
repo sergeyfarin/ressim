@@ -58,8 +58,7 @@ export type AnalyticalMode = 'waterflood' | 'depletion' | 'none';
 export type ScenarioGroup =
     | 'buckley-leverett-displacement'
     | 'sweep-efficiency'
-    | 'depletion-decline'
-    | 'pressure-transient'
+    | 'flow-regimes-decline'
     | 'gas-black-oil'
     | 'validation-benchmarks'
     | 'other';
@@ -100,14 +99,14 @@ export const SCENARIO_GROUPS: readonly {
         description: 'Areal, vertical, and combined reservoir contact during waterflooding.',
     },
     {
-        key: 'depletion-decline',
-        label: 'Depletion & Decline',
-        description: 'Flow-regime transition, Dietz PSS geometry/productivity, composite decline, and depletion interpretation.',
-    },
-    {
-        key: 'pressure-transient',
-        label: 'Pressure-Transient Analysis',
-        description: 'Well-test interpretation workflows such as drawdown, buildup, Horner, and interference tests.',
+        // One well's pressure history in order: infinite-acting radial flow
+        // before boundaries are felt, pseudo-steady productivity once they
+        // are, boundary-dominated decline, and layered superposition of the
+        // same. Merged from the old 'depletion-decline' and
+        // 'pressure-transient' groups, which split a single continuum.
+        key: 'flow-regimes-decline',
+        label: 'Flow Regimes & Decline',
+        description: 'A well\'s pressure history from infinite-acting transient flow through pseudo-steady productivity to boundary-dominated and layered decline.',
     },
     {
         key: 'gas-black-oil',
@@ -692,10 +691,10 @@ const SOURCE_SCENARIOS: Scenario[] = [
     sweep_areal,
     sweep_vertical,
     sweep_combined,
+    dep_welltest,
     dep_pss,
     dep_decline,
     dep_arps,
-    dep_welltest,
     dep_pvt,
     gas_injection,
     gas_drive,

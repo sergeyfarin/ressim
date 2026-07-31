@@ -11,7 +11,7 @@
  * headless check.
  */
 
-import type { Chart, Plugin } from 'chart.js';
+import type { Chart, ChartType, Plugin } from 'chart.js';
 import type { HistoryWindow } from '../catalog/scenarios';
 
 export type ResolvedHistoryDivider = {
@@ -66,6 +66,20 @@ export type HistoryDividerPluginOptions = {
 };
 
 export const HISTORY_DIVIDER_PLUGIN_ID = 'historyDivider';
+
+/**
+ * Chart.js types plugin options by a registry keyed on plugin id, so a plugin
+ * declared outside the library has no entry and `options.plugins.historyDivider`
+ * is rejected as an unknown property at the call site. Augmenting the registry
+ * is the library's own extension mechanism; without it the only alternative is
+ * an `as any` cast on the whole options object, which would silence real
+ * mistakes in the rest of it.
+ */
+declare module 'chart.js' {
+    interface PluginOptionsByType<TType extends ChartType> {
+        [HISTORY_DIVIDER_PLUGIN_ID]?: HistoryDividerPluginOptions;
+    }
+}
 
 /**
  * Inline Chart.js plugin. Reads its options from

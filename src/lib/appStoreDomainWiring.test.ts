@@ -58,8 +58,11 @@ describe('App store domain wiring', () => {
     expect(navStoreSource).toMatch(/export type OutputSelectionProfile = \{/);
     expect(navStoreSource).toMatch(/selectedOutputProfile = \$derived\.by/);
     expect(navStoreSource).toMatch(/computeSweepRecoveryFactor\(/);
-    expect(appSource).toMatch(/rockProps=\{scenario\.selectedOutputProfile\.rockProps\}/);
-    expect(appSource).toMatch(/fluidProps=\{scenario\.selectedOutputProfile\.fluidProps\}/);
+    // The profile reaches the spatial-profile surface as one object rather than
+    // as unpacked rockProps/fluidProps props. Those were also being handed to
+    // ScenarioChart, which never declared them; that dead pair was removed
+    // 2026-07-31 and this assertion follows the surviving wiring.
+    expect(appSource).toMatch(/selectedOutputProfile=\{scenario\.selectedOutputProfile\}/);
   });
 
   it('extends outputs-owned comparison focus into the 3D surface', () => {

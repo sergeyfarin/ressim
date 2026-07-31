@@ -39,14 +39,23 @@ The visible group is explicit metadata, not a physics inference:
 
 1. **Buckley–Leverett Displacement** — 1D displacement fundamentals and departures from BL.
 2. **Sweep Efficiency** — areal, vertical, and combined waterflood contact.
-3. **Depletion & Decline** — bounded depletion, decline interpretation, and depletion ambiguity.
-4. **Pressure-Transient Analysis** — drawdown now; buildup, Horner, interference, and pulse tests later.
-5. **Gas-Dominated Recovery** — gas injection and solution-gas drive mechanisms.
-6. **Validation Benchmarks** — published or external comparative solutions such as SPE1 and future SPE10/SPE9 cases.
-7. **Other** — cross-cutting interpretation cases awaiting a permanent family.
+3. **Flow Regimes & Decline** — one well's pressure history in sequence: infinite-acting transient
+   flow, pseudo-steady productivity, boundary-dominated decline, and layered superposition.
+4. **Gas-Dominated Recovery** — gas injection and solution-gas drive mechanisms.
+5. **Validation Benchmarks** — published or external comparative solutions such as SPE1 and future SPE10/SPE9 cases.
+6. **Other** — cross-cutting interpretation cases awaiting a permanent family.
 
-`catalog.role` is a separate axis (`simulation`, `interpretation`, or `benchmark`). This prevents
-the navigation hierarchy from conflating physical domain with the purpose of the content.
+Merged 2026-07-31: a separate **Pressure-Transient Analysis** group held only the drawdown case,
+splitting a single physical continuum in two — the same well, the same geometry, read in a
+different flow regime. Reinstate it when buildup, Horner, interference or pulse-test cases arrive
+and the interpretation workflow, rather than the flow regime, becomes the organising idea.
+
+`catalog.role` is a separate axis (`simulation`, `interpretation`, or `benchmark`). It is metadata
+for the catalog, not a badge: the picker showed it beside benchmark scenarios until 2026-07-31,
+where it read as a quality claim about the scenario rather than a statement of its purpose.
+
+This prevents the navigation hierarchy from conflating physical domain with the purpose of the
+content.
 
 ## Admission rule for future cases
 

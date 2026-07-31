@@ -18,9 +18,9 @@ import { depletionDef } from '../analyticalAdapters';
  */
 export const dep_arps: Scenario = {
     key: 'dep_arps',
-    label: 'Layered Depletion — Composite Decline',
+    label: 'Layered Depletion (Arps)',
     catalog: {
-        group: 'depletion-decline',
+        group: 'flow-regimes-decline',
         role: 'interpretation',
         caseMode: 'dep',
         parameterSummary: '9×9×5 grid · five layered flow units · centered commingled producer',

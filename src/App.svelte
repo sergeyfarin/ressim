@@ -219,28 +219,7 @@
                                 previewVariantParams={scenario.previewVariantParams}
                                 pendingPreviewVariants={scenario.pendingPreviewVariants}
                                 previewBaseParams={params as Record<string, any>}
-                                rateHistory={runtime.rateHistory}
-                                analyticalProductionData={scenario.liveAnalyticalOutput.production}
-                                avgReservoirPressureSeries={runtime.avgReservoirPressureSeries}
-                                avgWaterSaturationSeries={runtime.avgWaterSaturationSeries}
-                                ooipM3={params.ooipM3}
-                                poreVolumeM3={params.poreVolumeM3}
-                                activeCase={scenario.activeCase}
                                 {theme}
-                                analyticalMeta={scenario.liveAnalyticalOutput.meta}
-                                rockProps={scenario.selectedOutputProfile.rockProps}
-                                fluidProps={scenario.selectedOutputProfile.fluidProps}
-                                layerPermeabilities={params.permMode === 'perLayer' && params.layerPermsX.length > 1
-                                    ? params.layerPermsX
-                                    : params.nz > 1
-                                        ? Array.from({ length: params.nz }, () => params.uniformPermX)
-                                        : [params.uniformPermX]}
-                                layerThickness={params.cellDz}
-                                showSweepPanel={scenario.showSweepPanel}
-                                sweepGeometry={scenario.sweepGeometry}
-                                sweepAnalyticalMethod={scenario.sweepAnalyticalMethod}
-                                sweepEfficiencySimSeries={scenario.sweepEfficiencySimSeries}
-                                sweepRFAnalytical={scenario.sweepRFAnalytical}
                             />
                         {:else}
                             <div class="p-4 md:p-5 text-sm text-muted-foreground w-full text-center">
