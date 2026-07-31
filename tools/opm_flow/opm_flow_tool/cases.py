@@ -484,4 +484,125 @@ GAS_DRIVE = OpmCase(
 )
 
 
-CASES = {case.key: case for case in (WF_BL1D, SPE1_GAS_INJECTION, GAS_DRIVE)}
+WF_GRAVITY = OpmCase(
+    key="wf_gravity",
+    scenario_key="wf_gravity",
+    label="Gravity Override Cross-Section (base case)",
+    deck_name="WF_GRAVITY.DATA",
+    supported_curves=("FWCT", "FOPR", "FWPR", "FWIR", "FOPT", "FWPT", "FWIT", "FPR"),
+    units={"system": "METRIC", "time": "days", "pressure": "bar", "rate": "m3/day"},
+    curve_display={
+        # Panels carry one property each, so only the vectors with a ResSim
+        # counterpart in the waterflood layout are displayed: water cut, oil
+        # rate, cumulative oil and average pressure. The rest stay in the
+        # summary for provenance.
+        "FWCT": {"panelKey": "rates", "curveKey": "opm-water-cut", "label": "OPM Flow — Water Cut"},
+        "FOPR": {"panelKey": "oil_rate", "curveKey": "opm-oil-rate", "label": "OPM Flow — Oil Rate"},
+        "FOPT": {"panelKey": "cumulative", "curveKey": "opm-cum-oil", "label": "OPM Flow — Cum Oil"},
+        "FPR": {"panelKey": "diagnostics", "curveKey": "opm-avg-pressure", "label": "OPM Flow — Avg Pressure"},
+    },
+    deck=_clean_deck(
+        """
+        RUNSPEC
+        TITLE
+          RESSIM WF_GRAVITY OPM FLOW REFERENCE /
+        DIMENS
+          30 1 20 /
+        OIL
+        WATER
+        METRIC
+        TABDIMS
+          1 1 20 20 1 20 /
+        EQLDIMS
+        /
+        WELLDIMS
+          2 2 1 2 /
+        START
+          1 JAN 2026 /
+        GRID
+        DXV
+          30*10 /
+        DYV
+          1*20 /
+        DZV
+          20*2 /
+        TOPS
+          30*0 /
+        PORO
+          600*0.2 /
+        PERMX
+          600*5000 /
+        PERMY
+          600*5000 /
+        PERMZ
+          600*5000 /
+        PROPS
+        PVTW
+          300 1.0 3E-6 0.5 0 /
+        PVDO
+          100 1.002 1.0
+          300 1.000 1.0
+          500 0.998 1.0 /
+        ROCK
+          300 1E-6 /
+        DENSITY
+          800 1000 1 /
+        -- Corey n_w = n_o = 2, S_wc = S_or = 0.1, end points 1.0, zero capillary
+        -- pressure: the same rock curves as the ResSim wf_gravity scenario.
+        SWOF
+          0.10 0.0 1.0 0
+          0.20 0.015625 0.765625 0
+          0.30 0.0625 0.5625 0
+          0.40 0.140625 0.390625 0
+          0.50 0.25 0.25 0
+          0.60 0.390625 0.140625 0
+          0.70 0.5625 0.0625 0
+          0.80 0.765625 0.015625 0
+          0.90 1.0 0.0 0 /
+        REGIONS
+        SOLUTION
+        -- Datum at the mid-depth of the 40 m section so the initial hydrostatic
+        -- field averages the ResSim scenario's uniform 300 bar. Water contact is
+        -- placed far below the model, leaving every cell at connate water.
+        EQUIL
+          20 300 10000 0 0 0 0 0 0 /
+        SUMMARY
+        FWCT
+        FOPR
+        FWPR
+        FWIR
+        FOPT
+        FWPT
+        FWIT
+        FPR
+        RUNSUM
+        SEPARATE
+        SCHEDULE
+        RPTRST
+          BASIC=2 /
+        -- One perforation per well, both in the bottom layer: the ResSim engine
+        -- applies no wellbore hydrostatic correction across completions, so the
+        -- comparison is only well-model-neutral with a single connection each.
+        WELSPECS
+          'INJ' 'G' 1 1 39 'WATER' /
+          'PROD' 'G' 30 1 39 'OIL' /
+        /
+        COMPDAT
+          'INJ' 1 1 20 20 'OPEN' 2* 0.2 /
+          'PROD' 30 1 20 20 'OPEN' 2* 0.2 /
+        /
+        WCONINJE
+          'INJ' 'WATER' 'OPEN' 'RATE' 160 1* 600 /
+        /
+        WCONPROD
+          'PROD' 'OPEN' 'BHP' 5* 200 /
+        /
+        TSTEP
+          210*2 /
+        END
+        """
+    ),
+)
+
+
+CASES = {case.key: case for case in (WF_BL1D, SPE1_GAS_INJECTION, GAS_DRIVE, WF_GRAVITY)}

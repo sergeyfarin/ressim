@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import initWasm, { ReservoirSimulator } from '../../ressim/pkg/simulator.js';
 import { computeBLRecoveryVsPVI, computeWelgeMetrics } from '../../analytical/fractionalFlow';
 import { getScenario, getScenarioWithVariantParams } from '../scenarios';
+import { listDeclaredOpmFlowArtifactKeys, resolveScenarioReferenceSeries } from '../opmFlowArtifacts';
 
 let wasmReady: Promise<unknown> | null = null;
 
@@ -139,6 +140,52 @@ describe('wf_gravity scenario definition', () => {
     });
 });
 
+describe('wf_gravity OPM Flow cross-check', () => {
+    it('declares the bundled artifact and keeps the deck aligned with the base case', () => {
+        const scenario = getScenario('wf_gravity');
+
+        expect(listDeclaredOpmFlowArtifactKeys(scenario?.referenceSources)).toEqual(['wf_gravity']);
+        const series = resolveScenarioReferenceSeries(scenario?.referenceSources);
+        expect(series.map((entry) => entry.curveKey)).toEqual([
+            'opm-water-cut', 'opm-oil-rate', 'opm-cum-oil', 'opm-avg-pressure',
+        ]);
+        // The deck's schedule is 210 × 2 days; the artifact must cover the same
+        // horizon or the two curves would be compared over different floods.
+        const lastDay = series[0].data.at(-1)!.x;
+        expect(lastDay).toBe(Number(scenario?.params.steps) * Number(scenario?.params.delta_t_days));
+    });
+
+    it('agrees with the OPM Flow run of the identical model', async () => {
+        await ensureWasmReady();
+
+        const scenario = getScenario('wf_gravity');
+        const series = resolveScenarioReferenceSeries(scenario?.referenceSources);
+        const cumOil = series.find((entry) => entry.curveKey === 'opm-cum-oil')!.data;
+        const waterCut = series.find((entry) => entry.curveKey === 'opm-water-cut')!.data;
+
+        const poreVolume = 30 * 10 * 1 * 20 * 20 * 2 * 0.2;
+        const oilInPlace = poreVolume * 0.9;
+        const rate = Number(scenario?.params.targetInjectorRate);
+        const dayAtOnePvi = poreVolume / rate;
+        const opmRecoveryAtOnePvi = cumOil.find((point) => point.x >= dayAtOnePvi)!.y / oilInPlace;
+        const opmBreakthroughPvi = (waterCut.find((point) => point.y > 0.01)!.x * rate) / poreVolume;
+
+        const ressim = runVariant('opm_cross_check', 'opm_step_2d');
+
+        expect(ressim.warning).toBe('');
+        // Measured: OPM 0.583 / 0.227, ResSim 0.585 / 0.253. Two independent
+        // simulators reproducing the gravity tongue is the evidence that the
+        // 18 % shortfall against Buckley-Leverett is physics, not an IMPES defect.
+        expect(opmRecoveryAtOnePvi).toBeCloseTo(0.583, 2);
+        expect(Math.abs(ressim.recoveryAtOnePvi - opmRecoveryAtOnePvi) / opmRecoveryAtOnePvi)
+            .toBeLessThan(0.02);
+        // Breakthrough timing is the more demanding comparison — measured 0.253
+        // against OPM's 0.227, 12 % apart, where BL's 0.586 is 158 % late.
+        expect(Math.abs(ressim.breakthroughPvi - opmBreakthroughPvi) / opmBreakthroughPvi)
+            .toBeLessThan(0.15);
+    }, 180_000);
+});
+
 describe('wf_gravity measured behaviour', () => {
     it('returns to Buckley-Leverett with gravity off and departs from it with gravity on', async () => {
         await ensureWasmReady();
@@ -178,11 +225,11 @@ describe('wf_gravity measured behaviour', () => {
             expect(run.warning, key).toBe('');
         }
 
-        // Monotone in N_g: 0.14 → 0.56 → 2.23 measured 0.689 → 0.586 → 0.383.
+        // Monotone in N_g: 0.14 → 0.56 → 2.23 measured 0.689 → 0.585 → 0.380.
         expect(viscous.recoveryAtOnePvi).toBeGreaterThan(base.recoveryAtOnePvi);
         expect(base.recoveryAtOnePvi).toBeGreaterThan(gravityDominated.recoveryAtOnePvi);
         expect(viscous.recoveryAtOnePvi).toBeCloseTo(0.689, 1);
-        expect(gravityDominated.recoveryAtOnePvi).toBeCloseTo(0.383, 1);
+        expect(gravityDominated.recoveryAtOnePvi).toBeCloseTo(0.380, 1);
 
         // The scenario text claims BL over-predicts by ~87 % at the slow rung.
         const blCurve = computeBLRecoveryVsPVI(ROCK, FLUID, 2, 400);
@@ -234,7 +281,7 @@ describe('wf_gravity measured behaviour', () => {
         const tightPenalty = tightNoGravity.recoveryAtOnePvi - tightGravity.recoveryAtOnePvi;
         const isoPenalty = isoNoGravity.recoveryAtOnePvi - isoGravity.recoveryAtOnePvi;
 
-        // Measured 0.034 against 0.113: suppressing k_z suppresses the tongue.
+        // Measured 0.033 against 0.114: suppressing k_z suppresses the tongue.
         expect(tightPenalty).toBeGreaterThan(0);
         expect(tightPenalty).toBeLessThan(0.5 * isoPenalty);
         // …while the low-k_z pair sits far below BL for a reason that is not gravity.

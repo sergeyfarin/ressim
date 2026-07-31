@@ -42,6 +42,19 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   `parseLayerValues` drops non-positive entries and would have deleted layer 0), wired through
   `applyParamValues`, `buildCorePayload`, `buildModelResetKey` and the parameter snapshot. Empty
   array keeps the previous all-layers behaviour.
+- [x] **OPM Flow ground truth for `wf_gravity` (2026-08-01).** Deck added to
+  `tools/opm_flow/opm_flow_tool/cases.py` reproducing the base case cell for cell (30x1x20, isotropic
+  5 D, single-connection wells, 160 m3/day WCONINJE RATE, 210 x 2-day TSTEP). Run with flow 2026.04:
+  OPM breaks through at 0.227 PVI and recovers 0.583 at 1 PVI against ResSim's 0.253 / 0.585 — 0.4 %
+  apart on recovery, 12 % on breakthrough, both 18 % below Buckley-Leverett. Guarded by
+  `wf_gravity.test.ts`. This is what makes the scenario's central claim checkable: the departure from
+  BL is reproduced by an independent industrial simulator.
+- [ ] **Reference series cannot render on a PVI x-axis (found 2026-08-01).** `PublishedReferenceSeries.data.x`
+  is time in days and `appendPublishedReferenceSeries` passes it through unchanged, so an OPM overlay
+  lands at the wrong x whenever the chart is on `pvi` (or `cumInjection`). `wf_gravity` works around it
+  with a time-axis dimension override and `defaultVisible: false`. The fix is to carry the reference
+  run's own cumulative injection (FWIT is already in the deck's SUMMARY) in the artifact and map x the
+  same way the simulation curves are mapped.
 - [ ] **Gravity-modified fractional flow as an honest reference for `wf_gravity` (opened 2026-08-01).**
   The scenario currently shows the viscous-only BL curve and measures the departure. Dake ch. 10 gives
   the gravity term in f_w explicitly, and adding it to `src/lib/analytical/fractionalFlow.ts` would let

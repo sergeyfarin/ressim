@@ -37,3 +37,4 @@ __pycache__/
 
 #OPM
 /OPM
+tools/opm_flow/tmp/

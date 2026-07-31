@@ -230,6 +230,12 @@ gravity biases its allocation towards the top of the section by ~rho.g.H — neg
 this scenario perforates exactly one layer, which removes the allocation question entirely. Any
 future multi-layer gravity case (T7.16, WAG, aquifer work) needs the datum fix first.
 
+**OPM Flow cross-check (added 2026-08-01).** The base case is now also an `OpmCase` deck, run with
+flow 2026.04 and bundled as `src/lib/catalog/opm-flow-results/wf_gravity.json`. OPM: breakthrough
+0.227 PVI, RF 0.583 at 1 PVI. ResSim: 0.253 / 0.585 — 0.4 % apart on recovery, 12 % on breakthrough,
+both 18 % below BL. The scenario's `opm_cross_check` dimension switches the chart to a time axis
+because reference series carry x in days and cannot yet be mapped onto the PVI axis (`TODO.md`).
+
 **Enabler closed: completion layers on the live path.** `producerKLayers` / `injectorKLayers` existed
 in `buildCreatePayload` and the worker but were not carried by `ParameterStore`, so only the
 benchmark-preset path could use them. Now plumbed; empty array keeps the all-layers default.

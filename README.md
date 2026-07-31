@@ -18,7 +18,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 |---|---|---|---|
 | Buckley–Leverett Displacement | 1D Waterflood | `wf_bl1d` | Buckley–Leverett + Welge analytical reference; also hosts the FIM-vs-IMPES formulation comparison |
 | Buckley–Leverett Displacement | 1D Waterflood — Capillary Effects | `wf_capillary` | Departure from the zero-capillary BL limit; physical versus numerical front spreading |
-| Buckley–Leverett Displacement | Gravity Override (Dietz Tongue) | `wf_gravity` | Vertical section where dense water underruns the front; gravity-off control returns to BL, rate/density/k_z/completion ladders leave it |
+| Buckley–Leverett Displacement | Gravity Override (Dietz Tongue) | `wf_gravity` | Vertical section where dense water underruns the front; gravity-off control returns to BL, rate/density/k_z/completion ladders leave it; OPM Flow cross-check of the base case |
 | Sweep Efficiency | Areal Sweep | `sweep_areal` | Craig confined five-spot correlation |
 | Sweep Efficiency | Vertical Sweep | `sweep_vertical` | Dykstra–Parsons / Stiles layered sweep |
 | Sweep Efficiency | Combined Sweep | `sweep_combined` | Combined areal and vertical contact with selectable layered correlation |

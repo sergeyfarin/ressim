@@ -2,6 +2,7 @@ import type { PublishedReferenceSeries, ScenarioReferenceSourceDef } from './sce
 import wfBl1dArtifact from './opm-flow-results/wf_bl1d.json';
 import spe1Artifact from './opm-flow-results/spe1_gas_injection.json';
 import gasDriveArtifact from './opm-flow-results/gas_drive.json';
+import wfGravityArtifact from './opm-flow-results/wf_gravity.json';
 
 export type ReferenceSourceType =
     | 'analytical'
@@ -37,6 +38,7 @@ const ARTIFACTS = [
     wfBl1dArtifact as OpmFlowArtifact,
     spe1Artifact as OpmFlowArtifact,
     gasDriveArtifact as OpmFlowArtifact,
+    wfGravityArtifact as OpmFlowArtifact,
 ];
 
 export function listOpmFlowArtifacts(): OpmFlowArtifact[] {

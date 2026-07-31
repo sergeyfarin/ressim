@@ -13,7 +13,7 @@ import { getScenario, listScenarios } from './scenarios';
 // to `deck-ready`/`flow-run`/`error` means someone regenerated it without a
 // real Flow run behind it, which is exactly the silent-stub failure mode
 // this pipeline used to have.
-const PARSED_BASELINE = ['wf_bl1d', 'spe1_gas_injection', 'gas_drive'];
+const PARSED_BASELINE = ['wf_bl1d', 'spe1_gas_injection', 'gas_drive', 'wf_gravity'];
 
 describe('OPM Flow precomputed artifacts', () => {
     it('ships explicit metadata for predefined OPM Flow artifact targets', () => {
@@ -23,6 +23,7 @@ describe('OPM Flow precomputed artifacts', () => {
             'gas_drive',
             'spe1_gas_injection',
             'wf_bl1d',
+            'wf_gravity',
         ]);
         for (const artifact of artifacts) {
             expect(artifact.schemaVersion).toBe(1);
