@@ -19,10 +19,23 @@ import {
     type FluidProps,
     type RockProps,
 } from '../analytical/fractionalFlow';
+import {
+    arealSweepAtBreakthrough,
+    arealSweepAtPvi,
+    mobilityRatio,
+    type SweepGeometry,
+} from '../analytical/sweepEfficiency';
 
 /** Which grid direction the profile runs along. */
 export type SpatialProfileAxis = 'i' | 'j' | 'k' | 'well-path';
 export type SpatialProfileLayerSelection = number | 'average';
+export type SpatialProfileReference =
+    | { kind: 'buckley-leverett' }
+    | {
+        kind: 'sweep';
+        geometry: Extract<SweepGeometry, 'areal' | 'both'>;
+        layerPermeabilities: number[];
+    };
 
 /**
  * The property to profile. Deliberately the same union as the 3D view's
@@ -61,8 +74,12 @@ export type SpatialProfileGrid = {
     cellDzPerLayer?: number[];
 };
 
-/** Default to the displacement axis so the BL reference is visible on waterfloods. */
-export function defaultSpatialProfileAxis(grid: SpatialProfileGrid): SpatialProfileAxis {
+/** Pick the analytical displacement path appropriate to the active scenario. */
+export function defaultSpatialProfileAxis(
+    grid: SpatialProfileGrid,
+    reference?: SpatialProfileReference | null,
+): SpatialProfileAxis {
+    if (reference?.kind === 'sweep' && grid.nx > 1 && grid.ny > 1) return 'well-path';
     return grid.nx > 1 ? 'i' : grid.ny > 1 ? 'j' : 'k';
 }
 
@@ -259,6 +276,7 @@ export type FloodFrontOverlay = {
     frontDistance: number;
     shockSw: number;
     initialSw: number;
+    label: string;
 };
 
 /** Injected reservoir volume through a selected replay time, using report-step rates. */
@@ -358,5 +376,122 @@ export function buildFloodFrontOverlay(input: {
         frontDistance,
         shockSw,
         initialSw,
+        label: 'Buckley–Leverett reference',
+    };
+}
+
+/**
+ * Craig-contacted five-spot diagonal with Buckley–Leverett displacement inside it.
+ *
+ * Craig predicts contacted area, not a unique saturation contour. We map its
+ * pre-breakthrough E_A/E_A(BT) progression onto the injector→producer diagonal,
+ * then evaluate the BL rarefaction in that contacted distance. For a combined
+ * layered flood, Stiles' permeability-weighted layer allocation supplies each
+ * layer's local PVI before selected-layer/column-average presentation.
+ */
+export function buildSweepDiagonalOverlay(input: {
+    grid: SpatialProfileGrid;
+    axis: SpatialProfileAxis;
+    property: SpatialProfileProperty;
+    layerSelection: SpatialProfileLayerSelection;
+    geometry: Extract<SweepGeometry, 'areal' | 'both'>;
+    rock: RockProps;
+    fluid: FluidProps;
+    initialSaturation: number;
+    porosity: number;
+    injectedVolume: number;
+    layerPermeabilities: number[];
+    injectorI: number;
+    injectorJ: number;
+    producerI: number;
+    producerJ: number;
+}): FloodFrontOverlay | null {
+    if (input.axis !== 'well-path' || input.property !== 'saturation_water') return null;
+    if (!(input.injectedVolume > 0) || !(input.porosity > 0)) return null;
+
+    const thicknesses = buildLayerThicknesses({
+        nz: input.grid.nz,
+        cellDz: input.grid.cellDz,
+        cellDzPerLayer: input.grid.cellDzPerLayer,
+    });
+    const bulkVolume = Math.max(1e-12,
+        input.grid.nx * input.grid.cellDx
+        * input.grid.ny * input.grid.cellDy
+        * thicknesses.reduce((sum, value) => sum + value, 0));
+    const globalPvi = input.injectedVolume / Math.max(1e-12, input.porosity * bulkVolume);
+    if (!(globalPvi > 0)) return null;
+
+    const metrics = computeWelgeMetrics(input.rock, input.fluid, input.initialSaturation);
+    if (!(metrics.breakthroughPvi > 1e-12)) return null;
+    const eaBt = arealSweepAtBreakthrough(mobilityRatio(input.rock, input.fluid));
+    const eA = arealSweepAtPvi(
+        mobilityRatio(input.rock, input.fluid),
+        globalPvi,
+        metrics.breakthroughPvi,
+    );
+    if (!(eA > 1e-12) || !(eaBt > 1e-12)) return null;
+
+    const contactedFraction = Math.min(1, eA / eaBt);
+    const path = buildWellPath(
+        input.grid,
+        input.injectorI,
+        input.injectorJ,
+        input.producerI,
+        input.producerJ,
+    );
+    const distances = path.map((cell, index) => index === 0 ? 0 : Math.hypot(
+        (cell.i - path[0].i) * input.grid.cellDx,
+        (cell.j - path[0].j) * input.grid.cellDy,
+    ));
+    const pathLength = Math.max(1e-12, distances.at(-1) ?? 0);
+    const zonePvi = globalPvi / eA;
+
+    const nz = Math.max(1, Math.round(input.grid.nz));
+    const rawPerms = Array.from({ length: nz }, (_, k) =>
+        Math.max(0, Number(input.layerPermeabilities[k] ?? input.layerPermeabilities[0] ?? 1) || 0));
+    const permTotal = rawPerms.reduce((sum, value) => sum + value, 0);
+    const flowFractions = permTotal > 1e-12
+        ? rawPerms.map((value) => value / permTotal)
+        : rawPerms.map(() => 1 / nz);
+
+    const selectedLayers = input.layerSelection === 'average'
+        ? Array.from({ length: nz }, (_, k) => k)
+        : [Math.max(0, Math.min(nz - 1, Math.round(input.layerSelection)))];
+    const maxSw = 1 - input.rock.s_or;
+    const dfwShock = 1 / metrics.breakthroughPvi;
+    const slopeAtMaxSw = dfw_dSw(maxSw, input.rock, input.fluid, 1e-5);
+    function saturationAtSlope(targetSlope: number): number {
+        if (targetSlope >= dfwShock) return metrics.shockSw;
+        if (targetSlope <= slopeAtMaxSw) return maxSw;
+        let lo = metrics.shockSw;
+        let hi = maxSw;
+        for (let iteration = 0; iteration < 60; iteration += 1) {
+            const mid = 0.5 * (lo + hi);
+            if (dfw_dSw(mid, input.rock, input.fluid, 1e-5) > targetSlope) lo = mid;
+            else hi = mid;
+        }
+        return 0.5 * (lo + hi);
+    }
+
+    const layerValues = selectedLayers.map((layer) => {
+        const localPvi = zonePvi * nz * flowFractions[layer];
+        return distances.map((distance) => {
+            const contactedCoordinate = (distance / pathLength) / contactedFraction;
+            if (contactedCoordinate > localPvi * dfwShock) return metrics.initialSw;
+            return saturationAtSlope(contactedCoordinate / Math.max(1e-12, localPvi));
+        });
+    });
+    const values = distances.map((_, index) =>
+        layerValues.reduce((sum, layer) => sum + layer[index], 0) / layerValues.length);
+    const leadingLocalPvi = Math.max(...selectedLayers.map((layer) => zonePvi * nz * flowFractions[layer]));
+
+    return {
+        values,
+        frontDistance: pathLength * contactedFraction * Math.min(1, leadingLocalPvi * dfwShock),
+        shockSw: metrics.shockSw,
+        initialSw: metrics.initialSw,
+        label: input.geometry === 'both'
+            ? 'Craig + Stiles + BL reference'
+            : 'Craig + BL reference',
     };
 }

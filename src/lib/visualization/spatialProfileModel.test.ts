@@ -4,6 +4,7 @@ import {
     axisLength,
     buildFloodFrontOverlay,
     buildSpatialProfile,
+    buildSweepDiagonalOverlay,
     buildWellPath,
     cumulativeInjectedVolume,
     defaultSpatialProfileAxis,
@@ -43,6 +44,15 @@ describe('axis geometry', () => {
         expect(defaultSpatialProfileAxis(GRID)).toBe('i');
         expect(defaultSpatialProfileAxis({ ...GRID, nx: 1 })).toBe('j');
         expect(defaultSpatialProfileAxis({ ...GRID, nx: 1, ny: 1 })).toBe('k');
+    });
+
+    it('defaults areal and combined sweep references to the injector-producer path', () => {
+        expect(defaultSpatialProfileAxis(GRID, {
+            kind: 'sweep', geometry: 'areal', layerPermeabilities: [100],
+        })).toBe('well-path');
+        expect(defaultSpatialProfileAxis(GRID, {
+            kind: 'sweep', geometry: 'both', layerPermeabilities: [100, 50],
+        })).toBe('well-path');
     });
 
     it('reports the cell count along each axis', () => {
@@ -229,5 +239,55 @@ describe('buildFloodFrontOverlay', () => {
             grid: { ...GRID, cellDzPerLayer: [50, 50] },
         })!;
         expect(thick.frontDistance).toBeLessThan(thin.frontDistance);
+    });
+});
+
+describe('buildSweepDiagonalOverlay', () => {
+    const base = {
+        grid: GRID,
+        axis: 'well-path' as const,
+        property: 'saturation_water' as const,
+        layerSelection: 'average' as const,
+        geometry: 'both' as const,
+        rock: ROCK,
+        fluid: FLUID,
+        initialSaturation: 0.2,
+        porosity: 0.2,
+        injectedVolume: 500,
+        layerPermeabilities: [100, 100],
+        injectorI: 0,
+        injectorJ: 0,
+        producerI: 3,
+        producerJ: 2,
+    };
+
+    it('builds a Craig-contacted BL profile along the diagonal and advances it with PVI', () => {
+        const early = buildSweepDiagonalOverlay(base)!;
+        const later = buildSweepDiagonalOverlay({ ...base, injectedVolume: 2_000 })!;
+        expect(early).not.toBeNull();
+        expect(early.label).toBe('Craig + Stiles + BL reference');
+        expect(early.values).toHaveLength(buildWellPath(GRID, 0, 0, 3, 2).length);
+        expect(early.values[0]).toBeGreaterThan(early.initialSw);
+        expect(later.frontDistance).toBeGreaterThan(early.frontDistance);
+    });
+
+    it('allocates combined-sweep local PVI by layer and averages the analytical layers', () => {
+        const fast = buildSweepDiagonalOverlay({
+            ...base, layerSelection: 0, layerPermeabilities: [300, 30],
+        })!;
+        const slow = buildSweepDiagonalOverlay({
+            ...base, layerSelection: 1, layerPermeabilities: [300, 30],
+        })!;
+        const average = buildSweepDiagonalOverlay({
+            ...base, layerSelection: 'average', layerPermeabilities: [300, 30],
+        })!;
+        expect(fast.frontDistance).toBeGreaterThan(slow.frontDistance);
+        expect(average.values).toEqual(fast.values.map((value, index) =>
+            (value! + slow.values[index]!) / 2));
+    });
+
+    it('does not present a sweep diagonal reference on an orthogonal axis', () => {
+        expect(buildSweepDiagonalOverlay({ ...base, axis: 'i' })).toBeNull();
+        expect(buildSweepDiagonalOverlay({ ...base, property: 'pressure' })).toBeNull();
     });
 });

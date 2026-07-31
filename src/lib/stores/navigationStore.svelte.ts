@@ -58,6 +58,8 @@ import {
 } from '../analytical/sweepEfficiency';
 import type { GridState, WellState, SimulatorSnapshot, RateHistoryPoint } from '../simulator-types';
 import { resolvePressureDisplayRange, type PressureDisplayRange } from '../visualization/spatialViewModel';
+import type { SpatialProfileReference } from '../visualization/spatialProfileModel';
+import { getLayerPermeabilities } from '../charts/analyticalParamAdapters';
 
 // ---------- Presentation-layer types (live in nav store; used by App.svelte) ----------
 
@@ -67,6 +69,7 @@ export type OutputSelectionProfile = {
     cellDx: number; cellDy: number; cellDz: number;
     simTime: number; porosity: number; rateHistory: RateHistoryPoint[];
     scenarioMode: 'waterflood' | 'depletion' | 'none';
+    spatialReference: SpatialProfileReference | null;
     sourceLabel: string;
     injectorI: number; injectorJ: number; producerI: number; producerJ: number;
     initialSaturation: number;
@@ -388,6 +391,14 @@ class NavigationStoreImpl {
 
     selectedOutputProfile = $derived.by((): OutputSelectionProfile => {
         const ref = this.activeSelectedReferenceResult;
+        const outputParams = (ref?.params ?? this.#params.buildCurrentParameterSnapshot()) as Record<string, unknown>;
+        const scenarioCaps = this.activeScenarioObject?.capabilities;
+        const sweepGeometry = scenarioCaps?.analyticalMethod === 'sweep'
+            ? scenarioCaps.sweepGeometry
+            : null;
+        const scenarioMode = ref
+            ? getAnalyticalModeForMethod(ref.analyticalMethod)
+            : this.#params.analyticalMode;
         return {
             gridState: ref?.finalSnapshot?.grid ?? this.#runtime.gridStateRaw ?? null,
             nx: Number(ref?.params.nx ?? this.#params.nx),
@@ -400,9 +411,14 @@ class NavigationStoreImpl {
                 ?? Number(ref?.rateHistory.at(-1)?.time ?? this.#runtime.simTime),
             porosity: Number(ref?.params.reservoirPorosity ?? this.#params.reservoirPorosity),
             rateHistory: ref?.rateHistory ?? this.#runtime.rateHistory,
-            scenarioMode: ref
-                ? getAnalyticalModeForMethod(ref.analyticalMethod)
-                : this.#params.analyticalMode,
+            scenarioMode,
+            spatialReference: sweepGeometry === 'areal' || sweepGeometry === 'both'
+                ? {
+                    kind: 'sweep',
+                    geometry: sweepGeometry,
+                    layerPermeabilities: getLayerPermeabilities(outputParams),
+                }
+                : scenarioMode === 'waterflood' ? { kind: 'buckley-leverett' } : null,
             sourceLabel: ref ? ref.label : 'Live runtime',
             injectorI: Number(ref?.params.injectorI ?? this.#params.injectorI),
             injectorJ: Number(ref?.params.injectorJ ?? this.#params.injectorJ),

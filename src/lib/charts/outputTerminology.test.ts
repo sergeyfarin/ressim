@@ -6,6 +6,7 @@ const comparisonChartSource = fs.readFileSync(path.join(__dirname, 'ReferenceCom
 const rateChartSource = fs.readFileSync(path.join(__dirname, 'RateChart.svelte'), 'utf8');
 const universalChartSource = fs.readFileSync(path.join(__dirname, 'UniversalChart.svelte'), 'utf8');
 const spatialProfileSource = fs.readFileSync(path.join(__dirname, '..', 'visualization', 'SpatialProfileChart.svelte'), 'utf8');
+const spatialProfileModelSource = fs.readFileSync(path.join(__dirname, '..', 'visualization', 'spatialProfileModel.ts'), 'utf8');
 const appSource = fs.readFileSync(path.join(__dirname, '..', '..', 'App.svelte'), 'utf8');
 const threeDViewCardSource = fs.readFileSync(path.join(__dirname, '..', 'ui', 'cards', 'ThreeDViewCard.svelte'), 'utf8');
 
@@ -35,9 +36,13 @@ describe('output terminology copy', () => {
     expect(universalChartSource).not.toMatch(/Analytical: \{mismatchSummary\.pointsCompared\} pts/);
     // The Sw profile moved to the 3D group as SpatialProfileChart (it shows one
     // snapshot, not a whole run) and now follows the shared property selector,
-    // so its copy is property-neutral apart from the flood-front overlay.
-    expect(spatialProfileSource).toMatch(/Reference Front Profile/);
-    expect(spatialProfileSource).toMatch(/Reference flood front at/);
+    // so its copy is property-neutral apart from the method-specific reference
+    // overlay and the explicit Craig-to-diagonal disclosure.
+    expect(spatialProfileSource).toMatch(/frontOverlay\.label/);
+    expect(spatialProfileSource).toMatch(/Craig E_A is mapped to the diagonal/);
+    expect(spatialProfileModelSource).toMatch(/Buckley–Leverett reference/);
+    expect(spatialProfileModelSource).toMatch(/Craig \+ BL reference/);
+    expect(spatialProfileModelSource).toMatch(/Craig \+ Stiles \+ BL reference/);
     expect(spatialProfileSource).toMatch(/Profile/);
     expect(spatialProfileSource).not.toMatch(/Analytical Front Profile/);
   });

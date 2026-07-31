@@ -23,12 +23,14 @@
         axisLength,
         buildFloodFrontOverlay,
         buildSpatialProfile,
+        buildSweepDiagonalOverlay,
         cumulativeInjectedVolume,
         defaultSpatialProfileAxis,
         type SpatialProfileAxis,
         type SpatialProfileGrid,
         type SpatialProfileLayerSelection,
         type SpatialProfileProperty,
+        type SpatialProfileReference,
     } from "./spatialProfileModel";
     import type { GridState, RateHistoryPoint } from "../simulator-types";
     import type { FluidProps, RockProps } from "../analytical/fractionalFlow";
@@ -38,6 +40,7 @@
         gridState = null,
         grid,
         property = "saturation_water",
+        reference = null,
         simTime = 0,
         sourceLabel = "Live runtime",
         theme = "dark",
@@ -55,6 +58,7 @@
         gridState?: GridState | null;
         grid: SpatialProfileGrid;
         property?: SpatialProfileProperty;
+        reference?: SpatialProfileReference | null;
         simTime?: number;
         sourceLabel?: string;
         theme?: "dark" | "light";
@@ -87,7 +91,7 @@
     const hasDiagonalWellPath = $derived(
         grid.nx > 1 && grid.ny > 1 && injectorI !== producerI && injectorJ !== producerJ,
     );
-    let axis = $state<SpatialProfileAxis>(untrack(() => defaultSpatialProfileAxis(grid)));
+    let axis = $state<SpatialProfileAxis>(untrack(() => defaultSpatialProfileAxis(grid, reference)));
     let userI = $state<number | null>(null);
     let userJ = $state<number | null>(null);
     let userK = $state<number | null>(null);
@@ -122,8 +126,29 @@
         }),
     );
 
-    const frontOverlay = $derived(
-        buildFloodFrontOverlay({
+    const frontOverlay = $derived.by(() => {
+        const injectedVolume = cumulativeInjectedVolume(rateHistory, simTime);
+        if (reference?.kind === "sweep") {
+            return buildSweepDiagonalOverlay({
+                grid,
+                axis,
+                property,
+                layerSelection,
+                geometry: reference.geometry,
+                rock: rockProps,
+                fluid: fluidProps,
+                initialSaturation,
+                porosity,
+                injectedVolume,
+                layerPermeabilities: reference.layerPermeabilities,
+                injectorI,
+                injectorJ,
+                producerI,
+                producerJ,
+            });
+        }
+        if (reference?.kind !== "buckley-leverett") return null;
+        return buildFloodFrontOverlay({
             grid,
             axis,
             property,
@@ -131,9 +156,9 @@
             fluid: fluidProps,
             initialSaturation,
             porosity,
-            injectedVolume: cumulativeInjectedVolume(rateHistory, simTime),
-        }),
-    );
+            injectedVolume,
+        });
+    });
 
     /** The two indices held constant, as editable controls. */
     const heldAxes = $derived(
@@ -211,7 +236,7 @@
 
         if (frontOverlay) {
             datasets.push({
-                label: "Reference Front Profile",
+                label: frontOverlay.label,
                 data: frontOverlay.values,
                 borderColor: FRONT_COLOR,
                 borderWidth: 2,
@@ -321,8 +346,12 @@
 
         {#if frontOverlay}
             <div class="mt-2 text-[11px] opacity-80">
-                Reference flood front at {frontOverlay.frontDistance.toFixed(1)} m
+                {frontOverlay.label} front at {frontOverlay.frontDistance.toFixed(1)} m
                 (Sw {frontOverlay.initialSw.toFixed(2)} → {frontOverlay.shockSw.toFixed(2)}).
+                {#if reference?.kind === "sweep"}
+                    Craig E_A is mapped to the diagonal; Buckley–Leverett describes displacement
+                    within the contacted region.
+                {/if}
             </div>
         {/if}
     </div>

@@ -150,6 +150,7 @@
                 cellDzPerLayer: selectedOutput3D.cellDzPerLayer,
             }}
             property={showProperty}
+            reference={selectedOutputProfile.spatialReference}
             pressureDisplayRange={selectedOutput3D.pressureDisplayRange}
             simTime={selectedOutput3D.replayTime ?? selectedOutputProfile.simTime}
             sourceLabel={selectedOutput3D.sourceLabel}

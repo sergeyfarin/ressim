@@ -37,6 +37,12 @@ describe('spatial profile wiring', () => {
         expect(/property=\{showProperty\}/.test(cardSrc)).toBe(true);
     });
 
+    it('passes scenario-derived spatial-reference metadata into the profile', () => {
+        expect(cardSrc).toMatch(/reference=\{selectedOutputProfile\.spatialReference\}/);
+        expect(navStoreSrc).toMatch(/spatialReference: sweepGeometry === 'areal' \|\| sweepGeometry === 'both'/);
+        expect(chartSrc).toMatch(/buildSweepDiagonalOverlay/);
+    });
+
     it('takes its snapshot time from the replay position when one is selected', () => {
         expect(/simTime=\{selectedOutput3D\.replayTime \?\? selectedOutputProfile\.simTime\}/.test(cardSrc))
             .toBe(true);
