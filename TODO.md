@@ -462,6 +462,32 @@ Open, blocked on an enabler:
   parser itself is done and both committed artifacts are `status: "parsed"`.
 
 ## Priority 2 — Validation & correctness
+- [x] **(MAJOR) IMPES oil-rate chatter at coarse report steps was two defects, one reporting and one
+  physical (2026-07-31).** Reported as "IMPES needs very small steps for smooth curves, FIM does
+  not". Measured on `wf_bl1d` (96 cells, 50 days, `dt_report` 0.25–2 d) by comparing the reported
+  oil rate against stock-tank inventory depletion over the same interval.
+  1. *Reporting*: `record_step_report` recomputed the produced phase split from the **updated**
+     saturations, while `calculate_fluxes` had transported the split evaluated at the **beginning**
+     of the substep. At a water-flooded producer those differ by a whole substep, so the reported
+     rate was half an oscillation cycle out of phase with the oil actually produced — up to **66%**
+     off over a report step, sign alternating. Fixed by capturing the split before the update
+     (`producer_transport_phase_splits`) and reporting that.
+  2. *Physics*: the producer cell is drained explicitly (`q·f_w(S^n)` for the whole substep), which
+     rings unless `Δt·q·f'_w/V_p ≤ 1`. `max_sat_change_per_step` does not imply that criterion — the
+     well cell moved ~0.045 saturation (under the 0.05 cap) while its water cut alternated between
+     substeps. Added the missing well-cell throughput factor to `stable_dt_factor`
+     (`impes/pressure.rs`) using `frac_flow_water_derivative` (`mobility.rs`).
+  Zig-zag (mean |2nd difference| / mean reported rate, t > 20 d) before → after:
+  `dt=2.0` 32.8% → 1.4%, `dt=1.0` 39.5% → 0.6%, `dt=0.5` 35.7% → 0.2%, `dt=0.25` 0.03% → 0.05%,
+  at a cost of 12–20% more substeps (514→617 at `dt=2.0`). Cumulative reported oil also stopped
+  depending on the report interval: 1349–1365 Sm³ spread → 1362.4–1362.5 Sm³. Pinned by
+  `impes::tests::reporting::` (both tests fail on the parent commit at 41.6% / 32.8%). Gates:
+  `validate-solver-coverage.sh all` 30/30, `benchmark_buckley` green (Case-B breakthrough
+  rel_err 0.091 → 0.097, tolerance 0.30), `pnpm run validate:product` green.
+  **Rejected alternative:** publishing one report-step point holding dt-weighted average rates
+  smooths the chatter too, but the OPM Flow references are instantaneous rates at the report time
+  — `three_phase_gas_drive_matches_opm_flow_reference` went to 69% error at t=10 on the steep
+  early transient. ResSim must keep reporting instantaneous rates to stay comparable.
 - [x] **(MAJOR) `scripts/validate-solver-coverage.sh` could report success without running a gate.**
   Closed 2026-07-24 — **the originally-reported root cause did not reproduce.** The script has had
   `set -euo pipefail` since `dce20c1`, and an injected `E0308` in a `#[cfg(test)]` fixture already
@@ -572,6 +598,39 @@ Open, blocked on an enabler:
 
 FIM is out of the user path (IMPES ships). Do not chase small deltas; big OPM-architecture gaps
 matter more. Search `docs/FIM_EXPERIMENT_REGISTRY.md` by mechanism before any change.
+
+- [ ] **FIM is report-step sensitive on `wf_bl1d` where IMPES is not, via substep fragmentation
+  (measured 2026-07-31, on the IMPES reporting/throughput fix above).** Surfaced by the user's new
+  `solver_impes_coarse` / `solver_fim_coarse` variants. Refinement study, 50-day flood, 96 cells,
+  `impes::tests::reporting::solver_timestep_refinement_probe` (`--ignored --release`, ~6 min):
+
+  | solver | report dt | substeps | breakthrough PV | cum oil 50 d |
+  |---|---|---|---|---|
+  | IMPES | 5.0 → 0.25 | 613 → 704 | 0.5683 → 0.5689 | 1362.5 → 1362.4 |
+  | FIM | 5.0 | 6316 | 0.5470 | 1350.6 |
+  | FIM | 2.0 | 6183 | 0.5152 | 1355.9 |
+  | FIM | 1.0 | 12031 | 0.5576 | 1361.9 |
+  | FIM | 0.5 | 12728 | 0.5649 | 1363.1 |
+  | FIM | 0.25 | 11899 | 0.5566 | 1364.1 |
+
+  Cumulative oil converges monotonically (1350.6 → 1364.1, landing 0.12% from IMPES), so this is
+  **not** a correctness defect — the residual is right and the answer converges. The mechanism is
+  the timestep controller: FIM never actually takes the 5-day step, it fragments into ~630 substeps
+  per report step, and the substep count is non-monotone in the requested step (6.3k / 6.2k / 12k /
+  12.7k / 11.9k). Fine and coarse therefore descend different retry ladders rather than differing by
+  clean time truncation, which is why the two FIM curves separate visibly while the two IMPES curves
+  coincide. Same family as the open fragmentation track (`docs/FIM_STATUS.md`); the waterflood case
+  is a cheaper reproducer than the gas cases.
+
+- [ ] **`wf_bl1d` `solver_formulation` description is now factually wrong.** It claims "at 5-day
+  steps IMPES loses 8.8% of its own fine-step recovery against FIM's 3.1%" and quotes 1347.7 vs
+  1360.8 m³ at 0.25 days. Both were measured against the pre-fix reported rates. Post-fix: IMPES
+  loses **0.0%** (1362.5 vs 1362.4), FIM loses 1.0% (1350.6 vs 1364.1), and the two agree to 0.12%
+  at the fine step. The variant's teaching point has inverted — it now shows that IMPES is
+  step-insensitive because its stability control picks the substeps, while FIM is the step-sensitive
+  one. Note the pre-fix IMPES *solution* was already step-independent (breakthrough PV 0.5668–0.5676
+  across the same sweep); only the reported rates scattered, so the old copy was describing a
+  reporting artifact as a formulation property.
 
 - [x] **Promote corrected flexible GMRES recurrence (2026-07-24).** The shipped oil pressure-
   depletion FIM case exposed false convergence in the historical fixed-left recurrence with

@@ -240,16 +240,30 @@ export const wf_bl1d: Scenario = {
             variants: [
                 {
                     key: 'solver_impes_base',
-                    label: 'IMPES',
+                    label: 'IMPES 0.25-day steps (base)',
                     description: 'The scenario default: implicit pressure followed by explicit saturation transport, with stability-driven internal subdivision.',
-                    paramPatch: {},
+                    paramPatch: { },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'solver_fim_base',
-                    label: 'FIM',
+                    label: 'FIM 0.25-day steps',
                     description: 'Fully implicit coupled pressure/saturation Newton solve at the same fine step. Agrees with IMPES to about 1% in cumulative oil — at this step size the formulation barely matters.',
                     paramPatch: { fimEnabled: true },
+                    affectsAnalytical: false,
+                },
+                {
+                    key: 'solver_impes_coarse',
+                    label: 'IMPES 5-day steps',
+                    description: 'The scenario default: implicit pressure followed by explicit saturation transport, with stability-driven internal subdivision.',
+                    paramPatch: { delta_t_days: 5, steps: 10,},
+                    affectsAnalytical: false,
+                },
+                {
+                    key: 'solver_fim_coarse',
+                    label: 'FIM 5-day steps',
+                    description: 'Fully implicit coupled pressure/saturation Newton solve at the same fine step. Agrees with IMPES to about 1% in cumulative oil — at this step size the formulation barely matters.',
+                    paramPatch: { fimEnabled: true, delta_t_days: 5, steps: 10 },
                     affectsAnalytical: false,
                 },
             ],

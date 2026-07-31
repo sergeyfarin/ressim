@@ -166,6 +166,9 @@ impl ReservoirSimulator {
         let n_cells = self.nx * self.ny * self.nz;
         let (well_source_water_m3_day, well_source_free_gas_sc_day, well_source_dg_sc_day) =
             self.accumulate_well_source_deltas(p_new, well_controls);
+        // Must be captured before the saturation update below overwrites the state the
+        // transport was built from.
+        let phase_splits = self.producer_transport_phase_splits(well_controls);
         let mut actual_change_m3 = 0.0;
         let mut actual_oil_removed_sc = 0.0;
         let mut actual_change_gas_sc = 0.0;
@@ -286,6 +289,7 @@ impl ReservoirSimulator {
 
         self.record_step_report(
             well_controls,
+            &phase_splits,
             dt_days,
             actual_change_m3,
             actual_oil_removed_sc,

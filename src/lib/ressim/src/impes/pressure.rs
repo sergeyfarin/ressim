@@ -493,6 +493,40 @@ impl ReservoirSimulator {
             1.0
         };
 
+        // Explicit fractional flow at a producer cell (see `frac_flow_water_derivative`). The
+        // per-cell saturation cap above is not this criterion: a substep can move the well cell
+        // by well under `max_sat_change_per_step` and still overshoot the fractional-flow
+        // response, which shows up as the producer's water cut alternating between substeps and
+        // hence as chatter on the reported oil rate. Capping the substep throughput at the
+        // monotone limit (ratio 1) damps it instead of leaving it to the report step to average.
+        let mut max_well_throughput_ratio = 0.0_f64;
+        for (w_idx, w) in self.wells.iter().enumerate() {
+            if w.injector {
+                continue;
+            }
+            let Some(control) = well_controls[w_idx] else {
+                continue;
+            };
+            let id = self.idx(w.i, w.j, w.k);
+            let vp_m3 = self.pore_volume_m3(id);
+            if vp_m3 <= 0.0 {
+                continue;
+            }
+            let q_m3_day = match self.well_transport_rate_from_control(w, control, p_new[id]) {
+                Some(q_m3_day) if q_m3_day.is_finite() => q_m3_day.max(0.0),
+                _ => continue,
+            };
+            let ratio = q_m3_day * dt_days * self.frac_flow_water_derivative(id) / vp_m3;
+            if ratio > max_well_throughput_ratio {
+                max_well_throughput_ratio = ratio;
+            }
+        }
+        let well_throughput_factor = if max_well_throughput_ratio > 1.0 {
+            1.0 / max_well_throughput_ratio
+        } else {
+            1.0
+        };
+
         let mut max_pressure_change = 0.0;
         for idx in 0..n_cells {
             let dp = (p_new[idx] - self.pressure[idx]).abs();
@@ -545,6 +579,7 @@ impl ReservoirSimulator {
         };
         let control_transition_factor = if crossed_control_mode { 0.5 } else { 1.0 };
         let stable_dt_factor = sat_factor
+            .min(well_throughput_factor)
             .min(pressure_factor)
             .min(rate_factor)
             .min(control_transition_factor)

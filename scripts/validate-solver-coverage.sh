@@ -79,6 +79,7 @@ run_fim() {
 
 run_impes() {
     run_test physics_depletion_grid_convergence_impes
+    run_test impes::tests::reporting::
     run_test impes::tests::transport::
     run_test impes::tests::timestep::
 }

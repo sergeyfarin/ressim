@@ -309,6 +309,57 @@ impl ReservoirSimulator {
         }
     }
 
+    /// |d f_w / d S_w| at the cell's current state, by central difference on the relative
+    /// permeability curves (viscosities held at the cell pressure).
+    ///
+    /// Used by the IMPES timestep control. A well cell is drained explicitly — the sink removes
+    /// `q · f_w(S^n)` for the whole substep while the saturation only responds at the next one —
+    /// so the update is oscillation-free only while `Δt · q · f'_w / V_p ≤ 1`. Near a
+    /// water-flooded producer `f'_w` is large, which is exactly where the explicit sink starts
+    /// ringing.
+    pub(crate) fn frac_flow_water_derivative(&self, id: usize) -> f64 {
+        const H: f64 = 1e-4;
+        let sw = self.sat_water[id];
+        let low = (sw - H).clamp(0.0, 1.0);
+        let high = (sw + H).clamp(0.0, 1.0);
+        let span = high - low;
+        if span <= 0.0 {
+            return 0.0;
+        }
+        let derivative =
+            (self.frac_flow_water_at(id, high) - self.frac_flow_water_at(id, low)) / span;
+        if derivative.is_finite() {
+            derivative.abs()
+        } else {
+            0.0
+        }
+    }
+
+    /// Fractional flow of water in cell `id` evaluated at a hypothetical water saturation,
+    /// holding gas saturation and pressure fixed.
+    fn frac_flow_water_at(&self, id: usize, sat_water: f64) -> f64 {
+        let pressure_bar = self.pressure[id];
+        let (lam_w, lam_t) = match &self.scal_3p {
+            Some(scal) if self.three_phase_mode => {
+                let sg = self.sat_gas[id];
+                let lam_w = scal.k_rw(sat_water) / self.get_mu_w(pressure_bar);
+                let lam_o = scal.k_ro_stone2(sat_water, sg) / self.get_mu_o_cell(id, pressure_bar);
+                let lam_g = scal.k_rg(sg) / self.get_mu_g(pressure_bar);
+                (lam_w, lam_w + lam_o + lam_g)
+            }
+            _ => {
+                let lam_w = self.scal.k_rw(sat_water) / self.get_mu_w(pressure_bar);
+                let lam_o = self.scal.k_ro(sat_water) / self.get_mu_o(pressure_bar);
+                (lam_w, lam_w + lam_o)
+            }
+        };
+        if lam_t <= 0.0 {
+            0.0
+        } else {
+            (lam_w / lam_t).clamp(0.0, 1.0)
+        }
+    }
+
     // ── Capillary and gravity ─────────────────────────────────────────────────
 
     /// Oil-gas capillary pressure [bar] at given gas saturation

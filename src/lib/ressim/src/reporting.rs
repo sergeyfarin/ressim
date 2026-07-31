@@ -7,7 +7,7 @@ use crate::fim::wells::{
     build_well_topology, current_reservoir_connection_rate, perforation_component_rates_sc_day,
     physical_well_control, producer_control_state,
 };
-use crate::well_control::ResolvedWellControl;
+use crate::well_control::{ProducerControlState, ResolvedWellControl};
 use crate::{InjectedFluid, ReservoirSimulator};
 
 /// Divide-by-zero guard for producing GOR [Sm³/day of surface oil].
@@ -321,9 +321,40 @@ impl ReservoirSimulator {
         }
     }
 
+    /// Producer phase split as the transport step used it, captured before saturations are
+    /// updated.
+    ///
+    /// `calculate_fluxes` evaluates the produced phase fractions (and the FVFs / Rs that convert
+    /// them to surface volumes) at the *beginning-of-substep* saturations, then transports that
+    /// much fluid. Recomputing them in the report from the end-of-substep state reports a
+    /// different substep's production: at a water-flooded producer the cell saturation
+    /// alternates between substeps (explicit fw at a sink), so the reported oil rate came out
+    /// half a cycle out of phase with the oil actually removed — visible as chatter on the oil
+    /// rate and as drift in `material_balance_error_oil_m3`.
+    pub(crate) fn producer_transport_phase_splits(
+        &self,
+        well_controls: &[Option<ResolvedWellControl>],
+    ) -> Vec<Option<(ProducerControlState, f64)>> {
+        self.wells
+            .iter()
+            .enumerate()
+            .map(|(w_idx, w)| {
+                if w.injector {
+                    return None;
+                }
+                let control = well_controls.get(w_idx).and_then(|control| *control)?;
+                let state =
+                    self.producer_control_state_from_resolved_control(w, control, &self.pressure);
+                let frac_water = self.frac_flow_water(self.idx(w.i, w.j, w.k));
+                Some((state, frac_water))
+            })
+            .collect()
+    }
+
     pub(crate) fn record_step_report(
         &mut self,
         well_controls: &[Option<ResolvedWellControl>],
+        phase_splits: &[Option<(ProducerControlState, f64)>],
         dt_days: f64,
         actual_change_m3: f64,
         actual_oil_removed_sc: f64,
@@ -409,15 +440,17 @@ impl ReservoirSimulator {
                     }
                 } else {
                     total_prod_liquid_reservoir += q_m3_day;
-                    let producer_state = self.producer_control_state_from_resolved_control(
-                        w,
-                        control,
-                        &self.pressure,
-                    );
+                    // Beginning-of-substep split, as transported. See
+                    // `producer_transport_phase_splits`.
+                    let (producer_state, transport_frac_water) =
+                        match phase_splits.get(w_idx).and_then(|split| *split) {
+                            Some(split) => split,
+                            None => continue,
+                        };
                     let (fw, fg) = if self.three_phase_mode {
                         (producer_state.water_fraction, producer_state.gas_fraction)
                     } else {
-                        (self.frac_flow_water(id), 0.0)
+                        (transport_frac_water, 0.0)
                     };
 
                     total_prod_water_reservoir += q_m3_day * fw;
