@@ -17,6 +17,24 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **`dep_pss` had no time-varying or falsifiable exhibit (2026-07-31).** The case plotted the
+  productivity index and the inferred Dietz `C_A` — algebraic inverses of one another, both
+  constant in time by construction — while its only real transient, the approach to
+  pseudo-steady state, was masked by `analyticalPssStartDays: 1` (five times the measured
+  0.15-0.2 day onset). Two of three sensitivity dimensions were degenerate on those panels:
+  `production_rate` moved the productivity index by 0.07% (PI = q/dp with dp proportional to q),
+  and `skin` moved inferred `C_A` by 1.8% because the inversion divides skin back out. Rebuilt
+  around an equal-area drainage-geometry sweep (`C_A` 30.8828 / 21.8369 / 5.379 / 4.5132), a
+  drawdown panel plotted from t=0, and a run that ends at the producer's BHP floor with the
+  analytical reference terminating there rather than extrapolating past its own premise.
+
+- [x] **Dietz `C_A` table held one unreproducible entry (2026-07-31).** `CA_SQUARE_CORNER = 0.5598`
+  described a well in a corner cell. A corner well reflects onto itself in its two adjacent
+  no-flow walls, so only a quarter of its sandface is open; separately the Peaceman well index
+  assumes an interior block with full radial inflow. A measured run gives an effective `C_A` of
+  ~1.6e-3 and a productivity index 63% below what 0.5598 predicts. Removed and replaced with
+  tabulated rectangle and quadrant-well entries, each checked against the engine.
+
 - [x] **Scenario routing tests inferred the solver from phase count (2026-07-30).** The run-model
   contract now follows each scenario's authoritative `solverPolicy`, allowing the two-phase
   capillary case to deliberately use FIM while ordinary sensitivities retain that default.

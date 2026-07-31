@@ -419,6 +419,14 @@ const wellTest: AnalyticalMethodDescriptor = {
             contexts: ['shared', 'per-result', 'preview'],
         },
         {
+            panelKey: 'pss_drawdown',
+            curveKey: 'pss-drawdown-reference',
+            sharedLabel: 'Dietz PSS Drawdown',
+            perCaseSuffix: ' Dietz PSS Drawdown',
+            previewLabel: 'Analytical Dietz PSS Drawdown',
+            contexts: ['shared', 'per-result', 'pending', 'preview'],
+        },
+        {
             panelKey: 'pss_productivity',
             curveKey: 'pss-productivity-reference',
             sharedLabel: 'Dietz Productivity Index',
@@ -442,6 +450,7 @@ const wellTest: AnalyticalMethodDescriptor = {
         return curveSet(buildXAxisValues(derived, xAxisMode), {
             'producer-bhp-reference': overlay.producerBhp?.values ?? null,
             'oil-rate-reference': overlay.rates?.values ?? null,
+            'pss-drawdown-reference': solution.pssDrawdown,
             'pss-productivity-reference': solution.pssProductivity,
             'pss-shape-factor-reference': solution.pssShapeFactor,
         });
@@ -452,6 +461,7 @@ const wellTest: AnalyticalMethodDescriptor = {
         return curveSet(curves.xValues, {
             'producer-bhp-reference': curves.flowingBhp,
             'oil-rate-reference': curves.oilRates,
+            'pss-drawdown-reference': curves.pssDrawdown,
             'pss-productivity-reference': curves.pssProductivity,
             'pss-shape-factor-reference': curves.pssShapeFactor,
         });

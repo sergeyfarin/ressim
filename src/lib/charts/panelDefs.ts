@@ -53,6 +53,12 @@ export const PANEL_DEFS: Record<RateChartPanelId, ChartPanelFallback> = {
         visible: false,
         expanded: false,
     },
+    pss_drawdown: {
+        title: 'Drawdown p̄ − p_wf',
+        scalePreset: 'pressure',
+        visible: false,
+        expanded: false,
+    },
     pss_productivity: {
         title: 'PSS Productivity Index',
         scalePreset: 'productivity',

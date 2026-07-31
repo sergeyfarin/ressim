@@ -495,6 +495,7 @@ export function computeWellTestOnTimeAxis(
     semilogSlopeBarPerCycle: number;
     pssProductivity: Array<number | null>;
     pssShapeFactor: Array<number | null>;
+    pssDrawdown: Array<number | null>;
 } | null {
     const q = getWellTestRate(params);
     if (!Number.isFinite(q)) return null;
@@ -533,17 +534,32 @@ export function computeWellTestOnTimeAxis(
         });
         const storage = getPoreVolume(params) * props.c_t;
         const pssFrom = Math.max(0, toFiniteNumber(params.analyticalPssStartDays, 0));
+        const drawdown = q / Math.max(1e-12, pi);
+
+        // The constant-rate premise has an end: average pressure falls by
+        // material balance until the flowing BHP reaches the producer's floor,
+        // after which the well is BHP-limited and q is no longer the imposed
+        // rate. Every curve here assumes constant q, so all of them stop there
+        // rather than extrapolating into a regime this reference cannot model.
+        const bhpFloor = toFiniteNumber(params.producerBhp, Number.NEGATIVE_INFINITY);
+        const constantRateEndDay = Number.isFinite(bhpFloor)
+            ? ((p_i - bhpFloor - drawdown) * storage) / Math.max(1e-12, q)
+            : Number.POSITIVE_INFINITY;
+        const withinConstantRate = (t: number) => t >= pssFrom && t <= constantRateEndDay;
+
         return {
             time: timeHistory,
-            flowingBhp: timeHistory.map((t) => {
-                if (t < pssFrom) return null;
-                return p_i - q * t / Math.max(1e-12, storage) - q / Math.max(1e-12, pi);
-            }),
-            oilRate: timeHistory.map(() => q),
+            flowingBhp: timeHistory.map((t) => (
+                withinConstantRate(t)
+                    ? p_i - q * t / Math.max(1e-12, storage) - drawdown
+                    : null
+            )),
+            oilRate: timeHistory.map((t) => t <= constantRateEndDay ? q : null),
             semilogFromDay: pssFrom,
             semilogSlopeBarPerCycle: 0,
-            pssProductivity: timeHistory.map((t) => t >= pssFrom ? pi : null),
-            pssShapeFactor: timeHistory.map((t) => t >= pssFrom ? shape.shapeFactor : null),
+            pssProductivity: timeHistory.map((t) => withinConstantRate(t) ? pi : null),
+            pssShapeFactor: timeHistory.map((t) => withinConstantRate(t) ? shape.shapeFactor : null),
+            pssDrawdown: timeHistory.map((t) => withinConstantRate(t) ? drawdown : null),
         };
     }
 
@@ -558,6 +574,7 @@ export function computeWellTestOnTimeAxis(
         semilogSlopeBarPerCycle: semilogSlope(q, props),
         pssProductivity: timeHistory.map(() => null),
         pssShapeFactor: timeHistory.map(() => null),
+        pssDrawdown: timeHistory.map(() => null),
     };
 }
 
@@ -575,6 +592,7 @@ export function computeWellTestFromParams(
     oilRates: (number | null)[];
     pssProductivity: (number | null)[];
     pssShapeFactor: (number | null)[];
+    pssDrawdown: (number | null)[];
 } | null {
     const steps = toFiniteNumber(params.steps, 200);
     const dt = toFiniteNumber(params.delta_t_days, 0.01);
@@ -590,6 +608,7 @@ export function computeWellTestFromParams(
         oilRates: solution.oilRate,
         pssProductivity: solution.pssProductivity,
         pssShapeFactor: solution.pssShapeFactor,
+        pssDrawdown: solution.pssDrawdown,
     };
 }
 

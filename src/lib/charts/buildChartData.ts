@@ -178,6 +178,7 @@ function emptyPanelMap(): ReferenceComparisonPanelMap {
         diagnostics: createReferenceComparisonPanel(),
         mbe_ooip: createReferenceComparisonPanel(),
         drive_indices: createReferenceComparisonPanel(),
+        pss_drawdown: createReferenceComparisonPanel(),
         pss_productivity: createReferenceComparisonPanel(),
         pss_shape_factor: createReferenceComparisonPanel(),
         gor: createReferenceComparisonPanel(),
@@ -207,6 +208,7 @@ function combinePanelMaps(input: {
         diagnostics: input.primary.diagnostics,
         mbe_ooip: input.primary.mbe_ooip,
         drive_indices: input.primary.drive_indices,
+        pss_drawdown: input.primary.pss_drawdown,
         pss_productivity: input.primary.pss_productivity,
         pss_shape_factor: input.primary.pss_shape_factor,
         gor: input.primary.gor,
@@ -316,6 +318,7 @@ function buildAnalyticalPreviewPanels(
         diagnostics: createReferenceComparisonPanel(),
         mbe_ooip: createReferenceComparisonPanel(),
         drive_indices: createReferenceComparisonPanel(),
+        pss_drawdown: createReferenceComparisonPanel(),
         pss_productivity: createReferenceComparisonPanel(),
         pss_shape_factor: createReferenceComparisonPanel(),
         gor: createReferenceComparisonPanel(),
@@ -418,6 +421,7 @@ export function buildReferenceComparisonModel(input: {
         diagnostics: createReferenceComparisonPanel(),
         mbe_ooip: createReferenceComparisonPanel(),
         drive_indices: createReferenceComparisonPanel(),
+        pss_drawdown: createReferenceComparisonPanel(),
         pss_productivity: createReferenceComparisonPanel(),
         pss_shape_factor: createReferenceComparisonPanel(),
         gor: createReferenceComparisonPanel(),
@@ -961,6 +965,22 @@ export function buildReferenceComparisonModel(input: {
                 xValues,
                 dietzPss.time,
             );
+            // Drawdown is plotted from t=0, unlike PI and C_A: the rise from
+            // zero to the Dietz asymptote *is* the approach to pseudo-steady
+            // state, and is the only part of this case that moves in time.
+            appendSeries(panels.pss_drawdown, {
+                label: `${result.label} Numerical Drawdown`,
+                curveKey: 'pss-drawdown-sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: LEGEND_SECTIONS.sim,
+                color,
+                borderWidth: simBorderWidth(result.variantKey),
+                yAxisID: 'y',
+                defaultVisible,
+            }, diagnosticXAxis, dietzPss.drawdown);
             appendSeries(panels.pss_productivity, {
                 label: `${result.label} Numerical PI`,
                 curveKey: 'pss-productivity-sim',

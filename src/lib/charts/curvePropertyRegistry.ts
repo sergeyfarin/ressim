@@ -20,6 +20,7 @@ export function chartPropertyForCurve(curveKey: string): string | null {
     if (curveKey.startsWith('gor-') || curveKey === 'published-gor') return 'gor';
     if (curveKey === 'mbe-ooip-ratio') return 'mbe-ooip-ratio';
     if (curveKey.startsWith('drive-')) return 'drive-index';
+    if (curveKey.startsWith('pss-drawdown-')) return 'pss-drawdown';
     if (curveKey.startsWith('pss-productivity-')) return 'pss-productivity';
     if (curveKey.startsWith('pss-shape-factor-')) return 'dietz-shape-factor';
     return null;

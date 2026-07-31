@@ -375,8 +375,8 @@ describe('scenario capability validation', () => {
             ['grid', 'shared'],
         ]);
         expect(getScenario('dep_pss')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
+            ['drainage_shape', 'per-result'],
             ['skin', 'per-result'],
-            ['production_rate', 'per-result'],
             ['grid_refinement', 'shared'],
         ]);
         expect(getScenario('dep_decline')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([

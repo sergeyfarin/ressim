@@ -8,7 +8,7 @@ export type RateChartXAxisMode =
     | 'cumInjection'
     | 'cumGas';
 
-export type RateChartPrimaryPanelId = 'rates' | 'recovery' | 'cumulative' | 'diagnostics' | 'mbe_ooip' | 'drive_indices' | 'pss_productivity' | 'pss_shape_factor' | 'gor' | 'volumes' | 'oil_rate' | 'injection_rate' | 'producer_bhp' | 'injector_bhp' | 'control_limits';
+export type RateChartPrimaryPanelId = 'rates' | 'recovery' | 'cumulative' | 'diagnostics' | 'mbe_ooip' | 'drive_indices' | 'pss_drawdown' | 'pss_productivity' | 'pss_shape_factor' | 'gor' | 'volumes' | 'oil_rate' | 'injection_rate' | 'producer_bhp' | 'injector_bhp' | 'control_limits';
 
 export type RateChartSweepPanelId =
     | 'sweep_rf'
@@ -29,6 +29,7 @@ export const DEFAULT_RATE_CHART_PANEL_ORDER: RateChartPanelId[] = [
     'diagnostics',
     'mbe_ooip',
     'drive_indices',
+    'pss_drawdown',
     'pss_productivity',
     'pss_shape_factor',
     'gor',

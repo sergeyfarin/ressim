@@ -99,6 +99,7 @@ describe('analyticalMethodRegistry', () => {
             .toEqual([
                 'producer-bhp-reference',
                 'oil-rate-reference',
+                'pss-drawdown-reference',
                 'pss-productivity-reference',
                 'pss-shape-factor-reference',
             ]);
@@ -140,6 +141,7 @@ describe('analyticalMethodRegistry', () => {
         expect(slotsForContext(descriptor, 'pending').map((slot) => slot.curveKey))
             .toEqual([
                 'producer-bhp-reference',
+                'pss-drawdown-reference',
                 'pss-productivity-reference',
                 'pss-shape-factor-reference',
             ]);
@@ -147,6 +149,7 @@ describe('analyticalMethodRegistry', () => {
             .toEqual([
                 'producer-bhp-reference',
                 'oil-rate-reference',
+                'pss-drawdown-reference',
                 'pss-productivity-reference',
                 'pss-shape-factor-reference',
             ]);
