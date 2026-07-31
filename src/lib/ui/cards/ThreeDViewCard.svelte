@@ -138,6 +138,9 @@
             profile selection's final grid, and shares `showProperty`, so the
             timestep and property selectors drive both views together.
         -->
+        {#key selectedOutputProfile.spatialReference?.kind === "sweep"
+            ? `sweep-${selectedOutputProfile.spatialReference.geometry}`
+            : (selectedOutputProfile.spatialReference?.kind ?? "none")}
         <SpatialProfileChart
             gridState={selectedOutput3D.gridState}
             grid={{
@@ -165,6 +168,7 @@
             producerI={selectedOutputProfile.producerI}
             producerJ={selectedOutputProfile.producerJ}
         />
+        {/key}
     {:else}
         <div
             class="flex items-center justify-center rounded border border-border bg-muted/20"

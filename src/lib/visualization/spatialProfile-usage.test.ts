@@ -43,6 +43,11 @@ describe('spatial profile wiring', () => {
         expect(chartSrc).toMatch(/buildSweepDiagonalOverlay/);
     });
 
+    it('remounts local axis state when the spatial reference geometry changes', () => {
+        expect(cardSrc).toMatch(/\{#key selectedOutputProfile\.spatialReference\?\.kind === "sweep"/);
+        expect(cardSrc).toMatch(/`sweep-\$\{selectedOutputProfile\.spatialReference\.geometry\}`/);
+    });
+
     it('takes its snapshot time from the replay position when one is selected', () => {
         expect(/simTime=\{selectedOutput3D\.replayTime \?\? selectedOutputProfile\.simTime\}/.test(cardSrc))
             .toBe(true);

@@ -94,6 +94,10 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   progression onto that diagonal and evaluates Buckley–Leverett displacement inside it; combined
   layered profiles use Stiles permeability-weighted local PVI and follow the selected layer or
   column-average presentation. The UI identifies this Craig + BL construction explicitly.
+- [x] **Sweep default-axis state transition (2026-07-31).** Keyed the spatial-profile component
+  by reference geometry so entering areal or combined sweep resets stale component-local I/J/K
+  state to the diagonal default, while result and sensitivity changes within that geometry keep
+  the user's current profile selection.
 - [x] **Well-Test drawdown presentation (2026-07-30).** Restored the scenario's intentionally
   absent 3D default because rate-controlled skin variants have the same reservoir pressure field;
   made flowing BHP the sole expanded and explicitly visible chart and demoted constant oil rate to
