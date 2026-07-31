@@ -201,6 +201,35 @@ T7.1 is the largest missing pillar of classical reservoir engineering in the pro
 | T7.18 | **Relperm endpoints × heterogeneity (V_DP)** — sweep loss attributable to rock curves vs. geology is not separable from production data | none |
 | T7.19 | **Ensemble / fan-chart affordance** — N-realization P10/P50/P90 band plus "history shaded, forecast diverging" | E8 (below). **Prerequisite for all of 7.D and for Tier 6.1/6.6** |
 
+### Delivery record (2026-08-01) — vertical displacement
+
+**T7.21 (new) — SHIPPED: `wf_gravity_stability`, gravity-stable vs unstable vertical displacement.**
+A 1D 60-cell, 60 m column (20 m x 20 m section, 2 D, 4,800 m3 pore volume), one perforation at each
+end, rate-controlled injector. Replay
+`pnpm vitest run src/lib/catalog/scenarios/wf_gravity_stability.test.ts`. BL reference: breakthrough
+0.586 PVI, RF 0.715 at 1 PVI.
+
+| variant | breakthrough (PVI) | RF at 1 PVI |
+|---|---|---|
+| gravity off (control) | 0.531 | 0.706 |
+| upward, G = 0.33 / 1.3 / 3.3 | 0.567 / 0.646 / 0.717 | 0.737 / 0.792 / 0.839 |
+| downward, G = 0.33 / 1.3 / 3.3 | 0.500 / 0.406 / 0.292 | 0.673 / 0.540 / 0.354 |
+
+with G = k.k_ro.A.drho.g / (q.mu_o), the coefficient Dake (§10.5) adds to the numerator of the
+fractional flow. The point of the case is the sign: an analytical solution with no gravity term is
+neither an upper nor a lower bound, and in the stable direction the simulated breakthrough is *later*
+than the analytical shock — something numerical dispersion cannot produce. Grid refinement
+(15/30/60/120 cells) moves the gravity answers by <0.03 while the gravity-free control converges from
+0.690 to 0.710 onto BL's 0.715, which is the "physics or truncation error?" separation `wf_capillary`
+introduced, applied to gravity.
+
+Complements `wf_gravity`: that case is the 2D override where gravity acts *across* the flow and
+always costs recovery; this one is the 1D case where it acts *along* the flow and can pay.
+
+**Gas-oil sibling probed and parked.** A first-pass FIM probe of crestal vs basal gas injection did
+not produce a crisp exhibit (rungs within 0.05 of each other, gas breakthrough at 0.06-0.10 PVI);
+numbers and the reason are in `TODO.md`. Not shipped.
+
 ### Delivery record (2026-08-01) — gravity
 
 **T7.20 (new) — SHIPPED: `wf_gravity`, gravity override against the gravity-free BL reference.**

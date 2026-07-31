@@ -27,6 +27,7 @@ export { CHART_LAYOUTS, getChartLayout, mergeChartLayoutConfig } from './chartLa
 import { wf_bl1d } from './scenarios/wf_bl1d';
 import { wf_capillary } from './scenarios/wf_capillary';
 import { wf_gravity } from './scenarios/wf_gravity';
+import { wf_gravity_stability } from './scenarios/wf_gravity_stability';
 import { sweep_areal } from './scenarios/sweep_areal';
 import { sweep_vertical } from './scenarios/sweep_vertical';
 import { sweep_combined } from './scenarios/sweep_combined';
@@ -687,6 +688,7 @@ const SOURCE_SCENARIOS: Scenario[] = [
     wf_bl1d,
     wf_capillary,
     wf_gravity,
+    wf_gravity_stability,
     sweep_areal,
     sweep_vertical,
     sweep_combined,

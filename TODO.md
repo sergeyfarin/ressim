@@ -55,6 +55,20 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   with a time-axis dimension override and `defaultVisible: false`. The fix is to carry the reference
   run's own cumulative injection (FWIT is already in the deck's SUMMARY) in the artifact and map x the
   same way the simulation curves are mapped.
+- [x] **Vertical-displacement scenario `wf_gravity_stability` (2026-08-01).** 1D 60-cell column,
+  single perforations at each end, flooded upward (gravity-stable) or downward (unstable) at the same
+  rate. Measured recovery at 1 PVI: 0.706 gravity off (BL 0.715), 0.792 upward, 0.540 downward; the
+  rate ladder fans 0.737/0.792/0.839 up against 0.673/0.540/0.354 down as G goes 0.33 -> 3.3. Grid
+  refinement moves the gravity answers by <0.03 while the gravity-free control converges onto BL, so
+  the departure is a missing term and not truncation error. Replay:
+  `pnpm vitest run src/lib/catalog/scenarios/wf_gravity_stability.test.ts`.
+- [ ] **Gas-oil gravity case probed and parked (2026-08-01).** First-pass FIM probe of crestal vs
+  basal gas injection in the same 30x1x20 section (mu_g 0.02, rho_g 200, q 160): gravity off / on with
+  a basal injector gave RF 0.296 / 0.346 and crestal-with-gravity 0.336, with gas breakthrough at
+  0.06-0.10 PVI in every case. The ordering is defensible (segregation away from a basal producer
+  reduces gas cycling) but the rungs are close together and breakthrough is too early to read, so
+  there is no crisp exhibit yet; each FIM run also costs 15-23 s headless. Needs a rate/density/
+  completion campaign before it is worth a scenario — do not ship it on the numbers above.
 - [ ] **Gravity-modified fractional flow as an honest reference for `wf_gravity` (opened 2026-08-01).**
   The scenario currently shows the viscous-only BL curve and measures the departure. Dake ch. 10 gives
   the gravity term in f_w explicitly, and adding it to `src/lib/analytical/fractionalFlow.ts` would let
