@@ -24,6 +24,7 @@
         buildFloodFrontOverlay,
         buildSpatialProfile,
         cumulativeInjectedVolume,
+        defaultSpatialProfileAxis,
         type SpatialProfileAxis,
         type SpatialProfileGrid,
         type SpatialProfileLayerSelection,
@@ -86,11 +87,7 @@
     const hasDiagonalWellPath = $derived(
         grid.nx > 1 && grid.ny > 1 && injectorI !== producerI && injectorJ !== producerJ,
     );
-    let axis = $state<SpatialProfileAxis>(untrack(() =>
-        grid.nx > 1 && grid.ny > 1 && injectorI !== producerI && injectorJ !== producerJ
-            ? "well-path"
-            : grid.nx > 1 ? "i" : grid.ny > 1 ? "j" : "k",
-    ));
+    let axis = $state<SpatialProfileAxis>(untrack(() => defaultSpatialProfileAxis(grid)));
     let userI = $state<number | null>(null);
     let userJ = $state<number | null>(null);
     let userK = $state<number | null>(null);

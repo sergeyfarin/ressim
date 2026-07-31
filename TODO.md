@@ -86,6 +86,9 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   corner-pattern profiles follow the injector-to-producer diagonal; defaulted layered horizontal
   profiles to a K-column average with an explicit layer override. Completed-run replay now selects
   the indexed history grid/wells instead of pairing the indexed time with the final snapshot.
+- [x] **Spatial BL overlay default-axis regression (2026-07-31).** Restored I as the default
+  profile axis when available, so diagonal well layouts show the analytical Buckley–Leverett
+  saturation profile by default again; the injector-to-producer path remains selectable.
 - [x] **Well-Test drawdown presentation (2026-07-30).** Restored the scenario's intentionally
   absent 3D default because rate-controlled skin variants have the same reservoir pressure field;
   made flowing BHP the sole expanded and explicitly visible chart and demoted constant oil rate to

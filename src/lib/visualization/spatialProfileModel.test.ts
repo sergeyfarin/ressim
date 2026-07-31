@@ -6,6 +6,7 @@ import {
     buildSpatialProfile,
     buildWellPath,
     cumulativeInjectedVolume,
+    defaultSpatialProfileAxis,
     type SpatialProfileGrid,
 } from './spatialProfileModel';
 import type { GridState } from '../simulator-types';
@@ -38,6 +39,12 @@ const ROCK = { s_wc: 0.2, s_or: 0.2, n_w: 2, n_o: 2, k_rw_max: 1, k_ro_max: 1 };
 const FLUID = { mu_w: 1, mu_o: 1 };
 
 describe('axis geometry', () => {
+    it('defaults to I when available so the BL reference overlay remains visible', () => {
+        expect(defaultSpatialProfileAxis(GRID)).toBe('i');
+        expect(defaultSpatialProfileAxis({ ...GRID, nx: 1 })).toBe('j');
+        expect(defaultSpatialProfileAxis({ ...GRID, nx: 1, ny: 1 })).toBe('k');
+    });
+
     it('reports the cell count along each axis', () => {
         expect(axisLength(GRID, 'i')).toBe(4);
         expect(axisLength(GRID, 'j')).toBe(3);

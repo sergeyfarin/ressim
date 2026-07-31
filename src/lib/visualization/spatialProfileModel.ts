@@ -61,6 +61,11 @@ export type SpatialProfileGrid = {
     cellDzPerLayer?: number[];
 };
 
+/** Default to the displacement axis so the BL reference is visible on waterfloods. */
+export function defaultSpatialProfileAxis(grid: SpatialProfileGrid): SpatialProfileAxis {
+    return grid.nx > 1 ? 'i' : grid.ny > 1 ? 'j' : 'k';
+}
+
 const AXIS_LABELS: Record<SpatialProfileAxis, string> = {
     i: 'Distance along I (m)',
     j: 'Distance along J (m)',
