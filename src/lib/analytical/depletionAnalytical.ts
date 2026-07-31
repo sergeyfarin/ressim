@@ -108,18 +108,50 @@ export function emptyDepletionAnalyticalResult(): DepletionAnalyticalResult {
 }
 
 /**
- * Dietz shape factor C_A for known drainage geometries and well positions.
+ * Dietz shape factor C_A — tabulated entries only.
  *
- * Only tabulated geometries are returned:
- *   - Center well: C_A = 30.8828  (Dietz 1965)
- *   - Corner well: C_A = 0.5598   (quarter-drainage symmetry)
+ * A shape factor is a global boundary-value result for one (geometry, well
+ * position) pair. It cannot be interpolated from well coordinates, so this
+ * module recognises the tabulated cases and returns null for everything else
+ * rather than inventing a value.
  *
- * Arbitrary off-centre interpolation is intentionally unsupported: a shape
- * factor is a global boundary-value result, not a quantity that can be safely
- * interpolated from well coordinates.
+ * Entries below are Dietz (1965) as reproduced in Earlougher (1977) Table C.1
+ * and Dake (1978) Table 7.1, restricted to the closed rectangular geometries
+ * this simulator can represent on a Cartesian grid:
+ *
+ *   1:1, well centred                    30.8828
+ *   1:1, well at the centre of a quadrant  4.5132
+ *   2:1, well centred                    21.8369
+ *   4:1, well centred                     5.379
+ *
+ * Removed 2026-07-31: a `CA_SQUARE_CORNER = 0.5598` entry for a well in the
+ * corner cell. It is not reproducible and was never exercised by a scenario.
+ * Two independent reasons:
+ *   - Reflecting a corner well in its two adjacent no-flow walls maps it onto
+ *     itself, so the physical problem is a well with only a quarter of its
+ *     sandface open. The resulting drawdown is ~4x a centred well's, which
+ *     corresponds to a C_A many orders of magnitude below 0.5598.
+ *   - The engine's Peaceman well index assumes an interior block with full
+ *     radial inflow, so it cannot produce corner-well behaviour anyway. A
+ *     measured run gives an effective C_A of ~1.6e-3 and a PI 63% below what
+ *     0.5598 predicts.
+ * Every tabulated position here is therefore an interior one.
  */
 const CA_SQUARE_CENTER = 30.8828;
-const CA_SQUARE_CORNER = 0.5598;
+const CA_SQUARE_QUADRANT = 4.5132;
+const CA_2TO1_CENTER = 21.8369;
+const CA_4TO1_CENTER = 5.379;
+
+/** Aspect ratios are matched within this relative tolerance. */
+const ASPECT_TOLERANCE = 0.05;
+
+/**
+ * Well positions are matched within this tolerance, as a fraction of the
+ * corresponding side length. Half a cell on the coarsest grid the catalog
+ * ships (21 cells) is 0.024, so this accepts an exactly-placed well without
+ * accepting a visibly off-position one.
+ */
+const POSITION_TOLERANCE = 0.03;
 
 export function dietzProductivityIndex(input: {
     permeabilityMd: number;
@@ -180,6 +212,21 @@ export function dietzShapeFactorFromProductivityIndex(input: {
     return Number.isFinite(shapeFactor) && shapeFactor > 0 ? shapeFactor : null;
 }
 
+function near(value: number, target: number, tolerance: number): boolean {
+    return Math.abs(value - target) <= tolerance;
+}
+
+/**
+ * Dietz shape factor for a closed rectangular drainage area.
+ *
+ * `aspectRatio` is lengthX/lengthY; the well position is given as grid indices
+ * and converted to cell-centre fractions of each side. The long side is
+ * normalised to x so a 2:1 and a 1:2 rectangle resolve to the same entry.
+ *
+ * Returns `shapeFactor: null` with an explanatory label for any geometry or
+ * position outside the table — callers must handle that rather than assume a
+ * square.
+ */
 export function computeShapeFactor(input: {
     nxCells: number;
     nyCells: number;
@@ -194,32 +241,54 @@ export function computeShapeFactor(input: {
     if (nyCells <= 1) {
         return { shapeFactor: 0, shapeLabel: "1D Slab (end well)" };
     }
-
-    // Square drainage area — use position-aware shape factor
-    if (aspectRatio > 0.5 && aspectRatio < 2.0) {
-        const gridNx = nx ?? nxCells;
-        const gridNy = ny ?? nyCells;
-        const hasPosition =
-            producerI !== undefined && producerI !== null &&
-            producerJ !== undefined && producerJ !== null;
-
-        if (!hasPosition || (gridNx <= 1 && gridNy <= 1)) {
-            return { shapeFactor: CA_SQUARE_CENTER, shapeLabel: "Square (center)" };
-        }
-
-        // Normalised Chebyshev distance from grid centre: 0 = center, 1 = corner
-        const cx = (gridNx - 1) / 2;
-        const cy = (gridNy - 1) / 2;
-        const dx = cx > 0 ? Math.abs((producerI as number) - cx) / cx : 0;
-        const dy = cy > 0 ? Math.abs((producerJ as number) - cy) / cy : 0;
-        const d = Math.min(1, Math.max(0, Math.max(dx, dy)));
-
-        if (d < 1e-9) return { shapeFactor: CA_SQUARE_CENTER, shapeLabel: "Square (center)" };
-        if (d > 1 - 1e-9) return { shapeFactor: CA_SQUARE_CORNER, shapeLabel: "Square (corner)" };
-        return { shapeFactor: null, shapeLabel: "Unsupported off-center square" };
+    if (!(aspectRatio > 0)) {
+        return { shapeFactor: null, shapeLabel: "Unsupported drainage geometry" };
     }
 
-    return { shapeFactor: null, shapeLabel: "Unsupported rectangular geometry" };
+    const gridNx = nx ?? nxCells;
+    const gridNy = ny ?? nyCells;
+    const hasPosition =
+        producerI !== undefined && producerI !== null &&
+        producerJ !== undefined && producerJ !== null;
+
+    // Cell-centre position as a fraction of each side. Without an explicit
+    // well position the caller is describing a centred well.
+    const rawFx = hasPosition && gridNx > 0 ? ((producerI as number) + 0.5) / gridNx : 0.5;
+    const rawFy = hasPosition && gridNy > 0 ? ((producerJ as number) + 0.5) / gridNy : 0.5;
+
+    // Normalise so x is the long side.
+    const elongated = aspectRatio >= 1;
+    const ratio = elongated ? aspectRatio : 1 / aspectRatio;
+    const fLong = elongated ? rawFx : rawFy;
+    const fShort = elongated ? rawFy : rawFx;
+
+    const centred =
+        near(fLong, 0.5, POSITION_TOLERANCE) && near(fShort, 0.5, POSITION_TOLERANCE);
+
+    if (near(ratio, 1, ASPECT_TOLERANCE)) {
+        if (centred) {
+            return { shapeFactor: CA_SQUARE_CENTER, shapeLabel: "Square (centred well)" };
+        }
+        // Centre of any quadrant — the four positions are symmetry-equivalent.
+        const quarterLong = near(fLong, 0.25, POSITION_TOLERANCE) || near(fLong, 0.75, POSITION_TOLERANCE);
+        const quarterShort = near(fShort, 0.25, POSITION_TOLERANCE) || near(fShort, 0.75, POSITION_TOLERANCE);
+        if (quarterLong && quarterShort) {
+            return { shapeFactor: CA_SQUARE_QUADRANT, shapeLabel: "Square (well at quadrant centre)" };
+        }
+        return { shapeFactor: null, shapeLabel: "Unsupported off-centre square" };
+    }
+
+    if (centred && near(ratio, 2, ASPECT_TOLERANCE * 2)) {
+        return { shapeFactor: CA_2TO1_CENTER, shapeLabel: "2:1 rectangle (centred well)" };
+    }
+    if (centred && near(ratio, 4, ASPECT_TOLERANCE * 4)) {
+        return { shapeFactor: CA_4TO1_CENTER, shapeLabel: "4:1 rectangle (centred well)" };
+    }
+
+    return {
+        shapeFactor: null,
+        shapeLabel: centred ? "Unsupported aspect ratio" : "Unsupported off-centre rectangle",
+    };
 }
 
 export function calculateDepletionAnalyticalProduction(

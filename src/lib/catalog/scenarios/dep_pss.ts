@@ -86,7 +86,7 @@ export const dep_pss: Scenario = {
         analyticalPressureModel: 'dietz-pss',
         analyticalPssStartDays: 1,
         fimEnabled: false,
-        delta_t_days: 0.05, steps: 200,
+        delta_t_days: 0.5, steps: 200,
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 25,
         max_well_rate_change_fraction: 1,
