@@ -26,6 +26,19 @@ export function parseLayerValues(value: unknown): number[] {
         .filter((v) => Number.isFinite(v) && v > 0);
 }
 
+/**
+ * Parse a completion-layer list. Separate from `parseLayerValues`, which drops
+ * non-positive entries because it parses permeabilities and thicknesses — layer
+ * index 0 is a legitimate completion (the top layer) and must survive.
+ */
+export function parseCompletionLayers(value: unknown): number[] {
+    if (!Array.isArray(value)) return [];
+    return value
+        .map((v) => Number(v))
+        .filter((v) => Number.isFinite(v) && v >= 0)
+        .map((v) => Math.round(v));
+}
+
 export function normalizeLayerArray(values: number[], fallback: number, length: number): number[] {
     return Array.from({ length }, (_, i) => {
         const value = Number(values[i]);
@@ -138,6 +151,15 @@ class ParameterStoreImpl {
     injectorJ = $state(0);
     producerI = $state(14);
     producerJ = $state(9);
+    /**
+     * Perforated layers, empty = every layer (the historical behaviour).
+     * A well with completions in more than one layer shares a single bottom
+     * hole pressure across them without a wellbore hydrostatic correction, so
+     * any scenario that enables gravity in a multi-layer grid has to perforate
+     * one layer to stay honest — see `wf_gravity`.
+     */
+    producerKLayers: number[] = $state([]);
+    injectorKLayers: number[] = $state([]);
 
     // Stability
     max_sat_change_per_step = $state(0.1);
@@ -322,6 +344,8 @@ class ParameterStoreImpl {
             injectorJ: this.injectorJ,
             producerI: this.producerI,
             producerJ: this.producerJ,
+            producerKLayers: [...this.producerKLayers],
+            injectorKLayers: [...this.injectorKLayers],
             max_sat_change_per_step: this.max_sat_change_per_step,
             max_pressure_change_per_step: this.max_pressure_change_per_step,
             max_well_rate_change_fraction: this.max_well_rate_change_fraction,
@@ -487,6 +511,8 @@ class ParameterStoreImpl {
         this.injectorJ = fin(resolved.injectorJ, 0);
         this.producerI = fin(resolved.producerI, this.nx - 1);
         this.producerJ = fin(resolved.producerJ, defaultProducerJForGrid(this.ny));
+        this.producerKLayers = parseCompletionLayers(resolved.producerKLayers);
+        this.injectorKLayers = parseCompletionLayers(resolved.injectorKLayers);
     }
 
     buildModelResetKey() {
@@ -529,6 +555,8 @@ class ParameterStoreImpl {
             targetProducerSurfaceRate: this.targetProducerSurfaceRate,
             injectorI: this.injectorI, injectorJ: this.injectorJ,
             producerI: this.producerI, producerJ: this.producerJ,
+            producerKLayers: this.producerKLayers,
+            injectorKLayers: this.injectorKLayers,
             threePhaseModeEnabled: this.threePhaseModeEnabled,
             s_gc: this.s_gc, s_gr: this.s_gr, s_org: this.s_org, n_g: this.n_g, k_rg_max: this.k_rg_max,
             mu_g: this.mu_g, c_g: this.c_g, rho_g: this.rho_g,
@@ -601,6 +629,8 @@ class ParameterStoreImpl {
             targetProducerSurfaceRate: this.targetProducerSurfaceRate ?? undefined,
             injectorI: this.injectorI, injectorJ: this.injectorJ,
             producerI: this.producerI, producerJ: this.producerJ,
+            producerKLayers: [...this.producerKLayers],
+            injectorKLayers: [...this.injectorKLayers],
             uniformPermX: this.uniformPermX,
             uniformPermY: this.uniformPermY,
             uniformPermZ: this.uniformPermZ,

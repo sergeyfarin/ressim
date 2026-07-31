@@ -201,6 +201,39 @@ T7.1 is the largest missing pillar of classical reservoir engineering in the pro
 | T7.18 | **Relperm endpoints × heterogeneity (V_DP)** — sweep loss attributable to rock curves vs. geology is not separable from production data | none |
 | T7.19 | **Ensemble / fan-chart affordance** — N-realization P10/P50/P90 band plus "history shaded, forecast diverging" | E8 (below). **Prerequisite for all of 7.D and for Tier 6.1/6.6** |
 
+### Delivery record (2026-08-01) — gravity
+
+**T7.20 (new) — SHIPPED: `wf_gravity`, gravity override against the gravity-free BL reference.**
+Sibling of `wf_capillary` in the "which Buckley-Leverett assumption breaks" family: a 30x1x20
+vertical section (300 m x 20 m x 40 m, isotropic 5 D), rate-controlled injector, single-perforation
+wells. Measured on this tree, replay
+`pnpm vitest run src/lib/catalog/scenarios/wf_gravity.test.ts`; BL reference is breakthrough
+0.586 PVI and recovery 0.715 at 1 PVI.
+
+| variant | breakthrough (PVI) | RF at 1 PVI |
+|---|---|---|
+| gravity off (control) | 0.480 | 0.699 |
+| N_g = 0.14 (640 m3/d) | 0.307 | 0.689 |
+| N_g = 0.56 (160 m3/d, base) | 0.233 | 0.586 |
+| N_g = 2.23 (40 m3/d) | 0.153 | 0.383 |
+
+with N_g = drho.g.H.k / (mu_o.u_t.L). Density contrast at base rate: 0.704 / 0.651 / 0.586 / 0.493
+for drho = 0 / 100 / 200 / 400. The k_z x gravity 2x2 shows the gravity penalty falling from 0.113
+(k_z/k_x = 1) to 0.034 (k_z/k_x = 0.01) while the total shortfall against BL grows — the low-k_z
+pair is bypassed for a reason that is not gravity. The producer-completion 2x2 reverses the sign:
+producing from the top of the section with gravity on recovers 0.742, above every gravity-free run.
+
+**Engine limitation this exposed (recorded in `TODO.md`, not worked around silently).** Well
+completions share one BHP with no wellbore hydrostatic correction, so a fully perforated well under
+gravity biases its allocation towards the top of the section by ~rho.g.H — negligible against a
+300 bar drawdown, dominant at the 1-2 bar drawdowns of the gravity-dominated regime. Every well in
+this scenario perforates exactly one layer, which removes the allocation question entirely. Any
+future multi-layer gravity case (T7.16, WAG, aquifer work) needs the datum fix first.
+
+**Enabler closed: completion layers on the live path.** `producerKLayers` / `injectorKLayers` existed
+in `buildCreatePayload` and the worker but were not carried by `ParameterStore`, so only the
+benchmark-preset path could use them. Now plumbed; empty array keeps the all-layers default.
+
 ### Delivery record (2026-07-24)
 
 **T7.4 — SHIPPED (waterflood half).** `src/lib/catalog/scenarios/wf_capillary.ts` + `wf_capillary.test.ts`. First scenario in the catalog with `capillaryEnabled: true`. Two dimensions: a Brooks-Corey entry-pressure ladder against a fixed BL overlay, and a "physics or truncation error?" dimension contrasting a coarse capillary-free grid with a fine capillary one.

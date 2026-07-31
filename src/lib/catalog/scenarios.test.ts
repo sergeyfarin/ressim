@@ -40,7 +40,7 @@ describe('scenario sensitivities', () => {
     });
 
     it('provides analytical method metadata for every canonical scenario', () => {
-        expect(listScenarios()).toHaveLength(13);
+        expect(listScenarios()).toHaveLength(14);
         for (const scenario of listScenarios()) {
             expect(scenario.analyticalMethodSummary.length, scenario.key).toBeGreaterThan(10);
             expect(scenario.analyticalMethodReference.length, scenario.key).toBeGreaterThan(5);
@@ -509,6 +509,8 @@ describe('scenario capability validation', () => {
         const expectedDefaults = {
             wf_bl1d: 'saturation_water',
             wf_capillary: 'saturation_water',
+            // The gravity tongue is a water-saturation structure in the k direction.
+            wf_gravity: 'saturation_water',
             sweep_areal: 'saturation_water',
             sweep_vertical: 'saturation_water',
             sweep_combined: 'saturation_water',

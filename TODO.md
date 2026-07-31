@@ -17,6 +17,38 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [ ] **Wellbore hydrostatic datum missing on multi-layer completions (found 2026-08-01).** Every
+  completion of a well is a separate `Well` row carrying the same `bhp` (`src/lib/ressim/src/well.rs`),
+  and nothing corrects it for completion depth. With gravity enabled the reservoir pressure varies by
+  ρ·g·H down the column (≈3 bar over 40 m), so a fully perforated BHP or rate-controlled well
+  allocates flow towards the top of the section as a pure modelling artefact. It is negligible against
+  a 300 bar drawdown and dominant in exactly the gravity-dominated regime where the drawdown is a
+  bar or two. `wf_gravity` works around it by perforating one layer per well. The fix is an
+  Eclipse-style datum depth per well plus a wellbore density, applied as
+  `p_completion = p_bhp + ρ_wb·g·(depth_k − depth_datum)`; it only bites when `gravityEnabled`, so
+  existing gravity-free scenarios and benchmarks cannot move.
+- [x] **Gravity-override scenario `wf_gravity` (2026-08-01).** New
+  `buckley-leverett-displacement` case: a 30×1×20 vertical section, single-perforation wells at the
+  base, rate-controlled injector. Gravity-off control recovers 0.699 of oil in place at 1 PVI against
+  Buckley-Leverett's 0.715; gravity on at the base rate gives 0.586, and 0.383 in the
+  gravity-dominated rung. Four dimensions (gravity number, density contrast, k_z × gravity,
+  producer completion × gravity), all measured and guarded in `wf_gravity.test.ts`. Replay:
+  `pnpm vitest run src/lib/catalog/scenarios/wf_gravity.test.ts`. Closes the gravity half of the
+  "which Buckley-Leverett assumption breaks" family started by `wf_capillary`.
+- [x] **Completion layers reach the live worker (2026-08-01).** `producerKLayers` / `injectorKLayers`
+  were honoured by `buildCreatePayload` and the worker but never carried by `ParameterStore`, so only
+  the benchmark-preset path (SPE1) could perforate a subset of layers; every live scenario perforated
+  every layer. Added the two fields with a dedicated `parseCompletionLayers` (the existing
+  `parseLayerValues` drops non-positive entries and would have deleted layer 0), wired through
+  `applyParamValues`, `buildCorePayload`, `buildModelResetKey` and the parameter snapshot. Empty
+  array keeps the previous all-layers behaviour.
+- [ ] **Gravity-modified fractional flow as an honest reference for `wf_gravity` (opened 2026-08-01).**
+  The scenario currently shows the viscous-only BL curve and measures the departure. Dake ch. 10 gives
+  the gravity term in f_w explicitly, and adding it to `src/lib/analytical/fractionalFlow.ts` would let
+  the reference follow the simulation in the segregated-flow (not tongued) limit — turning a
+  "here is the error" case into a "here is the corrected theory" case. Needs a second overlay slot or a
+  scenario-selected variant of the BL adapter.
+
 - [x] **Catalog taxonomy: group by what the run can be checked against (2026-07-31).** `Gas Injection`
   sat in `gas-black-oil` although it carries a real analytical solution — `gas-oil-bl`, the same
   Buckley–Leverett/Welge fractional-flow construction as `wf_bl1d`, differing only in phase pair and
