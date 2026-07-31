@@ -20,6 +20,7 @@ import {
     type RunResult,
     type RunSpec,
 } from '../scenario/runModel';
+import { buildSweepConfig } from '../buildCreatePayload';
 import { cloneTerminationPolicy } from '../workers/terminationPolicy';
 import { buildWarningPolicy, type AnalyticalStatus } from '../warningPolicy';
 import { getScenario, getScenarioWithVariantParams, resolveCapabilities } from '../catalog/scenarios';
@@ -746,15 +747,7 @@ class RuntimeStoreImpl {
         if (sc && !isCustomMode) {
             const resolved = resolveCapabilities(sc.capabilities);
             if (resolved.showSweepPanel && resolved.sweepGeometry) {
-                const sw0 = payload.initialSaturation;
-                const movable = Math.max(0, 1 - payload.s_wc - payload.s_or);
-                payload.sweepConfig = {
-                    geometry: resolved.sweepGeometry,
-                    // 20% of movable range above connate — swept cells, not artefacts
-                    swept_threshold: payload.s_wc + 0.2 * movable,
-                    initial_oil_saturation: Math.max(0, 1 - sw0),
-                    residual_oil_saturation: payload.s_or,
-                };
+                payload.sweepConfig = buildSweepConfig(payload, resolved.sweepGeometry);
             }
             payload.terminationPolicy = cloneTerminationPolicy(sc.terminationPolicy);
         }

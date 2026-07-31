@@ -50,11 +50,38 @@ describe('scenario-first run model', () => {
             variant.paramPatch.fimEnabled ?? false,
             variant.paramPatch.delta_t_days ?? scenario?.params.delta_t_days,
         ])).toEqual([
-            ['IMPES · 0.25-day steps', false, 0.25],
-            ['FIM · 0.25-day steps', true, 0.25],
-            ['IMPES · 5-day steps', false, 5],
-            ['FIM · 5-day steps', true, 5],
+            ['IMPES', false, 0.25],
+            ['FIM', true, 0.25],
         ]);
+    });
+
+    it('requests sweep diagnostics for every sweep-scenario run', () => {
+        // Without sweepConfig the engine reports no sweep metrics, so the
+        // E_A / E_V / E_vol panels draw their analytical curve with nothing to
+        // compare it against. This path missed it until 2026-07-31 while the
+        // interactive path set it, which is why the comparison charts looked
+        // like the numerical values were underivable.
+        for (const scenario of listScenarios()) {
+            const dimension = scenario.sensitivities[0];
+            if (!dimension) continue;
+            const [spec] = buildScenarioRunSpecs({
+                scenarioKey: scenario.key,
+                dimensionKey: dimension.key,
+                variantKeys: [dimension.variants[0].key],
+            });
+            if (!spec) continue;
+            const payload = buildCreatePayloadForRun(spec);
+            if (scenario.capabilities.analyticalMethod !== 'sweep') {
+                expect(payload.sweepConfig, scenario.key).toBeUndefined();
+                continue;
+            }
+            expect(payload.sweepConfig?.geometry, scenario.key)
+                .toBe(scenario.capabilities.sweepGeometry);
+            expect(payload.sweepConfig?.swept_threshold, scenario.key)
+                .toBeGreaterThan(Number(spec.params.s_wc));
+            expect(payload.sweepConfig?.residual_oil_saturation, scenario.key)
+                .toBe(Number(spec.params.s_or));
+        }
     });
 
     it('keeps each scenario default solver across ordinary sensitivities', () => {
@@ -74,11 +101,11 @@ describe('scenario-first run model', () => {
         const specs = buildScenarioRunSpecs({
             scenarioKey: 'wf_bl1d',
             dimensionKey: 'solver_formulation',
-            variantKeys: ['solver_impes_base', 'solver_fim_coarse'],
+            variantKeys: ['solver_impes_base', 'solver_fim_base'],
         });
         expect(specs.map((spec) => [spec.solver, spec.variantLabel, spec.label])).toEqual([
-            ['impes', 'IMPES · 0.25-day steps', '1D Waterflood — IMPES · 0.25-day steps'],
-            ['fim', 'FIM · 5-day steps', '1D Waterflood — FIM · 5-day steps'],
+            ['impes', 'IMPES', '1D Waterflood — IMPES'],
+            ['fim', 'FIM', '1D Waterflood — FIM'],
         ]);
     });
 

@@ -83,55 +83,31 @@ function runVariant(variantKey: string): SolverRun {
 }
 
 describe('wf_bl1d solver_formulation sensitivity', () => {
-    it('varies only the formulation and the report timestep', () => {
-        const base = getScenarioWithVariantParams('wf_bl1d', 'solver_formulation', 'solver_impes_base');
-        const variants = ['solver_fim_base', 'solver_impes_coarse', 'solver_fim_coarse'];
-        for (const key of variants) {
-            const params = getScenarioWithVariantParams('wf_bl1d', 'solver_formulation', key);
-            const differing = Object.keys(params).filter((name) => params[name] !== base[name]);
-            expect(differing.sort(), key).toEqual(
-                key === 'solver_fim_base'
-                    ? ['fimEnabled']
-                    : key === 'solver_impes_coarse'
-                        ? ['delta_t_days', 'steps']
-                        : ['delta_t_days', 'fimEnabled', 'steps'],
-            );
-            // Same 50-day horizon in every variant, so cumulative oil is
-            // comparable across all four.
-            expect(Number(params.delta_t_days) * Number(params.steps), key).toBeCloseTo(50, 9);
-        }
+    it('varies only the formulation', () => {
+        const impes = getScenarioWithVariantParams('wf_bl1d', 'solver_formulation', 'solver_impes_base');
+        const fim = getScenarioWithVariantParams('wf_bl1d', 'solver_formulation', 'solver_fim_base');
+        const differing = Object.keys(fim).filter((name) => fim[name] !== impes[name]);
+        expect(differing).toEqual(['fimEnabled']);
+        expect(impes.fimEnabled).toBe(false);
+        expect(fim.fimEnabled).toBe(true);
     });
 
-    it('agrees between formulations at the base step and diverges at coarse steps', async () => {
+    it('agrees closely between formulations at the scenario report step', async () => {
         await ensureWasmReady();
 
-        const impesBase = runVariant('solver_impes_base');
-        const fimBase = runVariant('solver_fim_base');
-        const impesCoarse = runVariant('solver_impes_coarse');
-        const fimCoarse = runVariant('solver_fim_coarse');
+        const impes = runVariant('solver_impes_base');
+        const fim = runVariant('solver_fim_base');
 
-        for (const [key, run] of Object.entries({ impesBase, fimBase, impesCoarse, fimCoarse })) {
+        for (const [key, run] of Object.entries({ impes, fim })) {
             expect(run.warning, key).toBe('');
             expect(run.cumulativeOil, key).toBeGreaterThan(0);
         }
 
-        // At the base step the formulation barely matters: measured 0.97%.
-        const baseGap = Math.abs(fimBase.cumulativeOil - impesBase.cumulativeOil) / impesBase.cumulativeOil;
-        expect(baseGap).toBeLessThan(0.03);
-
-        // Coarsening to 5-day steps costs IMPES far more recovery than FIM —
-        // measured 8.8% against 3.1% of each solver's own fine-step run. That
-        // asymmetry, not the raw divergence, is what the dimension teaches.
-        const impesLoss = 1 - impesCoarse.cumulativeOil / impesBase.cumulativeOil;
-        const fimLoss = 1 - fimCoarse.cumulativeOil / fimBase.cumulativeOil;
-        expect(impesLoss).toBeGreaterThan(0.05);
-        expect(fimLoss).toBeLessThan(0.05);
-        expect(impesLoss).toBeGreaterThan(fimLoss * 2);
-
-        // …so the two formulations, indistinguishable at the base step, are
-        // clearly apart at the coarse one: measured 7.4%.
-        const coarseGap = Math.abs(fimCoarse.cumulativeOil - impesCoarse.cumulativeOil) / impesCoarse.cumulativeOil;
-        expect(coarseGap).toBeGreaterThan(0.04);
-        expect(coarseGap).toBeGreaterThan(baseGap * 3);
+        // Measured 0.97% at the shipped 0.25-day step. The bound is the claim
+        // the scenario text makes: at this step size the formulation choice is
+        // a small effect, not a physics difference. It is deliberately tight
+        // enough to fail if either solver's accuracy regresses.
+        const gap = Math.abs(fim.cumulativeOil - impes.cumulativeOil) / impes.cumulativeOil;
+        expect(gap).toBeLessThan(0.03);
     }, 180_000);
 });

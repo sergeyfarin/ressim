@@ -17,6 +17,25 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
+- [x] **Sweep-efficiency panels had no numerical curve because the runs never asked for the metrics
+  (2026-07-31).** `sweepConfig` was attached only in `RuntimeStore.buildCreatePayload` (the
+  interactive path). Sensitivity and comparison runs go through
+  `buildCreatePayloadForRun` → `buildBenchmarkCreatePayload` → `buildCreatePayloadFromState`, none
+  of which set it, so the engine computed no sweep metrics for them, `rateHistory[i].sweep` was
+  undefined, and `appendSimulationSweepCurves` pushed nothing. Every E_A / E_V / E_vol panel drew
+  its analytical curve alone — which read as "the numerical value cannot be derived" when in fact
+  the engine computes it. Extracted `buildSweepConfig` into `buildCreatePayload.ts`, called from
+  both paths, and pinned by a `runModel.test.ts` case that asserts every sweep scenario's run
+  payload carries a geometry-matched config and every non-sweep scenario's does not.
+
+- [x] **Sweep layout showed the recovery factor twice (2026-07-31).** The shared `sweep` layout
+  ordered `sweep_rf` ("Recovery Factor — Sweep Analysis", numerical + analytical) at the top and the
+  generic `recovery` panel ("Recovery Factor", numerical only) further down — the same quantity with
+  the reference stripped out. The generic panel is now hidden for this layout. In `sweep_combined`
+  the E_A and E_V panels are collapsed by default: at `both` geometry the engine deliberately
+  reports no `e_a`/`e_v`, because one simulation cannot separate areal from vertical contact, so
+  those two remain analytical-only decomposition views.
+
 - [x] **FIM-vs-IMPES was a standalone scenario that could not name a winner (2026-07-31).**
   `solver_fim_impes` declared `analyticalMethod: 'none'` and stated outright that no curve was
   promoted as the oracle, so it could only show that the two formulations differ. Folded into

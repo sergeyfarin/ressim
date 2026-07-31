@@ -19,15 +19,24 @@ export const sweep_combined: Scenario = {
         rateChart: {
             panels: {
                 rates: { curveKeys: ['water-cut-sim'] },
-                recovery: { curveKeys: ['recovery-factor-primary'] },
                 cumulative: { curveKeys: ['cum-oil-sim'] },
                 diagnostics: { curveKeys: ['avg-pressure-sim'] },
+                // At 'both' geometry the engine reports E_vol but deliberately
+                // returns no E_A / E_V: a single simulation cannot separate
+                // areal from vertical contact. These two panels are therefore
+                // analytical-only decomposition views, and are collapsed by
+                // default so the page leads with the panels that carry both a
+                // numerical and an analytical curve.
+                sweep_areal: { expanded: false },
+                sweep_vertical: { expanded: false },
                 sweep_combined: {
-                    title: 'Analytical Total E_vol vs Simulated E_vol',
+                    title: 'Total Sweep Efficiency (E_vol)',
                     visible: true,
                 },
                 sweep_combined_mobile_oil: {
+                    title: 'Mobile Oil Recovered vs Analytical E_vol',
                     visible: true,
+                    expanded: false,
                 },
             },
         },

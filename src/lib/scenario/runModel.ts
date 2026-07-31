@@ -11,12 +11,14 @@ import type {
 import {
     getScenario,
     getScenarioWithVariantParams,
+    resolveCapabilities,
     solverFromParams,
     type AnalyticalMethod,
     type Scenario,
     type SimulationSolver,
     type ScenarioTerminationPolicy,
 } from '../catalog/scenarios';
+import { buildSweepConfig } from '../buildCreatePayload';
 import { cloneTerminationPolicy } from '../workers/terminationPolicy';
 import type { RateHistoryPoint, SimulatorCreatePayload, SimulatorSnapshot } from '../simulator-types';
 
@@ -194,10 +196,21 @@ export function coerceRunSpec(spec: RunSpec | Record<string, any>): RunSpec {
 }
 
 export function buildCreatePayloadForRun(spec: RunSpec): SimulatorCreatePayload {
-    return buildBenchmarkCreatePayload({
+    const payload = buildBenchmarkCreatePayload({
         ...spec.params,
         terminationPolicy: spec.terminationPolicy ?? undefined,
     });
+
+    // Sweep diagnostics are opt-in per run: without this the engine reports no
+    // sweep metrics, and every E_A / E_V / E_vol panel draws its analytical
+    // curve alone. The interactive path has always set it; sensitivity and
+    // comparison runs did not until 2026-07-31.
+    const scenario = getScenario(spec.caseKey);
+    const resolved = scenario ? resolveCapabilities(scenario.capabilities) : null;
+    if (resolved?.showSweepPanel && resolved.sweepGeometry) {
+        payload.sweepConfig = buildSweepConfig(payload, resolved.sweepGeometry);
+    }
+    return payload;
 }
 
 export function buildRunResult(input: {

@@ -372,8 +372,8 @@ describe('scenario capability validation', () => {
             ['mobility', 'per-result'],
             ['corey_no', 'per-result'],
             ['sor', 'per-result'],
-            ['solver_formulation', 'shared'],
             ['grid', 'shared'],
+            ['solver_formulation', 'shared'],
         ]);
         expect(getScenario('dep_pss')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['drainage_shape', 'per-result'],
@@ -700,7 +700,7 @@ describe('scenario capability validation', () => {
 
         expect(combinedLayout.rateChart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim']);
         expect(combinedLayout.rateChart?.panels?.recovery?.curveKeys).toEqual(['recovery-factor-primary']);
-        expect(combinedLayout.rateChart?.panels?.sweep_combined?.title).toBe('Analytical Total E_vol vs Simulated E_vol');
+        expect(combinedLayout.rateChart?.panels?.sweep_combined?.title).toBe('Total Sweep Efficiency (E_vol)');
         expect(combinedLayout.rateChart?.panels?.sweep_combined_mobile_oil?.visible).toBe(true);
     });
 });

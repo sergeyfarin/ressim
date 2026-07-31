@@ -162,6 +162,32 @@ function buildLegacyWellDefinitions(input: {
  * Build a SimulatorCreatePayload from plain UI state. Kept pure so it can be
  * unit-tested and type-checked independently of the Svelte component.
  */
+/**
+ * Sweep-efficiency diagnostics config for the simulator.
+ *
+ * Shared by the interactive path (RuntimeStore.buildCreatePayload) and the
+ * sensitivity/comparison path (buildCreatePayloadForRun). It lived only in the
+ * former until 2026-07-31, so comparison runs never asked the engine for sweep
+ * metrics and every E_A / E_V / E_vol panel drew its analytical curve with no
+ * numerical counterpart.
+ *
+ * The swept threshold is 20% of the movable saturation range above connate:
+ * high enough that a cell touched by numerical dispersion does not count as
+ * swept, low enough to register genuine displacement.
+ */
+export function buildSweepConfig(
+    input: { initialSaturation: number; s_wc: number; s_or: number },
+    geometry: 'areal' | 'vertical' | 'both',
+): NonNullable<SimulatorCreatePayload['sweepConfig']> {
+    const movable = Math.max(0, 1 - input.s_wc - input.s_or);
+    return {
+        geometry,
+        swept_threshold: input.s_wc + 0.2 * movable,
+        initial_oil_saturation: Math.max(0, 1 - input.initialSaturation),
+        residual_oil_saturation: input.s_or,
+    };
+}
+
 export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayload> & {
   // UI helpers referenced by the original implementation
   permMode?: string;

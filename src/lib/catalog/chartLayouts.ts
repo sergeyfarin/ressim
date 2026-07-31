@@ -76,6 +76,11 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
                     title: 'Recovery Factor',
                     curveKeys: ['recovery-factor-primary'],
                     scalePreset: 'recovery',
+                    // Hidden: sweep_rf is the same recovery factor with the
+                    // analytical reference beside it, so this panel repeated
+                    // the chart at the top of the page with the reference
+                    // stripped out.
+                    visible: false,
                     expanded: false,
                 },
                 cumulative: {
