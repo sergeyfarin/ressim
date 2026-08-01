@@ -152,6 +152,17 @@ impl ReservoirSimulator {
             return Err(format!("Skin factor must be finite, got: {}", skin));
         }
 
+        if self
+            .wells
+            .iter()
+            .any(|well| well.i == i && well.j == j && well.k == k)
+        {
+            return Err(format!(
+                "Multiple well completions in the same cell are not supported: ({}, {}, {})",
+                i, j, k
+            ));
+        }
+
         let cell_id = self.idx(i, j, k);
         let pi = self.calculate_well_productivity_index(cell_id, well_radius, skin)?;
         let well = Well {

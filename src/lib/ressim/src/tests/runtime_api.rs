@@ -170,100 +170,15 @@ fn simple_pressure_control_public_step_has_same_stable_contract_on_both_solvers(
 }
 
 #[test]
-fn multiple_wells_in_same_block_keep_rates_finite() {
+fn multiple_wells_in_same_block_are_rejected_without_state_change() {
     let mut sim = ReservoirSimulator::new(4, 1, 1, 0.2);
     sim.add_well(0, 0, 0, 600.0, 0.1, 0.0, true).unwrap();
-    sim.add_well(0, 0, 0, 550.0, 0.1, 0.0, true).unwrap();
-    sim.add_well(3, 0, 0, 120.0, 0.1, 0.0, false).unwrap();
+    let wells_before = sim.wells.len();
 
-    for _ in 0..12 {
-        sim.step(0.5);
-    }
+    let result = sim.add_well(0, 0, 0, 550.0, 0.1, 0.0, true);
+    err_contains(result, "same cell");
 
-    assert!(!sim.rate_history.is_empty());
-    let latest = sim.rate_history.last().unwrap();
-    assert!(latest.total_injection.is_finite());
-    assert!(latest.total_production_liquid.is_finite());
-    assert!(latest.total_production_oil.is_finite());
-
-    for i in 0..sim.nx * sim.ny * sim.nz {
-        assert!(sim.pressure[i].is_finite());
-        assert!(sim.sat_water[i].is_finite());
-        assert!(sim.sat_oil[i].is_finite());
-    }
-}
-
-#[test]
-fn shared_block_multiwell_public_step_remains_finite_on_both_solvers() {
-    fn run_case(fim_enabled: bool) -> (f64, usize, f64, f64, f64) {
-        let mut sim = ReservoirSimulator::new(4, 1, 1, 0.2);
-        sim.set_fim_enabled(fim_enabled);
-        sim.add_well(0, 0, 0, 600.0, 0.1, 0.0, true).unwrap();
-        sim.add_well(0, 0, 0, 550.0, 0.1, 0.0, true).unwrap();
-        sim.add_well(3, 0, 0, 120.0, 0.1, 0.0, false).unwrap();
-
-        for _ in 0..12 {
-            sim.step(0.5);
-        }
-
-        // Two injectors at different BHPs in the same block is a degenerate
-        // configuration — the well-control grouping keys on BHP, so they are two
-        // independent wells competing for one cell — and neither solver
-        // conserves volume on it: measured 2026-08-01, IMPES drifts 10.0 % of
-        // pore volume and FIM 1.3 %. That predates the material-balance warning
-        // added the same day, which is why IMPES now reports it here.
-        //
-        // This test's contract is that the *public step stays finite* under an
-        // abusive well layout, and it does. The conservation failure is tracked
-        // separately in TODO.md rather than asserted away here.
-        let pore_volume_m3: f64 = (0..sim.nx * sim.ny * sim.nz)
-            .map(|idx| sim.pore_volume_m3(idx))
-            .sum();
-        let drift_fraction = sim.cumulative_mb_error_m3.abs() / pore_volume_m3;
-        assert!(
-            drift_fraction < 0.15,
-            "shared-block multiwell drift grew beyond its recorded level for fim_enabled={}: {:.4e}",
-            fim_enabled,
-            drift_fraction
-        );
-        assert!(
-            sim.last_solver_warning.is_empty()
-                || sim.last_solver_warning.contains("Material balance"),
-            "unexpected solver warning for fim_enabled={}: {}",
-            fim_enabled,
-            sim.last_solver_warning
-        );
-
-        let latest = sim
-            .rate_history
-            .last()
-            .expect("shared-block multiwell case should record history");
-
-        for i in 0..sim.nx * sim.ny * sim.nz {
-            assert!(sim.pressure[i].is_finite());
-            assert!(sim.sat_water[i].is_finite());
-            assert!(sim.sat_oil[i].is_finite());
-        }
-
-        (
-            sim.time_days,
-            sim.rate_history.len(),
-            latest.total_injection,
-            latest.total_production_liquid,
-            latest.total_production_oil,
-        )
-    }
-
-    let impes = run_case(false);
-    let fim = run_case(true);
-
-    for metrics in [impes, fim] {
-        assert!((metrics.0 - 6.0).abs() < 1e-9);
-        assert!(metrics.1 > 0);
-        assert!(metrics.2.is_finite());
-        assert!(metrics.3.is_finite());
-        assert!(metrics.4.is_finite());
-    }
+    assert_eq!(sim.wells.len(), wells_before);
 }
 
 #[test]

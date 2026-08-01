@@ -55,18 +55,19 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   or the drawdown alone. Until this is fixed, a fully perforated gravity well is still not usable in a
   scenario even though the datum is now correct — `wf_gravity.test.ts`'s fully perforated case
   deliberately asserts only the head profile and not the solver warning.
-- [ ] **Two wells on different controls in one block do not conserve volume (found 2026-08-01).**
+- [x] **Two wells on different controls in one block are rejected (fixed 2026-08-01).**
   Surfaced by the warning above. `shared_block_multiwell_public_step_remains_finite_on_both_solvers`
   puts two injectors at 600 and 550 bar in cell (0,0,0) — the well-control grouping keys on BHP, so
   they are two independent wells competing for one cell — and material balance drifts **10.0 % of
-  pore volume on IMPES and 1.3 % on FIM**. Pre-existing; the test asserted finiteness and silence,
-  and now records the drift instead. Either the configuration should be rejected at the API boundary
-  or the completion-rate allocation needs to handle it. Worth settling before E11 multi-well pattern
-  support, which will make shared-block layouts ordinary rather than pathological.
+  pore volume on IMPES and 1.3 % on FIM**. Pre-existing; the old test asserted finiteness while
+  recording the drift. `add_well_internal` now atomically rejects a second completion in an occupied
+  cell, before either solver can see the unsupported layout. This does not affect multi-completion
+  wells in distinct layers; E11 can relax the invariant when it adds explicit shared-block
+  completion-rate allocation semantics.
 - [ ] **The material-balance warning is IMPES-only (2026-08-01).** `warn_on_material_balance_drift`
-  lives in `impes/timestep.rs`, so the FIM path can still drift silently — 1.3 % on the shared-block
-  case above. FIM has its own convergence reporting, so the right shape is probably a shared
-  post-step check rather than a copy.
+  lives in `impes/timestep.rs`, so the FIM path could still drift silently on a different defect; the
+  now-rejected shared-block case above historically measured 1.3 %. FIM has its own convergence
+  reporting, so the right shape is probably a shared post-step check rather than a copy.
 - [x] **Numerical-dispersion and crossflow scenarios (2026-08-01).** Two new cases, closing
   roadmap T7.12, T7.13, T7.16 and the Tier 1 "D-P with vertical communication" row.
   `wf_numerics` (1D, 500 m, six grids from 50 m to 1.25 m cells) measures first-order convergence
