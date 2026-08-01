@@ -264,5 +264,18 @@
                 {/if}
             </div>
         </section>
+
+        <footer class="border-t border-border py-4 text-xs leading-relaxed text-muted-foreground">
+            <strong class="font-semibold text-foreground">Scientific-use notice:</strong>
+            ResSim is educational and research software. It is not intended for reserves booking,
+            operational decisions, or safety-critical use. Review the
+            <a
+                href="https://github.com/sergeyfarin/ressim/blob/master/docs/SCIENTIFIC_LIMITATIONS.md"
+                target="_blank"
+                rel="noreferrer"
+                class="font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
+            >validation scope and limitations</a>
+            before interpreting results.
+        </footer>
     </div>
 </main>

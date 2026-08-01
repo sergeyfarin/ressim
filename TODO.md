@@ -895,7 +895,7 @@ matter more. Search `docs/FIM_EXPERIMENT_REGISTRY.md` by mechanism before any ch
   coincide. Same family as the open fragmentation track (`docs/FIM_STATUS.md`); the waterflood case
   is a cheaper reproducer than the gas cases.
 
-- [ ] **`wf_bl1d` `solver_formulation` description is now factually wrong.** It claims "at 5-day
+- [x] **`wf_bl1d` `solver_formulation` description corrected (2026-08-02).** It previously claimed "at 5-day
   steps IMPES loses 8.8% of its own fine-step recovery against FIM's 3.1%" and quotes 1347.7 vs
   1360.8 m³ at 0.25 days. Both were measured against the pre-fix reported rates. Post-fix: IMPES
   loses **0.0%** (1362.5 vs 1362.4), FIM loses 1.0% (1350.6 vs 1364.1), and the two agree to 0.12%

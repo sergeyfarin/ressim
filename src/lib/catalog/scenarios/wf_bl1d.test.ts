@@ -103,7 +103,7 @@ describe('wf_bl1d solver_formulation sensitivity', () => {
             expect(run.cumulativeOil, key).toBeGreaterThan(0);
         }
 
-        // Measured 0.97% at the shipped 0.25-day step. The bound is the claim
+        // Measured 0.12% at the shipped 0.25-day step. The bound is the claim
         // the scenario text makes: at this step size the formulation choice is
         // a small effect, not a physics difference. It is deliberately tight
         // enough to fail if either solver's accuracy regresses.

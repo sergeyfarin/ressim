@@ -234,7 +234,7 @@ export const wf_bl1d: Scenario = {
         {
             key: 'solver_formulation',
             label: 'Solver (FIM vs IMPES)',
-            description: 'Solve the identical displacement two ways — implicit pressure with explicit saturation transport (IMPES), or one coupled nonlinear Newton solve (FIM) — with everything else held fixed. The Buckley-Leverett reference is independent of both grid and timestep, so it stays put while the two numerical trajectories move: this is the one sensitivity here whose separation is entirely numerical error rather than physics. At the scenario report step of 0.25 days the two agree to 0.97% in cumulative oil over the 50-day flood (1347.7 vs 1360.8 m³), and FIM costs roughly eight times the runtime for that agreement. The gap widens as the report step coarsens — at 5-day steps IMPES loses 8.8% of its own fine-step recovery against FIM\'s 3.1% — so the timestep, rather than the formulation, is usually the thing worth checking first.',
+            description: 'Solve the identical displacement two ways — implicit pressure with explicit saturation transport (IMPES), or one coupled nonlinear Newton solve (FIM) — with everything else held fixed. The Buckley-Leverett reference is independent of both grid and timestep, so it stays put while the numerical trajectories move: their separation is numerical error rather than different physics. At the fine 0.25-day report step, IMPES and FIM agree to 0.12% in cumulative oil over the 50-day flood (1362.4 vs 1364.1 m³). Coarsening the requested report step to 5 days leaves IMPES effectively unchanged (1362.5 m³) because its stability control still selects smaller internal substeps, while FIM finishes 1.0% below its fine-step result (1350.6 m³). FIM also fragments each requested step through its nonlinear timestep controller, so this comparison teaches how formulation and internal step selection interact — not that the requested report step is the step each solver actually takes.',
             analyticalOverlayMode: 'shared',
             variesSolver: true,
             variants: [
@@ -248,21 +248,21 @@ export const wf_bl1d: Scenario = {
                 {
                     key: 'solver_fim_base',
                     label: 'FIM 0.25-day steps',
-                    description: 'Fully implicit coupled pressure/saturation Newton solve at the same fine step. Agrees with IMPES to about 1% in cumulative oil — at this step size the formulation barely matters.',
+                    description: 'Fully implicit coupled pressure/saturation Newton solve at the same fine report step. Its cumulative oil agrees with IMPES to 0.12% over the 50-day flood.',
                     paramPatch: { fimEnabled: true },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'solver_impes_coarse',
                     label: 'IMPES 5-day steps',
-                    description: 'The scenario default: implicit pressure followed by explicit saturation transport, with stability-driven internal subdivision.',
+                    description: 'A coarse requested report step, but stability-driven internal subdivision leaves the IMPES result effectively unchanged from the fine-step run.',
                     paramPatch: { delta_t_days: 5, steps: 10,},
                     affectsAnalytical: false,
                 },
                 {
                     key: 'solver_fim_coarse',
                     label: 'FIM 5-day steps',
-                    description: 'Fully implicit coupled pressure/saturation Newton solve at the same fine step. Agrees with IMPES to about 1% in cumulative oil — at this step size the formulation barely matters.',
+                    description: 'A coarse requested report step that the nonlinear controller fragments internally; cumulative oil finishes 1.0% below the fine-step FIM run.',
                     paramPatch: { fimEnabled: true, delta_t_days: 5, steps: 10 },
                     affectsAnalytical: false,
                 },
