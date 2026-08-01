@@ -57,9 +57,11 @@ leave it. Nothing is uploaded: the solver is WebAssembly running on the page.
 | 1D Displacement — Buckley–Leverett | 1D Waterflood | `wf_bl1d` | Buckley–Leverett + Welge analytical reference; also hosts the FIM-vs-IMPES formulation comparison |
 | 1D Displacement — Buckley–Leverett | 1D Waterflood — Capillary Effects | `wf_capillary` | Departure from the zero-capillary BL limit; physical versus numerical front spreading |
 | 1D Displacement — Buckley–Leverett | Gravity-Stable vs Unstable Displacement | `wf_gravity_stability` | 1D vertical column flooded upward or downward; gravity along the flow path brackets the viscous BL curve instead of bounding it |
+| 1D Displacement — Buckley–Leverett | Numerical Dispersion & Convergence | `wf_numerics` | The case where no BL assumption is broken, so the whole gap is the grid: first-order convergence over a 40x cell-size range, the IMPES stability limit made visible, IMPES vs FIM, and OPM Flow runs at two resolutions |
 | 1D Displacement — Buckley–Leverett | Gas Injection | `gas_injection` | Gas-oil fractional-flow breakthrough |
 | Sweep Efficiency | Areal Sweep | `sweep_areal` | Craig confined five-spot correlation |
 | Sweep Efficiency | Vertical Sweep | `sweep_vertical` | Dykstra–Parsons / Stiles layered sweep |
+| Sweep Efficiency | Layer Crossflow — Do the Layers Talk? | `sweep_crossflow` | Dykstra–Parsons' non-communicating assumption tested directly: a k_v/k_h ladder the correlation cannot see, a crossflow benefit that reverses sign with mobility ratio, and capillary crossflow that needs a path |
 | Sweep Efficiency | Combined Sweep | `sweep_combined` | Combined areal and vertical contact with selectable layered correlation |
 | Sweep Efficiency | Gravity Override (Dietz Tongue) | `wf_gravity` | Vertical sweep lost to a gravity tongue; gravity-off control returns to BL, rate/density/k_z/completion ladders leave it; OPM Flow cross-check of the base case |
 | Flow Regimes & Decline | Transient Radial Flow (Theis) | `dep_welltest` | Line-source drawdown before boundaries are felt; permeability, skin, and near-well grid bias |

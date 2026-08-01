@@ -22,7 +22,7 @@ None of these had shipped as of the 2026-07-24 audit; each now carries its Tier 
 | Well test / pressure transient (drawdown, buildup, Horner) | T7.1 | radial diffusivity solution, Horner/MDH | none for a first version (fine Cartesian grid near well + Peaceman) | **SHIPPED 2026-07-24** as `dep_welltest` |
 | Unfavorable-M waterflood / fingering sensitivity | T7.5 | BL with high M (stability limit discussion); Koval (1963) | none | Parameter sensitivity on `wf_bl1d` family |
 | Directly-simulated quarter five-spot vs Craig correlation | T7.11 | Craig (1971) correlation vs own simulation | none | Shows where the correlation's assumptions break; pairs with the grid-orientation study |
-| Dykstra-Parsons with vertical communication sweep | — | D-P (1950) + Warren-Root style kv/kh blending | none | Extends `sweep_vertical`; ROADMAP 5.3 |
+| Dykstra-Parsons with vertical communication sweep | — | D-P (1950) + Zapata & Lake (1981) viscous crossflow | none | **SHIPPED 2026-08-01** as `sweep_crossflow`; see the delivery record |
 
 ## Tier 2 — SPE Comparative Solution Projects (published simulator results as reference)
 
@@ -187,8 +187,8 @@ T7.1 is the largest missing pillar of classical reservoir engineering in the pro
 | ID | Case | Teaching point |
 |---|---|---|
 | T7.11 | **Grid-orientation effect** — five-spot on a parallel vs. diagonal grid at high M | The *grid* is a forecast variable. Todd, O'Dell & Hirasaki (1972); Yanosik & McCracken (1979). **Attempted 2026-07-24 and NOT shipped — see "T7.11 negative result" below. Needs multi-well pattern support, not just existing params.** |
-| T7.12 | **Numerical vs. physical dispersion ladder** | `wf_bl1d` already has a grid dimension; what is missing is the framing — front smearing from Δx is indistinguishable from a physically wrong `n_o` |
-| T7.13 | **Timestep × solver (IMPES vs FIM on one case)** | `docs/BLACK_OIL_VALIDATION.md` §2 records a ~10 % liberated-gas disagreement between two shipped solver paths on the same column. Today that is a dev-only defect note; it is also the most honest available demonstration that solver choice is a forecast uncertainty |
+| T7.12 | **Numerical vs. physical dispersion ladder** — **SHIPPED 2026-08-01** (`wf_numerics`) | Front smearing from Δx is indistinguishable from a physically wrong `n_o` *at breakthrough*, and separable after it; measured both ways |
+| T7.13 | **Timestep × solver (IMPES vs FIM on one case)** — **SHIPPED 2026-08-01** as two dimensions of `wf_numerics`, with OPM Flow deciding which path the disagreement belongs to | The black-oil liberated-gas disagreement in `docs/BLACK_OIL_VALIDATION.md` §2 remains a separate, unshipped item |
 | T7.14 | **Joint relperm-endpoint uncertainty** | `S_or` and Corey exponents exist as *separate* `wf_bl1d` dimensions, never as a joint RF fan with "would SCAL data resolve this?" framing |
 | T7.15 | **Well count / pattern density** | The library currently poses no development-*decision* question at all |
 
@@ -196,10 +196,65 @@ T7.1 is the largest missing pillar of classical reservoir engineering in the pro
 
 | ID | Case | Depends on |
 |---|---|---|
-| T7.16 | **Capillary entry pressure × layer contrast** — capillary crossflow is invisible homogeneous, decisive layered (Willhite §5). The unbuilt half of Tier 5.2 | T7.4 (turn capillarity on somewhere first) |
+| T7.16 | **Capillary entry pressure × layer contrast** — **SHIPPED 2026-08-01** as `sweep_crossflow`'s `capillary_crossflow` dimension. Measured as sealed-vs-open rather than homogeneous-vs-layered: capillarity is inert without vertical permeability and super-additive with it | done |
 | T7.17 | **Aquifer strength × OOIP** — a future two-parameter successor to the withdrawn `dep_nct`: near-perfect history equifinality, factor-2 reserves spread | T7.3 |
 | T7.18 | **Relperm endpoints × heterogeneity (V_DP)** — sweep loss attributable to rock curves vs. geology is not separable from production data | none |
 | T7.19 | **Ensemble / fan-chart affordance** — N-realization P10/P50/P90 band plus "history shaded, forecast diverging" | E8 (below). **Prerequisite for all of 7.D and for Tier 6.1/6.6** |
+
+### Delivery record (2026-08-01) — numerics and crossflow
+
+**T7.12 + T7.13 — SHIPPED as one case: `wf_numerics`, "Numerical Dispersion & Convergence."**
+The framing T7.12 asked for, with T7.13's solver comparison folded in as a dimension rather than a
+dev-only defect note. A 500 m x 20 m x 10 m 1D slab (20,000 m3 pore volume, rate-controlled injector
+at 100 m3/day, no capillarity, no gravity) at six resolutions. Replay
+`pnpm vitest run src/lib/catalog/scenarios/wf_numerics.test.ts`. BL reference: breakthrough
+0.5856 PVI, recovery 0.7151 at 1 PVI.
+
+| Δx (m) | 50 | 20 | 10 | 5 | 2.5 | 1.25 |
+|---|---|---|---|---|---|---|
+| breakthrough (PVI) | 0.455 | 0.525 | 0.555 | 0.570 | 0.580 | 0.585 |
+| error vs BL | 0.131 | 0.061 | 0.031 | 0.016 | 0.006 | 0.001 |
+| RF at 1 PVI | 0.686 | 0.699 | 0.707 | 0.711 | 0.712 | 0.713 |
+
+The error halves with each halving of Δx — first-order convergence, and the property that identifies
+the gap as numerical rather than a missing physical term. Three further dimensions, all tested:
+
+- **Time truncation.** Report step 0.25 → 10 days costs under 0.02 of recovery because the
+  saturation limiter re-subdivides internally. Relaxing `max_sat_change_per_step` to 0.5 gives
+  RF 0.733 (above BL), and 1.0 gives 0.936 of oil in place when only 0.889 is mobile — **and the run
+  raises no solver warning**. Recorded as a product gap in `TODO.md`.
+- **Dispersion or rock.** Δx = 50 m with n_o = 2 breaks through at 0.455 PVI, Δx = 2.5 m with
+  n_o = 3.5 at 0.465 — 2 % apart — while RF at 1 PVI is 0.686 vs 0.586. Breakthrough timing cannot
+  separate a coarse grid from a steeper rock curve; post-breakthrough recovery can.
+- **Solver, settled by OPM.** ResSim IMPES 0.555 / 0.707, ResSim FIM 0.535 / 0.707. New OPM Flow
+  decks (`wf_numerics`, `wf_numerics_fine`, flow 2026.04, RESV-controlled injector) give 0.535 /
+  0.7066 at 10 m cells and 0.560 / 0.7127 at 2.5 m. OPM is fully implicit and lands on ResSim's FIM
+  answer, so the 0.02 PVI IMPES/FIM gap is the formulation, independently reproduced.
+
+**Tier 1 "Dykstra-Parsons with vertical communication" — SHIPPED as `sweep_crossflow`.** 48 x 1 x 5
+section (480 m x 10 m x 20 m, 19,200 m3 pore volume, layer k_h [200, 150, 100, 60, 40], k_rw_max
+0.25 so a 1 cp oil gives M = 0.5, pressure-controlled 500/100 bar, gravity off). Replay
+`pnpm vitest run src/lib/catalog/scenarios/sweep_crossflow.test.ts`.
+
+| k_v/k_h | 10⁻⁶ | 0.001 | 0.01 | 0.1 | 1 |
+|---|---|---|---|---|---|
+| breakthrough (PVI) | 0.427 | 0.457 | 0.518 | 0.576 | 0.599 |
+| RF at 1 PVI | 0.735 | 0.755 | 0.779 | 0.783 | 0.781 |
+
+Neither Dykstra-Parsons nor Stiles takes k_v as an input, so the analytical overlay is provably
+constant across the whole ladder (pinned by a test that computes both curves and asserts equality)
+while breakthrough moves 40 %. Two further dimensions:
+
+- **Sign reversal with mobility.** Opening the layers is worth +0.046 of RF at M = 0.5, +0.000 at
+  M = 2 and −0.021 at M = 10 (sealed → isotropic pairs, oil viscosity 1 / 4 / 20 cp, report step
+  scaled with viscosity so every curve carries the same PVI per step). The crossover is between
+  M = 2 and M = 10, not at M = 1 — consistent with the shock-front rather than end-point mobility
+  ratio being the governing group (Zapata & Lake 1981).
+- **T7.16 capillary crossflow, delivered here.** 2x2 with an empty corner: with layers sealed, a
+  6 bar Brooks-Corey entry pressure changes RF by nothing measurable (0.735 both ways); with them
+  isotropic it adds 0.013 on top of viscous crossflow (0.781 → 0.794). Separately +0.000 and +0.046,
+  together +0.059 — super-additive, the opposite interaction sign to `sweep_vertical`'s
+  `endpoints_vs_geology`, which masks.
 
 ### Delivery record (2026-08-01) — vertical displacement
 

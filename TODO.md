@@ -27,6 +27,26 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   Eclipse-style datum depth per well plus a wellbore density, applied as
   `p_completion = p_bhp + ρ_wb·g·(depth_k − depth_datum)`; it only bites when `gravityEnabled`, so
   existing gravity-free scenarios and benchmarks cannot move.
+- [ ] **IMPES reports an unphysical result with no warning when the saturation limiter is relaxed
+  (found 2026-08-01).** `wf_numerics`'s `time_truncation` dimension ships this deliberately as
+  teaching content, but it is also a product gap: with `max_sat_change_per_step` at 1.0 the 1D
+  column recovers 0.936 of the oil in place when only 0.889 of it is mobile, and
+  `getLastSolverWarning()` returns `''`. The run completes and the chart looks plausible. A cheap
+  guard would be a post-step check that no cell's water saturation left `[s_wc, 1 - s_or]` by more
+  than a tolerance, raised as a solver warning rather than an abort — the scenario's
+  `dt_limiter_off` variant is a ready-made regression case, and `wf_numerics.test.ts` currently pins
+  the *absence* of the warning, so that assertion flips when this is fixed.
+- [x] **Numerical-dispersion and crossflow scenarios (2026-08-01).** Two new cases, closing
+  roadmap T7.12, T7.13, T7.16 and the Tier 1 "D-P with vertical communication" row.
+  `wf_numerics` (1D, 500 m, six grids from 50 m to 1.25 m cells) measures first-order convergence
+  onto an exact BL reference — breakthrough error 0.131 → 0.001 PVI, halving with cell size — plus
+  timestep/limiter, dispersion-vs-rock-curve and IMPES-vs-FIM dimensions, with new OPM Flow decks at
+  two resolutions bundled as reference curves. `sweep_crossflow` (48×1×5 layered section) varies the
+  one parameter Dykstra-Parsons and Stiles cannot see: breakthrough moves 40 % across the k_v/k_h
+  ladder while the analytical curve is provably fixed, the crossflow benefit reverses sign between
+  M = 0.5 and M = 10, and capillary crossflow is inert without a path and super-additive with one.
+  Replay: `pnpm vitest run src/lib/catalog/scenarios/wf_numerics.test.ts
+  src/lib/catalog/scenarios/sweep_crossflow.test.ts`.
 - [x] **Gravity-override scenario `wf_gravity` (2026-08-01).** New
   `buckley-leverett-displacement` case: a 30×1×20 vertical section, single-perforation wells at the
   base, rate-controlled injector. Gravity-off control recovers 0.699 of oil in place at 1 PVI against

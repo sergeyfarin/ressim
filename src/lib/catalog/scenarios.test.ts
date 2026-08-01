@@ -36,11 +36,17 @@ describe('scenario sensitivities', () => {
                 .filter((dimension) => dimension.variesSolver)
                 .map((dimension) => [scenario.key, dimension.key]),
         );
-        expect(solverDimensions).toEqual([['wf_bl1d', 'solver_formulation']]);
+        // Two deliberate solver-varying dimensions, and only two: `wf_bl1d`
+        // crosses formulation with report step, while `wf_numerics` puts the
+        // pair beside an independent OPM Flow run of the same deck.
+        expect(solverDimensions).toEqual([
+            ['wf_bl1d', 'solver_formulation'],
+            ['wf_numerics', 'solver_vs_opm'],
+        ]);
     });
 
     it('provides analytical method metadata for every canonical scenario', () => {
-        expect(listScenarios()).toHaveLength(15);
+        expect(listScenarios()).toHaveLength(17);
         for (const scenario of listScenarios()) {
             expect(scenario.analyticalMethodSummary.length, scenario.key).toBeGreaterThan(10);
             expect(scenario.analyticalMethodReference.length, scenario.key).toBeGreaterThan(5);
@@ -538,6 +544,8 @@ describe('scenario capability validation', () => {
             // The gravity tongue is a water-saturation structure in the k direction.
             wf_gravity: 'saturation_water',
             wf_gravity_stability: 'saturation_water',
+            wf_numerics: 'saturation_water',
+            sweep_crossflow: 'saturation_water',
             sweep_areal: 'saturation_water',
             sweep_vertical: 'saturation_water',
             sweep_combined: 'saturation_water',

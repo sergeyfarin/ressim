@@ -620,4 +620,247 @@ WF_GRAVITY = OpmCase(
 )
 
 
-CASES = {case.key: case for case in (WF_BL1D, SPE1_GAS_INJECTION, GAS_DRIVE, WF_GRAVITY)}
+WF_NUMERICS = OpmCase(
+    key="wf_numerics",
+    scenario_key="wf_numerics",
+    label="Numerical Dispersion Column (base grid, 50 cells)",
+    deck_name="WF_NUMERICS.DATA",
+    supported_curves=("FWCT", "FOPR", "FWPR", "FWIR", "FOPT", "FWPT", "FWIT", "FVIT", "FPR"),
+    units={"system": "METRIC", "time": "days", "pressure": "bar", "rate": "m3/day"},
+    cumulative_injection_curve="FVIT",
+    # 50 x 10 m by 1 x 20 m by 1 x 10 m at 0.2 porosity.
+    pore_volume_m3=20_000.0,
+    curve_display={
+        "FWCT": {"panelKey": "rates", "curveKey": "opm-water-cut", "label": "OPM Flow \u2014 Water Cut (\u0394x = 10 m)"},
+        "FOPR": {"panelKey": "oil_rate", "curveKey": "opm-oil-rate", "label": "OPM Flow \u2014 Oil Rate (\u0394x = 10 m)"},
+        "FOPT": {"panelKey": "cumulative", "curveKey": "opm-cum-oil", "label": "OPM Flow \u2014 Cum Oil (\u0394x = 10 m)"},
+        "FPR": {"panelKey": "diagnostics", "curveKey": "opm-avg-pressure", "label": "OPM Flow \u2014 Avg Pressure (\u0394x = 10 m)"},
+    },
+    deck=_clean_deck(
+        """
+        RUNSPEC
+        TITLE
+          RESSIM WF_NUMERICS OPM FLOW REFERENCE (50 cells) /
+        DIMENS
+          50 1 1 /
+        OIL
+        WATER
+        METRIC
+        TABDIMS
+          1 1 20 20 1 20 /
+        EQLDIMS
+        /
+        WELLDIMS
+          2 2 1 2 /
+        START
+          1 JAN 2026 /
+        GRID
+        DXV
+          50*10 /
+        DYV
+          1*20 /
+        DZV
+          1*10 /
+        TOPS
+          50*0 /
+        PORO
+          50*0.2 /
+        PERMX
+          50*500 /
+        PERMY
+          50*500 /
+        PERMZ
+          50*500 /
+        PROPS
+        PVTW
+          300 1.0 3E-6 0.5 0 /
+        PVDO
+          100 1.002 1.0
+          300 1.000 1.0
+          500 0.998 1.0 /
+        ROCK
+          300 1E-6 /
+        DENSITY
+          800 1000 1 /
+        -- Corey n_w = n_o = 2, S_wc = S_or = 0.1, end points 1.0, zero capillary
+        -- pressure: the same rock curves as the ResSim wf_numerics scenario.
+        SWOF
+          0.10 0.0 1.0 0
+          0.20 0.015625 0.765625 0
+          0.30 0.0625 0.5625 0
+          0.40 0.140625 0.390625 0
+          0.50 0.25 0.25 0
+          0.60 0.390625 0.140625 0
+          0.70 0.5625 0.0625 0
+          0.80 0.765625 0.015625 0
+          0.90 1.0 0.0 0 /
+        REGIONS
+        SOLUTION
+        -- Datum at the cell centre of the single 10 m layer, so the initial
+        -- hydrostatic field reproduces the scenario's uniform 300 bar. The water
+        -- contact is far below the model, leaving every cell at connate water.
+        EQUIL
+          5 300 10000 0 0 0 0 0 0 /
+        SUMMARY
+        FWCT
+        FOPR
+        FWPR
+        FWIR
+        FOPT
+        FWPT
+        FWIT
+        FVIT
+        FPR
+        RUNSUM
+        SEPARATE
+        SCHEDULE
+        RPTRST
+          BASIC=2 /
+        WELSPECS
+          'INJ' 'G' 1 1 5 'WATER' /
+          'PROD' 'G' 50 1 5 'OIL' /
+        /
+        COMPDAT
+          'INJ' 1 1 1 1 'OPEN' 2* 0.2 /
+          'PROD' 50 1 1 1 'OPEN' 2* 0.2 /
+        /
+        -- Reservoir-volume rate control, matching the scenario's 100 m3/day of
+        -- injected reservoir volume; 700 bar is the ResSim injector BHP limit.
+        WCONINJE
+          'INJ' 'WATER' 'OPEN' 'RESV' 1* 100 700 /
+        /
+        WCONPROD
+          'PROD' 'OPEN' 'BHP' 5* 200 /
+        /
+        TSTEP
+          260*1 /
+        END
+"""
+    ),
+)
+
+
+# The same physical column at the scenario's converged resolution. Shipped as a
+# separate case rather than a variant because one artifact carries one run, and
+# the pair is the point: OPM Flow has its own grid-convergence path to the same
+# analytical answer.
+WF_NUMERICS_FINE = OpmCase(
+    key="wf_numerics_fine",
+    scenario_key="wf_numerics",
+    label="Numerical Dispersion Column (fine grid, 200 cells)",
+    deck_name="WF_NUMERICS_FINE.DATA",
+    supported_curves=("FWCT", "FOPR", "FWPR", "FWIR", "FOPT", "FWPT", "FWIT", "FVIT", "FPR"),
+    units={"system": "METRIC", "time": "days", "pressure": "bar", "rate": "m3/day"},
+    cumulative_injection_curve="FVIT",
+    pore_volume_m3=20_000.0,
+    curve_display={
+        "FWCT": {"panelKey": "rates", "curveKey": "opm-fine-water-cut", "label": "OPM Flow \u2014 Water Cut (\u0394x = 2.5 m)"},
+        "FOPR": {"panelKey": "oil_rate", "curveKey": "opm-fine-oil-rate", "label": "OPM Flow \u2014 Oil Rate (\u0394x = 2.5 m)"},
+        "FOPT": {"panelKey": "cumulative", "curveKey": "opm-fine-cum-oil", "label": "OPM Flow \u2014 Cum Oil (\u0394x = 2.5 m)"},
+        "FPR": {"panelKey": "diagnostics", "curveKey": "opm-fine-avg-pressure", "label": "OPM Flow \u2014 Avg Pressure (\u0394x = 2.5 m)"},
+    },
+    deck=_clean_deck(
+        """
+        RUNSPEC
+        TITLE
+          RESSIM WF_NUMERICS OPM FLOW REFERENCE (200 cells) /
+        DIMENS
+          200 1 1 /
+        OIL
+        WATER
+        METRIC
+        TABDIMS
+          1 1 20 20 1 20 /
+        EQLDIMS
+        /
+        WELLDIMS
+          2 2 1 2 /
+        START
+          1 JAN 2026 /
+        GRID
+        DXV
+          200*2.5 /
+        DYV
+          1*20 /
+        DZV
+          1*10 /
+        TOPS
+          200*0 /
+        PORO
+          200*0.2 /
+        PERMX
+          200*500 /
+        PERMY
+          200*500 /
+        PERMZ
+          200*500 /
+        PROPS
+        PVTW
+          300 1.0 3E-6 0.5 0 /
+        PVDO
+          100 1.002 1.0
+          300 1.000 1.0
+          500 0.998 1.0 /
+        ROCK
+          300 1E-6 /
+        DENSITY
+          800 1000 1 /
+        -- Corey n_w = n_o = 2, S_wc = S_or = 0.1, end points 1.0, zero capillary
+        -- pressure: the same rock curves as the ResSim wf_numerics scenario.
+        SWOF
+          0.10 0.0 1.0 0
+          0.20 0.015625 0.765625 0
+          0.30 0.0625 0.5625 0
+          0.40 0.140625 0.390625 0
+          0.50 0.25 0.25 0
+          0.60 0.390625 0.140625 0
+          0.70 0.5625 0.0625 0
+          0.80 0.765625 0.015625 0
+          0.90 1.0 0.0 0 /
+        REGIONS
+        SOLUTION
+        -- Datum at the cell centre of the single 10 m layer, so the initial
+        -- hydrostatic field reproduces the scenario's uniform 300 bar. The water
+        -- contact is far below the model, leaving every cell at connate water.
+        EQUIL
+          5 300 10000 0 0 0 0 0 0 /
+        SUMMARY
+        FWCT
+        FOPR
+        FWPR
+        FWIR
+        FOPT
+        FWPT
+        FWIT
+        FVIT
+        FPR
+        RUNSUM
+        SEPARATE
+        SCHEDULE
+        RPTRST
+          BASIC=2 /
+        WELSPECS
+          'INJ' 'G' 1 1 5 'WATER' /
+          'PROD' 'G' 200 1 5 'OIL' /
+        /
+        COMPDAT
+          'INJ' 1 1 1 1 'OPEN' 2* 0.2 /
+          'PROD' 200 1 1 1 'OPEN' 2* 0.2 /
+        /
+        -- Reservoir-volume rate control, matching the scenario's 100 m3/day of
+        -- injected reservoir volume; 700 bar is the ResSim injector BHP limit.
+        WCONINJE
+          'INJ' 'WATER' 'OPEN' 'RESV' 1* 100 700 /
+        /
+        WCONPROD
+          'PROD' 'OPEN' 'BHP' 5* 200 /
+        /
+        TSTEP
+          260*1 /
+        END
+"""
+    ),
+)
+
+
+CASES = {case.key: case for case in (WF_BL1D, SPE1_GAS_INJECTION, GAS_DRIVE, WF_GRAVITY, WF_NUMERICS, WF_NUMERICS_FINE)}

@@ -4,6 +4,8 @@ import wfBl1dArtifact from './opm-flow-results/wf_bl1d.json';
 import spe1Artifact from './opm-flow-results/spe1_gas_injection.json';
 import gasDriveArtifact from './opm-flow-results/gas_drive.json';
 import wfGravityArtifact from './opm-flow-results/wf_gravity.json';
+import wfNumericsArtifact from './opm-flow-results/wf_numerics.json';
+import wfNumericsFineArtifact from './opm-flow-results/wf_numerics_fine.json';
 
 export type ReferenceSourceType =
     | 'analytical'
@@ -54,6 +56,8 @@ const ARTIFACTS = [
     spe1Artifact as OpmFlowArtifact,
     gasDriveArtifact as OpmFlowArtifact,
     wfGravityArtifact as OpmFlowArtifact,
+    wfNumericsArtifact as OpmFlowArtifact,
+    wfNumericsFineArtifact as OpmFlowArtifact,
 ];
 
 export function listOpmFlowArtifacts(): OpmFlowArtifact[] {

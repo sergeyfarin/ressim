@@ -28,8 +28,10 @@ import { wf_bl1d } from './scenarios/wf_bl1d';
 import { wf_capillary } from './scenarios/wf_capillary';
 import { wf_gravity } from './scenarios/wf_gravity';
 import { wf_gravity_stability } from './scenarios/wf_gravity_stability';
+import { wf_numerics } from './scenarios/wf_numerics';
 import { sweep_areal } from './scenarios/sweep_areal';
 import { sweep_vertical } from './scenarios/sweep_vertical';
+import { sweep_crossflow } from './scenarios/sweep_crossflow';
 import { sweep_combined } from './scenarios/sweep_combined';
 import { dep_pss } from './scenarios/dep_pss';
 import { dep_arps } from './scenarios/dep_arps';
@@ -701,8 +703,10 @@ const SOURCE_SCENARIOS: Scenario[] = [
     wf_capillary,
     wf_gravity,
     wf_gravity_stability,
+    wf_numerics,
     sweep_areal,
     sweep_vertical,
+    sweep_crossflow,
     sweep_combined,
     dep_welltest,
     dep_pss,
