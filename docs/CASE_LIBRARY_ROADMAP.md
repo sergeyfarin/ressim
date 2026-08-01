@@ -17,12 +17,50 @@ None of these had shipped as of the 2026-07-24 audit; each now carries its Tier 
 
 | Case | ID | Reference | Engine gap | Notes |
 |---|---|---|---|---|
-| Gas-cap depletion / blowdown | T7.2 | p/z material balance; Havlena-Odeh with gas-cap ratio `m` | none (black-oil machinery exists) | ROADMAP 5.1; best next case per `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` §4 |
+| Gas-cap depletion / blowdown | T7.2 | p/z material balance; Havlena-Odeh with gas-cap ratio `m` | none — **confirmed by spike 2026-08-01**, see below | Highest-value non-waterflood case left; needs the new-analytical-method path, not new physics |
 | Aquifer-supported depletion | T7.3 | Fetkovich aquifer; Carter-Tracy; van Everdingen-Hurst | needs an aquifer boundary model (E9, new physics) | ROADMAP 5.4; OPM supports AQUFETP/AQUCT → OPM cross-check possible |
 | Well test / pressure transient (drawdown, buildup, Horner) | T7.1 | radial diffusivity solution, Horner/MDH | none for a first version (fine Cartesian grid near well + Peaceman) | **SHIPPED 2026-07-24** as `dep_welltest` |
 | Unfavorable-M waterflood / fingering sensitivity | T7.5 | BL with high M (stability limit discussion); Koval (1963) | none | Parameter sensitivity on `wf_bl1d` family |
 | Directly-simulated quarter five-spot vs Craig correlation | T7.11 | Craig (1971) correlation vs own simulation | none | Shows where the correlation's assumptions break; pairs with the grid-orientation study |
 | Dykstra-Parsons with vertical communication sweep | — | D-P (1950) + Zapata & Lake (1981) viscous crossflow | none | **SHIPPED 2026-08-01** as `sweep_crossflow`; see the delivery record |
+
+### T7.2 feasibility spike (2026-08-01) — dry-gas p/z is buildable; findings recorded so it is not re-derived
+
+The library is now eleven waterflood/sweep cases against four depletion, two gas and one benchmark,
+so T7.2 is the highest-value non-waterflood addition left that needs no new engine physics. Spiked
+against the wasm core on a scratch harness (not a committed scenario — **every number below is
+provisional and must be re-measured on the shipped case before it is quoted anywhere**):
+
+- **A dry-gas reservoir runs.** `threePhaseModeEnabled` with `initialSaturation` 0.2 (connate,
+  at `s_wc`, immobile) and `initialGasSaturation` 0.8 leaves S_o = 0 exactly, and FIM depletes it
+  from 400 bar to a 30 bar floor in ~0.2 s for 20 cells with an empty `getLastSolverWarning()` and a
+  gas material-balance error of 6e-4 of the gas in place. Oil-phase disappearance is not a problem
+  here because the oil was never there.
+- **p/z needs no new PVT work.** B_g = (p_sc/T_sc)(zT/p), so p/z is proportional to 1/B_g and can be
+  read straight off the scenario's own `pvtTable` — the analytical curve and the simulation then
+  share one gas law by construction instead of agreeing by luck.
+- **The chart axis already exists.** `cumGas` is a shipped `RateChartXAxisMode`, so a p/z-versus-
+  cumulative-production plot needs no axis work. What it does need is the full new-analytical-method
+  path (union member, output contract, adapters, overlay builder, `AnalyticalMethodDescriptor`,
+  chart layout) — the E10/`dep_welltest` pattern, and per the `add-scenario` skill its own commit.
+- **Three deviation mechanisms measured, all in-envelope.** Straight-line GIIP from the stabilised
+  tail against the volumetric GIIP: +3.8 % at c_f = 5e-6/bar, +4.7 % at 5e-5, +7.9 % at 2e-4 and
+  +14.3 % at 5e-4 (the over-pressured/geopressured case — Ramagost & Farshad 1981, whose
+  (p/z)(1 - c_e Δp) correction is the second analytical curve the case wants). A tight interval with
+  the producer in one compartment gives +37.5 %. Producing against a 200 bar floor rather than 30
+  gives +9.8 %.
+- **One calibration trap, and it is not obvious.** Surface gas density (`rho_g`) must be the surface
+  density of the same gas gravity the PVT table was generated with, or in-place bookkeeping and
+  produced volumes disagree by roughly the density ratio — the spike lost ~9 % of GIIP to a 0.7
+  against 0.796 kg/m3 mismatch before it was spotted. `gas_drive` carries the same warning in a
+  comment; a p/z case makes it load-bearing, so the scenario needs a test that closes
+  produced + remaining against volumetric GIIP.
+
+Shape the case should take: `dep_gas_pz`, group `flow-regimes-decline`, dimensions for pore
+compressibility (the classic over-pressured bend), depletion rate/stabilisation, and
+compartmentalisation, with an OPM Flow deck as the cross-check. The honest framing is that material
+balance is a volume statement that does not fail — what fails is the pressure you feed it and the
+compressibility you leave out.
 
 ## Tier 2 — SPE Comparative Solution Projects (published simulator results as reference)
 
