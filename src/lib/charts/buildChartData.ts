@@ -23,6 +23,7 @@ import {
     type DerivedRunSeries,
     buildXAxisValues,
     interpolateXAxisAtTimes,
+    mapReferenceTimesToXAxis,
     requiresRunMappedAnalyticalXAxis,
     buildAnalyticalAxisWarning,
 } from './axisAdapters';
@@ -143,6 +144,16 @@ function appendPublishedReferenceSeries(
     for (const series of family.publishedReferenceSeries) {
         const targetPanel = panels[series.panelKey as RateChartPanelKey];
         if (!targetPanel) continue;
+        // Reference data is recorded against days. On an injection-based axis
+        // it has to be converted through the reference run's own mapping, and
+        // where that is impossible the series is dropped rather than drawn at
+        // an x it does not have.
+        const xValues = mapReferenceTimesToXAxis(
+            series.data.map((pt) => pt.x),
+            xAxisMode,
+            series.xAxisMap,
+        );
+        if (xValues === null) continue;
         const isOpmFlow = series.sourceType === 'opm-flow-precomputed';
         // Prerun-artifacts scenarios render their bundled series as primary
         // (solid, prominent) content — there is no live simulation curve, the
@@ -162,11 +173,7 @@ function appendPublishedReferenceSeries(
             yAxisID: series.yAxisID ?? 'y',
             pointRadius: 0,
             defaultVisible: series.defaultVisible,
-        }, series.data.map((pt) => (
-            xAxisMode === 'logTime'
-                ? (pt.x > 0 ? Math.log10(pt.x) : null)
-                : pt.x
-        )), series.data.map((pt) => pt.y));
+        }, xValues, series.data.map((pt) => pt.y));
     }
 }
 

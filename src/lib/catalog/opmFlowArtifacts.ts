@@ -1,3 +1,4 @@
+import type { ReferenceXAxisMap } from '../charts/axisAdapters';
 import type { PublishedReferenceSeries, ScenarioReferenceSourceDef } from './scenarios';
 import wfBl1dArtifact from './opm-flow-results/wf_bl1d.json';
 import spe1Artifact from './opm-flow-results/spe1_gas_injection.json';
@@ -18,6 +19,19 @@ export type OpmFlowArtifactSeries = {
     yAxisID?: string;
 };
 
+/**
+ * The run's own time -> PVI / cumulative-injection mapping, emitted by
+ * `tools/opm_flow` when the case declares a cumulative reservoir-volume
+ * injection vector and a pore volume. Optional: cases with no injector (and
+ * artifacts generated before the mapping existed) have none, and their series
+ * are simply unavailable on injection-based axes.
+ */
+export type OpmFlowArtifactXAxis = ReferenceXAxisMap & {
+    poreVolumeM3: number;
+    /** Summary mnemonic the mapping was built from, e.g. 'FVIT'. */
+    cumulativeInjectionCurve: string;
+};
+
 export type OpmFlowArtifact = {
     schemaVersion: 1;
     sourceType: 'opm-flow-precomputed';
@@ -32,6 +46,7 @@ export type OpmFlowArtifact = {
     series: OpmFlowArtifactSeries[];
     status: 'deck-ready' | 'flow-run' | 'parsed' | 'error';
     notes?: string;
+    xAxis?: OpmFlowArtifactXAxis;
 };
 
 const ARTIFACTS = [
@@ -65,6 +80,10 @@ function getOpmFlowArtifactSeriesByKeys(
             ...series,
             sourceType: 'opm-flow-precomputed' as const,
             sourceArtifactKey: artifact.caseKey,
+            // Carried per series so the chart layer never has to look an
+            // artifact back up: a series knows how to place itself on any axis
+            // it can honestly be placed on.
+            ...(artifact.xAxis ? { xAxisMap: artifact.xAxis } : {}),
             // Only stamped for primary content; an overlay leaves it absent so
             // the chart's `primary === true` test reads false.
             ...(options.primary ? { primary: true } : {}),

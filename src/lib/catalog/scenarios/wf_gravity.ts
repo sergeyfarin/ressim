@@ -115,9 +115,9 @@ export const wf_gravity: Scenario = {
     // rock curves, densities, single-layer completions, 160 m³/day injection and
     // 420-day schedule. It is the only reference here that contains gravity, so
     // it is what says the tongue is physics rather than an IMPES artefact.
-    // Off by default because artifact series are recorded against time while the
-    // scenario opens on PVI — the `opm_cross_check` dimension switches the axis.
-    referenceSources: [{ kind: 'opm-flow', artifactKeys: ['wf_gravity'], defaultVisible: false }],
+    // The artifact carries its own time -> PVI mapping (FVIT over the deck's
+    // pore volume), so the curves land correctly on the scenario's PVI axis.
+    referenceSources: [{ kind: 'opm-flow', artifactKeys: ['wf_gravity'] }],
     sensitivities: [
         {
             key: 'gravity_number',
@@ -266,15 +266,8 @@ export const wf_gravity: Scenario = {
         {
             key: 'opm_cross_check',
             label: 'OPM Flow Cross-Check',
-            description: 'The base case is also shipped as an OPM Flow deck — the same grid, rock curves, densities, completions, injection rate and 420-day schedule — and the two simulators are run independently of each other. OPM breaks through at 0.227 PVI and recovers 0.583 of oil in place at one pore volume injected; ResSim gives 0.253 and 0.585 — 0.4 % apart on recovery and 12 % apart on breakthrough, both 18 % below Buckley-Leverett, whose own breakthrough is 158 % late against OPM. That is the argument this scenario rests on: an independent industrial simulator reproduces the departure, so the departure is the physics BL omits and not a defect in this engine. The two rungs vary only the ResSim report step; the axis switches to time here because the artifact series are recorded against days.',
+            description: 'The base case is also shipped as an OPM Flow deck — the same grid, rock curves, densities, completions, injection rate and 420-day schedule — and the two simulators are run independently of each other. OPM breaks through at 0.227 PVI and recovers 0.583 of oil in place at one pore volume injected; ResSim gives 0.253 and 0.585 — 0.4 % apart on recovery and 12 % apart on breakthrough, both 18 % below Buckley-Leverett, whose own breakthrough is 158 % late against OPM. That is the argument this scenario rests on: an independent industrial simulator reproduces the departure, so the departure is the physics BL omits and not a defect in this engine. The two rungs vary only the ResSim report step. The OPM curves are placed on the pore-volume axis through the deck run\'s own injected volume, so they can be read against the simulation on either axis.',
             analyticalOverlayMode: 'shared',
-            chartLayoutKeyOverride: 'waterflood',
-            chartLayoutPatchOverride: {
-                rateChart: {
-                    xAxisMode: 'time',
-                    xAxisOptions: ['time', 'pvi'],
-                },
-            },
             variants: [
                 {
                     key: 'opm_step_2d',

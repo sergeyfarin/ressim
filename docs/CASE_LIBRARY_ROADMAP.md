@@ -262,8 +262,9 @@ future multi-layer gravity case (T7.16, WAG, aquifer work) needs the datum fix f
 **OPM Flow cross-check (added 2026-08-01).** The base case is now also an `OpmCase` deck, run with
 flow 2026.04 and bundled as `src/lib/catalog/opm-flow-results/wf_gravity.json`. OPM: breakthrough
 0.227 PVI, RF 0.583 at 1 PVI. ResSim: 0.253 / 0.585 — 0.4 % apart on recovery, 12 % on breakthrough,
-both 18 % below BL. The scenario's `opm_cross_check` dimension switches the chart to a time axis
-because reference series carry x in days and cannot yet be mapped onto the PVI axis (`TODO.md`).
+both 18 % below BL. The artifact carries the run's own time -> PVI mapping (FVIT over the deck's pore
+volume), so the OPM curves sit on the scenario's PVI axis beside the simulation and the analytical
+curve; the `opm_cross_check` dimension varies only the ResSim report step.
 
 **Enabler closed: completion layers on the live path.** `producerKLayers` / `injectorKLayers` existed
 in `buildCreatePayload` and the worker but were not carried by `ParameterStore`, so only the

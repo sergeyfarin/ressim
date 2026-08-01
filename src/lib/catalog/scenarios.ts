@@ -492,6 +492,12 @@ export type SensitivityDimension = {
  * Used to overlay published simulator results (e.g. Eclipse SPE1) on charts.
  */
 export type PublishedReferenceSeries = {
+    /**
+     * The reference run's own time -> PVI / cumulative-injection mapping.
+     * Present for OPM artifacts that declare one; without it the series can
+     * only be drawn on time-based axes (see `mapReferenceTimesToXAxis`).
+     */
+    xAxisMap?: import('../charts/axisAdapters').ReferenceXAxisMap;
     /** Explicit source category for reference/comparison curves. */
     sourceType?: import('./opmFlowArtifacts').ReferenceSourceType;
     /** Optional artifact key when this series comes from bundled precomputed data. */

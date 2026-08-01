@@ -216,6 +216,60 @@ export function interpolateXAxisAtTimes(
     return result;
 }
 
+// ─── Reference-series axis mapping ────────────────────────────────────────────
+
+/**
+ * The time -> axis mapping a precomputed reference run carries with it.
+ *
+ * Reference series (OPM Flow artifacts, digitized published data) are recorded
+ * against days. Drawing them on a pore-volumes-injected axis needs the
+ * reference run's *own* injected volume and pore volume — not the scenario's,
+ * which may have been re-parameterised since, and not the simulation's, which
+ * is a different run.
+ */
+export type ReferenceXAxisMap = {
+    /** Report times of the reference run, in days. */
+    timeDays: number[];
+    /** Pore volumes injected at each of those times. */
+    pvi: number[];
+    /** Cumulative reservoir-volume injection at each of those times, m³. */
+    cumulativeInjectionM3: number[];
+};
+
+/**
+ * Maps a reference series' time values (days) onto the selected x-axis.
+ *
+ * Returns `null` when the axis cannot be honoured — either because the series
+ * carries no mapping or because the mode has no reference-side counterpart
+ * (produced volumes, dimensionless time). Callers must drop the series in that
+ * case: a reference curve plotted at the wrong x is worse than an absent one,
+ * because it reads as disagreement between the simulator and its ground truth.
+ */
+export function mapReferenceTimesToXAxis(
+    timeDays: Array<number | null>,
+    xAxisMode: RateChartXAxisMode,
+    map: ReferenceXAxisMap | null | undefined,
+): Array<number | null> | null {
+    if (xAxisMode === 'time') {
+        return timeDays.map((value) => (Number.isFinite(value) ? Number(value) : null));
+    }
+    if (xAxisMode === 'logTime') {
+        return timeDays.map((value) => (
+            Number.isFinite(value) && Number(value) > 0 ? Math.log10(Number(value)) : null
+        ));
+    }
+    if (!map || map.timeDays.length === 0) return null;
+    if (xAxisMode === 'pvi') {
+        return interpolateXAxisAtTimes(map.timeDays, map.pvi, timeDays);
+    }
+    if (xAxisMode === 'cumInjection') {
+        return interpolateXAxisAtTimes(map.timeDays, map.cumulativeInjectionM3, timeDays);
+    }
+    // 'tD', 'pvp', 'cumLiquid', 'cumGas': the reference run publishes nothing
+    // that pins these, so there is no honest x for its points.
+    return null;
+}
+
 // ─── Analytical overlay axis-mapping predicates ───────────────────────────────
 
 /**

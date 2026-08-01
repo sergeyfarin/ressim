@@ -48,8 +48,30 @@ def run_flow(case: OpmCase, run_root: Path = DEFAULT_RUN_ROOT) -> Path:
     return output_dir
 
 
-def _build_series(case: OpmCase, run_dir: Path) -> tuple[list[dict], str, str]:
-    """Return (series, status, notes) for a case's run directory.
+def _build_x_axis(case: OpmCase, summary) -> dict | None:
+    """The run's own time -> PVI / cumulative-injection mapping, or None.
+
+    Reference series are recorded against days. A chart drawn against pore
+    volumes injected has to convert them, and the only defensible conversion
+    uses this run's own injected volume and pore volume rather than the
+    scenario's — the artifact is a fixed run, not a re-parameterisable one.
+    """
+    if not case.cumulative_injection_curve or not case.pore_volume_m3:
+        return None
+    vector = summary.by_curve_id().get(case.cumulative_injection_curve)
+    if vector is None:
+        return None
+    return {
+        "timeDays": list(summary.time_days),
+        "cumulativeInjectionM3": list(vector.values),
+        "pvi": [value / case.pore_volume_m3 for value in vector.values],
+        "poreVolumeM3": case.pore_volume_m3,
+        "cumulativeInjectionCurve": case.cumulative_injection_curve,
+    }
+
+
+def _build_series(case: OpmCase, run_dir: Path) -> tuple[list[dict], str, str, dict | None]:
+    """Return (series, status, notes, x_axis) for a case's run directory.
 
     Never raises: parsing failures degrade to status 'error' with the
     exception message recorded in notes, so a bad run can't crash
@@ -62,12 +84,13 @@ def _build_series(case: OpmCase, run_dir: Path) -> tuple[list[dict], str, str]:
             "flow-run",
             f"Flow run directory found at {run_dir} but no .RSM summary file was present "
             "(deck may be missing RUNSUM, or Flow hasn't finished).",
+            None,
         )
 
     try:
         summary = parse_rsm(summary_path.read_text(encoding="utf-8"))
     except ValueError as exc:
-        return [], "error", f"Failed to parse {summary_path.name}: {exc}"
+        return [], "error", f"Failed to parse {summary_path.name}: {exc}", None
 
     vectors_by_id = summary.by_curve_id()
     series: list[dict] = []
@@ -77,6 +100,7 @@ def _build_series(case: OpmCase, run_dir: Path) -> tuple[list[dict], str, str]:
             [],
             "error",
             f"Parsed {summary_path.name} but it is missing expected curve(s): {', '.join(sorted(missing))}",
+            None,
         )
 
     for curve_id, display in case.curve_display.items():
@@ -90,7 +114,14 @@ def _build_series(case: OpmCase, run_dir: Path) -> tuple[list[dict], str, str]:
             }
         )
 
-    return series, "parsed", "Series parsed from a real Flow run."
+    x_axis = _build_x_axis(case, summary)
+    notes = "Series parsed from a real Flow run."
+    if case.cumulative_injection_curve and x_axis is None:
+        notes += (
+            f" No time->PVI mapping: {case.cumulative_injection_curve} was requested by the case"
+            " but is missing from the summary (or the case declares no pore volume)."
+        )
+    return series, "parsed", notes, x_axis
 
 
 def build_artifact(
@@ -104,12 +135,13 @@ def build_artifact(
 
     run_dir = run_root / case.key
     if run_dir.is_dir():
-        series, status, notes = _build_series(case, run_dir)
+        series, status, notes, x_axis = _build_series(case, run_dir)
     else:
-        series, status, notes = (
+        series, status, notes, x_axis = (
             [],
             "deck-ready",
             "Generated artifact metadata is available. Run Flow and attach parsed summary series before treating this as numerical reference data.",
+            None,
         )
 
     artifact = {
@@ -127,6 +159,8 @@ def build_artifact(
         "status": status,
         "notes": notes,
     }
+    if x_axis is not None:
+        artifact["xAxis"] = x_axis
     output = artifact_dir / f"{case.key}.json"
     output.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return output

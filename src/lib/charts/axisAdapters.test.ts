@@ -4,6 +4,7 @@ import {
     getSweepZeroXAxisValue,
     mapPviSeriesToXAxis,
     interpolateXAxisAtTimes,
+    mapReferenceTimesToXAxis,
     requiresRunMappedAnalyticalXAxis,
     buildAnalyticalAxisWarning,
     toXYSeries,
@@ -215,6 +216,46 @@ describe('interpolateXAxisAtTimes', () => {
 
 // Takes the solution's native axis, not the method name — which methods are
 // PVI-native is declared once in analyticalMethodRegistry.ts and asserted there.
+// ─── mapReferenceTimesToXAxis ─────────────────────────────────────────────────
+
+describe('mapReferenceTimesToXAxis', () => {
+    // A reference run that injected a quarter of a pore volume every 10 days.
+    const map = {
+        timeDays: [0, 10, 20, 40],
+        pvi: [0, 0.25, 0.5, 1],
+        cumulativeInjectionM3: [0, 250, 500, 1000],
+    };
+
+    it('passes time through unchanged and needs no mapping to do it', () => {
+        expect(mapReferenceTimesToXAxis([0, 5, 30], 'time', undefined)).toEqual([0, 5, 30]);
+    });
+
+    it('takes logs for the log-time axis and drops non-positive times', () => {
+        expect(mapReferenceTimesToXAxis([0, 1, 100], 'logTime', undefined)).toEqual([null, 0, 2]);
+    });
+
+    it('interpolates onto the PVI axis through the reference run own mapping', () => {
+        expect(mapReferenceTimesToXAxis([0, 5, 20, 40], 'pvi', map)).toEqual([0, 0.125, 0.5, 1]);
+    });
+
+    it('interpolates onto the cumulative-injection axis', () => {
+        expect(mapReferenceTimesToXAxis([5, 30], 'cumInjection', map)).toEqual([125, 750]);
+    });
+
+    it('refuses an injection axis when the series carries no mapping', () => {
+        // Null rather than the raw days: a curve drawn at the wrong x reads as
+        // disagreement between the simulator and its ground truth.
+        expect(mapReferenceTimesToXAxis([0, 10], 'pvi', undefined)).toBeNull();
+        expect(mapReferenceTimesToXAxis([0, 10], 'cumInjection', null)).toBeNull();
+    });
+
+    it('refuses axes the reference run publishes nothing for', () => {
+        for (const mode of ['tD', 'pvp', 'cumLiquid', 'cumGas'] as const) {
+            expect(mapReferenceTimesToXAxis([0, 10], mode, map), mode).toBeNull();
+        }
+    });
+});
+
 describe('requiresRunMappedAnalyticalXAxis', () => {
     it('returns false when the solution is pvi-native and the axis is pvi', () => {
         expect(requiresRunMappedAnalyticalXAxis('pvi', 'pvi')).toBe(false);

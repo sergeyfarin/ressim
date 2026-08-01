@@ -19,6 +19,17 @@ class OpmCase:
     # `build_artifact()` treats an unmapped-but-present vector as ignored,
     # not an error, so this can be extended incrementally.
     curve_display: dict[str, dict[str, str]]
+    # Cumulative *reservoir*-volume injection vector (FVIT, unit RM3) and the
+    # deck's pore volume. Together they let `build_artifact()` publish the
+    # time -> PVI mapping of this run, so the frontend can draw the reference
+    # curves on a pore-volumes-injected axis instead of only against days.
+    # Both must be present for the mapping to be emitted; a case with no
+    # injector legitimately has neither.
+    cumulative_injection_curve: str | None = None
+    # Grid pore volume in m3: DIMENS x DXV x DYV x DZV x PORO of this deck.
+    # Declared rather than parsed — the deck text is the source of truth, and a
+    # scenario test cross-checks it against the ResSim case it mirrors.
+    pore_volume_m3: float | None = None
 
 
 def _clean_deck(text: str) -> str:
@@ -489,8 +500,11 @@ WF_GRAVITY = OpmCase(
     scenario_key="wf_gravity",
     label="Gravity Override Cross-Section (base case)",
     deck_name="WF_GRAVITY.DATA",
-    supported_curves=("FWCT", "FOPR", "FWPR", "FWIR", "FOPT", "FWPT", "FWIT", "FPR"),
+    supported_curves=("FWCT", "FOPR", "FWPR", "FWIR", "FOPT", "FWPT", "FWIT", "FVIT", "FPR"),
     units={"system": "METRIC", "time": "days", "pressure": "bar", "rate": "m3/day"},
+    cumulative_injection_curve="FVIT",
+    # 30 x 10 m by 1 x 20 m by 20 x 2 m at 0.2 porosity.
+    pore_volume_m3=48_000.0,
     curve_display={
         # Panels carry one property each, so only the vectors with a ResSim
         # counterpart in the waterflood layout are displayed: water cut, oil
@@ -574,6 +588,7 @@ WF_GRAVITY = OpmCase(
         FOPT
         FWPT
         FWIT
+        FVIT
         FPR
         RUNSUM
         SEPARATE

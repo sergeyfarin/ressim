@@ -586,6 +586,46 @@ describe('referenceComparisonModel', () => {
         ]);
     });
 
+    it('places bundled OPM curves on the PVI axis through the reference run own mapping', () => {
+        const model = buildReferenceComparisonModel({
+            family: buildScenarioFamily('wf_gravity'),
+            results: [],
+            xAxisMode: 'pvi',
+        });
+
+        const index = model.panels.rates.curves.findIndex((curve) => curve.curveKey === 'opm-water-cut');
+        expect(index).toBeGreaterThanOrEqual(0);
+        const series = model.panels.rates.series[index];
+        // The deck runs 420 days and injects 1.4 pore volumes. On a PVI axis the
+        // last point must be the latter — if the days leaked through, the curve
+        // would run three hundred times off the end of the chart.
+        expect(series.at(-1)!.x).toBeCloseTo(1.4, 2);
+        expect(series.every((point) => point.x >= 0 && point.x <= 1.5)).toBe(true);
+        // Water breakthrough at 0.227 PVI in the reference run.
+        expect(series.find((point) => (point.y ?? 0) > 0.01)!.x).toBeCloseTo(0.227, 2);
+    });
+
+    it('drops reference curves on axes their run cannot pin, rather than misplacing them', () => {
+        const family = {
+            key: 'unmappable_axis_test',
+            analyticalMethod: 'none',
+            showSweepPanel: false,
+            publishedReferenceSeries: [{
+                panelKey: 'diagnostics',
+                label: 'Published Pressure',
+                curveKey: 'published-pressure',
+                data: [{ x: 0, y: 300 }, { x: 100, y: 250 }],
+            }],
+        } as unknown as BenchmarkFamily;
+
+        // A digitized series with no axis mapping is fine against time…
+        expect(buildReferenceComparisonModel({ family, results: [], xAxisMode: 'time' })
+            .panels.diagnostics.curves.map((curve) => curve.curveKey)).toContain('published-pressure');
+        // …and absent, not wrong, on a pore-volume axis.
+        expect(buildReferenceComparisonModel({ family, results: [], xAxisMode: 'pvi' })
+            .panels.diagnostics.curves.map((curve) => curve.curveKey)).not.toContain('published-pressure');
+    });
+
     it('keeps solution-gas-drive OPM optional and emits no analytical curves', () => {
         const model = buildReferenceComparisonModel({
             family: buildScenarioFamily('gas_drive'),

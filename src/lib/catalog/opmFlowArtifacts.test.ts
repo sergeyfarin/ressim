@@ -34,6 +34,31 @@ describe('OPM Flow precomputed artifacts', () => {
         }
     });
 
+    it('publishes a time to PVI mapping wherever the case injects', () => {
+        const artifact = listOpmFlowArtifacts().find((candidate) => candidate.caseKey === 'wf_gravity');
+        const xAxis = artifact?.xAxis;
+
+        expect(xAxis).toBeDefined();
+        // Reservoir-volume injection, not surface: PVI is a reservoir quantity
+        // and the two differ by Bw.
+        expect(xAxis!.cumulativeInjectionCurve).toBe('FVIT');
+        expect(xAxis!.timeDays).toHaveLength(artifact!.series[0].data.length);
+        expect(xAxis!.pvi).toHaveLength(xAxis!.timeDays.length);
+        expect(xAxis!.cumulativeInjectionM3).toHaveLength(xAxis!.timeDays.length);
+        // Monotone, as a cumulative injection must be.
+        expect(xAxis!.pvi.every((value, index) => index === 0 || value >= xAxis!.pvi[index - 1])).toBe(true);
+
+        // Cross-check of the deck's declared pore volume against the ResSim
+        // scenario it mirrors: same grid, same injection rate, same schedule,
+        // so the artifact's final PVI must be the scenario's own.
+        const params = getScenario('wf_gravity')!.params as Record<string, number>;
+        const poreVolume = params.nx * params.cellDx * params.ny * params.cellDy
+            * params.nz * params.cellDz * params.reservoirPorosity;
+        expect(xAxis!.poreVolumeM3).toBe(poreVolume);
+        const scenarioPvi = (params.steps * params.delta_t_days * params.targetInjectorRate) / poreVolume;
+        expect(xAxis!.pvi.at(-1)).toBeCloseTo(scenarioPvi, 2);
+    });
+
     it('never regresses a case that has already reached a real parsed run', () => {
         const artifacts = listOpmFlowArtifacts();
         for (const caseKey of PARSED_BASELINE) {

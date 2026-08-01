@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import shutil
 from pathlib import Path
@@ -63,6 +64,64 @@ def test_build_artifact_parses_real_summary_into_series(tmp_path):
         {"x": 1.25, "y": 14.15780},
         {"x": 1.5, "y": 14.62355},
     ]
+
+
+def test_build_artifact_publishes_time_to_pvi_mapping(tmp_path):
+    """The x-axis mapping is what lets reference curves sit on a PVI axis.
+
+    Exercised here through the wf_bl1d fixture with a stand-in cumulative
+    vector: the mechanism is curve-agnostic, and which vector a case uses
+    (FVIT for a real injector) is the case's own declaration.
+    """
+    case = dataclasses.replace(
+        CASES["wf_bl1d"],
+        cumulative_injection_curve="FWPT",
+        pore_volume_m3=1000.0,
+    )
+    run_root = tmp_path / "runs"
+    run_dir = run_root / case.key
+    run_dir.mkdir(parents=True)
+    shutil.copy(FIXTURES / "wf_bl1d_sample.RSM", run_dir / f"{case.deck_name.removesuffix('.DATA')}.RSM")
+
+    artifact = json.loads(
+        build_artifact(case, artifact_dir=tmp_path / "artifacts", run_root=run_root).read_text(encoding="utf-8")
+    )
+
+    x_axis = artifact["xAxis"]
+    assert x_axis["cumulativeInjectionCurve"] == "FWPT"
+    assert x_axis["poreVolumeM3"] == 1000.0
+    assert x_axis["timeDays"] == [0.25, 0.5, 0.75, 1.0, 1.25, 1.5]
+    assert len(x_axis["cumulativeInjectionM3"]) == len(x_axis["timeDays"])
+    assert x_axis["pvi"] == [value / 1000.0 for value in x_axis["cumulativeInjectionM3"]]
+
+
+def test_build_artifact_notes_a_declared_but_missing_injection_vector(tmp_path):
+    case = dataclasses.replace(
+        CASES["wf_bl1d"],
+        cumulative_injection_curve="FVIT",
+        pore_volume_m3=1000.0,
+    )
+    run_root = tmp_path / "runs"
+    run_dir = run_root / case.key
+    run_dir.mkdir(parents=True)
+    shutil.copy(FIXTURES / "wf_bl1d_sample.RSM", run_dir / f"{case.deck_name.removesuffix('.DATA')}.RSM")
+
+    artifact = json.loads(
+        build_artifact(case, artifact_dir=tmp_path / "artifacts", run_root=run_root).read_text(encoding="utf-8")
+    )
+
+    # The series are still good; only the axis mapping is unavailable, and the
+    # artifact says so rather than shipping a silently absent field.
+    assert artifact["status"] == "parsed"
+    assert "xAxis" not in artifact
+    assert "FVIT" in artifact["notes"]
+
+
+def test_cases_declaring_a_pore_volume_also_declare_an_injection_vector():
+    for key, case in CASES.items():
+        assert (case.pore_volume_m3 is None) == (case.cumulative_injection_curve is None), key
+        if case.cumulative_injection_curve:
+            assert case.cumulative_injection_curve in case.supported_curves, key
 
 
 def test_build_artifact_parses_well_scoped_vectors_for_spe1(tmp_path):
