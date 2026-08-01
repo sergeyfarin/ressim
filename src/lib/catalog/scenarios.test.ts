@@ -329,6 +329,10 @@ describe('affectsAnalytical contract', () => {
 describe('scenario catalog taxonomy', () => {
     it('uses explicit product groups instead of inferring navigation from physics capabilities', () => {
         expect(getScenarioGroup(getScenario('wf_bl1d')!)).toBe('buckley-leverett-displacement');
+        // A vertical column is still a single flow path, so it stays with the
+        // 1D cases; the 2D section does not, however BL-referenced it is.
+        expect(getScenarioGroup(getScenario('wf_gravity_stability')!)).toBe('buckley-leverett-displacement');
+        expect(getScenarioGroup(getScenario('wf_gravity')!)).toBe('sweep-efficiency');
         expect(getScenarioGroup(getScenario('sweep_areal')!)).toBe('sweep-efficiency');
         expect(getScenarioGroup(getScenario('dep_pss')!)).toBe('flow-regimes-decline');
         expect(getScenarioGroup(getScenario('dep_welltest')!)).toBe('flow-regimes-decline');
@@ -336,6 +340,28 @@ describe('scenario catalog taxonomy', () => {
         expect(getScenarioGroup(getScenario('spe1_gas_injection')!)).toBe('validation-benchmarks');
         expect(getScenarioGroup(getScenario('dep_pvt')!)).toBe('simulation-only');
         expect(getScenarioGroup(getScenario('gas_drive')!)).toBe('simulation-only');
+    });
+
+    it('keeps the Buckley-Leverett group one-dimensional in fact, not just in its description', () => {
+        // The group's promise is that displacement efficiency is the whole
+        // answer, which only holds on a single flow path. `wf_gravity` was
+        // moved out to sweep-efficiency when it broke this: a 30 x 1 x 20
+        // section measures contact, not displacement.
+        for (const scenario of listScenarios()) {
+            if (scenario.catalog.group !== 'buckley-leverett-displacement') continue;
+            const variantKeys: (string | null)[] = [null, ...scenario.sensitivities.flatMap(
+                (dimension) => dimension.variants.map((variant) => `${dimension.key}/${variant.key}`),
+            )];
+            for (const variantKey of variantKeys) {
+                const params = variantKey === null
+                    ? scenario.params
+                    : getScenarioWithVariantParams(scenario.key, ...variantKey.split('/') as [string, string]);
+                const extents = [Number(params.nx), Number(params.ny), Number(params.nz)];
+                const spatialDimensions = extents.filter((extent) => extent > 1).length;
+                expect(spatialDimensions, `${scenario.key} ${variantKey ?? 'base'}: ${extents.join('x')}`)
+                    .toBeLessThanOrEqual(1);
+            }
+        }
     });
 
     it('gives every scenario a recognized group, role, app mode, and scenario-owned picker summary', () => {

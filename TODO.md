@@ -62,6 +62,32 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   as disagreement with ground truth. The `wf_gravity` workaround is removed and its OPM curves are
   visible by default on the scenario's own PVI axis.
 
+- [x] **Vertical-displacement scenario `wf_gravity_stability` (2026-08-01).** 1D 60-cell column,
+  single perforations at each end, flooded upward (gravity-stable) or downward (unstable) at the same
+  rate. Measured recovery at 1 PVI: 0.706 gravity off (BL 0.715), 0.792 upward, 0.540 downward; the
+  rate ladder fans 0.737/0.792/0.839 up against 0.673/0.540/0.354 down as G goes 0.33 -> 3.3. Grid
+  refinement moves the gravity answers by <0.03 while the gravity-free control converges onto BL, so
+  the departure is a missing term and not truncation error. Replay:
+  `pnpm vitest run src/lib/catalog/scenarios/wf_gravity_stability.test.ts`.
+- [ ] **Gas-oil gravity case probed and parked (2026-08-01).** First-pass FIM probe of crestal vs
+  basal gas injection in the same 30x1x20 section (mu_g 0.02, rho_g 200, q 160): gravity off / on with
+  a basal injector gave RF 0.296 / 0.346 and crestal-with-gravity 0.336, with gas breakthrough at
+  0.06-0.10 PVI in every case. The ordering is defensible (segregation away from a basal producer
+  reduces gas cycling) but the rungs are close together and breakthrough is too early to read, so
+  there is no crisp exhibit yet; each FIM run also costs 15-23 s headless. Needs a rate/density/
+  completion campaign before it is worth a scenario — do not ship it on the numbers above.
+- [x] **Catalog taxonomy: the BL group is 1D in fact, not just in prose (2026-08-01).** `wf_gravity`
+  shipped into `buckley-leverett-displacement` although its 30x1x20 section is two-dimensional, while
+  the group's own description promised one-dimensional displacement. Group relabelled
+  "1D Displacement — Buckley–Leverett" and its membership rule stated: a single flow path, so
+  displacement efficiency is the whole answer and the fractional-flow solution can be judged
+  pointwise. `wf_gravity` moved to `sweep-efficiency` — it measures contact, and its shortfall below
+  BL *is* the vertical sweep term, the same quantity `sweep_vertical` measures for permeability
+  contrast. Sweep group description widened to name gravity beside geometry and geology.
+  `wf_gravity_stability` stays: a vertical column is still one flow path. The rule is now
+  test-enforced (`scenarios.test.ts` checks every BL-group scenario and variant has at most one grid
+  extent > 1), and the README inventory's group column was rebuilt — it still carried the
+  "Gas-Dominated Recovery" group deleted on 2026-07-31.
 - [ ] **Gravity-modified fractional flow as an honest reference for `wf_gravity` (opened 2026-08-01).**
   The scenario currently shows the viscous-only BL curve and measures the departure. Dake ch. 10 gives
   the gravity term in f_w explicitly, and adding it to `src/lib/analytical/fractionalFlow.ts` would let
@@ -153,6 +179,21 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   convergence study. The residual bias is not discretisation at all but the pressure dependence of
   the fluid properties over a depleting run, so refinement cannot remove it. Dimension deleted and
   replaced with `well_position`, which moves `C_A` 30.8828 → 12.9851 → 4.5132 on one fixed square.
+
+- [x] **Line styles harmonized across every scenario chart (2026-08-01).** A review of all chart
+  builders found the three tiers drifting apart one call site at a time: `[3,3]` on a simulation
+  sweep curve, `[2,3]` on the MBE OOIP ratio, `[2,4]` on average saturation, `[6,4]` on the spatial
+  front marker, three per-metric sweep dashes, and OPM Flow styled solid by `applyCurveTypeStyle`
+  but dashed by `buildChartData` — two conflicting treatments of one source. Root cause: the
+  composite style objects in `curveStylePolicy.ts` were exported and never imported, so every call
+  site respelled `borderWidth`/`borderDash` by hand. The policy is now three tiers and nothing else
+  — ResSim solid, analytical dashed `[7,4]`, any additional reference source (published data or
+  another simulator) dotted `[1,3]`, sensitivity variants separated by colour alone. Average water
+  saturation moved out of the water-cut panel into its own, since sharing a plot was what forced a
+  fourth style. `no-literal-border-dash.test.ts` now fails any dash array written outside the
+  policy module. Deleted with it: `buildRateChartData.ts` (no importer since the UniversalChart
+  migration; carried 14 more style decisions, its scale presets moved to `scalePresetRegistry.ts`)
+  and `SweepEfficiencyChart.svelte` (imported by nothing, own three-dash scheme).
 
 - [x] **Dietz `C_A` simulation curves were drawn with the auxiliary dot-dash (2026-07-31).** Against
   the project convention (simulation solid, analytical dashed, dotted reserved for genuinely
@@ -411,6 +452,20 @@ Measured all 130 catalog cases headless in Node against the committed wasm
   cleanly on the multi-generation chart stack without growing `buildChartData.ts` (forbidden by the
   frontend-architecture skill). Schedule a scoped ROADMAP P3.1 / COMPARISON_TOOLBOX Phase B pass
   before more chart features.
+- [ ] **Drive-index curves ignore the case colour, so sensitivities collide (found 2026-08-01).**
+  In `buildChartData.ts` the three material-balance drive indices take fixed colours
+  (`#e67e22`/`#27ae60`/`#2980b9`) rather than the run's case colour, so with several variants
+  visible every case draws the same three colours on top of each other. It is a two-dimensional
+  problem (case x index) that one panel cannot encode by colour alone; adding a line style is
+  ruled out by the styling policy, so the fix is one panel per index. Low urgency: the panel is
+  hidden by default and is mostly read single-case.
+- [ ] **The live waterflood `diagnostics` panel still mixes six properties (found 2026-08-01).**
+  `waterfloodLivePanels.ts` puts average pressure, VRR, WOR, average saturation, water cut and MB
+  error on one panel across `y`/`y1`/`y2` — the arrangement `validateSinglePropertyPanel` rejects
+  for scenario layouts but does not check for live panel defs. No styling defect (every curve is
+  correctly solid or dashed), so it was left alone during the 2026-08-01 style pass; splitting it
+  changes the default live view of every waterflood scenario and wants its own decision.
+
 - [ ] **Pending-overlay case colors are position-derived, not identity-derived.** In
   `buildChartData.ts` the dashed overlay for a still-running variant takes
   `getReferenceComparisonCaseColor(orderedResults.length + i)`, while its cases-selector chip takes

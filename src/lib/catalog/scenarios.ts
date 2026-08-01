@@ -89,14 +89,20 @@ export const SCENARIO_GROUPS: readonly {
     description: string;
 }[] = [
     {
+        // Strictly one-dimensional: every case here has a single flow path —
+        // a horizontal slab or a vertical column — so displacement efficiency
+        // is the whole answer and the fractional-flow solution can be judged
+        // pointwise against the simulation. A case whose departure from BL is
+        // a *contact* problem belongs in sweep-efficiency instead, however
+        // fractional-flow its reference curve happens to be.
         key: 'buckley-leverett-displacement',
-        label: 'Buckley–Leverett Displacement',
-        description: 'One-dimensional displacement fundamentals and departures from the Buckley–Leverett assumptions, in both water–oil and gas–oil systems.',
+        label: '1D Displacement — Buckley–Leverett',
+        description: 'One-dimensional displacement along a single flow path, in water–oil and gas–oil systems: the fractional-flow solution itself, and the assumptions it drops — capillary pressure, and gravity acting along the flow direction.',
     },
     {
         key: 'sweep-efficiency',
         label: 'Sweep Efficiency',
-        description: 'Areal, vertical, and combined reservoir contact during waterflooding.',
+        description: 'How much of the reservoir a flood actually contacts — areal, vertical, and combined — and what limits it: pattern geometry, permeability contrast, or gravity segregation. Recovery is displacement efficiency times sweep, so these cases measure the gap between a 1D displacement forecast and a real one.',
     },
     {
         // One well's pressure history in order: infinite-acting radial flow

@@ -16,20 +16,20 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 
 | Catalog group | Scenario | Key | Primary reference / purpose |
 |---|---|---|---|
-| Buckley–Leverett Displacement | 1D Waterflood | `wf_bl1d` | Buckley–Leverett + Welge analytical reference; also hosts the FIM-vs-IMPES formulation comparison |
-| Buckley–Leverett Displacement | 1D Waterflood — Capillary Effects | `wf_capillary` | Departure from the zero-capillary BL limit; physical versus numerical front spreading |
-| Buckley–Leverett Displacement | Gravity Override (Dietz Tongue) | `wf_gravity` | Vertical section where dense water underruns the front; gravity-off control returns to BL, rate/density/k_z/completion ladders leave it; OPM Flow cross-check of the base case |
-| Buckley–Leverett Displacement | Gravity-Stable vs Unstable Displacement | `wf_gravity_stability` | 1D vertical column flooded upward or downward; the viscous BL curve is bracketed, not bounded |
+| 1D Displacement — Buckley–Leverett | 1D Waterflood | `wf_bl1d` | Buckley–Leverett + Welge analytical reference; also hosts the FIM-vs-IMPES formulation comparison |
+| 1D Displacement — Buckley–Leverett | 1D Waterflood — Capillary Effects | `wf_capillary` | Departure from the zero-capillary BL limit; physical versus numerical front spreading |
+| 1D Displacement — Buckley–Leverett | Gravity-Stable vs Unstable Displacement | `wf_gravity_stability` | 1D vertical column flooded upward or downward; gravity along the flow path brackets the viscous BL curve instead of bounding it |
+| 1D Displacement — Buckley–Leverett | Gas Injection | `gas_injection` | Gas-oil fractional-flow breakthrough |
 | Sweep Efficiency | Areal Sweep | `sweep_areal` | Craig confined five-spot correlation |
 | Sweep Efficiency | Vertical Sweep | `sweep_vertical` | Dykstra–Parsons / Stiles layered sweep |
 | Sweep Efficiency | Combined Sweep | `sweep_combined` | Combined areal and vertical contact with selectable layered correlation |
+| Sweep Efficiency | Gravity Override (Dietz Tongue) | `wf_gravity` | Vertical sweep lost to a gravity tongue; gravity-off control returns to BL, rate/density/k_z/completion ladders leave it; OPM Flow cross-check of the base case |
 | Flow Regimes & Decline | Transient Radial Flow (Theis) | `dep_welltest` | Line-source drawdown before boundaries are felt; permeability, skin, and near-well grid bias |
 | Flow Regimes & Decline | Drainage Geometry & Productivity (Dietz) | `dep_pss` | Equal-area drainage geometries and well positions; C_A recovered from the measured PSS drawdown |
 | Flow Regimes & Decline | Boundary-Dominated Decline (Fetkovich) | `dep_decline` | Finite-slab transient, boundary arrival, and asymptotic decline |
 | Flow Regimes & Decline | Layered Depletion (Arps) | `dep_arps` | Spatial layered depletion approaching a late-time Dietz/Fetkovich superposition, plus a crossflow limitation study |
-| Gas-Dominated Recovery | Gas Injection | `gas_injection` | Gas-oil fractional-flow breakthrough |
-| Gas-Dominated Recovery | Solution Gas Drive | `gas_drive` | Black-oil FIM sensitivities; optional OPM Flow benchmark |
-| Gas-Dominated Recovery | PVT Model Risk — One Calibration Point | `dep_pvt` | Two PVT representations constrained at one point |
+| Simulation Only — No Analytical Reference | Solution Gas Drive | `gas_drive` | Black-oil FIM sensitivities; optional OPM Flow benchmark |
+| Simulation Only — No Analytical Reference | PVT Model Risk — One Calibration Point | `dep_pvt` | Two PVT representations constrained at one point |
 | Validation Benchmarks | SPE1 Black-Oil Benchmark | `spe1_gas_injection` | Published Eclipse and OPM Flow comparative-solution references |
 
 ## Implemented Capabilities
