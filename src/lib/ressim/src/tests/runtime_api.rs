@@ -95,6 +95,26 @@ fn closed_system_public_step_keeps_same_water_inventory_on_both_solvers() {
 }
 
 #[test]
+fn material_balance_drift_warns_on_both_solvers() {
+    for fim_enabled in [false, true] {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_fim_enabled(fim_enabled);
+        let pore_volume_m3 = sim.pore_volume_m3(0);
+        sim.cumulative_injection_m3 = 1.0;
+        sim.cumulative_mb_error_m3 = pore_volume_m3 * 2.0e-3;
+
+        sim.step(0.25);
+
+        assert!(
+            sim.last_solver_warning
+                .contains("Material balance has drifted"),
+            "fim_enabled={fim_enabled} failed to surface shared material-balance drift: {}",
+            sim.last_solver_warning
+        );
+    }
+}
+
+#[test]
 fn fim_branch_advances_simple_well_case_with_finite_state() {
     let mut sim = ReservoirSimulator::new(3, 1, 1, 0.2);
     sim.set_fim_enabled(true);

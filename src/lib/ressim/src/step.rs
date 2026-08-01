@@ -1,4 +1,13 @@
-use crate::ReservoirSimulator;
+use crate::{InjectedFluid, ReservoirSimulator};
+
+/// Fraction of total pore volume the cumulative volumetric material-balance
+/// error may reach before the run is called unreliable.
+///
+/// Well-behaved shipped scenarios remain many orders of magnitude below this
+/// threshold. Explicit transport run past its stability limit, and unsupported
+/// well configurations historically, can instead produce plausible-looking
+/// results while creating or destroying material.
+const MATERIAL_BALANCE_WARNING_FRACTION: f64 = 1e-3;
 
 impl ReservoirSimulator {
     pub(crate) fn step_internal(&mut self, target_dt_days: f64) {
@@ -9,9 +18,49 @@ impl ReservoirSimulator {
 
         if self.fim_enabled {
             crate::fim::timestep::step_internal(self, target_dt_days);
+        } else {
+            crate::impes::timestep::step_internal(self, target_dt_days);
+        }
+
+        self.warn_on_material_balance_drift();
+    }
+
+    /// Raise a solver-independent warning when the shared reporting ledger says
+    /// reservoir volumes have stopped being conserved.
+    ///
+    /// Deliberately additive: a warning raised by either timestep controller is
+    /// more specific about the failure, so it remains the user-facing message.
+    fn warn_on_material_balance_drift(&mut self) {
+        if !self.last_solver_warning.is_empty() {
             return;
         }
-        crate::impes::timestep::step_internal(self, target_dt_days);
+        // This warning and threshold are calibrated for water transport. Gas-
+        // injection/depletion runs use the gas-component ledger instead; their
+        // connate-water `PV * Sw` can move under rock compaction without being a
+        // valid water-conservation oracle.
+        if (self.three_phase_mode && self.injected_fluid == InjectedFluid::Gas)
+            || self.cumulative_injection_m3.abs() + self.cumulative_production_m3.abs() <= 1e-12
+        {
+            return;
+        }
+        let pore_volume_m3: f64 = (0..self.nx * self.ny * self.nz)
+            .map(|idx| self.pore_volume_m3(idx))
+            .sum();
+        if !(pore_volume_m3 > 0.0) {
+            return;
+        }
+        let drift_fraction = self.cumulative_mb_error_m3.abs() / pore_volume_m3;
+        if drift_fraction > MATERIAL_BALANCE_WARNING_FRACTION {
+            self.last_solver_warning = format!(
+                "Material balance has drifted {:.2}% of pore volume ({:.4e} m3) - volumes are no longer \
+                 being conserved and reported production cannot be trusted. Most often this is the \
+                 explicit saturation update run past its stability limit (reduce \
+                 max_sat_change_per_step); it is also seen with degenerate well layouts such as two \
+                 wells on different controls in one block.",
+                drift_fraction * 100.0,
+                self.cumulative_mb_error_m3
+            );
+        }
     }
 
     pub(crate) fn solve_rs_for_dissolved_gas(

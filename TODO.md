@@ -64,10 +64,18 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   cell, before either solver can see the unsupported layout. This does not affect multi-completion
   wells in distinct layers; E11 can relax the invariant when it adds explicit shared-block
   completion-rate allocation semantics.
-- [ ] **The material-balance warning is IMPES-only (2026-08-01).** `warn_on_material_balance_drift`
-  lives in `impes/timestep.rs`, so the FIM path could still drift silently on a different defect; the
-  now-rejected shared-block case above historically measured 1.3 %. FIM has its own convergence
-  reporting, so the right shape is probably a shared post-step check rather than a copy.
+- [x] **The material-balance warning now covers both solvers (fixed 2026-08-01).** The detector
+  moved from `impes/timestep.rs` to the shared public-step boundary in `step.rs`, after either
+  solver has updated the common cumulative reporting ledger. This also covers early returns from
+  either internal timestep controller while preserving any more-specific solver warning. Guarded
+  by `material_balance_drift_warns_on_both_solvers`; the existing unstable-transport acceptance
+  test still verifies the real IMPES failure mode. Enabling the check exposed a pre-existing FIM
+  reporting-unit defect in the standard 1D waterflood: the ledger compared reservoir-condition
+  `PV * Sw` and connection rates even though FIM conserves surface water (`PV * Sw / Bw` and
+  component rates). The FIM ledger now uses the same conserved quantity as its residual. The
+  warning is limited to water-transport runs with actual water throughput: in gas-component runs,
+  immobile connate water's `PV * Sw` changes with pore volume and is not a valid conservation
+  oracle; those cases retain their explicit gas-component material-balance acceptance tests.
 - [x] **Numerical-dispersion and crossflow scenarios (2026-08-01).** Two new cases, closing
   roadmap T7.12, T7.13, T7.16 and the Tier 1 "D-P with vertical communication" row.
   `wf_numerics` (1D, 500 m, six grids from 50 m to 1.25 m cells) measures first-order convergence

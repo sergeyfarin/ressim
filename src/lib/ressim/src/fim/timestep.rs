@@ -1326,7 +1326,7 @@ impl ReservoirSimulator {
                         growth_cooldown.trace_suffix(),
                         fim_linear_report_step_suffix(report.last_linear_report.as_ref())
                     );
-                    let water_before = self.total_water_inventory_m3();
+                    let water_before = self.total_water_inventory_sc();
                     let oil_before = self.total_oil_inventory_sc();
                     let gas_before = self.total_gas_inventory_sc();
                     report.accepted_state.write_back_to_simulator(self);
@@ -1342,7 +1342,7 @@ impl ReservoirSimulator {
                         }
                     }
                     self.update_dynamic_well_productivity_indices();
-                    let water_after = self.total_water_inventory_m3();
+                    let water_after = self.total_water_inventory_sc();
                     let oil_after = self.total_oil_inventory_sc();
                     let gas_after = self.total_gas_inventory_sc();
                     self.record_fim_step_report(
@@ -1840,9 +1840,19 @@ impl ReservoirSimulator {
         );
     }
 
-    fn total_water_inventory_m3(&self) -> f64 {
+    /// Water-component inventory at standard conditions [Sm3].
+    ///
+    /// FIM's water residual and well component rates both include `1 / Bw`.
+    /// Its cumulative material-balance ledger must use the same conserved
+    /// quantity; reservoir-condition `PV * Sw` changes under compression even
+    /// when the component equation closes exactly.
+    fn total_water_inventory_sc(&self) -> f64 {
         (0..self.nx * self.ny * self.nz)
-            .map(|idx| self.sat_water[idx] * self.pore_volume_m3(idx))
+            .map(|idx| {
+                self.sat_water[idx]
+                    * self.pore_volume_m3(idx)
+                    * self.water_inverse_fvf(self.pressure[idx])
+            })
             .sum()
     }
 
@@ -4104,7 +4114,7 @@ mod phase5_repro {
                 min_sg,
                 max_sg,
                 max_saturation_closure,
-                sim.total_water_inventory_m3(),
+                sim.total_water_inventory_sc(),
                 sim.total_oil_inventory_sc(),
                 sim.total_gas_inventory_sc(),
                 rate.total_production_oil,

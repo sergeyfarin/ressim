@@ -49,6 +49,7 @@ run_shared() {
     run_test public_step_gas_injector_reports_same_control_state_on_both_solvers
     run_test mixed_control_public_step_keeps_same_limit_flags_on_both_solvers
     run_test closed_system_public_step_keeps_same_water_inventory_on_both_solvers
+    run_test material_balance_drift_warns_on_both_solvers
     run_test simple_pressure_control_public_step_has_same_stable_contract_on_both_solvers
     run_test multiple_wells_in_same_block_are_rejected_without_state_change
     run_test physics_depletion_oil_public_reporting_contract_holds_on_both_solvers

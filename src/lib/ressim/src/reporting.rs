@@ -589,6 +589,8 @@ impl ReservoirSimulator {
         let mut total_injection_reservoir = 0.0;
         let mut total_water_injection_reservoir = 0.0;
         let mut total_prod_water_reservoir = 0.0;
+        let mut total_water_injection_sc = 0.0;
+        let mut total_prod_water_sc = 0.0;
         let mut total_prod_gas = 0.0;
         let mut total_gas_injection_sc = 0.0;
         let mut producer_rate_controlled_wells = 0usize;
@@ -632,6 +634,7 @@ impl ReservoirSimulator {
                     InjectedFluid::Water => {
                         total_injection += (-components_sc_day[0]).max(0.0);
                         total_water_injection_reservoir += (-q_m3_day).max(0.0);
+                        total_water_injection_sc += (-components_sc_day[0]).max(0.0);
                     }
                     InjectedFluid::Gas => {
                         total_injection += (-components_sc_day[2]).max(0.0);
@@ -644,6 +647,7 @@ impl ReservoirSimulator {
             total_prod_liquid_reservoir += q_m3_day.max(0.0);
             let producer = producer_control_state(self, state, perforation);
             total_prod_water_reservoir += q_m3_day.max(0.0) * producer.water_fraction;
+            total_prod_water_sc += components_sc_day[0].max(0.0);
             total_prod_oil += components_sc_day[1].max(0.0);
             total_prod_liquid += components_sc_day[0].max(0.0) + components_sc_day[1].max(0.0);
             total_prod_gas += components_sc_day[2].max(0.0);
@@ -652,8 +656,10 @@ impl ReservoirSimulator {
         self.cumulative_injection_m3 += total_water_injection_reservoir * dt_days;
         self.cumulative_production_m3 += total_prod_water_reservoir * dt_days;
 
-        let net_water_added_m3 =
-            (total_water_injection_reservoir - total_prod_water_reservoir) * dt_days;
+        // FIM conserves surface-condition water component (`PV * Sw / Bw`),
+        // not reservoir-condition water volume. Use the matching component
+        // well rates so pressure-dependent Bw cannot appear as false drift.
+        let net_water_added_m3 = (total_water_injection_sc - total_prod_water_sc) * dt_days;
         self.cumulative_mb_error_m3 += net_water_added_m3 - actual_change_m3;
 
         let produced_oil_sc = total_prod_oil * dt_days;
