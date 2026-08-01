@@ -185,6 +185,35 @@ describe('validateInputs', () => {
             expect(result.errors.wellOverlap).toBeDefined();
         });
 
+        it('allows one column with the wells perforated in different layers', () => {
+            // A vertical-column case: injector at the base, producer at the top
+            // of the same 1 x 1 x 60 stack. Same i/j, different cells.
+            const result = validateInputs(makeValidInputs({
+                nx: 1, ny: 1, nz: 60,
+                injectorI: 0, injectorJ: 0, producerI: 0, producerJ: 0,
+                injectorKLayers: [59], producerKLayers: [0],
+            }));
+            expect(result.errors.wellOverlap).toBeUndefined();
+        });
+
+        it('still errors when the perforations overlap in the shared column', () => {
+            const result = validateInputs(makeValidInputs({
+                nx: 1, ny: 1, nz: 60,
+                injectorI: 0, injectorJ: 0, producerI: 0, producerJ: 0,
+                injectorKLayers: [58, 59], producerKLayers: [0, 59],
+            }));
+            expect(result.errors.wellOverlap).toBeDefined();
+        });
+
+        it('treats an absent completion list as every layer, so a shared column still errors', () => {
+            const result = validateInputs(makeValidInputs({
+                nx: 1, ny: 1, nz: 60,
+                injectorI: 0, injectorJ: 0, producerI: 0, producerJ: 0,
+                injectorKLayers: [59],
+            }));
+            expect(result.errors.wellOverlap).toBeDefined();
+        });
+
         it('no overlap error when injector disabled', () => {
             const result = validateInputs(makeValidInputs({ injectorEnabled: false, injectorI: 5, injectorJ: 5, producerI: 5, producerJ: 5 }));
             expect(result.errors.wellOverlap).toBeUndefined();

@@ -164,6 +164,26 @@ export type AnalyticalStatus = {
   reasons: string[];
 };
 
+/**
+ * The grid and well placement an analytical caveat is judged against.
+ *
+ * Supplied by the catalog path, where the real numbers are known. The builder
+ * path has only its toggle state and passes none, which is why every field is
+ * read through `resolveGeometryFacts` rather than directly.
+ */
+export type AnalyticalGeometry = {
+  nx: number;
+  ny: number;
+  nz: number;
+  injectorI: number;
+  injectorJ: number;
+  producerI: number;
+  producerJ: number;
+  /** Perforated layers; empty means every layer. */
+  injectorKLayers?: number[];
+  producerKLayers?: number[];
+};
+
 export type AnalyticalStatusInput = {
   activeMode: CaseMode;
   analyticalMode: AnalyticalStatusMode;
@@ -172,7 +192,59 @@ export type AnalyticalStatusInput = {
   capillaryEnabled: boolean;
   permMode: 'uniform' | 'random' | 'perLayer' | 'field';
   toggles: ToggleState;
+  /** Actual geometry, when the caller knows it. Falls back to `toggles`. */
+  geometry?: AnalyticalGeometry;
 };
+
+/**
+ * Whether the flow path is one-dimensional, and whether the two wells sit at
+ * its opposite ends — the two facts the Buckley-Leverett caveats turn on.
+ *
+ * These used to be read from `toggles.geo` / `toggles.well`, which the Scenario
+ * Builder sets. The builder's dimension catalog is empty in the shipped app, so
+ * `toggles.geo` was `undefined` for every predefined scenario and both caveats
+ * fired unconditionally — `wf_bl1d`, a 96 x 1 x 1 slab with wells at cell 0 and
+ * cell 95, was told its geometry was not 1D. Measured from the grid instead, the
+ * warnings say something true: they stay silent on the 1D cases and fire on the
+ * 2D section, which is exactly where displacement efficiency stops being the
+ * whole answer.
+ */
+export function resolveGeometryFacts(
+  toggles: ToggleState,
+  geometry: AnalyticalGeometry | undefined,
+): { isOneDimensional: boolean; isEndToEnd: boolean; isWellCentered: boolean } {
+  if (!geometry) {
+    return {
+      isOneDimensional: toggles.geo === '1d',
+      isEndToEnd: toggles.well === 'e2e',
+      isWellCentered: toggles.well === 'center',
+    };
+  }
+
+  const extents = [geometry.nx, geometry.ny, geometry.nz].map((extent) => Math.max(1, Math.round(extent)));
+  const varying = extents.filter((extent) => extent > 1);
+  const isOneDimensional = varying.length <= 1;
+
+  const layer = (layers: number[] | undefined, fallback: number) => (
+    Array.isArray(layers) && layers.length > 0 ? layers[0] : fallback
+  );
+  const flowAxis = extents.findIndex((extent) => extent > 1);
+  const injector = [geometry.injectorI, geometry.injectorJ, layer(geometry.injectorKLayers, 0)];
+  const producer = [geometry.producerI, geometry.producerJ, layer(geometry.producerKLayers, extents[2] - 1)];
+  // A single-cell model has no ends to be at; treat it as end to end.
+  const isEndToEnd = flowAxis < 0
+    ? true
+    : Math.min(injector[flowAxis], producer[flowAxis]) === 0
+      && Math.max(injector[flowAxis], producer[flowAxis]) === extents[flowAxis] - 1;
+
+  // Centred to within half a cell, so an even-sided grid has two valid centres.
+  const centred = (index: number, extent: number) => extent <= 1
+    || index === Math.floor((extent - 1) / 2)
+    || index === Math.ceil((extent - 1) / 2);
+  const isWellCentered = centred(geometry.producerI, extents[0]) && centred(geometry.producerJ, extents[1]);
+
+  return { isOneDimensional, isEndToEnd, isWellCentered };
+}
 
 const ANALYTICAL_SEVERITY_RANK: Record<AnalyticalStatusWarningSeverity, number> = {
   none: 0,
@@ -205,6 +277,7 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
     permMode,
     toggles,
   } = input;
+  const { isOneDimensional, isEndToEnd, isWellCentered } = resolveGeometryFacts(toggles, input.geometry);
 
   if (analyticalMode !== 'waterflood' && analyticalMode !== 'depletion') {
     const reasonDetails: AnalyticalStatusReason[] = [
@@ -241,14 +314,14 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
         'critical',
       );
     }
-    if (toggles.geo !== '1d') {
+    if (!isOneDimensional) {
       addReason(
         'wf-geometry-not-1d',
         'Geometry is not 1D — the waterflood analytical solution assumes linear flow.',
         'warning',
       );
     }
-    if (toggles.well !== 'e2e') {
+    if (!isEndToEnd) {
       addReason(
         'wf-well-not-e2e',
         'Wells are not end-to-end — the waterflood analytical solution assumes linear end-to-end flow.',
@@ -263,7 +336,7 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
         'critical',
       );
     }
-    if (!(toggles.geo === '1d' || toggles.well === 'center')) {
+    if (!(isOneDimensional || isWellCentered)) {
       addReason(
         'dep-geometry-well-mismatch',
         'Well position deviates — the depletion analytical solution assumes 1D or centered well.',
@@ -279,7 +352,9 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
       'warning',
     );
   }
-  const hasMultipleLayers = toggles.geo === '2dxz' || toggles.geo === '3d';
+  const hasMultipleLayers = input.geometry
+    ? Math.max(1, Math.round(input.geometry.nz)) > 1
+    : (toggles.geo === '2dxz' || toggles.geo === '3d');
   if (permMode === 'perLayer' && hasMultipleLayers && analyticalMode === 'depletion') {
     addReason(
       'perm-layered-depletion',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildWarningPolicy } from "./warningPolicy";
+import { buildWarningPolicy, resolveGeometryFacts } from "./warningPolicy";
 import type { AnalyticalStatus } from "./warningPolicy";
 
 const referenceStatus: AnalyticalStatus = {
@@ -9,6 +9,47 @@ const referenceStatus: AnalyticalStatus = {
   reasonDetails: [],
   reasons: [],
 };
+
+describe("resolveGeometryFacts", () => {
+  const grid = (over: Partial<Parameters<typeof resolveGeometryFacts>[1]> = {}) => ({
+    nx: 96, ny: 1, nz: 1, injectorI: 0, injectorJ: 0, producerI: 95, producerJ: 0, ...over,
+  } as NonNullable<Parameters<typeof resolveGeometryFacts>[1]>);
+
+  it("reads a horizontal slab as 1D and end to end", () => {
+    expect(resolveGeometryFacts({}, grid())).toMatchObject({ isOneDimensional: true, isEndToEnd: true });
+  });
+
+  it("reads a vertical column as 1D, using the perforated layers as the ends", () => {
+    // 1 x 1 x 60 with the injector at the base and the producer at the top:
+    // the flow path is the k axis, and both wells share the only i/j there is.
+    expect(resolveGeometryFacts({}, grid({
+      nx: 1, ny: 1, nz: 60, producerI: 0,
+      injectorKLayers: [59], producerKLayers: [0],
+    }))).toMatchObject({ isOneDimensional: true, isEndToEnd: true });
+  });
+
+  it("reads a vertical section as not 1D", () => {
+    expect(resolveGeometryFacts({}, grid({ nx: 30, nz: 20, producerI: 29 })))
+      .toMatchObject({ isOneDimensional: false });
+  });
+
+  it("does not call a partial-length flood end to end", () => {
+    expect(resolveGeometryFacts({}, grid({ producerI: 40 }))).toMatchObject({ isEndToEnd: false });
+  });
+
+  it("recognises a centred producer on odd and even grids", () => {
+    expect(resolveGeometryFacts({}, grid({ nx: 21, ny: 21, producerI: 10, producerJ: 10 })).isWellCentered).toBe(true);
+    expect(resolveGeometryFacts({}, grid({ nx: 20, ny: 20, producerI: 9, producerJ: 10 })).isWellCentered).toBe(true);
+    expect(resolveGeometryFacts({}, grid({ nx: 21, ny: 21, producerI: 0, producerJ: 0 })).isWellCentered).toBe(false);
+  });
+
+  it("falls back to the builder toggles when no geometry is supplied", () => {
+    expect(resolveGeometryFacts({ geo: "1d", well: "e2e" }, undefined))
+      .toEqual({ isOneDimensional: true, isEndToEnd: true, isWellCentered: false });
+    expect(resolveGeometryFacts({ geo: "3d", well: "center" }, undefined))
+      .toEqual({ isOneDimensional: false, isEndToEnd: false, isWellCentered: true });
+  });
+});
 
 describe("warningPolicy", () => {
   it("groups action-required, reliability, and run-note items separately", () => {

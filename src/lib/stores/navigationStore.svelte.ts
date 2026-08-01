@@ -249,6 +249,16 @@ class NavigationStoreImpl {
             capillaryEnabled: this.#params.capillaryEnabled,
             permMode: this.#params.permMode,
             toggles: this.toggles,
+            // The grid itself, so the 1D / end-to-end caveats describe the model
+            // being run rather than the builder toggles, which carry no geometry
+            // for a predefined scenario.
+            geometry: {
+                nx: this.#params.nx, ny: this.#params.ny, nz: this.#params.nz,
+                injectorI: this.#params.injectorI, injectorJ: this.#params.injectorJ,
+                producerI: this.#params.producerI, producerJ: this.#params.producerJ,
+                injectorKLayers: [...this.#params.injectorKLayers],
+                producerKLayers: [...this.#params.producerKLayers],
+            },
         });
     });
 

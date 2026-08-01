@@ -28,6 +28,9 @@ export type SimulationInputs = {
     injectorJ: number;
     producerI: number;
     producerJ: number;
+    /** Perforated layers; empty or absent means every layer. */
+    injectorKLayers?: number[];
+    producerKLayers?: number[];
     s_wc: number;
     s_or: number;
     // Three-phase (optional)
@@ -131,7 +134,21 @@ export function validateInputs(input: SimulationInputs): ValidationState {
     }
     if (input.minPerm > input.maxPerm) errors.permBounds = 'Min perm must not exceed max perm.';
     if (input.injectorEnabled && input.injectorI === input.producerI && input.injectorJ === input.producerJ) {
-        errors.wellOverlap = 'Injector and producer cannot share the same i/j location.';
+        // Sharing a column is only a conflict if the two wells also share a
+        // cell in it. A vertical-column case (nx = ny = 1) legitimately puts
+        // the injector at the base and the producer at the top of the same
+        // column — see the wf_gravity_stability scenario.
+        const allLayers = () => Array.from({ length: Math.max(1, numeric(input.nz)) }, (_, k) => k);
+        const perforated = (layers: number[] | undefined) => (
+            Array.isArray(layers) && layers.length > 0 ? layers : allLayers()
+        );
+        const injectorLayers = new Set(perforated(input.injectorKLayers));
+        const shared = perforated(input.producerKLayers).filter((k) => injectorLayers.has(k));
+        if (shared.length > 0) {
+            errors.wellOverlap = numeric(input.nz) > 1
+                ? 'Injector and producer cannot be perforated in the same cell — give them different layers or different i/j locations.'
+                : 'Injector and producer cannot share the same i/j location.';
+        }
     }
     if (input.injectorControlMode === 'pressure' && input.producerControlMode === 'pressure' && input.injectorBhp <= input.producerBhp) {
         errors.wellPressureOrder = 'Injector BHP should be greater than producer BHP.';

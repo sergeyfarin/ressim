@@ -86,6 +86,27 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   panel into its own `avg_water_sat` panel (one property per plot). Dead code removed:
   `SweepEfficiencyChart.svelte` and `buildRateChartData.ts`, with the scale configs still in use
   extracted to `scalePresetRegistry.ts`.
+- [x] **Vertical-column scenarios were blocked by the well-overlap rule (2026-08-01).**
+  `wf_gravity_stability` is a 1 x 1 x 60 column, so both wells necessarily sit in the one column the
+  grid has, and `validateInputs` refused to run it: "Injector and producer cannot share the same i/j
+  location". The rule now compares *cells*, not columns — a shared i/j is an error only when the
+  perforated layers also intersect (an absent completion list still means every layer, so areal cases
+  behave exactly as before). `producerKLayers`/`injectorKLayers` are carried into
+  `buildValidationInput` for that. Guarded catalog-wide by
+  `src/lib/catalog/scenarioInputValidation.test.ts`, which pushes every scenario *and variant*
+  through the product's own input gate and its well-payload builder — the scenario physics tests
+  drive the wasm core directly and so could never have caught this.
+- [x] **Analytical caveats were measured from empty builder toggles (2026-08-01).**
+  `evaluateAnalyticalStatus` read `toggles.geo`/`toggles.well`, which the Scenario Builder sets and
+  whose dimension catalog ships empty (`caseCatalog.ts`, `dimensions: []`). For every predefined
+  scenario `toggles.geo` was `undefined`, so *all* waterflood cases carried "Geometry is not 1D" and
+  "Wells are not end-to-end" — including `wf_bl1d`, a 96 x 1 x 1 slab with wells at cell 0 and cell 95 —
+  and the depletion cases carried a well-position caveat even when centred. New `resolveGeometryFacts`
+  measures 1D-ness, end-to-end placement and centring from the grid and completions, falling back to
+  the toggles when a caller has no geometry (builder mode). The resulting per-scenario caveat table is
+  locked in `scenarioInputValidation.test.ts`: `wf_bl1d`/`gas_injection`/`dep_decline`/`dep_pss`/
+  `dep_welltest` now raise none, `wf_gravity` correctly raises not-1D plus gravity, and
+  `wf_gravity_stability` raises gravity alone.
 - [x] **Catalog taxonomy: the BL group is 1D in fact, not just in prose (2026-08-01).** `wf_gravity`
   shipped into `buckley-leverett-displacement` although its 30x1x20 section is two-dimensional, while
   the group's own description promised one-dimensional displacement. Group relabelled
