@@ -74,8 +74,21 @@ the number is still wanted and corrects itself once it is not.
 This also needed the artifact x-axis map to grow a `cumulativeGasSm3` entry: a p/z chart's x-axis is
 produced gas, and `mapReferenceTimesToXAxis` had been dropping every reference series on `cumGas`.
 
-**Still open from T7.2:** the gas-cap/blowdown half, which needs Havlena-Odeh with `m` rather than
-the dry-gas balance.
+**Still open from T7.2: the gas-cap/blowdown half — and it is cheaper than this document implied.**
+Checked 2026-08-01: it needs *no new analytical method*. `analyticalParamAdapters.ts` already calls
+`calculateMaterialBalance` with `initialGasSaturation` (which is what sets `m`) and already publishes
+`driveGasCap`, and the `mbe_ooip` / `drive_indices` panels that consume them are already in the
+`depletion` and `decline` chart layouts. The gap is exactly what the Tier 7 audit said it was — *no
+scenario exercises them* — so the work is a scenario file, its test, and the measurements.
+
+Sketch for whoever picks it up: `dep_gas_cap`, three-phase oil with an initial gas cap, black-oil
+PVT at the bubble point. Two dimensions worth having. **Gas-cap size** (m = 0 / small / large) moves
+the simulation and the analytical together and should show the drive indices handing over from oil
+expansion to gas-cap expansion as recovery rises. **Cap geometry** is the sharper one: a segregated
+cap in the top layers via `setInitialGasSaturationPerLayer` against a uniform gas saturation of the
+same total volume, with gravity on. Both have the same `m`, so the tank material balance cannot tell
+them apart — but the simulation can, because a tank has no geometry. That is the same shape of point
+`dep_gas_pz`'s connectivity dimension makes, one level up.
 
 ### T7.2 feasibility spike (2026-08-01) — the go/no-go that preceded the case above
 
