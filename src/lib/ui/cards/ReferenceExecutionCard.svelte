@@ -192,12 +192,15 @@
             <div class="mt-1">Controls: <strong class="text-foreground">{baseCaseSnapshot.controls}</strong></div>
             <div class="mt-1">Reservoir: <strong class="text-foreground">{baseCaseSnapshot.reservoir}</strong></div>
           </div>
-          <div class="ui-microcopy rounded-md border border-border/70 bg-muted/10 p-3">
+          <!-- Sentences, not fields: read at body size like the other prose. -->
+          <div class="rounded-md border border-border/70 bg-muted/10 p-3">
             <div class="ui-subsection-kicker">Reference Guidance</div>
-            <div class="mt-2">{referenceGuidance.reference}</div>
-            <div class="mt-1">{referenceGuidance.metric}</div>
-            <div class="mt-1">{referenceGuidance.outputs}</div>
-            <div class="mt-1">{referenceGuidance.runApproach}</div>
+            <div class="ui-body-copy mt-2 space-y-1">
+              <p>{referenceGuidance.reference}</p>
+              <p>{referenceGuidance.metric}</p>
+              <p>{referenceGuidance.outputs}</p>
+              <p>{referenceGuidance.runApproach}</p>
+            </div>
           </div>
         </div>
       {/if}

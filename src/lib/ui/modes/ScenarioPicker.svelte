@@ -86,7 +86,7 @@
             class="flex h-full flex-col rounded-md border border-border/60 bg-muted/10 p-2.5"
           >
             <div class="mb-1.5">
-              <div id={`scenario-group-${group.key}`} class="text-[11px] font-semibold text-foreground">{group.label}</div>
+              <div id={`scenario-group-${group.key}`} class="ui-support-copy font-semibold text-foreground">{group.label}</div>
               <div class="ui-microcopy text-muted-foreground">{group.description}</div>
             </div>
             <div class="flex flex-1 flex-col gap-2">
@@ -99,7 +99,7 @@
                 >
                   {scenario.label}
                   {#if scenario.capabilities.runMode === 'prerun-artifacts'}
-                    <span class="ml-1.5 rounded-sm bg-muted/60 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">Pre-run</span>
+                    <span class="ml-1.5 rounded-sm bg-muted/60 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Pre-run</span>
                   {/if}
                 </Button>
               {/each}
@@ -111,24 +111,30 @@
   </div>
 
   {#if activeScenario}
-    <!-- ── Scenario description ── -->
+    <!--
+      One prose voice per block. The description used to mix a monospaced
+      summary, three weights of label, a chip and an info-tinted surface at
+      10px, which read as five competing systems around text nobody could
+      comfortably read. Now: the description as body copy, then one labelled
+      list where every row looks the same.
+    -->
     <div class="space-y-2 border-t border-border/50 px-3 py-3">
       <div class="ui-panel-kicker text-muted-foreground">Scenario Description</div>
-      <div class="rounded-md border border-info/40 bg-info/5 p-2.5">
-        <div class="space-y-1.5">
-          <p class="ui-microcopy font-mono text-muted-foreground/70">
-            {activeScenario.catalog.parameterSummary}
-          </p>
-          <p class="ui-microcopy text-foreground">{activeScenario.description}</p>
-          <div class="ui-microcopy flex flex-wrap items-center gap-2 text-foreground">
-            <span class="font-semibold">Numerical solver:</span>
-            <span class="ui-chip border-primary/50 bg-primary/10 font-semibold text-foreground">
-              {solverLabel(activeScenario.solverPolicy.defaultSolver)}
-            </span>
-            <span class="text-muted-foreground">{activeScenario.solverPolicy.rationale}</span>
-          </div>
-          <div class="ui-microcopy text-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span class="text-foreground font-semibold">Analytical:</span>
+      <div class="space-y-2.5 rounded-md border border-border/60 bg-muted/10 p-3">
+        <p class="ui-body-copy">{activeScenario.description}</p>
+
+        <dl class="ui-support-copy grid gap-x-3 gap-y-1.5 sm:grid-cols-[auto_1fr]">
+          <dt class="ui-subsection-kicker sm:pt-0.5">Setup</dt>
+          <dd class="text-foreground">{activeScenario.catalog.parameterSummary}</dd>
+
+          <dt class="ui-subsection-kicker sm:pt-0.5">Solver</dt>
+          <dd class="text-foreground">
+            <span class="font-semibold">{solverLabel(activeScenario.solverPolicy.defaultSolver)}</span>
+            — {activeScenario.solverPolicy.rationale}
+          </dd>
+
+          <dt class="ui-subsection-kicker sm:pt-0.5">Reference</dt>
+          <dd class="space-y-1 text-foreground">
             {#if analyticalOptionToggleOptions.length > 1 && activeAnalyticalOption}
               <ToggleGroup
                 options={analyticalOptionToggleOptions}
@@ -136,12 +142,12 @@
                 onChange={(value) => onSelectAnalyticalOption(String(value))}
               />
             {/if}
-            <span>
-              {activeAnalyticalOption?.summary ?? activeScenario.analyticalMethodSummary}
-              <span class="text-foreground"> Ref: {activeAnalyticalOption?.reference ?? activeScenario.analyticalMethodReference}</span>
-            </span>
-          </div>
-        </div>
+            <p>{activeAnalyticalOption?.summary ?? activeScenario.analyticalMethodSummary}</p>
+            <p class="text-muted-foreground">
+              {activeAnalyticalOption?.reference ?? activeScenario.analyticalMethodReference}
+            </p>
+          </dd>
+        </dl>
       </div>
     </div>
 
@@ -163,6 +169,19 @@
               </Button>
             {/each}
           </div>
+        {/if}
+
+        <!--
+          What the selected dimension is for, in the same voice as the scenario
+          description above. It was previously reachable only as a tooltip on
+          the variant chips, so the teaching point of each study was invisible
+          until you hovered the right thing.
+        -->
+        {#if activeDimension}
+          <p class="ui-body-copy rounded-md border border-border/60 bg-muted/10 p-3">
+            <span class="font-semibold">{activeDimension.label}.</span>
+            {activeDimension.description}
+          </p>
         {/if}
 
         <!-- Variant chips for the active dimension -->

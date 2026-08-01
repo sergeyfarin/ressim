@@ -22,6 +22,11 @@ describe('scenario picker flows', () => {
     expect(scenarioPickerSource).not.toMatch(/Customize|onEnterCustomMode/);
   });
 
+  it('explains the selected sensitivity dimension instead of hiding it in a tooltip', () => {
+    expect(scenarioPickerSource).toMatch(/activeDimension\.description/);
+    expect(scenarioPickerSource).toMatch(/ui-body-copy/);
+  });
+
   it('shows sensitivity variant chips when the scenario has a sensitivity axis', () => {
     expect(scenarioPickerSource).toMatch(/activeDimension\.variants/);
     expect(scenarioPickerSource).toMatch(/onToggleVariant/);
@@ -30,7 +35,8 @@ describe('scenario picker flows', () => {
   });
 
   it('shows the selected numerical solver in the description, not every catalog button', () => {
-    expect(scenarioPickerSource).toMatch(/Numerical solver:/);
+    // The label is now the "Solver" row of the description list.
+    expect(scenarioPickerSource).toMatch(/>Solver</);
     expect(scenarioPickerSource).not.toMatch(/scenario\.solverPolicy\.defaultSolver/);
     expect(scenarioPickerSource).toMatch(/activeScenario\.solverPolicy\.defaultSolver/);
     expect(scenarioPickerSource).toMatch(/activeScenario\.solverPolicy\.rationale/);

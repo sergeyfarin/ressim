@@ -116,11 +116,19 @@
         <header class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h1 class="title-gradient text-2xl font-bold lg:text-3xl">
-                    3D Three-Phase Reservoir Simulation with Analytical Reference Solutions
+                    Reservoir Simulation with Analytical Reference Solutions
                 </h1>
-                <p class="text-sm opacity-80">
-                    Compare IMPES numerical solutions against classical analytical methods with scenario-based sensitivities and 3D visualization.
-                    <br /><strong>Runs entirely in your browser</strong> — no data sent to any server, no cookies.
+                <p class="max-w-4xl text-sm leading-relaxed opacity-80">
+                    A three-phase black-oil simulator on a 3D Cartesian grid — implicit-pressure (IMPES)
+                    or fully implicit — that draws every run against the classical solution it should
+                    reproduce: Buckley–Leverett, Dietz, Fetkovich, Arps, Craig, Dykstra–Parsons, and
+                    OPM Flow reference runs.
+                    <br />
+                    <strong>Pick a scenario, choose a sensitivity to sweep, then Run.</strong>
+                    Charts, 3D view and saturation profiles update together, and each case states what
+                    its reference assumes — and where the simulation is expected to leave it.
+                    <br />
+                    <strong>Runs entirely in your browser</strong> — no data sent to any server, no cookies.
                 </p>
             </div>
             <div class="flex items-center gap-2">

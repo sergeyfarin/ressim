@@ -99,6 +99,16 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   profile on I rather than K, so the reference is visible by default; at `nz > 1` the profile averages
   the column, which is the quantity BL predicts, and the tongue's vertical structure stays one
   dropdown away (axis K, or a single layer).
+- [x] **Typography and description surfaces (2026-08-01).** Scenario descriptions rendered at 10px
+  (`ui-microcopy`), which is a caption size, not a reading size, inside a block that also mixed a
+  monospaced summary, three label weights, a chip and an info-tinted surface. Added `.ui-body-copy`
+  (13px/1.6, foreground) for prose the reader is meant to read, raised `.ui-microcopy` 10 -> 11px and
+  `.ui-chip` 10 -> 11px, and rebuilt the scenario block as one description paragraph plus a uniform
+  Setup / Solver / Reference list. The sensitivity dimension's own description is now shown under the
+  dimension selector — it was previously reachable only as a `title` tooltip on the variant chips, so
+  each study's teaching point was invisible. Dense numeric tables and unit labels stay at 10px
+  deliberately. Header title and subtitle rewritten to say what the app is and how to drive it, and
+  `README.md` reordered to lead with capabilities and usage before internals.
 - [x] **Vertical-column scenarios were blocked by the well-overlap rule (2026-08-01).**
   `wf_gravity_stability` is a 1 x 1 x 60 column, so both wells necessarily sit in the one column the
   grid has, and `validateInputs` refused to run it: "Injector and producer cannot share the same i/j
