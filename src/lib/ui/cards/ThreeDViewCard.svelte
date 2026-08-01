@@ -164,6 +164,8 @@
             porosity={selectedOutputProfile.porosity}
             rateHistory={selectedOutputProfile.rateHistory}
             injectorI={selectedOutputProfile.injectorI}
+            injectorKLayers={selectedOutputProfile.injectorKLayers}
+            producerKLayers={selectedOutputProfile.producerKLayers}
             injectorJ={selectedOutputProfile.injectorJ}
             producerI={selectedOutputProfile.producerI}
             producerJ={selectedOutputProfile.producerJ}

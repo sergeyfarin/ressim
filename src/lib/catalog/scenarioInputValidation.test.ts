@@ -12,6 +12,11 @@ import { describe, expect, it } from 'vitest';
 import { listScenarios, getScenarioWithVariantParams, getDefaultScenarioAnalyticalMode } from './scenarios';
 import { evaluateAnalyticalStatus } from '../warningPolicy';
 import { getDefaultToggles } from './caseCatalog';
+import {
+    buildFloodFrontOverlay,
+    defaultSpatialProfileAxis,
+    resolveDisplacementAxis,
+} from '../visualization/spatialProfileModel';
 import { validateInputs, type SimulationInputs } from '../validateInputs';
 import { buildCreatePayloadFromState } from '../buildCreatePayload';
 
@@ -183,5 +188,79 @@ describe('analytical caveats describe the model actually being run', () => {
         }
 
         expect(actual).toEqual(EXPECTED_CAVEATS);
+    });
+});
+
+describe('the spatial profile carries its analytical reference', () => {
+    /**
+     * Per scenario: which axis the flood runs down, which axis the profile opens
+     * on, and whether the Buckley-Leverett saturation overlay is therefore drawn
+     * there. `wf_gravity_stability` is the reason this exists — its flood runs
+     * down K, the overlay only ever handled I, and the profile plot showed a
+     * simulated curve with no reference beside it.
+     */
+    const EXPECTED = {
+        wf_bl1d: { displacement: 'i', defaultAxis: 'i', overlay: true },
+        wf_capillary: { displacement: 'i', defaultAxis: 'i', overlay: true },
+        // Opens on K to show the tongue's vertical structure; the flood runs
+        // along I, and BL has nothing to say about a saturation profile across
+        // the flood direction, so no reference is drawn there. Switching the
+        // profile to I brings it back.
+        wf_gravity: { displacement: 'i', defaultAxis: 'k', overlay: false },
+        wf_gravity_stability: { displacement: 'k', defaultAxis: 'k', overlay: true },
+        sweep_vertical: { displacement: 'i', defaultAxis: 'i', overlay: true },
+    } as const;
+
+    it('draws the flood-front overlay wherever the profile axis is the flood axis', () => {
+        const actual: Record<string, { displacement: string; defaultAxis: string; overlay: boolean }> = {};
+
+        for (const scenario of listScenarios()) {
+            if (!(scenario.key in EXPECTED)) continue;
+            const params = scenario.params as Record<string, number[] | number | undefined>;
+            const grid = {
+                nx: Number(params.nx), ny: Number(params.ny), nz: Number(params.nz),
+                cellDx: Number(params.cellDx), cellDy: Number(params.cellDy), cellDz: Number(params.cellDz),
+            };
+            const layer = (list: unknown, fallback: number) => (
+                Array.isArray(list) && list.length > 0 ? Number(list[0]) : fallback
+            );
+            const wells = {
+                injector: {
+                    i: Number(params.injectorI ?? 0), j: Number(params.injectorJ ?? 0),
+                    k: layer(params.injectorKLayers, 0),
+                },
+                producer: {
+                    i: Number(params.producerI ?? 0), j: Number(params.producerJ ?? 0),
+                    k: layer(params.producerKLayers, grid.nz - 1),
+                },
+            };
+            const axis = defaultSpatialProfileAxis(
+                grid,
+                scenario.capabilities.spatialProfile?.defaultAxis ?? null,
+            );
+            const overlay = buildFloodFrontOverlay({
+                grid, axis, property: 'saturation_water',
+                rock: {
+                    s_wc: Number(params.s_wc), s_or: Number(params.s_or),
+                    n_w: Number(params.n_w), n_o: Number(params.n_o),
+                    k_rw_max: Number(params.k_rw_max), k_ro_max: Number(params.k_ro_max),
+                },
+                fluid: { mu_w: Number(params.mu_w), mu_o: Number(params.mu_o) },
+                initialSaturation: Number(params.initialSaturation),
+                porosity: Number(params.reservoirPorosity),
+                // Half a pore volume in, so the front is inside the model.
+                injectedVolume: 0.5 * grid.nx * grid.cellDx * grid.ny * grid.cellDy
+                    * grid.nz * grid.cellDz * Number(params.reservoirPorosity),
+                wells,
+            });
+
+            actual[scenario.key] = {
+                displacement: resolveDisplacementAxis(wells.injector, wells.producer),
+                defaultAxis: axis,
+                overlay: overlay !== null,
+            };
+        }
+
+        expect(actual).toEqual(EXPECTED);
     });
 });

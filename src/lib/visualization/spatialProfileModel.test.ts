@@ -11,6 +11,7 @@ import {
     type SpatialProfileGrid,
 } from './spatialProfileModel';
 import type { GridState } from '../simulator-types';
+import { computeWelgeMetrics } from '../analytical/fractionalFlow';
 
 const GRID: SpatialProfileGrid = { nx: 4, ny: 3, nz: 2, cellDx: 10, cellDy: 20, cellDz: 5 };
 
@@ -221,11 +222,88 @@ describe('buildFloodFrontOverlay', () => {
     });
 
     it('is hidden wherever a flood front is not the right reference', () => {
-        // Not a displacement axis, not the water saturation, not injecting, not started.
-        expect(buildFloodFrontOverlay({ ...base, axis: 'k' })).toBeNull();
+        // Not a saturation profile, not injecting, not started, and the
+        // injector→producer diagonal, which the sweep overlay owns instead.
+        expect(buildFloodFrontOverlay({ ...base, axis: 'well-path' })).toBeNull();
         expect(buildFloodFrontOverlay({ ...base, property: 'pressure' })).toBeNull();
         expect(buildFloodFrontOverlay({ ...base, injectedVolume: 0 })).toBeNull();
         expect(buildFloodFrontOverlay({ ...base, porosity: 0 })).toBeNull();
+    });
+
+    it('draws only on the axis the wells are separated along', () => {
+        // wf_gravity's section: injector and producer both at the base, 29 cells
+        // apart in I. A BL curve down K there would read as a prediction about
+        // the gravity tongue's vertical structure, which BL knows nothing about.
+        const section = {
+            ...base,
+            grid: { nx: 30, ny: 1, nz: 20, cellDx: 10, cellDy: 20, cellDz: 2 },
+            wells: { injector: { i: 0, j: 0, k: 19 }, producer: { i: 29, j: 0, k: 19 } },
+        };
+        expect(buildFloodFrontOverlay({ ...section, axis: 'i' })).not.toBeNull();
+        expect(buildFloodFrontOverlay({ ...section, axis: 'k' })).toBeNull();
+        expect(buildFloodFrontOverlay({ ...section, axis: 'j' })).toBeNull();
+    });
+
+    // A 1D flood is not necessarily horizontal: wf_gravity_stability displaces
+    // up or down a 1 x 1 x 60 column, where the flow path is the K axis. The
+    // overlay used to return null for anything but I, so that scenario's
+    // profile plot had a simulated curve and no reference beside it.
+    describe('on a vertical column', () => {
+        const COLUMN: SpatialProfileGrid = { nx: 1, ny: 1, nz: 60, cellDx: 20, cellDy: 20, cellDz: 1 };
+        const column = {
+            ...base,
+            grid: COLUMN,
+            axis: 'k' as const,
+            injectedVolume: 1_000,
+        };
+
+        it('draws the same construction down the K axis', () => {
+            const overlay = buildFloodFrontOverlay(column)!;
+            expect(overlay).not.toBeNull();
+            const finite = overlay.values.filter((value): value is number => value !== null);
+            expect(finite).toHaveLength(COLUMN.nz);
+            expect(finite[0]).toBeGreaterThan(overlay.shockSw);
+            expect(finite.at(-1)).toBe(overlay.initialSw);
+            expect(finite.every((value, index) => index === 0 || value <= finite[index - 1])).toBe(true);
+        });
+
+        it('measures the front against the column height and its own cross-section', () => {
+            const height = COLUMN.nz * COLUMN.cellDz;
+            const area = COLUMN.nx * COLUMN.cellDx * COLUMN.ny * COLUMN.cellDy;
+            const overlay = buildFloodFrontOverlay(column)!;
+            // Front position = height x PVI x (dfw/dSw at the shock), with PVI
+            // taken over the column's own pore volume — height x cross-section.
+            const poreVolumesInjected = column.injectedVolume / (column.porosity * area * height);
+            const { breakthroughPvi } = computeWelgeMetrics(ROCK, FLUID, column.initialSaturation);
+            expect(overlay.frontDistance).toBeCloseTo(
+                height * poreVolumesInjected / breakthroughPvi, 8,
+            );
+            expect(overlay.frontDistance).toBeLessThanOrEqual(height);
+            expect(buildFloodFrontOverlay({ ...column, injectedVolume: 1e9 })!.frontDistance)
+                .toBeCloseTo(height, 6);
+        });
+
+        it('mirrors a flood that enters at the base and advances upward', () => {
+            // Injector perforated in the last layer: water enters at the bottom
+            // of the profile and the swept end is the far one.
+            const upward = buildFloodFrontOverlay({
+                ...column,
+                wells: { injector: { i: 0, j: 0, k: COLUMN.nz - 1 }, producer: { i: 0, j: 0, k: 0 } },
+            })!;
+            const downward = buildFloodFrontOverlay({
+                ...column,
+                wells: { injector: { i: 0, j: 0, k: 0 }, producer: { i: 0, j: 0, k: COLUMN.nz - 1 } },
+            })!;
+
+            expect(upward.values.at(-1)).toBeGreaterThan(upward.shockSw);
+            expect(upward.values[0]).toBe(upward.initialSw);
+            expect(upward.values).toEqual([...downward.values].reverse());
+            // The front is reported in axis coordinates, so it sits at the far
+            // end of the column rather than near the origin.
+            expect(upward.frontDistance).toBeCloseTo(
+                COLUMN.nz * COLUMN.cellDz - downward.frontDistance, 8,
+            );
+        });
     });
 
     it('scales the front position by the true cross-section, including per-layer dz', () => {

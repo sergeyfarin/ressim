@@ -74,6 +74,9 @@ export type OutputSelectionProfile = {
     spatialProfileWellPathLabel: string;
     sourceLabel: string;
     injectorI: number; injectorJ: number; producerI: number; producerJ: number;
+    /** Perforated layers; empty means every layer. */
+    injectorKLayers: number[];
+    producerKLayers: number[];
     initialSaturation: number;
     rockProps: RockProps; fluidProps: FluidProps;
 };
@@ -441,6 +444,14 @@ class NavigationStoreImpl {
             injectorJ: Number(ref?.params.injectorJ ?? this.#params.injectorJ),
             producerI: Number(ref?.params.producerI ?? this.#params.producerI),
             producerJ: Number(ref?.params.producerJ ?? this.#params.producerJ),
+            // Which layer the injector is perforated in, so a profile taken down
+            // the K axis knows which end of the column the flood starts at.
+            injectorKLayers: [...(
+                (ref?.params.injectorKLayers as number[] | undefined) ?? this.#params.injectorKLayers
+            )],
+            producerKLayers: [...(
+                (ref?.params.producerKLayers as number[] | undefined) ?? this.#params.producerKLayers
+            )],
             initialSaturation: Number(ref?.params.initialSaturation ?? this.#params.initialSaturation),
             rockProps: {
                 s_wc: Number(ref?.params.s_wc ?? this.#params.s_wc),

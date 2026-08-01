@@ -270,6 +270,31 @@ export function buildWellPath(
     return cells;
 }
 
+
+/** One well's cell indices, used to locate the flood path. */
+export type WellCell = { i: number; j: number; k: number };
+
+/**
+ * The axis a flood runs along: the one separating the two wells. Ties and
+ * fully coincident wells fall back to I, which is the historical assumption.
+ */
+export function resolveDisplacementAxis(injector: WellCell, producer: WellCell): 'i' | 'j' | 'k' {
+    const separations: [('i' | 'j' | 'k'), number][] = [
+        ['i', Math.abs(Number(producer.i) - Number(injector.i))],
+        ['j', Math.abs(Number(producer.j) - Number(injector.j))],
+        ['k', Math.abs(Number(producer.k) - Number(injector.k))],
+    ];
+    let best: 'i' | 'j' | 'k' = 'i';
+    let bestSeparation = -1;
+    for (const [axis, separation] of separations) {
+        if (separation > bestSeparation) {
+            best = axis;
+            bestSeparation = separation;
+        }
+    }
+    return best;
+}
+
 // ─── Buckley-Leverett flood-front overlay ────────────────────────────────────
 
 export type FloodFrontOverlay = {
@@ -303,10 +328,17 @@ export function cumulativeInjectedVolume(
 /**
  * Buckley–Leverett water-saturation profile at the snapshot time.
  *
- * Only meaningful along I in a scenario being flooded — it is the same Welge
+ * Valid along whichever grid axis the flood runs down — the same Welge
  * construction the rate charts use for breakthrough, evaluated in space instead
- * of time. Returns null whenever that does not hold, which is what hides the
- * overlay rather than drawing a misleading flat line.
+ * of time. Returns null when that does not apply (pressure profiles, the
+ * injector→producer diagonal, no injection yet), which hides the overlay rather
+ * than drawing a misleading flat line.
+ *
+ * The axis is a parameter rather than hard-coded to I because a 1D flood is not
+ * necessarily horizontal: `wf_gravity_stability` displaces up or down a 1 x 1 x 60
+ * column, where the flow path is K. `injectorIndex` carries which end the water
+ * enters from, so a flood that runs from the far end of the axis towards index 0
+ * is mirrored instead of being drawn backwards.
  *
  * The fractional-flow math is imported, not reimplemented: the old
  * `SwProfileChart` carried its own copies of k_rw, k_ro, fractionalFlow and the
@@ -321,12 +353,29 @@ export function buildFloodFrontOverlay(input: {
     initialSaturation: number;
     porosity: number;
     injectedVolume: number;
+    /**
+     * The two well cells. When given, the overlay is drawn only on the axis the
+     * wells are separated along — the flood's own direction — and mirrored when
+     * the injector sits at the far end of it. Omit to keep the older behaviour:
+     * the profiled axis is assumed to be the flood direction, entered at index 0.
+     */
+    wells?: { injector: WellCell; producer: WellCell };
 }): FloodFrontOverlay | null {
-    if (input.axis !== 'i' || input.property !== 'saturation_water') return null;
+    if (input.axis === 'well-path' || input.property !== 'saturation_water') return null;
     if (!(input.injectedVolume > 0) || !(input.porosity > 0)) return null;
 
-    const nx = Math.max(0, Math.round(Number(input.grid.nx) || 0));
-    if (nx === 0) return null;
+    const count = axisLength(input.grid, input.axis);
+    if (count === 0) return null;
+
+    // Buckley-Leverett describes displacement *along the flood path*. On any
+    // other axis it would be a curve about a different direction of flow: on
+    // `wf_gravity`'s vertical section, where the flood runs along I, a BL curve
+    // drawn down K would look like a prediction of the gravity tongue's
+    // saturation structure, which it emphatically is not.
+    const displacementAxis = input.wells
+        ? resolveDisplacementAxis(input.wells.injector, input.wells.producer)
+        : input.axis;
+    if (displacementAxis !== input.axis) return null;
 
     const { shockSw, initialSw, breakthroughPvi } = computeWelgeMetrics(
         input.rock,
@@ -343,12 +392,17 @@ export function buildFloodFrontOverlay(input: {
         cellDzPerLayer: input.grid.cellDzPerLayer,
     });
     const totalThickness = thicknesses.reduce((sum, t) => sum + t, 0);
+    const spanI = Math.max(0, Number(input.grid.nx) || 0) * (Number(input.grid.cellDx) || 0);
+    const spanJ = Math.max(0, Number(input.grid.ny) || 0) * (Number(input.grid.cellDy) || 0);
+    // Flow length along the swept axis, and the area of the other two.
+    const length = input.axis === 'i' ? spanI : input.axis === 'j' ? spanJ : totalThickness;
     const crossSection = Math.max(
         1e-9,
-        Math.max(0, Number(input.grid.ny) || 0) * (Number(input.grid.cellDy) || 0) * totalThickness,
+        input.axis === 'i' ? spanJ * totalThickness
+            : input.axis === 'j' ? spanI * totalThickness
+                : spanI * spanJ,
     );
-
-    const length = nx * Math.max(1e-9, Number(input.grid.cellDx) || 1);
+    if (!(length > 0)) return null;
     const poreVolumesInjected = input.injectedVolume
         / Math.max(1e-12, input.porosity * crossSection * length);
     const unclampedFrontDistance = length * poreVolumesInjected * Math.max(0, dfwShock);
@@ -369,14 +423,22 @@ export function buildFloodFrontOverlay(input: {
         return 0.5 * (lo + hi);
     }
 
-    const distances = axisDistances(input.grid, 'i');
+    const distances = axisDistances(input.grid, input.axis);
+    // Which end the water enters from. Anything past the midpoint means the
+    // flood advances towards index 0, so distance is measured from the far end.
+    const injectorIndex = clampIndex(
+        Number(input.wells ? input.wells.injector[input.axis] : 0),
+        count,
+    );
+    const runsBackwards = injectorIndex > (count - 1) / 2;
     return {
-        values: distances.map((x) => {
+        values: distances.map((position) => {
+            const x = runsBackwards ? length - position : position;
             if (x > unclampedFrontDistance) return initialSw;
             const dimensionlessDistance = x / length;
             return saturationBehindShock(dimensionlessDistance / poreVolumesInjected);
         }),
-        frontDistance,
+        frontDistance: runsBackwards ? length - frontDistance : frontDistance,
         shockSw,
         initialSw,
         label: 'Buckley–Leverett reference',

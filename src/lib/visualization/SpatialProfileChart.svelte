@@ -54,6 +54,8 @@
         rateHistory = [],
         injectorI = 0,
         injectorJ = 0,
+        injectorKLayers = [],
+        producerKLayers = [],
         producerI = grid.nx - 1,
         producerJ = 0,
         pressureDisplayRange,
@@ -73,6 +75,8 @@
         porosity?: number;
         rateHistory?: RateHistoryPoint[];
         injectorI?: number;
+        injectorKLayers?: number[];
+        producerKLayers?: number[];
         injectorJ?: number;
         producerI?: number;
         producerJ?: number;
@@ -162,6 +166,17 @@
             initialSaturation,
             porosity,
             injectedVolume,
+            // The flood path itself: which axis the wells are separated along,
+            // and which end the water enters from. A column flooded from its
+            // base runs towards index 0, and the overlay mirrors.
+            wells: {
+                injector: { i: injectorI, j: injectorJ, k: injectorKLayers[0] ?? 0 },
+                producer: {
+                    i: producerI,
+                    j: producerJ,
+                    k: producerKLayers[0] ?? Math.max(0, grid.nz - 1),
+                },
+            },
         });
     });
 

@@ -86,6 +86,16 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   panel into its own `avg_water_sat` panel (one property per plot). Dead code removed:
   `SweepEfficiencyChart.svelte` and `buildRateChartData.ts`, with the scale configs still in use
   extracted to `scalePresetRegistry.ts`.
+- [x] **Spatial-profile BL overlay only existed along I (2026-08-01).** `buildFloodFrontOverlay`
+  returned null for any axis but `i` and computed its flow length from `nx * cellDx`, so
+  `wf_gravity_stability` — whose flood runs down a 1 x 1 x 60 column — drew a simulated saturation
+  profile with no analytical curve beside it, while the horizontal 1D cases drew both. The
+  construction is now evaluated along whichever axis the wells are separated on, with the flow length
+  and cross-section taken from that axis, and mirrored when the injector sits at the far end (the
+  column is flooded upward from its base). Two guards came with it: the overlay is drawn *only* on
+  the displacement axis — on `wf_gravity`'s section, where the flood runs along I, a BL curve down K
+  would read as a prediction about the gravity tongue's vertical structure — and the per-scenario
+  availability table is locked in `scenarioInputValidation.test.ts`.
 - [x] **Vertical-column scenarios were blocked by the well-overlap rule (2026-08-01).**
   `wf_gravity_stability` is a 1 x 1 x 60 column, so both wells necessarily sit in the one column the
   grid has, and `validateInputs` refused to run it: "Injector and producer cannot share the same i/j
