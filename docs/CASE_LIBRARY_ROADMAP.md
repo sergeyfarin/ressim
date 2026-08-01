@@ -38,15 +38,16 @@ of each history, which is the extrapolation an engineer performs:
 
 | variant | reserves error | recovery | final p (bar) |
 |---|---|---|---|
-| c_f = 5e-6 /bar (base) | +0.8 % | 0.929 | 30.3 |
-| c_f = 5e-5 | +1.7 % | 0.938 | 30.3 |
-| c_f = 2e-4 | +4.7 % | 0.969 | 30.3 |
-| c_f = 5e-4 (geopressured) | +10.5 % | **1.029** | 30.3 |
-| tight interval, well in upper compartment | +38.6 % | 0.278 | 293 |
-| abandon at 200 bar instead of 30 | +9.0 % | 0.501 | 200 |
+| variant | reserves error (full history) | reserves error (first 40 %) | recovery |
+|---|---|---|---|
+| c_f = 5e-6 /bar (base) | +0.7 % | +0.7 % | 0.928 |
+| c_f = 5e-5 | +0.7 % | +0.9 % | 0.929 |
+| c_f = 2e-4 | +0.6 % | +1.4 % | 0.934 |
+| c_f = 5e-4 (geopressured) | +0.5 % | +2.4 % | 0.942 |
+| tight interval, well in upper compartment | +38.6 % | +56.1 % | 0.278 |
+| abandon at 200 bar instead of 30 | +8.9 % | +19.0 % | 0.501 |
 
-Recovery above 1.0 at the geopressured rung is not an error: compaction and connate-water expansion
-deliver gas the initial-volume estimate never counted, which is the term the uncorrected line lacks.
+Every row reads worse from an early window than from a complete one, which is the case's through-line.
 
 **Defect found and fixed on the way.** `DerivedRunSeries.p_z` was computed with `z = 1` hard-coded
 and labelled "P/z" on the diagnostics panel of every three-phase chart — an average-pressure curve
@@ -58,11 +59,17 @@ the properly classified `p-over-z-` key family.
 (`dep_gas_pz` at c_f = 5e-6, `dep_gas_pz_geopressured` at 5e-4; flow 2026.04; GAS+WATER two-phase;
 PVDG generated from the scenario's own `pvtTable`; Eclipse `ROCK`). Cumulative gas over the ladder:
 OPM 129.9 -> 132.4e6 Sm3 (+1.9 %), a hand dry-gas material balance 131.2 -> 133.6e6 (+1.8 %), ResSim
-131.6 -> 145.7e6 (+10.7 %). OPM and the hand balance agree; **ResSim's compaction increment is about
-six times too large**, traced to the pore volume being referenced to the previous timestep's pressure
-instead of a fixed one. Recorded in `TODO.md` with the mechanism and the fix. The scenario now opens
-on `connectivity` rather than `pore_compressibility`, carries both OPM curves, and says plainly in
-the dimension text which of its numbers are trustworthy.
+131.6 -> 145.7e6 (+10.7 %). OPM and the hand balance agreed with each other; **ResSim's compaction
+increment was about six times too large**, traced to the pore volume being referenced to the previous
+timestep's pressure instead of a fixed one — so compaction never accumulated and each release was
+charged at that step's `B_g` rather than at abandonment `B_g`.
+
+**Engine fixed the same day** (`rock_reference_pressure_bar`, Eclipse `ROCK` item 1, set by
+`set_initial_pressure`). ResSim now reports +1.5 % against OPM's +1.9 %. The scenario's numbers below
+are post-fix, and the case's teaching point moved with them: the compaction bend is a *mid-life*
+phenomenon. Extrapolated from the whole history the reserves error stays near 0.6 % on every rung;
+extrapolated from the first 40 %, it grows 0.7 -> 2.4 % with compressibility. The plot misleads while
+the number is still wanted and corrects itself once it is not.
 
 This also needed the artifact x-axis map to grow a `cumulativeGasSm3` entry: a p/z chart's x-axis is
 produced gas, and `mapReferenceTimesToXAxis` had been dropping every reference series on `cumGas`.

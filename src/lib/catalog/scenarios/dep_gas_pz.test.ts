@@ -26,6 +26,8 @@ type VariantRun = {
     straightLineGiip: number;
     /** Relative error the straight-line reserves estimate carries [-]. */
     giipError: number;
+    /** The same estimate made from the first 40 % of the history instead. */
+    earlyGiipError: number;
     /** Recovery factor against the volumetric gas in place at the end of the run. */
     recovery: number;
     finalPressure: number;
@@ -132,10 +134,18 @@ function runVariant(dimensionKey: string, variantKey: string): VariantRun {
     sim.free();
 
     const fit = fitStraightLineGiip(cumulative, simulatedPOverZ, 1 / 3);
+    // The same extrapolation made early in the life of the field, from the
+    // first 40 % of the record — which is when a reserves number is actually
+    // wanted, and where the compaction bend has not yet flattened out.
+    const earlyCount = Math.max(2, Math.floor(cumulative.length * 0.4));
+    const earlyFit = fitStraightLineGiip(
+        cumulative.slice(0, earlyCount), simulatedPOverZ.slice(0, earlyCount), 1,
+    );
     return {
         volumetricGiip,
         straightLineGiip: fit?.giip ?? Number.NaN,
         giipError: (fit?.giip ?? Number.NaN) / volumetricGiip - 1,
+        earlyGiipError: (earlyFit?.giip ?? Number.NaN) / volumetricGiip - 1,
         recovery: cumulativeGas / volumetricGiip,
         finalPressure,
         inventoryClosure: (cumulativeGas + remaining) / volumetricGiip - 1,
@@ -199,24 +209,35 @@ describe('dep_gas_pz measured behaviour', () => {
         // figures, which is the failure this guards.
         expect(Math.abs(base.inventoryClosure)).toBeLessThan(0.04);
 
-        // And the residual is that physics, not noise: it scales with c_f.
+        // And the residual is that physics, not noise: it scales with c_f, by
+        // about what compaction can physically deliver.
         const geopressured = runVariant('pore_compressibility', 'cf_geopressured');
-        expect(geopressured.inventoryClosure).toBeGreaterThan(base.inventoryClosure + 0.05);
+        expect(geopressured.inventoryClosure).toBeGreaterThan(base.inventoryClosure);
+        expect(geopressured.inventoryClosure).toBeLessThan(base.inventoryClosure + 0.02);
     }, 600_000);
 
-    it('inflates the straight-line reserves estimate as pore compressibility rises', async () => {
+    it('bends the plot in mid-life and lets it straighten again by abandonment', async () => {
         await ensureWasmReady();
         const ladder = ['cf_normal', 'cf_moderate', 'cf_high', 'cf_geopressured']
             .map((key) => runVariant('pore_compressibility', key));
         for (const run of ladder) expect(run.warning).toBe('');
-        for (const run of ladder) console.log('cf', JSON.stringify(run));
 
+        // Compaction delivers extra gas, monotonically in c_f.
         for (let index = 1; index < ladder.length; index += 1) {
-            expect(ladder[index].giipError, `rung ${index}`)
-                .toBeGreaterThan(ladder[index - 1].giipError);
+            expect(ladder[index].recovery, `rung ${index}`)
+                .toBeGreaterThan(ladder[index - 1].recovery);
         }
-        expect(ladder[0].giipError).toBeLessThan(0.06);
-        expect(ladder.at(-1)!.giipError).toBeGreaterThan(0.1);
+
+        // Read early, the reserves error grows with compressibility.
+        for (let index = 1; index < ladder.length; index += 1) {
+            expect(ladder[index].earlyGiipError, `early rung ${index}`)
+                .toBeGreaterThan(ladder[index - 1].earlyGiipError);
+        }
+        expect(ladder[0].earlyGiipError).toBeLessThan(0.01);
+        expect(ladder.at(-1)!.earlyGiipError).toBeGreaterThan(0.02);
+
+        // Read to abandonment, it does not — the bend has straightened out.
+        for (const run of ladder) expect(run.giipError).toBeLessThan(0.01);
     }, 600_000);
 
     it('over-reads reserves when the well is draining one compartment', async () => {
@@ -256,36 +277,27 @@ describe('dep_gas_pz against OPM Flow', () => {
     });
 
     /**
-     * Open defect, pinned so the fix is visible when it lands.
+     * The compaction term, checked against an independent simulator.
      *
-     * ResSim's rock compressibility releases gas at the pressure at which the
-     * compaction happens, rather than displacing the gas that would otherwise
-     * have remained at abandonment. `fim/assembly.rs::pore_volume_at_state`
-     * computes `pv_ref * exp(c_f * (p - p_prev))` against the *previous step's*
-     * pressure, so compaction never accumulates and the same energy is
-     * harvested every step. Both an independent OPM Flow run of the identical
-     * deck and a hand dry-gas material balance put the compaction increment at
-     * about 1.9 %; ResSim reports 10.7 %.
-     *
-     * When the engine is fixed this assertion fails, which is the point: update
-     * it to the agreement bound and rewrite the scenario's
-     * `pore_compressibility` prose at the same time. See TODO.md.
+     * This is the assertion that found the defect fixed on 2026-08-01: ResSim
+     * used to report a 10.7 % compaction increment where OPM Flow and a hand
+     * dry-gas material balance both said about 1.9 %, because the pore volume
+     * was referenced to the previous timestep's pressure and so never
+     * accumulated. It now agrees.
      */
-    it('does not yet agree on how much gas compaction releases', () => {
-        const base = opmCumulativeGas('dep_gas_pz');
-        const geopressured = opmCumulativeGas('dep_gas_pz_geopressured');
-        const opmIncrement = geopressured / base - 1;
-
-        // What an independent simulator says the compaction term is worth.
+    it('agrees with OPM Flow on how much gas compaction releases', async () => {
+        await ensureWasmReady();
+        const opmIncrement = opmCumulativeGas('dep_gas_pz_geopressured') / opmCumulativeGas('dep_gas_pz') - 1;
         expect(opmIncrement).toBeGreaterThan(0.01);
         expect(opmIncrement).toBeLessThan(0.03);
 
-        // What ResSim says, measured on this tree. Delete this block, not the
-        // one above, when the engine is corrected.
-        const resSimBase = runVariant('pore_compressibility', 'cf_normal');
-        const resSimGeo = runVariant('pore_compressibility', 'cf_geopressured');
-        const resSimIncrement = resSimGeo.recovery / resSimBase.recovery - 1;
-        expect(resSimIncrement).toBeGreaterThan(0.09);
-        expect(resSimIncrement / opmIncrement).toBeGreaterThan(4);
+        const base = runVariant('pore_compressibility', 'cf_normal');
+        const geopressured = runVariant('pore_compressibility', 'cf_geopressured');
+        const resSimIncrement = geopressured.recovery / base.recovery - 1;
+
+        // Same order, and within half a percentage point of an independent
+        // simulator on the identical deck.
+        expect(resSimIncrement).toBeGreaterThan(0.005);
+        expect(Math.abs(resSimIncrement - opmIncrement)).toBeLessThan(0.006);
     }, 600_000);
 });

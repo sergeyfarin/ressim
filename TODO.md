@@ -36,23 +36,27 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   than a tolerance, raised as a solver warning rather than an abort — the scenario's
   `dt_limiter_off` variant is a ready-made regression case, and `wf_numerics.test.ts` currently pins
   the *absence* of the warning, so that assertion flips when this is fixed.
-- [ ] **Rock compressibility releases gas at the wrong pressure (found 2026-08-01, engine).**
-  `fim/assembly.rs::pore_volume_at_state` and `fim/properties.rs::pore_volume_generic` compute
-  `pv_ref * exp(c_f * (p - p_prev))` where `p_prev` is the **previous timestep's** pressure, not a
-  fixed reference. Compaction therefore never accumulates: within a step `p ~ p_prev` so the pore
-  volume stays at `pv_ref`, while the accumulation derivative injects `c_f * pv` every step. The
-  same compaction energy is harvested repeatedly, and each release is converted to surface volume at
-  that step's `B_g` rather than at abandonment `B_g`, so the error grows with both `c_f` and the
-  depletion range. Measured on `dep_gas_pz` (400 -> 30 bar, c_f 5e-6 -> 5e-4 /bar), cumulative gas:
-  ResSim 131.6 -> 145.7e6 Sm3 (+10.7 %), OPM Flow on the identical deck 129.9 -> 132.4e6 (+1.9 %),
-  hand dry-gas material balance 131.2 -> 133.6e6 (+1.8 %). OPM and the hand balance agree; ResSim's
-  compaction increment is ~5.8x too large. The base rung agrees with both to 1.3 %, so only the
-  compaction term is wrong. **Fix:** reference the exponent to a stored initial/reference pressure
-  rather than `p_prev`. The Jacobian is unchanged — `d/dp [pv_ref*exp(c(p-const))] = c*pv` either
-  way — so this is a value fix, not a structural one. Pinned by
-  `dep_gas_pz.test.ts` > "does not yet agree on how much gas compaction releases", which is written
-  to fail once the fix lands. Existing scenarios use c_f 1e-6, where `exp(c*dp) ~ 1`, so they cannot
-  move measurably; still needs the FIM + IMPES validation ladder and a wasm rebuild.
+- [x] **Rock compressibility released gas at the wrong pressure (found and fixed 2026-08-01, engine).**
+  `fim/properties.rs::pore_volume_generic` and `fim/assembly.rs::pore_volume_at_state` computed
+  `pv_ref * exp(c_f * (p - p_prev))` against the **previous timestep's** pressure, so compaction
+  never accumulated: within a step `p ~ p_prev`, the pore volume stayed at `pv_ref`, and the
+  accumulation term charged each release at that step's `B_g` instead of at abandonment `B_g`. Since
+  `1/B_g` falls by an order of magnitude over a deep gas depletion, the compaction term came out
+  roughly the ratio of those two densities too large. Found by the new OPM Flow cross-check on
+  `dep_gas_pz`: cumulative gas over c_f 5e-6 -> 5e-4 /bar was ResSim +10.7 %, OPM +1.9 %, hand
+  material balance +1.8 %. **Fixed** by referencing to a new `rock_reference_pressure_bar`, set by
+  `set_initial_pressure()` alongside the PVTW reference — Eclipse `ROCK` item 1. ResSim now reports
+  +1.5 %. The Jacobian is unchanged, and every shipped scenario except `dep_gas_pz` uses c_f 1e-6
+  where `exp(c*dp) ~ 1`. Guarded by `physics_depletion_gas_compaction_matches_material_balance`
+  (verified to fail against the old reference) and by `dep_gas_pz.test.ts` >
+  "agrees with OPM Flow on how much gas compaction releases". Gates run: `validate-solver-coverage.sh
+  all`, `benchmark_buckley`, `assembly_ad` parity, `pnpm run validate`, wasm rebuilt.
+- [ ] **IMPES has the same pore-volume question, unmeasured (2026-08-01).** `impes/pressure.rs`
+  folds `rock_compressibility` into `c_t` against the reference pore volume, which is the
+  conventional IMPES linearisation and is probably fine, but it has never been checked against a
+  material balance the way FIM now is. It could not be checked on `dep_gas_pz` because the explicit
+  gas path reports 57e6 Sm3 against FIM's 132e6 on that case — a separate, larger discrepancy worth
+  its own investigation before the compaction question is meaningful there.
 - [x] **`dep_gas_pz` OPM Flow decks (2026-08-01).** The scenario's claims are guarded against
   its own analytical reference and its own inventory closure, but there is no second simulator on the
   deck. A dry-gas OPM case is straightforward (PVDG from the same table, single producer on a BHP

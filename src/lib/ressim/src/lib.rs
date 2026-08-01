@@ -188,6 +188,18 @@ pub struct ReservoirSimulator {
     /// PVTW reference because the public ResSim input model has one uniform initial pressure and
     /// no separate PVTW-reference field.
     water_pvt_reference_pressure_bar: f64,
+    /// Pressure at which the porosity array — and therefore `pore_volume_m3()` —
+    /// is defined. This is Eclipse `ROCK` item 1, and pore volume is
+    /// `pv_ref * exp(c_f * (p - this))`.
+    ///
+    /// It must be a *fixed* reference, not the previous timestep's pressure.
+    /// Referencing it per step lets the same compaction energy be released
+    /// repeatedly, each time converted to surface volume at that step's B_g
+    /// rather than at abandonment, which over-delivers gas by roughly the ratio
+    /// of those two B_g values. Set by `set_initial_pressure()` for the same
+    /// reason the water reference is: one uniform initial pressure is the whole
+    /// public input model.
+    pub(crate) rock_reference_pressure_bar: f64,
     rate_history: Vec<TimePointRates>,
     pub(crate) sat_gas: Vec<f64>,
     pub(crate) scal_3p: Option<RockFluidPropsThreePhase>,

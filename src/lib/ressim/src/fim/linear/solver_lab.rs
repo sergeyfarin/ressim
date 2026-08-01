@@ -20,19 +20,19 @@ use nalgebra::{DMatrix, DVector};
 use sprs::CsMat;
 
 use super::capture::{
-    capture_dir_from_env, capture_sequence_dir_from_env, load_captures, y2b2_capture_dir_from_env,
-    y2d6_capture_dir_from_env, y2d6_corpus_dir_from_env, FimCapturedSystem,
+    FimCapturedSystem, capture_dir_from_env, capture_sequence_dir_from_env, load_captures,
+    y2b2_capture_dir_from_env, y2d6_capture_dir_from_env, y2d6_corpus_dir_from_env,
 };
 use super::flow_lifecycle::FlowComponentOracle;
 use super::gmres_block_jacobi::{
-    self, coarse_factorization_lab_compare, solve_with_restriction_kind,
-    solve_with_smoother_and_restriction, CprFineSmootherKind, CprPressureRestrictionKind,
+    self, CprFineSmootherKind, CprPressureRestrictionKind, coarse_factorization_lab_compare,
+    solve_with_restriction_kind, solve_with_smoother_and_restriction,
 };
 use super::sparse_lu_debug;
 use super::well_schur;
 use super::{
-    solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
-    FimLinearSolverKind,
+    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
+    solve_linearized_system,
 };
 use crate::fim::scaling::EquationScaling;
 
@@ -513,7 +513,9 @@ fn solver_lab_water012_eval2_reservoir_well_decomposition() {
     let systems = load_captures(&dir).expect("load WATER-012 captures");
     let system = systems.get(2).expect("WATER-012 needs evaluation 2");
     assert_eq!(system.metadata.newton_iteration, 2);
-    let layout = system.layout.expect("WATER-012 capture requires block layout");
+    let layout = system
+        .layout
+        .expect("WATER-012 capture requires block layout");
     let eliminated = well_schur::eliminate_wells(
         &system.jacobian,
         &system.rhs,
@@ -529,8 +531,15 @@ fn solver_lab_water012_eval2_reservoir_well_decomposition() {
         &std::env::var("FIM_WATER012_FLOW_VECTOR")
             .expect("set FIM_WATER012_FLOW_VECTOR to Flow nit_2 vector"),
     ));
-    assert_eq!((flow.nrows(), flow.ncols(), flow_rhs.len()), (864, 864, 864));
-    let flow_x = flow.clone().lu().solve(&flow_rhs).expect("Flow nit_2 nonsingular");
+    assert_eq!(
+        (flow.nrows(), flow.ncols(), flow_rhs.len()),
+        (864, 864, 864)
+    );
+    let flow_x = flow
+        .clone()
+        .lu()
+        .solve(&flow_rhs)
+        .expect("Flow nit_2 nonsingular");
     let ressim = solve_linearized_system(
         &eliminated.reduced_jacobian,
         &eliminated.reduced_rhs,
@@ -596,12 +605,21 @@ fn solver_lab_water012_eval2_reservoir_well_decomposition() {
         (reservoir_only_delta2 / flow_norm2.max(f64::EPSILON)).sqrt(),
         (schur_increment2 / flow_norm2.max(f64::EPSILON)).sqrt(),
         (rhs_delta2 / rhs_norm2.max(f64::EPSILON)).sqrt(),
-        injector.0, injector.1, injector.2, injector.3,
-        injector.1.clamp(-0.2, 0.2), injector.3.clamp(-0.2, 0.2),
-        producer.0, producer.1, producer.2, producer.3,
-        producer.1.clamp(-0.2, 0.2), producer.3.clamp(-0.2, 0.2),
+        injector.0,
+        injector.1,
+        injector.2,
+        injector.3,
+        injector.1.clamp(-0.2, 0.2),
+        injector.3.clamp(-0.2, 0.2),
+        producer.0,
+        producer.1,
+        producer.2,
+        producer.3,
+        producer.1.clamp(-0.2, 0.2),
+        producer.3.clamp(-0.2, 0.2),
     );
-    for &(_, flow_row, flow_col, flow_value, reservoir_only, reduced) in differences.iter().take(12) {
+    for &(_, flow_row, flow_col, flow_value, reservoir_only, reduced) in differences.iter().take(12)
+    {
         let row_name = if flow_row % 2 == 0 { "oil" } else { "water" };
         let col_name = if flow_col % 2 == 0 { "Sw" } else { "pressure" };
         println!(
@@ -775,10 +793,12 @@ fn solver_lab_water007_cpr_stop_and_recovery_contract() {
         strict_tail.actual_preconditioned_residual_norm,
         strict_tail.true_residual_norm,
     );
-    assert!(default_report
-        .solution
-        .iter()
-        .all(|value| value.is_finite()));
+    assert!(
+        default_report
+            .solution
+            .iter()
+            .all(|value| value.is_finite())
+    );
     assert!(strict_report.solution.iter().all(|value| value.is_finite()));
 }
 
@@ -1045,11 +1065,12 @@ fn solver_lab_validate_y2d6a_capture_payload() {
     assert_eq!(flow.storage_blocks.len(), layout.cell_block_count);
     assert_eq!(flow.true_impes_weights.len(), layout.cell_block_count);
     assert_eq!(flow.reservoir_unknown_count, layout.cell_unknown_count());
-    assert!(flow
-        .true_impes_weights
-        .iter()
-        .flatten()
-        .all(|value| value.is_finite()));
+    assert!(
+        flow.true_impes_weights
+            .iter()
+            .flatten()
+            .all(|value| value.is_finite())
+    );
     let max_weight = flow
         .true_impes_weights
         .iter()
@@ -2804,9 +2825,11 @@ fn solver_lab_compare_true_flexible_gmres() {
             assert_eq!(snapshot.iteration, history_index + 1);
             assert_eq!(snapshot.restart_index, 1);
             assert_eq!(snapshot.inner_step, history_index + 1);
-            assert!(snapshot
-                .pressure_reduction_ratio
-                .is_none_or(|ratio| ratio.is_finite()));
+            assert!(
+                snapshot
+                    .pressure_reduction_ratio
+                    .is_none_or(|ratio| ratio.is_finite())
+            );
             let independently_recomputed =
                 residual_norm(&system.jacobian, &snapshot.solution, &system.rhs);
             assert!(

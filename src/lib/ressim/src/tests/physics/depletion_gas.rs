@@ -545,3 +545,159 @@ fn physics_depletion_gas_single_cell_timestep_refinement_keeps_inventory_stable(
         cumulative_gas_rel_diff
     );
 }
+
+/// A deep dry-gas tank with an ideal-gas PVT table, for the compaction tests.
+///
+/// `B_g = C/p` (z = 1) makes `1/B_g` exactly proportional to pressure, so the
+/// order-of-magnitude contrast in surface gas density between initial and
+/// abandonment conditions — which is what makes the pore-volume reference
+/// matter — is present and analytically clean.
+fn make_deep_dry_gas_tank(rock_compressibility: f64) -> crate::ReservoirSimulator {
+    let mut sim = crate::ReservoirSimulator::new(1, 1, 1, 0.15);
+    sim.set_fim_enabled(true);
+    sim.set_cell_dimensions_per_layer(300.0, 300.0, vec![20.0])
+        .unwrap();
+    sim.set_three_phase_rel_perm_props(0.2, 0.0, 0.02, 0.02, 0.0, 2.0, 2.0, 1.5, 0.4, 1.0, 0.9)
+        .unwrap();
+    sim.set_three_phase_mode_enabled(true);
+    sim.set_gas_redissolution_enabled(false);
+    sim.set_gas_fluid_properties(0.02, 1e-4, 0.8).unwrap();
+    sim.set_fluid_properties(1.0, 0.4).unwrap();
+    sim.set_fluid_compressibilities(1e-5, 4e-5).unwrap();
+    sim.set_fluid_densities(800.0, 1000.0).unwrap();
+    sim.set_gravity_enabled(false);
+    sim.set_stability_params(0.1, 75.0, 0.75);
+    sim.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0])
+        .unwrap();
+
+    // Ideal gas: B_g = 4.0 / p, so 1/B_g runs from 100 at 400 bar to 5 at 20.
+    let rows: Vec<PvtRow> = (1..=41)
+        .map(|i| {
+            let p_bar = f64::from(i) * 10.0;
+            PvtRow {
+                p_bar,
+                rs_m3m3: 0.0,
+                bo_m3m3: 1.05,
+                mu_o_cp: 1.1,
+                bg_m3m3: 4.0 / p_bar,
+                mu_g_cp: 0.02,
+            }
+        })
+        .collect();
+    sim.pvt_table = Some(PvtTable::new(rows, 1e-5));
+
+    sim.set_initial_pressure(400.0);
+    sim.set_initial_saturation(0.2);
+    sim.set_initial_gas_saturation(0.8);
+    sim.set_initial_rs(0.0);
+    sim.set_rock_properties(rock_compressibility, 0.0, 1.0, 1.0)
+        .unwrap();
+    sim.add_well(0, 0, 0, 20.0, 0.1, 0.0, false).unwrap();
+    sim
+}
+
+/// Compaction must not depend on how the depletion was stepped.
+///
+/// A general invariant rather than a regression guard: the pre-2026-08-01
+/// previous-timestep pore-volume reference passes this, because its error
+/// telescopes to first order in the step size even though the total it
+/// telescopes to is wrong. The test that pins that defect is
+/// `physics_depletion_gas_compaction_matches_material_balance` below. This one
+/// is kept because step-size independence is cheap to check and is the property
+/// a future timestep or accumulation change is most likely to break.
+#[test]
+fn physics_depletion_gas_compaction_is_independent_of_step_size() {
+    fn produced_gas_sc(dt_days: f64, steps: usize) -> (f64, f64) {
+        let mut sim = make_deep_dry_gas_tank(5e-4);
+        let initial_inventory = total_gas_inventory_sc_all_cells(&sim);
+        for _ in 0..steps {
+            sim.step(dt_days);
+        }
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "gas depletion emitted solver warning: {}",
+            sim.last_solver_warning
+        );
+        (
+            initial_inventory - total_gas_inventory_sc_all_cells(&sim),
+            sim.pressure[0],
+        )
+    }
+
+    let (coarse, coarse_pressure) = produced_gas_sc(40.0, 20);
+    let (fine, fine_pressure) = produced_gas_sc(2.0, 400);
+
+    assert!(
+        (coarse_pressure - fine_pressure).abs() < 1.0,
+        "runs did not reach the same pressure: coarse={coarse_pressure:.4}, fine={fine_pressure:.4}"
+    );
+
+    let relative_gap = (fine - coarse).abs() / coarse.max(1e-9);
+    assert!(
+        relative_gap < 0.02,
+        "compaction depends on step size: coarse={coarse:.1} Sm3 over 20 steps, \
+         fine={fine:.1} Sm3 over 400 steps, gap={:.2}%",
+        relative_gap * 100.0
+    );
+}
+
+/// Produced gas must match a dry-gas material balance worked by hand.
+///
+/// The tank is closed, the water immobile and the gas law ideal, so the answer
+/// is a closed form: what is left at abandonment is the *compacted* pore volume,
+/// less the connate water it still holds, at the abandonment gas density. The
+/// compaction term is therefore worth the compacted volume times `1/B_g` at
+/// abandonment — not at the pressures the compaction passed through, which in
+/// this tank are up to twenty times denser and were what the pre-2026-08-01
+/// previous-timestep reference charged it at.
+#[test]
+fn physics_depletion_gas_compaction_matches_material_balance() {
+    const PORE_VOLUME_M3: f64 = 300.0 * 300.0 * 20.0 * 0.15;
+    const INITIAL_PRESSURE_BAR: f64 = 400.0;
+    const C_W: f64 = 4e-5;
+
+    /// `G_p = G - PV(p) * S_g(p) / B_g(p)`, with `B_g = 4/p`.
+    fn material_balance_produced_sc(rock_compressibility: f64, abandonment_bar: f64) -> f64 {
+        let drawdown = INITIAL_PRESSURE_BAR - abandonment_bar;
+        let gas_in_place = PORE_VOLUME_M3 * 0.8 * (INITIAL_PRESSURE_BAR / 4.0);
+        let pore_volume = PORE_VOLUME_M3 * f64::exp(-rock_compressibility * drawdown);
+        let water_volume = PORE_VOLUME_M3 * 0.2 * (1.0 + C_W * drawdown);
+        let remaining = (pore_volume - water_volume) * (abandonment_bar / 4.0);
+        gas_in_place - remaining
+    }
+
+    fn run(rock_compressibility: f64) -> (f64, f64) {
+        let mut sim = make_deep_dry_gas_tank(rock_compressibility);
+        let initial_inventory = total_gas_inventory_sc_all_cells(&sim);
+        for _ in 0..400 {
+            sim.step(2.0);
+        }
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "gas depletion emitted solver warning: {}",
+            sim.last_solver_warning
+        );
+        // Reported inventory is against the *reference* pore volume, so the
+        // produced total is read from the wells rather than differenced from it.
+        let mut produced = 0.0;
+        let mut previous_time_days = 0.0;
+        for point in &sim.rate_history {
+            produced += point.total_production_gas * (point.time - previous_time_days);
+            previous_time_days = point.time;
+        }
+        let _ = initial_inventory;
+        (produced, sim.pressure[0])
+    }
+
+    for rock_compressibility in [0.0, 5e-4] {
+        let (produced, abandonment_bar) = run(rock_compressibility);
+        let expected = material_balance_produced_sc(rock_compressibility, abandonment_bar);
+        let relative_error = (produced - expected).abs() / expected;
+        assert!(
+            relative_error < 0.03,
+            "c_f = {rock_compressibility}: produced {produced:.1} Sm3 against a material balance \
+             of {expected:.1} Sm3 at {abandonment_bar:.2} bar ({:.2}% out)",
+            relative_error * 100.0
+        );
+    }
+}

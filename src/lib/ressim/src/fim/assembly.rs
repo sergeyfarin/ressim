@@ -565,15 +565,19 @@ fn finite_difference_step(state: &FimState, unknown_idx: usize) -> f64 {
     unreachable!()
 }
 
+/// Pore volume at a state's pressure, referenced to the pressure the porosity
+/// array is defined at so compaction accumulates across the run.
+///
+/// `previous_state` is retained in the signature for call-site symmetry with the
+/// rest of this module; the pore volume depends only on `state`.
 fn pore_volume_at_state(
     sim: &ReservoirSimulator,
-    previous_state: &FimState,
+    _previous_state: &FimState,
     state: &FimState,
     cell_idx: usize,
 ) -> f64 {
     let pore_volume_ref_m3 = sim.pore_volume_m3(cell_idx);
-    let pressure_delta_bar =
-        state.cell(cell_idx).pressure_bar - previous_state.cell(cell_idx).pressure_bar;
+    let pressure_delta_bar = state.cell(cell_idx).pressure_bar - sim.rock_reference_pressure_bar;
     pore_volume_ref_m3 * f64::exp(sim.rock_compressibility * pressure_delta_bar)
 }
 

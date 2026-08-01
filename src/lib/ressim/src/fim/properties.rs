@@ -137,18 +137,17 @@ fn base_oil_fvf_generic<S: Scalar>(sim: &ReservoirSimulator, p: S) -> S {
     (S::from_f64(sim.b_o) * (p * (-sim.pvt.c_o)).exp()).max_floor(1e-9)
 }
 
-/// Pore volume at the current pressure with rock compressibility, generic over `S`.
-/// `p_prev` is the committed previous-iterate pressure (constant w.r.t. current
-/// unknowns).
-pub(crate) fn pore_volume_generic<S: Scalar>(
-    sim: &ReservoirSimulator,
-    cell_idx: usize,
-    p: S,
-    p_prev: f64,
-) -> S {
+/// Pore volume at pressure `p` with rock compressibility, generic over `S`.
+///
+/// Referenced to `sim.rock_reference_pressure_bar` — the pressure the porosity
+/// array is defined at — so compaction accumulates over the run. It used to be
+/// referenced to the previous timestep's pressure, which reset the pore volume
+/// to its uncompacted value every step; see the field's own doc comment.
+pub(crate) fn pore_volume_generic<S: Scalar>(sim: &ReservoirSimulator, cell_idx: usize, p: S) -> S {
     let pore_volume_ref_m3 = sim.pore_volume_m3(cell_idx);
-    // pv_ref * exp(rock_comp * (p - p_prev))
-    S::from_f64(pore_volume_ref_m3) * ((p - p_prev) * sim.rock_compressibility).exp()
+    // pv_ref * exp(rock_comp * (p - p_ref))
+    S::from_f64(pore_volume_ref_m3)
+        * ((p - sim.rock_reference_pressure_bar) * sim.rock_compressibility).exp()
 }
 
 /// Standard-condition component inventory `[water, oil, gas]` for one cell,
@@ -185,11 +184,12 @@ pub(crate) fn cell_accumulation_generic<S: Scalar>(
     prev_regime: HydrocarbonState,
 ) -> [S; 3] {
     let props = cell_props_generic(sim, regime, p, sw, hydrocarbon_var, drsdt0_base_rs);
-    let pv = pore_volume_generic(sim, cell_idx, p, prev_p);
+    let pv = pore_volume_generic(sim, cell_idx, p);
     let current = component_inventory_generic(sim, pv, p, sw, &props);
 
-    // Previous inventory: same code, f64 instantiation, previous pressure is its
-    // own reference (delta 0 -> pv = pv_ref). `derive_cell` derives the
+    // Previous inventory: same code, f64 instantiation, evaluated at the
+    // previous pressure against the same fixed rock reference, so the two pore
+    // volumes differ by exactly this step's compaction. `derive_cell` derives the
     // DRSDT0 cap from `sim.rs[idx]` -- a simulator-level constant, not either
     // state's own hydrocarbon_var -- so the SAME `drsdt0_base_rs` the caller
     // passed in for the current point applies unchanged to the previous point.
@@ -201,7 +201,7 @@ pub(crate) fn cell_accumulation_generic<S: Scalar>(
         prev_hydrocarbon_var,
         drsdt0_base_rs,
     );
-    let prev_pv = pore_volume_generic::<f64>(sim, cell_idx, prev_p, prev_p);
+    let prev_pv = pore_volume_generic::<f64>(sim, cell_idx, prev_p);
     let previous = component_inventory_generic::<f64>(sim, prev_pv, prev_p, prev_sw, &prev_props);
 
     [
