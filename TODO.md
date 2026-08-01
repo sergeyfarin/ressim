@@ -95,7 +95,10 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   column is flooded upward from its base). Two guards came with it: the overlay is drawn *only* on
   the displacement axis — on `wf_gravity`'s section, where the flood runs along I, a BL curve down K
   would read as a prediction about the gravity tongue's vertical structure — and the per-scenario
-  availability table is locked in `scenarioInputValidation.test.ts`.
+  availability table is locked in `scenarioInputValidation.test.ts`. `wf_gravity` now opens its
+  profile on I rather than K, so the reference is visible by default; at `nz > 1` the profile averages
+  the column, which is the quantity BL predicts, and the tongue's vertical structure stays one
+  dropdown away (axis K, or a single layer).
 - [x] **Vertical-column scenarios were blocked by the well-overlap rule (2026-08-01).**
   `wf_gravity_stability` is a 1 x 1 x 60 column, so both wells necessarily sit in the one column the
   grid has, and `validateInputs` refused to run it: "Injector and producer cannot share the same i/j

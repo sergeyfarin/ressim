@@ -202,11 +202,10 @@ describe('the spatial profile carries its analytical reference', () => {
     const EXPECTED = {
         wf_bl1d: { displacement: 'i', defaultAxis: 'i', overlay: true },
         wf_capillary: { displacement: 'i', defaultAxis: 'i', overlay: true },
-        // Opens on K to show the tongue's vertical structure; the flood runs
-        // along I, and BL has nothing to say about a saturation profile across
-        // the flood direction, so no reference is drawn there. Switching the
-        // profile to I brings it back.
-        wf_gravity: { displacement: 'i', defaultAxis: 'k', overlay: false },
+        // Opens along the flood direction with the reference drawn beside the
+        // simulation — the departure from BL is what the case is about. The
+        // overlay would be null on K, where BL describes nothing.
+        wf_gravity: { displacement: 'i', defaultAxis: 'i', overlay: true },
         wf_gravity_stability: { displacement: 'k', defaultAxis: 'k', overlay: true },
         sweep_vertical: { displacement: 'i', defaultAxis: 'i', overlay: true },
     } as const;

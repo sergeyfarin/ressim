@@ -36,9 +36,13 @@ export const wf_gravity: Scenario = {
         analyticalMethod: 'buckley-leverett',
         hasInjector: true,
         default3DScalar: 'saturation_water',
-        // The tongue is a k-direction structure: the profile below the 3D view
-        // should default to the vertical axis, not the flood direction.
-        spatialProfile: { defaultAxis: 'k' },
+        // Opens along the flood direction, where the Buckley-Leverett saturation
+        // profile can be drawn beside the simulated one — the departure is the
+        // whole case. With more than one layer the profile averages the column
+        // by default, which is the quantity BL actually predicts. The tongue's
+        // vertical structure is one dropdown away: switch the axis to K, or pick
+        // a single layer to see how far the water has run along the base.
+        spatialProfile: { defaultAxis: 'i' },
         requiresThreePhaseMode: false,
     },
     solverPolicy: {
