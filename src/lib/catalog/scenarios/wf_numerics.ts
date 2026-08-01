@@ -171,7 +171,7 @@ export const wf_numerics: Scenario = {
         {
             key: 'time_truncation',
             label: 'Timestep & the Stability Limiter',
-            description: 'The same 10 m grid stepped four different ways, and then twice more with its safety net removed. The report step itself barely matters — 0.25, 1 and 4 days give recovery 0.709, 0.707 and 0.698 at one pore volume injected — because IMPES subdivides internally whenever a cell\'s saturation would move more than `max_sat_change_per_step`, so asking for a longer step mostly buys more substeps rather than more error. Raise that limit and the protection goes away: at 0.5 the run recovers 0.733, above the analytical 0.715, and at 1.0 it reports 0.936 — more oil than the column contains, since only 0.889 of the oil in place is mobile at all. That is the explicit saturation update going unstable, and it is the reason the limiter exists. Note what does *not* happen: the run completes and reports no solver warning. An IMPES answer above the analytical curve in a case with no gravity and no capillarity is not a better answer, it is a broken one.',
+            description: 'The same 10 m grid stepped four different ways, and then twice more with its safety net removed. The report step itself barely matters — 0.25, 1 and 4 days give recovery 0.709, 0.707 and 0.698 at one pore volume injected — because IMPES subdivides internally whenever a cell\'s saturation would move more than `max_sat_change_per_step`, so asking for a longer step mostly buys more substeps rather than more error. Raise that limit and the protection goes away: at 0.5 the run recovers 0.733, above the analytical 0.715, and at 1.0 it reports 0.936 — more oil than the column contains, since only 0.889 of the oil in place is mobile at all. That is the explicit saturation update going unstable, and it is the reason the limiter exists. The two failures are not the same failure, and the chart can tell them apart. At 0.5 the run is merely wrong: it lands above an exact solution, which no correct answer can do, but volumes still balance to 1e-12 of pore volume, so this is discretization error with the sign flipped. At 1.0 it is inventing barrels — material balance drifts 8.9 % of pore volume and the run now carries a warning saying so. Neither one looks broken otherwise: no crash, no NaN, and the saturations stay inside the end points because transport clamps them there. An IMPES answer above the analytical curve in a case with no gravity and no capillarity is not a better answer, and material balance is the only thing on this page that can say which kind of not-better it is.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {
@@ -205,14 +205,14 @@ export const wf_numerics: Scenario = {
                 {
                     key: 'dt_limiter_half',
                     label: 'Δt = 4 d, limiter relaxed to ΔS ≤ 0.5',
-                    description: 'The first unphysical result: recovery 0.733 at one pore volume injected, above the analytical 0.715 in a case that has no mechanism for beating it. Overshoot in the explicit saturation update is manufacturing oil.',
+                    description: 'The first wrong result: recovery 0.733 at one pore volume injected, above the analytical 0.715 in a case that has no mechanism for beating it. Volumes still balance to 1e-12 of pore volume, so nothing has been created — the front is simply in the wrong place, far enough that the error changed sign. No warning is raised, and none should be.',
                     paramPatch: { delta_t_days: 4, steps: 65, max_sat_change_per_step: 0.5 },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'dt_limiter_off',
                     label: 'Δt = 4 d, limiter effectively off  (ΔS ≤ 1.0)',
-                    description: 'Recovery 0.936 of the oil in place, when only 0.889 of it is mobile — the run produces oil that is not there, reports breakthrough at 0.860 PVI, and raises no warning. Kept in the case because a stability limit is much easier to respect once you have seen what it looks like when it is violated.',
+                    description: 'Recovery 0.936 of the oil in place, when only 0.889 of it is mobile — the run produces oil that is not there and reports breakthrough at 0.860 PVI. Unlike the rung above it, this one is not merely mis-placing the front: material balance drifts 8.9 % of pore volume, and that is what raises the warning. Kept in the case because a stability limit is much easier to respect once you have seen what it looks like when it is violated, and because it is the regression test for the warning.',
                     paramPatch: { delta_t_days: 4, steps: 65, max_sat_change_per_step: 1.0 },
                     affectsAnalytical: false,
                 },

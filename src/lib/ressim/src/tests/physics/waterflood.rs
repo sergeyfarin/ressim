@@ -720,3 +720,82 @@ fn physics_waterflood_buckley_refined_discretization_improves_alignment() {
         rel_err_refined_b
     );
 }
+
+/// An unstable explicit transport update must never be both silent and wrong.
+///
+/// Relaxing `max_sat_change_per_step` past the CFL limit does not reliably
+/// crash. Sometimes the pressure solve breaks down first and the existing retry
+/// -budget warning fires; sometimes the run completes and simply invents mass,
+/// which is the worse case because the chart looks plausible. Saturations do not
+/// help either — transport clamps those at the end points. Material balance is
+/// what notices, and the simulator already tracked it without ever saying so.
+///
+/// The property asserted here is the one that matters to a reader of the chart:
+/// a run that has stopped conserving volume says so. Which of the two
+/// mechanisms reports it is not the contract.
+#[test]
+fn physics_waterflood_unstable_transport_is_never_silently_wrong() {
+    fn run(max_sat_change_per_step: f64) -> (String, f64, f64) {
+        let mut sim = crate::ReservoirSimulator::new(50, 1, 1, 0.2);
+        sim.set_fim_enabled(false);
+        sim.set_cell_dimensions_per_layer(10.0, 20.0, vec![10.0])
+            .unwrap();
+        sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0, 1.0, 1.0)
+            .unwrap();
+        sim.set_initial_pressure(300.0);
+        sim.set_initial_saturation(0.1);
+        sim.set_fluid_properties(1.0, 0.5).unwrap();
+        sim.set_fluid_compressibilities(1e-5, 3e-6).unwrap();
+        sim.set_rock_properties(1e-6, 0.0, 1.0, 1.0).unwrap();
+        sim.set_gravity_enabled(false);
+        sim.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0])
+            .unwrap();
+        sim.set_stability_params(max_sat_change_per_step, 75.0, 0.75);
+        sim.set_well_control_modes("rate".to_string(), "pressure".to_string());
+        sim.set_target_well_rates(100.0, 0.0).unwrap();
+        sim.set_well_bhp_limits(200.0, 700.0).unwrap();
+        sim.add_well(0, 0, 0, 700.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(49, 0, 0, 200.0, 0.1, 0.0, false).unwrap();
+
+        for _ in 0..65 {
+            sim.step(4.0);
+        }
+        let mut cumulative_oil_sc = 0.0;
+        let mut previous_time_days = 0.0;
+        for point in &sim.rate_history {
+            cumulative_oil_sc += point.total_production_oil * (point.time - previous_time_days);
+            previous_time_days = point.time;
+        }
+        let pore_volume_m3 = 50.0 * 10.0 * 20.0 * 10.0 * 0.2;
+        (
+            sim.last_solver_warning.clone(),
+            cumulative_oil_sc / (pore_volume_m3 * (1.0 - 0.1 - 0.1)),
+            sim.cumulative_mb_error_m3.abs() / pore_volume_m3,
+        )
+    }
+
+    let (stable_warning, stable_recovery, stable_drift) = run(0.05);
+    assert!(
+        stable_warning.is_empty(),
+        "a stable run must not warn: {stable_warning}"
+    );
+    assert!(
+        stable_drift < 1e-9,
+        "a stable run must conserve volume: drifted {stable_drift:.3e} of pore volume"
+    );
+    assert!(
+        stable_recovery < 1.0,
+        "a stable run cannot recover more than the mobile oil: {stable_recovery:.4}"
+    );
+
+    let (unstable_warning, _, unstable_drift) = run(1.0);
+    assert!(
+        unstable_drift > 1e-3,
+        "the limiter-off run should lose material balance: drifted {unstable_drift:.3e}"
+    );
+    assert!(
+        !unstable_warning.is_empty(),
+        "a run that has stopped conserving volume must say so, got no warning \
+         (drift {unstable_drift:.3e} of pore volume)"
+    );
+}

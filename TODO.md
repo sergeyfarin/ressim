@@ -27,56 +27,28 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   Eclipse-style datum depth per well plus a wellbore density, applied as
   `p_completion = p_bhp + ρ_wb·g·(depth_k − depth_datum)`; it only bites when `gravityEnabled`, so
   existing gravity-free scenarios and benchmarks cannot move.
-- [ ] **IMPES reports an unphysical result with no warning when the saturation limiter is relaxed
-  (found 2026-08-01).** `wf_numerics`'s `time_truncation` dimension ships this deliberately as
-  teaching content, but it is also a product gap: with `max_sat_change_per_step` at 1.0 the 1D
-  column recovers 0.936 of the oil in place when only 0.889 of it is mobile, and
-  `getLastSolverWarning()` returns `''`. The run completes and the chart looks plausible. A cheap
-  guard would be a post-step check that no cell's water saturation left `[s_wc, 1 - s_or]` by more
-  than a tolerance, raised as a solver warning rather than an abort — the scenario's
-  `dt_limiter_off` variant is a ready-made regression case, and `wf_numerics.test.ts` currently pins
-  the *absence* of the warning, so that assertion flips when this is fixed.
-- [x] **Rock compressibility released gas at the wrong pressure (found and fixed 2026-08-01, engine).**
-  `fim/properties.rs::pore_volume_generic` and `fim/assembly.rs::pore_volume_at_state` computed
-  `pv_ref * exp(c_f * (p - p_prev))` against the **previous timestep's** pressure, so compaction
-  never accumulated: within a step `p ~ p_prev`, the pore volume stayed at `pv_ref`, and the
-  accumulation term charged each release at that step's `B_g` instead of at abandonment `B_g`. Since
-  `1/B_g` falls by an order of magnitude over a deep gas depletion, the compaction term came out
-  roughly the ratio of those two densities too large. Found by the new OPM Flow cross-check on
-  `dep_gas_pz`: cumulative gas over c_f 5e-6 -> 5e-4 /bar was ResSim +10.7 %, OPM +1.9 %, hand
-  material balance +1.8 %. **Fixed** by referencing to a new `rock_reference_pressure_bar`, set by
-  `set_initial_pressure()` alongside the PVTW reference — Eclipse `ROCK` item 1. ResSim now reports
-  +1.5 %. The Jacobian is unchanged, and every shipped scenario except `dep_gas_pz` uses c_f 1e-6
-  where `exp(c*dp) ~ 1`. Guarded by `physics_depletion_gas_compaction_matches_material_balance`
-  (verified to fail against the old reference) and by `dep_gas_pz.test.ts` >
-  "agrees with OPM Flow on how much gas compaction releases". Gates run: `validate-solver-coverage.sh
-  all`, `benchmark_buckley`, `assembly_ad` parity, `pnpm run validate`, wasm rebuilt.
-- [ ] **IMPES has the same pore-volume question, unmeasured (2026-08-01).** `impes/pressure.rs`
-  folds `rock_compressibility` into `c_t` against the reference pore volume, which is the
-  conventional IMPES linearisation and is probably fine, but it has never been checked against a
-  material balance the way FIM now is. It could not be checked on `dep_gas_pz` because the explicit
-  gas path reports 57e6 Sm3 against FIM's 132e6 on that case — a separate, larger discrepancy worth
-  its own investigation before the compaction question is meaningful there.
-- [x] **`dep_gas_pz` OPM Flow decks (2026-08-01).** The scenario's claims are guarded against
-  its own analytical reference and its own inventory closure, but there is no second simulator on the
-  deck. A dry-gas OPM case is straightforward (PVDG from the same table, single producer on a BHP
-  floor) and would let the pore-compressibility ladder be cross-checked, since ROCK compressibility is
-  a first-class Eclipse keyword — which is exactly what it did: see the defect above. Two decks
-  (`dep_gas_pz`, `dep_gas_pz_geopressured`, flow 2026.04, GAS+WATER, PVDG generated from the
-  scenario's own table, Eclipse `ROCK`). Required a new `cumulative_gas_curve` field on `OpmCase`
-  and a `cumulativeGasSm3` entry in the artifact x-axis map, because a p/z chart's x-axis is
-  produced gas and `mapReferenceTimesToXAxis` previously dropped every reference series on it.
-  `dep_pvt`, `gas_injection` and `gas_drive` still have no deck.
-- [x] **`dep_gas_pz` and the p/z analytical method (2026-08-01).** Closes roadmap T7.2's dry-gas
-  half. New `src/lib/analytical/gasMaterialBalance.ts` + a `'gas-material-balance'` analytical method
-  through the registry, and a scenario measuring what bends the straight line: pore compressibility
-  (reserves error +0.8 % to +10.5 % as c_f goes 5e-6 to 5e-4 /bar), compartmentalisation (+38.6 %)
-  and abandonment pressure (+9.0 %). Replay
-  `pnpm vitest run src/lib/catalog/scenarios/dep_gas_pz.test.ts src/lib/analytical/gasMaterialBalance.test.ts`.
-- [x] **`p_z` was not p/z (fixed 2026-08-01).** `buildDerivedRunSeries` hard-coded `z = 1`, so the
-  curve labelled "P/z" on every three-phase diagnostics panel was the average reservoir pressure. It
-  now inverts z from the run's own `B_g` table, returns null when the case has no gas PVT or no
-  `reservoirTemperature`, and lives on its own `pz` panel under the `p-over-z-` key family.
+- [x] **IMPES no longer reports an unphysical result silently (fixed 2026-08-01).** With
+  `max_sat_change_per_step` relaxed to 1.0, `wf_numerics`'s limiter-off variant recovered 0.936 of
+  the oil in place when only 0.889 is mobile and `getLastSolverWarning()` returned `''`. Saturations
+  were no use as a detector — transport clamps them at the end points — but material balance was:
+  1e-12 of pore volume on every well-behaved run against 8.9 % on that one. `impes/timestep.rs` now
+  raises a warning past 1e-3 of pore volume, and leaves an existing, more specific timestep warning
+  in place. Guarded by `physics_waterflood_unstable_transport_is_never_silently_wrong` and by
+  `wf_numerics.test.ts`. Note the distinction the case now draws: the ΔS ≤ 0.5 rung is *wrong*
+  (recovery above an exact solution) while still conserving volume to 1e-12, and correctly does not
+  warn; only the ΔS ≤ 1.0 rung invents mass.
+- [ ] **Two wells on different controls in one block do not conserve volume (found 2026-08-01).**
+  Surfaced by the warning above. `shared_block_multiwell_public_step_remains_finite_on_both_solvers`
+  puts two injectors at 600 and 550 bar in cell (0,0,0) — the well-control grouping keys on BHP, so
+  they are two independent wells competing for one cell — and material balance drifts **10.0 % of
+  pore volume on IMPES and 1.3 % on FIM**. Pre-existing; the test asserted finiteness and silence,
+  and now records the drift instead. Either the configuration should be rejected at the API boundary
+  or the completion-rate allocation needs to handle it. Worth settling before E11 multi-well pattern
+  support, which will make shared-block layouts ordinary rather than pathological.
+- [ ] **The material-balance warning is IMPES-only (2026-08-01).** `warn_on_material_balance_drift`
+  lives in `impes/timestep.rs`, so the FIM path can still drift silently — 1.3 % on the shared-block
+  case above. FIM has its own convergence reporting, so the right shape is probably a shared
+  post-step check rather than a copy.
 - [x] **Numerical-dispersion and crossflow scenarios (2026-08-01).** Two new cases, closing
   roadmap T7.12, T7.13, T7.16 and the Tier 1 "D-P with vertical communication" row.
   `wf_numerics` (1D, 500 m, six grids from 50 m to 1.25 m cells) measures first-order convergence

@@ -118,6 +118,55 @@ pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
             time_stepped, target_dt_days
         );
     }
+
+    warn_on_material_balance_drift(sim);
+}
+
+/// Fraction of total pore volume the cumulative volumetric material-balance
+/// error may reach before the run is called unreliable.
+///
+/// A converged IMPES run keeps this at machine precision — measured at 1e-12 of
+/// pore volume across the shipped waterflood scenarios, including deliberately
+/// coarse ones. An explicit saturation update run past its stability limit
+/// reaches percent level: `wf_numerics`'s limiter-off variant, with
+/// `max_sat_change_per_step` relaxed to 1.0, drifts 8.9 % and reports more oil
+/// than the column contains, while a smaller column on the same setting drifts
+/// 0.4 %. Nine orders of magnitude separate the quiet case from the quietest
+/// broken one, so the threshold sits well clear of both.
+const MATERIAL_BALANCE_WARNING_FRACTION: f64 = 1e-3;
+
+/// Raise a warning when volumes have stopped being conserved.
+///
+/// The saturation limiter exists to keep the explicit transport update stable,
+/// and relaxing it does not produce a crash, a NaN, or a saturation out of
+/// bounds — transport clamps those. It produces a plausible-looking chart with
+/// invented mass. Material balance is what notices, and the simulator already
+/// tracks it; before this it simply never said so.
+///
+/// Deliberately additive: an existing warning from the timestep loop is more
+/// specific about the cause, so it is left in place.
+fn warn_on_material_balance_drift(sim: &mut ReservoirSimulator) {
+    if !sim.last_solver_warning.is_empty() {
+        return;
+    }
+    let pore_volume_m3: f64 = (0..sim.nx * sim.ny * sim.nz)
+        .map(|idx| sim.pore_volume_m3(idx))
+        .sum();
+    if !(pore_volume_m3 > 0.0) {
+        return;
+    }
+    let drift_fraction = sim.cumulative_mb_error_m3.abs() / pore_volume_m3;
+    if drift_fraction > MATERIAL_BALANCE_WARNING_FRACTION {
+        sim.last_solver_warning = format!(
+            "Material balance has drifted {:.2}% of pore volume ({:.4e} m3) - volumes are no longer \
+             being conserved and reported production cannot be trusted. Most often this is the \
+             explicit saturation update run past its stability limit (reduce \
+             max_sat_change_per_step); it is also seen with degenerate well layouts such as two \
+             wells on different controls in one block.",
+            drift_fraction * 100.0,
+            sim.cumulative_mb_error_m3
+        );
+    }
 }
 
 impl ReservoirSimulator {

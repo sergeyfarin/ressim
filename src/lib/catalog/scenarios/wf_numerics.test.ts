@@ -199,8 +199,15 @@ describe('wf_numerics measured behaviour', () => {
         const off = runVariant('time_truncation', 'dt_limiter_off');
         expect(half.recoveryAtOnePvi).toBeGreaterThan(bl.recoveryAtOnePvi);
         expect(off.recoveryAtOnePvi).toBeGreaterThan(mobileFraction);
-        // The claim in the description that this happens silently.
-        expect(off.warning).toBe('');
+        // It used to happen silently; since 2026-08-01 the run says so. The
+        // detector is material balance, not the saturations — transport clamps
+        // those at the end points, so they look perfectly physical.
+        expect(off.warning).toContain('Material balance');
+        // The half-relaxed run is wrong without being mass-creating: it lands
+        // above the analytical curve, but volumes still balance, so it does not
+        // warn and should not. Being above an exact solution is a discretization
+        // error; inventing barrels is a different failure.
+        expect(half.warning).toBe('');
     }, 300_000);
 
     it('cannot separate grid smearing from a steeper rock curve on breakthrough alone', async () => {
