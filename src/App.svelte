@@ -128,7 +128,9 @@
                     Charts, 3D view and saturation profiles update together, and each case states what
                     its reference assumes — and where the simulation is expected to leave it.
                     <br />
-                    <strong>Runs entirely in your browser</strong> — no data sent to any server, no cookies.
+                    <strong>Runs entirely in your browser</strong> — simulations and data stay on
+                    your device; no analytics, uploads, or cookies. Your theme preference is saved
+                    locally in your browser.
                 </p>
             </div>
             <div class="flex items-center gap-2">

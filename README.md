@@ -8,7 +8,9 @@ Stiles, Dietz, Fetkovich, Arps, Havlena–Odeh and line-source well-test solutio
 precomputed OPM Flow runs where no closed form exists. Fifteen scenarios ship as
 self-contained studies, each with sensitivity dimensions, a 3D view, saturation profiles, and
 an explicit statement of what its reference assumes and where the simulation is expected to
-leave it. Nothing is uploaded: the solver is WebAssembly running on the page.
+leave it. Nothing is uploaded: the solver is WebAssembly running on the page, fonts are bundled
+with the app, and there are no analytics or cookies. The selected theme is stored locally in the
+browser.
 
 ## What You Can Do With It
 
@@ -252,3 +254,9 @@ See `ROADMAP.md` for the full ordering. The next major engineering priorities ar
 3. Output-selection and comparison-model cleanup.
 4. Multi-case inspection and data export.
 5. Gas-cap and extended pattern physics only after the validation backlog is closed.
+
+## License
+
+ResSim is licensed under the [GNU Affero General Public License v3.0 only](LICENSE).
+IBM Plex Sans and IBM Plex Mono are bundled through Fontsource and remain licensed under the
+SIL Open Font License 1.1; their license texts are included in the installed font packages.

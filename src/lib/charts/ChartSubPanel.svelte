@@ -609,7 +609,7 @@
                                 title: {
                                     ...(cfg.title ?? {}),
                                     font: {
-                                        family: "'JetBrains Mono', monospace",
+                                        family: "'IBM Plex Mono', monospace",
                                         size: 11,
                                     },
                                 },
@@ -619,7 +619,7 @@
                                         ? { callback: scaleMeta[key]._tickFormatter }
                                         : {}),
                                     font: {
-                                        family: "'JetBrains Mono', monospace",
+                                        family: "'IBM Plex Mono', monospace",
                                         size: 10,
                                     },
                                 },
@@ -647,20 +647,6 @@
         destroyChart();
     });
 </script>
-
-<!-- FIX #6: Load JetBrains Mono font for digits -->
-<svelte:head>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link
-        rel="preconnect"
-        href="https://fonts.gstatic.com"
-        crossorigin="anonymous"
-    />
-    <link
-        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
-        rel="stylesheet"
-    />
-</svelte:head>
 
 {#snippet curveGroupButton(group: CurveToggleGroup)}
     <button

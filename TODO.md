@@ -699,6 +699,10 @@ Open, blocked on an enabler:
   inter-simulator spread (no simulation at all — cheapest), 6.3/6.4 SPE5 WAG + hysteresis;
   6.1 PUNQ-S3 ensemble and 6.6 Egg additionally need E8; pilot `flowexp_comp` compositional for 6.2.
   Record dataset licenses/provenance before bundling artifacts.
+- [x] **Privacy and repository licensing audit (2026-08-01).** Removed Google-hosted IBM Plex
+  and JetBrains Mono requests, bundled IBM Plex Sans/Mono through Fontsource, clarified that the
+  theme preference uses browser-local storage, added a no-remote-runtime-resource regression
+  check, and licensed ResSim under AGPL-3.0-only. Bundled fonts remain under SIL OFL 1.1.
 - [ ] **OPM decks still missing** for `dep_pvt` (5.3), `gas_injection`, and `gas_drive`. The summary
   parser itself is done and both committed artifacts are `status: "parsed"`.
 

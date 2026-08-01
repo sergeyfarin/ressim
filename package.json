@@ -2,6 +2,7 @@
   "name": "ressim",
   "private": true,
   "version": "0.0.0",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "predev": "pnpm run build:wasm",
@@ -40,6 +41,8 @@
     "vitest": "4.1.10"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-mono": "5.2.7",
+    "@fontsource/ibm-plex-sans": "5.2.7",
     "chart.js": "4.5.1",
     "three": "0.185.1"
   },
