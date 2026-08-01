@@ -46,7 +46,7 @@ describe('scenario sensitivities', () => {
     });
 
     it('provides analytical method metadata for every canonical scenario', () => {
-        expect(listScenarios()).toHaveLength(17);
+        expect(listScenarios()).toHaveLength(18);
         for (const scenario of listScenarios()) {
             expect(scenario.analyticalMethodSummary.length, scenario.key).toBeGreaterThan(10);
             expect(scenario.analyticalMethodReference.length, scenario.key).toBeGreaterThan(5);
@@ -556,6 +556,7 @@ describe('scenario capability validation', () => {
             dep_welltest: null,
             // Black-oil depletion is a gas-liberation exhibit, unlike the oil-only depletion cases.
             dep_pvt: 'saturation_gas',
+            dep_gas_pz: 'pressure',
             gas_injection: 'saturation_gas',
             gas_drive: 'saturation_gas',
             spe1_gas_injection: 'saturation_gas',

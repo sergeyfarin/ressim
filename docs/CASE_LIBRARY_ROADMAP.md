@@ -17,14 +17,47 @@ None of these had shipped as of the 2026-07-24 audit; each now carries its Tier 
 
 | Case | ID | Reference | Engine gap | Notes |
 |---|---|---|---|---|
-| Gas-cap depletion / blowdown | T7.2 | p/z material balance; Havlena-Odeh with gas-cap ratio `m` | none — **confirmed by spike 2026-08-01**, see below | Highest-value non-waterflood case left; needs the new-analytical-method path, not new physics |
+| Dry-gas depletion / p/z material balance | T7.2 | p/z material balance (Ramagost-Farshad correction) | none | **SHIPPED 2026-08-01** as `dep_gas_pz`; the gas-cap/Havlena-Odeh `m` half remains open |
 | Aquifer-supported depletion | T7.3 | Fetkovich aquifer; Carter-Tracy; van Everdingen-Hurst | needs an aquifer boundary model (E9, new physics) | ROADMAP 5.4; OPM supports AQUFETP/AQUCT → OPM cross-check possible |
 | Well test / pressure transient (drawdown, buildup, Horner) | T7.1 | radial diffusivity solution, Horner/MDH | none for a first version (fine Cartesian grid near well + Peaceman) | **SHIPPED 2026-07-24** as `dep_welltest` |
 | Unfavorable-M waterflood / fingering sensitivity | T7.5 | BL with high M (stability limit discussion); Koval (1963) | none | Parameter sensitivity on `wf_bl1d` family |
 | Directly-simulated quarter five-spot vs Craig correlation | T7.11 | Craig (1971) correlation vs own simulation | none | Shows where the correlation's assumptions break; pairs with the grid-orientation study |
 | Dykstra-Parsons with vertical communication sweep | — | D-P (1950) + Zapata & Lake (1981) viscous crossflow | none | **SHIPPED 2026-08-01** as `sweep_crossflow`; see the delivery record |
 
-### T7.2 feasibility spike (2026-08-01) — dry-gas p/z is buildable; findings recorded so it is not re-derived
+### T7.2 delivery record (2026-08-01) — SHIPPED as `dep_gas_pz`
+
+The spike below was executed. `src/lib/analytical/gasMaterialBalance.ts` (11 tests, including a
+z = 1 round trip against an ideal-gas table) plus a new `'gas-material-balance'` analytical method —
+union member, output contract, coarse-mode mapping, param adapter, `AnalyticalMethodDescriptor`, and
+a `gas_material_balance` chart layout that opens on the `cumGas` axis, because on a time axis the
+straight line is invisible. Replay `pnpm vitest run src/lib/catalog/scenarios/dep_gas_pz.test.ts`.
+
+Grid 20 x 1 x 5 (2,000 m x 100 m x 20 m, 600,000 m3 pore volume, 80 % gas, 5 mD, centred producer,
+FIM, ~10 s per variant). Volumetric GIIP 1.417e8 Sm3. Straight-line GIIP is fitted to the last third
+of each history, which is the extrapolation an engineer performs:
+
+| variant | reserves error | recovery | final p (bar) |
+|---|---|---|---|
+| c_f = 5e-6 /bar (base) | +0.8 % | 0.929 | 30.3 |
+| c_f = 5e-5 | +1.7 % | 0.938 | 30.3 |
+| c_f = 2e-4 | +4.7 % | 0.969 | 30.3 |
+| c_f = 5e-4 (geopressured) | +10.5 % | **1.029** | 30.3 |
+| tight interval, well in upper compartment | +38.6 % | 0.278 | 293 |
+| abandon at 200 bar instead of 30 | +9.0 % | 0.501 | 200 |
+
+Recovery above 1.0 at the geopressured rung is not an error: compaction and connate-water expansion
+deliver gas the initial-volume estimate never counted, which is the term the uncorrected line lacks.
+
+**Defect found and fixed on the way.** `DerivedRunSeries.p_z` was computed with `z = 1` hard-coded
+and labelled "P/z" on the diagnostics panel of every three-phase chart — an average-pressure curve
+under a p/z label. It now inverts z from the run's own `B_g` table and returns null when the case
+carries no gas PVT or no `reservoirTemperature`, and the curve moved to a dedicated `pz` panel with
+the properly classified `p-over-z-` key family.
+
+**Still open from T7.2:** the gas-cap/blowdown half, which needs Havlena-Odeh with `m` rather than
+the dry-gas balance, and an OPM Flow deck for `dep_gas_pz`.
+
+### T7.2 feasibility spike (2026-08-01) — the go/no-go that preceded the case above
 
 The library is now eleven waterflood/sweep cases against four depletion, two gas and one benchmark,
 so T7.2 is the highest-value non-waterflood addition left that needs no new engine physics. Spiked

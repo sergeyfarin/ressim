@@ -68,6 +68,7 @@ leave it. Nothing is uploaded: the solver is WebAssembly running on the page.
 | Flow Regimes & Decline | Drainage Geometry & Productivity (Dietz) | `dep_pss` | Equal-area drainage geometries and well positions; C_A recovered from the measured PSS drawdown |
 | Flow Regimes & Decline | Boundary-Dominated Decline (Fetkovich) | `dep_decline` | Finite-slab transient, boundary arrival, and asymptotic decline |
 | Flow Regimes & Decline | Layered Depletion (Arps) | `dep_arps` | Spatial layered depletion approaching a late-time Dietz/Fetkovich superposition, plus a crossflow limitation study |
+| Flow Regimes & Decline | Gas Reserves from p/z | `dep_gas_pz` | Dry-gas depletion against the p/z material-balance straight line; pore compressibility, compartmentalisation and how much history you have each inflate the reserves estimate |
 | Simulation Only — No Analytical Reference | Solution Gas Drive | `gas_drive` | Black-oil FIM sensitivities; optional OPM Flow benchmark |
 | Simulation Only — No Analytical Reference | PVT Model Risk — One Calibration Point | `dep_pvt` | Two PVT representations constrained at one point |
 | Validation Benchmarks | SPE1 Black-Oil Benchmark | `spe1_gas_injection` | Published Eclipse and OPM Flow comparative-solution references |

@@ -42,6 +42,7 @@ import {
     computeBLAnalyticalFromParams,
     computeDepletionAnalyticalFromParams,
     computeGasOilBLAnalyticalFromParams,
+    computeGasMaterialBalanceCurves,
     computeWellTestFromParams,
     computeWellTestOnTimeAxis,
     hasDistinctBuckleyLeverettOverlays,
@@ -542,12 +543,89 @@ const sweep: AnalyticalMethodDescriptor = {
     referenceLabel: 'Sweep reference solution',
 };
 
+/**
+ * Dry-gas material balance — the p/z straight line.
+ *
+ * Unlike every other method here, the reference is not a function of time: it
+ * is a function of how much gas has been produced. That has two consequences
+ * the descriptor encodes. The curve is evaluated on a completed run's own
+ * cumulative production, so it lands correctly on whichever axis the chart is
+ * showing without any remapping (`nativeXAxis: 'time'` disables it). And there
+ * is no `fromParams` path: before a run exists there is no production history
+ * to evaluate against, so the preview and pending contexts draw nothing rather
+ * than inventing a schedule. The slots opt out of those two contexts to match.
+ */
+const gasMaterialBalance: AnalyticalMethodDescriptor = {
+    method: 'gas-material-balance',
+    simulationCurveSet: 'oil-rate',
+    producesSweepPanels: false,
+    nativeXAxis: 'time',
+    slots: [
+        {
+            panelKey: 'pz',
+            curveKey: 'p-over-z-reference',
+            sharedLabel: 'Volumetric p/z Line',
+            perCaseSuffix: ' Volumetric p/z Line',
+            previewLabel: 'Volumetric p/z Line',
+            contexts: ['shared', 'per-result'],
+        },
+        {
+            panelKey: 'pz',
+            curveKey: 'p-over-z-compaction-reference',
+            sharedLabel: 'p/z With Compaction and Water Expansion',
+            perCaseSuffix: ' p/z With Compaction',
+            previewLabel: 'p/z With Compaction',
+            contexts: ['shared', 'per-result'],
+        },
+        {
+            panelKey: 'diagnostics',
+            curveKey: 'avg-pressure-reference',
+            sharedLabel: 'Material-Balance Average Pressure',
+            perCaseSuffix: ' Material-Balance Pressure',
+            previewLabel: 'Material-Balance Pressure',
+            contexts: ['shared', 'per-result'],
+        },
+    ],
+    fromResult: (result, derived, xAxisMode) => {
+        const curves = computeGasMaterialBalanceCurves(result.params, derived.cumulativeGas);
+        if (!curves) return null;
+        return curveSet(buildXAxisValues(derived, xAxisMode), {
+            'p-over-z-reference': curves.pOverZ,
+            'p-over-z-compaction-reference': curves.pOverZCompactionCorrected,
+            'avg-pressure-reference': curves.pressure,
+        });
+    },
+    fromParams: null,
+    // The straight line is built from each case's own gas in place and its own
+    // gas law, both of which the sensitivity dimensions deliberately vary, so a
+    // single shared curve would be wrong wherever it mattered most.
+    resolveOverlayMode: () => 'per-result',
+    panelPresentation: {
+        rates: {
+            title: 'Gas Rate',
+            curveKeys: ['oil-rate-sim'],
+            scalePreset: 'rates',
+            allowLogToggle: false,
+        },
+        pz: {
+            title: 'p/z',
+            curveKeys: ['p-over-z-sim', 'p-over-z-reference', 'p-over-z-compaction-reference'],
+            scalePreset: 'pressure',
+        },
+        diagnostics: {
+            curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
+        },
+    },
+    referenceLabel: 'Dry-gas material balance (p/z)',
+};
+
 export const ANALYTICAL_METHOD_DESCRIPTORS: Record<AnalyticalMethod, AnalyticalMethodDescriptor> = {
     'buckley-leverett': buckleyLeverett,
     'gas-oil-bl': gasOilBL,
     'sweep': sweep,
     'depletion': depletion,
     'well-test': wellTest,
+    'gas-material-balance': gasMaterialBalance,
     'digitized-reference': digitizedReference,
     'none': noMethod,
 };

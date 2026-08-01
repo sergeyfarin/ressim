@@ -188,6 +188,7 @@ function emptyPanelMap(): ReferenceComparisonPanelMap {
         avg_water_sat: createReferenceComparisonPanel(),
         mbe_ooip: createReferenceComparisonPanel(),
         drive_indices: createReferenceComparisonPanel(),
+        pz: createReferenceComparisonPanel(),
         pss_drawdown: createReferenceComparisonPanel(),
         pss_productivity: createReferenceComparisonPanel(),
         pss_shape_factor: createReferenceComparisonPanel(),
@@ -219,6 +220,7 @@ function combinePanelMaps(input: {
         avg_water_sat: input.primary.avg_water_sat,
         mbe_ooip: input.primary.mbe_ooip,
         drive_indices: input.primary.drive_indices,
+        pz: input.primary.pz,
         pss_drawdown: input.primary.pss_drawdown,
         pss_productivity: input.primary.pss_productivity,
         pss_shape_factor: input.primary.pss_shape_factor,
@@ -330,6 +332,7 @@ function buildAnalyticalPreviewPanels(
         avg_water_sat: createReferenceComparisonPanel(),
         mbe_ooip: createReferenceComparisonPanel(),
         drive_indices: createReferenceComparisonPanel(),
+        pz: createReferenceComparisonPanel(),
         pss_drawdown: createReferenceComparisonPanel(),
         pss_productivity: createReferenceComparisonPanel(),
         pss_shape_factor: createReferenceComparisonPanel(),
@@ -434,6 +437,7 @@ export function buildReferenceComparisonModel(input: {
         avg_water_sat: createReferenceComparisonPanel(),
         mbe_ooip: createReferenceComparisonPanel(),
         drive_indices: createReferenceComparisonPanel(),
+        pz: createReferenceComparisonPanel(),
         pss_drawdown: createReferenceComparisonPanel(),
         pss_productivity: createReferenceComparisonPanel(),
         pss_shape_factor: createReferenceComparisonPanel(),
@@ -645,9 +649,9 @@ export function buildReferenceComparisonModel(input: {
                 yAxisID: 'y',
                 defaultVisible,
             }, xValues, derived.pressure);
-            appendSeries(panels.diagnostics, {
-                label: `${result.label} P/z`,
-                curveKey: 'p_z_sim',
+            appendSeries(panels.pz, {
+                label: `${result.label} p/z`,
+                curveKey: 'p-over-z-sim',
                 caseKey: result.key,
                 toggleGroupKey: result.key,
                 toggleLabel: caseLabel,
@@ -767,9 +771,9 @@ export function buildReferenceComparisonModel(input: {
                 yAxisID: 'y',
                 defaultVisible,
             }, xValues, derived.pressure);
-            appendSeries(panels.diagnostics, {
-                label: `${result.label} P/z`,
-                curveKey: 'p_z_sim',
+            appendSeries(panels.pz, {
+                label: `${result.label} p/z`,
+                curveKey: 'p-over-z-sim',
                 caseKey: result.key,
                 toggleGroupKey: result.key,
                 toggleLabel: caseLabel,
@@ -910,9 +914,9 @@ export function buildReferenceComparisonModel(input: {
             yAxisID: 'y',
             defaultVisible,
         }, xValues, derived.pressure);
-        appendSeries(panels.diagnostics, {
-            label: `${result.label} P/z`,
-            curveKey: 'p_z_sim',
+        appendSeries(panels.pz, {
+            label: `${result.label} p/z`,
+            curveKey: 'p-over-z-sim',
             caseKey: result.key,
             toggleGroupKey: result.key,
             toggleLabel: caseLabel,

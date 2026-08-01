@@ -38,6 +38,7 @@ import { dep_arps } from './scenarios/dep_arps';
 import { dep_decline } from './scenarios/dep_decline';
 import { dep_welltest } from './scenarios/dep_welltest';
 import { dep_pvt } from './scenarios/dep_pvt';
+import { dep_gas_pz } from './scenarios/dep_gas_pz';
 import { gas_injection } from './scenarios/gas_injection';
 import { gas_drive } from './scenarios/gas_drive';
 import { spe1_gas_injection } from './scenarios/spe1_gas_injection';
@@ -51,6 +52,7 @@ export type AnalyticalMethod =
     | 'sweep'
     | 'depletion'
     | 'well-test'
+    | 'gas-material-balance'
     | 'digitized-reference'
     | 'none';
 
@@ -247,6 +249,19 @@ export const ANALYTICAL_OUTPUT_CONTRACTS = {
         // input rather than a result. No recovery/cumulative curve is meaningful
         // over the hours-to-days span of a test.
         produces: ['pressure', 'oil-rate'],
+        supportedRateCurves: ['oil-rate'],
+        nativeXAxis: 'time',
+        defaultPrimaryRateCurve: 'oil-rate',
+        hasTau: false,
+        defaultPanelExpansion: { rates: false, recovery: false, cumulative: false, diagnostics: true },
+    },
+    'gas-material-balance': {
+        // A p/z plot is a reserves statement, not a rate forecast: the reference
+        // is the straight line the gas law and a constant pore volume predict,
+        // read against cumulative production. The live chart carries the same
+        // balance inverted back to average reservoir pressure, which is the only
+        // form a time axis can show.
+        produces: ['p-over-z', 'pressure'],
         supportedRateCurves: ['oil-rate'],
         nativeXAxis: 'time',
         defaultPrimaryRateCurve: 'oil-rate',
@@ -713,6 +728,7 @@ const SOURCE_SCENARIOS: Scenario[] = [
     dep_decline,
     dep_arps,
     dep_pvt,
+    dep_gas_pz,
     gas_injection,
     gas_drive,
     spe1_gas_injection,
@@ -880,11 +896,13 @@ export function getDefaultSweepMethod(
 }
 
 export function getAnalyticalModeForMethod(method: AnalyticalMethod): AnalyticalMode {
-    // Well test shares the coarse 'depletion' family: single producer, no
-    // injector, pressure-and-rate outputs on a time axis. Sweep shares the
-    // coarse 'waterflood' family. The fine-grained routing is on
-    // `analyticalMethod`, not this coarse mode.
-    if (method === 'depletion' || method === 'well-test') return 'depletion';
+    // Well test and dry-gas material balance share the coarse 'depletion'
+    // family: single producer, no injector, pressure outputs on a time axis.
+    // Sweep shares the coarse 'waterflood' family. The fine-grained routing is
+    // on `analyticalMethod`, not this coarse mode.
+    if (method === 'depletion' || method === 'well-test' || method === 'gas-material-balance') {
+        return 'depletion';
+    }
     if (method === 'none') return 'none';
     if (method === 'digitized-reference') return 'none';
     return 'waterflood';

@@ -18,6 +18,7 @@ import {
     calculateDepletionAnalyticalProduction,
     type DepletionAnalyticalParams,
 } from '../analytical/depletionAnalytical';
+import { computeGasMaterialBalanceCurves } from '../charts/analyticalParamAdapters';
 import type { RateHistoryPoint } from '../simulator-types';
 import type { ScenarioAnalyticalDef, ScenarioAnalyticalOutput } from './scenarios';
 
@@ -158,4 +159,48 @@ export const gasOilBLDef: ScenarioAnalyticalDef = {
         injectionRates: rh.map(p => Number(p.total_injection ?? 0)),
         poreVolume: computePoreVolume(params),
     }),
+};
+
+// ─── Dry-gas material balance (p/z) ──────────────────────────────────────────
+
+type GasMaterialBalanceInputs = {
+    params: Record<string, unknown>;
+    timeHistory: number[];
+    cumulativeGas: number[];
+};
+
+/**
+ * Live-chart adapter for the p/z material balance.
+ *
+ * The comparison chart plots p/z itself against cumulative production, which is
+ * where the straight line is visible. A live chart has a time axis and no such
+ * plot, so the same balance is inverted back to the average reservoir pressure
+ * it predicts at each step — the identical statement, in the only form a time
+ * axis can carry, and directly comparable with the simulated average pressure
+ * already on that panel.
+ */
+export const gasMaterialBalanceDef: ScenarioAnalyticalDef = {
+    fn: (inputs): ScenarioAnalyticalOutput => {
+        const { params, timeHistory, cumulativeGas } = inputs as GasMaterialBalanceInputs;
+        const curves = computeGasMaterialBalanceCurves(params, cumulativeGas);
+        return {
+            production: timeHistory.map((time, index) => ({
+                time,
+                oilRate: 0,
+                cumulativeOil: 0,
+                avgPressure: curves?.pressure[index] ?? undefined,
+            })),
+            meta: { mode: 'depletion', shapeFactor: null, shapeLabel: '' },
+        };
+    },
+    inputsFromParams: (params: Record<string, unknown>, rh: RateHistoryPoint[]): GasMaterialBalanceInputs => {
+        let cumulative = 0;
+        const cumulativeGas: number[] = [];
+        for (let index = 0; index < rh.length; index += 1) {
+            const dt = Math.max(0, Number(rh[index].time ?? 0) - Number(rh[index - 1]?.time ?? 0));
+            cumulative += Math.max(0, Math.abs(Number(rh[index].total_production_gas ?? 0))) * dt;
+            cumulativeGas.push(cumulative);
+        }
+        return { params, timeHistory: rh.map((point) => point.time), cumulativeGas };
+    },
 };

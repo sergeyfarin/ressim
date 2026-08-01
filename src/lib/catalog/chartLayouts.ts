@@ -293,6 +293,55 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
         },
     },
 
+    /**
+     * Dry-gas material balance. The chart opens on cumulative gas produced
+     * rather than time, because that is the axis on which the balance is a
+     * straight line — on a time axis the same curves are two indistinguishable
+     * declines and the reserves statement is invisible.
+     */
+    gas_material_balance: {
+        rateChart: {
+            xAxisMode: 'cumGas',
+            xAxisOptions: ['cumGas', 'time'],
+            xAxisRangePolicy: { mode: 'data-extent' },
+            allowLogScale: false,
+            logScale: false,
+            panelOrder: ['pz', 'diagnostics', 'rates', 'control_limits'],
+            panels: {
+                pz: {
+                    title: 'p/z',
+                    curveKeys: [
+                        'p-over-z-sim',
+                        'p-over-z-reference',
+                        'p-over-z-compaction-reference',
+                    ],
+                    scalePreset: 'pressure',
+                    visible: true,
+                    expanded: true,
+                },
+                diagnostics: {
+                    title: 'Average Reservoir Pressure',
+                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
+                    scalePreset: 'pressure',
+                    expanded: true,
+                },
+                rates: {
+                    title: 'Gas Rate',
+                    curveKeys: ['oil-rate-sim'],
+                    scalePreset: 'rates',
+                    expanded: false,
+                },
+                control_limits: {
+                    title: 'Control-Limit Fraction',
+                    curveKeys: ['producer-bhp-limited-sim'],
+                    scalePreset: 'fraction',
+                    visible: true,
+                    expanded: false,
+                },
+            },
+        },
+    },
+
     gas_oil_bl: {
         rateChart: {
             xAxisMode: 'pvi',

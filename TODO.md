@@ -36,6 +36,21 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   than a tolerance, raised as a solver warning rather than an abort — the scenario's
   `dt_limiter_off` variant is a ready-made regression case, and `wf_numerics.test.ts` currently pins
   the *absence* of the warning, so that assertion flips when this is fixed.
+- [ ] **`dep_gas_pz` has no OPM Flow deck (2026-08-01).** The scenario's claims are guarded against
+  its own analytical reference and its own inventory closure, but there is no second simulator on the
+  deck. A dry-gas OPM case is straightforward (PVDG from the same table, single producer on a BHP
+  floor) and would let the pore-compressibility ladder be cross-checked, since ROCK compressibility is
+  a first-class Eclipse keyword. Same gap as `dep_pvt`, `gas_injection` and `gas_drive`.
+- [x] **`dep_gas_pz` and the p/z analytical method (2026-08-01).** Closes roadmap T7.2's dry-gas
+  half. New `src/lib/analytical/gasMaterialBalance.ts` + a `'gas-material-balance'` analytical method
+  through the registry, and a scenario measuring what bends the straight line: pore compressibility
+  (reserves error +0.8 % to +10.5 % as c_f goes 5e-6 to 5e-4 /bar), compartmentalisation (+38.6 %)
+  and abandonment pressure (+9.0 %). Replay
+  `pnpm vitest run src/lib/catalog/scenarios/dep_gas_pz.test.ts src/lib/analytical/gasMaterialBalance.test.ts`.
+- [x] **`p_z` was not p/z (fixed 2026-08-01).** `buildDerivedRunSeries` hard-coded `z = 1`, so the
+  curve labelled "P/z" on every three-phase diagnostics panel was the average reservoir pressure. It
+  now inverts z from the run's own `B_g` table, returns null when the case has no gas PVT or no
+  `reservoirTemperature`, and lives on its own `pz` panel under the `p-over-z-` key family.
 - [x] **Numerical-dispersion and crossflow scenarios (2026-08-01).** Two new cases, closing
   roadmap T7.12, T7.13, T7.16 and the Tier 1 "D-P with vertical communication" row.
   `wf_numerics` (1D, 500 m, six grids from 50 m to 1.25 m cells) measures first-order convergence

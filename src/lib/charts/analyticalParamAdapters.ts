@@ -20,6 +20,13 @@ import {
 } from '../analytical/depletionAnalytical';
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import {
+    computeGasMaterialBalance,
+    gasFormationVolumeFactor,
+    pressureForPOverZ,
+    pressureOverZ,
+    type GasPvtRow,
+} from '../analytical/gasMaterialBalance';
+import {
     lineSourcePressure,
     semilogSlope,
     semilogValidFromTime,
@@ -841,6 +848,21 @@ export function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSer
     const cumulativeGasSeries: Array<number | null> = [];
     const pZSeries: Array<number | null> = [];
 
+    // p/z is only p/z when z is real. The gas deviation factor is recovered from
+    // the run's own B_g table rather than a correlation, so this curve and any
+    // gas-material-balance reference drawn beside it share one gas law. A run
+    // with no gas PVT table or no reservoir temperature has no z to divide by,
+    // and reports null rather than the average pressure under a p/z label —
+    // which is what this series was until 2026-08-01.
+    const gasPvtTable = Array.isArray((result.params as Record<string, unknown>)?.pvtTable)
+        ? ((result.params as Record<string, unknown>).pvtTable as GasPvtRow[])
+        : null;
+    const reservoirTemperature = toFiniteNumber(
+        (result.params as Record<string, unknown>)?.reservoirTemperature as number,
+        Number.NaN,
+    );
+    const canComputePOverZ = Boolean(gasPvtTable?.length) && Number.isFinite(reservoirTemperature);
+
     for (let index = 0; index < result.rateHistory.length; index += 1) {
         const point = result.rateHistory[index];
         const dt = index > 0
@@ -855,8 +877,12 @@ export function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSer
         cumulativeGasSeries.push(cumulativeGas);
 
         const pressure = toFiniteNumber(point.avg_reservoir_pressure, 0);
-        // Simple z-factor = 1 for now (real gas correlation deferred).
-        pZSeries.push(pressure > 0 ? pressure : null);
+        if (!canComputePOverZ || !(pressure > 0)) {
+            pZSeries.push(null);
+        } else {
+            const value = pressureOverZ(gasPvtTable!, pressure, reservoirTemperature);
+            pZSeries.push(Number.isFinite(value) ? value : null);
+        }
     }
 
     return {
@@ -904,5 +930,80 @@ export function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSer
             const value = point.injector_bhp_limited_fraction;
             return Number.isFinite(value) ? Number(value) : null;
         }),
+    };
+}
+
+// ─── Gas material balance (p/z) ──────────────────────────────────────────────
+
+/**
+ * Gas initially in place [Sm³] from grid volumes and the run's own gas law.
+ *
+ * Volumetric, not fitted — it is the number the p/z straight line is supposed
+ * to recover, so deriving it from the same table the simulator integrates keeps
+ * the comparison free of an independent PVT correlation.
+ */
+export function getGasInitiallyInPlace(params: Record<string, any>): number {
+    const table = Array.isArray(params?.pvtTable) ? (params.pvtTable as GasPvtRow[]) : null;
+    if (!table?.length) return Number.NaN;
+    const initialPressure = toFiniteNumber(params.initialPressure, Number.NaN);
+    const gasSaturation = toFiniteNumber(params.initialGasSaturation, 0);
+    if (!Number.isFinite(initialPressure) || !(gasSaturation > 0)) return Number.NaN;
+    const bg = gasFormationVolumeFactor(table, initialPressure);
+    if (!(bg > 0)) return Number.NaN;
+    return (getPoreVolume(params) * gasSaturation) / bg;
+}
+
+export type GasMaterialBalanceCurves = {
+    /** Volumetric straight line, one value per report step [bar]. */
+    pOverZ: Array<number | null>;
+    /** Same balance with the pore and connate-water terms restored [bar]. */
+    pOverZCompactionCorrected: Array<number | null>;
+    /** The straight line inverted back to average reservoir pressure [bar]. */
+    pressure: Array<number | null>;
+    giip: number;
+    initialPOverZ: number;
+};
+
+/**
+ * The p/z reference evaluated on a completed run's own cumulative production.
+ *
+ * Returns null unless the case actually carries a gas PVT table, a reservoir
+ * temperature and initial free gas — a p/z line without a gas law behind it is
+ * the thing this module exists to stop drawing.
+ */
+export function computeGasMaterialBalanceCurves(
+    params: Record<string, any>,
+    cumulativeGas: Array<number | null>,
+): GasMaterialBalanceCurves | null {
+    const table = Array.isArray(params?.pvtTable) ? (params.pvtTable as GasPvtRow[]) : null;
+    const reservoirTemperature = toFiniteNumber(params?.reservoirTemperature, Number.NaN);
+    const initialPressure = toFiniteNumber(params?.initialPressure, Number.NaN);
+    const giip = getGasInitiallyInPlace(params);
+    if (!table?.length || !Number.isFinite(reservoirTemperature)) return null;
+    if (!Number.isFinite(initialPressure) || !(giip > 0)) return null;
+
+    const produced = cumulativeGas.map((value) => (Number.isFinite(value) ? Number(value) : 0));
+    const balance = computeGasMaterialBalance({
+        pvtTable: table,
+        reservoirTemperature,
+        initialPressure,
+        giip,
+        cumulativeGas: produced,
+        initialWaterSaturation: toFiniteNumber(params.initialSaturation, 0),
+        c_w: toFiniteNumber(params.c_w, 0),
+        c_f: toFiniteNumber(params.rock_compressibility, 0),
+    });
+
+    return {
+        pOverZ: balance.points.map((point) => (Number.isFinite(point.pOverZ) ? point.pOverZ : null)),
+        pOverZCompactionCorrected: balance.points.map((point) => (
+            Number.isFinite(point.pOverZCompactionCorrected) ? point.pOverZCompactionCorrected : null
+        )),
+        pressure: balance.points.map((point) => {
+            const value = pressureForPOverZ(point.pOverZ, initialPressure, table, reservoirTemperature);
+            return Number.isFinite(value) ? value : null;
+        }),
+        giip,
+        initialPOverZ: balance.initialPOverZ,
     };
 }

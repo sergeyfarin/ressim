@@ -160,6 +160,7 @@ describe('analytical caveats describe the model actually being run', () => {
         dep_decline: [],
         dep_arps: ['perm-layered-depletion'],
         dep_pvt: ['analytical-disabled'],
+        dep_gas_pz: [],
         gas_injection: [],
         gas_drive: ['analytical-disabled'],
         spe1_gas_injection: ['analytical-disabled'],
