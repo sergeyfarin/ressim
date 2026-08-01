@@ -16,8 +16,9 @@ import type { CurveConfig } from './chartTypes';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { RateChartPanelKey, RateChartXAxisMode } from './rateChartLayoutConfig';
 import {
-    ANALYTICAL_BORDER, ANALYTICAL_DASH, AUXILIARY_DASH,
-    LEGEND_SECTIONS, PUBLISHED_DASH, simBorderWidth,
+    ANALYTICAL_BORDER, ANALYTICAL_BORDER_MULTI, ANALYTICAL_DASH,
+    LEGEND_SECTIONS, REFERENCE_STYLE, REFERENCE_STYLE_PRIMARY,
+    SIM_BORDER_SECONDARY, simBorderWidth,
 } from './curveStylePolicy';
 import {
     type DerivedRunSeries,
@@ -155,9 +156,11 @@ function appendPublishedReferenceSeries(
         );
         if (xValues === null) continue;
         const isOpmFlow = series.sourceType === 'opm-flow-precomputed';
-        // Prerun-artifacts scenarios render their bundled series as primary
-        // (solid, prominent) content — there is no live simulation curve, the
-        // artifact IS the exhibit — rather than a dashed reference overlay.
+        // Prerun-artifacts scenarios render their bundled series as prominent
+        // content — there is no live simulation curve, the artifact IS the
+        // exhibit. Prominence is width only: the curve stays dotted, because a
+        // solid line means ResSim and an external reference must never read as
+        // one. See curveStylePolicy.ts.
         const isPrimary = series.primary === true;
         appendSeries(targetPanel, {
             label: series.label,
@@ -166,10 +169,9 @@ function appendPublishedReferenceSeries(
             toggleGroupKey: isOpmFlow ? `opm-flow-${series.sourceArtifactKey ?? 'reference'}` : 'published-reference',
             toggleLabel: isOpmFlow ? 'OPM Flow reference' : 'Published reference',
             legendSection: 'published',
-            legendSectionLabel: isOpmFlow ? 'OPM Flow reference' : LEGEND_SECTIONS.published,
+            legendSectionLabel: isOpmFlow ? 'OPM Flow reference (dotted lines):' : LEGEND_SECTIONS.published,
             color: isOpmFlow ? opmFlowColor : publishedColor,
-            borderWidth: isPrimary ? 2.5 : 1.5,
-            borderDash: isPrimary ? undefined : PUBLISHED_DASH,
+            ...(isPrimary ? REFERENCE_STYLE_PRIMARY : REFERENCE_STYLE),
             yAxisID: series.yAxisID ?? 'y',
             pointRadius: 0,
             defaultVisible: series.defaultVisible,
@@ -183,6 +185,7 @@ function emptyPanelMap(): ReferenceComparisonPanelMap {
         recovery: createReferenceComparisonPanel(),
         cumulative: createReferenceComparisonPanel(),
         diagnostics: createReferenceComparisonPanel(),
+        avg_water_sat: createReferenceComparisonPanel(),
         mbe_ooip: createReferenceComparisonPanel(),
         drive_indices: createReferenceComparisonPanel(),
         pss_drawdown: createReferenceComparisonPanel(),
@@ -213,6 +216,7 @@ function combinePanelMaps(input: {
         recovery: input.primary.recovery,
         cumulative: input.primary.cumulative,
         diagnostics: input.primary.diagnostics,
+        avg_water_sat: input.primary.avg_water_sat,
         mbe_ooip: input.primary.mbe_ooip,
         drive_indices: input.primary.drive_indices,
         pss_drawdown: input.primary.pss_drawdown,
@@ -278,7 +282,7 @@ function perCaseAnalyticalStyle(input: {
         legendSection: 'analytical',
         legendSectionLabel: LEGEND_SECTIONS.analytical,
         color: input.color,
-        borderWidth: 1.5,
+        borderWidth: ANALYTICAL_BORDER_MULTI,
         borderDash: ANALYTICAL_DASH,
         yAxisID: slot.yAxisID ?? 'y',
     });
@@ -323,6 +327,7 @@ function buildAnalyticalPreviewPanels(
         recovery: createReferenceComparisonPanel(),
         cumulative: createReferenceComparisonPanel(),
         diagnostics: createReferenceComparisonPanel(),
+        avg_water_sat: createReferenceComparisonPanel(),
         mbe_ooip: createReferenceComparisonPanel(),
         drive_indices: createReferenceComparisonPanel(),
         pss_drawdown: createReferenceComparisonPanel(),
@@ -426,6 +431,7 @@ export function buildReferenceComparisonModel(input: {
         recovery: createReferenceComparisonPanel(),
         cumulative: createReferenceComparisonPanel(),
         diagnostics: createReferenceComparisonPanel(),
+        avg_water_sat: createReferenceComparisonPanel(),
         mbe_ooip: createReferenceComparisonPanel(),
         drive_indices: createReferenceComparisonPanel(),
         pss_drawdown: createReferenceComparisonPanel(),
@@ -545,18 +551,21 @@ export function buildReferenceComparisonModel(input: {
                 yAxisID: 'y',
                 defaultVisible,
             }, xValues, derived.waterCut);
-            appendSeries(panels.rates, {
+            // Average saturation is its own quantity and gets its own panel:
+            // sharing the water-cut plot is what once forced it into a
+            // distinguishing dash, and one property per plot removes the need.
+            appendSeries(panels.avg_water_sat, {
                 label: `${result.label} Avg Water Sat`,
                 curveKey: 'avg-water-sat',
                 caseKey: result.key,
-                // No toggleGroupKey override — falls back to curveKey so all cases
-                // share one "Avg Sw" toggle, keeping it out of the per-case section.
-                toggleLabel: 'Avg Sw',
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: LEGEND_SECTIONS.sim,
                 color,
-                borderWidth: 1.6,
-                borderDash: AUXILIARY_DASH,
+                borderWidth: simBorderWidth(result.variantKey),
                 yAxisID: 'y',
-                defaultVisible: false,
+                defaultVisible,
             }, xValues, derived.avgWaterSat);
             appendSeries(panels.recovery, {
                 label: `${result.label} Recovery`,
@@ -1028,8 +1037,7 @@ export function buildReferenceComparisonModel(input: {
                 legendSection: 'sim',
                 legendSectionLabel: LEGEND_SECTIONS.sim,
                 color,
-                borderWidth: 1.6,
-                borderDash: [2, 3],
+                borderWidth: SIM_BORDER_SECONDARY,
                 yAxisID: 'y',
                 defaultVisible: false,
             }, xValues, mbe.ooipRatio);
@@ -1044,7 +1052,7 @@ export function buildReferenceComparisonModel(input: {
                 legendSection: 'drive',
                 legendSectionLabel: LEGEND_SECTIONS.driveIndices,
                 color: '#e67e22',
-                borderWidth: 1.4,
+                borderWidth: SIM_BORDER_SECONDARY,
                 yAxisID: 'y',
                 defaultVisible: false,
             }, xValues, mbe.driveCompaction);
@@ -1057,7 +1065,7 @@ export function buildReferenceComparisonModel(input: {
                 legendSection: 'drive',
                 legendSectionLabel: LEGEND_SECTIONS.driveIndices,
                 color: '#27ae60',
-                borderWidth: 1.4,
+                borderWidth: SIM_BORDER_SECONDARY,
                 yAxisID: 'y',
                 defaultVisible: false,
             }, xValues, mbe.driveOilExpansion);
@@ -1070,7 +1078,7 @@ export function buildReferenceComparisonModel(input: {
                 legendSection: 'drive',
                 legendSectionLabel: LEGEND_SECTIONS.driveIndices,
                 color: '#2980b9',
-                borderWidth: 1.4,
+                borderWidth: SIM_BORDER_SECONDARY,
                 yAxisID: 'y',
                 defaultVisible: false,
             }, xValues, mbe.driveGasCap);

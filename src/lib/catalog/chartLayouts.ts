@@ -11,7 +11,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'rate-tail-threshold', relativeThreshold: 1e-7 },
             allowLogScale: false,
             logScale: false,
-            panelOrder: ['rates', 'recovery', 'oil_rate', 'cumulative', 'diagnostics', 'volumes'],
+            panelOrder: ['rates', 'recovery', 'oil_rate', 'cumulative', 'avg_water_sat', 'diagnostics', 'volumes'],
             panels: {
                 rates: {
                     title: 'Watercut',
@@ -52,6 +52,15 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
                     scalePreset: 'rates',
                     expanded: false,
                 },
+                // Its own panel — average saturation is not water cut, and
+                // one property per plot is what keeps every ResSim curve solid.
+                avg_water_sat: {
+                    title: 'Average Water Saturation',
+                    curveKeys: ['avg-water-sat'],
+                    scalePreset: 'fraction',
+                    visible: true,
+                    expanded: false,
+                },
             },
         },
     },
@@ -63,7 +72,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'pvi-window', minPvi: 0, maxPvi: 2.5 },
             allowLogScale: false,
             logScale: false,
-            panelOrder: ['sweep_rf', 'sweep_areal', 'sweep_vertical', 'sweep_combined', 'sweep_combined_mobile_oil', 'rates', 'recovery', 'cumulative', 'diagnostics'],
+            panelOrder: ['sweep_rf', 'sweep_areal', 'sweep_vertical', 'sweep_combined', 'sweep_combined_mobile_oil', 'rates', 'recovery', 'cumulative', 'avg_water_sat', 'diagnostics'],
             panels: {
                 rates: {
                     title: 'Watercut',

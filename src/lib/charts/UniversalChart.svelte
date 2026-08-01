@@ -27,7 +27,7 @@
     } from "./rateChartLayoutConfig";
     import ToggleGroup from "../ui/controls/ToggleGroup.svelte";
     import { resolveSharedXAxisRange } from "./xAxisRangePolicy";
-    import { buildGetScalePresetConfig } from "./buildRateChartData";
+    import { buildGetScalePresetConfig } from "./scalePresetRegistry";
     import { buildUniversalChartData } from "./buildUniversalChartData";
     import { PANEL_DEFS } from "./panelDefs";
     import type { UniversalPanelDef, LiveCurveContext } from "./universalChartTypes";

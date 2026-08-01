@@ -28,11 +28,11 @@ import {
     type SweepGeometry,
 } from '../analytical/sweepEfficiency';
 import {
+    ANALYTICAL_BORDER,
+    ANALYTICAL_BORDER_MULTI,
     ANALYTICAL_DASH,
     LEGEND_SECTIONS,
-    SWEEP_DASH_AREAL,
-    SWEEP_DASH_COMBINED,
-    SWEEP_DASH_VERTICAL,
+    SIM_BORDER_SECONDARY,
     simBorderWidth,
 } from './curveStylePolicy';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
@@ -185,7 +185,7 @@ function appendAnalyticalSweepCurves(
     const analytical = buildAnalyticalSweepSeries(input.params, input.derived, input.xAxisMode, input.tau, input.geometry, input.method);
     const toggleGroupKey = input.caseKey ? `${input.caseKey}__ref` : 'analytical';
     const legendColor = input.caseKey ? undefined : getLegendGrey(input.theme);
-    const borderWidth = input.caseKey ? 1.5 : 2;
+    const borderWidth = input.caseKey ? ANALYTICAL_BORDER_MULTI : ANALYTICAL_BORDER;
     const analyticalRfLabel = input.method === 'stiles'
         ? `${input.label} — Analytical Total RF (Stiles Layered BL)`
         : `${input.label} — Analytical Total RF (Dykstra-Parsons)`;
@@ -220,7 +220,7 @@ function appendAnalyticalSweepCurves(
             color: input.color,
             ...(legendColor ? { legendColor } : {}),
             borderWidth,
-            borderDash: SWEEP_DASH_AREAL,
+            borderDash: ANALYTICAL_DASH,
             yAxisID: 'y',
         }, analytical.xValues, analytical.areal);
     }
@@ -237,7 +237,7 @@ function appendAnalyticalSweepCurves(
             color: input.color,
             ...(legendColor ? { legendColor } : {}),
             borderWidth,
-            borderDash: SWEEP_DASH_VERTICAL,
+            borderDash: ANALYTICAL_DASH,
             yAxisID: 'y',
         }, analytical.xValues, analytical.vertical);
     }
@@ -253,7 +253,7 @@ function appendAnalyticalSweepCurves(
         color: input.color,
         ...(legendColor ? { legendColor } : {}),
         borderWidth,
-        borderDash: SWEEP_DASH_COMBINED,
+        borderDash: ANALYTICAL_DASH,
         yAxisID: 'y',
     }, analytical.xValues, analytical.combined);
 
@@ -269,7 +269,7 @@ function appendAnalyticalSweepCurves(
             color: input.color,
             ...(legendColor ? { legendColor } : {}),
             borderWidth,
-            borderDash: SWEEP_DASH_COMBINED,
+            borderDash: ANALYTICAL_DASH,
             yAxisID: 'y',
         }, analytical.xValues, analytical.combined);
     }
@@ -365,8 +365,7 @@ function appendSimulationSweepCurves(
             legendSection: 'sim',
             legendSectionLabel: LEGEND_SECTIONS.sim,
             color,
-            borderWidth: 1.8,
-            borderDash: [3, 3],
+            borderWidth: SIM_BORDER_SECONDARY,
             yAxisID: 'y',
             defaultVisible: true,
         });

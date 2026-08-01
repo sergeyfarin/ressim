@@ -1,11 +1,11 @@
 /**
  * universalChartTypes.ts — shared contract for the scenario-agnostic chart system.
  *
- * The four curve types drive styling automatically:
+ * The four curve types drive styling automatically (see curveStylePolicy.ts):
  *   simulation         → solid, bold       (our IMPES solver)
  *   analytical         → dashed [7,4]      (mathematical reference solution)
- *   reference          → dotted [4,4]      (published / digitized external data)
- *   reference-simulation → solid, thin     (another simulator's output)
+ *   reference          → dotted [1,3]      (published / digitized external data)
+ *   reference-simulation → dotted [1,3]    (another simulator's output)
  *
  * Scenarios declare UniversalPanelDef[] listing exactly which curves to show.
  * buildUniversalChartData() iterates these defs, calls getData/getDataXY per curve,
@@ -25,10 +25,13 @@ export type { XYPoint } from './axisAdapters';
 
 /**
  * Primary styling axis for every curve.
- *   simulation           our IMPES solver output       — solid, 2.5px
+ *   simulation           our IMPES solver output       — solid, 2.8px
  *   analytical           computed reference solution   — dashed [7,4], 2.0px
- *   reference            published / digitized data    — dotted [4,4], 1.5px
- *   reference-simulation another simulator's output    — solid, 1.5px
+ *   reference            published / digitized data    — dotted [1,3], 1.5px
+ *   reference-simulation another simulator's output    — dotted [1,3], 1.5px
+ *
+ * The last two share a pattern by design: both are external references, told
+ * apart by colour. Solid means ResSim and nothing else.
  */
 export type CurveType =
     | 'simulation'

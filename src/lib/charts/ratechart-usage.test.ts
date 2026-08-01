@@ -4,7 +4,6 @@ import path from 'path';
 
 const rateChartPath = path.join(__dirname, 'RateChart.svelte');
 const universalChartPath = path.join(__dirname, 'UniversalChart.svelte');
-const buildRateChartDataPath = path.join(__dirname, 'buildRateChartData.ts');
 const buildLiveDerivedSeriesPath = path.join(__dirname, 'buildLiveDerivedSeries.ts');
 const buildUniversalChartDataPath = path.join(__dirname, 'buildUniversalChartData.ts');
 const subPanelPath = path.join(__dirname, 'ChartSubPanel.svelte');
@@ -12,7 +11,6 @@ const referenceComparisonChartPath = path.join(__dirname, 'ReferenceComparisonCh
 const chartPanelSelectionPath = path.join(__dirname, 'chartPanelSelection.ts');
 const rateChartSrc = fs.readFileSync(rateChartPath, 'utf8');
 const universalChartSrc = fs.readFileSync(universalChartPath, 'utf8');
-const buildRateChartDataSrc = fs.readFileSync(buildRateChartDataPath, 'utf8');
 const buildLiveDerivedSeriesSrc = fs.readFileSync(buildLiveDerivedSeriesPath, 'utf8');
 const buildUniversalChartDataSrc = fs.readFileSync(buildUniversalChartDataPath, 'utf8');
 const subPanelSrc = fs.readFileSync(subPanelPath, 'utf8');
@@ -44,16 +42,12 @@ describe('RateChart architecture checks', () => {
     expect(/liveData/.test(universalChartSrc)).toBe(true);
   });
 
-  it('defines three panel curve configs (rates, cumulative, diagnostics) in buildRateChartData', () => {
-    expect(/ratesCurves/.test(buildRateChartDataSrc)).toBe(true);
-    expect(/cumulativeCurves/.test(buildRateChartDataSrc)).toBe(true);
-    expect(/diagnosticsCurves/.test(buildRateChartDataSrc)).toBe(true);
-  });
-
-  it('builds XY series for each panel in buildRateChartData', () => {
-    expect(/ratesSeries/.test(buildRateChartDataSrc)).toBe(true);
-    expect(/cumulativeSeries/.test(buildRateChartDataSrc)).toBe(true);
-    expect(/diagnosticsSeries/.test(buildRateChartDataSrc)).toBe(true);
+  it('declares panel curves in scenario panel defs, not a chart-local builder', () => {
+    // buildRateChartData.ts was the pre-UniversalChart builder. It was deleted
+    // once nothing imported it; its curve configs had drifted into their own
+    // dash/width conventions. Panels now come from src/lib/catalog/chartPanels/.
+    expect(fs.existsSync(path.join(__dirname, 'buildRateChartData.ts'))).toBe(false);
+    expect(/panelDefs/.test(universalChartSrc)).toBe(true);
   });
 
   it('has x-axis control at the top level (not inside sub-panels)', () => {

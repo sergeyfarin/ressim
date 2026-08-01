@@ -129,3 +129,93 @@ export const SCALE_SWEEP = {
         ticks: { count: 6 },
     },
 };
+
+// ─── Live (UniversalChart) scale configs ─────────────────────────────────────
+// These four differ from the shared presets above in axis placement or dynamic
+// titling, so they stay separate objects; they are consumed only through
+// buildGetScalePresetConfig().
+
+const RECOVERY_SCALES = {
+    y: {
+        type: 'linear', display: true, position: 'left', min: 0, max: 1,
+        alignToPixels: true, title: { display: true, text: 'Recovery Factor' },
+        ticks: { count: 6 }, _fraction: true,
+    },
+};
+
+const BREAKTHROUGH_SCALES = {
+    y1: {
+        type: 'linear', display: true, position: 'right', min: 0, max: 1,
+        alignToPixels: true, title: { display: true, text: 'Water Cut / Saturation' },
+        grid: { drawOnChartArea: false }, ticks: { count: 6 }, _fraction: true,
+    },
+};
+
+const DIAGNOSTICS_SCALES = {
+    y: {
+        type: 'linear', display: true, position: 'left', alignToPixels: true,
+        title: { display: true, text: 'Pressure (bar)' }, ticks: { count: 6 }, _auto: true,
+    },
+    y1: {
+        type: 'linear', display: true, position: 'right', min: 0, alignToPixels: true,
+        title: { display: true, text: 'Fraction' }, grid: { drawOnChartArea: false },
+        ticks: { count: 6 },
+        _dynamicTitle: (labels: string[]) => {
+            const parts: string[] = [];
+            if (labels.some((l) => l.includes('VRR'))) parts.push('VRR');
+            if (labels.some((l) => l.includes('WOR'))) parts.push('WOR');
+            if (labels.some((l) => l.includes('Sat'))) parts.push('Saturation');
+            if (labels.some((l) => l.includes('Cut'))) parts.push('Water Cut');
+            return parts.length > 0 ? parts.join(' / ') : 'Fraction';
+        },
+    },
+    y2: {
+        type: 'linear', display: true, position: 'right', min: 0, alignToPixels: true,
+        title: { display: true, text: 'MB Error (m³)' },
+        grid: { drawOnChartArea: false }, ticks: { count: 6 },
+    },
+};
+
+const SWEEP_RF_SCALES = {
+    y: {
+        type: 'linear', display: true, position: 'left', min: 0, max: 1,
+        alignToPixels: true, title: { display: true, text: 'Recovery Factor' },
+        ticks: {
+            count: 6,
+            _tickFormatter: (v: string | number) =>
+                typeof v === 'number' ? (v * 100).toFixed(0) + '%' : v,
+        },
+    },
+};
+
+/**
+ * Build a getScalePresetConfig function for the live chart. Returned as a
+ * closure so UniversalChart can call resolveChartPanelDefinition without
+ * importing the scale objects directly — the rates axis title depends on
+ * whether rates are normalized.
+ */
+export function buildGetScalePresetConfig(normalizeRates: boolean): (preset: string) => Record<string, any> {
+    const ratesScales = {
+        y: {
+            type: 'linear', display: true, position: 'left', min: 0, alignToPixels: true,
+            title: { display: true, text: normalizeRates ? 'Normalized Rate (q/q₀)' : 'Rate (m³/day)' },
+            ticks: { count: 6 },
+        },
+    };
+    return (scalePreset: string) => {
+        if (scalePreset === 'sweep') return SCALE_SWEEP;
+        if (scalePreset === 'sweep_rf') return SWEEP_RF_SCALES;
+        if (scalePreset === 'breakthrough') return BREAKTHROUGH_SCALES;
+        if (scalePreset === 'pressure') return SCALE_PRESSURE;
+        if (scalePreset === 'productivity') return SCALE_PRODUCTIVITY;
+        if (scalePreset === 'shape_factor') return SCALE_SHAPE_FACTOR;
+        if (scalePreset === 'ratio') return SCALE_RATIO;
+        if (scalePreset === 'gor') return SCALE_GOR;
+        if (scalePreset === 'cumulative') return SCALE_CUMULATIVE;
+        if (scalePreset === 'cumulative_volumes') return SCALE_CUMULATIVE_VOLUMES;
+        if (scalePreset === 'recovery') return RECOVERY_SCALES;
+        if (scalePreset === 'diagnostics') return DIAGNOSTICS_SCALES;
+        if (scalePreset === 'fraction') return SCALE_FRACTION;
+        return ratesScales;
+    };
+}

@@ -8,6 +8,7 @@
 export function chartPropertyForCurve(curveKey: string): string | null {
     if (curveKey.startsWith('water-cut-')) return 'water-cut';
     if (curveKey.startsWith('gas-cut-')) return 'gas-cut';
+    if (curveKey === 'avg-water-sat') return 'average-water-saturation';
     if (curveKey.startsWith('recovery-factor')) return 'recovery-factor';
     if (curveKey.startsWith('cum-oil-')) return 'cumulative-oil';
     if (curveKey === 'cum-injection') return 'cumulative-injection';

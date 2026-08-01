@@ -76,6 +76,16 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   reduces gas cycling) but the rungs are close together and breakthrough is too early to read, so
   there is no crisp exhibit yet; each FIM run also costs 15-23 s headless. Needs a rate/density/
   completion campaign before it is worth a scenario — do not ship it on the numbers above.
+- [x] **Chart line-style policy consolidated to three tiers (2026-08-01).** `curveStylePolicy.ts` is
+  now the only module that writes a dash array: ResSim solid, analytical dashed `[7,4]`, every
+  additional reference (published data or another simulator) dotted `[1,3]`, with runs inside a tier
+  told apart by colour alone. Removes the per-metric sweep dashes and the `[4,4]`/`[2,4]` overlays
+  that had accumulated across builders, and drops the solid-thin `reference-simulation` style — solid
+  now means ResSim and nothing else. Guarded by `no-literal-border-dash.test.ts`, which fails on a
+  literal `borderDash` outside the policy module. Average water saturation moved out of the watercut
+  panel into its own `avg_water_sat` panel (one property per plot). Dead code removed:
+  `SweepEfficiencyChart.svelte` and `buildRateChartData.ts`, with the scale configs still in use
+  extracted to `scalePresetRegistry.ts`.
 - [x] **Catalog taxonomy: the BL group is 1D in fact, not just in prose (2026-08-01).** `wf_gravity`
   shipped into `buckley-leverett-displacement` although its 30x1x20 section is two-dimensional, while
   the group's own description promised one-dimensional displacement. Group relabelled

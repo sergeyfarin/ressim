@@ -15,6 +15,7 @@
      */
     import { onMount, onDestroy, untrack } from "svelte";
     import { Chart, registerables } from "chart.js";
+    import { ANALYTICAL_DASH } from "../charts/curveStylePolicy";
     import {
         applyThemeToChart,
         externalTooltipHandler,
@@ -246,8 +247,10 @@
                 borderWidth: 2,
                 pointRadius: 0,
                 spanGaps: false,
+                // The front position is an analytical (Buckley-Leverett) marker,
+                // so it carries the analytical dash like every other reference.
                 // @ts-expect-error Chart.js accepts borderDash on line datasets
-                borderDash: [6, 4],
+                borderDash: ANALYTICAL_DASH,
             });
         }
 

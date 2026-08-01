@@ -87,7 +87,7 @@ function buildAndRun(params: Params): RunResult {
         * Number(params.reservoirPorosity);
 
     // Rates are instantaneous (m3/day); water cut = (liquid - oil)/liquid, the
-    // convention used by buildRateChartData.ts.
+    // convention used by buildLiveDerivedSeries.ts.
     const history = sim.getRateHistorySince(0) as Array<{
         time: number;
         total_production_oil?: number;

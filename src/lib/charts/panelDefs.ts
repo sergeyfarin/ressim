@@ -41,6 +41,13 @@ export const PANEL_DEFS: Record<RateChartPanelId, ChartPanelFallback> = {
         visible: true,
         expanded: false,
     },
+    avg_water_sat: {
+        title: 'Average Water Saturation',
+        curveKeys: ['avg-water-sat'],
+        scalePreset: 'fraction',
+        visible: false,
+        expanded: false,
+    },
     mbe_ooip: {
         title: 'MBE OOIP Ratio',
         scalePreset: 'ratio',

@@ -24,19 +24,30 @@ export function getReferenceRateChartLayoutConfig(input: {
                 xAxisOptions: ['pvi', 'time', 'cumInjection'],
                 allowLogScale: false,
                 logScale: false,
-                panelOrder: ['rates', 'cumulative', 'diagnostics'],
+                panelOrder: ['rates', 'cumulative', 'avg_water_sat', 'diagnostics'],
                 panels: {
                     rates: {
                         title: 'Breakthrough',
                         curveKeys: analyticalOverlayPrimary
-                            ? ['water-cut-sim', 'water-cut-reference', 'avg-water-sat']
-                            : ['water-cut-sim', 'avg-water-sat'],
+                            ? ['water-cut-sim', 'water-cut-reference']
+                            : ['water-cut-sim'],
                         curveLabels: analyticalOverlayPrimary
-                            ? ['Water Cut (Sim)', 'Water Cut (Reference Solution)', 'Avg Water Sat']
-                            : ['Water Cut (Sim)', 'Avg Water Sat'],
+                            ? ['Water Cut (Sim)', 'Water Cut (Reference Solution)']
+                            : ['Water Cut (Sim)'],
                         scalePreset: 'breakthrough',
                         allowLogToggle: false,
                         expanded: true,
+                    },
+                    // Average saturation is a different quantity from water cut
+                    // and gets its own panel rather than a second style in the
+                    // breakthrough plot.
+                    avg_water_sat: {
+                        title: 'Average Water Saturation',
+                        curveKeys: ['avg-water-sat'],
+                        curveLabels: ['Avg Water Sat'],
+                        scalePreset: 'fraction',
+                        visible: true,
+                        expanded: false,
                     },
                     cumulative: {
                         title: 'Recovery',
