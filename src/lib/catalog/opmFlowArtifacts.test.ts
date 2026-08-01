@@ -13,13 +13,18 @@ import { getScenario, listScenarios } from './scenarios';
 // to `deck-ready`/`flow-run`/`error` means someone regenerated it without a
 // real Flow run behind it, which is exactly the silent-stub failure mode
 // this pipeline used to have.
-const PARSED_BASELINE = ['wf_bl1d', 'spe1_gas_injection', 'gas_drive', 'wf_gravity', 'wf_numerics', 'wf_numerics_fine'];
+const PARSED_BASELINE = [
+    'wf_bl1d', 'spe1_gas_injection', 'gas_drive', 'wf_gravity',
+    'wf_numerics', 'wf_numerics_fine', 'dep_gas_pz', 'dep_gas_pz_geopressured',
+];
 
 describe('OPM Flow precomputed artifacts', () => {
     it('ships explicit metadata for predefined OPM Flow artifact targets', () => {
         const artifacts = listOpmFlowArtifacts();
 
         expect(artifacts.map((artifact) => artifact.scenarioKey).sort()).toEqual([
+            'dep_gas_pz',
+            'dep_gas_pz',
             'gas_drive',
             'spe1_gas_injection',
             'wf_bl1d',
@@ -45,10 +50,10 @@ describe('OPM Flow precomputed artifacts', () => {
         // and the two differ by Bw.
         expect(xAxis!.cumulativeInjectionCurve).toBe('FVIT');
         expect(xAxis!.timeDays).toHaveLength(artifact!.series[0].data.length);
-        expect(xAxis!.pvi).toHaveLength(xAxis!.timeDays.length);
-        expect(xAxis!.cumulativeInjectionM3).toHaveLength(xAxis!.timeDays.length);
+        expect(xAxis!.pvi!).toHaveLength(xAxis!.timeDays.length);
+        expect(xAxis!.cumulativeInjectionM3!).toHaveLength(xAxis!.timeDays.length);
         // Monotone, as a cumulative injection must be.
-        expect(xAxis!.pvi.every((value, index) => index === 0 || value >= xAxis!.pvi[index - 1])).toBe(true);
+        expect(xAxis!.pvi!.every((value, index) => index === 0 || value >= xAxis!.pvi![index - 1])).toBe(true);
 
         // Cross-check of the deck's declared pore volume against the ResSim
         // scenario it mirrors: same grid, same injection rate, same schedule,
@@ -58,7 +63,7 @@ describe('OPM Flow precomputed artifacts', () => {
             * params.nz * params.cellDz * params.reservoirPorosity;
         expect(xAxis!.poreVolumeM3).toBe(poreVolume);
         const scenarioPvi = (params.steps * params.delta_t_days * params.targetInjectorRate) / poreVolume;
-        expect(xAxis!.pvi.at(-1)).toBeCloseTo(scenarioPvi, 2);
+        expect(xAxis!.pvi!.at(-1)).toBeCloseTo(scenarioPvi, 2);
     });
 
     it('never regresses a case that has already reached a real parsed run', () => {

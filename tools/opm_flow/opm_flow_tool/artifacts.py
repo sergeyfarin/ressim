@@ -49,25 +49,38 @@ def run_flow(case: OpmCase, run_root: Path = DEFAULT_RUN_ROOT) -> Path:
 
 
 def _build_x_axis(case: OpmCase, summary) -> dict | None:
-    """The run's own time -> PVI / cumulative-injection mapping, or None.
+    """The run's own time -> volume mappings, or None if it publishes none.
 
     Reference series are recorded against days. A chart drawn against pore
-    volumes injected has to convert them, and the only defensible conversion
-    uses this run's own injected volume and pore volume rather than the
-    scenario's — the artifact is a fixed run, not a re-parameterisable one.
+    volumes injected, cumulative injection or cumulative gas production has to
+    convert them, and the only defensible conversion uses this run's own
+    volumes rather than the scenario's — the artifact is a fixed run, not a
+    re-parameterisable one.
+
+    Each mapping is independent. A waterflood publishes the injection ones and
+    no gas one; a depletion case publishes the gas one and has no injector at
+    all. Whatever is missing is simply absent, and the frontend drops the
+    reference curves on axes it cannot honestly place them on.
     """
-    if not case.cumulative_injection_curve or not case.pore_volume_m3:
-        return None
-    vector = summary.by_curve_id().get(case.cumulative_injection_curve)
-    if vector is None:
-        return None
-    return {
-        "timeDays": list(summary.time_days),
-        "cumulativeInjectionM3": list(vector.values),
-        "pvi": [value / case.pore_volume_m3 for value in vector.values],
-        "poreVolumeM3": case.pore_volume_m3,
-        "cumulativeInjectionCurve": case.cumulative_injection_curve,
-    }
+    by_curve = summary.by_curve_id()
+    axis: dict = {"timeDays": list(summary.time_days)}
+
+    if case.cumulative_injection_curve and case.pore_volume_m3:
+        vector = by_curve.get(case.cumulative_injection_curve)
+        if vector is not None:
+            axis["cumulativeInjectionM3"] = list(vector.values)
+            axis["pvi"] = [value / case.pore_volume_m3 for value in vector.values]
+            axis["poreVolumeM3"] = case.pore_volume_m3
+            axis["cumulativeInjectionCurve"] = case.cumulative_injection_curve
+
+    if case.cumulative_gas_curve:
+        vector = by_curve.get(case.cumulative_gas_curve)
+        if vector is not None:
+            axis["cumulativeGasSm3"] = list(vector.values)
+            axis["cumulativeGasCurve"] = case.cumulative_gas_curve
+
+    # timeDays alone is not a mapping — it is what the series already carry.
+    return axis if len(axis) > 1 else None
 
 
 def _build_series(case: OpmCase, run_dir: Path) -> tuple[list[dict], str, str, dict | None]:
@@ -116,10 +129,15 @@ def _build_series(case: OpmCase, run_dir: Path) -> tuple[list[dict], str, str, d
 
     x_axis = _build_x_axis(case, summary)
     notes = "Series parsed from a real Flow run."
-    if case.cumulative_injection_curve and x_axis is None:
+    if case.cumulative_injection_curve and not (x_axis or {}).get("pvi"):
         notes += (
             f" No time->PVI mapping: {case.cumulative_injection_curve} was requested by the case"
             " but is missing from the summary (or the case declares no pore volume)."
+        )
+    if case.cumulative_gas_curve and not (x_axis or {}).get("cumulativeGasSm3"):
+        notes += (
+            f" No time->cumulative-gas mapping: {case.cumulative_gas_curve} was requested by the"
+            " case but is missing from the summary."
         )
     return series, "parsed", notes, x_axis
 

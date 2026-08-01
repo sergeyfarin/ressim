@@ -9,6 +9,7 @@ import {
     type GasPvtRow,
 } from '../../analytical/gasMaterialBalance';
 import { getScenario, getScenarioWithVariantParams } from '../scenarios';
+import { listOpmFlowArtifacts } from '../opmFlowArtifacts';
 
 let wasmReady: Promise<unknown> | null = null;
 
@@ -236,5 +237,55 @@ describe('dep_gas_pz measured behaviour', () => {
         console.log('aband30', JSON.stringify(full));
         console.log('aband200', JSON.stringify(early));
         expect(early.recovery).toBeLessThan(full.recovery);
+    }, 600_000);
+});
+
+/** Cumulative gas produced by a bundled OPM Flow run of this case [Sm³]. */
+function opmCumulativeGas(caseKey: string): number {
+    const artifact = listOpmFlowArtifacts().find((candidate) => candidate.caseKey === caseKey)!;
+    expect(artifact.status, caseKey).toBe('parsed');
+    return artifact.xAxis!.cumulativeGasSm3!.at(-1)!;
+}
+
+describe('dep_gas_pz against OPM Flow', () => {
+    it('agrees on the base case, where the pore volume barely moves', () => {
+        // ResSim 131.6e6 (measured above), OPM 129.9e6, hand balance 131.2e6.
+        const opm = opmCumulativeGas('dep_gas_pz');
+        expect(opm).toBeGreaterThan(1.25e8);
+        expect(opm).toBeLessThan(1.35e8);
+    });
+
+    /**
+     * Open defect, pinned so the fix is visible when it lands.
+     *
+     * ResSim's rock compressibility releases gas at the pressure at which the
+     * compaction happens, rather than displacing the gas that would otherwise
+     * have remained at abandonment. `fim/assembly.rs::pore_volume_at_state`
+     * computes `pv_ref * exp(c_f * (p - p_prev))` against the *previous step's*
+     * pressure, so compaction never accumulates and the same energy is
+     * harvested every step. Both an independent OPM Flow run of the identical
+     * deck and a hand dry-gas material balance put the compaction increment at
+     * about 1.9 %; ResSim reports 10.7 %.
+     *
+     * When the engine is fixed this assertion fails, which is the point: update
+     * it to the agreement bound and rewrite the scenario's
+     * `pore_compressibility` prose at the same time. See TODO.md.
+     */
+    it('does not yet agree on how much gas compaction releases', () => {
+        const base = opmCumulativeGas('dep_gas_pz');
+        const geopressured = opmCumulativeGas('dep_gas_pz_geopressured');
+        const opmIncrement = geopressured / base - 1;
+
+        // What an independent simulator says the compaction term is worth.
+        expect(opmIncrement).toBeGreaterThan(0.01);
+        expect(opmIncrement).toBeLessThan(0.03);
+
+        // What ResSim says, measured on this tree. Delete this block, not the
+        // one above, when the engine is corrected.
+        const resSimBase = runVariant('pore_compressibility', 'cf_normal');
+        const resSimGeo = runVariant('pore_compressibility', 'cf_geopressured');
+        const resSimIncrement = resSimGeo.recovery / resSimBase.recovery - 1;
+        expect(resSimIncrement).toBeGreaterThan(0.09);
+        expect(resSimIncrement / opmIncrement).toBeGreaterThan(4);
     }, 600_000);
 });

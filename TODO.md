@@ -36,11 +36,33 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   than a tolerance, raised as a solver warning rather than an abort — the scenario's
   `dt_limiter_off` variant is a ready-made regression case, and `wf_numerics.test.ts` currently pins
   the *absence* of the warning, so that assertion flips when this is fixed.
-- [ ] **`dep_gas_pz` has no OPM Flow deck (2026-08-01).** The scenario's claims are guarded against
+- [ ] **Rock compressibility releases gas at the wrong pressure (found 2026-08-01, engine).**
+  `fim/assembly.rs::pore_volume_at_state` and `fim/properties.rs::pore_volume_generic` compute
+  `pv_ref * exp(c_f * (p - p_prev))` where `p_prev` is the **previous timestep's** pressure, not a
+  fixed reference. Compaction therefore never accumulates: within a step `p ~ p_prev` so the pore
+  volume stays at `pv_ref`, while the accumulation derivative injects `c_f * pv` every step. The
+  same compaction energy is harvested repeatedly, and each release is converted to surface volume at
+  that step's `B_g` rather than at abandonment `B_g`, so the error grows with both `c_f` and the
+  depletion range. Measured on `dep_gas_pz` (400 -> 30 bar, c_f 5e-6 -> 5e-4 /bar), cumulative gas:
+  ResSim 131.6 -> 145.7e6 Sm3 (+10.7 %), OPM Flow on the identical deck 129.9 -> 132.4e6 (+1.9 %),
+  hand dry-gas material balance 131.2 -> 133.6e6 (+1.8 %). OPM and the hand balance agree; ResSim's
+  compaction increment is ~5.8x too large. The base rung agrees with both to 1.3 %, so only the
+  compaction term is wrong. **Fix:** reference the exponent to a stored initial/reference pressure
+  rather than `p_prev`. The Jacobian is unchanged — `d/dp [pv_ref*exp(c(p-const))] = c*pv` either
+  way — so this is a value fix, not a structural one. Pinned by
+  `dep_gas_pz.test.ts` > "does not yet agree on how much gas compaction releases", which is written
+  to fail once the fix lands. Existing scenarios use c_f 1e-6, where `exp(c*dp) ~ 1`, so they cannot
+  move measurably; still needs the FIM + IMPES validation ladder and a wasm rebuild.
+- [x] **`dep_gas_pz` OPM Flow decks (2026-08-01).** The scenario's claims are guarded against
   its own analytical reference and its own inventory closure, but there is no second simulator on the
   deck. A dry-gas OPM case is straightforward (PVDG from the same table, single producer on a BHP
   floor) and would let the pore-compressibility ladder be cross-checked, since ROCK compressibility is
-  a first-class Eclipse keyword. Same gap as `dep_pvt`, `gas_injection` and `gas_drive`.
+  a first-class Eclipse keyword — which is exactly what it did: see the defect above. Two decks
+  (`dep_gas_pz`, `dep_gas_pz_geopressured`, flow 2026.04, GAS+WATER, PVDG generated from the
+  scenario's own table, Eclipse `ROCK`). Required a new `cumulative_gas_curve` field on `OpmCase`
+  and a `cumulativeGasSm3` entry in the artifact x-axis map, because a p/z chart's x-axis is
+  produced gas and `mapReferenceTimesToXAxis` previously dropped every reference series on it.
+  `dep_pvt`, `gas_injection` and `gas_drive` still have no deck.
 - [x] **`dep_gas_pz` and the p/z analytical method (2026-08-01).** Closes roadmap T7.2's dry-gas
   half. New `src/lib/analytical/gasMaterialBalance.ts` + a `'gas-material-balance'` analytical method
   through the registry, and a scenario measuring what bends the straight line: pore compressibility

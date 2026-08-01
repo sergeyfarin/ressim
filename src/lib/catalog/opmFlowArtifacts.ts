@@ -6,6 +6,8 @@ import gasDriveArtifact from './opm-flow-results/gas_drive.json';
 import wfGravityArtifact from './opm-flow-results/wf_gravity.json';
 import wfNumericsArtifact from './opm-flow-results/wf_numerics.json';
 import wfNumericsFineArtifact from './opm-flow-results/wf_numerics_fine.json';
+import depGasPzArtifact from './opm-flow-results/dep_gas_pz.json';
+import depGasPzGeopressuredArtifact from './opm-flow-results/dep_gas_pz_geopressured.json';
 
 export type ReferenceSourceType =
     | 'analytical'
@@ -29,9 +31,12 @@ export type OpmFlowArtifactSeries = {
  * are simply unavailable on injection-based axes.
  */
 export type OpmFlowArtifactXAxis = ReferenceXAxisMap & {
-    poreVolumeM3: number;
-    /** Summary mnemonic the mapping was built from, e.g. 'FVIT'. */
-    cumulativeInjectionCurve: string;
+    /** Present when the case declares one; a depletion deck need not. */
+    poreVolumeM3?: number;
+    /** Summary mnemonic the injection mapping was built from, e.g. 'FVIT'. */
+    cumulativeInjectionCurve?: string;
+    /** Summary mnemonic the gas-production mapping was built from, e.g. 'FGPT'. */
+    cumulativeGasCurve?: string;
 };
 
 export type OpmFlowArtifact = {
@@ -58,6 +63,8 @@ const ARTIFACTS = [
     wfGravityArtifact as OpmFlowArtifact,
     wfNumericsArtifact as OpmFlowArtifact,
     wfNumericsFineArtifact as OpmFlowArtifact,
+    depGasPzArtifact as OpmFlowArtifact,
+    depGasPzGeopressuredArtifact as OpmFlowArtifact,
 ];
 
 export function listOpmFlowArtifacts(): OpmFlowArtifact[] {

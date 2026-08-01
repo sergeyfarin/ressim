@@ -230,10 +230,15 @@ export function interpolateXAxisAtTimes(
 export type ReferenceXAxisMap = {
     /** Report times of the reference run, in days. */
     timeDays: number[];
-    /** Pore volumes injected at each of those times. */
-    pvi: number[];
+    /**
+     * Pore volumes injected at each of those times. Absent for a case with no
+     * injector, which is not a defect — a depletion run has no PVI to publish.
+     */
+    pvi?: number[];
     /** Cumulative reservoir-volume injection at each of those times, m³. */
-    cumulativeInjectionM3: number[];
+    cumulativeInjectionM3?: number[];
+    /** Cumulative surface gas production at each of those times, Sm³. */
+    cumulativeGasSm3?: number[];
 };
 
 /**
@@ -260,13 +265,20 @@ export function mapReferenceTimesToXAxis(
     }
     if (!map || map.timeDays.length === 0) return null;
     if (xAxisMode === 'pvi') {
-        return interpolateXAxisAtTimes(map.timeDays, map.pvi, timeDays);
+        return map.pvi ? interpolateXAxisAtTimes(map.timeDays, map.pvi, timeDays) : null;
     }
     if (xAxisMode === 'cumInjection') {
-        return interpolateXAxisAtTimes(map.timeDays, map.cumulativeInjectionM3, timeDays);
+        return map.cumulativeInjectionM3
+            ? interpolateXAxisAtTimes(map.timeDays, map.cumulativeInjectionM3, timeDays)
+            : null;
     }
-    // 'tD', 'pvp', 'cumLiquid', 'cumGas': the reference run publishes nothing
-    // that pins these, so there is no honest x for its points.
+    if (xAxisMode === 'cumGas') {
+        return map.cumulativeGasSm3
+            ? interpolateXAxisAtTimes(map.timeDays, map.cumulativeGasSm3, timeDays)
+            : null;
+    }
+    // 'tD', 'pvp', 'cumLiquid': the reference run publishes nothing that pins
+    // these, so there is no honest x for its points.
     return null;
 }
 

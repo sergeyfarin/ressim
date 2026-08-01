@@ -268,13 +268,13 @@ describe('wf_numerics measured behaviour', () => {
 function opmMetrics(caseKey: string) {
     const artifact = listOpmFlowArtifacts().find((candidate) => candidate.caseKey === caseKey)!;
     expect(artifact.status).toBe('parsed');
-    const pviByDay = new Map(artifact.xAxis!.timeDays.map((day, i) => [day, artifact.xAxis!.pvi[i]]));
+    const pviByDay = new Map(artifact.xAxis!.timeDays.map((day, i) => [day, artifact.xAxis!.pvi![i]]));
     const byCurve = (match: string) => artifact.series.find((s) => s.curveKey.includes(match))!;
     const waterCut = byCurve('water-cut').data;
     const cumOil = byCurve('cum-oil').data;
 
     const breakthroughPvi = pviByDay.get(waterCut.find((p) => p.y > 0.01)!.x)!;
-    const oilInPlace = artifact.xAxis!.poreVolumeM3 * (1 - 0.1);
+    const oilInPlace = artifact.xAxis!.poreVolumeM3! * (1 - 0.1);
     const atOnePvi = cumOil.find((p) => (pviByDay.get(p.x) ?? 0) >= 1)!;
     return { breakthroughPvi, recoveryAtOnePvi: atOnePvi.y / oilInPlace };
 }

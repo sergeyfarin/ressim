@@ -55,8 +55,18 @@ export const dep_gas_pz: Scenario = {
     description: 'A dry-gas reservoir depleting from 400 bar, plotted the way gas reserves are actually estimated: p/z against cumulative production, extrapolated to zero. For a volumetric reservoir with a rigid pore volume that plot is a straight line whose x-intercept is the gas initially in place, and the base case here lands on it. The case then removes one assumption at a time. Raise pore compressibility to a geopressured value and the plot bows upward, because compaction and connate-water expansion are supporting pressure and the straight line reads that extra energy as extra gas. Put a tight interval between the well and most of the reservoir and the plot flatters even harder — it only knows about the compartment being drained, and reads a slow-feeding neighbour as extra gas. In each case the simulation is right and the interpretation is wrong, which is the point: the gas is where the volumetrics say it is, and the line is answering a question about the pore volume rather than about the reservoir. z is taken from the same gas table the simulator integrates, so the reference is never separated from the simulation by a correlation choice.',
     analyticalMethodSummary: 'Dry-gas material balance, G_p/G = 1 − (p/z)/(p_i/z_i), against cumulative gas produced. Two curves are drawn: the volumetric straight line, which assumes a rigid pore volume and no water influx, and the Ramagost–Farshad form that restores the pore and connate-water compressibility terms. Both use the gas initially in place computed from grid volumes, not fitted, so the vertical gap to the simulation is a reserves error rather than a curve fit.',
     analyticalMethodReference: 'Craft & Hawkins, Applied Petroleum Reservoir Engineering, ch. 5; Dake (1978), Fundamentals of Reservoir Engineering, §1.6 and ch. 3; Ramagost, B.P. & Farshad, F.F. (1981), "P/Z Abnormally Pressured Gas Reservoirs", SPE 10125; Fetkovich, Reese & Whitson (1998), SPEJ 3(1); Payne, D.A. (1996), "Material Balance Calculations in Tight Gas Reservoirs", SPERE 11(4).',
+    // OPM Flow on the same reservoir at both ends of the compressibility ladder.
+    // Carried because it is currently the only thing on the chart that gets the
+    // compaction term right — see the `pore_compressibility` dimension.
+    referenceSources: [{
+        kind: 'opm-flow',
+        artifactKeys: ['dep_gas_pz', 'dep_gas_pz_geopressured'],
+    }],
     chartLayoutKey: 'gas_material_balance',
-    defaultSensitivityDimensionKey: 'pore_compressibility',
+    // Connectivity leads, not compressibility: the compaction rungs are
+    // currently measuring an engine defect as well as the physics they were
+    // built for, and a case should open on a dimension it can stand behind.
+    defaultSensitivityDimensionKey: 'connectivity',
     capabilities: {
         analyticalMethod: 'gas-material-balance',
         hasInjector: false,
@@ -166,34 +176,34 @@ export const dep_gas_pz: Scenario = {
         {
             key: 'pore_compressibility',
             label: 'Pore Compressibility',
-            description: 'The same gas, the same grid, the same well, with only the pore compressibility changing across the range real rock spans — from a consolidated sandstone to a geopressured, poorly consolidated one. Extrapolate the stabilised part of each p/z plot to zero and the reserves it claims come out 0.8 %, 1.7 %, 4.7 % and 10.5 % above the volumetric gas in place. Nothing about the gas changed; what changed is how much of the pressure support came from the rock closing in and the connate water expanding, and a straight line has no term for either, so it books that energy as gas. The last rung produces 1.03 times the gas the volumetrics said was there — more than was ever "in place" — which is not an error but the compaction term arriving in the production stream. The second reference curve on the chart is the Ramagost–Farshad form with those terms restored; where the simulation leaves the straight line it stays with the corrected one.',
+            description: 'The same gas, the same grid, the same well, with only the pore compressibility changing across the range real rock spans — from a consolidated sandstone to a geopressured, poorly consolidated one. The mechanism is real: compaction and connate-water expansion support pressure, a straight line has no term for either, and it books that energy as gas. The magnitude on this chart is not yet trustworthy, and the OPM Flow curves are here to say so. ResSim\'s reserves error grows 0.8 %, 1.7 %, 4.7 % and 10.5 % across the ladder, but OPM Flow on the identical deck — the same PVT table, the same grid, Eclipse ROCK compressibility — produces only 1.9 % more gas at the top rung than at the bottom, where ResSim produces 10.7 % more. A dry-gas material balance worked by hand agrees with OPM to within 1 %. The base rung is sound in all three: ResSim 131.6, OPM 129.9 and hand 131.2 million Sm3. So read the shape of this dimension and not its numbers, and read the last two rungs as a demonstration that an independent reference is worth carrying: it is the only thing here that caught it. The defect and its mechanism are recorded in TODO.md.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'cf_normal',
                     label: 'c_f = 5e-6 /bar  (consolidated, base)',
-                    description: 'A competent sandstone, where the pore volume is effectively rigid. Recovery 0.929 of the gas in place at a 30 bar abandonment pressure, and the straight line over-reads reserves by 0.8 % — the reference case, where the assumption holds and the plot earns its reputation.',
+                    description: 'A competent sandstone, where the pore volume is effectively rigid. Recovery 0.929 of the gas in place at a 30 bar abandonment pressure, and the straight line over-reads reserves by 0.8 % — the reference case, where the assumption holds and the plot earns its reputation. ResSim, OPM Flow and a hand material balance agree here to within 1.3 %.',
                     paramPatch: {},
                     affectsAnalytical: false,
                 },
                 {
                     key: 'cf_moderate',
                     label: 'c_f = 5e-5 /bar',
-                    description: 'An order of magnitude softer, and still nearly invisible: reserves error 1.7 %, recovery 0.938. The mechanism is present and does not yet matter, which is why it is so often left out.',
+                    description: 'An order of magnitude softer, and still nearly invisible: reserves error 1.7 %, recovery 0.938. The mechanism is present and does not yet matter, which is why it is so often left out — and small enough that the engine defect above has not yet taken hold either.',
                     paramPatch: { rock_compressibility: 5e-5 },
                     affectsAnalytical: true,
                 },
                 {
                     key: 'cf_high',
                     label: 'c_f = 2e-4 /bar',
-                    description: 'Now it matters: reserves error 4.7 %, recovery 0.969. The plot is visibly bowed above its own chord, and an engineer drawing a ruler through the late points is already booking gas that is not there.',
+                    description: 'Reserves error 4.7 %, recovery 0.969, and the plot is visibly bowed above its own chord. Treat the bowing as qualitative: by this rung ResSim is releasing more gas from compaction than the balance allows, so the size of the bow is partly the defect rather than the rock.',
                     paramPatch: { rock_compressibility: 2e-4 },
                     affectsAnalytical: true,
                 },
                 {
                     key: 'cf_geopressured',
                     label: 'c_f = 5e-4 /bar  (geopressured)',
-                    description: 'The abnormally pressured case Ramagost and Farshad wrote about. Reserves error 10.5 %, and recovery reaches 1.029 of the volumetric gas in place — the reservoir delivers more gas than the initial volume contained, because compaction and water expansion keep pushing it out as the pressure falls. This is the rung where using the uncorrected line is a commercial mistake rather than a rounding one.',
+                    description: 'The abnormally pressured case Ramagost and Farshad wrote about, and the rung where ResSim and its reference part company. ResSim reports reserves error 10.5 % and recovery 1.029 of the volumetric gas in place; OPM Flow on the same deck reports 132.4 against its own 129.9 million Sm3, and a hand balance gives 133.6 against 131.2. Recovery above 1.0 is the right *sign* — compaction does deliver gas the initial volume never counted — but ResSim\'s compaction increment is about six times what the balance permits. Kept in the case, with OPM beside it, because a reference that only ever agrees is not doing any work.',
                     paramPatch: { rock_compressibility: 5e-4 },
                     affectsAnalytical: true,
                 },

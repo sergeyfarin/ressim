@@ -30,6 +30,10 @@ class OpmCase:
     # Declared rather than parsed — the deck text is the source of truth, and a
     # scenario test cross-checks it against the ResSim case it mirrors.
     pore_volume_m3: float | None = None
+    # Cumulative *surface* gas production vector (FGPT, unit SM3). Lets
+    # `build_artifact()` publish a time -> cumulative-gas mapping, which is what
+    # a p/z chart needs: its x-axis is produced gas, not time or injection.
+    cumulative_gas_curve: str | None = None
 
 
 def _clean_deck(text: str) -> str:
@@ -863,4 +867,377 @@ WF_NUMERICS_FINE = OpmCase(
 )
 
 
-CASES = {case.key: case for case in (WF_BL1D, SPE1_GAS_INJECTION, GAS_DRIVE, WF_GRAVITY, WF_NUMERICS, WF_NUMERICS_FINE)}
+# The p/z case's own deck, and the geopressured rung of its compressibility
+# ladder. Two cases rather than one because an artifact carries one run, and the
+# pair is the point: ROCK is a first-class Eclipse keyword, so an independent
+# simulator can be asked whether the reserves error really tracks c_f.
+DEP_GAS_PZ = OpmCase(
+    key="dep_gas_pz",
+    scenario_key="dep_gas_pz",
+    label="Dry-Gas Depletion (c_f = 5e-6 /bar, base)",
+    deck_name="DEP_GAS_PZ.DATA",
+    supported_curves=("FGPR", "FGPT", "FWPR", "FPR", "FGIP"),
+    units={"system": "METRIC", "time": "days", "pressure": "bar", "rate": "sm3/day"},
+    cumulative_gas_curve="FGPT",
+    curve_display={
+        "FPR": {"panelKey": "diagnostics", "curveKey": "opm-avg-pressure", "label": "OPM Flow \u2014 Avg Pressure (c_f = 5e-6)"},
+        "FGPR": {"panelKey": "rates", "curveKey": "opm-gas-rate", "label": "OPM Flow \u2014 Gas Rate (c_f = 5e-6)"},
+    },
+    deck=_clean_deck(
+        """
+        RUNSPEC
+        TITLE
+          RESSIM DEP_GAS_PZ OPM FLOW REFERENCE (c_f = 5e-6 /bar) /
+        DIMENS
+          20 1 5 /
+        -- Dry gas over connate water. The ResSim scenario runs its three-phase
+        -- machinery with S_o = 0 throughout; OPM models the same reservoir as a
+        -- genuine two-phase gas/water system, which is the same physics with one
+        -- fewer inert equation.
+        GAS
+        WATER
+        METRIC
+        TABDIMS
+          1 1 60 60 1 60 /
+        EQLDIMS
+        /
+        WELLDIMS
+          1 5 1 1 /
+        START
+          1 JAN 2026 /
+        GRID
+        DXV
+          20*100 /
+        DYV
+          1*100 /
+        DZV
+          5*4 /
+        TOPS
+          20*0 /
+        PORO
+          100*0.15 /
+        PERMX
+          100*5 /
+        PERMY
+          100*5 /
+        PERMZ
+          100*0.5 /
+        PROPS
+        -- Generated from the ResSim scenario's own `pvtTable`, so both simulators
+        -- integrate one gas law. A test pins these rows against that table.
+        PVDG
+          1.0000 1.27487388e+0 0.01339192
+          7.6271 1.65677785e-1 0.01343762
+          15.2542 8.21231756e-2 0.01351589
+          20.0000 6.23048775e-2 0.01357423
+          30.5085 4.03787793e-2 0.01372515
+          38.1356 3.20441594e-2 0.01385159
+          45.7627 2.64963503e-2 0.01399121
+          53.3898 2.25414782e-2 0.01414350
+          61.0169 1.95826239e-2 0.01430810
+          68.6441 1.72881762e-2 0.01448475
+          76.2712 1.54591732e-2 0.01467323
+          83.8983 1.39690017e-2 0.01487335
+          91.5254 1.27332466e-2 0.01508489
+          99.1525 1.16934563e-2 0.01530763
+          106.7797 1.08078644e-2 0.01554129
+          114.4068 1.00458234e-2 0.01578554
+          122.0339 9.38432554e-3 0.01604001
+          129.6610 8.80575223e-3 0.01630426
+          137.2881 8.29637365e-3 0.01657779
+          144.9153 7.84532318e-3 0.01686007
+          152.5424 7.44388001e-3 0.01715048
+          160.1695 7.08495761e-3 0.01744840
+          167.7966 6.76273237e-3 0.01775316
+          175.4237 6.47236994e-3 0.01806405
+          183.0508 6.20982051e-3 0.01838038
+          190.6780 5.97166384e-3 0.01870144
+          198.3051 5.75499033e-3 0.01902655
+          205.9322 5.55730882e-3 0.01935503
+          213.5593 5.37647420e-3 0.01968624
+          221.1864 5.21063007e-3 0.02001956
+          228.8136 5.05816269e-3 0.02035442
+          236.4407 4.91766380e-3 0.02069030
+          244.0678 4.78790010e-3 0.02102672
+          251.6949 4.66778821e-3 0.02136321
+          259.3220 4.55637369e-3 0.02169940
+          266.9492 4.45281357e-3 0.02203493
+          274.5763 4.35636156e-3 0.02236947
+          282.2034 4.26635548e-3 0.02270277
+          289.8305 4.18220654e-3 0.02303457
+          297.4576 4.10339018e-3 0.02336468
+          305.0847 4.02943811e-3 0.02369291
+          312.7119 3.95993155e-3 0.02401912
+          320.3390 3.89449525e-3 0.02434318
+          327.9661 3.83279239e-3 0.02466500
+          335.5932 3.77452008e-3 0.02498448
+          343.2203 3.71940550e-3 0.02530157
+          350.8475 3.66720248e-3 0.02561621
+          358.4746 3.61768848e-3 0.02592837
+          366.1017 3.57066205e-3 0.02623802
+          373.7288 3.52594046e-3 0.02654515
+          381.3559 3.48335773e-3 0.02684975
+          388.9831 3.44276283e-3 0.02715182
+          396.6102 3.40401815e-3 0.02745138
+          404.2373 3.36699804e-3 0.02774843
+          411.8644 3.33158768e-3 0.02804299
+          419.4915 3.29768190e-3 0.02833509
+          427.1186 3.26518431e-3 0.02862474
+          434.7458 3.23400636e-3 0.02891198
+          442.3729 3.20406666e-3 0.02919685
+          450.0000 3.17529021e-3 0.02947936 /
+        PVTW
+          400 1.0 4E-5 0.4 0 /
+        DENSITY
+          800 1000 0.7951 /
+        -- Pore compressibility at the initial pressure — the parameter this
+        -- reference exists to arbitrate.
+        ROCK
+          400 5E-6 /
+        -- Corey gas/water curves from the scenario's own end points:
+        -- S_wc 0.2, S_gc 0.02, n_g 1.5, n_w 2, k_rg_max 0.9, k_rw_max 0.4.
+        SGWFN
+          0.000000 0.00000000 0.40000000 0
+          0.040000 0.00369527 0.36100000 0
+          0.080000 0.01920116 0.32400000 0
+          0.120000 0.04131432 0.28900000 0
+          0.160000 0.06843727 0.25600000 0
+          0.200000 0.09977216 0.22500000 0
+          0.240000 0.13481389 0.19600000 0
+          0.280000 0.17320508 0.16900000 0
+          0.320000 0.21467550 0.14400000 0
+          0.360000 0.25901146 0.12100000 0
+          0.400000 0.30603845 0.10000000 0
+          0.440000 0.35561047 0.08100000 0
+          0.480000 0.40760298 0.06400000 0
+          0.520000 0.46190814 0.04900000 0
+          0.560000 0.51843134 0.03600000 0
+          0.600000 0.57708873 0.02500000 0
+          0.640000 0.63780532 0.01600000 0
+          0.680000 0.70051350 0.00900000 0
+          0.720000 0.76515191 0.00400000 0
+          0.760000 0.83166454 0.00100000 0
+          0.800000 0.90000000 0.00000000 0 /
+        REGIONS
+        SOLUTION
+        -- Datum at the mid-depth of the 20 m section. The gas/water contact is
+        -- far below the model, so every cell initialises at connate water.
+        EQUIL
+          10 400 10000 0 0 0 0 0 0 /
+        SUMMARY
+        FGPR
+        FGPT
+        FWPR
+        FPR
+        FGIP
+        RUNSUM
+        SEPARATE
+        SCHEDULE
+        RPTRST
+          BASIC=2 /
+        -- One producer at the centre of the section, all five layers, on the
+        -- same 30 bar abandonment pressure the scenario uses.
+        WELSPECS
+          'PROD' 'G' 11 1 10 'GAS' /
+        /
+        COMPDAT
+          'PROD' 11 1 1 5 'OPEN' 2* 0.2 /
+        /
+        WCONPROD
+          'PROD' 'OPEN' 'BHP' 5* 30 /
+        /
+        TSTEP
+          200*20 /
+        END
+"""
+    ),
+)
+
+
+DEP_GAS_PZ_GEOPRESSURED = OpmCase(
+    key="dep_gas_pz_geopressured",
+    scenario_key="dep_gas_pz",
+    label="Dry-Gas Depletion (c_f = 5e-4 /bar, geopressured)",
+    deck_name="DEP_GAS_PZ_GEOPRESSURED.DATA",
+    supported_curves=("FGPR", "FGPT", "FWPR", "FPR", "FGIP"),
+    units={"system": "METRIC", "time": "days", "pressure": "bar", "rate": "sm3/day"},
+    cumulative_gas_curve="FGPT",
+    curve_display={
+        "FPR": {"panelKey": "diagnostics", "curveKey": "opm-geo-avg-pressure", "label": "OPM Flow \u2014 Avg Pressure (c_f = 5e-4)"},
+        "FGPR": {"panelKey": "rates", "curveKey": "opm-geo-gas-rate", "label": "OPM Flow \u2014 Gas Rate (c_f = 5e-4)"},
+    },
+    deck=_clean_deck(
+        """
+        RUNSPEC
+        TITLE
+          RESSIM DEP_GAS_PZ OPM FLOW REFERENCE (c_f = 5e-4 /bar) /
+        DIMENS
+          20 1 5 /
+        -- Dry gas over connate water. The ResSim scenario runs its three-phase
+        -- machinery with S_o = 0 throughout; OPM models the same reservoir as a
+        -- genuine two-phase gas/water system, which is the same physics with one
+        -- fewer inert equation.
+        GAS
+        WATER
+        METRIC
+        TABDIMS
+          1 1 60 60 1 60 /
+        EQLDIMS
+        /
+        WELLDIMS
+          1 5 1 1 /
+        START
+          1 JAN 2026 /
+        GRID
+        DXV
+          20*100 /
+        DYV
+          1*100 /
+        DZV
+          5*4 /
+        TOPS
+          20*0 /
+        PORO
+          100*0.15 /
+        PERMX
+          100*5 /
+        PERMY
+          100*5 /
+        PERMZ
+          100*0.5 /
+        PROPS
+        -- Generated from the ResSim scenario's own `pvtTable`, so both simulators
+        -- integrate one gas law. A test pins these rows against that table.
+        PVDG
+          1.0000 1.27487388e+0 0.01339192
+          7.6271 1.65677785e-1 0.01343762
+          15.2542 8.21231756e-2 0.01351589
+          20.0000 6.23048775e-2 0.01357423
+          30.5085 4.03787793e-2 0.01372515
+          38.1356 3.20441594e-2 0.01385159
+          45.7627 2.64963503e-2 0.01399121
+          53.3898 2.25414782e-2 0.01414350
+          61.0169 1.95826239e-2 0.01430810
+          68.6441 1.72881762e-2 0.01448475
+          76.2712 1.54591732e-2 0.01467323
+          83.8983 1.39690017e-2 0.01487335
+          91.5254 1.27332466e-2 0.01508489
+          99.1525 1.16934563e-2 0.01530763
+          106.7797 1.08078644e-2 0.01554129
+          114.4068 1.00458234e-2 0.01578554
+          122.0339 9.38432554e-3 0.01604001
+          129.6610 8.80575223e-3 0.01630426
+          137.2881 8.29637365e-3 0.01657779
+          144.9153 7.84532318e-3 0.01686007
+          152.5424 7.44388001e-3 0.01715048
+          160.1695 7.08495761e-3 0.01744840
+          167.7966 6.76273237e-3 0.01775316
+          175.4237 6.47236994e-3 0.01806405
+          183.0508 6.20982051e-3 0.01838038
+          190.6780 5.97166384e-3 0.01870144
+          198.3051 5.75499033e-3 0.01902655
+          205.9322 5.55730882e-3 0.01935503
+          213.5593 5.37647420e-3 0.01968624
+          221.1864 5.21063007e-3 0.02001956
+          228.8136 5.05816269e-3 0.02035442
+          236.4407 4.91766380e-3 0.02069030
+          244.0678 4.78790010e-3 0.02102672
+          251.6949 4.66778821e-3 0.02136321
+          259.3220 4.55637369e-3 0.02169940
+          266.9492 4.45281357e-3 0.02203493
+          274.5763 4.35636156e-3 0.02236947
+          282.2034 4.26635548e-3 0.02270277
+          289.8305 4.18220654e-3 0.02303457
+          297.4576 4.10339018e-3 0.02336468
+          305.0847 4.02943811e-3 0.02369291
+          312.7119 3.95993155e-3 0.02401912
+          320.3390 3.89449525e-3 0.02434318
+          327.9661 3.83279239e-3 0.02466500
+          335.5932 3.77452008e-3 0.02498448
+          343.2203 3.71940550e-3 0.02530157
+          350.8475 3.66720248e-3 0.02561621
+          358.4746 3.61768848e-3 0.02592837
+          366.1017 3.57066205e-3 0.02623802
+          373.7288 3.52594046e-3 0.02654515
+          381.3559 3.48335773e-3 0.02684975
+          388.9831 3.44276283e-3 0.02715182
+          396.6102 3.40401815e-3 0.02745138
+          404.2373 3.36699804e-3 0.02774843
+          411.8644 3.33158768e-3 0.02804299
+          419.4915 3.29768190e-3 0.02833509
+          427.1186 3.26518431e-3 0.02862474
+          434.7458 3.23400636e-3 0.02891198
+          442.3729 3.20406666e-3 0.02919685
+          450.0000 3.17529021e-3 0.02947936 /
+        PVTW
+          400 1.0 4E-5 0.4 0 /
+        DENSITY
+          800 1000 0.7951 /
+        -- Pore compressibility at the initial pressure — the parameter this
+        -- reference exists to arbitrate.
+        ROCK
+          400 5E-4 /
+        -- Corey gas/water curves from the scenario's own end points:
+        -- S_wc 0.2, S_gc 0.02, n_g 1.5, n_w 2, k_rg_max 0.9, k_rw_max 0.4.
+        SGWFN
+          0.000000 0.00000000 0.40000000 0
+          0.040000 0.00369527 0.36100000 0
+          0.080000 0.01920116 0.32400000 0
+          0.120000 0.04131432 0.28900000 0
+          0.160000 0.06843727 0.25600000 0
+          0.200000 0.09977216 0.22500000 0
+          0.240000 0.13481389 0.19600000 0
+          0.280000 0.17320508 0.16900000 0
+          0.320000 0.21467550 0.14400000 0
+          0.360000 0.25901146 0.12100000 0
+          0.400000 0.30603845 0.10000000 0
+          0.440000 0.35561047 0.08100000 0
+          0.480000 0.40760298 0.06400000 0
+          0.520000 0.46190814 0.04900000 0
+          0.560000 0.51843134 0.03600000 0
+          0.600000 0.57708873 0.02500000 0
+          0.640000 0.63780532 0.01600000 0
+          0.680000 0.70051350 0.00900000 0
+          0.720000 0.76515191 0.00400000 0
+          0.760000 0.83166454 0.00100000 0
+          0.800000 0.90000000 0.00000000 0 /
+        REGIONS
+        SOLUTION
+        -- Datum at the mid-depth of the 20 m section. The gas/water contact is
+        -- far below the model, so every cell initialises at connate water.
+        EQUIL
+          10 400 10000 0 0 0 0 0 0 /
+        SUMMARY
+        FGPR
+        FGPT
+        FWPR
+        FPR
+        FGIP
+        RUNSUM
+        SEPARATE
+        SCHEDULE
+        RPTRST
+          BASIC=2 /
+        -- One producer at the centre of the section, all five layers, on the
+        -- same 30 bar abandonment pressure the scenario uses.
+        WELSPECS
+          'PROD' 'G' 11 1 10 'GAS' /
+        /
+        COMPDAT
+          'PROD' 11 1 1 5 'OPEN' 2* 0.2 /
+        /
+        WCONPROD
+          'PROD' 'OPEN' 'BHP' 5* 30 /
+        /
+        TSTEP
+          200*20 /
+        END
+"""
+    ),
+)
+
+
+CASES = {case.key: case for case in (
+    WF_BL1D, SPE1_GAS_INJECTION, GAS_DRIVE, WF_GRAVITY,
+    WF_NUMERICS, WF_NUMERICS_FINE, DEP_GAS_PZ, DEP_GAS_PZ_GEOPRESSURED,
+)}

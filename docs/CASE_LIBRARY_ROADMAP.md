@@ -54,8 +54,21 @@ under a p/z label. It now inverts z from the run's own `B_g` table and returns n
 carries no gas PVT or no `reservoirTemperature`, and the curve moved to a dedicated `pz` panel with
 the properly classified `p-over-z-` key family.
 
+**OPM Flow cross-check added 2026-08-01, and it earned its keep immediately.** Two decks
+(`dep_gas_pz` at c_f = 5e-6, `dep_gas_pz_geopressured` at 5e-4; flow 2026.04; GAS+WATER two-phase;
+PVDG generated from the scenario's own `pvtTable`; Eclipse `ROCK`). Cumulative gas over the ladder:
+OPM 129.9 -> 132.4e6 Sm3 (+1.9 %), a hand dry-gas material balance 131.2 -> 133.6e6 (+1.8 %), ResSim
+131.6 -> 145.7e6 (+10.7 %). OPM and the hand balance agree; **ResSim's compaction increment is about
+six times too large**, traced to the pore volume being referenced to the previous timestep's pressure
+instead of a fixed one. Recorded in `TODO.md` with the mechanism and the fix. The scenario now opens
+on `connectivity` rather than `pore_compressibility`, carries both OPM curves, and says plainly in
+the dimension text which of its numbers are trustworthy.
+
+This also needed the artifact x-axis map to grow a `cumulativeGasSm3` entry: a p/z chart's x-axis is
+produced gas, and `mapReferenceTimesToXAxis` had been dropping every reference series on `cumGas`.
+
 **Still open from T7.2:** the gas-cap/blowdown half, which needs Havlena-Odeh with `m` rather than
-the dry-gas balance, and an OPM Flow deck for `dep_gas_pz`.
+the dry-gas balance.
 
 ### T7.2 feasibility spike (2026-08-01) — the go/no-go that preceded the case above
 
