@@ -55,6 +55,18 @@ export interface SimulatorWellDefinition {
   skin: number;
   completions: SimulatorWellCompletion[];
   schedule?: SimulatorWellSchedule;
+  /**
+   * Depth [m] the well's `bhp` is quoted at. Omit to reference it to the
+   * shallowest completion (the Eclipse WELSPECS default). Only has an effect
+   * when gravity is enabled.
+   */
+  datumDepth?: number;
+  /**
+   * Density [kg/m³] of the fluid column standing in the wellbore, used to carry
+   * `bhp` from the datum down to each completion. Omit to let the engine derive
+   * it from the completion fluids each step.
+   */
+  wellboreDensity?: number;
 }
 
 /** Permutation mode for assigning permeability */

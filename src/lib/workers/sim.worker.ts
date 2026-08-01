@@ -119,6 +119,23 @@ function applyWellSchedule(simulator: ReservoirSimulator, well: SimulatorWellDef
   );
 }
 
+function applyWellDatum(simulator: ReservoirSimulator, well: SimulatorWellDefinition): void {
+  const setWellDatum = (simulator as any).setWellDatum;
+  if (typeof setWellDatum !== 'function') {
+    return;
+  }
+  if (well.datumDepth === undefined && well.wellboreDensity === undefined) {
+    return;
+  }
+
+  setWellDatum.call(
+    simulator,
+    String(well.id),
+    Number(well.datumDepth ?? Number.NaN),
+    Number(well.wellboreDensity ?? Number.NaN),
+  );
+}
+
 function getStatePayload(recordHistory: boolean, stepIndex: number, profile: Record<string, any> = {}): Record<string, any> {
   if (!simulator) {
     throw new Error('Simulator not initialized');
@@ -411,6 +428,7 @@ function configureSimulator(payload: SimulatorCreatePayload) {
         addWellCompletion(simulator, well, completion);
       }
       applyWellSchedule(simulator, well);
+      applyWellDatum(simulator, well);
     }
   } catch (err: any) {
     throw new Error(`Failed to configure wells: ${err?.message || err}`);

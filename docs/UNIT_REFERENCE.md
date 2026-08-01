@@ -22,8 +22,12 @@ T [m³/day/bar] = 8.5269888e-3 × k[mD] × A[m²] × λ[1/cP] / L[m]
 
 ### Well Rate
 ```
-Rate [m³/day] = PI [m³/day/bar] × (p_block [bar] - BHP [bar])
+Rate [m³/day] = PI [m³/day/bar] × (p_block [bar] - BHP_completion [bar])
+
+BHP_completion [bar] = BHP_datum [bar] + ρ_wb [kg/m³] × g [m/s²] × Δz [m] × 1e-5
 ```
+`BHP` is quoted at the well's datum depth; `Δz` is this completion's depth below
+that datum. The head term is zero unless gravity is enabled.
 
 ### Mobility
 ```
@@ -174,7 +178,7 @@ When setting up a simulation:
 2. **IMPES method:** Implicit pressure, explicit saturation
 3. **Upwind scheme:** Flux evaluation for saturation stability
 4. **Corey model:** Standard relative permeability correlation
-5. **Gravity:** Optional toggle with phase-density-weighted hydrostatic head
+5. **Gravity:** Optional toggle with phase-density-weighted hydrostatic head, both between cells and down the wellbore from a well's datum depth to each of its completions
 6. **Capillary pressure:** Optional Brooks-Corey capillary model
 7. **Black-oil mode:** Optional pressure-dependent PVT path for volatile-oil style studies
 

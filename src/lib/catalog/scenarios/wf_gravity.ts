@@ -6,12 +6,16 @@ import { waterfloodBLDef } from '../analyticalAdapters';
  * Gravity override in a vertical cross-section, measured against the
  * Buckley-Leverett solution that ignores it.
  *
- * Well completions are deliberately single-layer. Every completion of a well
- * shares one bottom hole pressure and the engine applies no wellbore
- * hydrostatic correction, so a fully perforated well in a 40 m section under
- * gravity would allocate injection towards the top purely as a modelling
- * artefact — of the same order as the physical effect this case measures.
- * One perforated layer per well removes that allocation entirely (TODO.md).
+ * Well completions are single-layer, and now by design rather than by
+ * necessity. The engine carries each completion's BHP from the well's datum
+ * down the wellbore (`Well::head_offset_bar`), so a fully perforated well under
+ * gravity no longer allocates flow by depth as an artefact. What single-layer
+ * completions buy this case is the `completion_strategy` dimension: with one
+ * perforation per well, moving the producer from the base of the section to the
+ * top turns gravity from a loss into a gain, which is the point that dimension
+ * makes. The recorded numbers throughout this file were measured with these
+ * completions and are unaffected by the datum correction, which is identically
+ * zero for a well with a single completion.
  */
 export const wf_gravity: Scenario = {
     key: 'wf_gravity',

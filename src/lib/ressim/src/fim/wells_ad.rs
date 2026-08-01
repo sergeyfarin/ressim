@@ -139,9 +139,14 @@ pub(crate) fn producer_fractions_neighbor_block(
 }
 
 /// Generic mirror of `wells::connection_rate_for_bhp`.
+///
+/// `head_offset_bar` carries the well's datum `bhp` down to this completion
+/// (`Well::head_offset_bar`). It is a constant of the step, so it shifts the
+/// residual without touching any Jacobian entry.
 pub(crate) fn connection_rate_generic<S: Scalar>(
     sim: &ReservoirSimulator,
     wi_geom: f64,
+    head_offset_bar: f64,
     injector: bool,
     cell: &WellCellInput<S>,
     bhp: S,
@@ -156,7 +161,7 @@ pub(crate) fn connection_rate_generic<S: Scalar>(
     );
     let mob = sim.phase_mobilities_for_state_generic(cell.sw, props.sg, cell.p, props.rs);
     let connection_mobility = (mob.water + mob.oil + mob.gas).max_floor(0.0);
-    let raw_rate = (connection_mobility * (cell.p - bhp)) * wi_geom;
+    let raw_rate = (connection_mobility * (cell.p - bhp - S::from_f64(head_offset_bar))) * wi_geom;
 
     // Mirror `wells::perforation_connection_bhp_derivative` /
     // `perforation_connection_cell_derivatives`'s explicit STRICT-inequality
@@ -444,13 +449,15 @@ fn cell_as_ad4(cell: &WellCellInput<f64>) -> WellCellInput<Ad<4>> {
 pub(crate) fn rate_consistency_cell_bhp_jacobian(
     sim: &ReservoirSimulator,
     wi_geom: f64,
+    head_offset_bar: f64,
     injector: bool,
     cell: &WellCellInput<f64>,
     bhp: f64,
 ) -> ([f64; 3], f64) {
     let cell_ad = cell_as_ad4(cell);
     let bhp_ad = Ad::<4>::variable(bhp, 3);
-    let connection = connection_rate_generic(sim, wi_geom, injector, &cell_ad, bhp_ad);
+    let connection =
+        connection_rate_generic(sim, wi_geom, head_offset_bar, injector, &cell_ad, bhp_ad);
     let d = connection.deriv();
     ([-d[0], -d[1], -d[2]], -d[3])
 }
@@ -634,6 +641,7 @@ pub(crate) fn well_constraint_neighbor_rate_jacobian(
 pub(crate) fn perforation_residual_generic<S: Scalar>(
     sim: &ReservoirSimulator,
     wi_geom: f64,
+    head_offset_bar: f64,
     injector: bool,
     injected_fluid: InjectedFluid,
     cell: &WellCellInput<S>,
@@ -642,7 +650,8 @@ pub(crate) fn perforation_residual_generic<S: Scalar>(
     q: S,
     control: &WellControlValuesGeneric,
 ) -> [S; 5] {
-    let rate_consistency = q - connection_rate_generic(sim, wi_geom, injector, cell, bhp);
+    let rate_consistency =
+        q - connection_rate_generic(sim, wi_geom, head_offset_bar, injector, cell, bhp);
     let solo = [WellPerforationInputGeneric {
         cell: *cell,
         fractions: fractions.copied(),
@@ -676,6 +685,7 @@ pub(crate) fn perforation_residual_generic<S: Scalar>(
 pub(crate) fn perforation_jacobian(
     sim: &ReservoirSimulator,
     wi_geom: f64,
+    head_offset_bar: f64,
     injector: bool,
     injected_fluid: InjectedFluid,
     cell: &WellCellInput<f64>,
@@ -718,6 +728,7 @@ pub(crate) fn perforation_jacobian(
     let residual = perforation_residual_generic(
         sim,
         wi_geom,
+        head_offset_bar,
         injector,
         injected_fluid,
         &cell_ad,
@@ -738,6 +749,7 @@ pub(crate) fn perforation_jacobian(
 pub(crate) fn perforation_residual_f64(
     sim: &ReservoirSimulator,
     wi_geom: f64,
+    head_offset_bar: f64,
     injector: bool,
     injected_fluid: InjectedFluid,
     cell: &WellCellInput<f64>,
@@ -750,6 +762,7 @@ pub(crate) fn perforation_residual_f64(
     perforation_residual_generic(
         sim,
         wi_geom,
+        head_offset_bar,
         injector,
         injected_fluid,
         cell,
@@ -847,12 +860,16 @@ mod tests {
     ) {
         let sim = three_phase_sim();
         let wi_geom = 12.0_f64;
+        // Non-zero so the finite-difference check also proves the datum head
+        // shifts the residual without disturbing any Jacobian entry.
+        let head_offset_bar = 2.5_f64;
         let neighborhood = [cell_in];
         let producer_neighborhood = producer.then_some((neighborhood.as_slice(), 0usize));
 
         let analytic = perforation_jacobian(
             &sim,
             wi_geom,
+            head_offset_bar,
             injector,
             injected_fluid,
             &cell_in,
@@ -875,6 +892,7 @@ mod tests {
             perforation_residual_f64(
                 &sim,
                 wi_geom,
+                head_offset_bar,
                 injector,
                 injected_fluid,
                 &c2,
@@ -1114,8 +1132,14 @@ mod tests {
         // returns `None` on non-finite geometry); compare against the
         // always-`Some` case directly.
         let real_rate_residual = wells::perforation_rate_residual(&sim, &state, &topology, 0);
-        let generic_rate_residual =
-            q - connection_rate_generic(&sim, wi_geom, injector, &cell, bhp);
+        let generic_rate_residual = q - connection_rate_generic(
+            &sim,
+            wi_geom,
+            wells::perforation_head_offset_bar(&sim, perforation),
+            injector,
+            &cell,
+            bhp,
+        );
         assert!(
             (real_rate_residual.unwrap() - generic_rate_residual).abs() < 1e-10,
             "rate residual: real={:?} generic={}",

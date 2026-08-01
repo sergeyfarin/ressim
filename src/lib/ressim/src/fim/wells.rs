@@ -185,7 +185,7 @@ impl<'a> FimPerforationLocalBlock<'a> {
         let well_index = geometric_well_index(sim, perforation)?;
         let connection_mobility = (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
         let bhp_bar = self.state.well_bhp[self.physical_well_idx()];
-        let drawdown_bar = cell.pressure_bar - bhp_bar;
+        let drawdown_bar = cell.pressure_bar - well.connection_pressure_bar(bhp_bar);
         let raw_connection_m3_day = well_index * connection_mobility * drawdown_bar;
         if !raw_connection_m3_day.is_finite() {
             return None;
@@ -441,13 +441,21 @@ impl<'a> FimWellLocalBlock<'a> {
 
         let injector = self.well().injector;
         let target_rate = control.target_rate?;
+        // Brackets live in *datum* space, like the BHP being solved for: a
+        // completion stops flowing at `p_cell - head_offset`, so raw cell
+        // pressures would leave a fully perforated well's zero-rate BHP
+        // outside the bracket.
+        let datum_zero_rate_pressure = |perf: &FimPerforationLocalBlock<'_>| {
+            self.state.cell(perf.cell_idx()).pressure_bar
+                - perforation_head_offset_bar(sim, perf.perforation())
+        };
         let min_pressure = perforations
             .iter()
-            .map(|perf| self.state.cell(perf.cell_idx()).pressure_bar)
+            .map(datum_zero_rate_pressure)
             .fold(f64::INFINITY, f64::min);
         let max_pressure = perforations
             .iter()
-            .map(|perf| self.state.cell(perf.cell_idx()).pressure_bar)
+            .map(datum_zero_rate_pressure)
             .fold(f64::NEG_INFINITY, f64::max);
 
         if !min_pressure.is_finite() || !max_pressure.is_finite() {
@@ -587,6 +595,16 @@ pub(crate) fn build_well_topology(sim: &ReservoirSimulator) -> FimWellTopology {
 
 fn perforation_well<'a>(sim: &'a ReservoirSimulator, perforation: &FimPerforation) -> &'a Well {
     &sim.wells[perforation.well_entry_index]
+}
+
+/// Hydrostatic head from this well's datum down to this completion [bar].
+///
+/// Zero unless gravity is enabled; see `Well::head_offset_bar`.
+pub(crate) fn perforation_head_offset_bar(
+    sim: &ReservoirSimulator,
+    perforation: &FimPerforation,
+) -> f64 {
+    perforation_well(sim, perforation).head_offset_bar
 }
 
 fn physical_well<'a>(
@@ -1095,7 +1113,8 @@ pub(crate) fn connection_rate_for_bhp(
 
     let connection_mobility = (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
 
-    let raw_rate = wi_geom * connection_mobility * (cell.pressure_bar - bhp_bar);
+    let raw_rate =
+        wi_geom * connection_mobility * (cell.pressure_bar - well.connection_pressure_bar(bhp_bar));
     if !raw_rate.is_finite() {
         return None;
     }
@@ -1285,7 +1304,8 @@ pub(crate) fn perforation_connection_bhp_derivative(
     let connection_mobility = (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
 
     let active_derivative = -wi_geom * connection_mobility;
-    let raw_rate = wi_geom * connection_mobility * (cell.pressure_bar - bhp_bar);
+    let raw_rate =
+        wi_geom * connection_mobility * (cell.pressure_bar - well.connection_pressure_bar(bhp_bar));
     if !raw_rate.is_finite() {
         return None;
     }
@@ -1324,7 +1344,8 @@ pub(crate) fn perforation_connection_pressure_derivative(
         sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
     let wi_geom = geometric_well_index(sim, perforation)?;
     let connection_mobility = (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
-    let raw_rate = wi_geom * connection_mobility * (cell.pressure_bar - bhp_bar);
+    let raw_rate =
+        wi_geom * connection_mobility * (cell.pressure_bar - well.connection_pressure_bar(bhp_bar));
     if !raw_rate.is_finite() {
         return None;
     }
@@ -1349,7 +1370,7 @@ pub(crate) fn perforation_connection_cell_derivatives(
     let id = perforation.cell_index;
     let cell = state.cell(id);
     let wi_geom = geometric_well_index(sim, perforation)?;
-    let drawdown = cell.pressure_bar - bhp_bar;
+    let drawdown = cell.pressure_bar - well.connection_pressure_bar(bhp_bar);
     let local = local_phase_sensitivity(sim, state, id);
 
     let (connection_mobility, dmob_dp, dmob_dsw, dmob_dh) = if well.injector {

@@ -8,4 +8,5 @@ mod gas_flood;
 mod geometry_anisotropy;
 mod pvt_flash;
 mod waterflood;
+mod wellbore_datum;
 mod wells_sources;

@@ -88,6 +88,30 @@ pub struct Well {
     pub well_radius: f64,
     /// Skin factor [dimensionless]
     pub skin: f64,
+    /// Depth the well's `bhp` is referenced to [m TVDSS], shared by every
+    /// completion of the same physical well.
+    ///
+    /// `None` defers to the shallowest completion of the well, which is the
+    /// Eclipse `WELSPECS` default. Only consulted when gravity is enabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub datum_depth_m: Option<f64>,
+    /// Density of the fluid column standing in the wellbore [kg/m³], used to
+    /// carry `bhp` from the datum down to each completion.
+    ///
+    /// `None` lets the engine derive it per step from the completion fluids —
+    /// the injected phase for an injector, the mobility-weighted in-situ
+    /// mixture for a producer. Only consulted when gravity is enabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wellbore_density_kg_m3: Option<f64>,
+    /// Hydrostatic head from the datum down to *this* completion [bar], so the
+    /// pressure the connection law sees is `bhp + head_offset_bar`.
+    ///
+    /// Derived, not input: [`ReservoirSimulator::refresh_well_head_offsets`]
+    /// rewrites it whenever the well set or the fluid state moves, and it is
+    /// identically zero while gravity is disabled. It is held fixed across a
+    /// step so the FIM Jacobian keeps `∂q/∂bhp` unchanged.
+    #[serde(default)]
+    pub head_offset_bar: f64,
     /// Bottomhole pressure the well actually flowed at on the last recorded
     /// step [bar], or `None` before the first step / while disabled.
     ///
@@ -101,6 +125,15 @@ pub struct Well {
 }
 
 impl Well {
+    /// Pressure this completion's connection law works against [bar]: the
+    /// well's datum `bhp` carried down the wellbore by [`Self::head_offset_bar`].
+    ///
+    /// Every consumer of a BHP as a *connection* pressure must go through here;
+    /// `bhp` alone is the datum value and is only correct at the datum depth.
+    pub fn connection_pressure_bar(&self, bhp_bar: f64) -> f64 {
+        bhp_bar + self.head_offset_bar
+    }
+
     /// Validate well parameters to prevent NaN/Inf and unphysical values
     /// Returns Ok(()) if parameters are valid, Err(message) otherwise
     pub fn validate(&self, nx: usize, ny: usize, nz: usize) -> Result<(), String> {
@@ -156,6 +189,24 @@ impl Well {
                 "BHP out of reasonable range [-100, 2000] bar, got: {}",
                 self.bhp
             ));
+        }
+
+        if let Some(datum_depth) = self.datum_depth_m {
+            if !datum_depth.is_finite() {
+                return Err(format!(
+                    "Well datum depth must be finite, got: {}",
+                    datum_depth
+                ));
+            }
+        }
+
+        if let Some(wellbore_density) = self.wellbore_density_kg_m3 {
+            if !wellbore_density.is_finite() || wellbore_density < 0.0 {
+                return Err(format!(
+                    "Wellbore density must be finite and non-negative, got: {}",
+                    wellbore_density
+                ));
+            }
         }
 
         if let Some(well_id) = &self.physical_well_id {

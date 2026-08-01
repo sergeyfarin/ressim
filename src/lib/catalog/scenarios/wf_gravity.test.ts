@@ -22,15 +22,31 @@ type VariantRun = {
     /** Recovery of oil in place at one pore volume injected. */
     recoveryAtOnePvi: number;
     warning: string;
+    /** Per-completion wellbore head offsets [bar], in the order wells were added. */
+    headOffsets: number[];
+};
+
+/** Completion overrides, for exercising fully perforated wells under gravity. */
+type CompletionOverride = {
+    injectorKLayers: number[];
+    producerKLayers: number[];
+    /** Depth [m] to quote both wells' BHP at; omit for the shallowest completion. */
+    datumDepth?: number;
+    /** Scenario params to replace before the run (rates, BHPs, step count). */
+    params?: Record<string, number | boolean>;
 };
 
 /**
  * Runs one variant end to end against the wasm core, mirroring what the worker
- * builds from the same params — including the single-layer completions, which
- * are the reason this case can enable gravity honestly.
+ * builds from the same params. Completions come from the scenario unless
+ * `override` replaces them.
  */
-function runVariant(dimensionKey: string, variantKey: string): VariantRun {
-    const params = getScenarioWithVariantParams('wf_gravity', dimensionKey, variantKey);
+function runVariant(
+    dimensionKey: string,
+    variantKey: string,
+    override?: CompletionOverride,
+): VariantRun {
+    const params = { ...getScenarioWithVariantParams('wf_gravity', dimensionKey, variantKey), ...override?.params };
     const nx = Number(params.nx);
     const ny = Number(params.ny);
     const nz = Number(params.nz);
@@ -67,17 +83,39 @@ function runVariant(dimensionKey: string, variantKey: string): VariantRun {
     sim.setWellControlModes(String(params.injectorControlMode), String(params.producerControlMode));
     sim.setTargetWellRates(Number(params.targetInjectorRate), Number(params.targetProducerRate));
     sim.setWellBhpLimits(Number(params.producerBhp), Number(params.injectorBhp));
-    for (const k of params.injectorKLayers as number[]) {
-        sim.add_well(
-            Number(params.injectorI), Number(params.injectorJ), k, Number(params.injectorBhp),
-            Number(params.well_radius), Number(params.well_skin), true,
-        );
-    }
-    for (const k of params.producerKLayers as number[]) {
-        sim.add_well(
-            Number(params.producerI), Number(params.producerJ), k, Number(params.producerBhp),
-            Number(params.well_radius), Number(params.well_skin), false,
-        );
+    const injectorLayers = override?.injectorKLayers ?? (params.injectorKLayers as number[]);
+    const producerLayers = override?.producerKLayers ?? (params.producerKLayers as number[]);
+    if (override) {
+        // Identified completions, so the datum can be attached to the physical well.
+        for (const k of injectorLayers) {
+            sim.addWellWithId(
+                Number(params.injectorI), Number(params.injectorJ), k, Number(params.injectorBhp),
+                Number(params.well_radius), Number(params.well_skin), true, 'injector-main',
+            );
+        }
+        for (const k of producerLayers) {
+            sim.addWellWithId(
+                Number(params.producerI), Number(params.producerJ), k, Number(params.producerBhp),
+                Number(params.well_radius), Number(params.well_skin), false, 'producer-main',
+            );
+        }
+        if (override.datumDepth !== undefined) {
+            sim.setWellDatum('injector-main', override.datumDepth, Number.NaN);
+            sim.setWellDatum('producer-main', override.datumDepth, Number.NaN);
+        }
+    } else {
+        for (const k of injectorLayers) {
+            sim.add_well(
+                Number(params.injectorI), Number(params.injectorJ), k, Number(params.injectorBhp),
+                Number(params.well_radius), Number(params.well_skin), true,
+            );
+        }
+        for (const k of producerLayers) {
+            sim.add_well(
+                Number(params.producerI), Number(params.producerJ), k, Number(params.producerBhp),
+                Number(params.well_radius), Number(params.well_skin), false,
+            );
+        }
     }
 
     const poreVolume = nx * Number(params.cellDx) * ny * Number(params.cellDy)
@@ -106,18 +144,22 @@ function runVariant(dimensionKey: string, variantKey: string): VariantRun {
         }
     }
     const warning = sim.getLastSolverWarning();
+    const headOffsets = (sim.getWellState() as Array<Record<string, number>>)
+        .map((well) => Number(well.head_offset_bar ?? 0));
     sim.free();
-    return { breakthroughPvi, recoveryAtOnePvi, warning };
+    return { breakthroughPvi, recoveryAtOnePvi, warning, headOffsets };
 }
 
 describe('wf_gravity scenario definition', () => {
-    it('perforates one layer per well so gravity can be enabled honestly', () => {
+    it('perforates one layer per well so the completion dimension has something to move', () => {
         const scenario = getScenario('wf_gravity');
 
         expect(scenario?.params.gravityEnabled).toBe(true);
-        // Every completion of a well shares one BHP with no wellbore hydrostatic
-        // correction, so multi-layer completions under gravity would bias the
-        // injection profile by more than the effect being measured.
+        // One perforation per well is what lets `completion_strategy` move the
+        // producer from the base of the section to the top. (Multi-layer
+        // completions are no longer barred under gravity — the engine references
+        // each completion's BHP to the well's datum — but they would collapse
+        // that dimension.)
         expect(scenario?.params.injectorKLayers).toEqual([19]);
         expect(scenario?.params.producerKLayers).toEqual([19]);
         // Isotropic permeability: the gravity-off control then differs from BL
@@ -269,6 +311,65 @@ describe('wf_gravity measured behaviour', () => {
         expect(topGravity.recoveryAtOnePvi).toBeGreaterThan(topNoGravity.recoveryAtOnePvi);
         expect(topGravity.recoveryAtOnePvi - bottomGravity.recoveryAtOnePvi).toBeGreaterThan(0.1);
     }, 180_000);
+
+    it('references a fully perforated well\'s BHP to its datum instead of biasing by depth', async () => {
+        await ensureWasmReady();
+
+        const scenario = getScenario('wf_gravity');
+        const nz = Number(scenario?.params.nz);
+        const cellDz = Number(scenario?.params.cellDz);
+        const allLayers = Array.from({ length: nz }, (_, k) => k);
+        // Short horizon: what this test measures is the head profile the wasm
+        // API produces, not a recovery number. Note that this configuration
+        // still trips IMPES's pressure recovery at t≈0 — that failure is
+        // reproducible on the pre-datum engine and is tracked separately in
+        // TODO.md, so the warning is deliberately not asserted here.
+        const fullyPerforatedParams = { steps: 20 };
+
+        const fullyPerforated = runVariant('gravity_number', 'ng_base', {
+            injectorKLayers: allLayers,
+            producerKLayers: allLayers,
+            params: fullyPerforatedParams,
+        });
+
+        // Default datum is the shallowest completion, so the head runs from zero
+        // at the top of the section to ρ·g·H at its base. With water standing in
+        // the wellbore that is ~1000 × 9.80665 × 38 m ≈ 3.7 bar.
+        const injectorHeads = fullyPerforated.headOffsets.slice(0, nz);
+        expect(injectorHeads[0]).toBeCloseTo(0, 10);
+        for (let k = 1; k < nz; k += 1) {
+            expect(injectorHeads[k]).toBeGreaterThan(injectorHeads[k - 1]);
+        }
+        const sectionHeight = (nz - 1) * cellDz;
+        expect(injectorHeads[nz - 1]).toBeGreaterThan(0.9e-5 * 1000 * 9.80665 * sectionHeight);
+        expect(injectorHeads[nz - 1]).toBeLessThan(1.1e-5 * 1000 * 9.80665 * sectionHeight);
+
+        // Quoting the same well at the base of the section shifts every head by
+        // one constant, leaving the depth *differences* untouched. The two runs
+        // are not the same flood — the same BHP number now means a deeper
+        // pressure — so the derived column densities drift apart by a few ppm.
+        const datumAtBase = runVariant('gravity_number', 'ng_base', {
+            injectorKLayers: allLayers,
+            producerKLayers: allLayers,
+            datumDepth: (nz - 0.5) * cellDz,
+            params: fullyPerforatedParams,
+        });
+        const shiftedHeads = datumAtBase.headOffsets.slice(0, nz);
+        for (let k = 1; k < nz; k += 1) {
+            expect(shiftedHeads[k] - shiftedHeads[k - 1])
+                .toBeCloseTo(injectorHeads[k] - injectorHeads[k - 1], 3);
+        }
+        expect(shiftedHeads[0]).toBeLessThan(0);
+
+        // Gravity off leaves every completion on the well's single BHP, exactly
+        // as before the datum existed.
+        const noGravity = runVariant('gravity_number', 'ng_base', {
+            injectorKLayers: allLayers,
+            producerKLayers: allLayers,
+            params: { ...fullyPerforatedParams, gravityEnabled: false },
+        });
+        expect(noGravity.headOffsets.every((head) => head === 0)).toBe(true);
+    }, 240_000);
 
     it('needs vertical communication before gravity can segregate the fluids', async () => {
         await ensureWasmReady();

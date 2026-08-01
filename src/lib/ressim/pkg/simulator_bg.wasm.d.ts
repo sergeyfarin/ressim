@@ -67,6 +67,7 @@ export const reservoirsimulator_setThreePhaseRelPermProps: (a: number, b: number
 export const reservoirsimulator_setThreePhaseScalTables: (a: number, b: any) => [number, number];
 export const reservoirsimulator_setWellBhpLimits: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setWellControlModes: (a: number, b: number, c: number, d: number, e: number) => void;
+export const reservoirsimulator_setWellDatum: (a: number, b: number, c: number, d: number, e: number) => [number, number];
 export const reservoirsimulator_setWellSchedule: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number];
 export const reservoirsimulator_step: (a: number, b: number) => void;
 export const reservoirsimulator_stepWithDiagnostics: (a: number, b: number) => [number, number];

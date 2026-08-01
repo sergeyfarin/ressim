@@ -197,7 +197,8 @@ impl ReservoirSimulator {
                                     WellControlDecision::Bhp { bhp_bar } => {
                                         if w.productivity_index.is_finite() && bhp_bar.is_finite() {
                                             diag += w.productivity_index;
-                                            b_rhs[id] += w.productivity_index * *bhp_bar;
+                                            b_rhs[id] += w.productivity_index
+                                                * w.connection_pressure_bar(*bhp_bar);
                                         }
                                     }
                                 }

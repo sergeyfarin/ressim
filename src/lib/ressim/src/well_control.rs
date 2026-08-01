@@ -3,6 +3,9 @@ use crate::{InjectedFluid, ReservoirSimulator, Well};
 /// Conversion factor from mD·m²/(m·cP) to m³/day/bar.
 const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
+/// Standard gravity [m/s²], as used by the flux gravity term.
+const GRAVITY_M_S2: f64 = 9.806_65;
+
 #[derive(Clone, Copy)]
 pub(crate) enum WellControlDecision {
     Disabled,
@@ -172,6 +175,108 @@ impl ReservoirSimulator {
         }
     }
 
+    /// Recompute every completion's hydrostatic offset from its well's datum.
+    ///
+    /// `Well::bhp` is one number shared by all completions of a physical well,
+    /// but those completions sit at different depths, so the pressure the
+    /// connection law must see at completion `k` is
+    /// `bhp + ρ_wb·g·(z_k − z_datum)`. Without that term a fully perforated
+    /// well allocates flow to whichever end of the column the reservoir's own
+    /// hydrostatic gradient favours — negligible against a 300 bar drawdown,
+    /// dominant in exactly the gravity-dominated regime where the drawdown is a
+    /// bar or two.
+    ///
+    /// Recomputed once per step rather than per Newton iteration, so the offset
+    /// is a constant of the step: `∂q/∂bhp` is untouched and the FIM Jacobian
+    /// keeps its current entries.
+    pub(crate) fn refresh_well_head_offsets(&mut self) {
+        if !self.gravity_enabled {
+            for well in self.wells.iter_mut() {
+                well.head_offset_bar = 0.0;
+            }
+            return;
+        }
+
+        let offsets: Vec<f64> = (0..self.wells.len())
+            .map(|idx| self.completion_head_offset_bar(idx))
+            .collect();
+        for (well, offset) in self.wells.iter_mut().zip(offsets) {
+            well.head_offset_bar = offset;
+        }
+    }
+
+    fn completion_head_offset_bar(&self, well_idx: usize) -> f64 {
+        let well = &self.wells[well_idx];
+        let group = self.well_control_group_indices(well);
+        let datum_depth_m = self.well_datum_depth_m(&group);
+        let density_kg_m3 = self.wellbore_density_kg_m3(&group);
+        let offset =
+            density_kg_m3 * GRAVITY_M_S2 * (self.depth_at_k(well.k) - datum_depth_m) * 1e-5;
+        if offset.is_finite() { offset } else { 0.0 }
+    }
+
+    /// Depth `bhp` is quoted at: the first explicit `datum_depth_m` in the
+    /// group, else the shallowest completion — Eclipse's `WELSPECS` default.
+    fn well_datum_depth_m(&self, group: &[usize]) -> f64 {
+        if let Some(datum_depth) = group
+            .iter()
+            .find_map(|&idx| self.wells[idx].datum_depth_m)
+            .filter(|datum_depth| datum_depth.is_finite())
+        {
+            return datum_depth;
+        }
+
+        group
+            .iter()
+            .map(|&idx| self.depth_at_k(self.wells[idx].k))
+            .fold(f64::INFINITY, f64::min)
+    }
+
+    /// Density of the column standing in the wellbore: the first explicit
+    /// `wellbore_density_kg_m3` in the group, else derived from what the
+    /// completions are carrying — the injected phase for an injector, the
+    /// mobility-weighted in-situ mixture for a producer, averaged over the
+    /// group's completions.
+    fn wellbore_density_kg_m3(&self, group: &[usize]) -> f64 {
+        if let Some(density) = group
+            .iter()
+            .find_map(|&idx| self.wells[idx].wellbore_density_kg_m3)
+            .filter(|density| density.is_finite() && *density >= 0.0)
+        {
+            return density;
+        }
+
+        let mut total = 0.0;
+        let mut count = 0.0;
+        for &idx in group {
+            let well = &self.wells[idx];
+            let id = self.idx(well.i, well.j, well.k);
+            let pressure_bar = self.pressure[id];
+            let density = if well.injector {
+                // A two-phase model injects water whatever `injected_fluid`
+                // says — same rule as `fim::wells::effective_injected_fluid`.
+                match self.injected_fluid {
+                    InjectedFluid::Gas if self.three_phase_mode => {
+                        self.gas_density_generic(pressure_bar)
+                    }
+                    _ => self.water_density_generic(pressure_bar),
+                }
+            } else {
+                let (water_fraction, oil_fraction, gas_fraction) =
+                    self.producer_control_phase_fractions_for_pressures(well, &self.pressure);
+                water_fraction * self.water_density_generic(pressure_bar)
+                    + oil_fraction * self.oil_density_generic(pressure_bar, self.rs[id].max(0.0))
+                    + gas_fraction * self.gas_density_generic(pressure_bar)
+            };
+            if density.is_finite() && density > 0.0 {
+                total += density;
+                count += 1.0;
+            }
+        }
+
+        if count > 0.0 { total / count } else { 0.0 }
+    }
+
     pub(crate) fn well_control_group_key(&self, well: &Well) -> WellControlGroupKey {
         if let Some(well_id) = &well.physical_well_id {
             WellControlGroupKey::ExplicitId(well_id.clone())
@@ -333,7 +438,8 @@ impl ReservoirSimulator {
         {
             return None;
         }
-        let raw_rate = well.productivity_index * (pressure_bar - bhp_bar);
+        let raw_rate =
+            well.productivity_index * (pressure_bar - well.connection_pressure_bar(bhp_bar));
         if !raw_rate.is_finite() {
             return None;
         }
@@ -436,11 +542,16 @@ impl ReservoirSimulator {
             .unwrap_or(0.0)
             .max(0.0);
 
+        // Brackets live in *datum* space, the same space as the BHP being
+        // solved for: a completion stops flowing at `p_cell - head_offset`, not
+        // at `p_cell`. Using the raw cell pressures would leave a fully
+        // perforated well's zero-rate BHP outside the bracket.
         let group_min_pressure = wells
             .iter()
             .map(|well_idx| {
                 let group_well = &self.wells[*well_idx];
                 pressures[self.idx(group_well.i, group_well.j, group_well.k)]
+                    - group_well.head_offset_bar
             })
             .fold(f64::INFINITY, f64::min);
         let group_max_pressure = wells
@@ -448,6 +559,7 @@ impl ReservoirSimulator {
             .map(|well_idx| {
                 let group_well = &self.wells[*well_idx];
                 pressures[self.idx(group_well.i, group_well.j, group_well.k)]
+                    - group_well.head_offset_bar
             })
             .fold(f64::NEG_INFINITY, f64::max);
 

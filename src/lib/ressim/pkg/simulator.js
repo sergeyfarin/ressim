@@ -631,6 +631,27 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setWellControlModes(this.__wbg_ptr, ptr0, len0, ptr1, len1);
     }
     /**
+     * Reference the well's BHP to a depth, and optionally fix the density of
+     * the fluid column standing in the wellbore.
+     *
+     * Pass a non-finite `datum_depth_m` to fall back to the shallowest
+     * completion (the Eclipse `WELSPECS` default), and a non-finite or
+     * negative `wellbore_density_kg_m3` to let the engine derive the column
+     * density from the completion fluids each step. Both are ignored while
+     * gravity is disabled.
+     * @param {string} physical_well_id
+     * @param {number} datum_depth_m
+     * @param {number} wellbore_density_kg_m3
+     */
+    setWellDatum(physical_well_id, datum_depth_m, wellbore_density_kg_m3) {
+        const ptr0 = passStringToWasm0(physical_well_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.reservoirsimulator_setWellDatum(this.__wbg_ptr, ptr0, len0, datum_depth_m, wellbore_density_kg_m3);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * @param {string} physical_well_id
      * @param {string} control_mode
      * @param {number} target_rate_m3_day

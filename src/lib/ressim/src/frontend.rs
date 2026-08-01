@@ -163,12 +163,16 @@ impl ReservoirSimulator {
             bhp,
             productivity_index: pi,
             injector,
+            datum_depth_m: None,
+            wellbore_density_kg_m3: None,
+            head_offset_bar: 0.0,
             flowing_bhp: None,
             well_radius,
             skin,
         };
         well.validate(self.nx, self.ny, self.nz)?;
         self.wells.push(well);
+        self.refresh_well_head_offsets();
         Ok(())
     }
 
@@ -273,6 +277,48 @@ impl ReservoirSimulator {
         Ok(())
     }
 
+    /// Reference the well's BHP to a depth, and optionally fix the density of
+    /// the fluid column standing in the wellbore.
+    ///
+    /// Pass a non-finite `datum_depth_m` to fall back to the shallowest
+    /// completion (the Eclipse `WELSPECS` default), and a non-finite or
+    /// negative `wellbore_density_kg_m3` to let the engine derive the column
+    /// density from the completion fluids each step. Both are ignored while
+    /// gravity is disabled.
+    #[wasm_bindgen(js_name = setWellDatum)]
+    pub fn set_well_datum(
+        &mut self,
+        physical_well_id: String,
+        datum_depth_m: f64,
+        wellbore_density_kg_m3: f64,
+    ) -> Result<(), String> {
+        let well_id = physical_well_id.trim();
+        if well_id.is_empty() {
+            return Err("Physical well id must not be empty".to_string());
+        }
+
+        let datum_depth_m = datum_depth_m.is_finite().then_some(datum_depth_m);
+        let wellbore_density_kg_m3 = (wellbore_density_kg_m3.is_finite()
+            && wellbore_density_kg_m3 >= 0.0)
+            .then_some(wellbore_density_kg_m3);
+
+        let mut updated_any = false;
+        for well in self.wells.iter_mut() {
+            if well.physical_well_id.as_deref() == Some(well_id) {
+                well.datum_depth_m = datum_depth_m;
+                well.wellbore_density_kg_m3 = wellbore_density_kg_m3;
+                updated_any = true;
+            }
+        }
+
+        if !updated_any {
+            return Err(format!("No well found for physical well id '{}'", well_id));
+        }
+
+        self.refresh_well_head_offsets();
+        Ok(())
+    }
+
     #[wasm_bindgen(js_name = setStabilityParams)]
     pub fn set_stability_params(
         &mut self,
@@ -367,6 +413,7 @@ impl ReservoirSimulator {
     #[wasm_bindgen(js_name = setGravityEnabled)]
     pub fn set_gravity_enabled(&mut self, enabled: bool) {
         self.gravity_enabled = enabled;
+        self.refresh_well_head_offsets();
     }
 
     #[wasm_bindgen(js_name = setRateControlledWells)]
@@ -933,6 +980,7 @@ impl ReservoirSimulator {
             .unwrap_or_else(|| vec![0.0; expected_cells]);
         self.rs = grid_data.rs.unwrap_or_else(|| vec![0.0; expected_cells]);
         self.wells = wells;
+        self.refresh_well_head_offsets();
         self.rate_history = rate_history_vec;
         self.last_solver_warning.clear();
         self.last_fim_trace.clear();

@@ -37,7 +37,7 @@ use crate::fim::scaling::{
 use crate::fim::state::FimState;
 use crate::fim::wells::{
     FimWellTopology, build_well_topology, effective_injected_fluid, geometric_well_index,
-    perforation_local_block, physical_well_control,
+    perforation_head_offset_bar, perforation_local_block, physical_well_control,
 };
 use crate::fim::wells_ad::{
     WellCellInput, WellControlValuesGeneric, WellPerforationInputGeneric,
@@ -157,7 +157,14 @@ pub(crate) fn flow_resv_terms_ad(
         4,
     );
     let wi = geometric_well_index(sim, perforation)?;
-    let q = connection_rate_generic(sim, wi, true, &seeded, bhp);
+    let q = connection_rate_generic(
+        sim,
+        wi,
+        perforation_head_offset_bar(sim, perforation),
+        true,
+        &seeded,
+        bhp,
+    );
     let props = cell_props_generic(
         sim,
         seeded.regime,
@@ -187,6 +194,7 @@ pub(crate) fn flow_resv_terms_f64(
     let q = connection_rate_generic(
         sim,
         geometric_well_index(sim, perforation)?,
+        perforation_head_offset_bar(sim, perforation),
         true,
         &cell,
         state.well_bhp[perforation.physical_well_index],
@@ -282,7 +290,14 @@ fn add_well_residual_terms(
         }
 
         if let Some(wi_geom) = geometric_well_index(sim, perforation) {
-            let connection = connection_rate_generic::<f64>(sim, wi_geom, injector, &cell, bhp);
+            let connection = connection_rate_generic::<f64>(
+                sim,
+                wi_geom,
+                perforation_head_offset_bar(sim, perforation),
+                injector,
+                &cell,
+                bhp,
+            );
             residual[state.perforation_equation_offset(perf_idx)] += q - connection;
         }
     }
@@ -390,8 +405,14 @@ fn add_well_jacobian_terms(
         let bhp_col = state.well_bhp_unknown_offset(well_idx);
 
         if let Some(wi_geom) = geometric_well_index(sim, perforation) {
-            let ([dp, dsw, dhc], dbhp) =
-                rate_consistency_cell_bhp_jacobian(sim, wi_geom, injector, &cell, bhp);
+            let ([dp, dsw, dhc], dbhp) = rate_consistency_cell_bhp_jacobian(
+                sim,
+                wi_geom,
+                perforation_head_offset_bar(sim, perforation),
+                injector,
+                &cell,
+                bhp,
+            );
             tri.add_triplet(perf_row, q_col, 1.0);
             add_if_nonzero(tri, perf_row, unknown_offset(perforation.cell_index, 0), dp);
             add_if_nonzero(

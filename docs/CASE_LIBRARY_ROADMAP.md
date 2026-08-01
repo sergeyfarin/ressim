@@ -412,11 +412,23 @@ pair is bypassed for a reason that is not gravity. The producer-completion 2x2 r
 producing from the top of the section with gravity on recovers 0.742, above every gravity-free run.
 
 **Engine limitation this exposed (recorded in `TODO.md`, not worked around silently).** Well
-completions share one BHP with no wellbore hydrostatic correction, so a fully perforated well under
-gravity biases its allocation towards the top of the section by ~rho.g.H — negligible against a
+completions shared one BHP with no wellbore hydrostatic correction, so a fully perforated well under
+gravity biased its allocation towards the top of the section by ~rho.g.H — negligible against a
 300 bar drawdown, dominant at the 1-2 bar drawdowns of the gravity-dominated regime. Every well in
-this scenario perforates exactly one layer, which removes the allocation question entirely. Any
-future multi-layer gravity case (T7.16, WAG, aquifer work) needs the datum fix first.
+this scenario perforates exactly one layer, which removes the allocation question entirely.
+
+*Datum fix landed 2026-08-01.* `Well` now carries a datum depth (default: shallowest completion, the
+Eclipse `WELSPECS` default) and a wellbore density (default: derived per step from the completion
+fluids), from which each completion gets a `head_offset_bar`; every connection law on both solvers
+works against `bhp + head_offset_bar`, and the rate-control BHP bisections bracket in datum space.
+The offset is lagged to the state entering the step, so it is a constant of the step and the FIM
+Jacobian is untouched. It is identically zero without gravity and zero for a single-completion well,
+so nothing in this scenario or any other committed case moved.
+
+**Still blocking multi-layer gravity cases (T7.16, WAG, aquifer work).** The datum is correct, but a
+fully perforated well under gravity still trips IMPES's pressure recovery at t≈0 — reproduced on the
+pre-datum engine, so it is a separate defect, tracked in `TODO.md`. Single-layer completions remain
+the only usable configuration for a gravity case until that is fixed.
 
 **OPM Flow cross-check (added 2026-08-01).** The base case is now also an `OpmCase` deck, run with
 flow 2026.04 and bundled as `src/lib/catalog/opm-flow-results/wf_gravity.json`. OPM: breakthrough

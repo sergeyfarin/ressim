@@ -58,6 +58,7 @@ run_shared() {
     run_test physics_gas_flood_short_inventory_and_reporting_contract_hold_on_both_solvers
     run_test physics_gas_cap_vertical_column_fim_matches_impes_hydrostatic_benchmark
     run_test physics_wells_sources_gas_injection_surface_totals_match_target_on_both_solvers
+    run_test physics_wellbore_datum
     run_test physics_geometry_gas_flood_2d_high_perm_streak_public_contract_holds_on_both_solvers
     run_test physics_geometry_waterflood_3d_high_kz_public_contract_holds_on_both_solvers
 }

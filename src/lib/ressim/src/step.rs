@@ -2,6 +2,11 @@ use crate::ReservoirSimulator;
 
 impl ReservoirSimulator {
     pub(crate) fn step_internal(&mut self, target_dt_days: f64) {
+        // Lag the wellbore column on the state entering the step, so every
+        // completion's datum offset is a constant for the whole step (and every
+        // FIM Newton iteration inside it).
+        self.refresh_well_head_offsets();
+
         if self.fim_enabled {
             crate::fim::timestep::step_internal(self, target_dt_days);
             return;

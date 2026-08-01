@@ -143,6 +143,7 @@ Note: full `cargo test` is not used as a gate — FIM diagnostic tests can domin
 - Three-phase oil/water/gas transport with Stone II oil relative permeability, gas Corey curves, explicit gas transport, and gas-phase CFL handling.
 - Correlation-based or tabular black-oil PVT support with bubble-point tracking, Rs liberation/re-dissolution, pressure-dependent mobility, and producing GOR reporting.
 - Peaceman-style well model with BHP or rate control, per-layer completion, dynamic PI updates, and injector / producer switching logic. Well PI uses per-layer cell thickness.
+- Eclipse-style wellbore datum: a well's BHP is quoted at a datum depth (default the shallowest completion) and carried down to each completion by a wellbore column whose density is derived from the completion fluids, or fixed per well. Active only when gravity is enabled.
 - Per-layer initial conditions: water saturation, gas saturation, and cell thickness can be specified per z-layer for scenarios with gas caps or non-uniform geology.
 - Adaptive timestep checks based on saturation change, pressure change, and well-rate change limits.
 

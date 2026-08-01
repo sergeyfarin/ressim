@@ -17,16 +17,23 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
 
 ## Priority 1 — Frontend & scenario (user-facing critical path)
 
-- [ ] **Wellbore hydrostatic datum missing on multi-layer completions (found 2026-08-01).** Every
+- [x] **Wellbore hydrostatic datum missing on multi-layer completions (fixed 2026-08-01).** Every
   completion of a well is a separate `Well` row carrying the same `bhp` (`src/lib/ressim/src/well.rs`),
-  and nothing corrects it for completion depth. With gravity enabled the reservoir pressure varies by
-  ρ·g·H down the column (≈3 bar over 40 m), so a fully perforated BHP or rate-controlled well
-  allocates flow towards the top of the section as a pure modelling artefact. It is negligible against
-  a 300 bar drawdown and dominant in exactly the gravity-dominated regime where the drawdown is a
-  bar or two. `wf_gravity` works around it by perforating one layer per well. The fix is an
-  Eclipse-style datum depth per well plus a wellbore density, applied as
-  `p_completion = p_bhp + ρ_wb·g·(depth_k − depth_datum)`; it only bites when `gravityEnabled`, so
-  existing gravity-free scenarios and benchmarks cannot move.
+  and nothing corrected it for completion depth, so under gravity a fully perforated well allocated
+  flow towards the top of the section as a pure modelling artefact (≈3 bar over 40 m — negligible
+  against a 300 bar drawdown, dominant when the drawdown is a bar or two). `Well` now carries
+  `datum_depth_m` (default: shallowest completion, the Eclipse `WELSPECS` default) and
+  `wellbore_density_kg_m3` (default: derived per step from the completion fluids — injected phase for
+  an injector, mobility-weighted in-situ mixture for a producer), from which
+  `refresh_well_head_offsets` writes a per-completion `head_offset_bar`. Every connection law on both
+  solvers works against `bhp + head_offset_bar`, and the rate-control BHP bisections bracket in datum
+  space. The offset is lagged to the state entering the step, so it is a constant of the step and the
+  FIM Jacobian is untouched (`assembly_ad` parity and the FD Jacobian gates are green with a non-zero
+  head). Identically zero without gravity, and zero for a single-completion well, so no committed
+  scenario or benchmark moves — every gravity-enabled scenario in the catalog perforates one layer per
+  well. Exposed as `setWellDatum` / `datumDepth` / `wellboreDensity`. Guarded by
+  `physics_wellbore_datum_*` (hydrostatic-column oracle: equal drawdown at every completion) and by
+  `wf_gravity.test.ts`'s fully perforated run.
 - [x] **IMPES no longer reports an unphysical result silently (fixed 2026-08-01).** With
   `max_sat_change_per_step` relaxed to 1.0, `wf_numerics`'s limiter-off variant recovered 0.936 of
   the oil in place when only 0.889 is mobile and `getLastSolverWarning()` returned `''`. Saturations
@@ -37,6 +44,17 @@ Keep this file short and action-oriented. Long narratives go to the worklog/regi
   `wf_numerics.test.ts`. Note the distinction the case now draws: the ΔS ≤ 0.5 rung is *wrong*
   (recovery above an exact solution) while still conserving volume to 1e-12, and correctly does not
   warn; only the ΔS ≤ 1.0 rung invents mass.
+- [ ] **A fully perforated well under gravity trips IMPES pressure recovery at t≈0 (found
+  2026-08-01).** Surfaced while adding the wellbore datum, and **reproduced on the pre-datum engine**
+  (stash the Rust tree, `bash scripts/build-wasm.sh`, rerun) — so it is a pre-existing IMPES defect,
+  not a datum regression. `wf_gravity`'s grid with both wells perforated over all 20 layers returns
+  `Adaptive timestep exceeded retry budget while recovering a physical pressure state at t=0.000001
+  days`; the identical well set with `gravityEnabled: false` is clean, as is the scenario's own
+  single-layer completion with gravity on, at both 200 and 295 bar producer BHP. So it is the
+  interaction of the gravity flux term with many completions in one column, not the completion count
+  or the drawdown alone. Until this is fixed, a fully perforated gravity well is still not usable in a
+  scenario even though the datum is now correct — `wf_gravity.test.ts`'s fully perforated case
+  deliberately asserts only the head profile and not the solver warning.
 - [ ] **Two wells on different controls in one block do not conserve volume (found 2026-08-01).**
   Surfaced by the warning above. `shared_block_multiwell_public_step_remains_finite_on_both_solvers`
   puts two injectors at 600 and 550 bar in cell (0,0,0) — the well-control grouping keys on BHP, so

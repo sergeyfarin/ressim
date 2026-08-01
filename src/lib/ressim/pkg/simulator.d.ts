@@ -111,6 +111,17 @@ export class ReservoirSimulator {
     setThreePhaseScalTables(table_js: any): void;
     setWellBhpLimits(bhp_min: number, bhp_max: number): void;
     setWellControlModes(injector_mode: string, producer_mode: string): void;
+    /**
+     * Reference the well's BHP to a depth, and optionally fix the density of
+     * the fluid column standing in the wellbore.
+     *
+     * Pass a non-finite `datum_depth_m` to fall back to the shallowest
+     * completion (the Eclipse `WELSPECS` default), and a non-finite or
+     * negative `wellbore_density_kg_m3` to let the engine derive the column
+     * density from the completion fluids each step. Both are ignored while
+     * gravity is disabled.
+     */
+    setWellDatum(physical_well_id: string, datum_depth_m: number, wellbore_density_kg_m3: number): void;
     setWellSchedule(physical_well_id: string, control_mode: string, target_rate_m3_day: number, target_surface_rate_m3_day: number, bhp_limit: number, enabled: boolean): void;
     step(target_dt_days: number): void;
     stepWithDiagnostics(target_dt_days: number): string;
@@ -190,6 +201,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setThreePhaseScalTables: (a: number, b: any) => [number, number];
     readonly reservoirsimulator_setWellBhpLimits: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setWellControlModes: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly reservoirsimulator_setWellDatum: (a: number, b: number, c: number, d: number, e: number) => [number, number];
     readonly reservoirsimulator_setWellSchedule: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number];
     readonly reservoirsimulator_step: (a: number, b: number) => void;
     readonly reservoirsimulator_stepWithDiagnostics: (a: number, b: number) => [number, number];

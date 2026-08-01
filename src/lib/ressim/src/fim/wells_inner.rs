@@ -21,7 +21,7 @@ use crate::fim::flow_resv::FlowResvReportStepContext;
 use crate::fim::state::FimState;
 use crate::fim::wells::{
     FimWellTopology, connection_rate_for_bhp, effective_injected_fluid, geometric_well_index,
-    perforation_local_block, physical_well_control,
+    perforation_head_offset_bar, perforation_local_block, physical_well_control,
 };
 use crate::fim::wells_ad::{
     WellCellInput, WellPerforationInputGeneric, connection_rate_generic,
@@ -111,6 +111,7 @@ pub(crate) fn assemble_well_local_system(
     let mut neighborhoods: Vec<Vec<WellCellInput<f64>>> = Vec::with_capacity(n_perf);
     let mut connected_indices: Vec<usize> = Vec::with_capacity(n_perf);
     let mut wi_geoms: Vec<Option<f64>> = Vec::with_capacity(n_perf);
+    let mut head_offsets: Vec<f64> = Vec::with_capacity(n_perf);
 
     for &perf_idx in &perforation_indices {
         let perforation = &topology.perforations[perf_idx];
@@ -136,6 +137,7 @@ pub(crate) fn assemble_well_local_system(
         neighborhoods.push(neighborhood);
         connected_indices.push(connected_index);
         wi_geoms.push(geometric_well_index(sim, perforation));
+        head_offsets.push(perforation_head_offset_bar(sim, perforation));
     }
 
     let mut residual = DVector::zeros(dim);
@@ -208,11 +210,24 @@ pub(crate) fn assemble_well_local_system(
         let q = state
             .reservoir_connection_q(perf_idx)
             .expect("nested well solve requires a reservoir-q primary");
-        let connection = connection_rate_generic(sim, wi_geom, injector, &cells[local_perf], bhp);
+        let connection = connection_rate_generic(
+            sim,
+            wi_geom,
+            head_offsets[local_perf],
+            injector,
+            &cells[local_perf],
+            bhp,
+        );
         residual[row] = q - connection;
         jacobian[(row, row)] = 1.0;
-        let (_cell_derivs, dbhp) =
-            rate_consistency_cell_bhp_jacobian(sim, wi_geom, injector, &cells[local_perf], bhp);
+        let (_cell_derivs, dbhp) = rate_consistency_cell_bhp_jacobian(
+            sim,
+            wi_geom,
+            head_offsets[local_perf],
+            injector,
+            &cells[local_perf],
+            bhp,
+        );
         jacobian[(row, 0)] = dbhp;
     }
 

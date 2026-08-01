@@ -266,6 +266,10 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
           enabled: well.schedule.enabled !== false,
         } satisfies SimulatorWellSchedule
         : undefined,
+      datumDepth: well.datumDepth != null ? toFiniteNumber(well.datumDepth, 0) : undefined,
+      wellboreDensity: well.wellboreDensity != null
+        ? toMin(well.wellboreDensity, 0, 0)
+        : undefined,
     }))
     : buildLegacyWellDefinitions({
       nx,
