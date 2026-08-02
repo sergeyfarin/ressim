@@ -703,8 +703,92 @@ Open, blocked on an enabler:
   and JetBrains Mono requests, bundled IBM Plex Sans/Mono through Fontsource, clarified that the
   theme preference uses browser-local storage, added a no-remote-runtime-resource regression
   check, and licensed ResSim under AGPL-3.0-only. Bundled fonts remain under SIL OFL 1.1.
-- [ ] **OPM decks still missing** for `dep_pvt` (5.3), `gas_injection`, and `gas_drive`. The summary
-  parser itself is done and both committed artifacts are `status: "parsed"`.
+- [ ] **OPM decks still missing** for `dep_pvt` (5.3) and `gas_injection`. The summary
+  parser itself is done and every committed artifact is `status: "parsed"`. (Corrected 2026-08-02:
+  this item also listed `gas_drive`, which has had a deck — `cases.py::GAS_DRIVE` — a parsed
+  artifact and a graded acceptance test since 2026-07-25, `docs/THREE_PHASE_VALIDATION.md` §2.)
+
+- [x] **Catalog taxonomy ran on two axes; regrouped onto one (2026-08-02).** Groups 1-3 sorted by
+  physical question while `simulation-only` and `validation-benchmarks` sorted by epistemic status,
+  which `docs/SCENARIO_CATALOG_ARCHITECTURE.md` already forbade in prose. Both names were also
+  false: `gas_drive` sat under "No Analytical Reference" carrying a graded OPM Flow reference, and
+  `wf_gravity` / `wf_numerics` / `dep_gas_pz` carried external references from outside "Validation
+  Benchmarks". Replaced by **Material Balance & Drive Mechanism** (`dep_gas_pz`, `gas_drive`,
+  `dep_pvt`; `dep_gas_pz` moved out of `flow-regimes-decline` because a reserves estimate is a tank
+  answer, not a flow regime) and **Published Benchmark Decks**, whose rule is deck fixity rather
+  than validation status. Each group now has a test-enforced membership rule in `scenarios.test.ts`:
+  BL ≤ 1 grid extent > 1 (existing), sweep ≥ 2, flow-regimes single-well + `well-test`/`depletion`,
+  benchmark decks may patch numerics only, plus a guard that externally-referenced cases stay spread
+  across ≥ 3 groups. The Material Balance rule (a `mbe_ooip` / `drive_indices` / `pz` panel) is
+  written but `it.skip`ped until the Havlena-Odeh wiring below lands — it is the forcing function
+  for it.
+- [ ] **Reference-status badges on the scenario card.** The regrouping deliberately dropped the
+  (misleading) reference signal the old group names carried; the honest replacement is a derived
+  badge — `analyticalMethod !== 'none'` → analytical, `referenceSources` kind `opm-flow` /
+  `published` → external reference, neither → comparative exhibit. Derive it, never declare it
+  (the `getScenarioAnalyticalOptions` pattern). Style it flat: `catalog.role` was pulled from the
+  picker on 2026-07-31 because it read as a quality claim.
+
+### Review of the `simulation-only` group (2026-08-02) — findings, all open
+
+Measured on the committed tree at `6a27836` with a scratch vitest harness modelled on
+`dep_pvt.test.ts` (full scenario params via `getScenarioWithVariantParams`, FIM, wasm `pkg/`).
+**Provisional** — the numbers must be re-measured inside a committed test before being quoted.
+
+- [ ] **`dep_pvt`'s stated magnitude is wrong by ~500x, in the user-facing description.** The file
+  comment and `description` say the two PVT variants diverge by "order 0.1% early", "real but
+  modest", and reconverge below the bubble point. Measured average pressure at t = 120 d:
+  142.7 bar (correlation) vs 212.8 bar (lab report) — **+49%**, growing monotonically to t = 120 d
+  and still 48% at the end of the run. The prose dates from `ade5c30` (2026-07-20); the c_o
+  paramPatch that actually drives the divergence was added later in `b88ee28` (2026-07-24,
+  "Corrected the depletion-PVT experiment so its undersaturated c_o sensitivity is physically
+  consistent with FIM"). The prose was never re-measured after that fix.
+- [ ] **`dep_pvt` never delivers the reconvergence it promises.** The run is 300 x 0.5 d = 150 d.
+  At t = 150 d the lab-report variant is still at ~205 bar against a 150 bar bubble point, so it
+  never enters the saturated branch and the two curves never rejoin. Needs a longer horizon (or a
+  higher-rate/permeability case) before the described exhibit exists.
+- [ ] **`dep_pvt`'s "two equally plausible" c_o ladder is unphysical at the base end.** c_o =
+  1e-5/bar = 0.69e-6 psi^-1; undersaturated black oils run 5-30e-6 psi^-1 (0.7-4e-4 /bar), and
+  Vasquez-Beggs at this case's own inputs (35 API, 0.75 gas gravity, 80 C, Rs at Pb, ~4000 psia)
+  gives ~1e-5 psi^-1 = ~1.4e-4 /bar. The *base* rung is an order of magnitude too stiff and the
+  "lab report" rung is roughly the correlation value — the ladder is inverted in realism. A
+  defensible pair is ~1.0e-4 vs ~2.5e-4 /bar, both plausible, ~2.5x apart.
+- [ ] **`dep_pvt` explains the wrong mechanism.** Bo divergence really is second order (~1-2% over
+  130 bar of undersaturation); what moves the curves is c_t setting the depletion *rate* above the
+  bubble point. Re-aim the case at that, and it gains a reference: above Pb an undersaturated oil
+  reservoir is single-phase, which is exactly the Dietz/PSS depletion model the catalog already
+  ships (`depletionAnalytical.ts` builds c_t from `c_o`, `c_w`, rock). The scenario's
+  `analyticalMethodSummary` ("no honest quantitative overlay exists here") is therefore too strong
+  for its undersaturated leg.
+- [ ] **`gas_drive` is filed as reference-less but is the catalog's best-graded three-phase case.**
+  It carries `referenceSources: [{ kind: 'opm-flow', ... }]` with a parsed artifact and a Rust
+  acceptance test (pressure 1.6%, GOR 6.1%, cum oil 4.3% worst case), but `defaultVisible: false`
+  hides the OPM curve, so out of the box the chart shows one line and the group heading tells the
+  reader nothing can check it. Either default the OPM overlay on, or move the case to
+  `validation-benchmarks`.
+- [ ] **`gas_drive`'s `perm` dimension is degenerate.** Under BHP control, permeability rescales
+  time and nothing else: at matched average pressure (< 150 bar) the three rungs give GOR
+  459/463/460 m3/m3 and Sg 0.106/0.109/0.110 across a 100x permeability range. On the time axis the
+  k = 1000 mD rung reaches the 100 bar BHP floor by ~t = 30 d and draws a flat line for the
+  remaining 570 d (and reports GOR = 0 at the tail, the known negligible-rate artefact). Replace
+  with a lever that changes the drive itself — critical gas saturation `s_gc` is the textbook one —
+  or re-plot the ladder against pressure.
+- [ ] **`gas_drive`'s `sg_init` ladder changes STOIIP between rungs** (So = 1 - Sw - Sg), so the
+  recovery-factor panel compares fractions of different oil volumes. Either hold So fixed by moving
+  Sw with Sg, or say so in the dimension description.
+- [ ] **The Tarner/Muskat rejection (2026-07-30) was a verdict on this design, not on the method.**
+  It was measured against a case with a strong local BHP drawdown and initially *mobile* free gas
+  (Sg_init 0.08 > s_gc 0.05), which breaks the tank assumptions by construction. The perm-ladder
+  measurement above shows the case is already tank-like in *pressure* space. A rate-controlled,
+  Sg_init = 0 variant graded on GOR/Sg/RF versus average pressure is the honest way to retry, and
+  would need one new `RateChartXAxisMode` (`avgPressure`), the same shape of work `cumGas` needed
+  for `dep_gas_pz`.
+- [ ] **Neither case shows a material-balance cross-check although one is already built.**
+  `materialBalance.ts` computes Havlena-Odeh drive indices and the `mbe_ooip` / `drive_indices`
+  panels ship in the `oil_depletion` and `decline` layouts; the `gas` layout omits them. Adding
+  them gives both scenarios an internal reference for free.
+- [ ] **`gas_drive` has no TS scenario test** (`dep_pvt` does). Its catalog claims — saturated
+  start, gas liberation, GOR rise — are guarded only in the Rust acceptance test.
 
 ## Priority 2 — Validation & correctness
 - [x] **(MAJOR) IMPES oil-rate chatter at coarse report steps was two defects, one reporting and one

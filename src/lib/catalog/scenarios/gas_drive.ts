@@ -52,7 +52,7 @@ export const gas_drive: Scenario = {
     key: 'gas_drive',
     label: 'Solution Gas Drive',
     catalog: {
-        group: 'simulation-only',
+        group: 'material-balance-drive',
         role: 'simulation',
         caseMode: '3p',
         parameterSummary: 'Saturated black-oil depletion · solution-gas liberation · OPM Flow reference',

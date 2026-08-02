@@ -325,7 +325,7 @@ export const spe1_gas_injection: Scenario = {
     key: 'spe1_gas_injection',
     label: 'SPE1 Black-Oil Benchmark',
     catalog: {
-        group: 'validation-benchmarks',
+        group: 'published-benchmark-decks',
         role: 'benchmark',
         caseMode: '3p',
         parameterSummary: 'SPE1 Case 1 · 10×10×3 black-oil gas injection · Eclipse and OPM Flow references',

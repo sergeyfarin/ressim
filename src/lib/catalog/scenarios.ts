@@ -64,8 +64,8 @@ export type ScenarioGroup =
     | 'buckley-leverett-displacement'
     | 'sweep-efficiency'
     | 'flow-regimes-decline'
-    | 'simulation-only'
-    | 'validation-benchmarks';
+    | 'material-balance-drive'
+    | 'published-benchmark-decks';
 
 /** What kind of product content the scenario represents. */
 export type ScenarioRole = 'simulation' | 'interpretation' | 'benchmark';
@@ -119,18 +119,27 @@ export const SCENARIO_GROUPS: readonly {
         description: 'A well\'s pressure history from infinite-acting transient flow through pseudo-steady productivity to boundary-dominated and layered decline.',
     },
     {
-        // Grouped by what the reader can and cannot check the run against, not by physics:
-        // these cases have no closed-form solution and no digitized external reference, so
-        // the simulation is the only curve on the chart. Sensitivities here explore model
-        // behaviour rather than measure error against a reference.
-        key: 'simulation-only',
-        label: 'Simulation Only — No Analytical Reference',
-        description: 'Solution-gas drive and black-oil PVT representation — cases with no closed-form or published reference solution, where the simulation stands alone.',
+        // Tank-level questions: the answer is an in-place volume, a drive index
+        // or a reserves statement, not the position of a front. Replaced
+        // 'simulation-only' on 2026-08-02, which grouped by the *absence* of a
+        // reference — an axis the other groups do not use, and one that was
+        // false in both directions: `gas_drive` is graded against OPM Flow,
+        // while `wf_gravity`, `wf_numerics` and `dep_gas_pz` all carry external
+        // references from inside physics groups.
+        key: 'material-balance-drive',
+        label: 'Material Balance & Drive Mechanism',
+        description: 'Where the energy comes from and how much is in place: fluid and rock expansion, solution-gas liberation, compaction, and the PVT representation underneath them. These cases are answered at the tank level — drive indices, in-place volumes, reserves — rather than by where a front has reached.',
     },
     {
-        key: 'validation-benchmarks',
-        label: 'Validation Benchmarks',
-        description: 'Published comparative-solution and external-reference cases used to validate the simulator.',
+        // The membership rule is deck fixity, not validation status. "Validation
+        // Benchmarks" implied the other four groups were unvalidated, which was
+        // never true. What actually distinguishes SPE1 is that its grid, fluid
+        // and schedule are set by a publication: changing any of them produces a
+        // case that is no longer SPE1, which is why its kz_ratio dimension was
+        // removed on 2026-07-31. Enforced in `scenarios.test.ts`.
+        key: 'published-benchmark-decks',
+        label: 'Published Benchmark Decks',
+        description: 'Cases whose grid, fluid and schedule are fixed by an external publication. You reproduce them rather than explore them, so their sensitivities vary only the numerics — grid, timestep, solver — and never the reservoir.',
     },
 ] as const;
 

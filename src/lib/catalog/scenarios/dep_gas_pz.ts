@@ -47,7 +47,7 @@ export const dep_gas_pz: Scenario = {
     key: 'dep_gas_pz',
     label: 'Gas Reserves from p/z',
     catalog: {
-        group: 'flow-regimes-decline',
+        group: 'material-balance-drive',
         role: 'simulation',
         caseMode: '3p',
         parameterSummary: 'Dry-gas depletion · p/z material balance · what bends the straight line and what it costs in reserves',

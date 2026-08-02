@@ -343,9 +343,39 @@ describe('scenario catalog taxonomy', () => {
         expect(getScenarioGroup(getScenario('dep_pss')!)).toBe('flow-regimes-decline');
         expect(getScenarioGroup(getScenario('dep_welltest')!)).toBe('flow-regimes-decline');
         expect(getScenarioGroup(getScenario('gas_injection')!)).toBe('buckley-leverett-displacement');
-        expect(getScenarioGroup(getScenario('spe1_gas_injection')!)).toBe('validation-benchmarks');
-        expect(getScenarioGroup(getScenario('dep_pvt')!)).toBe('simulation-only');
-        expect(getScenarioGroup(getScenario('gas_drive')!)).toBe('simulation-only');
+        expect(getScenarioGroup(getScenario('spe1_gas_injection')!)).toBe('published-benchmark-decks');
+        // Tank-level cases: the answer is an in-place volume, a drive index or a
+        // reserves statement. `dep_gas_pz` moved here from flow-regimes-decline
+        // on 2026-08-02 — it is not a flow-regime case, it is a reserves case.
+        expect(getScenarioGroup(getScenario('dep_gas_pz')!)).toBe('material-balance-drive');
+        expect(getScenarioGroup(getScenario('dep_pvt')!)).toBe('material-balance-drive');
+        expect(getScenarioGroup(getScenario('gas_drive')!)).toBe('material-balance-drive');
+    });
+
+    it('groups by physical question, never by whether the case happens to have a reference', () => {
+        // The axis rule. `simulation-only` / `validation-benchmarks` grouped by
+        // epistemic status, which put two cases carrying OPM Flow references
+        // (`wf_gravity`, `wf_numerics`) outside the "validated" group and one
+        // carrying an OPM reference (`gas_drive`) inside the "no reference" one.
+        // Reference status is per-case data, not navigation: it must not be
+        // predictable from the group, in either direction.
+        const referenced = listScenarios().filter((scenario) => (scenario.referenceSources ?? []).length > 0);
+        const groupsWithReferences = new Set(referenced.map((scenario) => scenario.catalog.group));
+        expect(
+            groupsWithReferences.size,
+            `externally-referenced cases sit in ${[...groupsWithReferences].join(', ')} — collapsing them ` +
+            'into one group would be the reference axis reappearing',
+        ).toBeGreaterThanOrEqual(3);
+
+        // And at least one group must hold both kinds, so membership never
+        // implies an answer to "can this run be checked against anything?".
+        const mixed = SCENARIO_GROUPS.some((group) => {
+            const members = listScenarios().filter((scenario) => scenario.catalog.group === group.key);
+            if (members.length < 2) return false;
+            const withRef = members.filter((scenario) => (scenario.referenceSources ?? []).length > 0).length;
+            return withRef > 0 && withRef < members.length;
+        });
+        expect(mixed, 'no group mixes referenced and unreferenced cases').toBe(true);
     });
 
     it('keeps the Buckley-Leverett group one-dimensional in fact, not just in its description', () => {
@@ -366,6 +396,70 @@ describe('scenario catalog taxonomy', () => {
                 const spatialDimensions = extents.filter((extent) => extent > 1).length;
                 expect(spatialDimensions, `${scenario.key} ${variantKey ?? 'base'}: ${extents.join('x')}`)
                     .toBeLessThanOrEqual(1);
+            }
+        }
+    });
+
+    it('keeps the sweep group multi-dimensional — the exact complement of the BL rule', () => {
+        // Contact is only a question when there is more than one flow path.
+        // A case that satisfies the BL group's rule cannot measure sweep.
+        for (const scenario of listScenarios()) {
+            if (scenario.catalog.group !== 'sweep-efficiency') continue;
+            const extents = [Number(scenario.params.nx), Number(scenario.params.ny), Number(scenario.params.nz)];
+            expect(extents.filter((extent) => extent > 1).length, `${scenario.key}: ${extents.join('x')}`)
+                .toBeGreaterThanOrEqual(2);
+        }
+    });
+
+    it('keeps Flow Regimes & Decline to single-well pressure-history cases', () => {
+        // The group reads one well's pressure history through its flow regimes,
+        // so a case with an injector, or one answered by a tank balance rather
+        // than by a diffusivity/PSS solution, belongs elsewhere. This is what
+        // moved `dep_gas_pz` out: its answer is a reserves number.
+        for (const scenario of listScenarios()) {
+            if (scenario.catalog.group !== 'flow-regimes-decline') continue;
+            expect(scenario.capabilities.hasInjector, scenario.key).toBe(false);
+            expect(['well-test', 'depletion'], scenario.key)
+                .toContain(scenario.capabilities.analyticalMethod);
+        }
+    });
+
+    // TODO (TODO.md, "Review of the simulation-only group"): enable once the
+    // Havlena-Odeh drive-index panels are wired into the `gas` chart layout.
+    // `dep_gas_pz` already satisfies this via its `pz` panel; `gas_drive` and
+    // `dep_pvt` will once that lands, which is the point of stating the rule now.
+    it.skip('shows a tank-level result in every Material Balance & Drive case', () => {
+        for (const scenario of listScenarios()) {
+            if (scenario.catalog.group !== 'material-balance-drive') continue;
+            const panels = Object.keys(getScenarioChartLayout(scenario).rateChart?.panels ?? {});
+            expect(panels.some((panel) => ['mbe_ooip', 'drive_indices', 'pz'].includes(panel)), scenario.key)
+                .toBe(true);
+        }
+    });
+
+    it('lets a published benchmark deck vary only its numerics, never its reservoir', () => {
+        // Deck fixity is what the group means. SPE1's kz_ratio dimension was
+        // removed on 2026-07-31 for exactly this reason: it compared a different
+        // reservoir against SPE1's published answer.
+        const numericsOnly = new Set([
+            'nx', 'ny', 'nz', 'cellDx', 'cellDy', 'cellDz',
+            // Well indices move only because refinement renumbers the same corner cell.
+            'producerI', 'producerJ', 'injectorI', 'injectorJ',
+            'delta_t_days', 'steps', 'fimEnabled',
+            'max_sat_change_per_step', 'max_pressure_change_per_step', 'max_well_rate_change_fraction',
+        ]);
+        for (const scenario of listScenarios()) {
+            if (scenario.catalog.group !== 'published-benchmark-decks') continue;
+            for (const dimension of scenario.sensitivities) {
+                for (const variant of dimension.variants) {
+                    for (const key of Object.keys(variant.paramPatch)) {
+                        expect(
+                            numericsOnly.has(key),
+                            `${scenario.key} / ${dimension.key} / ${variant.key} patches "${key}", ` +
+                            'which changes the published case rather than its discretization',
+                        ).toBe(true);
+                    }
+                }
             }
         }
     });

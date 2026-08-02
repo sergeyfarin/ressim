@@ -35,14 +35,35 @@ Some behavior is not scenario-specific and remains shared:
 
 ## Catalog taxonomy
 
-The visible group is explicit metadata, not a physics inference:
+The visible group is explicit metadata, not a physics inference. **Groups run on one axis: the
+physical question the case answers.** Reference status — analytical overlay, OPM Flow run,
+digitized publication — is per-case data (`capabilities.analyticalMethod`, `referenceSources`) and
+must never become a group, because it is not a property the members of a physical family share.
 
-1. **Buckley–Leverett Displacement** — 1D displacement fundamentals and departures from BL.
-2. **Sweep Efficiency** — areal, vertical, and combined waterflood contact.
+1. **1D Displacement — Buckley–Leverett** — one flow path, so displacement efficiency is the whole
+   answer. Rule: at most one grid extent > 1, in the base case and in every variant.
+2. **Sweep Efficiency** — how much of the rock the flood contacts. Rule: at least two grid extents
+   > 1 — the exact complement of the group above.
 3. **Flow Regimes & Decline** — one well's pressure history in sequence: infinite-acting transient
-   flow, pseudo-steady productivity, boundary-dominated decline, and layered superposition.
-4. **Gas-Dominated Recovery** — gas injection and solution-gas drive mechanisms.
-5. **Validation Benchmarks** — published or external comparative solutions such as SPE1 and future SPE10/SPE9 cases.
+   flow, pseudo-steady productivity, boundary-dominated decline, and layered superposition. Rule:
+   no injector, and the analytical method is `well-test` or `depletion`.
+4. **Material Balance & Drive Mechanism** — where the energy comes from and how much is in place:
+   expansion, solution-gas liberation, compaction, PVT representation. Rule: the case shows a
+   tank-level result — an `mbe_ooip`, `drive_indices` or `pz` panel.
+5. **Published Benchmark Decks** — SPE1 and future SPE9/SPE10. Rule: **deck fixity** — sensitivity
+   variants may patch discretization and solver settings only, never a reservoir property.
+
+Every rule above is enforced in `scenarios.test.ts`; rule 4 is present but skipped until the
+Havlena-Odeh drive-index panels reach the `gas` chart layout (`TODO.md`).
+
+Replaced 2026-08-02: groups 4 and 5 were **Simulation Only — No Analytical Reference** and
+**Validation Benchmarks**, which sorted by epistemic status while groups 1–3 sorted by physics —
+two axes in one hierarchy, the exact conflation this section exists to prevent. The names were also
+false in both directions: `gas_drive` sat under "No Analytical Reference" while carrying a graded
+OPM Flow reference, and `wf_gravity`, `wf_numerics` and `dep_gas_pz` carried external references
+from outside "Validation Benchmarks". Group 5 survives because deck fixity is a real property of a
+case, not a claim about its quality; group 4 is new, and `dep_gas_pz` moved into it from group 3
+because a reserves estimate is a tank answer, not a flow regime.
 
 Removed 2026-07-31: an **Other** group holding only the FIM-vs-IMPES comparison. That case was a
 variation of two parameters on an existing scenario rather than a distinct question, and as a
