@@ -83,7 +83,13 @@ See `README.md` for full feature list and `docs/` for technical deep-dives.
 
 ## Working Style
 
-**TODO discipline**: while working on any task, note discoveries in `TODO.md` — bugs, gaps, bad practices, physics concerns, UX improvements. When work is complete, mark finished items done. Keeping TODO current is part of the definition of done.
+**Issue discipline**: GitHub Issues is the source of truth for actionable work. While working on a
+task, update its issue with material discoveries that remain in scope; open a new issue for a
+separate bug, gap, physics concern, or UX improvement. An item is complete only when its acceptance
+criteria and validation gate are satisfied and the implementing commit or pull request is linked.
+Keep `TODO.md` as a short issue-dashboard landing page, not a second checkbox tracker. Stable
+scientific evidence belongs in the owning validation document; FIM experiments belong in the
+registry/worklog.
 
 **Prefer fundamental fixes** over quick patches. Address root causes; avoid workaround accumulation.
 

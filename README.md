@@ -233,8 +233,9 @@ TODO.md
 
 | Document | Purpose |
 |----------|---------|
-| `ROADMAP.md` | Future-facing roadmap and prioritization |
-| `TODO.md` | Active execution tracker |
+| [GitHub Issues](https://github.com/sergeyfarin/ressim/issues) | Actionable work, priorities, acceptance criteria, and status |
+| `ROADMAP.md` | Strategic ordering and links to active issues |
+| `TODO.md` | Short issue-dashboard landing page for stable legacy links |
 | `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
 | `.archive/docs/DELIVERED_WORK_2026_Q1.md` | Archived delivered work moved out of TODO |
 | `docs/BENCHMARK_MODE_GUIDE.md` | Benchmark workflow semantics and chart behavior |
@@ -247,13 +248,16 @@ TODO.md
 
 ## Near-Term Focus
 
-See `ROADMAP.md` for the full ordering. The next major engineering priorities are:
+See `ROADMAP.md` and the
+[Limited public release milestone](https://github.com/sergeyfarin/ressim/milestone/1) for current
+ordering. The next major engineering priorities are:
 
-1. Black-oil and three-phase validation.
-2. Remaining scenario / benchmark architecture consolidation.
-3. Output-selection and comparison-model cleanup.
-4. Multi-case inspection and data export.
-5. Gas-cap and extended pattern physics only after the validation backlog is closed.
+1. Deploy and smoke-test the stable public link.
+2. Close the remaining black-oil and gravity validation gaps.
+3. Consolidate output selection and chart architecture.
+4. Add scenario enablers only with consuming cases and independent references.
+5. Keep the FIM OPM-parity frontier parked behind product validation unless a user-visible defect
+   requires it.
 
 ## License
 

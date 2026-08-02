@@ -325,8 +325,8 @@ the gap as numerical rather than a missing physical term. Three further dimensio
 
 - **Time truncation.** Report step 0.25 → 10 days costs under 0.02 of recovery because the
   saturation limiter re-subdivides internally. Relaxing `max_sat_change_per_step` to 0.5 gives
-  RF 0.733 (above BL), and 1.0 gives 0.936 of oil in place when only 0.889 is mobile — **and the run
-  raises no solver warning**. Recorded as a product gap in `TODO.md`.
+  RF 0.733 (above BL), and 1.0 gives 0.936 of oil in place when only 0.889 is mobile. The latter now
+  raises a material-balance warning; the measurement and safeguard are preserved in Git history.
 - **Dispersion or rock.** Δx = 50 m with n_o = 2 breaks through at 0.455 PVI, Δx = 2.5 m with
   n_o = 3.5 at 0.465 — 2 % apart — while RF at 1 PVI is 0.686 vs 0.586. Breakthrough timing cannot
   separate a coarse grid from a steeper rock curve; post-breakthrough recovery can.
@@ -387,7 +387,7 @@ always costs recovery; this one is the 1D case where it acts *along* the flow an
 
 **Gas-oil sibling probed and parked.** A first-pass FIM probe of crestal vs basal gas injection did
 not produce a crisp exhibit (rungs within 0.05 of each other, gas breakthrough at 0.06-0.10 PVI);
-numbers and the reason are in `TODO.md`. Not shipped.
+numbers and the reason are preserved at tracker-migration commit `991b19d`. Not shipped.
 
 ### Delivery record (2026-08-01) — gravity
 
@@ -411,7 +411,7 @@ for drho = 0 / 100 / 200 / 400. The k_z x gravity 2x2 shows the gravity penalty 
 pair is bypassed for a reason that is not gravity. The producer-completion 2x2 reverses the sign:
 producing from the top of the section with gravity on recovers 0.742, above every gravity-free run.
 
-**Engine limitation this exposed (recorded in `TODO.md`, not worked around silently).** Well
+**Engine limitation this exposed (tracked in GitHub issue #10, not worked around silently).** Well
 completions shared one BHP with no wellbore hydrostatic correction, so a fully perforated well under
 gravity biased its allocation towards the top of the section by ~rho.g.H — negligible against a
 300 bar drawdown, dominant at the 1-2 bar drawdowns of the gravity-dominated regime. Every well in
@@ -427,7 +427,8 @@ so nothing in this scenario or any other committed case moved.
 
 **Still blocking multi-layer gravity cases (T7.16, WAG, aquifer work).** The datum is correct, but a
 fully perforated well under gravity still trips IMPES's pressure recovery at t≈0 — reproduced on the
-pre-datum engine, so it is a separate defect, tracked in `TODO.md`. Single-layer completions remain
+pre-datum engine, so it is a separate defect, tracked in
+[#10](https://github.com/sergeyfarin/ressim/issues/10). Single-layer completions remain
 the only usable configuration for a gravity case until that is fixed.
 
 **OPM Flow cross-check (added 2026-08-01).** The base case is now also an `OpmCase` deck, run with
@@ -515,9 +516,15 @@ T7.4 and T7.1 are done (days of work, zero engine risk, and T7.4 closes the ship
 | E10 | Well-test analytical module (`src/lib/analytical/wellTest.ts`) + `AnalyticalMethod` union entry and adapter | T7.1 | **CLOSED 2026-07-24** — module, union entry, contract, adapters, overlay builder, `well_test` chart layout and scenario all landed |
 | E11 | **Multi-well patterns** — more than one injector/producer per run driven from scenario params. The worker already honors a `payload.wells` array; no scenario populates it | T7.11 done properly (Yanosik-McCracken five-spot pair), SPE9, pattern-density studies (T7.15) | moderate |
 
-E1's sweep path is wired but the **single-run** path is not (`parameterStore.fieldPermX/Y/Z` default `[]`, `applyResolvedParams` doesn't map them) — see `TODO.md`. Close it with the first consuming scenario (T7.9 / T7.6 / Egg).
+E1's sweep path is wired but the **single-run** path is not (`parameterStore.fieldPermX/Y/Z` default
+`[]`, `applyResolvedParams` does not map them). Delivery is tracked in
+[#16](https://github.com/sergeyfarin/ressim/issues/16) and should close with the first consuming
+scenario (T7.9 / T7.6 / Egg).
 
-OPM summary parser (`tools/opm_flow/.../artifacts.py`) is **done** — both committed artifacts are `status: "parsed"`. What remains per-case is deck authoring: 5.3 `dep_pvt` has no OPM deck, and neither do `gas_injection` / `gas_drive`.
+The OPM summary parser (`tools/opm_flow/.../artifacts.py`) is **done** and all committed artifacts
+are `status: "parsed"`. Remaining deck/provenance work for `dep_pvt` and `gas_injection` is tracked
+in [#20](https://github.com/sergeyfarin/ressim/issues/20); `gas_drive` already has a parsed artifact
+and graded acceptance test.
 
 ## Where to search for more
 

@@ -160,7 +160,8 @@ Two observations recorded rather than asserted:
   instead of demanding contraction.
 - FIM and IMPES converge to slightly different answers on the same case (Sg ≈ 0.0300 vs 0.0332,
   ~10 %). Both are self-consistent under refinement; the gap is a solver/timestep question, not
-  a grid-convergence one, and is tracked in `TODO.md` rather than in these tests.
+  a grid-convergence one, and is tracked in
+  [GitHub issue #11](https://github.com/sergeyfarin/ressim/issues/11) rather than in these tests.
 
 ## 3. Black-oil solver safeguards (read this before interpreting results)
 
@@ -193,8 +194,8 @@ not; it is not a substitute for a fully implicit compositional treatment.
 `DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR` in `src/lib/physics/pvt.ts`, which
 `src/lib/analytical/materialBalance.ts` imports rather than redeclaring. Nothing enforces that
 the two sides stay equal, so an analytical overlay can silently disagree with the engine if one
-default moves; the regression guard for that is still open (`ROADMAP.md` 1.3). Scenarios that
-set their own value (SPE1 uses 2.06e-4 /bar) override it on both sides.
+  default moves. A cross-language regression guard now asserts the shared value. Scenarios that set
+  their own value (SPE1 uses 2.06e-4 /bar) override it on both sides.
 
 **Material-balance diagnostics are not a full per-phase closure.** Water and gas cumulative
 errors are reported explicitly; oil is reported against stock-tank inventory change but the

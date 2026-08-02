@@ -1,0 +1,49 @@
+name: Scientific or solver investigation
+description: Track a bounded hypothesis that requires an explicit, valid oracle.
+title: "[Investigation] "
+labels:
+  - research
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question and hypothesis
+      description: State one falsifiable causal question.
+    validations:
+      required: true
+  - type: textarea
+    id: baseline
+    attributes:
+      label: Reproduced baseline
+      description: Give the clean committed revision, exact command, and key output.
+    validations:
+      required: true
+  - type: textarea
+    id: oracle
+    attributes:
+      label: Oracle and observables
+      description: Explain why the comparison is valid and list backend-neutral observables.
+      placeholder: rhs norm, full-system residual, reduction, finite correction, row partitions…
+    validations:
+      required: true
+  - type: textarea
+    id: semantics
+    attributes:
+      label: Coupled semantics and controls
+      description: Mark relevant lifecycle pieces matched, held constant, or missing.
+    validations:
+      required: true
+  - type: textarea
+    id: verdict
+    attributes:
+      label: Verdict criteria
+      description: Define observations for PROMOTED, REFUTED, REVERTED, or INCONCLUSIVE before running.
+    validations:
+      required: true
+  - type: textarea
+    id: records
+    attributes:
+      label: Required records and validation
+      description: Link the registry/worklog rows to update and list the exact validation gates.
+    validations:
+      required: true

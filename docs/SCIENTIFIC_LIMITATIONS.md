@@ -31,7 +31,8 @@ well configuration, operating schedule, grid, or timestep.
 - Browser execution and visualization are conveniences, not controls for auditability,
   reproducibility, data governance, or regulated workflows.
 - The software is under active development. Known gaps and open work are tracked in
-  [TODO.md](../TODO.md) and the project documentation.
+  [GitHub Issues](https://github.com/sergeyfarin/ressim/issues), with strategic order in
+  [ROADMAP.md](../ROADMAP.md) and stable evidence in the project documentation.
 
 Use an independently verified, appropriately qualified simulator and professional engineering
 review for real assets or decisions. Always preserve inputs, software revision, solver settings,

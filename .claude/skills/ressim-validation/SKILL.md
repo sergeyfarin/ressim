@@ -11,7 +11,9 @@ ResSim has several validation surfaces with different costs and different owners
 
 1. **Never use full `cargo test` as a pass/fail gate.** FIM/SPE1 diagnostic tests can hang or dominate runtime (`docs/FIM_DEFERRED_BACKLOG.md`). Use the targeted buckets below.
 2. **Never change benchmark tolerances** (Buckley-Leverett tests, parity gates) without explicit written justification in the same commit.
-3. A change is not "done" until `TODO.md` is updated (project TODO discipline) and the relevant gate below is green.
+3. A change is not "done" until its GitHub Issue is updated or closed with the implementing commit
+   or pull request, and the relevant gate below is green. If the work has no issue and discovers
+   actionable follow-up, open one rather than adding a checkbox to `TODO.md`.
 4. **Separate code validation from hypothesis validation.** Green unit/parity/control tests prove
    their stated contracts only. They do not establish OPM parity or validate an experimental
    verdict unless the measured observable is itself an OPM or backend-neutral oracle.
@@ -130,7 +132,8 @@ bash scripts/build-wasm.sh
 - **Vitest contract failures after a catalog change** usually mean the scenario metadata violated a real contract (e.g. a sensitivity variant claims `affectsAnalytical: true` but doesn't perturb the analytical result). Fix the metadata, not the test — the test is the spec.
 - **`*_on_both_solvers` test failures** mean IMPES and FIM public behavior diverged. Do not weaken the contract; find which solver changed.
 - **Bit-parity gate failures in `fim/assembly_ad.rs`** mean the AD assembly and the legacy assembly no longer agree. See the `engine-physics-change` skill — physics helpers often have both a legacy and an AD implementation that must be changed together.
-- If a test fails on a clean tree before your change, record that first (it is a pre-existing failure, not yours) and note it in `TODO.md`.
+- If a test fails on a clean tree before your change, record that first (it is a pre-existing
+  failure, not yours) and open or update the corresponding GitHub Issue.
 - AD/legacy/finite-difference agreement means ResSim differentiated its own residual consistently;
   it does **not** prove that the residual, primary variables, bounds, or well formulation match
   OPM. Require a sourced OPM semantic or trajectory comparison for an OPM-parity claim.

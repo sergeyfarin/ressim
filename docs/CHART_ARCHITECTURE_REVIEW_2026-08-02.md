@@ -338,7 +338,8 @@ consumer. `ChartSubPanel.svelte` stays — it is used by `ReferenceComparisonCha
 | `79786bd` | 2 | `CurveConfig.property` declared and stamped in `appendSeries` / `appendXYSeries`; classification reads an explicit table before any key parsing. |
 | `04f5139` | 3 | Panel ids opened to `string`; `getPanelFallback` handles ids nobody declared. |
 
-**Two defects the new guards found**, recorded in `TODO.md` rather than fixed in-flight:
+**Two defects the new guards found**, now tracked through the chart/validation issues rather than
+fixed in-flight:
 
 - `dep_gas_pz`'s "Gas Rate" panel plots `oil-rate-sim` — ~0 for a dry-gas reservoir — beside OPM's
   real gas rates. `DerivedRunSeries` has **no gas-rate series at all**, so no gas scenario can plot

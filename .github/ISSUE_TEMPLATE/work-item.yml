@@ -1,0 +1,50 @@
+name: Bug or implementation work
+description: Track an actionable product, engine, scenario, validation, documentation, or maintenance item.
+title: ""
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep one issue focused on one outcome. Put long-lived scientific evidence in the owning
+        document and link it here.
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: What observable result should be true when this issue is complete?
+      placeholder: Users can… / The solver… / The documentation…
+    validations:
+      required: true
+  - type: textarea
+    id: current_behavior
+    attributes:
+      label: Current behavior and evidence
+      description: Include the affected scenario/path, revision, and a minimal reproduction or source reference.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and constraints
+      description: Name what is in scope, what is deliberately held constant, and any blockers.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Use a checklist of measurable completion conditions.
+      placeholder: |
+        - [ ] Behavior is covered by a focused regression.
+        - [ ] User-facing claims match measured results.
+        - [ ] Required documentation is updated.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation gate
+      description: Name the exact command(s) required by `.claude/skills/ressim-validation/SKILL.md`.
+    validations:
+      required: true

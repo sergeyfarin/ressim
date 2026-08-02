@@ -1,16 +1,17 @@
 # Documentation Index
 
-Which documents are authoritative, which are active working notes, and where the historical
-material now lives. Last reorganized 2026-07-24 (doc cleanup: superseded experiment plans and
-dated snapshots moved to `.archive/`).
+Which documents are authoritative, which are active working notes, and where historical material
+lives. Tracker ownership moved to GitHub Issues on 2026-08-02; superseded plans and snapshots remain
+under `.archive/`.
 
 ## Start here
 
 | Document | Use it for |
 |----------|------------|
 | `README.md` | Product overview, current feature state, quick start, doc map |
-| `ROADMAP.md` | Future-facing roadmap and priority order |
-| `TODO.md` | Active execution tracker only (short, action-oriented) |
+| [GitHub Issues](https://github.com/sergeyfarin/ressim/issues) | Actionable work, priority, acceptance criteria, and status |
+| `ROADMAP.md` | Strategic priority order and links to active issues |
+| `TODO.md` | Stable landing page for issue links; not a second tracker |
 | `docs/DOCUMENTATION_INDEX.md` | This map |
 
 ## Architecture & stable reference
@@ -53,8 +54,8 @@ the registry **by mechanism name** before proposing any convergence change.
 ## FIM — design frontier (paused behind the WATER track)
 
 Source-pinned, mostly default-off designs for the OPM gas-RESV injector / primary-variable
-lifecycle. Paused while the WATER-0xx / `OpmAligned`-default track is the active front (see
-`FIM_STATUS.md` top and `TODO.md`). Kept because they are prescriptive and not yet superseded.
+lifecycle. Paused while the product/validation track is active (see `FIM_STATUS.md` and roadmap
+issues #21–#23). Kept because they are prescriptive and not yet superseded.
 
 | Document | Scope |
 |----------|-------|
@@ -68,7 +69,8 @@ lifecycle. Paused while the WATER-0xx / `OpmAligned`-default track is the active
 
 | Document | Use it for |
 |----------|------------|
-| `docs/FRONTEND_EXECUTION_PLAN_2026-07.md` | Active ordered frontend execution plan (Waves 0–3) |
+| `docs/CHART_ARCHITECTURE_REVIEW_2026-08-02.md` | Current chart audit and migration boundary |
+| `docs/FRONTEND_EXECUTION_PLAN_2026-07.md` | Delivered frontend Waves 0–3 and historical rationale |
 | `docs/CASE_LIBRARY_ROADMAP.md` | Sourcing map for new scenarios: SPE benchmarks, field datasets, textbook cases |
 | `docs/MULTI_SOURCE_COMPARISON_ROADMAP.md` | Comparison-axis roadmap across analytical/IMPES/FIM/OPM/published sources |
 | `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` | 2026-07 comparison-architecture findings and forward plan |
@@ -84,28 +86,29 @@ convergence archives + March history, and dated review snapshots. Their verdicts
 in `FIM_EXPERIMENT_REGISTRY.md`; the docs themselves are provenance, not live specs.
 
 - `.archive/docs/` — archived `docs/` files (incl. `REFACTOR_PLAN.md`, historical refactor plan)
+- `.archive/docs/TRACKER_MIGRATION_2026-08-02.md` — GitHub Issues migration and initial issue map
 - `.archive/PLAN.md` — historical scenario-first rewrite plan (superseded by landed work)
 - `.archive/CODEX_FIM_DIALOGUE_03.07.2026.md` — historical design dialogue
 
 ## Current repo-level facts
 
-- `src/lib/catalog/scenarios/` is the primary scenario registry: **14 active canonical scenarios**
+- `src/lib/catalog/scenarios/` is the primary scenario registry: **18 active canonical scenarios**
   (`.ts`, excluding co-located `*.test.ts`).
 - `ScenarioPicker.svelte` is the only live case-selection surface, driven entirely by
   `scenarios.ts`. The legacy benchmark-family system and Custom Mode's JSON facet catalog were
   archived 2026-07 (`.archive/README.md`); production case definitions live only in
   `src/lib/catalog/scenarios/`.
-- Public simulations execute in browser-side WASM through the **IMPES** path. Offline OPM Flow
-  artifacts are precomputed reference data, not live simulation. Both committed artifacts
-  (`wf_bl1d`, `spe1_gas_injection`) are `status: "parsed"` with physically sane series (dead-well
-  `EQUIL` bug fixed 2026-07-18).
-- Black-oil and three-phase modes are implemented and exposed; three-phase validation depth still
-  trails the implementation. SPE1 has published reference overlays, OPM artifact hooks, and
+- Public simulations execute in browser-side WASM through scenario-declared **IMPES or FIM**
+  policies. Offline OPM Flow artifacts are precomputed reference data, not live simulation. The
+  **8 committed artifacts** are `status: "parsed"` and are rendered only when a scenario declares
+  them as a reference source.
+- Black-oil and three-phase modes are implemented and exposed. SPE1 has published reference
+  overlays, OPM artifacts, and
   quantitative acceptance criteria (`src/lib/ressim/src/tests/spe1_acceptance.rs`, closed 2026-07-24;
   see `docs/BLACK_OIL_VALIDATION.md`).
 - Case-library planning is owned by `docs/CASE_LIBRARY_ROADMAP.md` (Tier 7 = the 2026-07-24 gap
-  audit; stable case IDs `T7.n`, enabler IDs `E1`–`E10`). `ROADMAP.md` Priority 5 carries the
-  ordering rationale and `TODO.md` the active checkboxes; neither restates case detail.
+  audit; stable case and enabler IDs). `ROADMAP.md` carries strategic ordering and GitHub Issues
+  carry execution state; neither should restate the detailed case rationale.
 
 ## Maintenance rule
 

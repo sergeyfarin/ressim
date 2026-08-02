@@ -5,7 +5,10 @@ description: Debug or improve FIM (fully implicit) solver convergence, timestep 
 
 # FIM Solver Debugging & Convergence Work
 
-FIM is **dev-only** — public scenario runs use IMPES (`docs/FIM_DEFERRED_BACKLOG.md`). FIM convergence is the hardest, most history-laden area of this project. The graveyard of reverted experiments is large; the process below exists because ad-hoc tuning repeatedly produced false wins.
+FIM ships in selected public scenarios; its convergence research track remains developer-driven
+(`docs/FIM_DEFERRED_BACKLOG.md`). FIM convergence is the hardest, most history-laden area of this
+project. The graveyard of reverted experiments is large; the process below exists because ad-hoc
+tuning repeatedly produced false wins.
 
 ## Oracle validity comes before a verdict
 
@@ -65,7 +68,8 @@ Many plausible levers were already tried and **reverted**. Check these, in order
 1. `docs/FIM_STATUS.md` — current state, baselines with replay commands, open gaps (rewritten 2026-07-05).
 2. `docs/FIM_EXPERIMENT_REGISTRY.md` — fast searchable index of promoted, reverted, refuted, diagnostic, and open FIM levers. **Search by mechanism name and by file, not just by target case** — the `FIM-NEWTON-007`→`FIM-DAMP-004` episode cost 3 live-test cycles because the "loosen the inflection chop" axis was searched by case, not by mechanism. If an equivalent experiment is already listed, do **not** repeat it unless the row's `Retry only if` condition is satisfied.
 3. `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md` + `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` — the standing 95%-track-OPM policy, Bundle A/B/C sequencing, and the FIM-vs-OPM gap decomposition with current triage. Any proposed change should be locatable on this map.
-4. `TODO.md` "FIM next steps" + "Now" — active task tracker only; if it contains dated micro-experiment notes, treat them as candidates to move into the registry/worklog.
+4. The active FIM GitHub Issues linked from `ROADMAP.md` — scope and acceptance criteria only;
+   experiment detail belongs in the registry/worklog.
 5. `docs/FIM_CONVERGENCE_WORKLOG.md` — active hypotheses and traces (Phase 9 onward — component-isolation lab, Phase 10's OPM `cprw` bundle, Phase 11's well-Schur-elimination/OSC-DETECT work, `FIM-DAMP-004`).
 6. `.archive/docs/FIM_CONVERGENCE_ARCHIVE_2026-04-08_to_2026-07-03.md` — water/gas shelf investigations, Phase 5 AD-assembler cutover, Phase 6, Phase 7 (all 5 sub-phases), Phase 8, Hypothesis C. `.archive/docs/FIM_CONVERGENCE_ARCHIVE_2026-03_to_2026-04-06.md`, `.archive/docs/FIM_HISTORY_2026-03.md` — older still.
 
@@ -137,7 +141,10 @@ From project instructions (`.github/copilot-instructions.md`):
 2. Results from dirty trees or partially reverted states are **provisional** — say so explicitly.
 3. To promote a change: rerun the matrix on the final post-cleanup tree, not an intermediate experiment commit.
 4. When replacing a documented baseline, state which baseline was superseded and why.
-5. Log the experiment (promoted or reverted, with numbers) in `TODO.md` / `docs/FIM_CONVERGENCE_WORKLOG.md`. Reverted results are valuable — record them so the next session doesn't retry the same lever.
+5. Log the experiment (promoted or reverted, with numbers) in
+   `docs/FIM_EXPERIMENT_REGISTRY.md` and `docs/FIM_CONVERGENCE_WORKLOG.md`; update the GitHub Issue
+   with the verdict and links. Reverted results are valuable—record them so the next session does
+   not retry the same lever.
 
 ## Working method for a convergence slice
 

@@ -373,7 +373,8 @@ then run the `solver_lab_*` tests against it.
   smoke before promoting anything.
 - One registry row per lever, honest verdict either way; negative results are recorded, not
   discarded.
-- Keep `TODO.md` short and action-oriented; long narratives go to the worklog.
+- Keep GitHub Issues scoped to outcomes and acceptance criteria; long experiment narratives go to
+  the registry/worklog. `TODO.md` is only the stable issue-dashboard landing page.
 - Systemic steer (user, standing): track OPM's overall approach consistently rather than fixing
   mechanisms piecemeal — individually-correct local fixes on an OPM-inconsistent base have
   repeatedly regressed (`FIM-NEWTON-005`/`007`, `FIM-LINEAR-001`/`009`).

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Roadmap and tracker guide
+    url: https://github.com/sergeyfarin/ressim/blob/master/TODO.md
+    about: Read the ownership and tracking rules before opening an issue.
+  - name: Scientific limitations
+    url: https://github.com/sergeyfarin/ressim/blob/master/docs/SCIENTIFIC_LIMITATIONS.md
+    about: Check the validated model envelope and intended use.
