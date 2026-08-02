@@ -216,8 +216,8 @@ through one path instead of two.
 
 Each step is independently shippable and leaves the product green. Sizes are rough.
 
-**Status: steps 0-3 landed 2026-08-02**, plus the characterisation net that step 4 depends on.
-Step 4 (the builder inversion) and steps 5-6 remain.
+**Status: steps 0-4 landed 2026-08-02**, plus the characterisation net step 4 depended on.
+Steps 5-6 (the rename, and the extended agnostic test) remain.
 
 | # | Step | Why first / why here | Size |
 |---|---|---|---|
@@ -225,7 +225,7 @@ Step 4 (the builder inversion) and steps 5-6 remain.
 | 1 | ✅ **One run-series module.** Collapse the four cumulative/pore-volume implementations into the `reservoirVolumes.ts` + accessor pair; delete the component-local copies | Pure defect removal, no API change, and it is where the next drift will otherwise happen | M |
 | 2 | ✅ **Introduce `CurveDescriptor` with a `property` field**; have `buildChartData` attach it to every curve it already emits; reimplement `curvePropertyRegistry` over descriptors, keeping the prefix ladder as a temporary fallback | Additive. Nothing moves yet, but semantics stop being parsed from strings | M |
 | 3 | ✅ **Open the panel id type** to `string`, keeping the current ids as constants; move `PANEL_DEFS` entries next to the code that emits their curves | Removes the union that forces a shared edit per new panel | M |
-| 4 | **Invert the builder**: panels declare their curves and pull from the accessor, instead of the builder emitting everything and the layout filtering | The actual architectural change; safe only after 1–3 | L |
+| 4 | ✅ **Invert the builder**: panels declare their curves and pull from the accessor, instead of the builder emitting everything and the layout filtering | The actual architectural change; safe only after 1–3 | L |
 | 5 | **Rename `RateChart*` → `SeriesChart*`** (or similar) across ~30 files | Cosmetic, mechanical, and best done last so it does not collide with real edits | M |
 | 6 | **Extend the agnostic test** to forbid what actually leaks: no `panels.<id>` literals outside panel descriptors, no `analyticalMethod ===` outside the method registry, no domain vocabulary in `charts/*.svelte` | Locks in the result the same way the key rule locked in the last one | S |
 
@@ -391,3 +391,43 @@ declaration is a small tail (8 of 18 carry a `chartLayoutPatch`). The problem wa
 never that scenarios say too much — it is that they can only choose from what the
 builder already emits. Splitting the files would move the symptom; the registry
 plus step 4 removes it.
+
+---
+
+## 11. Step 4 — the builder inversion (2026-08-02)
+
+**What it was.** `buildChartData` carried three near-identical branches, one per
+`simulationCurveSet` (`water-cut`, `gas-cut`, `oil-rate`), each ~20 hand-written
+`appendSeries(panels.X, {...}, xValues, derived.Y)` blocks naming a panel and a
+derived-series field in code. Adding a curve meant editing three places, and they
+had already drifted: the recovery curve was relabelled in the oil-rate branch
+only, so the same quantity read "Recovery" on a waterflood and
+"Recovery — Oil (of STOIIP)" on a depletion case.
+
+**What it is now.** One table. `runQuantities.ts` says what a quantity *is*
+(label, unit, property, where its values come from); `simulationCurves.ts` says
+where it goes (panel, which curve sets, which x-axis). The builder iterates.
+
+| | before | after |
+|---|---|---|
+| `buildChartData.ts` | 1,259 lines | **855** |
+| hard-coded `panels.<id>` references | 41 | **8** |
+| places to edit to add a simulation curve | 3 branches + panel union + defaults | **1 table row** |
+
+The characterisation snapshot is **unchanged**, which is what makes this
+believable: every scenario emits the same panels and curve keys as before.
+
+**One deliberate behaviour change**: the recovery label is now
+"Recovery — Oil (of STOIIP)" on every curve set, not just the depletion one.
+That is the drift above, resolved in favour of the explicit name — oil and gas
+recovery are fractions of different volumes in place and the label should say
+which.
+
+**What still names a panel directly** — eight references across six panels:
+`control_limits`, `mbe_ooip`, `drive_indices` (×3) and the three `pss_*` panels.
+These are diagnostic families whose curves come from a *computed object*
+(`computeMbeDiagnostics`, `computeDietzPssSimulationDiagnostics`) rather than
+from the derived series, so they need a second descriptor shape — a quantity
+whose source is a diagnostic, not a run series. Folding them in belongs with the
+accessor work in §5, not with this step; doing it now would mean inventing that
+shape twice.

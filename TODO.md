@@ -787,7 +787,16 @@ Open, blocked on an enabler:
   has given up 5 % of its eventual pressure drop; below that F/Et is a ratio of two near-zero
   numbers (1.147 on `gas_drive` before settling to 1.000). Drive indices are ratios *within* Et and
   stay visible throughout.
-- [ ] **Chart layer is presentation-agnostic but not domain-agnostic — full audit 2026-08-02:
+- [ ] **Chart layer: steps 0-4 of the audit landed 2026-08-02; steps 5-6 remain.** `buildChartData`
+  is 855 lines (was 1,259) with 8 hard-coded panel references (was 41), and adding a simulation
+  curve is one table row in `simulationCurves.ts` instead of three branches plus a union plus panel
+  defaults. Remaining: the rename of the `RateChart*` vocabulary (~30 files, mechanical), and
+  extending `scenarioAgnosticArchitecture.test.ts` to forbid what actually leaks — `panels.<id>`
+  literals outside descriptors, `analyticalMethod ===` outside the method registry, domain
+  vocabulary in `charts/*.svelte`. Also open: the last 8 panel references belong to diagnostic
+  families (MBE, drive indices, Dietz PSS) whose curves come from a computed object rather than the
+  derived series, and need a second descriptor shape — do it with the accessor work, not before.
+- [ ] **(superseded, kept for the measurements) Chart layer is presentation-agnostic but not domain-agnostic — full audit 2026-08-02:
   `docs/CHART_ARCHITECTURE_REVIEW_2026-08-02.md`.** The rendering primitives are genuinely generic
   (`ChartSubPanel` + `UniversalChart`: one domain word across 1,128 lines). Everything above them is
   a closed enumeration of reservoir vocabulary — 23 panel ids, 8 x-axis modes, 14 scale presets, 22

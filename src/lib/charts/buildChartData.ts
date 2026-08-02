@@ -59,7 +59,7 @@ import {
     type ReferenceComparisonTheme,
 } from './referenceChartTypes';
 import { buildPreviewSweepPanels, buildSweepPanels } from './sweepPanelBuilder';
-import { getRunQuantity, type RunQuantityId } from './runQuantities';
+import { simulationCurvesForSet, resolveSimulationCurve } from './simulationCurves';
 import { DEFAULT_SWEEP_METHOD } from '../analytical/sweepMethods';
 import type { AnalyticalMethod } from '../catalog/scenarios';
 
@@ -132,50 +132,6 @@ function appendBhpLimitDiagnostics(
         yAxisID: 'y',
         defaultVisible: input.defaultVisible,
     }, input.xValues, input.injectorValues);
-}
-
-/**
- * Emits one curve per registered rate quantity.
- *
- * The rate family is the pilot for `runQuantities.ts`: the curve's label, key
- * and property come from the registry entry, so adding a rate is a registry
- * row rather than another block here. `gas-rate` exists because ResSim could
- * not plot its own gas production at all — `dep_gas_pz`'s "Gas Rate" panel drew
- * the oil rate, which is ~0 in a dry-gas reservoir.
- */
-function appendRateQuantities(
-    panels: Record<RateChartPanelKey, ReferenceComparisonPanel>,
-    input: {
-        result: BenchmarkRunResult;
-        derived: DerivedRunSeries;
-        caseLabel: string;
-        color: string;
-        defaultVisible: boolean;
-        xValues: Array<number | null>;
-    },
-) {
-    const panelByQuantity: Record<RunQuantityId, RateChartPanelKey> = {
-        'oil-rate': 'oil_rate',
-        'gas-rate': 'gas_rate',
-    };
-
-    for (const [quantityId, panelKey] of Object.entries(panelByQuantity) as [RunQuantityId, RateChartPanelKey][]) {
-        const quantity = getRunQuantity(quantityId);
-        appendSeries(panels[panelKey], {
-            label: `${input.result.label} ${quantity.label}`,
-            curveKey: `${quantity.id}-sim`,
-            caseKey: input.result.key,
-            toggleGroupKey: input.result.key,
-            toggleLabel: input.caseLabel,
-            legendSection: 'sim',
-            legendSectionLabel: LEGEND_SECTIONS.sim,
-            color: input.color,
-            borderWidth: simBorderWidth(input.result.variantKey),
-            yAxisID: 'y',
-            defaultVisible: input.defaultVisible,
-            property: quantity.property,
-        }, input.xValues, quantity.source(input.derived));
-    }
 }
 
 function appendPublishedReferenceSeries(
@@ -594,10 +550,19 @@ export function buildReferenceComparisonModel(input: {
         const defaultVisible = true;
         const caseLabel = compactCaseLabel(result.label);
 
-        if (descriptor.simulationCurveSet === 'water-cut') {
-            appendSeries(panels.rates, {
-                label: `${result.label} Water Cut`,
-                curveKey: 'water-cut-sim',
+        // ── Simulation curves ───────────────────────────────────────────────
+        // One table, iterated. This was three branches of ~20 hand-written
+        // appendSeries blocks, one per curve set, each naming a panel and a
+        // derived-series field in code — and they had already drifted: the
+        // recovery curve was relabelled in the oil-rate branch only. The table
+        // is `simulationCurves.ts`; the quantities it places are
+        // `runQuantities.ts`.
+        const historyXAxis = interpolateXAxisAtTimes(derived.time, xValues, derived.historyTime);
+        for (const curve of simulationCurvesForSet(descriptor.simulationCurveSet)) {
+            const { label, property, values } = resolveSimulationCurve(curve, derived);
+            appendSeries(panels[curve.panel], {
+                label: `${result.label} ${label}`,
+                curveKey: curve.curveKey,
                 caseKey: result.key,
                 toggleGroupKey: result.key,
                 toggleLabel: caseLabel,
@@ -607,281 +572,13 @@ export function buildReferenceComparisonModel(input: {
                 borderWidth: simBorderWidth(result.variantKey),
                 yAxisID: 'y',
                 defaultVisible,
-            }, xValues, derived.waterCut);
-            // Average saturation is its own quantity and gets its own panel:
-            // sharing the water-cut plot is what once forced it into a
-            // distinguishing dash, and one property per plot removes the need.
-            appendSeries(panels.avg_water_sat, {
-                label: `${result.label} Avg Water Sat`,
-                curveKey: 'avg-water-sat',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.avgWaterSat);
-            appendSeries(panels.recovery, {
-                label: `${result.label} Recovery`,
-                curveKey: 'recovery-factor-primary',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.recovery);
-            appendSeries(panels.cumulative, {
-                label: `${result.label} Cum Oil`,
-                curveKey: 'cum-oil-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.cumulativeOil);
-            appendRateQuantities(panels, {
-                result, derived, caseLabel, color, defaultVisible, xValues,
-            });
-            appendSeries(panels.cumulative_gas, {
-                label: `${result.label} Cum Gas`,
-                curveKey: 'cum-gas-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.cumulativeGas);
-            appendSeries(panels.injection_rate, {
-                label: `${result.label} Injection Rate`,
-                curveKey: 'injection-rate-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.injectionRate);
-            appendSeries(panels.volumes, {
-                label: `${result.label} Cum Injection`,
-                curveKey: 'cum-injection',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.cumulativeInjection);
-            appendSeries(panels.diagnostics, {
-                label: `${result.label} Avg Pressure`,
-                curveKey: 'avg-pressure-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.pressure);
-            appendSeries(panels.pz, {
-                label: `${result.label} p/z`,
-                curveKey: 'p-over-z-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.p_z);
-            appendSeries(panels.gor, {
-                label: `${result.label} GOR`,
-                curveKey: 'gor-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.gor);
-            return;
+                property,
+            }, curve.axis === 'history' ? historyXAxis : xValues, values);
         }
 
-        if (descriptor.simulationCurveSet === 'gas-cut') {
-            const historyXAxis = interpolateXAxisAtTimes(derived.time, xValues, derived.historyTime);
-            appendSeries(panels.rates, {
-                label: `${result.label} Gas Cut`,
-                curveKey: 'gas-cut-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.gasCut);
-            appendSeries(panels.recovery, {
-                label: `${result.label} Recovery`,
-                curveKey: 'recovery-factor-primary',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.recovery);
-            appendSeries(panels.cumulative, {
-                label: `${result.label} Cum Oil`,
-                curveKey: 'cum-oil-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.cumulativeOil);
-            appendRateQuantities(panels, {
-                result, derived, caseLabel, color, defaultVisible, xValues,
-            });
-            appendSeries(panels.cumulative_gas, {
-                label: `${result.label} Cum Gas`,
-                curveKey: 'cum-gas-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.cumulativeGas);
-            appendSeries(panels.injection_rate, {
-                label: `${result.label} Injection Rate`,
-                curveKey: 'injection-rate-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.injectionRate);
-            appendSeries(panels.volumes, {
-                label: `${result.label} Cum Injection`,
-                curveKey: 'cum-injection',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.cumulativeInjection);
-            appendSeries(panels.diagnostics, {
-                label: `${result.label} Avg Pressure`,
-                curveKey: 'avg-pressure-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.pressure);
-            appendSeries(panels.pz, {
-                label: `${result.label} p/z`,
-                curveKey: 'p-over-z-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.p_z);
-            appendSeries(panels.gor, {
-                label: `${result.label} GOR`,
-                curveKey: 'gor-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, xValues, derived.gor);
-            appendSeries(panels.producer_bhp, {
-                label: `${result.label} Producer WBHP`,
-                curveKey: 'producer-bhp-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, historyXAxis, derived.producerBhp);
-            appendSeries(panels.injector_bhp, {
-                label: `${result.label} Injector WBHP`,
-                curveKey: 'injector-bhp-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
-                toggleLabel: caseLabel,
-                legendSection: 'sim',
-                legendSectionLabel: LEGEND_SECTIONS.sim,
-                color,
-                borderWidth: simBorderWidth(result.variantKey),
-                yAxisID: 'y',
-                defaultVisible,
-            }, historyXAxis, derived.injectorBhp);
+        // Control-limit fractions accompany the well-pressure curves, so they
+        // follow the same sets those curves belong to.
+        if (descriptor.simulationCurveSet !== 'water-cut') {
             appendBhpLimitDiagnostics(panels.control_limits, {
                 label: result.label,
                 caseKey: result.key,
@@ -892,171 +589,8 @@ export function buildReferenceComparisonModel(input: {
                 producerValues: derived.producerBhpLimitedFraction,
                 injectorValues: derived.injectorBhpLimitedFraction,
             });
-            return;
         }
 
-        // simulationCurveSet 'oil-rate': standard oil-rate + pressure panels.
-        appendSeries(panels.rates, {
-            label: `${result.label} Oil Rate`,
-            curveKey: 'oil-rate-sim',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
-            toggleLabel: caseLabel,
-            legendSection: 'sim',
-            legendSectionLabel: LEGEND_SECTIONS.sim,
-            color,
-            borderWidth: simBorderWidth(result.variantKey),
-            yAxisID: 'y',
-            defaultVisible,
-        }, xValues, derived.oilRate);
-        // Oil and gas recovery are different quantities against different
-        // denominators (STOIIP and GIIP), so they are different curves. Either
-        // is null throughout where the reservoir holds none of that phase —
-        // a dry-gas case draws no oil recovery at all rather than a fraction of
-        // a denominator that does not exist.
-        appendSeries(panels.recovery, {
-            label: `${result.label} Recovery — Oil (of STOIIP)`,
-            curveKey: 'recovery-factor-primary',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
-            toggleLabel: caseLabel,
-            legendSection: 'sim',
-            legendSectionLabel: LEGEND_SECTIONS.sim,
-            color,
-            borderWidth: simBorderWidth(result.variantKey),
-            yAxisID: 'y',
-            defaultVisible,
-        }, xValues, derived.recovery);
-        appendSeries(panels.recovery, {
-            label: `${result.label} Recovery — Gas (of GIIP)`,
-            curveKey: 'recovery-factor-gas',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
-            toggleLabel: caseLabel,
-            legendSection: 'sim',
-            legendSectionLabel: LEGEND_SECTIONS.sim,
-            color,
-            borderWidth: SIM_BORDER_SECONDARY,
-            yAxisID: 'y',
-            defaultVisible,
-        }, xValues, derived.recoveryGas);
-        appendSeries(panels.cumulative, {
-            label: `${result.label} Cum Oil`,
-            curveKey: 'cum-oil-sim',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
-            toggleLabel: caseLabel,
-            legendSection: 'sim',
-            legendSectionLabel: LEGEND_SECTIONS.sim,
-            color,
-            borderWidth: simBorderWidth(result.variantKey),
-            yAxisID: 'y',
-        }, xValues, derived.cumulativeOil);
-        appendRateQuantities(panels, {
-            result, derived, caseLabel, color, defaultVisible, xValues,
-        });
-        appendSeries(panels.cumulative_gas, {
-            label: `${result.label} Cum Gas`,
-            curveKey: 'cum-gas-sim',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
-            toggleLabel: caseLabel,
-            legendSection: 'sim',
-            legendSectionLabel: LEGEND_SECTIONS.sim,
-            color,
-            borderWidth: simBorderWidth(result.variantKey),
-            yAxisID: 'y',
-            defaultVisible,
-        }, xValues, derived.cumulativeGas);
-        appendSeries(panels.injection_rate, {
-            label: `${result.label} Injection Rate`,
-            curveKey: 'injection-rate-sim',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
-            toggleLabel: caseLabel,
-            legendSection: 'sim',
-            legendSectionLabel: LEGEND_SECTIONS.sim,
-            color,
-            borderWidth: simBorderWidth(result.variantKey),
-            yAxisID: 'y',
-            defaultVisible,
-        }, xValues, derived.injectionRate);
-        appendSeries(panels.diagnostics, {
-            label: `${result.label} Avg Pressure`,
-            curveKey: 'avg-pressure-sim',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
-            toggleLabel: caseLabel,
-            legendSection: 'sim',
-            legendSectionLabel: LEGEND_SECTIONS.sim,
-            color,
-            borderWidth: simBorderWidth(result.variantKey),
-            yAxisID: 'y',
-            defaultVisible,
-        }, xValues, derived.pressure);
-        appendSeries(panels.pz, {
-            label: `${result.label} p/z`,
-            curveKey: 'p-over-z-sim',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
-            toggleLabel: caseLabel,
-            legendSection: 'sim',
-            legendSectionLabel: LEGEND_SECTIONS.sim,
-            color,
-            borderWidth: simBorderWidth(result.variantKey),
-            yAxisID: 'y',
-            defaultVisible,
-        }, xValues, derived.p_z);
-        appendSeries(panels.gor, {
-            label: `${result.label} GOR`,
-            curveKey: 'gor-sim',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
-            toggleLabel: caseLabel,
-            legendSection: 'sim',
-            legendSectionLabel: LEGEND_SECTIONS.sim,
-            color,
-            borderWidth: simBorderWidth(result.variantKey),
-            yAxisID: 'y',
-            defaultVisible,
-        }, xValues, derived.gor);
-        const historyXAxis = interpolateXAxisAtTimes(derived.time, xValues, derived.historyTime);
-        appendSeries(panels.producer_bhp, {
-            label: `${result.label} Producer WBHP`,
-            curveKey: 'producer-bhp-sim',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
-            toggleLabel: caseLabel,
-            legendSection: 'sim',
-            legendSectionLabel: LEGEND_SECTIONS.sim,
-            color,
-            borderWidth: simBorderWidth(result.variantKey),
-            yAxisID: 'y',
-            defaultVisible,
-        }, historyXAxis, derived.producerBhp);
-        appendSeries(panels.injector_bhp, {
-            label: `${result.label} Injector WBHP`,
-            curveKey: 'injector-bhp-sim',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
-            toggleLabel: caseLabel,
-            legendSection: 'sim',
-            legendSectionLabel: LEGEND_SECTIONS.sim,
-            color,
-            borderWidth: simBorderWidth(result.variantKey),
-            yAxisID: 'y',
-            defaultVisible,
-        }, historyXAxis, derived.injectorBhp);
-        appendBhpLimitDiagnostics(panels.control_limits, {
-            label: result.label,
-            caseKey: result.key,
-            toggleLabel: caseLabel,
-            borderWidth: simBorderWidth(result.variantKey),
-            defaultVisible,
-            xValues,
-            producerValues: derived.producerBhpLimitedFraction,
-            injectorValues: derived.injectorBhpLimitedFraction,
-        });
 
         const dietzPss = computeDietzPssSimulationDiagnostics(result, derived);
         if (dietzPss) {
