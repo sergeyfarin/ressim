@@ -545,7 +545,7 @@ export function buildReferenceComparisonModel(input: {
         const derived = derivedByKey.get(result.key);
         if (!derived) return;
         const color = getReferenceComparisonCaseColor(index);
-        const tau = analyticalMethod === 'depletion' ? computeDepletionTau(result.params) : null;
+        const tau = descriptor.definesCharacteristicTime ? computeDepletionTau(result.params) : null;
         const xValues = buildXAxisValues(derived, input.xAxisMode, tau);
         const defaultVisible = true;
         const caseLabel = compactCaseLabel(result.label);

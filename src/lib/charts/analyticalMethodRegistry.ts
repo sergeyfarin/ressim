@@ -37,7 +37,12 @@ import type { AnalyticalMethod, AnalyticalOverlayMode, PrimaryRateCurve } from '
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { ChartPanelFallback } from './chartPanelSelection';
 import { buildXAxisValues, type DerivedRunSeries } from './axisAdapters';
-import type { ChartPanelId, ChartPanelKey, ChartXAxisMode } from './chartLayoutConfig';
+import type { ChartLayoutConfig, ChartPanelId, ChartPanelKey, ChartXAxisMode } from './chartLayoutConfig';
+import {
+    buildDisplacementBenchmarkLayout,
+    buildProductionBenchmarkLayout,
+    type FallbackLayoutInput,
+} from './benchmarkFallbackLayouts';
 import {
     computeBLAnalyticalFromParams,
     computeDepletionAnalyticalFromParams,
@@ -141,6 +146,12 @@ export type AnalyticalMethodDescriptor = {
      * run's own time/injection history; a 'time'-native one never is.
      */
     nativeXAxis: 'pvi' | 'time';
+    /**
+     * Whether this method defines a characteristic time τ, which the chart uses
+     * for the dimensionless-time (`tD`) axis. Declared here rather than tested
+     * for with `analyticalMethod === 'depletion'` at the point of use.
+     */
+    definesCharacteristicTime: boolean;
     slots: readonly AnalyticalCurveSlot[];
     /** Overlay from a completed run. Null when the method has no reference solution. */
     fromResult:
@@ -155,6 +166,13 @@ export type AnalyticalMethodDescriptor = {
     panelPresentation: Partial<Record<ChartPanelId, Partial<ChartPanelFallback>>>;
     /** Reference-solution wording for the benchmark disclosure card. */
     referenceLabel: string;
+    /**
+     * Default chart layout for a *benchmark* family, which has no scenario to
+     * declare one. Method-specific presentation belongs with the method: this
+     * was the last `family.analyticalMethod === …` branch outside this registry,
+     * living in `referenceChartConfig.ts`.
+     */
+    fallbackLayout: (input: FallbackLayoutInput) => ChartLayoutConfig;
 };
 
 // ─── Overlay → curve-set adapters ─────────────────────────────────────────────
@@ -199,6 +217,8 @@ const buckleyLeverett: AnalyticalMethodDescriptor = {
     simulationCurveSet: 'water-cut',
     producesSweepPanels: false,
     nativeXAxis: 'pvi',
+    definesCharacteristicTime: false,
+    fallbackLayout: buildDisplacementBenchmarkLayout,
     slots: [
         {
             panelKey: 'rates',
@@ -252,6 +272,8 @@ const gasOilBL: AnalyticalMethodDescriptor = {
     simulationCurveSet: 'gas-cut',
     producesSweepPanels: false,
     nativeXAxis: 'pvi',
+    definesCharacteristicTime: false,
+    fallbackLayout: buildProductionBenchmarkLayout,
     slots: [
         {
             panelKey: 'rates',
@@ -321,6 +343,8 @@ const depletion: AnalyticalMethodDescriptor = {
     simulationCurveSet: 'oil-rate',
     producesSweepPanels: false,
     nativeXAxis: 'time',
+    definesCharacteristicTime: true,
+    fallbackLayout: buildProductionBenchmarkLayout,
     slots: [
         {
             panelKey: 'rates',
@@ -398,6 +422,8 @@ const wellTest: AnalyticalMethodDescriptor = {
     simulationCurveSet: 'oil-rate',
     producesSweepPanels: false,
     nativeXAxis: 'time',
+    definesCharacteristicTime: false,
+    fallbackLayout: buildProductionBenchmarkLayout,
     slots: [
         {
             panelKey: 'producer_bhp',
@@ -480,6 +506,8 @@ const digitizedReference: AnalyticalMethodDescriptor = {
     simulationCurveSet: 'oil-rate',
     producesSweepPanels: false,
     nativeXAxis: 'time',
+    definesCharacteristicTime: false,
+    fallbackLayout: buildProductionBenchmarkLayout,
     slots: [],
     fromResult: null,
     fromParams: null,
@@ -493,6 +521,8 @@ const noMethod: AnalyticalMethodDescriptor = {
     simulationCurveSet: 'oil-rate',
     producesSweepPanels: false,
     nativeXAxis: 'time',
+    definesCharacteristicTime: false,
+    fallbackLayout: buildProductionBenchmarkLayout,
     slots: [],
     fromResult: null,
     fromParams: null,
@@ -522,6 +552,8 @@ const sweep: AnalyticalMethodDescriptor = {
     simulationCurveSet: 'water-cut',
     producesSweepPanels: true,
     nativeXAxis: 'pvi',
+    definesCharacteristicTime: false,
+    fallbackLayout: buildProductionBenchmarkLayout,
     slots: [],
     fromResult: null,
     fromParams: null,
@@ -560,6 +592,8 @@ const gasMaterialBalance: AnalyticalMethodDescriptor = {
     simulationCurveSet: 'oil-rate',
     producesSweepPanels: false,
     nativeXAxis: 'time',
+    definesCharacteristicTime: false,
+    fallbackLayout: buildProductionBenchmarkLayout,
     slots: [
         {
             panelKey: 'pz',

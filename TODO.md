@@ -787,7 +787,15 @@ Open, blocked on an enabler:
   has given up 5 % of its eventual pressure drop; below that F/Et is a ratio of two near-zero
   numbers (1.147 on `gas_drive` before settling to 1.000). Drive indices are ratios *within* Et and
   stay visible throughout.
-- [ ] **Chart layer: steps 0-4 of the audit landed 2026-08-02; steps 5-6 remain.** `buildChartData`
+- [x] **Chart layer: all six audit steps landed 2026-08-02.** `buildChartData` is 855 lines (was
+  1,259) with 8 panel references (was 41); adding a simulation curve is one table row; the
+  `RateChart*` vocabulary is gone from 35 files; and `charts/chartAgnosticArchitecture.test.ts`
+  enforces no method branching outside the registry, no panel naming in the builder beyond six
+  listed diagnostics, and no reservoir vocabulary in components. Writing the guard forced three
+  further fixes (τ and the fallback layout became descriptor fields; the scale presets and their
+  if-ladder left `ReferenceComparisonChart.svelte`) and uncovered 90 more lines of dead live-path
+  configuration. Remaining work and its reasoning: §12 of the review.
+- [ ] **(superseded) Chart layer: steps 0-4 of the audit landed 2026-08-02; steps 5-6 remain.** `buildChartData`
   is 855 lines (was 1,259) with 8 hard-coded panel references (was 41), and adding a simulation
   curve is one table row in `simulationCurves.ts` instead of three branches plus a union plus panel
   defaults. Remaining: the rename of the `RateChart*` vocabulary (~30 files, mechanical), and

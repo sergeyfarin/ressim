@@ -216,8 +216,8 @@ through one path instead of two.
 
 Each step is independently shippable and leaves the product green. Sizes are rough.
 
-**Status: steps 0-4 landed 2026-08-02**, plus the characterisation net step 4 depended on.
-Steps 5-6 (the rename, and the extended agnostic test) remain.
+**Status: all six steps landed 2026-08-02**, plus the characterisation net step 4 depended on.
+What remains is recorded in §12.
 
 | # | Step | Why first / why here | Size |
 |---|---|---|---|
@@ -226,8 +226,8 @@ Steps 5-6 (the rename, and the extended agnostic test) remain.
 | 2 | ✅ **Introduce `CurveDescriptor` with a `property` field**; have `buildChartData` attach it to every curve it already emits; reimplement `curvePropertyRegistry` over descriptors, keeping the prefix ladder as a temporary fallback | Additive. Nothing moves yet, but semantics stop being parsed from strings | M |
 | 3 | ✅ **Open the panel id type** to `string`, keeping the current ids as constants; move `PANEL_DEFS` entries next to the code that emits their curves | Removes the union that forces a shared edit per new panel | M |
 | 4 | ✅ **Invert the builder**: panels declare their curves and pull from the accessor, instead of the builder emitting everything and the layout filtering | The actual architectural change; safe only after 1–3 | L |
-| 5 | **Rename `RateChart*` → `SeriesChart*`** (or similar) across ~30 files | Cosmetic, mechanical, and best done last so it does not collide with real edits | M |
-| 6 | **Extend the agnostic test** to forbid what actually leaks: no `panels.<id>` literals outside panel descriptors, no `analyticalMethod ===` outside the method registry, no domain vocabulary in `charts/*.svelte` | Locks in the result the same way the key rule locked in the last one | S |
+| 5 | ✅ **Rename `RateChart*` → `SeriesChart*`** (or similar) across ~30 files | Cosmetic, mechanical, and best done last so it does not collide with real edits | M |
+| 6 | ✅ **Extend the agnostic test** to forbid what actually leaks: no `panels.<id>` literals outside panel descriptors, no `analyticalMethod ===` outside the method registry, no domain vocabulary in `charts/*.svelte` | Locks in the result the same way the key rule locked in the last one | S |
 
 **Order rationale.** Steps 1–3 are additive and independently valuable even if step 4 is never taken:
 they remove a class of duplication defect, make curve semantics explicit, and stop the panel union
@@ -431,3 +431,55 @@ from the derived series, so they need a second descriptor shape — a quantity
 whose source is a diagnostic, not a run series. Folding them in belongs with the
 accessor work in §5, not with this step; doing it now would mean inventing that
 shape twice.
+
+---
+
+## 12. Steps 5-6, and what is left (2026-08-02)
+
+**Step 5 — the rename.** Zero occurrences of `RateChart`/`rateChart` remain across
+35 files. The types became `ChartXAxisMode`, `ChartLayoutConfig`, `ChartPanelId`,
+`ChartScalePreset` and so on; `rateChartLayoutConfig.ts` became
+`chartLayoutConfig.ts`; and the layout property renamed with them, so a
+scenario's patch now reads `{ chart: { … } }`. Mechanical, and the last visible
+claim that the panel system belongs to one scenario family.
+
+**Step 6 — the guard**, `charts/chartAgnosticArchitecture.test.ts`, three rules:
+
+1. *No `analyticalMethod ===` outside the method registry.* This forced two real
+   fixes rather than an allow-list. `buildChartData` computed τ under
+   `analyticalMethod === 'depletion'`; the descriptor now declares
+   `definesCharacteristicTime`. `referenceChartConfig` chose a whole fallback
+   layout under `analyticalMethod === 'buckley-leverett'`; each descriptor now
+   names its own `fallbackLayout`, with the two layout builders in a leaf module
+   (`benchmarkFallbackLayouts.ts`) so the registry and the config file do not
+   form a cycle.
+2. *The builder may not name a panel*, except the six diagnostic panels listed
+   with their reason. The list may shrink and must not grow.
+3. *No reservoir vocabulary in `charts/*.svelte`.* This forced the fourth fix:
+   four scale objects and the preset if-ladder lived inside
+   `ReferenceComparisonChart.svelte`, which is how the axis title "Water Cut /
+   Saturation" came to sit in a rendering component. They moved to
+   `scalePresetRegistry.ts` behind `getScalePresetConfig(preset)`.
+
+That last move also uncovered **90 lines of dead scale configuration** left over
+from the live path deleted in step 0 — a second copy of the same four presets,
+reachable only through `buildGetScalePresetConfig`, whose only caller was
+`UniversalChart.svelte`.
+
+### What is left
+
+- **Six panels the builder still names**: `control_limits`, `mbe_ooip`,
+  `drive_indices`, and the three `pss_*`. Their curves come from a computed
+  diagnostic rather than the derived series, so they need a descriptor whose
+  source is a diagnostic — the accessor work in §5. The guard pins the list.
+- **The accessor itself.** `DerivedRunSeries` is still a struct of named fields;
+  `runQuantities.ts` reads from it rather than replacing it. Quantities are
+  named and open, which was the goal; the underlying series are not yet resolved
+  on demand.
+- **x-axis modes are still a closed union** of eight. Same treatment as panels
+  would open them: a descriptor with a label, an accessor, and a
+  reference-mapping rule — which is what `mapReferenceTimesToXAxis` hard-codes
+  per mode today.
+- **The characterisation net records curve keys, not labels.** The recovery-label
+  drift that step 4 found would not have been caught by it. Worth extending if a
+  future change is label-sensitive.

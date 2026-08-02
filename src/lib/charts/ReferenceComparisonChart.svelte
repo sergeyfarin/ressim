@@ -40,6 +40,7 @@
         SCALE_GOR,
         SCALE_FRACTION,
         SCALE_SWEEP,
+        getScalePresetConfig,
     } from './scalePresetRegistry';
     import { PANEL_DEFS, getPanelFallback } from './panelDefs';
     import { getAnalyticalMethodDescriptor } from './analyticalMethodRegistry';
@@ -211,84 +212,6 @@
             allKeys.map((key) => [key, previousVisibility[key] ?? true]),
         );
     });
-
-    const breakthroughScales = {
-        y: {
-            type: 'linear',
-            display: true,
-            position: 'left',
-            min: 0,
-            max: 1,
-            alignToPixels: true,
-            title: { display: true, text: 'Water Cut / Saturation' },
-            ticks: { count: 6 },
-            _fraction: true,
-        },
-    };
-    const rateScales = {
-        y: {
-            type: 'linear',
-            display: true,
-            position: 'left',
-            min: 0,
-            alignToPixels: true,
-            title: { display: true, text: 'Rate (m³/day)' },
-            ticks: { count: 6 },
-        },
-    };
-    const recoveryScales = {
-        y: {
-            type: 'linear',
-            display: true,
-            position: 'left',
-            min: 0,
-            alignToPixels: true,
-            title: { display: true, text: 'Recovery Factor' },
-            ticks: { count: 6 },
-            _fraction: true,
-            _maxCap: 1,
-        },
-    };
-    const diagnosticsScales = {
-        y: {
-            type: 'linear',
-            display: true,
-            position: 'left',
-            alignToPixels: true,
-            title: { display: true, text: 'Pressure (bar)' },
-            ticks: { count: 6 },
-            _auto: true,
-        },
-        y1: {
-            type: 'linear',
-            display: true,
-            position: 'right',
-            min: 0,
-            max: 1,
-            alignToPixels: true,
-            title: { display: true, text: 'BHP-limited fraction' },
-            grid: { drawOnChartArea: false },
-            ticks: { count: 6 },
-            _fraction: true,
-        },
-    };
-
-    function getScalePresetConfig(scalePreset: ChartScalePreset): Record<string, any> {
-        if (scalePreset === 'sweep') return SCALE_SWEEP;
-        if (scalePreset === 'sweep_rf') return SCALE_SWEEP;
-        if (scalePreset === 'breakthrough') return breakthroughScales;
-        if (scalePreset === 'pressure') return SCALE_PRESSURE;
-        if (scalePreset === 'productivity') return SCALE_PRODUCTIVITY;
-        if (scalePreset === 'shape_factor') return SCALE_SHAPE_FACTOR;
-        if (scalePreset === 'ratio') return SCALE_RATIO;
-        if (scalePreset === 'gor') return SCALE_GOR;
-        if (scalePreset === 'diagnostics') return diagnosticsScales;
-        if (scalePreset === 'fraction') return SCALE_FRACTION;
-        if (scalePreset === 'recovery') return recoveryScales;
-        if (scalePreset === 'cumulative_volumes') return SCALE_CUMULATIVE_VOLUMES;
-        if (scalePreset === 'cumulative') return SCALE_CUMULATIVE;
-        return rateScales;
-    }
 
     const allXAxisOptions = $derived<ChartXAxisOption[]>([
         { value: 'time', label: 'Time' },
