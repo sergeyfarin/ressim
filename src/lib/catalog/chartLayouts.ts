@@ -323,7 +323,7 @@ export const CHART_LAYOUTS: Record<string, ChartLayoutConfig> = {
                     expanded: false,
                 },
                 pz: {
-                    title: 'p/z vs Cumulative Gas Produced',
+                    title: 'p/z Material Balance',
                     curveKeys: [
                         'p-over-z-sim',
                         'p-over-z-reference',

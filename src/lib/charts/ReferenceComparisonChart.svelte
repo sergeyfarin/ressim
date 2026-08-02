@@ -7,12 +7,12 @@
     import {
         coerceChartAxisState,
         getConfiguredXAxisOptions,
+        REFERENCE_COMPARISON_X_AXIS_OPTIONS,
         resolveChartPanelDefinition,
         resolveChartPanelLayout,
         suppressLeadingOutliers,
         type ChartPanelEntry,
         type ChartPanelFallback,
-        type ChartXAxisOption,
     } from './chartPanelSelection';
     import { resolveSharedXAxisRange, type AxisMapping } from './xAxisRangePolicy';
     import { buildXAxisValues } from './axisAdapters';
@@ -213,19 +213,9 @@
         );
     });
 
-    const allXAxisOptions = $derived<ChartXAxisOption[]>([
-        { value: 'time', label: 'Time' },
-        { value: 'tD', label: 'tD', title: 'Dimensionless Time (t/τ)' },
-        { value: 'pvi', label: 'PVI', title: 'PV Injected' },
-        { value: 'pvp', label: 'PVP', title: 'PV Produced' },
-        { value: 'cumLiquid', label: 'Cum Liq', title: 'Cumulative Liquid' },
-        { value: 'cumInjection', label: 'Cum Inj', title: 'Cumulative Injection' },
-        { value: 'logTime', label: 'Log Time', title: 'Log Time (Fetkovich)' },
-    ]);
-
     const xAxisOptions = $derived.by(() => {
         return getConfiguredXAxisOptions(
-            allXAxisOptions,
+            REFERENCE_COMPARISON_X_AXIS_OPTIONS,
             layoutConfig?.chart?.xAxisOptions,
         );
     });

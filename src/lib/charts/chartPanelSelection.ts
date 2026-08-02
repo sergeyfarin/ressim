@@ -11,6 +11,18 @@ export type ChartXAxisOption = {
     title?: string;
 };
 
+/** Every x-axis supported by the comparison chart selector. */
+export const REFERENCE_COMPARISON_X_AXIS_OPTIONS: ChartXAxisOption[] = [
+    { value: 'time', label: 'Time' },
+    { value: 'tD', label: 'tD', title: 'Dimensionless Time (t/τ)' },
+    { value: 'pvi', label: 'PVI', title: 'PV Injected' },
+    { value: 'pvp', label: 'PVP', title: 'PV Produced' },
+    { value: 'cumLiquid', label: 'Cum Liq', title: 'Cumulative Liquid' },
+    { value: 'cumInjection', label: 'Cum Inj', title: 'Cumulative Injection' },
+    { value: 'cumGas', label: 'Cum Gas Produced', title: 'Cumulative Gas Produced' },
+    { value: 'logTime', label: 'Log Time', title: 'Log Time (Fetkovich)' },
+];
+
 export type ChartPanelEntry<TCurve, TSeries> = {
     curve: TCurve;
     series: TSeries;
@@ -105,8 +117,10 @@ export function getConfiguredXAxisOptions(
 ): ChartXAxisOption[] {
     if (!Array.isArray(configured) || configured.length === 0) return allOptions;
 
-    const allowed = new Set(configured);
-    return allOptions.filter((option) => allowed.has(option.value));
+    const byValue = new Map(allOptions.map((option) => [option.value, option]));
+    return configured
+        .map((value) => byValue.get(value))
+        .filter((option): option is ChartXAxisOption => Boolean(option));
 }
 
 export function coerceChartAxisState(input: {

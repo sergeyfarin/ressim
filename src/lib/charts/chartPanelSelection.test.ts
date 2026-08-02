@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     coerceChartAxisState,
     getConfiguredXAxisOptions,
+    REFERENCE_COMPARISON_X_AXIS_OPTIONS,
     resolveChartPanelDefinition,
     resolveChartPanelLayout,
     suppressLeadingOutliers,
@@ -55,6 +56,21 @@ describe('chartPanelSelection', () => {
         );
 
         expect(options.map((option) => option.value)).toEqual(['pvi', 'cumInjection']);
+    });
+
+    it('keeps cumulative gas as the default for gas material-balance layouts', () => {
+        const options = getConfiguredXAxisOptions(
+            REFERENCE_COMPARISON_X_AXIS_OPTIONS,
+            ['cumGas', 'time'],
+        );
+        const state = coerceChartAxisState({
+            xAxisMode: 'cumGas',
+            xAxisOptions: options,
+            logScale: false,
+        });
+
+        expect(options.map((option) => option.value)).toEqual(['cumGas', 'time']);
+        expect(state.xAxisMode).toBe('cumGas');
     });
 
     it('coerces invalid axis state back onto the allowed x-axis set and disables forbidden log scale', () => {
