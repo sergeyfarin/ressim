@@ -216,12 +216,15 @@ through one path instead of two.
 
 Each step is independently shippable and leaves the product green. Sizes are rough.
 
+**Status: steps 0-3 landed 2026-08-02**, plus the characterisation net that step 4 depends on.
+Step 4 (the builder inversion) and steps 5-6 remain.
+
 | # | Step | Why first / why here | Size |
 |---|---|---|---|
-| 0 | **Decide the fate of the live path** (§3.6) — delete, or restore and make it the reference implementation | Everything else doubles in cost while two chart stacks exist. This is a product decision, not an engineering one | S (decision) |
-| 1 | **One run-series module.** Collapse the four cumulative/pore-volume implementations into the `reservoirVolumes.ts` + accessor pair; delete the component-local copies | Pure defect removal, no API change, and it is where the next drift will otherwise happen | M |
-| 2 | **Introduce `CurveDescriptor` with a `property` field**; have `buildChartData` attach it to every curve it already emits; reimplement `curvePropertyRegistry` over descriptors, keeping the prefix ladder as a temporary fallback | Additive. Nothing moves yet, but semantics stop being parsed from strings | M |
-| 3 | **Open the panel id type** to `string`, keeping the current ids as constants; move `PANEL_DEFS` entries next to the code that emits their curves | Removes the union that forces a shared edit per new panel | M |
+| 0 | ✅ **Decide the fate of the live path** (§3.6) — delete, or restore and make it the reference implementation | Everything else doubles in cost while two chart stacks exist. This is a product decision, not an engineering one | S (decision) |
+| 1 | ✅ **One run-series module.** Collapse the four cumulative/pore-volume implementations into the `reservoirVolumes.ts` + accessor pair; delete the component-local copies | Pure defect removal, no API change, and it is where the next drift will otherwise happen | M |
+| 2 | ✅ **Introduce `CurveDescriptor` with a `property` field**; have `buildChartData` attach it to every curve it already emits; reimplement `curvePropertyRegistry` over descriptors, keeping the prefix ladder as a temporary fallback | Additive. Nothing moves yet, but semantics stop being parsed from strings | M |
+| 3 | ✅ **Open the panel id type** to `string`, keeping the current ids as constants; move `PANEL_DEFS` entries next to the code that emits their curves | Removes the union that forces a shared edit per new panel | M |
 | 4 | **Invert the builder**: panels declare their curves and pull from the accessor, instead of the builder emitting everything and the layout filtering | The actual architectural change; safe only after 1–3 | L |
 | 5 | **Rename `RateChart*` → `SeriesChart*`** (or similar) across ~30 files | Cosmetic, mechanical, and best done last so it does not collide with real edits | M |
 | 6 | **Extend the agnostic test** to forbid what actually leaks: no `panels.<id>` literals outside panel descriptors, no `analyticalMethod ===` outside the method registry, no domain vocabulary in `charts/*.svelte` | Locks in the result the same way the key rule locked in the last one | S |
@@ -322,3 +325,27 @@ in the shipped path — `CurveType` is imported by `curveStylePolicy` and outliv
 `catalog/chartPanels/*.ts` arrays, the `Scenario.liveChartPanels` field, and the live-only half of
 `charts/universalChartTypes.ts`. `CurveType` moves to `curveStylePolicy.ts`, which is its only live
 consumer. `ChartSubPanel.svelte` stays — it is used by `ReferenceComparisonChart` and two UI sections.
+
+---
+
+## 9. Delivery record — steps 0-3 (2026-08-02)
+
+| Commit | Step | Effect |
+|---|---|---|
+| `e2d2721` | net | Characterisation of all 18 scenarios' emitted panels and curves, from a synthetic run. Step 4's safety net, and it already showed the problem: `wf_bl1d`, a waterflood, emits `gor` and `pz` panels that its layout then filters away. |
+| `7653606` | 0 | Live path deleted — 1,952 lines. Its ideas recorded in §8 first. |
+| `8cd69a9` | 1 | Cumulative production integrated once (`runSeries.ts`); the component's private, drifted `getPoreVolume` gone. The rectangle rule is now pinned by a test *and* explained, because it looks like a bug and is not. |
+| `79786bd` | 2 | `CurveConfig.property` declared and stamped in `appendSeries` / `appendXYSeries`; classification reads an explicit table before any key parsing. |
+| `04f5139` | 3 | Panel ids opened to `string`; `getPanelFallback` handles ids nobody declared. |
+
+**Two defects the new guards found**, recorded in `TODO.md` rather than fixed in-flight:
+
+- `dep_gas_pz`'s "Gas Rate" panel plots `oil-rate-sim` — ~0 for a dry-gas reservoir — beside OPM's
+  real gas rates. `DerivedRunSeries` has **no gas-rate series at all**, so no gas scenario can plot
+  its own production rate. That is a product gap, not a chart-layer one, and it is exactly the kind
+  of thing the closed 22-field derived-series contract makes invisible.
+- `spe1_gas_injection`'s cumulative-*oil* panel receives `opm-cum-gas`. The single-property rule was
+  only ever checked against layout-declared keys, and reference curves are appended by the builder.
+
+Both are arguments for step 4 rather than exceptions to it: a panel that declared its own curves
+could not have acquired a foreign one.
