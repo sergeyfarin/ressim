@@ -65,8 +65,8 @@ describe("warningPolicy", () => {
           fieldKey: "max_pressure_change_per_step",
         },
         {
-          code: "long-run-duration",
-          message: "Requested run covers more than 10 years.",
+          code: "small-timestep",
+          message: "Very small timestep: each requested step covers little simulated time.",
           surface: "advisory",
           fieldKey: "steps",
         },
@@ -87,7 +87,7 @@ describe("warningPolicy", () => {
       "solver-warning",
     ]);
     expect(policy.advisory.items.map((item) => item.code)).toEqual([
-      "long-run-duration",
+      "small-timestep",
       "runtime-warning",
       "model-reinit",
     ]);

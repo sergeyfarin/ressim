@@ -63,6 +63,27 @@ import { simulationCurvesForSet, resolveSimulationCurve } from './simulationCurv
 import { DEFAULT_SWEEP_METHOD } from '../analytical/sweepMethods';
 import type { AnalyticalMethod } from '../catalog/scenarios';
 
+// Axis changes only remap x values. Keep the expensive, axis-independent run
+// derivations stable while the same result objects remain on screen.
+const derivedRunCache = new WeakMap<BenchmarkRunResult, DerivedRunSeries>();
+const mbeDiagnosticsCache = new WeakMap<BenchmarkRunResult, ReturnType<typeof computeMbeDiagnostics>>();
+
+function getDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSeries {
+    const cached = derivedRunCache.get(result);
+    if (cached) return cached;
+    const derived = buildDerivedRunSeries(result);
+    derivedRunCache.set(result, derived);
+    return derived;
+}
+
+function getMbeDiagnostics(result: BenchmarkRunResult, derived: DerivedRunSeries) {
+    const cached = mbeDiagnosticsCache.get(result);
+    if (cached) return cached;
+    const diagnostics = computeMbeDiagnostics(result, derived);
+    mbeDiagnosticsCache.set(result, diagnostics);
+    return diagnostics;
+}
+
 export { getReferenceComparisonCaseColor };
 export type {
     AnalyticalPreviewVariant,
@@ -551,7 +572,7 @@ export function buildReferenceComparisonModel(input: {
     }
 
     const derivedByKey = new Map<string, DerivedRunSeries>(
-        orderedResults.map((result) => [result.key, buildDerivedRunSeries(result)]),
+        orderedResults.map((result) => [result.key, getDerivedRunSeries(result)]),
     );
     const baseResult = getBaseResult(orderedResults);
 
@@ -666,7 +687,7 @@ export function buildReferenceComparisonModel(input: {
         // no other reference. `computeMbeDiagnostics` reports `applicable:
         // false` where this balance has no injection or influx term for what
         // the run did.
-        const mbe = computeMbeDiagnostics(result, derived);
+        const mbe = getMbeDiagnostics(result, derived);
         if (mbe.applicable) {
             appendSeries(panels.mbe_ooip, {
                 label: `${result.label} MBE OOIP Ratio`,

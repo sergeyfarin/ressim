@@ -1,5 +1,6 @@
 import type { ReferenceXAxisMap } from '../charts/axisAdapters';
 import type { PublishedReferenceSeries, ScenarioReferenceSourceDef } from './scenarios';
+import { pressureOverZ, type GasPvtRow } from '../analytical/gasMaterialBalance';
 import wfBl1dArtifact from './opm-flow-results/wf_bl1d.json';
 import spe1Artifact from './opm-flow-results/spe1_gas_injection.json';
 import gasDriveArtifact from './opm-flow-results/gas_drive.json';
@@ -86,13 +87,14 @@ function getOpmFlowArtifactSeriesByKeys(
         primary?: boolean;
         defaultVisible?: boolean;
         variantLabels?: Readonly<Record<string, string>>;
+        scenarioParams?: Record<string, unknown>;
     } = {},
 ): PublishedReferenceSeries[] {
     return caseKeys.flatMap((caseKey) => {
         const artifact = ARTIFACTS.find((candidate) => candidate.caseKey === caseKey);
         if (!artifact || artifact.status !== 'parsed') return [];
         const variantLabel = options.variantLabels?.[caseKey];
-        return artifact.series.map((series) => ({
+        const resolved = artifact.series.map((series) => ({
             ...series,
             sourceType: 'opm-flow-precomputed' as const,
             sourceArtifactKey: artifact.caseKey,
@@ -107,6 +109,41 @@ function getOpmFlowArtifactSeriesByKeys(
             ...(options.primary ? { primary: true } : {}),
             ...(options.defaultVisible === false ? { defaultVisible: false } : {}),
         }));
+
+        // OPM reports average pressure and cumulative gas, not p/z directly.
+        // When both are present, derive p/z from the scenario's own gas table so
+        // OPM, ResSim and the analytical material balance use the same z-factor.
+        const params = options.scenarioParams;
+        const table = Array.isArray(params?.pvtTable) ? params.pvtTable as GasPvtRow[] : null;
+        const temperature = Number(params?.reservoirTemperature);
+        const canDerivePOverZ = Boolean(
+            table?.length
+            && Number.isFinite(temperature)
+            && artifact.xAxis?.cumulativeGasSm3?.length,
+        );
+        if (!canDerivePOverZ) return resolved;
+
+        const pressureSeries = artifact.series.filter((series) => (
+            series.panelKey === 'diagnostics' && series.curveKey.includes('avg-pressure')
+        ));
+        const pOverZSeries = pressureSeries.map((series) => ({
+            ...series,
+            panelKey: 'pz',
+            curveKey: `${series.curveKey}-p-over-z`,
+            label: series.label.replace(/Avg Pressure/i, 'p/z'),
+            data: series.data.map((point) => ({
+                x: point.x,
+                y: pressureOverZ(table!, point.y, temperature),
+            })),
+            sourceType: 'opm-flow-precomputed' as const,
+            sourceArtifactKey: artifact.caseKey,
+            sourceArtifactLabel: artifact.label,
+            ...(variantLabel ? { variantLabel } : {}),
+            ...(artifact.xAxis ? { xAxisMap: artifact.xAxis } : {}),
+            ...(options.primary ? { primary: true } : {}),
+            ...(options.defaultVisible === false ? { defaultVisible: false } : {}),
+        }));
+        return [...resolved, ...pOverZSeries];
     });
 }
 
@@ -120,6 +157,7 @@ function getOpmFlowArtifactSeriesByKeys(
  */
 export function resolveScenarioReferenceSeries(
     sources: readonly ScenarioReferenceSourceDef[] | undefined,
+    scenarioParams?: Record<string, unknown>,
 ): PublishedReferenceSeries[] {
     if (!sources?.length) return [];
     return sources.flatMap((source) => (
@@ -129,6 +167,7 @@ export function resolveScenarioReferenceSeries(
                 primary: source.role === 'primary',
                 defaultVisible: source.defaultVisible,
                 variantLabels: source.artifactVariantLabels,
+                scenarioParams,
             })
     ));
 }

@@ -113,7 +113,7 @@
 >
     <div class="mx-auto w-full space-y-4 p-4 lg:p-6 2xl:px-8 relative z-2">
         <!-- Header -->
-        <header class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <header class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
                 <h1 class="title-gradient text-2xl font-bold lg:text-3xl">
                     Reservoir Simulation with Analytical Reference Solutions
@@ -131,6 +131,16 @@
                     <strong>Runs entirely in your browser</strong> — simulations and data stay on
                     your device; no analytics, uploads, or cookies. Your theme preference is saved
                     locally in your browser.
+                    <br />
+                    <strong>Scientific-use notice:</strong>
+                    ResSim is educational and research software, not for reserves booking,
+                    operational decisions, or safety-critical use. Review the
+                    <a
+                        href="https://github.com/sergeyfarin/ressim/blob/master/docs/SCIENTIFIC_LIMITATIONS.md"
+                        target="_blank"
+                        rel="noreferrer"
+                        class="font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
+                    >validation scope and limitations</a> before interpreting results.
                 </p>
             </div>
             <div class="flex items-center gap-2">
@@ -265,17 +275,5 @@
             </div>
         </section>
 
-        <footer class="border-t border-border py-4 text-xs leading-relaxed text-muted-foreground">
-            <strong class="font-semibold text-foreground">Scientific-use notice:</strong>
-            ResSim is educational and research software. It is not intended for reserves booking,
-            operational decisions, or safety-critical use. Review the
-            <a
-                href="https://github.com/sergeyfarin/ressim/blob/master/docs/SCIENTIFIC_LIMITATIONS.md"
-                target="_blank"
-                rel="noreferrer"
-                class="font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
-            >validation scope and limitations</a>
-            before interpreting results.
-        </footer>
     </div>
 </main>

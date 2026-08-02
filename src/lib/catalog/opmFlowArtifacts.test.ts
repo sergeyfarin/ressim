@@ -100,6 +100,23 @@ describe('OPM Flow precomputed artifacts', () => {
         }
     });
 
+    it('derives OPM p/z curves when gas PVT and cumulative production are available', () => {
+        const scenario = getScenario('dep_gas_pz')!;
+        const series = resolveScenarioReferenceSeries(
+            scenario.referenceSources,
+            scenario.params,
+        );
+        const pz = series.filter((candidate) => candidate.panelKey === 'pz');
+
+        expect(pz).toHaveLength(2);
+        for (const curve of pz) {
+            expect(curve.sourceType).toBe('opm-flow-precomputed');
+            expect(curve.data.length).toBeGreaterThan(200);
+            expect(curve.data.every((point) => Number.isFinite(point.y) && point.y > 0)).toBe(true);
+            expect(curve.xAxisMap?.cumulativeGasSm3?.length).toBe(curve.data.length);
+        }
+    });
+
     it('stamps primary only on the primary role', () => {
         const primary = resolveScenarioReferenceSeries([
             { kind: 'opm-flow', artifactKeys: ['wf_bl1d'], role: 'primary' },

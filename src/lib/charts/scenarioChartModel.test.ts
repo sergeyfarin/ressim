@@ -31,4 +31,15 @@ describe('buildScenarioComparisonFamily', () => {
         expect(injectorBhp!.panelKey).toBe('injector_bhp');
     });
 
+    it('places derived OPM p/z curves in the gas material-balance panel', () => {
+        const scenario = getScenario('dep_gas_pz')!;
+        const family = buildScenarioComparisonFamily({ scenario })!;
+        const pzSeries = family.publishedReferenceSeries!.filter(
+            (series) => series.sourceType === 'opm-flow-precomputed' && series.panelKey === 'pz',
+        );
+
+        expect(pzSeries).toHaveLength(2);
+        expect(pzSeries.every((series) => series.xAxisMap?.cumulativeGasSm3?.length)).toBeTruthy();
+    });
+
 });

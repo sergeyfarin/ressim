@@ -85,9 +85,8 @@
             aria-labelledby={`scenario-group-${group.key}`}
             class="flex h-full flex-col rounded-md border border-border/60 bg-muted/10 p-2.5"
           >
-            <div class="mb-1.5">
+            <div class="mb-1.5 flex min-h-9 items-start">
               <div id={`scenario-group-${group.key}`} class="ui-support-copy font-semibold text-foreground">{group.label}</div>
-              <div class="ui-microcopy text-muted-foreground">{group.description}</div>
             </div>
             <div class="flex flex-1 flex-col gap-2">
               {#each groupScenarios as scenario}
@@ -120,7 +119,7 @@
     -->
     <div class="space-y-2 border-t border-border/50 px-3 py-3">
       <div class="ui-panel-kicker text-muted-foreground">Scenario Description</div>
-      <div class="space-y-2.5 rounded-md border border-border/60 bg-muted/10 p-3">
+      <div class="space-y-2.5">
         <p class="ui-body-copy">{activeScenario.description}</p>
 
         <dl class="ui-support-copy grid gap-x-3 gap-y-1.5 sm:grid-cols-[auto_1fr]">
@@ -178,7 +177,7 @@
           until you hovered the right thing.
         -->
         {#if activeDimension}
-          <p class="ui-body-copy rounded-md border border-border/60 bg-muted/10 p-3">
+          <p class="ui-body-copy">
             <span class="font-semibold">{activeDimension.label}.</span>
             {activeDimension.description}
           </p>

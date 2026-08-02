@@ -65,7 +65,7 @@ export type ValidationState = {
 export type ValidationWarningSurface = 'non-physical' | 'advisory';
 
 export type ValidationWarning = {
-    code: 'long-run-duration' | 'pressure-step-large' | 'low-permeability' | 'high-viscosity-ratio' | 'large-grid' | 'small-timestep' | 'high-mobility-ratio';
+    code: 'pressure-step-large' | 'high-viscosity-ratio' | 'large-grid' | 'small-timestep';
     message: string;
     surface: ValidationWarningSurface;
     fieldKey?: string;
@@ -159,14 +159,6 @@ export function validateInputs(input: SimulationInputs): ValidationState {
     if (input.producerControlMode === 'rate' && input.targetProducerRate <= 0) {
         errors.producerRate = 'Producer rate must be positive when rate-controlled.';
     }
-    if (input.delta_t_days * input.steps > 3650) {
-        warnings.push({
-            code: 'long-run-duration',
-            message: 'Requested run covers more than 10 years; results may require tighter timestep limits.',
-            surface: 'advisory',
-            fieldKey: 'steps',
-        });
-    }
     if (input.max_pressure_change_per_step > 250) {
         warnings.push({
             code: 'pressure-step-large',
@@ -175,18 +167,11 @@ export function validateInputs(input: SimulationInputs): ValidationState {
             fieldKey: 'max_pressure_change_per_step',
         });
     }
-    if (input.uniformPermX < 0.1) {
+    const viscosityRatio = (input.mu_o / input.mu_w) > 0 ? input.mu_o / input.mu_w : 1;
+    if (viscosityRatio > 50) {
         warnings.push({
-            code: 'low-permeability',
-            message: 'Permeability < 0.1 mD: convergence may be slow; consider smaller timestep.',
-            surface: 'advisory',
-        });
-    }
-    const mobilityRatio = (input.mu_o / input.mu_w) > 0 ? input.mu_o / input.mu_w : 1;
-    if (mobilityRatio > 50) {
-        warnings.push({
-            code: 'high-mobility-ratio',
-            message: `High mobility ratio (μ_o/μ_w ≈ ${mobilityRatio.toFixed(0)}): expect early breakthrough and poor sweep.`,
+            code: 'high-viscosity-ratio',
+            message: `High oil/water viscosity ratio (μ_o/μ_w ≈ ${viscosityRatio.toFixed(0)}) can produce unfavorable mobility when relative-permeability endpoints are comparable.`,
             surface: 'advisory',
         });
     }
@@ -194,14 +179,14 @@ export function validateInputs(input: SimulationInputs): ValidationState {
     if (totalCells > 50000) {
         warnings.push({
             code: 'large-grid',
-            message: `${totalCells.toLocaleString()} cells: simulation may be slow; each step > 1 s.`,
+            message: `${totalCells.toLocaleString()} cells may run slowly in the browser.`,
             surface: 'advisory',
         });
     }
     if (input.delta_t_days < 0.01) {
         warnings.push({
             code: 'small-timestep',
-            message: 'Very small timestep: simulation will need many steps to cover meaningful time.',
+            message: 'Very small timestep: each requested step covers little simulated time.',
             surface: 'advisory',
         });
     }

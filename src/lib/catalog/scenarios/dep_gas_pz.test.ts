@@ -31,6 +31,9 @@ type VariantRun = {
     /** Recovery factor against the volumetric gas in place at the end of the run. */
     recovery: number;
     finalPressure: number;
+    pressureAt500Days: number;
+    pressureAt1000Days: number;
+    pressureAt2000Days: number;
     /** Produced + remaining, against volumetric — the bookkeeping closure check. */
     inventoryClosure: number;
     warning: string;
@@ -112,11 +115,17 @@ function runVariant(dimensionKey: string, variantKey: string): VariantRun {
     const cumulative: number[] = [];
     const simulatedPOverZ: Array<number | null> = [];
     let finalPressure = Number(params.initialPressure);
+    let pressureAt500Days = finalPressure;
+    let pressureAt1000Days = finalPressure;
+    let pressureAt2000Days = finalPressure;
     for (let step = 0; step < Number(params.steps); step += 1) {
         sim.step(dt);
         const point = sim.getRateHistory().at(-1) as Record<string, number> | undefined;
         cumulativeGas += Math.abs(Number(point?.total_production_gas ?? 0)) * dt;
         finalPressure = Number(point?.avg_reservoir_pressure ?? finalPressure);
+        if ((step + 1) * dt <= 500) pressureAt500Days = finalPressure;
+        if ((step + 1) * dt <= 1000) pressureAt1000Days = finalPressure;
+        if ((step + 1) * dt <= 2000) pressureAt2000Days = finalPressure;
         cumulative.push(cumulativeGas);
         simulatedPOverZ.push(pressureOverZ(table, finalPressure, temperature));
     }
@@ -148,6 +157,9 @@ function runVariant(dimensionKey: string, variantKey: string): VariantRun {
         earlyGiipError: (earlyFit?.giip ?? Number.NaN) / volumetricGiip - 1,
         recovery: cumulativeGas / volumetricGiip,
         finalPressure,
+        pressureAt500Days,
+        pressureAt1000Days,
+        pressureAt2000Days,
         inventoryClosure: (cumulativeGas + remaining) / volumetricGiip - 1,
         warning,
     };
@@ -199,6 +211,22 @@ describe('dep_gas_pz measured behaviour', () => {
     it('closes its own gas inventory, which is what the p/z line is measuring', async () => {
         await ensureWasmReady();
         const base = runVariant('pore_compressibility', 'cf_normal');
+        const opm = listOpmFlowArtifacts().find((artifact) => artifact.caseKey === 'dep_gas_pz')!;
+        const opmPressure = opm.series.find((series) => series.curveKey === 'opm-avg-pressure')!;
+        const nearest = (day: number) => opmPressure.data.reduce((best, point) => (
+            Math.abs(point.x - day) < Math.abs(best.x - day) ? point : best
+        ));
+        for (const [day, ressimPressure] of [
+            [500, base.pressureAt500Days],
+            [1000, base.pressureAt1000Days],
+            [2000, base.pressureAt2000Days],
+        ] as const) {
+            const opmPoint = nearest(day);
+            expect(
+                Math.abs(ressimPressure - opmPoint.y) / opmPoint.y,
+                `average pressure at ${day} d`,
+            ).toBeLessThan(0.1);
+        }
         expect(base.warning).toBe('');
         // Produced plus remaining, against what the volumetrics said was there.
         // Not expected to be exactly zero: compaction and connate-water

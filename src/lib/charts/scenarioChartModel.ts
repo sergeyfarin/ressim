@@ -74,6 +74,6 @@ export function buildScenarioComparisonFamily(input: {
         sweepGeometry: resolved.sweepGeometry,
         sweepAnalyticalMethod: input.analyticalOption?.sweepMethod,
         analyticalOverlayMode: activeDimension?.analyticalOverlayMode ?? 'auto',
-        publishedReferenceSeries: resolveScenarioReferenceSeries(scenario.referenceSources),
+        publishedReferenceSeries: resolveScenarioReferenceSeries(scenario.referenceSources, scenario.params),
     } as BenchmarkFamily;
 }

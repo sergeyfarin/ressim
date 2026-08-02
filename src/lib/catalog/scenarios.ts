@@ -100,13 +100,13 @@ export const SCENARIO_GROUPS: readonly {
         // a *contact* problem belongs in sweep-efficiency instead, however
         // fractional-flow its reference curve happens to be.
         key: 'buckley-leverett-displacement',
-        label: '1D Displacement — Buckley–Leverett',
-        description: 'One-dimensional displacement along a single flow path, in water–oil and gas–oil systems: the fractional-flow solution itself, and the assumptions it drops — capillary pressure, and gravity acting along the flow direction.',
+        label: '1D Buckley–Leverett Displacement',
+        description: 'One-dimensional fractional-flow cases.',
     },
     {
         key: 'sweep-efficiency',
-        label: 'Sweep Efficiency',
-        description: 'How much of the reservoir a flood actually contacts — areal, vertical, and combined — and what limits it: pattern geometry, permeability contrast, or gravity segregation. Recovery is displacement efficiency times sweep, so these cases measure the gap between a 1D displacement forecast and a real one.',
+        label: 'Reservoir Sweep Efficiency',
+        description: 'Areal, vertical and combined sweep.',
     },
     {
         // One well's pressure history in order: infinite-acting radial flow
@@ -115,8 +115,8 @@ export const SCENARIO_GROUPS: readonly {
         // same. Merged from the old 'depletion-decline' and
         // 'pressure-transient' groups, which split a single continuum.
         key: 'flow-regimes-decline',
-        label: 'Flow Regimes & Decline',
-        description: 'A well\'s pressure history from infinite-acting transient flow through pseudo-steady productivity to boundary-dominated and layered decline.',
+        label: 'Well Flow Regimes & Decline',
+        description: 'Transient, pseudo-steady and decline behavior.',
     },
     {
         // Tank-level questions: the answer is an in-place volume, a drive index
@@ -127,8 +127,8 @@ export const SCENARIO_GROUPS: readonly {
         // while `wf_gravity`, `wf_numerics` and `dep_gas_pz` all carry external
         // references from inside physics groups.
         key: 'material-balance-drive',
-        label: 'Material Balance & Drive Mechanism',
-        description: 'Where the energy comes from and how much is in place: fluid and rock expansion, solution-gas liberation, compaction, and the PVT representation underneath them. These cases are answered at the tank level — drive indices, in-place volumes, reserves — rather than by where a front has reached.',
+        label: 'Material Balance & Drive',
+        description: 'In-place volumes and reservoir drive.',
     },
     {
         // The membership rule is deck fixity, not validation status. "Validation
@@ -138,8 +138,8 @@ export const SCENARIO_GROUPS: readonly {
         // case that is no longer SPE1, which is why its kz_ratio dimension was
         // removed on 2026-07-31. Enforced in `scenarios.test.ts`.
         key: 'published-benchmark-decks',
-        label: 'Published Benchmark Decks',
-        description: 'Cases whose grid, fluid and schedule are fixed by an external publication. You reproduce them rather than explore them, so their sensitivities vary only the numerics — grid, timestep, solver — and never the reservoir.',
+        label: 'Published Simulator Benchmarks',
+        description: 'Fixed published comparison cases.',
     },
 ] as const;
 

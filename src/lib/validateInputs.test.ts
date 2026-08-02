@@ -247,12 +247,9 @@ describe('validateInputs', () => {
     // ── Warnings ──
 
     describe('warnings', () => {
-        it('warns when run exceeds 10 years', () => {
+        it('does not infer timestep risk from calendar duration alone', () => {
             const result = validateInputs(makeValidInputs({ delta_t_days: 100, steps: 40 }));
-            expect(result.warnings.length).toBeGreaterThan(0);
-            expect(result.warnings[0]?.code).toBe('long-run-duration');
-            expect(result.warnings[0]?.surface).toBe('advisory');
-            expect(result.warnings[0]?.message).toMatch(/10 years/);
+            expect(result.warnings).toHaveLength(0);
         });
 
         it('warns on large max pressure change per step', () => {

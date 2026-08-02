@@ -629,7 +629,11 @@ describe('frontend benchmark preset runtime coverage', () => {
   it('the exact coarse SPE1 payload creates free gas if explicit schedules are skipped', async () => {
     await ensureWasmReady();
 
-    const params = getScenarioWithVariantParams('spe1_gas_injection', 'grid', 'grid_5');
+    const params: BenchmarkParams = {
+      ...getScenario('spe1_gas_injection')!.params,
+      nx: 5, ny: 5, cellDx: 609.6, cellDy: 609.6,
+      producerI: 4, producerJ: 4,
+    };
     const payload = buildBenchmarkCreatePayload(params);
     const simulator = configureSimulatorFromPayload(payload, false);
 
@@ -651,7 +655,11 @@ describe('frontend benchmark preset runtime coverage', () => {
   it('keeps the coarse SPE1 grid advancing to producer gas breakthrough in the WASM runtime path', async () => {
     await ensureWasmReady();
 
-    const params = getScenarioWithVariantParams('spe1_gas_injection', 'grid', 'grid_5');
+    const params: BenchmarkParams = {
+      ...getScenario('spe1_gas_injection')!.params,
+      nx: 5, ny: 5, cellDx: 609.6, cellDy: 609.6,
+      producerI: 4, producerJ: 4,
+    };
     const payload = buildBenchmarkCreatePayload(params);
     const simulator = configureSimulatorFromPayload(payload);
     const producerIndex = ((2 * payload.ny) + Number(payload.producerJ ?? 0)) * payload.nx + Number(payload.producerI ?? (payload.nx - 1));

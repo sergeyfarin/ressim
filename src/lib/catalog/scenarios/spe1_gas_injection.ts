@@ -329,9 +329,9 @@ export const spe1_gas_injection: Scenario = {
         caseMode: '3p',
         parameterSummary: 'SPE1 Case 1 · 10×10×3 black-oil gas injection · Eclipse and OPM Flow references',
     },
-    description: 'SPE1 Case 1: a 10×10×3 black-oil gas-injection benchmark compared with published Eclipse results and OPM Flow.',
+    description: 'SPE1 Case 1: one fixed 10×10×3 black-oil gas-injection run compared with the published Eclipse results and OPM Flow.',
     analyticalMethodSummary:
-        'No analytical solution. Comparison is against published Eclipse simulator results from the OPM test suite (SPE1 Case 1).',
+        'No analytical solution. One ResSim run is compared with published SPE1/Eclipse series and a bundled OPM Flow run of Case 1.',
     analyticalMethodReference:
         'Odeh, A.S. (1981) "Comparison of Solutions to a Three-Dimensional Black-Oil Reservoir Simulation Problem", JPT, SPE 9723.',
     chartLayoutKey: 'spe1',
@@ -461,113 +461,5 @@ export const spe1_gas_injection: Scenario = {
         max_pressure_change_per_step: 20,
         max_well_rate_change_fraction: 0.2,
     },
-    sensitivities: [
-        {
-            key: 'grid',
-            label: 'Grid Resolution',
-            description: 'Grid convergence study — refine or coarsen the 10×10×3 base grid while maintaining the same physical domain.',
-            analyticalOverlayMode: 'shared',
-            variants: [
-                {
-                    key: 'grid_2',
-                    label: '2×2×3  (coarse)',
-                    description: 'Coarse grid — larger numerical diffusion, faster gas breakthrough.',
-                    paramPatch: {
-                        nx: 2, ny: 2, cellDx: 1524, cellDy: 1524,
-                        producerI: 1, producerJ: 1,
-                    },
-                    affectsAnalytical: false,
-                },{
-                    key: 'grid_5',
-                    label: '5×5×3  (coarse)',
-                    description: 'Coarse grid — larger numerical diffusion, faster gas breakthrough.',
-                    paramPatch: {
-                        nx: 5, ny: 5, cellDx: 609.6, cellDy: 609.6,
-                        producerI: 4, producerJ: 4,
-                    },
-                    affectsAnalytical: false,
-                },
-                {
-                    key: 'grid_10',
-                    label: '10×10×3  (base)',
-                    description: 'Base SPE1 grid — 300 cells.',
-                    paramPatch: {},
-                    affectsAnalytical: false,
-                },
-                {
-                    key: 'grid_20',
-                    label: '20×20×3  (fine)',
-                    description: 'Refined grid — 1200 cells, sharper gas front, with tighter timestep and control-change limits to keep the fine-grid case stable.',
-                    paramPatch: {
-                        nx: 20, ny: 20, cellDx: 152.4, cellDy: 152.4,
-                        producerI: 19, producerJ: 19,
-                        delta_t_days: 2.5,
-                        steps: 1600,
-                        max_sat_change_per_step: 0.03,
-                        max_pressure_change_per_step: 30,
-                        max_well_rate_change_fraction: 0.35,
-                    },
-                    affectsAnalytical: false,
-                },
-            ],
-        },
-        // A `kz_ratio` dimension (k_v/k_h = 0.1 / 0.3 / 1.0) was removed here: SPE1 does not
-        // specify kz, so varying it changes the physical case rather than the discretization
-        // of it, and every variant was still drawn against the published Case 1 references —
-        // comparing a different reservoir to SPE1's answer. The two dimensions that remain
-        // hold the deck fixed and refine only the numerics, which is what a benchmark
-        // sensitivity is for.
-        {
-            key: 'delta_t',
-            label: 'Time Step',
-            description: 'Time step convergence study — refine or coarsen the time step while maintaining the same physical domain.',
-            analyticalOverlayMode: 'shared',
-            // Every variant runs the same 3600-day window (steps × Δt = 3600, matching
-            // the base params), so the curves are comparable. Under FIM each outer step
-            // is one implicit solve — measured 1.00-1.02 accepted substeps per step at
-            // every Δt below — so cost scales linearly with the step count (~23 ms/solve
-            // on 300 cells). That is why the ladder stops at 1.25 days: a measured
-            // Δt = 0.25 rung costs 14 400 solves / 342 s yet moves end-state average
-            // pressure by 0.002 % and GOR by 0.06 % versus Δt = 1.25 (2026-07-24).
-            variants: [
-                {
-                    key: 'delta_t_30',
-                    label: 'Δt = 30 days  (base)',
-                    description: 'Base time step — 30 days, the scenario default.',
-                    paramPatch: {},
-                    affectsAnalytical: false,
-                },
-                {
-                    key: 'delta_t_5',
-                    label: 'Δt = 5 days  (coarse)',
-                    description: 'Coarse time step — larger numerical diffusion, faster gas breakthrough.',
-                    paramPatch: {
-                        delta_t_days: 5,
-                        steps: 720,
-                    },
-                    affectsAnalytical: false,
-                },
-                {
-                    key: 'delta_t_2_5',
-                    label: 'Δt = 2.5 days  (fine)',
-                    description: 'Refined time step — 2.5 days.',
-                    paramPatch: {
-                        delta_t_days: 2.5,
-                        steps: 1440,
-                    },
-                    affectsAnalytical: false,
-                },
-                {
-                    key: 'delta_t_1_25',
-                    label: 'Δt = 1.25 days  (finest)',
-                    description: 'Most refined time step — 1.25 days, sharpest gas front; the point where the pressure and GOR curves stop moving materially.',
-                    paramPatch: {
-                        delta_t_days: 1.25,
-                        steps: 2880,
-                    },
-                    affectsAnalytical: false,
-                },
-            ],
-        },
-    ],
+    sensitivities: [],
 };
