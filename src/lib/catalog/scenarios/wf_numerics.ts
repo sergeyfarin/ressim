@@ -1,4 +1,3 @@
-import { waterfloodLivePanels } from '../chartPanels/waterfloodLivePanels';
 import type { Scenario } from '../scenarios';
 import { waterfloodBLDef } from '../analyticalAdapters';
 
@@ -115,7 +114,6 @@ export const wf_numerics: Scenario = {
         gravityEnabled: false,
     },
     analyticalDef: waterfloodBLDef,
-    liveChartPanels: waterfloodLivePanels,
     sensitivities: [
         {
             key: 'grid_refinement',

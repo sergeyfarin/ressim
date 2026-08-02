@@ -1,4 +1,3 @@
-import { waterfloodLivePanels } from '../chartPanels/waterfloodLivePanels';
 import type { Scenario } from '../scenarios';
 import { waterfloodBLDef } from '../analyticalAdapters';
 
@@ -123,7 +122,6 @@ export const wf_gravity: Scenario = {
         gravityEnabled: true,
     },
     analyticalDef: waterfloodBLDef,
-    liveChartPanels: waterfloodLivePanels,
     // The bundled deck is this scenario's base case, cell for cell: same grid,
     // rock curves, densities, single-layer completions, 160 m³/day injection and
     // 420-day schedule. It is the only reference here that contains gravity, so

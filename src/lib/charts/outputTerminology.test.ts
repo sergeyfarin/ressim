@@ -3,8 +3,6 @@ import path from 'path';
 import { describe, expect, it } from 'vitest';
 
 const comparisonChartSource = fs.readFileSync(path.join(__dirname, 'ReferenceComparisonChart.svelte'), 'utf8');
-const rateChartSource = fs.readFileSync(path.join(__dirname, 'RateChart.svelte'), 'utf8');
-const universalChartSource = fs.readFileSync(path.join(__dirname, 'UniversalChart.svelte'), 'utf8');
 const spatialProfileSource = fs.readFileSync(path.join(__dirname, '..', 'visualization', 'SpatialProfileChart.svelte'), 'utf8');
 const spatialProfileModelSource = fs.readFileSync(path.join(__dirname, '..', 'visualization', 'spatialProfileModel.ts'), 'utf8');
 const appSource = fs.readFileSync(path.join(__dirname, '..', '..', 'App.svelte'), 'utf8');
@@ -32,8 +30,8 @@ describe('output terminology copy', () => {
   });
 
   it('uses reference-solution wording in output-side solution cards and profile copy', () => {
-    expect(universalChartSource).toMatch(/Reference Solution: \{mismatchSummary\.pointsCompared\} pts/);
-    expect(universalChartSource).not.toMatch(/Analytical: \{mismatchSummary\.pointsCompared\} pts/);
+    // The mismatch-summary copy this used to assert lived in UniversalChart,
+    // deleted with the unreferenced live-chart path on 2026-08-02.
     // The Sw profile moved to the 3D group as SpatialProfileChart (it shows one
     // snapshot, not a whole run) and now follows the shared property selector,
     // so its copy is property-neutral apart from the method-specific reference

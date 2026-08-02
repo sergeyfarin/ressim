@@ -1,4 +1,3 @@
-import { waterfloodLivePanels } from '../chartPanels/waterfloodLivePanels';
 import type { Scenario } from '../scenarios';
 import { waterfloodBLDef } from '../analyticalAdapters';
 
@@ -160,7 +159,6 @@ export const wf_capillary: Scenario = {
         gravityEnabled: false,
     },
     analyticalDef: waterfloodBLDef,
-    liveChartPanels: waterfloodLivePanels,
     sensitivities: [
         {
             key: 'capillary_strength',

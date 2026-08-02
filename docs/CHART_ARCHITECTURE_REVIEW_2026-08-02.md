@@ -246,3 +246,79 @@ cost of 1–5 if left open.
 - **Nothing here is physics.** No engine, solver or analytical behaviour is touched by any step, so
   the validation gate is `pnpm run validate` throughout — but scenario chart output should be
   snapshot-compared before and after step 4, since it is user-visible.
+
+---
+
+## 8. Salvage from the live path (recorded 2026-08-02, before deletion)
+
+Step 0 was decided as **delete**, on condition that its good ideas are captured first. They are
+better than what shipped, which is the uncomfortable part: the disconnected path is closer to the
+target architecture than the live one. Recorded here so the deletion loses nothing but code.
+
+### 8.1 Keep — a curve owns its data extraction
+
+```ts
+export type UniversalCurveDef = {
+    key: string;
+    label: string;
+    curveType: CurveType;
+    yAxisID: string;
+    color: string;                                   // hex, or the sentinel 'neutral'
+    getData?:   (ctx: LiveCurveContext) => Array<number | null>;
+    getDataXY?: (ctx: LiveCurveContext) => Array<{ x: number; y: number | null }>;
+};
+```
+
+A curve carries a closure over a context object instead of the builder knowing how to compute it.
+Adding a curve is then a scenario-local edit — exactly the `source: (run) => values` the target
+needs, and prior art inside this repo rather than an import from elsewhere. Adopt as-is.
+
+### 8.2 Keep — the explicit no-fallback stance, which the live code states outright
+
+> *"A panel declared by a scenario. Defines exactly which curves to show — no hidden fallbacks."*
+> — `universalChartTypes.ts:161`
+
+The correct principle was written down, in the path that got disconnected. The shipped builder does
+the opposite: it emits every curve it knows and lets the layout subtract. Adopt the sentence as the
+rule for the new panel descriptor, and keep it in the doc comment so the next reader sees the intent.
+
+### 8.3 Keep — a per-curve x mapping escape hatch (`getDataXY`)
+
+Some curves have their own x: a PVI-indexed analytical sweep curve, a published reference recorded
+against days, a sweep series sampled on different times than the run. The live path lets *the curve*
+map itself (`simSweepToXY`, `analyticalSweepToXY`, `mapPviToX` in `sweepLivePanels.ts`). The shipped
+path instead centralises this in `mapReferenceTimesToXAxis` with a branch per axis mode, which is
+why adding the `cumGas` axis for `dep_gas_pz` required teaching that function a new case. Per-curve
+mapping generalises; adopt it alongside the plain `getData`.
+
+### 8.4 Keep — resolve theme at build time via a sentinel
+
+`color: 'neutral'` resolves to `ctx.neutralColor` when the curve is built, so a descriptor stays
+theme-independent data. Small, and it removes the temptation to pass a theme into descriptors.
+
+### 8.5 Keep — role-based styling
+
+`curveType` (`'simulation' | 'analytical' | 'reference' | …`) drives dash, width and legend section
+through `curveStylePolicy.ts` rather than each curve specifying its own. This half already survives
+in the shipped path — `CurveType` is imported by `curveStylePolicy` and outlives the deletion.
+
+### 8.6 Do **not** keep
+
+- **`panelKey: RateChartPanelId`** — the panel descriptor still drew from the closed union. The whole
+  point of step 3 is that this becomes a free string.
+- **A panel with no title or scale** — `UniversalPanelDef` is `{ panelKey, curves }` and defers title
+  and scale to `PANEL_DEFS`, so it needs a second lookup keyed on the union. The new descriptor
+  should carry its own title and scale policy.
+- **Domain fields on the context** — `LiveCurveContext` carries `ooipM3`, `sweep`, `sweepSimSeries`,
+  `pviArr`. A context that names sweep and OOIP is not agnostic; those belong in the accessor as
+  named quantities resolved on demand, not as fixed fields.
+- **`yAxisID: string`** — a raw Chart.js concept in a descriptor. Express it as `side: 'left' | 'right'`
+  and let the renderer map it.
+
+### 8.7 What is deleted
+
+`charts/RateChart.svelte`, `charts/UniversalChart.svelte`, `charts/buildUniversalChartData.ts`,
+`charts/buildLiveDerivedSeries.ts`, `charts/ratechart-usage.test.ts`, the four
+`catalog/chartPanels/*.ts` arrays, the `Scenario.liveChartPanels` field, and the live-only half of
+`charts/universalChartTypes.ts`. `CurveType` moves to `curveStylePolicy.ts`, which is its only live
+consumer. `ChartSubPanel.svelte` stays — it is used by `ReferenceComparisonChart` and two UI sections.

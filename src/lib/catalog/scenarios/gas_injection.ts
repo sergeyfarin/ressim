@@ -1,4 +1,3 @@
-import { gasInjectionLivePanels } from '../chartPanels/gasLivePanels';
 import type { Scenario } from '../scenarios';
 import { gasOilBLDef } from '../analyticalAdapters';
 
@@ -75,7 +74,6 @@ export const gas_injection: Scenario = {
         fimEnabled: true,
     },
     analyticalDef: gasOilBLDef,
-    liveChartPanels: gasInjectionLivePanels,
     sensitivities: [
         {
             key: 'mobility',

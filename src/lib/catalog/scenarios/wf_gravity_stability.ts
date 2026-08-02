@@ -1,4 +1,3 @@
-import { waterfloodLivePanels } from '../chartPanels/waterfloodLivePanels';
 import type { Scenario } from '../scenarios';
 import { waterfloodBLDef } from '../analyticalAdapters';
 
@@ -105,7 +104,6 @@ export const wf_gravity_stability: Scenario = {
         gravityEnabled: true,
     },
     analyticalDef: waterfloodBLDef,
-    liveChartPanels: waterfloodLivePanels,
     sensitivities: [
         {
             key: 'flood_direction',

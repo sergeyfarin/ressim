@@ -95,7 +95,17 @@ export const REFERENCE_STYLE_PRIMARY = {
 
 // ─── Auto-style from CurveType ────────────────────────────────────────────────
 
-import type { CurveType } from './universalChartTypes';
+/**
+ * How a curve relates to the run, which is what its styling encodes: a solid
+ * line means ResSim, dashes mean something else. Moved here from
+ * `universalChartTypes.ts` when the live-chart path was deleted (2026-08-02) —
+ * this module is its only consumer.
+ */
+export type CurveType =
+    | 'simulation'
+    | 'analytical'
+    | 'reference'
+    | 'reference-simulation';
 
 /**
  * Returns the borderWidth + optional borderDash that match a CurveType.

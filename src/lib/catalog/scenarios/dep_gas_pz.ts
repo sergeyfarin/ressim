@@ -1,4 +1,3 @@
-import { gasDriveLivePanels } from '../chartPanels/gasLivePanels';
 import type { Scenario } from '../scenarios';
 import { gasMaterialBalanceDef } from '../analyticalAdapters';
 import { generateBlackOilTable } from '../../physics/pvt';
@@ -169,7 +168,6 @@ export const dep_gas_pz: Scenario = {
         gravityEnabled: false,
     },
     analyticalDef: gasMaterialBalanceDef,
-    liveChartPanels: gasDriveLivePanels,
     sensitivities: [
         {
             key: 'pore_compressibility',

@@ -1,4 +1,3 @@
-import { gasDriveLivePanels } from '../chartPanels/gasLivePanels';
 import type { Scenario } from '../scenarios';
 import { generateBlackOilTable } from '../../physics/pvt';
 
@@ -193,7 +192,6 @@ export const dep_pvt: Scenario = {
         max_well_rate_change_fraction: 0.75,
         gravityEnabled: false,
     },
-    liveChartPanels: gasDriveLivePanels,
     sensitivities: [
         {
             key: 'pvt_model',

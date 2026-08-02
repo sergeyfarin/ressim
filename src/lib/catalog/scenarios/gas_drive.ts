@@ -1,4 +1,3 @@
-import { gasDriveLivePanels } from '../chartPanels/gasLivePanels';
 import type { Scenario } from '../scenarios';
 import { generateBlackOilTable } from '../../physics/pvt';
 
@@ -205,5 +204,4 @@ export const gas_drive: Scenario = {
             ],
         },
     ],
-    liveChartPanels: gasDriveLivePanels,
 };
