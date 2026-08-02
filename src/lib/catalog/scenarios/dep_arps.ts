@@ -24,7 +24,7 @@ export const dep_arps: Scenario = {
         caseMode: 'dep',
         parameterSummary: '9×9×5 grid · five layered flow units · centered commingled producer',
     },
-    description: 'A spatial 1 km square reservoir with five layers depletes through a centered, fully penetrating constant-BHP producer. Early radial-to-boundary pressure propagation is resolved numerically; after boundary-dominated flow begins, the noncommunicating-layer result approaches a Dietz/Fetkovich exponential superposition. Fixed-mean layer contrast changes the spread of decline time constants, while a separate vertical-communication study deliberately violates the independent-layer reference.',
+    description: 'A spatial 1 km square reservoir with five layers depletes through a centered, fully penetrating constant-BHP producer.',
     analyticalMethodSummary: 'Late-time superposition of five Dietz centered-square productivity/storage responses. The overlay begins only after the early spatial transient; Arps decline is an interpretation of the composite shape, not the quantitative reference.',
     analyticalMethodReference: 'Arps (1945), SPE-945228-G; Fetkovich (1980), SPE-4629-PA.',
     chartLayoutKey: 'fetkovich',
@@ -153,7 +153,7 @@ export const dep_arps: Scenario = {
         {
             key: 'vertical_communication',
             label: 'Inter-layer Communication',
-            description: 'The late-time composite reference assumes noncommunicating layers. Increasing kv/kh deliberately violates that assumption: crossflow redistributes pressure between fast and slow layers, so numerical departure from the shared no-crossflow reference is the expected limitation signal, not simulator error.',
+            description: 'The late-time composite reference assumes noncommunicating layers.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {

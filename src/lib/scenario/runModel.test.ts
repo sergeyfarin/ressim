@@ -38,24 +38,18 @@ describe('scenario-first run model', () => {
         }
     });
 
-    it('runs the scenario-owned FIM-vs-IMPES comparison inside the 1D waterflood', () => {
-        // Folded in from the standalone solver_fim_impes scenario 2026-07-31:
-        // as a wf_bl1d dimension the variants are judged against the
-        // timestep-independent Buckley-Leverett reference rather than only
-        // against each other. The 5-day rungs cross solver with report step,
-        // which is what separates the two formulations here: IMPES is
-        // CFL-locked and so step-invariant, FIM is not.
-        const scenario = listScenarios().find((candidate) => candidate.key === 'wf_bl1d');
+    it('runs the FIM-vs-IMPES comparison inside numerical convergence', () => {
+        const scenario = listScenarios().find((candidate) => candidate.key === 'wf_numerics');
         const dimension = scenario?.sensitivities.find((candidate) => candidate.variesSolver);
         expect(dimension?.variants.map((variant) => [
             variant.label,
             variant.paramPatch.fimEnabled ?? false,
             variant.paramPatch.delta_t_days ?? scenario?.params.delta_t_days,
         ])).toEqual([
-            ['IMPES 0.25-day steps (base)', false, 0.25],
-            ['FIM 0.25-day steps', true, 0.25],
-            ['IMPES 5-day steps', false, 5],
-            ['FIM 5-day steps', true, 5],
+            ['IMPES 1-day steps (base)', false, 1],
+            ['FIM 1-day steps', true, 1],
+            ['IMPES 10-day steps', false, 10],
+            ['FIM 10-day steps', true, 10],
         ]);
     });
 
@@ -103,13 +97,13 @@ describe('scenario-first run model', () => {
 
     it('keeps solver names only when the sensitivity names them', () => {
         const specs = buildScenarioRunSpecs({
-            scenarioKey: 'wf_bl1d',
+            scenarioKey: 'wf_numerics',
             dimensionKey: 'solver_formulation',
             variantKeys: ['solver_impes_base', 'solver_fim_base'],
         });
         expect(specs.map((spec) => [spec.solver, spec.variantLabel, spec.label])).toEqual([
-            ['impes', 'IMPES 0.25-day steps (base)', '1D Waterflood — IMPES 0.25-day steps (base)'],
-            ['fim', 'FIM 0.25-day steps', '1D Waterflood — FIM 0.25-day steps'],
+            ['impes', 'IMPES 1-day steps (base)', 'Numerical Dispersion & Convergence — IMPES 1-day steps (base)'],
+            ['fim', 'FIM 1-day steps', 'Numerical Dispersion & Convergence — FIM 1-day steps'],
         ]);
     });
 

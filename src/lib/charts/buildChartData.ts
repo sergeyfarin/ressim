@@ -17,7 +17,7 @@ import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { ChartPanelKey, ChartXAxisMode } from './chartLayoutConfig';
 import {
     ANALYTICAL_BORDER, ANALYTICAL_BORDER_MULTI, ANALYTICAL_DASH,
-    LEGEND_SECTIONS, REFERENCE_STYLE, REFERENCE_STYLE_PRIMARY,
+    LEGEND_SECTIONS, PUBLISHED_REFERENCE_STYLE, REFERENCE_STYLE, REFERENCE_STYLE_PRIMARY,
     SIM_BORDER_SECONDARY, simBorderWidth,
 } from './curveStylePolicy';
 import {
@@ -179,10 +179,14 @@ function appendPublishedReferenceSeries(
                     ? `OPM Flow (${series.variantLabel})`
                     : series.sourceArtifactLabel ?? 'OPM Flow reference')
                 : 'Published reference',
-            legendSection: 'published',
-            legendSectionLabel: isOpmFlow ? 'OPM Flow reference (dotted lines):' : LEGEND_SECTIONS.published,
+            ...(isOpmFlow ? {
+                legendSection: 'published',
+                legendSectionLabel: 'OPM Flow reference (dotted lines):',
+            } : {}),
             color: isOpmFlow ? opmFlowColor : publishedColor,
-            ...(isPrimary ? REFERENCE_STYLE_PRIMARY : REFERENCE_STYLE),
+            ...(isOpmFlow
+                ? (isPrimary ? REFERENCE_STYLE_PRIMARY : REFERENCE_STYLE)
+                : PUBLISHED_REFERENCE_STYLE),
             yAxisID: series.yAxisID ?? 'y',
             pointRadius: 0,
             defaultVisible: series.defaultVisible,

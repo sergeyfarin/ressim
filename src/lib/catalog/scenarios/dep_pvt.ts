@@ -102,7 +102,7 @@ export const dep_pvt: Scenario = {
         caseMode: '3p',
         parameterSummary: 'Constant-rate black-oil blowdown · two PVT tables share one calibration point · time to bubble point differs 2.4x',
     },
-    description: 'Constant-rate blowdown of a black-oil reservoir starting 130 bar above the bubble point. Two PVT tables share the exact same bubble-point pressure, Rs, and Bo — the one point a flash test directly measures — but assume different undersaturated oil compressibility above it, a value no single flash test can pin down. Above the bubble point the reservoir can only supply the well by expanding, so that unmeasured compressibility sets the depletion *rate*: the two models reach the bubble point 36 and 88 days in. Below it they are the same fluid again and the curves close back up. Watch Avg Pressure, and check the material-balance ratio panel — it holds 1.0, so the average really does describe this reservoir.',
+    description: 'Constant-rate blowdown of a black-oil reservoir starting 130 bar above the bubble point.',
     analyticalMethodSummary: 'No closed-form overlay is drawn: the run crosses the bubble point, and the Dietz PSS depletion model used elsewhere in this catalog is oil-only and does not represent gas liberation. Two quantitative checks stand in its place. The undersaturated leg must obey dP/dt = -q_res/(V_p·c_t), and does — the 2.48x ratio in c_t between the two tables produces a measured 2.4x ratio in time-to-bubble-point. And the Havlena-Odeh material-balance ratio on the chart is a genuine self-check: it holds within 2% of 1.0 for the whole run.',
     analyticalMethodReference: 'Standing (1947); McCain, "The Properties of Petroleum Fluids" (undersaturated oil compressibility 5-30e-6 psi^-1); Havlena & Odeh (1963), The Material Balance as an Equation of a Straight Line.',
     chartLayoutKey: 'gas',
@@ -227,7 +227,7 @@ export const dep_pvt: Scenario = {
         {
             key: 'pvt_model',
             label: 'PVT Table (Undersaturated Compressibility)',
-            description: 'Both tables share the identical bubble-point pressure, Rs, and Bo — the one calibrated point — and diverge only above it, where undersaturated compressibility cannot be measured by a single flash test. Under constant-rate withdrawal that value sets how fast the reservoir depletes: the two models reach the 150 bar bubble point 36 and 88 days in. Below it they are the same fluid, and the Avg Pressure curves stop separating.',
+            description: 'Both tables share the identical bubble-point pressure, Rs, and Bo — the one calibrated point — and diverge only above it, where undersaturated compressibility cannot be measured by a single flash test.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {

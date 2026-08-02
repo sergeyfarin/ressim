@@ -8,7 +8,7 @@ import { buildBenchmarkRunResult } from '../benchmarkRunModel';
 import type { BenchmarkRunSpec } from '../benchmarkRunModel';
 import type { SimulatorSnapshot } from '../simulator-types';
 import { buildReferenceComparisonModel } from './buildChartData';
-import { REFERENCE_DASH } from './curveStylePolicy';
+import { ANALYTICAL_DASH, REFERENCE_DASH } from './curveStylePolicy';
 import { getReferenceColor, getReferenceComparisonCaseColor } from './referenceChartTypes';
 
 // Live scenarios stand in for the archived bl_case_a_refined/dietz_sq_center
@@ -551,7 +551,7 @@ describe('referenceComparisonModel', () => {
 
         expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'gor-sim')?.borderDash).toBeUndefined();
         expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'gor-sim')?.defaultVisible).toBe(true);
-        expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'published-gor')?.borderDash).toEqual(REFERENCE_DASH);
+        expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'published-gor')?.borderDash).toEqual(ANALYTICAL_DASH);
         expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'published-gor')?.pointRadius).toBe(0);
         expect(model.panels.producer_bhp.curves.find((curve) => curve.curveKey === 'producer-bhp-sim')?.borderDash).toBeUndefined();
     });
@@ -811,9 +811,9 @@ describe('referenceComparisonModel', () => {
             xAxisMode: 'time',
         });
 
-        expect(model.panels.oil_rate.curves.find((curve) => curve.curveKey === 'published-oil-rate')?.borderDash).toEqual(REFERENCE_DASH);
-        expect(model.panels.producer_bhp.curves.find((curve) => curve.curveKey === 'published-producer-bhp')?.borderDash).toEqual(REFERENCE_DASH);
-        expect(model.panels.injector_bhp.curves.find((curve) => curve.curveKey === 'published-injector-bhp')?.borderDash).toEqual(REFERENCE_DASH);
+        expect(model.panels.oil_rate.curves.find((curve) => curve.curveKey === 'published-oil-rate')?.borderDash).toEqual(ANALYTICAL_DASH);
+        expect(model.panels.producer_bhp.curves.find((curve) => curve.curveKey === 'published-producer-bhp')?.borderDash).toEqual(ANALYTICAL_DASH);
+        expect(model.panels.injector_bhp.curves.find((curve) => curve.curveKey === 'published-injector-bhp')?.borderDash).toEqual(ANALYTICAL_DASH);
     });
 
     it('derives simulation producer and injector WBHP series from stored well snapshots', () => {

@@ -598,9 +598,9 @@ const gasMaterialBalance: AnalyticalMethodDescriptor = {
         {
             panelKey: 'pz',
             curveKey: 'p-over-z-reference',
-            sharedLabel: 'Volumetric p/z Line',
-            perCaseSuffix: ' Volumetric p/z Line',
-            previewLabel: 'Volumetric p/z Line',
+            sharedLabel: 'Volumetric p/z Extrapolation',
+            perCaseSuffix: ' Volumetric p/z Extrapolation',
+            previewLabel: 'Volumetric p/z Extrapolation',
             contexts: ['shared', 'per-result'],
         },
         {

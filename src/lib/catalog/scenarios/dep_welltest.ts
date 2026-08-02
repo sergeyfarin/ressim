@@ -66,7 +66,7 @@ export const dep_welltest: Scenario = {
         caseMode: 'dep',
         parameterSummary: '2.4-day constant-rate drawdown · radial-flow interpretation followed by box-boundary arrival',
     },
-    description: 'A single well produced at constant rate into a reservoir at rest, which is how permeability and skin are measured in the field. On the log-time axis the early flowing bottomhole pressure follows a straight line whose slope depends on k, h, viscosity and rate. The skin axis moves that line by a constant pressure offset, while the permeability axis changes its slope. The numerical run intentionally continues beyond the infinite-acting period: when the pressure disturbance reaches the closed square boundary, numerical BHP falls below the infinite-reservoir reference and exposes boundary-dominated flow.',
+    description: 'A single well produced at constant rate into a reservoir at rest, which is how permeability and skin are measured in the field.',
     analyticalMethodSummary: 'Line-source (Theis) solution for infinite-acting radial flow, evaluated at the wellbore with the thin-skin pressure drop. It is the interpretation reference before the radius of investigation reaches the no-flow boundary; the 2.4-day numerical tail deliberately exceeds that validity window to show boundary arrival. The full exponential-integral form is plotted, not the semilog approximation.',
     analyticalMethodReference: 'Theis (1935), Trans. AGU 16; Horner (1951); Matthews and Russell (1967), SPE Monograph 1; Earlougher (1977), SPE Monograph 5; Peaceman (1978), SPEJ 18(3).',
     chartLayoutKey: 'well_test',
@@ -157,7 +157,7 @@ export const dep_welltest: Scenario = {
         {
             key: 'skin',
             label: 'Skin Factor  s',
-            description: 'Skin is a pressure drop concentrated at the wellbore, so it moves the whole semilog line up or down by 2.s times the pressure group without changing its slope. That separation is the reason a well test can report permeability and completion damage as two independent numbers from one measurement: the slope carries k, the offset carries s. Each variant gets its own analytical curve, so a mismatch is the simulator, not the reference.',
+            description: 'Skin shifts the semilog pressure response without changing its slope.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {
@@ -186,7 +186,7 @@ export const dep_welltest: Scenario = {
         {
             key: 'permeability',
             label: 'Permeability  k',
-            description: 'Permeability sets the slope of the semilog line: m = ln(10).q.mu/(4.pi.C.k.h), so halving k doubles the slope. Unlike skin, it changes the shape of the response rather than offsetting it. Diffusivity also scales with k, so higher permeability reaches the no-flow boundary earlier and bends away from the infinite-reservoir reference sooner.',
+            description: 'Permeability sets the slope of the semilog line: m = ln(10).q.mu/(4.pi.C.k.h), so halving k doubles the slope.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {

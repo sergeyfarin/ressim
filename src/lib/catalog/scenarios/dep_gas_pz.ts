@@ -51,7 +51,7 @@ export const dep_gas_pz: Scenario = {
         caseMode: '3p',
         parameterSummary: 'Dry-gas depletion · p/z material balance · what bends the straight line and what it costs in reserves',
     },
-    description: 'A dry-gas reservoir depleting from 400 bar, plotted the way gas reserves are actually estimated: p/z against cumulative production, extrapolated to zero. For a volumetric reservoir with a rigid pore volume that plot is a straight line whose x-intercept is the gas initially in place, and the base case here lands on it. The case then removes one assumption at a time. Raise pore compressibility to a geopressured value and the plot bows upward, because compaction and connate-water expansion are supporting pressure and the straight line reads that extra energy as extra gas. Put a tight interval between the well and most of the reservoir and the plot flatters even harder — it only knows about the compartment being drained, and reads a slow-feeding neighbour as extra gas. In each case the simulation is right and the interpretation is wrong, which is the point: the gas is where the volumetrics say it is, and the line is answering a question about the pore volume rather than about the reservoir. z is taken from the same gas table the simulator integrates, so the reference is never separated from the simulation by a correlation choice.',
+    description: 'Dry-gas depletion shown as p/z versus cumulative gas produced. Compare the volumetric extrapolation with compaction and compartmentalization cases.',
     analyticalMethodSummary: 'Dry-gas material balance, G_p/G = 1 − (p/z)/(p_i/z_i), against cumulative gas produced. Two curves are drawn: the volumetric straight line, which assumes a rigid pore volume and no water influx, and the Ramagost–Farshad form that restores the pore and connate-water compressibility terms. Both use the gas initially in place computed from grid volumes, not fitted, so the vertical gap to the simulation is a reserves error rather than a curve fit.',
     analyticalMethodReference: 'Craft & Hawkins, Applied Petroleum Reservoir Engineering, ch. 5; Dake (1978), Fundamentals of Reservoir Engineering, §1.6 and ch. 3; Ramagost, B.P. & Farshad, F.F. (1981), "P/Z Abnormally Pressured Gas Reservoirs", SPE 10125; Fetkovich, Reese & Whitson (1998), SPEJ 3(1); Payne, D.A. (1996), "Material Balance Calculations in Tight Gas Reservoirs", SPERE 11(4).',
     // OPM Flow on the same reservoir at both ends of the compressibility ladder.
@@ -176,34 +176,34 @@ export const dep_gas_pz: Scenario = {
         {
             key: 'pore_compressibility',
             label: 'Pore Compressibility',
-            description: 'The same gas, the same grid, the same well, with only the pore compressibility changing across the range real rock spans — from a consolidated sandstone to a geopressured, poorly consolidated one. Compaction and connate-water expansion support pressure, and a straight line has no term for either, so it books that energy as gas. Recovery at a 30 bar abandonment pressure rises 0.928, 0.929, 0.934, 0.942 across the ladder; OPM Flow on the identical deck puts the same increment at 1.9 % against ResSim\'s 1.5 %, and a hand material balance at 1.8 %. What is worth noticing is *when* the plot lies. Extrapolate the fully depleted history and the reserves error stays near 0.6 % on every rung — by abandonment the curve has bent and straightened again, and the ruler lands in about the right place. Extrapolate the first 40 % of the same history, which is when a reserves number is actually wanted, and the error grows 0.7 %, 0.9 %, 1.4 %, 2.4 % with compressibility. The bend is a mid-life phenomenon: the plot misleads while you still need it and corrects itself once you no longer do.',
+            description: 'Higher pore compressibility supports pressure and bends the p/z trend above the rigid-volume line.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'cf_normal',
                     label: 'c_f = 5e-6 /bar  (consolidated, base)',
-                    description: 'A competent sandstone, where the pore volume is effectively rigid. Recovery 0.928 of the gas in place at a 30 bar abandonment pressure, and the straight line over-reads reserves by 0.7 % whether it is drawn early or late — the reference case, where the assumption holds and the plot earns its reputation. ResSim, OPM Flow and a hand material balance agree here to within 1.3 %.',
+                    description: 'Nearly rigid pore volume; the volumetric p/z assumption is appropriate.',
                     paramPatch: {},
                     affectsAnalytical: false,
                 },
                 {
                     key: 'cf_moderate',
                     label: 'c_f = 5e-5 /bar',
-                    description: 'An order of magnitude softer and still nearly invisible: recovery 0.929, and the early-history reserves error only moves from 0.7 % to 0.9 %. The mechanism is present and does not yet matter, which is why it is so often left out.',
+                    description: 'Moderate rock compressibility with little visible p/z curvature.',
                     paramPatch: { rock_compressibility: 5e-5 },
                     affectsAnalytical: true,
                 },
                 {
                     key: 'cf_high',
                     label: 'c_f = 2e-4 /bar',
-                    description: 'Recovery 0.934, and the early-history reserves error doubles to 1.4 % while the fully depleted one stays at 0.6 %. This is where the two readings of the same plot start to separate.',
+                    description: 'High compressibility; pressure support becomes visible.',
                     paramPatch: { rock_compressibility: 2e-4 },
                     affectsAnalytical: true,
                 },
                 {
                     key: 'cf_geopressured',
                     label: 'c_f = 5e-4 /bar  (geopressured)',
-                    description: 'The abnormally pressured case Ramagost and Farshad wrote about. Recovery 0.942 — compaction and water expansion deliver 1.5 % more gas than the rigid rock — and a reserves estimate 2.4 % high from the first 40 % of the history against 0.5 % from all of it. The second reference curve on the chart is the Ramagost–Farshad form with those terms restored; it is the one the mid-life simulation stays with.',
+                    description: 'Geopressured case where compaction materially affects the p/z estimate.',
                     paramPatch: { rock_compressibility: 5e-4 },
                     affectsAnalytical: true,
                 },
@@ -212,20 +212,20 @@ export const dep_gas_pz: Scenario = {
         {
             key: 'connectivity',
             label: 'One Tank or Two?',
-            description: 'A tight interval between the well and the lower three layers, with the producer perforating only the top compartment. Material balance is still exact — it is the *reservoir* the plot has stopped describing. The connected section recovers 0.928 and ends at 30.3 bar; the compartmentalised one recovers 0.278 and ends at 293 bar, because most of the gas is behind a barrier that has barely begun to feed. Extrapolating that history gives a gas in place 39 % above the volumetric figure, or 56 % if the line is drawn from the first 40 % of the history, and the direction is the dangerous one: the plot is flattering, the reserves look larger than they are, and the giveaway is not in the p/z plot at all but in an average reservoir pressure that has hardly moved while the well pressure is on the floor. Payne (1996) is the reference for the same trap in tight gas.',
+            description: 'Compare a connected tank with a producer isolated from most of the gas volume.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'conn_one_tank',
                     label: 'Connected section  (base)',
-                    description: 'Vertical permeability one tenth of horizontal throughout — one tank in every practical sense. Recovery 0.928, final average pressure 30.3 bar, straight-line reserves 0.7 % high.',
+                    description: 'Connected layers behave as one tank.',
                     paramPatch: {},
                     affectsAnalytical: false,
                 },
                 {
                     key: 'conn_sealed',
                     label: 'Tight interval, well in the upper compartment',
-                    description: 'The same gas in the same rock, with 1e-6 of the horizontal permeability across two layer boundaries and the well perforating only the top layer. Recovery 0.278 after the same 4,000 days, final average pressure 293 bar, and a straight-line reserves estimate 39 % above the truth — 56 % if drawn early.',
+                    description: 'Sealed layer boundaries leave most gas poorly connected to the producer.',
                     paramPatch: { permMode: 'perLayer', layerPermsZ: SEALED_KV, producerKLayers: [0] },
                     affectsAnalytical: false,
                 },
@@ -234,20 +234,20 @@ export const dep_gas_pz: Scenario = {
         {
             key: 'abandonment',
             label: 'How Far the Line Is Drawn',
-            description: 'The same reservoir read at two points in its life. Stopping at a 200 bar abandonment pressure — half the initial pressure, and a perfectly ordinary place to be when the reserves report is due — leaves 0.501 recovery and a straight-line estimate 8.9 % high, against 0.7 % for the run taken to 30 bar. No parameter differs between the two; the only difference is how much of the curve there was to draw a line through. A p/z extrapolation is a statement about the future made from the part of the past you happen to have, and it is at its worst exactly when it is most needed.',
+            description: 'Compare reserves estimates from an early history and from depletion to the 30 bar abandonment limit.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'aband_30',
                     label: 'Produce to 30 bar  (base)',
-                    description: 'The full depletion: recovery 0.928, reserves error 0.7 %. Two thirds of the p/z plot is available to fit.',
+                    description: 'Run to the 30 bar abandonment limit.',
                     paramPatch: {},
                     affectsAnalytical: false,
                 },
                 {
                     key: 'aband_200',
                     label: 'Produce to 200 bar',
-                    description: 'The same run stopped at half its initial pressure: recovery 0.501 and reserves error 8.9 %, thirteen times the fully depleted case, from a history that looks perfectly linear on its own.',
+                    description: 'Stop at 200 bar and extrapolate from the shorter history.',
                     paramPatch: { producerBhp: 200 },
                     affectsAnalytical: false,
                 },

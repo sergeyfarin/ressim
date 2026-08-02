@@ -71,7 +71,7 @@ export const wf_capillary: Scenario = {
         caseMode: 'wf',
         parameterSummary: '1D oil–water displacement · Brooks–Corey capillarity · fixed zero-capillary BL reference',
     },
-    description: 'The same 1D waterflood as the Buckley-Leverett case, run with capillary pressure switched on. BL is the zero-capillary limit — it solves for a sharp shock and has no term that can respond to P_c at all, so its curve stays fixed while the simulated fronts move away from it. Stronger capillarity spreads the front: water imbibes ahead of where viscous flow alone would carry it, so first water arrives earlier, and the water cut then climbs more gradually. The second dimension is the one worth sitting with: a coarse grid with no capillarity produces a smeared front that looks very much like a fine grid with capillarity. One is physics and one is truncation error, and the water-cut curve alone does not tell you which you are looking at.',
+    description: 'The same 1D waterflood as the Buckley-Leverett case, run with capillary pressure switched on.',
     analyticalMethodSummary: 'Buckley-Leverett with Welge shock construction, shown as the zero-capillary reference. BL neglects the capillary term by construction, so the analytical curve is identical for every capillary variant — the departure of the simulated front from it is the measured quantity, not an error.',
     analyticalMethodReference: 'Buckley and Leverett (1942); Welge (1952); Leverett (1941), Trans. AIME 142; Brooks and Corey (1964), CSU Hydrology Paper 3.',
     chartLayoutKey: 'waterflood',
@@ -163,7 +163,7 @@ export const wf_capillary: Scenario = {
         {
             key: 'capillary_strength',
             label: 'Capillary Entry Pressure  P_e',
-            description: 'A ladder of Brooks-Corey entry pressures against a fixed 40 bar viscous drawdown. P_e = 0 reproduces the Buckley-Leverett case exactly and should sit on the analytical curve; each step up spreads the front further. Note the two-sided signature that identifies capillary smearing rather than a shift in front speed: first water arrives *earlier* than the BL shock (imbibition runs ahead of the viscous front) while the late water cut approaches 100% more slowly. The analytical curve does not move — BL has no capillary term — so every departure you see is the simulation, not the reference.',
+            description: 'A ladder of Brooks-Corey entry pressures against a fixed 40 bar viscous drawdown.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {
@@ -199,7 +199,7 @@ export const wf_capillary: Scenario = {
         {
             key: 'capillary_vs_numerical',
             label: 'Physics or Truncation Error?',
-            description: 'Four runs chosen so two of them nearly coincide for entirely different reasons. A coarse grid with no capillarity smears the front through numerical dispersion; a fine grid with capillarity smears it through physics. On a water-cut curve the two are hard to tell apart — but they respond differently to refinement, and that is the only way to separate them from output alone: refine the grid and watch which curve moves. The numerically-smeared one converges; the capillary one does not, because its front width is set by the rock and the pressure drop, not by the mesh.',
+            description: 'Four runs chosen so two of them nearly coincide for entirely different reasons.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {

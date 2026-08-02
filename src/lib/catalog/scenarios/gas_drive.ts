@@ -56,7 +56,7 @@ export const gas_drive: Scenario = {
         caseMode: '3p',
         parameterSummary: 'Saturated black-oil depletion · solution-gas liberation · OPM Flow reference',
     },
-    description: 'Pressure depletion of a saturated black-oil reservoir. Initial pressure sits at the bubble point, so drawdown immediately liberates gas from solution: Rs falls, free gas builds past the critical gas saturation, and producing GOR climbs while oil rate declines. Vary the initial free-gas volume, the oil gravity, or the critical gas saturation to see how each changes the strength of the gas-expansion drive.',
+    description: 'Pressure depletion of a saturated black-oil reservoir. Initial pressure sits at the bubble point, so drawdown immediately liberates gas from solution: Rs falls, free gas builds past the critical gas saturation.',
     analyticalMethodSummary: 'Simulation-only — no analytical overlay. A Tarner–Tracy tank model was evaluated but rejected for this chart because its uniform-pressure/saturation assumptions do not represent the localized BHP drawdown and initially mobile free gas; its producing GOR diverges strongly even though ResSim agrees with OPM Flow. The optional OPM benchmark is disabled by default.',
     analyticalMethodReference: 'Standing (1979), Notes on Calculating Solution Gas Drive Reservoir Performance by Tarner’s Method (assumption review); Craft & Hawkins, Applied Petroleum Reservoir Engineering; quantitative grading: docs/THREE_PHASE_VALIDATION.md.',
     referenceSources: [{
@@ -157,7 +157,7 @@ export const gas_drive: Scenario = {
         {
             key: 'oil_gravity',
             label: 'Oil Gravity',
-            description: 'Vary the crude API gravity. Under black-oil PVT the oil viscosity, formation volume factor and solution gas-oil ratio all come from the PVT table, so they move together: a lighter crude carries more dissolved gas at the same bubble point and is far less viscous, giving a stronger, faster gas drive.',
+            description: 'Vary the crude API gravity. Under black-oil PVT the oil viscosity, formation volume factor and solution gas-oil ratio all come from the PVT table.',
             variants: [
                 {
                     key: 'api_light',
@@ -202,7 +202,7 @@ export const gas_drive: Scenario = {
         {
             key: 's_gc',
             label: 'Critical Gas Saturation',
-            description: 'Critical gas saturation is the free-gas volume the rock must accumulate before gas becomes mobile. It sets how much liberated gas stays in the reservoir doing work instead of being produced, so it changes the drive itself rather than just its speed: raise it and producing GOR falls, the reservoir holds its pressure longer, and oil recovery rises. Compare the rungs at the same average pressure, not the same time.',
+            description: 'Critical gas saturation is the free-gas volume the rock must accumulate before gas becomes mobile.',
             variants: [
                 {
                     key: 'sgc_low',
@@ -221,7 +221,7 @@ export const gas_drive: Scenario = {
                 {
                     key: 'sgc_high',
                     label: 's_gc = 0.15  (gas trapped)',
-                    description: 'Gas stays immobile until Sg reaches 0.15, so even the initial 0.08 free gas cannot flow. Liberated gas is retained and expands against the oil: producing GOR stays low far longer and oil recovery roughly quadruples at the same average pressure.',
+                    description: 'Gas stays immobile until Sg reaches 0.15, so even the initial 0.08 free gas cannot flow.',
                     paramPatch: { s_gc: 0.15 },
                     affectsAnalytical: false,
                 },

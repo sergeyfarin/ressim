@@ -10,7 +10,7 @@ export const dep_decline: Scenario = {
         caseMode: 'dep',
         parameterSummary: 'Finite constant-BHP slab · transient-to-boundary-dominated eigenfunction reference',
     },
-    description: 'Constant-BHP production from a finite 1D reservoir. After the Cartesian well block\'s startup response, the reference solves the distributed diffusion problem with a no-flow outer boundary and the same finite well productivity as a Robin boundary. Its eigenmodes cover spatial diffusion, boundary arrival, and the eventual single-mode exponential tail. Permeability changes the physics; timestep and calibrated grid variants expose numerical damping and under-resolution against one fixed physical reference.',
+    description: 'Constant-BHP production from a finite 1D reservoir. After the Cartesian well block\'s startup response.',
     analyticalMethodSummary: 'Finite-slab eigenfunction solution with finite well productivity. Fetkovich boundary-dominated exponential decline appears as the asymptotic first mode, not as a full-history tank approximation.',
     analyticalMethodReference: 'Fetkovich (1980), SPE-4629-PA.',
     chartLayoutKey: 'fetkovich',
@@ -182,7 +182,7 @@ export const dep_decline: Scenario = {
         {
             key: 'grid_refinement',
             label: 'Grid Refinement',
-            description: 'The 480 m slab and physical well productivity stay fixed while spatial resolution changes. A compensating numerical skin offsets the cell-size change in Peaceman equivalent radius, so separation from the shared finite-slab reference is discretisation error rather than an accidental change of well PI.',
+            description: 'The 480 m slab and physical well productivity stay fixed while spatial resolution changes.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {

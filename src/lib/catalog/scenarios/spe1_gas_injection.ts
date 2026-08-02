@@ -329,10 +329,7 @@ export const spe1_gas_injection: Scenario = {
         caseMode: '3p',
         parameterSummary: 'SPE1 Case 1 · 10×10×3 black-oil gas injection · Eclipse and OPM Flow references',
     },
-    description:
-        'SPE Comparative Solution Project #1 (Odeh, 1981): 10×10×3 black-oil reservoir with gas injection. ' +
-        'Validates PVT coupling, dissolved-gas tracking, and three-phase transport against published Eclipse results. ' +
-        'Exact OPM SWOF/SGOF tables are supplied. Surface-rate controls now follow the Case 1 deck intent; remaining mismatch, if any, is a simulator-model gap rather than a benchmark-specific curve fit.',
+    description: 'SPE1 Case 1: a 10×10×3 black-oil gas-injection benchmark compared with published Eclipse results and OPM Flow.',
     analyticalMethodSummary:
         'No analytical solution. Comparison is against published Eclipse simulator results from the OPM test suite (SPE1 Case 1).',
     analyticalMethodReference:

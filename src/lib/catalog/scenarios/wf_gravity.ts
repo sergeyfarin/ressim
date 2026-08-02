@@ -30,7 +30,7 @@ export const wf_gravity: Scenario = {
         caseMode: 'wf',
         parameterSummary: '2D vertical section · vertical sweep lost to a gravity tongue · fixed gravity-free BL reference',
     },
-    description: 'A 300 m long, 40 m thick vertical cross-section flooded from a single perforation at the base of the injector. Buckley-Leverett has no gravity term, so its curve is the same in every variant here; what moves is the simulation. Turn gravity off and the section behaves as a one-dimensional tube — breakthrough at 0.500 PVI against BL\'s 0.586, recovery at one pore volume injected 0.699 against BL\'s 0.715, the remaining gap being numerical dispersion and the convergent flow into the single perforations. Turn gravity on and dense water slumps to the base and runs ahead of the front as a tongue, leaving oil above it: at the base rate breakthrough falls to 0.253 PVI and recovery to 0.585, and in the gravity-dominated rung BL over-predicts recovery at one PVI by 88 %. Read in sweep terms, the analytical curve is the displacement efficiency E_D of a perfectly contacted flood and the shortfall below it is the vertical sweep the tongue costs — the same quantity `sweep_vertical` measures for permeability contrast, here driven by density instead of geology. The controlling group is the ratio of buoyant head across the section to viscous pressure drop along it, N_g = Δρ·g·H·k / (μ_o·u_t·L), which the rate ladder sweeps from 0.14 to 2.23. Nothing about this is numerical error, and the case does not ask to be taken on trust: the base run is also shipped as an OPM Flow deck, and the two simulators agree to 0.4 % on recovery at one pore volume injected while both sit 18 % below BL.',
+    description: 'A 300 m long, 40 m thick vertical cross-section flooded from a single perforation at the base of the injector.',
     analyticalMethodSummary: 'Buckley-Leverett with Welge shock construction, shown as the gravity-free reference. The fractional-flow function used here carries only viscous terms, so the analytical curve is identical across every rate, density contrast and completion in this scenario — the departure of the simulation from it is the measured quantity.',
     analyticalMethodReference: 'Buckley and Leverett (1942); Welge (1952); Dietz (1953), Proc. Koninklijke Nederlandse Akademie van Wetenschappen B56; Dake (1978), Fundamentals of Reservoir Engineering, ch. 10; Shook, Li and Lake (1992), In Situ 16(4) — scaling groups.',
     chartLayoutKey: 'waterflood',
@@ -137,13 +137,13 @@ export const wf_gravity: Scenario = {
         {
             key: 'gravity_number',
             label: 'Gravity Number  N_g',
-            description: 'One control and three rates. The control runs the identical model with gravity switched off and lands on the BL curve to within the grid resolution — this is the rung that says the rest of the departure is physics, not error. Each slower rate raises N_g = Δρ·g·H·k / (μ_o·u_t·L), the buoyant head across the section divided by the viscous drop along it, and the water tongue runs further ahead of the front. Measured recovery at one pore volume injected: 0.699 (gravity off), 0.689 (N_g = 0.14), 0.585 (N_g = 0.56), 0.380 (N_g = 2.23), against BL\'s 0.715. Read on the PVI axis, because each rung takes a different number of days to inject the same pore volume.',
+            description: 'One control and three rates. The control runs the identical model with gravity switched off and lands on the BL curve to within the grid resolution — this is the rung that says the rest of the departure is physics.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {
                     key: 'ng_off',
                     label: 'Gravity off  (control)',
-                    description: 'The same section, same rate, gravity disabled. Breakthrough 0.500 PVI against BL\'s 0.586 and recovery 0.699 against 0.715 — the residual gap is numerical dispersion plus the convergent flow into single perforations, and it is what "agreement" looks like for this grid.',
+                    description: 'The same section, same rate, gravity disabled. Breakthrough 0.500 PVI against BL\'s 0.586 and recovery 0.699 against 0.715 — the residual gap is numerical dispersion plus the convergent flow into single perforations.',
                     paramPatch: { gravityEnabled: false },
                     affectsAnalytical: false,
                 },
@@ -157,14 +157,14 @@ export const wf_gravity: Scenario = {
                 {
                     key: 'ng_base',
                     label: 'N_g ≈ 0.56  (160 m³/d, base)',
-                    description: 'Buoyancy and viscous drive of the same order. The tongue is clearly formed in the 3D view, breakthrough halves to 0.253 PVI, and recovery at one PVI falls to 0.585 — 18 % below the analytical solution the flood would follow if the two fluids weighed the same.',
+                    description: 'Buoyancy and viscous drive of the same order. The tongue is clearly formed in the 3D view, breakthrough halves to 0.253 PVI, and recovery at one PVI falls to 0.585.',
                     paramPatch: {},
                     affectsAnalytical: false,
                 },
                 {
                     key: 'ng_gravity',
                     label: 'N_g ≈ 2.23  (40 m³/d, gravity-dominated)',
-                    description: 'A quarter of the base rate, and the displacement has become a thin water layer sliding along the base of the section. Breakthrough at 0.167 PVI, recovery 0.380 — BL over-predicts by 88 %. Slower is not always better: the same pore volume injected recovers far less oil when it is injected slowly enough for gravity to segregate it.',
+                    description: 'A quarter of the base rate, and the displacement has become a thin water layer sliding along the base of the section.',
                     paramPatch: { targetInjectorRate: 40, delta_t_days: 8, steps: 213 },
                     affectsAnalytical: false,
                 },
@@ -173,7 +173,7 @@ export const wf_gravity: Scenario = {
         {
             key: 'density_contrast',
             label: 'Density Contrast  Δρ',
-            description: 'The same flood at the base rate with the oil density moved from 1000 to 600 kg/m³. At Δρ = 0 the buoyancy term vanishes and the simulation returns to the gravity-off control (0.704 against 0.699) even though gravity is still enabled — a useful check that the effect is the density difference and not the presence of a gravity term. Recovery at one PVI then falls monotonically: 0.704, 0.650, 0.585, 0.491. A 200 kg/m³ error in the fluid model is worth more here than most rock-curve uncertainties.',
+            description: 'The same flood at the base rate with the oil density moved from 1000 to 600 kg/m³.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {
@@ -209,7 +209,7 @@ export const wf_gravity: Scenario = {
         {
             key: 'vertical_communication',
             label: 'Vertical Communication × Gravity',
-            description: 'Gravity can only segregate the fluids if the rock lets them move vertically. Two vertical permeabilities, each run with gravity on and off, so the gravity penalty can be read as a pair rather than guessed from an absolute number. At k_z/k_x = 1 gravity costs 0.114 of recovery (0.699 → 0.585); at k_z/k_x = 0.01 it costs only 0.033 (0.426 → 0.393). The second lesson is in the other direction: the low-k_z pair sits far below BL whether or not gravity is on, because bottom perforations in a poorly communicating section simply never contact the upper layers. Not every departure from Buckley-Leverett is gravity.',
+            description: 'Gravity can only segregate the fluids if the rock lets them move vertically.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {
@@ -245,7 +245,7 @@ export const wf_gravity: Scenario = {
         {
             key: 'completion_strategy',
             label: 'Producer Completion × Gravity',
-            description: 'Where the producer is perforated decides whether gravity is a loss or a gain, and BL cannot express the question at all. Perforating at the base of the section — where the water tongue arrives — costs 0.114 of recovery relative to no gravity. Perforating the same producer at the top, so that oil is drawn off above the advancing water, turns the same buoyancy into a benefit: 0.737 with gravity against 0.703 without, and above the gravity-free BL-like control. The injector stays at the base throughout; only the producer moves.',
+            description: 'Where the producer is perforated decides whether gravity is a loss or a gain, and BL cannot express the question at all.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {
@@ -265,7 +265,7 @@ export const wf_gravity: Scenario = {
                 {
                     key: 'comp_top_gravity',
                     label: 'Producer at top, gravity on',
-                    description: 'Water underruns beneath the producing interval instead of into it. Breakthrough 0.467 PVI and recovery 0.737 — the highest in this scenario, and higher than any gravity-free run. Gravity-assisted drainage, arrived at by moving one perforation.',
+                    description: 'Water underruns beneath the producing interval instead of into it.',
                     paramPatch: { producerKLayers: [0] },
                     affectsAnalytical: false,
                 },
@@ -281,7 +281,7 @@ export const wf_gravity: Scenario = {
         {
             key: 'opm_cross_check',
             label: 'OPM Flow Cross-Check',
-            description: 'The base case is also shipped as an OPM Flow deck — the same grid, rock curves, densities, completions, injection rate and 420-day schedule — and the two simulators are run independently of each other. OPM breaks through at 0.227 PVI and recovers 0.583 of oil in place at one pore volume injected; ResSim gives 0.253 and 0.585 — 0.4 % apart on recovery and 12 % apart on breakthrough, both 18 % below Buckley-Leverett, whose own breakthrough is 158 % late against OPM. That is the argument this scenario rests on: an independent industrial simulator reproduces the departure, so the departure is the physics BL omits and not a defect in this engine. The two rungs vary only the ResSim report step. The OPM curves are placed on the pore-volume axis through the deck run\'s own injected volume, so they can be read against the simulation on either axis.',
+            description: 'The base case is also shipped as an OPM Flow deck — the same grid, rock curves, densities, completions, injection rate and 420-day schedule — and the two simulators are run independently of each other.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {

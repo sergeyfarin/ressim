@@ -36,12 +36,10 @@ describe('scenario sensitivities', () => {
                 .filter((dimension) => dimension.variesSolver)
                 .map((dimension) => [scenario.key, dimension.key]),
         );
-        // Two deliberate solver-varying dimensions, and only two: `wf_bl1d`
-        // crosses formulation with report step, while `wf_numerics` puts the
-        // pair beside an independent OPM Flow run of the same deck.
+        // Solver choice is a numerical-convergence study, not a reservoir
+        // sensitivity, so it belongs only to `wf_numerics`.
         expect(solverDimensions).toEqual([
-            ['wf_bl1d', 'solver_formulation'],
-            ['wf_numerics', 'solver_vs_opm'],
+            ['wf_numerics', 'solver_formulation'],
         ]);
     });
 
@@ -52,6 +50,21 @@ describe('scenario sensitivities', () => {
         for (const scenario of listScenarios()) {
             expect(scenario.analyticalMethodSummary.length, scenario.key).toBeGreaterThan(10);
             expect(scenario.analyticalMethodReference.length, scenario.key).toBeGreaterThan(5);
+        }
+    });
+
+    it('keeps catalog descriptions concise', () => {
+        for (const scenario of listScenarios()) {
+            expect(scenario.description.length, `${scenario.key} description`).toBeLessThanOrEqual(240);
+            for (const dimension of scenario.sensitivities) {
+                expect(dimension.description.length, `${scenario.key}/${dimension.key}`).toBeLessThanOrEqual(240);
+                for (const variant of dimension.variants) {
+                    expect(
+                        variant.description.length,
+                        `${scenario.key}/${dimension.key}/${variant.key}`,
+                    ).toBeLessThanOrEqual(240);
+                }
+            }
         }
     });
 
@@ -496,8 +509,6 @@ describe('scenario capability validation', () => {
             ['mobility', 'per-result'],
             ['corey_no', 'per-result'],
             ['sor', 'per-result'],
-            ['grid', 'shared'],
-            ['solver_formulation', 'shared'],
         ]);
         expect(getScenario('dep_pss')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['drainage_shape', 'per-result'],
@@ -509,6 +520,12 @@ describe('scenario capability validation', () => {
             ['skin', 'per-result'],
             ['timestep', 'shared'],
             ['grid_refinement', 'shared'],
+        ]);
+        expect(getScenario('wf_numerics')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
+            ['grid_refinement', 'shared'],
+            ['time_truncation', 'shared'],
+            ['dispersion_or_rock', 'per-result'],
+            ['solver_formulation', 'shared'],
         ]);
         expect(getScenario('dep_arps')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['layer_contrast', 'per-result'],

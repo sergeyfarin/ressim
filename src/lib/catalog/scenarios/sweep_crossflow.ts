@@ -33,7 +33,7 @@ export const sweep_crossflow: Scenario = {
         caseMode: 'wf',
         parameterSummary: 'Layered waterflood · vertical communication against the non-communicating Dykstra–Parsons assumption',
     },
-    description: 'Five layers spanning a 5:1 permeability range, flooded end to end, with one property varied over six orders of magnitude: the vertical permeability. Seal the layers and water breaks through at 0.427 pore volumes injected; let them communicate freely and it holds off until 0.599, a 40 % difference, with recovery at one pore volume injected rising from 0.735 to 0.781. The Dykstra-Parsons and Stiles curves are identical across all of it — both models solve a stack of isolated tubes, and kv is not one of their inputs, so the analytical overlay is a fixed line the simulation walks away from. That is the case in one sentence: a correlation is only as good as the assumption you are not testing. The direction of the error is not fixed either. Crossflow is driven by the mobility difference between the swept and unswept parts of a layer, so at a favourable mobility ratio it recovers 0.046 more oil, at M = 2 it changes recovery by nothing at all, and at M = 10 it costs 0.021 — the same physical connection, helping, doing nothing, and hurting.',
+    description: 'Five layers spanning a 5:1 permeability range, flooded end to end, with one property varied over six orders of magnitude: the vertical permeability.',
     analyticalMethodSummary: 'Dykstra-Parsons (default) or Stiles layered sweep, built from the layer permeabilities and the end-point mobility ratio. Both assume the layers are hydraulically isolated, which is exactly the assumption this case violates on purpose — so the reference is correct only on the sealed rung of the ladder and is offered elsewhere as a fixed baseline, not a prediction.',
     analyticalMethodReference: 'Dykstra and Parsons (1950); Stiles (1949); Zapata and Lake (1981), SPE 10111 — "A Theoretical Analysis of Viscous Crossflow"; Root and Skiba (1965), SPEJ 5(3); Willhite, Waterflooding (SPE Textbook 3), ch. 5.',
     chartLayoutKey: 'sweep',
@@ -144,13 +144,13 @@ export const sweep_crossflow: Scenario = {
         {
             key: 'vertical_communication',
             label: 'Vertical Permeability  k_v/k_h',
-            description: 'The same five layers, the same permeabilities along the flow, the same wells — and vertical permeability ranging from effectively zero to isotropic. Breakthrough moves 0.427 → 0.457 → 0.518 → 0.576 → 0.599 pore volumes injected, and recovery at one pore volume injected 0.735 → 0.755 → 0.779 → 0.783 → 0.781. Most of the change is spent between kv/kh = 0.001 and 0.1; beyond that the section is already in vertical equilibrium and further communication buys nothing. The analytical curve does not move at any point on the ladder, because neither Dykstra-Parsons nor Stiles has an input for kv — they solve isolated tubes. It is right on the sealed rung and increasingly conservative from there, and no amount of tuning the layer permeabilities would find that out, because the parameter responsible is not in the model.',
+            description: 'The same five layers, the same permeabilities along the flow, the same wells — and vertical permeability ranging from effectively zero to isotropic.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {
                     key: 'kv_sealed',
                     label: 'k_v/k_h = 10⁻⁶  (sealed — the correlation\'s own assumption)',
-                    description: 'Shale-sealed layers, the configuration Dykstra-Parsons and Stiles actually describe. Breakthrough 0.427 PVI in the fast layer, recovery 0.735 at one pore volume injected. This is the rung on which the analytical curve is a prediction rather than a baseline.',
+                    description: 'Shale-sealed layers, the configuration Dykstra-Parsons and Stiles actually describe.',
                     paramPatch: { layerPermsZ: [2e-4, 1.5e-4, 1e-4, 6e-5, 4e-5] },
                     affectsAnalytical: false,
                 },
@@ -178,7 +178,7 @@ export const sweep_crossflow: Scenario = {
                 {
                     key: 'kv_isotropic',
                     label: 'k_v/k_h = 1  (isotropic)',
-                    description: 'Free vertical exchange. Breakthrough 0.599, recovery 0.781 — marginally below the base case, because the section reached vertical equilibrium before this point and the last decade of kv adds nothing. A sensitivity that saturates is worth knowing about: it bounds how much the unmeasured parameter can cost you.',
+                    description: 'Free vertical exchange. Breakthrough 0.599, recovery 0.781 — marginally below the base case.',
                     paramPatch: { layerPermsZ: [200, 150, 100, 60, 40] },
                     affectsAnalytical: false,
                 },
@@ -187,7 +187,7 @@ export const sweep_crossflow: Scenario = {
         {
             key: 'mobility_crossover',
             label: 'Which Way Crossflow Helps',
-            description: 'Crossflow is not a mechanism with a fixed sign. It is driven by the difference in total mobility between the flooded and unflooded parts of a layer, so its direction follows the mobility ratio. Three sealed/open pairs at the same geology: at M = 0.5 opening the layers is worth +0.046 of recovery at one pore volume injected (0.735 → 0.781), at M = 2 it is worth +0.000 (0.617 → 0.617), and at M = 10 it costs -0.021 (0.451 → 0.430). Breakthrough tells the same story with more contrast — 0.427 → 0.599, 0.302 → 0.355, and 0.174 → 0.174, where the unfavourable case has effectively stopped responding. The crossover sits between M = 2 and M = 10 rather than at M = 1, because the group that governs is the mobility contrast across the shock front, not the end-point ratio (Zapata and Lake 1981). For a screening study the consequence is blunt: "how good is my vertical communication" has no answer until you also say how mobile the injectant is.',
+            description: 'Crossflow is not a mechanism with a fixed sign. It is driven by the difference in total mobility between the flooded and unflooded parts of a layer.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {
@@ -217,7 +217,7 @@ export const sweep_crossflow: Scenario = {
                 {
                     key: 'mob_unit_open',
                     label: 'M = 2, isotropic  (crossflow gains nothing)',
-                    description: 'Breakthrough moves out to 0.355 and recovery at one pore volume injected does not move at all — 0.617 either way. The water that crosses over arrives at the producer by a different route and on a different day, and the same amount of oil comes out.',
+                    description: 'Breakthrough moves out to 0.355 and recovery at one pore volume injected does not move at all — 0.617 either way.',
                     paramPatch: { mu_o: 4, delta_t_days: 2, steps: 265, layerPermsZ: [200, 150, 100, 60, 40] },
                     affectsAnalytical: true,
                 },
@@ -243,7 +243,7 @@ export const sweep_crossflow: Scenario = {
         {
             key: 'capillary_crossflow',
             label: 'Capillary Crossflow Needs a Path',
-            description: 'The second driving force across a layer boundary, in a 2x2 with a genuinely empty corner. Capillary pressure pulls water from the coarse fast layer into the finer slow ones, but only if there is vertical permeability for it to move through. With the layers sealed, raising the Brooks-Corey entry pressure from 0 to 6 bar changes recovery at one pore volume injected by nothing measurable (0.735 either way) and breakthrough by 0.002 PVI — capillarity along the flow direction is negligible at this drawdown, as `wf_capillary` measures directly. Open the layers and the same 6 bar is worth 0.013 of recovery and 0.039 PVI of breakthrough delay on top of what viscous crossflow already gave (0.781 → 0.794, 0.599 → 0.638). The two effects are super-additive: separately they are worth +0.000 and +0.046, together +0.059. This is the opposite interaction sign to the rock-curves-or-geology study on `sweep_vertical`, where the two mechanisms mask each other — one more reason a one-at-a-time sensitivity cannot tell you which pairs matter.',
+            description: 'The second driving force across a layer boundary, in a 2x2 with a genuinely empty corner.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {
@@ -273,7 +273,7 @@ export const sweep_crossflow: Scenario = {
                 {
                     key: 'cap_open_pc',
                     label: 'Isotropic, P_e = 6 bar  (both: +0.059)',
-                    description: 'Breakthrough 0.638 PVI and recovery 0.794 — more than the two effects add up to separately, because capillary suction into the fine layers is only available once the viscous exchange has established a path and a saturation contrast for it to act on.',
+                    description: 'Breakthrough 0.638 PVI and recovery 0.794 — more than the two effects add up to separately.',
                     paramPatch: {
                         layerPermsZ: [200, 150, 100, 60, 40],
                         capillaryEnabled: true, capillaryPEntry: 6,

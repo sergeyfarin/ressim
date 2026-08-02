@@ -14,13 +14,10 @@ async function ensureWasmReady() {
 type SolverRun = { cumulativeOil: number; avgPressure: number; warning: string };
 
 /**
- * Runs one solver_formulation variant end to end. Ported from the deleted
- * `solver_fim_impes` scenario test when that case was folded into this one as
- * a sensitivity dimension (2026-07-31), so the formulation comparison keeps
- * its regression coverage.
+ * Runs one numerical-convergence solver variant end to end.
  */
 function runVariant(variantKey: string): SolverRun {
-    const params = getScenarioWithVariantParams('wf_bl1d', 'solver_formulation', variantKey);
+    const params = getScenarioWithVariantParams('wf_numerics', 'solver_formulation', variantKey);
     const nx = Number(params.nx);
     const ny = Number(params.ny);
     const nz = Number(params.nz);
@@ -82,10 +79,10 @@ function runVariant(variantKey: string): SolverRun {
     return result;
 }
 
-describe('wf_bl1d solver_formulation sensitivity', () => {
+describe('wf_numerics solver_formulation sensitivity', () => {
     it('varies only the formulation', () => {
-        const impes = getScenarioWithVariantParams('wf_bl1d', 'solver_formulation', 'solver_impes_base');
-        const fim = getScenarioWithVariantParams('wf_bl1d', 'solver_formulation', 'solver_fim_base');
+        const impes = getScenarioWithVariantParams('wf_numerics', 'solver_formulation', 'solver_impes_base');
+        const fim = getScenarioWithVariantParams('wf_numerics', 'solver_formulation', 'solver_fim_base');
         const differing = Object.keys(fim).filter((name) => fim[name] !== impes[name]);
         expect(differing).toEqual(['fimEnabled']);
         expect(impes.fimEnabled).toBe(false);
@@ -103,10 +100,7 @@ describe('wf_bl1d solver_formulation sensitivity', () => {
             expect(run.cumulativeOil, key).toBeGreaterThan(0);
         }
 
-        // Measured 0.12% at the shipped 0.25-day step. The bound is the claim
-        // the scenario text makes: at this step size the formulation choice is
-        // a small effect, not a physics difference. It is deliberately tight
-        // enough to fail if either solver's accuracy regresses.
+        // Both formulations should remain close at the base report step.
         const gap = Math.abs(fim.cumulativeOil - impes.cumulativeOil) / impes.cumulativeOil;
         expect(gap).toBeLessThan(0.03);
     }, 180_000);

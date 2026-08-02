@@ -183,7 +183,7 @@ export const sweep_vertical: Scenario = {
             // See docs/CASE_LIBRARY_ROADMAP.md T7.18.
             key: 'endpoints_vs_geology',
             label: 'Rock Curves or Geology?',
-            description: 'Two explanations for the same disappointing recovery, and the mirror image of the tornado-plot case. Steepening the oil relative-permeability curve (Corey n_o) and widening the layer permeability contrast both push recovery down by completely different mechanisms — one is how the rock lets oil flow, the other is where the water goes. Measured at equal injected pore volumes, each alone costs recovery (-0.147 and -0.346 of mobile oil), but together they cost only -0.368, not the -0.493 that adding them would predict. They are competing for the same barrels: once a thief zone is bypassing most of the section, making the oil curve worse has little left to spoil. The decision consequence is direct — a one-at-a-time study says fixing the rock curve buys back 0.147, while in the layered reservoir it actually buys back 0.022, so a SCAL programme justified on the first number is being over-valued by nearly 7x. The Dykstra-Parsons overlay is the second tell: built from layer permeabilities and mobility endpoints, it moves for the geology change and is completely blind to the Corey change. When the simulation drops and the reference does not, the model you are comparing against has no term for what you just varied.',
+            description: 'Two explanations for the same disappointing recovery, and the mirror image of the tornado-plot case.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {
@@ -202,7 +202,7 @@ export const sweep_vertical: Scenario = {
                 {
                     key: 'evg_curve_only',
                     label: 'n_o = 4 alone  (rock curves)',
-                    description: 'A steeply curving oil relative permeability on the same uniform rock. Recovery falls — and the Dykstra-Parsons curve does not move at all, because the Corey exponent is not one of its inputs. The analytical reference here is shared context, not a prediction.',
+                    description: 'A steeply curving oil relative permeability on the same uniform rock.',
                     paramPatch: {
                         n_o: 4,
                         permMode: 'uniform',
@@ -215,7 +215,7 @@ export const sweep_vertical: Scenario = {
                 {
                     key: 'evg_layers_only',
                     label: 'V_DP ≈ 0.8 alone  (geology)',
-                    description: 'The benign rock curve in a strongly layered reservoir. Recovery falls for an entirely different reason — the water is going somewhere else — and this time the analytical sweep model does follow, because layer permeabilities are exactly what it is built from.',
+                    description: 'The benign rock curve in a strongly layered reservoir. Recovery falls for an entirely different reason — the water is going somewhere else — and this time the analytical sweep model does follow.',
                     paramPatch: {
                         n_o: 2,
                         layerPermsX: [500, 150, 50, 20, 10],
@@ -227,7 +227,7 @@ export const sweep_vertical: Scenario = {
                 {
                     key: 'evg_both',
                     label: 'n_o = 4 AND V_DP ≈ 0.8',
-                    description: 'Both together — and markedly better than adding the two individual penalties would suggest. The steep curve, which cost 0.147 of mobile oil on uniform rock, costs only 0.022 more once a thief zone is already bypassing most of the section. Neither one-at-a-time result predicts this corner, and here they over-predict rather than under-predict it.',
+                    description: 'Both together — and markedly better than adding the two individual penalties would suggest.',
                     paramPatch: {
                         n_o: 4,
                         layerPermsX: [500, 150, 50, 20, 10],

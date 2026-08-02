@@ -17,7 +17,7 @@ export const wf_gravity_stability: Scenario = {
         caseMode: 'wf',
         parameterSummary: '1D vertical column · upward vs downward flood · signed departure from the viscous BL curve',
     },
-    description: 'A 60 m vertical column with one perforation at each end, flooded upward or downward at the same rate. Buckley-Leverett is usually met as an upper bound on what a flood can do; here it is neither bound. Inject water at the base and displace oil upward and the denser water is held back by buoyancy: the front sharpens, breakthrough moves out to 0.646 PVI against BL\'s 0.586, and recovery at one pore volume injected reaches 0.792 against BL\'s 0.715. Reverse the direction — water in at the top, oil out at the base — and the identical fluids in the identical rock give breakthrough at 0.406 PVI and recovery 0.540. The control run with gravity disabled sits on the analytical curve (0.531 / 0.706), so the two departures are the same physics read with opposite signs. This is not viscous fingering, which needs a transverse dimension the model does not have: it is the gravity term in the fractional-flow function, G = k·k_ro·A·Δρ·g / (q·μ_o), adding to or subtracting from the viscous flux depending on which way the flood runs. Dake gives that corrected fractional flow in closed form; the overlay here deliberately does not use it, so the gap you see is exactly the size of the term the textbook curve omits. When gravity acts *across* the flow instead of along it the consequence is a contact problem rather than a fractional-flow one, and it is only ever a loss — that is the Gravity Override case under Sweep Efficiency.',
+    description: 'A 60 m vertical column with one perforation at each end, flooded upward or downward at the same rate.',
     analyticalMethodSummary: 'Buckley-Leverett with Welge shock construction, computed from the viscous fractional flow only. It carries no gravity term and no dependence on flow direction, so one curve serves every variant — the simulation moves above it in the stable direction and below it in the unstable one.',
     analyticalMethodReference: 'Buckley and Leverett (1942); Welge (1952); Dake (1978), Fundamentals of Reservoir Engineering, §10.5 (gravity-modified fractional flow); Hagoort (1980), SPEJ 20(3) — gravity drainage; Dietz (1953).',
     chartLayoutKey: 'waterflood',
@@ -108,27 +108,27 @@ export const wf_gravity_stability: Scenario = {
         {
             key: 'flood_direction',
             label: 'Flood Direction',
-            description: 'Three runs of the same column at the same rate: gravity off, flooded upward, flooded downward. The control lands on the analytical curve (recovery 0.706 at one PVI against BL\'s 0.715), the upward flood sits above it at 0.792 and the downward flood below it at 0.540. Only the perforation depths differ between the last two — same rock, same fluids, same rate, same pore volume. An analytical solution with no gravity term cannot be a bound in both directions, and here it is a bound in neither.',
+            description: 'Three runs of the same column at the same rate: gravity off, flooded upward, flooded downward.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {
                     key: 'dir_no_gravity',
                     label: 'Gravity off  (control)',
-                    description: 'The same column with buoyancy disabled — a plain 1D Buckley-Leverett tube. Breakthrough 0.531 PVI and recovery 0.706 against the analytical 0.586 and 0.715; the small shortfall is numerical dispersion over 60 cells and it shrinks under refinement.',
+                    description: 'The same column with buoyancy disabled — a plain 1D Buckley-Leverett tube.',
                     paramPatch: { gravityEnabled: false },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'dir_up',
                     label: 'Upward  (inject at base — stable, base case)',
-                    description: 'Water enters at the base and pushes oil upward. Buoyancy pulls the denser water back down against the flow, suppressing any tendency of water to run ahead: the front is sharper than the analytical shock, breakthrough is late at 0.646 PVI, and recovery reaches 0.792. Better than the textbook answer, for a reason the textbook curve does not contain.',
+                    description: 'Water enters at the base and pushes oil upward. Buoyancy pulls the denser water back down against the flow, suppressing any tendency of water to run ahead: the front is sharper than the analytical shock.',
                     paramPatch: {},
                     affectsAnalytical: false,
                 },
                 {
                     key: 'dir_down',
                     label: 'Downward  (inject at top — unstable)',
-                    description: 'The same column flooded the other way. Now buoyancy drives water in the same direction as the flow, water outruns the front, and breakthrough arrives at 0.406 PVI with recovery 0.540 — a quarter below the analytical forecast. In a real reservoir this configuration also fingers, which one dimension cannot show; the loss measured here is therefore the optimistic end of it.',
+                    description: 'The same column flooded the other way. Now buoyancy drives water in the same direction as the flow, water outruns the front, and breakthrough arrives at 0.406 PVI with recovery 0.540.',
                     paramPatch: { injectorKLayers: [0], producerKLayers: [59] },
                     affectsAnalytical: false,
                 },
@@ -137,7 +137,7 @@ export const wf_gravity_stability: Scenario = {
         {
             key: 'gravity_number',
             label: 'Gravity Number  G  (both directions)',
-            description: 'The rate ladder in both directions at once, fanning symmetrically about the fixed analytical curve. G = k·k_ro·A·Δρ·g / (q·μ_o) is the coefficient Dake adds to the numerator of the fractional flow, so halving the rate doubles it. Recovery at one pore volume injected — upward: 0.737, 0.792, 0.839 as G rises through 0.33, 1.3, 3.3; downward: 0.673, 0.540, 0.354 over the same three rates, against BL\'s 0.715 throughout. The practical reading is that rate is not a neutral choice: the same 100 m³/day is worth 0.25 of recovery more in one direction than the other.',
+            description: 'The rate ladder in both directions at once, fanning symmetrically about the fixed analytical curve.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {
@@ -193,7 +193,7 @@ export const wf_gravity_stability: Scenario = {
         {
             key: 'resolution',
             label: 'Physics or Truncation Error?',
-            description: 'The same question `wf_capillary` asks about capillary smearing, asked about gravity: refine the grid and watch which curve moves. Numerical dispersion converges away — the gravity-off control climbs 0.690 → 0.710 towards BL\'s 0.715 between 15 and 120 cells. The gravity cases do not converge to BL: upward recovery settles at 0.772, 0.786, 0.792, 0.796 and downward is flat at 0.542, 0.541, 0.540, 0.540. A departure that survives refinement is a term the reference is missing, not an error in the simulation.',
+            description: 'The same question `wf_capillary` asks about capillary smearing, asked about gravity: refine the grid and watch which curve moves.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {

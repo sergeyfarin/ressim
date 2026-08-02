@@ -112,7 +112,7 @@ export const dep_pss: Scenario = {
         caseMode: 'dep',
         parameterSummary: 'Equal-area closed geometries · constant-rate producer · C_A from measured drawdown',
     },
-    description: 'A constant-rate producer in a closed reservoir, run across drainage geometries of identical area: squares and 2:1, 4:1 and 5:1 rectangles, with the well centred, at a quarter length, or at a quadrant centre. Once boundaries are felt, the steady gap p̄−p_wf gives the numerical productivity J=q/(p̄−p_wf), and inverting the Dietz equation recovers an effective shape factor to compare with the tabulated C_A, which spans 30.8828 down to 0.2318 across the shipped cases. The drawdown panel plots from t=0 so the approach to pseudo-steady state — later for elongated and off-centre geometries — is visible; the productivity and C_A panels stay blank through the transient, where they have no meaning. The run continues until the producer reaches its BHP floor, and the analytical curves stop there rather than outliving the constant-rate premise.',
+    description: 'A constant-rate producer in a closed reservoir, run across drainage geometries of identical area: squares and 2:1, 4:1 and 5:1 rectangles, with the well centred, at a quarter length, or at a quadrant centre.',
     analyticalMethodSummary: 'Dietz pseudo-steady-state productivity and its inverse: average pressure declines by material balance, p_wf=p̄−q/J_Dietz with J_Dietz from the tabulated C_A for each geometry, and the numerical J recovers an effective C_A for comparison. Curves terminate at the analytically predicted end of the constant-rate period.',
     analyticalMethodReference: 'Dietz (1965), JPT 17(8); Earlougher (1977), Advances in Well Test Analysis, SPE Monograph 5, Table C.1; Dake (1978), Fundamentals of Reservoir Engineering, ch. 7; Peaceman (1978), SPEJ 18(3).',
     chartLayoutKey: 'well_test',
@@ -238,7 +238,7 @@ export const dep_pss: Scenario = {
         {
             key: 'drainage_shape',
             label: 'Drainage Geometry',
-            description: 'Five closed geometries of identical 176,400 m² area, produced at the same rate through the same completion. Only the shape term C_A differs — 30.8828, 21.8369, 5.379, 2.36, 0.2318 — so the whole separation between the drawdown curves is geometric. Elongation costs productivity, and elongation combined with an off-centre well compounds: the last variant is the table\'s worst representable case at 133× below the square. Elongated geometries also reach pseudo-steady state later, visible as a delayed approach on the drawdown panel.',
+            description: 'Five closed geometries of identical 176,400 m² area, produced at the same rate through the same completion.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {
@@ -272,7 +272,7 @@ export const dep_pss: Scenario = {
                 {
                     key: 'geom_4to1_offset',
                     label: '4:1 rectangle, well off-centre',
-                    description: 'The same 840 m × 210 m rectangle with the well moved to a quarter of its length. C_A = 0.2318 — 133× below the square, and the largest drawdown penalty this table can express with an interior well. The 22×11 grid is chosen so a cell centre lands exactly on the quarter point: on the 28×7 grid used for the centred case the nearest cell sits at 0.232 of the length, which is a 37% error in inferred C_A.',
+                    description: 'The same 840 m × 210 m rectangle with the well moved to a quarter of its length.',
                     paramPatch: { nx: 22, ny: 11, cellDx: 840 / 22, cellDy: 210 / 11, producerI: 5, producerJ: 5 },
                     affectsAnalytical: true,
                 },
@@ -281,7 +281,7 @@ export const dep_pss: Scenario = {
         {
             key: 'well_position',
             label: 'Well Position',
-            description: 'One 420 m square, one rate, one completion — only the well moves. C_A falls 30.8828 → 12.9851 → 4.5132 as the well leaves the centre, because a well closer to a no-flow boundary has to pull the same rate through a less symmetric drainage volume. This isolates position from shape, which the geometry dimension varies together.',
+            description: 'One 420 m square, one rate, one completion — only the well moves.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {
@@ -310,7 +310,7 @@ export const dep_pss: Scenario = {
         {
             key: 'skin',
             label: 'Skin Factor s',
-            description: 'Skin adds a wellbore pressure drop that changes the PSS drawdown without touching the closed-reservoir pressure decline. It is the control for the two geometry dimensions: skin moves the drawdown and productivity panels but leaves the inferred C_A panel flat, because the inversion divides skin back out. Geometry and completion are separable, and this dimension is what shows it.',
+            description: 'Skin adds a wellbore pressure drop that changes the PSS drawdown without touching the closed-reservoir pressure decline.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 { key: 'skin_stimulated', label: 's = −1', description: 'Stimulated completion: smaller PSS drawdown, same C_A.', paramPatch: { well_skin: -1 }, affectsAnalytical: true },

@@ -176,7 +176,7 @@ export const sweep_combined: Scenario = {
         {
             key: 'sweep_ladder',
             label: 'Ideal to Worst',
-            description: 'Progressive sweep comparison from ideal to fully degraded: starts with uniform permeability and favorable mobility, then adds vertical heterogeneity, full-field randomness, and finally unfavorable mobility. Random-heterogeneity variants are simulation-focused; the analytical sweep curve remains shared context.',
+            description: 'Progressive sweep comparison from ideal to fully degraded: starts with uniform permeability and favorable mobility, then adds vertical heterogeneity, full-field randomness, and finally unfavorable mobility.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {

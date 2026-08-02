@@ -6,8 +6,8 @@
  *
  *   ResSim simulation      solid              — our solver's output
  *   Analytical reference   dashed  [7,4]      — a closed-form/reference solution
- *   Additional reference   dotted  [1,3]      — an external source (published data,
- *                                               another simulator such as OPM Flow)
+ *   Published reference    dashed  [7,4]      — digitized benchmark data
+ *   Reference simulator    dotted  [1,3]      — another simulator such as OPM Flow
  *
  * Sensitivity variants differ only by colour: every ResSim curve stays solid,
  * and a variant's analytical twin is dashed in that same variant's colour.
@@ -87,6 +87,12 @@ export const REFERENCE_STYLE = {
     borderDash:  REFERENCE_DASH,
 } as const;
 
+/** Published benchmark data follows the analytical-reference dash convention. */
+export const PUBLISHED_REFERENCE_STYLE = {
+    borderWidth: REFERENCE_BORDER,
+    borderDash: ANALYTICAL_DASH,
+} as const;
+
 /** Additional reference source shown without a ResSim curve beside it. */
 export const REFERENCE_STYLE_PRIMARY = {
     borderWidth: REFERENCE_BORDER_PRIMARY,
@@ -128,7 +134,7 @@ export function applyCurveTypeStyle(curveType: CurveType): {
 export const LEGEND_SECTIONS = {
     sim:          'Simulation (solid lines):',
     analytical:   'Analytical (dashed lines):',
-    published:    'Published reference (dotted lines):',
+    published:    'Published reference (dashed lines):',
     refSim:       'Reference simulation (dotted lines):',
     driveIndices: 'Drive Indices:',
 } as const;

@@ -10,7 +10,7 @@ export const sweep_areal: Scenario = {
         caseMode: 'wf',
         parameterSummary: 'Quarter five-spot waterflood · Craig areal-sweep correlation · mobility and heterogeneity studies',
     },
-    description: 'Quarter five-spot pattern flood in 2D (XY): injector at one corner, producer at the diagonally opposite corner, with no-flow outer boundaries. Those boundaries are the pattern symmetry planes, not a gridding artefact — a confined five-spot repeats, so a quarter element with no flow across its edges is the standard unit, and Craig E_A applies to it directly. Areal sweep E_A at breakthrough is strongly controlled by end-point mobility ratio: E_A(BT) ≈ 0.70 at M = 1, dropping sharply for unfavourable M > 1.',
+    description: 'Quarter five-spot pattern flood in 2D (XY): injector at one corner, producer at the diagonally opposite corner, with no-flow outer boundaries.',
     analyticalMethodSummary: 'Craig five-spot correlation — predicts E_A vs PVI for a homogeneous confined pattern, evaluated here on its quarter symmetry element. Heterogeneous variants show the additional sweep penalty on top of this baseline. E_A remains an analytical diagnostic decomposition view.',
     analyticalMethodReference: 'Craig (1971); Dyes, Caudle, and Erickson (1954).',
     chartLayoutKey: 'sweep',
@@ -152,7 +152,7 @@ export const sweep_areal: Scenario = {
         {
             key: 'areal_heterogeneity',
             label: 'Areal Heterogeneity',
-            description: 'Introduce seeded within-layer permeability variation to test areal sweep sensitivity beyond the Craig five-spot correlation. Simulation changes, while the analytical areal sweep curve remains shared context because the current model does not resolve within-layer randomness.',
+            description: 'Introduce seeded within-layer permeability variation to test areal sweep sensitivity beyond the Craig five-spot correlation.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {

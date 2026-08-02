@@ -235,8 +235,8 @@ describe('wf_numerics measured behaviour', () => {
 
     it('records that the two solver paths disagree on breakthrough and agree on recovery', async () => {
         await ensureWasmReady();
-        const impes = runVariant('solver_vs_opm', 'solver_impes');
-        const fim = runVariant('solver_vs_opm', 'solver_fim');
+        const impes = runVariant('solver_formulation', 'solver_impes_base');
+        const fim = runVariant('solver_formulation', 'solver_fim_base');
         for (const run of [impes, fim]) expect(run.warning).toBe('');
 
         expect(Math.abs(impes.recoveryAtOnePvi - fim.recoveryAtOnePvi)).toBeLessThan(0.005);
