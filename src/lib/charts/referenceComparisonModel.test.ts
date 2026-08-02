@@ -734,7 +734,7 @@ describe('referenceComparisonModel', () => {
         expect(model.panels.oil_rate.curves.find((curve) => curve.curveKey === 'published-oil-rate')?.label).toBe('SPE1 Case 1 Reference — Oil Rate');
     });
 
-    it('suppresses GOR points when oil rate is negligible', () => {
+    it('keeps finite reported GOR through the final positive-oil-rate point', () => {
         const scenario = getScenario('spe1_gas_injection')!;
         const spec = {
             key: 'spe1_low_oil_gor_guard',
@@ -759,9 +759,7 @@ describe('referenceComparisonModel', () => {
         const result = buildBenchmarkRunResult({
             spec,
             rateHistory: [
-                // A normal producing point, then the terminal one. The floor is
-                // a fraction of the run's own peak, so a run needs a peak to be
-                // judged against — a lone point is its own peak by definition.
+                // A normal producing point, then a low-rate terminal point.
                 {
                     time: 5,
                     total_injection: 100,
@@ -793,7 +791,7 @@ describe('referenceComparisonModel', () => {
         });
 
         expect(model.panels.gor.series[0]?.[0]?.y).toBe(500);
-        expect(model.panels.gor.series[0]?.[1]?.y).toBeNull();
+        expect(model.panels.gor.series[0]?.[1]?.y).toBe(2_000_000_000);
     });
 
     it('renders extra SPE1 published overlays as dashed reference curves on the correct panels', () => {

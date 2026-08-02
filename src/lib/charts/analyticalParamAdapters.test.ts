@@ -26,7 +26,6 @@ import {
     computeDepletionAnalyticalFromParams,
     computeWellTestOnTimeAxis,
     computeDietzPssSimulationDiagnostics,
-    MIN_GOR_OIL_RATE_FRACTION_OF_PEAK,
     buildDerivedRunSeries,
     computeMbeDiagnostics,
 } from './analyticalParamAdapters';
@@ -581,13 +580,6 @@ describe('computeWellTestOnTimeAxis — Dietz PSS diagnostics', () => {
     });
 });
 
-describe('MIN_GOR_OIL_RATE_FRACTION_OF_PEAK', () => {
-    it('is a small positive fraction', () => {
-        expect(MIN_GOR_OIL_RATE_FRACTION_OF_PEAK).toBeGreaterThan(0);
-        expect(MIN_GOR_OIL_RATE_FRACTION_OF_PEAK).toBeLessThan(0.01);
-    });
-});
-
 // ─── buildDerivedRunSeries ────────────────────────────────────────────────────
 
 describe('buildDerivedRunSeries', () => {
@@ -666,7 +658,7 @@ describe('buildDerivedRunSeries', () => {
         expect(derived.p_z[0]).toBeNull();
     });
 
-    it('gor is null once the oil rate collapses relative to the run\'s own peak', () => {
+    it('keeps GOR while reported oil production remains positive', () => {
         const result = makeResult({
             rateHistory: [
                 { time: 10, total_production_oil: 1000, producing_gor: 100 },
@@ -676,9 +668,17 @@ describe('buildDerivedRunSeries', () => {
             recoverySeries: [0, 0], pviSeries: [0, 0],
         });
         const derived = buildDerivedRunSeries(result);
-        // 0.5 is 5e-4 of the 1000 peak — below the 1e-3 floor.
         expect(derived.gor[0]).toBe(100);
-        expect(derived.gor[1]).toBeNull();
+        expect(derived.gor[1]).toBe(100);
+    });
+
+    it('reports no GOR when oil production is zero', () => {
+        const result = makeResult({
+            rateHistory: [{ time: 10, total_production_oil: 0, producing_gor: 100 }],
+            watercutSeries: [0], pressureSeries: [280],
+            recoverySeries: [0], pviSeries: [0],
+        });
+        expect(buildDerivedRunSeries(result).gor[0]).toBeNull();
     });
 
     it('gor survives a small absolute rate when that is the scale of the whole run', () => {

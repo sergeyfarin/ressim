@@ -193,7 +193,6 @@ export const RECOVERY_SCALES = {
         title: { display: true, text: 'Recovery Factor' },
         ticks: { count: 6 },
         _fraction: true,
-        _maxCap: 1,
     },
 };
 export const DIAGNOSTICS_SCALES = {

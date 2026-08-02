@@ -812,34 +812,6 @@ export function computeMbeDiagnostics(
 
 // ─── Run series construction ──────────────────────────────────────────────────
 
-/**
- * Fraction of a run's own peak oil rate below which its GOR is suppressed.
- *
- * GOR is a ratio, and a ratio whose denominator has collapsed is noise rather
- * than a measurement — that is what this floor exists to hide. But "collapsed"
- * is a property of the run, not of any fixed number of cubic metres. Until
- * 2026-08-02 the rule was an absolute 10 Sm³/d: a negligible fraction of a
- * waterflood's rate, and a large fraction of a small depletion case's. On
- * `gas_drive` it blanked the GOR curve at roughly 100 d of a 600 d run while
- * every other panel kept drawing — so the one panel that shows the drive
- * mechanism stopped exactly where the mechanism gets interesting, and the
- * suppression looked like a simulation that had stopped producing.
- *
- * A thousandth of the run's own peak is far below any rate a reader would call
- * production, and it scales with the case.
- */
-export const MIN_GOR_OIL_RATE_FRACTION_OF_PEAK = 1e-3;
-
-/** The GOR denominator floor for one run, from that run's own peak oil rate. */
-function gorFloorForRun(rateHistory: readonly Record<string, unknown>[]): number {
-    let peak = 0;
-    for (const point of rateHistory) {
-        const oilRate = Math.abs(toFiniteNumber(point.total_production_oil as number, 0));
-        if (oilRate > peak) peak = oilRate;
-    }
-    return peak * MIN_GOR_OIL_RATE_FRACTION_OF_PEAK;
-}
-
 function extractWellBhpHistory(result: BenchmarkRunResult): {
     historyTime: number[];
     producerBhp: Array<number | null>;
@@ -884,7 +856,6 @@ export function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSer
     const wellBhpHistory = extractWellBhpHistory(result);
 
     const cumulative = integrateRunSeries(result.rateHistory);
-    const gorFloor = gorFloorForRun(result.rateHistory as unknown as Record<string, unknown>[]);
     const pZSeries: Array<number | null> = [];
 
     // p/z is only p/z when z is real. The gas deviation factor is recovered from
@@ -950,7 +921,7 @@ export function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSer
         ),
         gor: result.rateHistory.map((point) => {
             const oilRate = Math.max(0, Math.abs(toFiniteNumber(point.total_production_oil, 0)));
-            if (!(oilRate > 0) || oilRate <= gorFloor) return null;
+            if (!(oilRate > 0)) return null;
             const value = toFiniteNumber(point.producing_gor as number, 0);
             return value > 0 ? value : null;
         }),
