@@ -1,18 +1,23 @@
-name: Publish Dist
+name: Validate, publish, and deploy
 
 on:
   push:
     branches:
       - master
-      - main
   workflow_dispatch:
 
-permissions:
-  contents: write
+concurrency:
+  group: ressim-master-deployment
+  cancel-in-progress: false
 
 jobs:
   build-artifact:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RESIM_BUILD_SHA: ${{ github.sha }}
+      RESIM_BUILD_REF: ${{ github.ref_name }}
 
     steps:
       - name: Checkout repository
@@ -36,51 +41,145 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "ressim-benchmark-cache"
+          shared-key: ressim-benchmark-cache
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build dist
-        run: pnpm run build
+      - name: Validate product and build deployment
+        run: pnpm run validate:product
 
-      - name: Package dist artifact
+      - name: Verify embedded revision
         run: |
-          ARCHIVE="ressim-dist-latest.tar.gz"
-          tar -czf "$ARCHIVE" -C dist ressim
-          printf '{"commit":"%s","ref":"%s","built_at":"%s"}\n' "$GITHUB_SHA" "$GITHUB_REF_NAME" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > dist-build-meta.json
+          node -e "const m=require('./dist/ressim/build-info.json'); if(m.commit!==process.env.GITHUB_SHA) throw new Error('build SHA mismatch')"
 
-      - name: Upload dist artifact
+      - name: Package SHA-addressed production artifact
+        run: |
+          ARCHIVE="ressim-dist-${GITHUB_SHA}.tar.gz"
+          tar -czf "$ARCHIVE" -C dist ressim
+          cp dist/ressim/build-info.json dist-build-meta.json
+
+      - name: Upload production artifact
         uses: actions/upload-artifact@v4
         with:
           name: ressim-dist-bundle
           path: |
-            ressim-dist-latest.tar.gz
+            ressim-dist-${{ github.sha }}.tar.gz
             dist-build-meta.json
           if-no-files-found: error
           retention-days: 14
 
-  publish-release:
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist/ressim
+
+  deploy-pages:
     runs-on: ubuntu-latest
     needs: build-artifact
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Download dist artifact
+      - name: Deploy exact build to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  smoke-pages:
+    runs-on: ubuntu-latest
+    needs: deploy-pages
+    permissions:
+      contents: read
+    env:
+      RESIM_PUBLIC_URL: ${{ needs.deploy-pages.outputs.page_url }}
+      RESIM_EXPECTED_SHA: ${{ github.sha }}
+
+    steps:
+      - name: Checkout smoke suite
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Smoke-test deployed Pages revision
+        run: pnpm run test:deployed
+
+      - name: Upload smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-smoke-diagnostics
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+
+  publish-release:
+    runs-on: ubuntu-latest
+    needs:
+      - build-artifact
+      - smoke-pages
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download validated production artifact
         uses: actions/download-artifact@v4
         with:
           name: ressim-dist-bundle
 
-      - name: Set Release Tag
-        run: echo "RELEASE_TAG=$(date -u +'%Y%m%d-%H%M%S')" >> "$GITHUB_ENV"
-
-      - name: Publish stable release asset
+      - name: Publish immutable SHA release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: dist-${{ env.RELEASE_TAG }}
-          name: dist-${{ env.RELEASE_TAG }}
+          tag_name: dist-${{ github.sha }}
+          name: dist-${{ github.sha }}
+          target_commitish: ${{ github.sha }}
           files: |
-            ressim-dist-latest.tar.gz
+            ressim-dist-${{ github.sha }}.tar.gz
             dist-build-meta.json
           generate_release_notes: false
           make_latest: true
           overwrite_files: true
+
+  promote-farin:
+    runs-on: ubuntu-latest
+    needs: publish-release
+    permissions:
+      contents: read
+    env:
+      REKENRAAM_WEB_TOKEN: ${{ secrets.REKENRAAM_WEB_TOKEN }}
+
+    steps:
+      - name: Require cross-repository promotion credential
+        if: env.REKENRAAM_WEB_TOKEN == ''
+        run: |
+          echo "Repository secret REKENRAAM_WEB_TOKEN is required to promote the tested SHA to rekenraam-web." >&2
+          exit 1
+
+      - name: Request exact-SHA production promotion
+        env:
+          GH_TOKEN: ${{ secrets.REKENRAAM_WEB_TOKEN }}
+        run: |
+          gh api --method POST repos/sergeyfarin/rekenraam-web/dispatches \
+            -f event_type=component-published \
+            -F client_payload[component]=ressim \
+            -F client_payload[sha]=${GITHUB_SHA} \
+            -F client_payload[release_tag]=dist-${GITHUB_SHA}

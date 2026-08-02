@@ -31,6 +31,8 @@ dist-ssr
 
 # coverage output
 /coverage
+/playwright-report/
+/test-results/
 .venv/
 __pycache__/
 *.pyc

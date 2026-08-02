@@ -193,6 +193,7 @@
             {#each activeDimension.variants as variant}
               <button
                 type="button"
+                aria-pressed={validActiveVariantKeys.includes(variant.key)}
                 class={`ui-chip cursor-pointer transition-colors ${
                   validActiveVariantKeys.includes(variant.key)
                     ? "border-primary/60 bg-primary/10 text-foreground"

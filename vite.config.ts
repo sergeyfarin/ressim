@@ -7,6 +7,9 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+const buildSha = process.env.RESIM_BUILD_SHA ?? process.env.GITHUB_SHA ?? 'local'
+const buildRef = process.env.RESIM_BUILD_REF ?? process.env.GITHUB_REF_NAME ?? 'local'
+
 export default defineConfig({
   plugins: [
     svelte(),
@@ -25,6 +28,21 @@ export default defineConfig({
           console.error('[vite] failed to write root redirect', err)
         }
       }
+    },
+    {
+      name: 'build-metadata',
+      async closeBundle() {
+        const outputPath = path.resolve(__dirname, 'dist/ressim/build-info.json')
+        await fs.mkdir(path.dirname(outputPath), { recursive: true })
+        await fs.writeFile(outputPath, `${JSON.stringify({
+          commit: buildSha,
+          ref: buildRef,
+          builtAt: new Date().toISOString(),
+          source: buildSha === 'local'
+            ? null
+            : `https://github.com/sergeyfarin/ressim/commit/${buildSha}`,
+        }, null, 2)}\n`, 'utf8')
+      },
     },
   ],
   base: '/ressim/',

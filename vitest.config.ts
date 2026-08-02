@@ -7,7 +7,7 @@ export default defineConfig({
     // Agent worktrees under .claude/worktrees/ are full checkouts of this repo, so without
     // this the whole suite runs twice — doubling CPU load and timing out the heavier
     // scenario tests (observed: wf_tornado hitting the 30 s limit during `validate:product`).
-    exclude: [...configDefaults.exclude, '.claude/worktrees/**', 'tmp/**'],
+    exclude: [...configDefaults.exclude, '.claude/worktrees/**', 'tmp/**', 'tests/deployed/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'html'],

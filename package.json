@@ -19,6 +19,7 @@
     "test:scenarios": "vitest run 'src/lib/catalog/scenarios/'",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:deployed": "playwright test",
     "lint": "eslint 'src/**/*.{js,ts,svelte}' --max-warnings=0",
     "test:rust:impes": "bash scripts/validate-solver-coverage.sh impes",
     "validate:product": "pnpm run typecheck && pnpm run lint && pnpm run check:cycles && pnpm test && pnpm run test:rust:impes && pnpm run build",
@@ -27,6 +28,7 @@
     "opm:artifacts": "uv run --directory tools/opm_flow python -m opm_flow_tool.cli build-artifacts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@sveltejs/vite-plugin-svelte": "7.2.0",
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "26.1.2",

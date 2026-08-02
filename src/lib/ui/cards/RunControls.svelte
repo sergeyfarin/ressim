@@ -110,7 +110,7 @@
 
       <!-- Inline status -->
       <div class="flex items-center gap-3 text-xs text-muted-foreground ml-auto">
-        <span class={`rounded-full px-2 py-0.5 text-xs font-medium ${
+        <span data-testid="run-status" class={`rounded-full px-2 py-0.5 text-xs font-medium ${
           workerRunning
             ? "bg-primary/15 text-primary"
             : statusText === "Ready"

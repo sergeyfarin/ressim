@@ -48,7 +48,7 @@
     }
 </script>
 
-<div class="p-4 md:p-5">
+<div class="p-4 md:p-5" data-testid="three-d-view-card">
     {#if ThreeDViewComponent}
         {#key `${selectedOutput3D.nx}-${selectedOutput3D.ny}-${selectedOutput3D.nz}-${selectedOutput3D.cellDz}-${selectedOutput3D.cellDzPerLayer.join(",")}-${vizRevision}-${activePrimaryComparisonResultKey ?? "live"}`}
             <ThreeDViewComponent
