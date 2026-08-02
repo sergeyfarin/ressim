@@ -756,6 +756,48 @@ Open, blocked on an enabler:
   reservoir it is drawn for. Fold into the `dep_pvt` redesign item below: whatever else changes,
   the case must either become tank-valid (higher k, or a BHP above the bubble point) or stop
   narrating a single average pressure.
+### Audit of the rest of the material-balance path (2026-08-02) — beyond the three fixed defects
+
+- [ ] **(MAJOR) The recovery-factor denominator is not a stock-tank OOIP.** `getOoip` — duplicated
+  in `benchmarkRunModel.ts:229` and `analyticalParamAdapters.ts:87` — is
+  `poreVolume × (1 − S_w,init)`. It ignores initial *gas* saturation and never divides by B_oi,
+  while the numerator (cumulative oil) is a surface volume, so the ratio mixes reservoir and stock-tank
+  volumes. Measured chart-OOIP ÷ stock-tank OOIP across the shipped catalog: 1.000 for every
+  two-phase/constant-PVT case (unaffected), **1.099 `dep_pvt`, 1.245 `gas_drive`, 1.797
+  `spe1_gas_injection`** — recovery understated by 10 %, 20 % and 44 % relative. Worst is
+  `dep_gas_pz`: chart OOIP = 480,000 m³ of "oil" in a reservoir with S_o = 0, so its recovery panel
+  is meaningless. Does *not* affect cumulative oil (`derived.cumulativeOil = recovery × ooip`
+  cancels the denominator) nor BL/sweep analytical comparisons (same denominator both sides,
+  B_o = 1 there). The MBE's own `N_volumetric` is computed correctly, so the two OOIP definitions on
+  one chart now disagree. Fix is one shared stock-tank definition — `V_p (1 − S_w − S_g) / B_oi` —
+  used by both modules; expect every black-oil recovery curve to move, so check the benchmark
+  comparisons in the same change.
+- [ ] **Null average pressures are zero-filled into the balance.**
+  `pressureHistory: derived.pressure.map((v) => toFiniteNumber(v, 0))` in `computeMbeDiagnostics`.
+  `pressureSeries` genuinely pushes `null` when the engine reports no average pressure
+  (`benchmarkRunModel.ts`), and a null becomes 0 bar — ΔP = P_i, Et enormous, N_mbe ≈ 0. Propagate
+  the null and skip the point instead.
+- [ ] **The gas-cap ratio m ignores per-layer initial saturations.** `m` is built from the scalar
+  `initialGasSaturation`, but the engine accepts `initialGasSaturationPerLayer` /
+  `initialSaturationPerLayer` (`buildCreatePayload.ts:392`). The planned `dep_gas_cap` case's
+  sharper dimension is *specifically* a segregated per-layer cap against a uniform gas saturation of
+  the same total volume — with the scalar, m reads 0 for the segregated variant, exactly where the
+  balance is meant to be the reference. Blocks T7.2's remaining half.
+- [ ] **Early-time N_mbe spikes set the panel's y-scale.** At the first report points F and Et are
+  both near zero and the ratio is 1.147 on `gas_drive` before settling to 1.000. Suppress the ratio
+  below a depletion floor rather than drawing division noise.
+
+**Checked and cleared** (recorded so the next reader does not re-open them):
+- *The rectangle-rule cumulative is correct, not a bug.* `rate × dt` at the report point closes the
+  balance to **1.0000** on `gas_drive`, while a trapezoid rule gives **1.124** (final cumulative oil
+  2841.9 vs 3224.6 Sm³, +13.5 %). The reported rate behaves as a step average, so the existing
+  convention is exact and trapezoid would be a regression. The MBE closure is now an independent
+  check of that convention, which nothing else in the repo tests.
+- *The injection guard covers gas injectors.* `reporting.rs` accumulates gas injection into
+  `total_injection` (`-q/bg`, and `components_sc_day[2]` on the FIM path), so `applicable` is not
+  fooled by a gas flood.
+- *`getPoreVolume` does include porosity.*
+
 - [ ] **Reference-status badges on the scenario card.** The regrouping deliberately dropped the
   (misleading) reference signal the old group names carried; the honest replacement is a derived
   badge — `analyticalMethod !== 'none'` → analytical, `referenceSources` kind `opm-flow` /
@@ -825,6 +867,28 @@ Measured on the committed tree at `6a27836` with a scratch vitest harness modell
   start, gas liberation, GOR rise — are guarded only in the Rust acceptance test.
 
 ## Priority 2 — Validation & correctness
+- [x] **Validation pipeline split into two tiers (done 2026-08-02).** `pnpm run validate` cost
+  ~8m33s, of which vitest was 459 s (89%) and the build 25 s; typecheck/lint/cycles together were
+  29 s. Inside vitest the split was pathological: the 13 files under `src/lib/catalog/scenarios/`
+  drive full WASM simulations for 443 s (wf_gravity 116 s, dep_pss 106 s, dep_gas_pz 60 s,
+  dep_decline 44 s, wf_capillary 40 s, dep_arps 32 s = 90% of the suite), while the other 48 files
+  cost 15.6 s combined. Those are real integration runs with no fat to trim — the defect was that
+  they gated every UI edit. Added `test:fast` (`--exclude 'src/lib/catalog/scenarios/**'`) and
+  `test:scenarios`; `pnpm run validate` now uses `test:fast` (~75 s) and `validate:product` keeps
+  the full suite. `pnpm test` deliberately stays the **full** run so a fast run is always explicit
+  at the call site. Added `validate:full` = `validate:product` + `validate-solver-coverage.sh all`.
+  Verified the tiers partition the suite exactly (49 + 13 = 62 files; the positional filter needs
+  the trailing slash or it also matches `src/lib/catalog/scenarios.test.ts`).
+- [x] **CI ran the whole vitest suite twice (fixed 2026-08-02).** `pr-tests.yml` ran `pnpm run test`
+  and then `pnpm run test:coverage`, i.e. ~8 minutes of scenario simulations executed twice per PR
+  for one suite's worth of signal. Dropped the first step; `test:coverage` is now both the gate and
+  the coverage producer.
+- [ ] **CI covers less than the skill implied.** `ressim-validation/SKILL.md` claimed "CI does not
+  run any Rust test", which was stale — `pr-tests.yml` has run the IMPES bucket for some time (line
+  corrected 2026-08-02). The real gap is the other direction: CI runs **no** `shared` or `fim` Rust
+  test, no Buckley-Leverett benchmark, no lint, no `check:cycles` and no build, so a solver-parity
+  regression or an import cycle passes CI. Decide whether to add lint + `check:cycles` + the
+  `shared` bucket to the PR workflow (cheap: ~30 s) or to state explicitly that CI is not the gate.
 - [x] **(MAJOR) IMPES oil-rate chatter at coarse report steps was two defects, one reporting and one
   physical (2026-07-31).** Reported as "IMPES needs very small steps for smooth curves, FIM does
   not". Measured on `wf_bl1d` (96 cells, 50 days, `dt_report` 0.25–2 d) by comparing the reported
