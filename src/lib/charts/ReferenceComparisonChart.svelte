@@ -15,6 +15,8 @@
         type ChartXAxisOption,
     } from './chartPanelSelection';
     import { resolveSharedXAxisRange, type AxisMapping } from './xAxisRangePolicy';
+    import { buildXAxisValues } from './axisAdapters';
+    import { buildDerivedRunSeries } from './analyticalParamAdapters';
     import type {
         RateChartLayoutConfig,
         RateChartPanelId,
@@ -405,58 +407,21 @@
             .filter((panel) => panel.visible && panel.curves.length > 0);
     });
 
-    function toFiniteNumber(value: unknown, fallback: number): number {
-        const numeric = Number(value);
-        return Number.isFinite(numeric) ? numeric : fallback;
-    }
-
-    function getPoreVolume(params: Record<string, any>): number {
-        return toFiniteNumber(params.nx, 1)
-            * toFiniteNumber(params.ny, 1)
-            * toFiniteNumber(params.nz, 1)
-            * toFiniteNumber(params.cellDx, 10)
-            * toFiniteNumber(params.cellDy, 10)
-            * toFiniteNumber(params.cellDz, 1)
-            * toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2);
-    }
-
-    function buildComparisonXAxisValues(result: BenchmarkRunResult, axisMode: RateChartXAxisMode): Array<number | null> {
-        const time = result.rateHistory.map((point) => toFiniteNumber(point.time, 0));
-        if (axisMode === 'pvi') return [...result.pviSeries];
-        if (axisMode === 'logTime') return time.map((value) => (value > 0 ? Math.log10(value) : null));
-        if (axisMode === 'time' || axisMode === 'tD') return time;
-
-        let cumulativeInjection = 0;
-        let cumulativeLiquid = 0;
-        let cumulativeGas = 0;
-        const cumulativeInjectionSeries: Array<number | null> = [];
-        const cumulativeLiquidSeries: Array<number | null> = [];
-        const cumulativeGasSeries: Array<number | null> = [];
-
-        for (let index = 0; index < result.rateHistory.length; index += 1) {
-            const point = result.rateHistory[index];
-            const dt = index > 0
-                ? Math.max(0, toFiniteNumber(point.time, 0) - toFiniteNumber(result.rateHistory[index - 1]?.time, 0))
-                : Math.max(0, toFiniteNumber(point.time, 0));
-            cumulativeInjection += Math.max(0, toFiniteNumber(point.total_injection, 0)) * dt;
-            cumulativeLiquid += Math.max(0, Math.abs(toFiniteNumber(point.total_production_liquid, 0))) * dt;
-            cumulativeGas += Math.max(0, Math.abs(toFiniteNumber(point.total_production_gas, 0))) * dt;
-            cumulativeInjectionSeries.push(cumulativeInjection);
-            cumulativeLiquidSeries.push(cumulativeLiquid);
-            cumulativeGasSeries.push(cumulativeGas);
-        }
-
-        if (axisMode === 'cumInjection') return cumulativeInjectionSeries;
-        if (axisMode === 'cumLiquid') return cumulativeLiquidSeries;
-        if (axisMode === 'cumGas') return cumulativeGasSeries;
-        if (axisMode === 'pvp') {
-            const poreVolume = getPoreVolume(result.params);
-            return cumulativeLiquidSeries.map((value) => (
-                poreVolume > 1e-12 && Number.isFinite(value) ? Number(value) / poreVolume : null
-            ));
-        }
-
-        return time;
+    /**
+     * X-axis values for one run, from the shared derivation.
+     *
+     * This used to be a local re-implementation: its own `toFiniteNumber`, its
+     * own cumulative-production integration, and its own `getPoreVolume` that —
+     * unlike the shared one — ignored `cellDzPerLayer`, so the `pvp` axis would
+     * have used a different pore volume than every other consumer. Latent only
+     * because no layout currently offers that axis. One derivation now, in
+     * `buildDerivedRunSeries` + `buildXAxisValues`.
+     */
+    function buildComparisonXAxisValues(
+        result: BenchmarkRunResult,
+        axisMode: RateChartXAxisMode,
+    ): Array<number | null> {
+        return buildXAxisValues(buildDerivedRunSeries(result), axisMode);
     }
 
     const visiblePviMappings = $derived.by((): AxisMapping[] => {

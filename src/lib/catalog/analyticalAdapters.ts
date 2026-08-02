@@ -6,6 +6,7 @@
  * logic across multiple scenarios that share the same physics.
  */
 
+import { integrateRunSeries } from '../runSeries';
 import {
     calculateAnalyticalProduction,
     calculateGasOilAnalyticalProduction,
@@ -193,14 +194,12 @@ export const gasMaterialBalanceDef: ScenarioAnalyticalDef = {
             meta: { mode: 'depletion', shapeFactor: null, shapeLabel: '' },
         };
     },
-    inputsFromParams: (params: Record<string, unknown>, rh: RateHistoryPoint[]): GasMaterialBalanceInputs => {
-        let cumulative = 0;
-        const cumulativeGas: number[] = [];
-        for (let index = 0; index < rh.length; index += 1) {
-            const dt = Math.max(0, Number(rh[index].time ?? 0) - Number(rh[index - 1]?.time ?? 0));
-            cumulative += Math.max(0, Math.abs(Number(rh[index].total_production_gas ?? 0))) * dt;
-            cumulativeGas.push(cumulative);
-        }
-        return { params, timeHistory: rh.map((point) => point.time), cumulativeGas };
-    },
+    inputsFromParams: (params: Record<string, unknown>, rh: RateHistoryPoint[]): GasMaterialBalanceInputs => ({
+        params,
+        timeHistory: rh.map((point) => point.time),
+        // Note this integrated its first interval from `rh[-1] ?? 0`, i.e. from
+        // t = 0, which is what `integrateRunSeries` does too — the p/z curve is
+        // unmoved by sharing the loop.
+        cumulativeGas: integrateRunSeries(rh).gas,
+    }),
 };

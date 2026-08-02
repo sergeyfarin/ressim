@@ -11,6 +11,7 @@ import {
     getGasInPlace,
     getDisplacementOilInPlace,
 } from './reservoirVolumes';
+import { integrateRunSeries } from './runSeries';
 import type {
     BenchmarkBreakthroughCriterion,
     BenchmarkComparisonMetric,
@@ -663,9 +664,7 @@ export function buildBenchmarkRunResult(input: {
     const gasInPlace = getGasInPlace(spec.params);
     const referencePolicy = buildReferencePolicy(spec);
 
-    let cumulativeInjection = 0;
-    let cumulativeOil = 0;
-    let cumulativeGas = 0;
+    const cumulative = integrateRunSeries(rateHistory);
     let previousTime = 0;
     let breakthroughPvi: number | null = null;
     let breakthroughTime: number | null = null;
@@ -676,19 +675,16 @@ export function buildBenchmarkRunResult(input: {
     const gasRecoverySeries: Array<number | null> = [];
     const pviSeries: Array<number | null> = [];
 
-    for (const point of rateHistory) {
+    for (const [index, point] of rateHistory.entries()) {
         const time = Math.max(0, toFiniteNumber(point.time, previousTime));
-        const dt = Math.max(0, time - previousTime);
         previousTime = time;
 
         const oilRate = Math.max(0, Math.abs(toFiniteNumber(point.total_production_oil, 0)));
         const liquidRate = Math.max(0, Math.abs(toFiniteNumber(point.total_production_liquid, 0)));
         const waterRate = Math.max(0, liquidRate - oilRate);
-        const injectionRate = Math.max(0, toFiniteNumber(point.total_injection, 0));
-
-        cumulativeInjection += injectionRate * dt;
-        cumulativeOil += oilRate * dt;
-        cumulativeGas += Math.max(0, Math.abs(toFiniteNumber(point.total_production_gas, 0))) * dt;
+        const cumulativeInjection = cumulative.injection[index];
+        const cumulativeOil = cumulative.oil[index];
+        const cumulativeGas = cumulative.gas[index];
 
         const watercut = liquidRate > 1e-12 ? Math.max(0, Math.min(1, waterRate / liquidRate)) : 0;
         const pvi = poreVolume > 1e-12 ? cumulativeInjection / poreVolume : null;

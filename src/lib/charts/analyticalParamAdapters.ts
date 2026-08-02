@@ -20,6 +20,7 @@ import {
 } from '../analytical/depletionAnalytical';
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import { DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR } from '../physics/pvt';
+import { integrateRunSeries } from '../runSeries';
 import {
     computeGasMaterialBalance,
     gasFormationVolumeFactor,
@@ -741,27 +742,7 @@ export function computeMbeDiagnostics(
     );
     if (injected) return NOT_APPLICABLE;
 
-    const n = result.rateHistory.length;
-    const cumOil: number[] = [];
-    const cumGas: number[] = [];
-    const cumWater: number[] = [];
-    let co = 0, cg = 0, cw = 0;
-
-    for (let i = 0; i < n; i++) {
-        const point = result.rateHistory[i];
-        const dt = i > 0
-            ? Math.max(0, toFiniteNumber(point.time, 0) - toFiniteNumber(result.rateHistory[i - 1]?.time, 0))
-            : Math.max(0, toFiniteNumber(point.time, 0));
-        co += Math.max(0, Math.abs(toFiniteNumber(point.total_production_oil, 0))) * dt;
-        const gasRate = Math.max(0, Math.abs(toFiniteNumber(point.total_production_gas, 0)));
-        cg += gasRate * dt;
-        const liqRate = Math.max(0, Math.abs(toFiniteNumber(point.total_production_liquid, 0)));
-        const oilRate = Math.max(0, Math.abs(toFiniteNumber(point.total_production_oil, 0)));
-        cw += Math.max(0, liqRate - oilRate) * dt;
-        cumOil.push(co);
-        cumGas.push(cg);
-        cumWater.push(cw);
-    }
+    const cumulative = integrateRunSeries(result.rateHistory);
 
     const initialPressure = toFiniteNumber(params.initialPressure, 300);
     const pressureValid = derived.pressure.map((v) => Number.isFinite(v));
@@ -792,9 +773,9 @@ export function computeMbeDiagnostics(
         pressureHistory: derived.pressure.map((v, index) =>
             pressureValid[index] ? Number(v) : initialPressure,
         ),
-        cumulativeOilSC: cumOil,
-        cumulativeGasSC: cumGas,
-        cumulativeWaterSC: cumWater,
+        cumulativeOilSC: cumulative.oil,
+        cumulativeGasSC: cumulative.gas,
+        cumulativeWaterSC: cumulative.water,
         timeHistory: derived.time,
     });
 
@@ -877,15 +858,7 @@ export function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSer
     const gasInPlace = getGasInPlace(result.params);
     const wellBhpHistory = extractWellBhpHistory(result);
 
-    let cumulativeInjection = 0;
-    let cumulativeLiquid = 0;
-    let cumulativeGas = 0;
-    let cumulativeOil = 0;
-
-    const cumulativeInjectionSeries: Array<number | null> = [];
-    const cumulativeLiquidSeries: Array<number | null> = [];
-    const cumulativeGasSeries: Array<number | null> = [];
-    const cumulativeOilSeries: Array<number | null> = [];
+    const cumulative = integrateRunSeries(result.rateHistory);
     const pZSeries: Array<number | null> = [];
 
     // p/z is only p/z when z is real. The gas deviation factor is recovered from
@@ -905,19 +878,6 @@ export function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSer
 
     for (let index = 0; index < result.rateHistory.length; index += 1) {
         const point = result.rateHistory[index];
-        const dt = index > 0
-            ? Math.max(0, toFiniteNumber(point.time, 0) - toFiniteNumber(result.rateHistory[index - 1]?.time, 0))
-            : Math.max(0, toFiniteNumber(point.time, 0));
-        cumulativeInjection += Math.max(0, toFiniteNumber(point.total_injection, 0)) * dt;
-        cumulativeLiquid += Math.max(0, Math.abs(toFiniteNumber(point.total_production_liquid, 0))) * dt;
-        cumulativeGas += Math.max(0, Math.abs(toFiniteNumber(point.total_production_gas, 0))) * dt;
-        cumulativeOil += Math.max(0, Math.abs(toFiniteNumber(point.total_production_oil, 0))) * dt;
-
-        cumulativeInjectionSeries.push(cumulativeInjection);
-        cumulativeLiquidSeries.push(cumulativeLiquid);
-        cumulativeGasSeries.push(cumulativeGas);
-        cumulativeOilSeries.push(cumulativeOil);
-
         const pressure = toFiniteNumber(point.avg_reservoir_pressure, 0);
         if (!canComputePOverZ || !(pressure > 0)) {
             pZSeries.push(null);
@@ -947,18 +907,18 @@ export function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSer
         producerBhp: wellBhpHistory.producerBhp,
         injectorBhp: wellBhpHistory.injectorBhp,
         recovery: [...result.recoverySeries],
-        recoveryGas: [...(result.gasRecoverySeries ?? cumulativeOilSeries.map(() => null))],
+        recoveryGas: [...(result.gasRecoverySeries ?? cumulative.oil.map(() => null))],
         // Integrated directly rather than reconstructed as `recovery x OOIP`.
         // That reconstruction tied the cumulative curve to the recovery
         // denominator, so a case with no oil in place (`dep_gas_pz`) lost its
         // cumulative-oil curve the moment recovery correctly became null.
-        cumulativeOil: cumulativeOilSeries,
-        cumulativeInjection: cumulativeInjectionSeries,
-        cumulativeLiquid: cumulativeLiquidSeries,
-        cumulativeGas: cumulativeGasSeries,
+        cumulativeOil: cumulative.oil,
+        cumulativeInjection: cumulative.injection,
+        cumulativeLiquid: cumulative.liquid,
+        cumulativeGas: cumulative.gas,
         p_z: pZSeries,
         pvi: [...result.pviSeries],
-        pvp: cumulativeLiquidSeries.map((value) =>
+        pvp: cumulative.liquid.map((value) =>
             poreVolume > 1e-12 && Number.isFinite(value) ? Number(value) / poreVolume : null,
         ),
         gor: result.rateHistory.map((point) => {
