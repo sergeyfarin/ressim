@@ -1,0 +1,131 @@
+/**
+ * Characterisation of `buildReferenceComparisonModel`'s output shape.
+ *
+ * Not a specification — a *record* of what every catalog scenario currently
+ * plots, panel by panel and curve by curve, so that a refactor of the chart
+ * builder is provably behaviour-preserving. `buildChartData.ts` has no direct
+ * unit test; it is exercised indirectly through `referenceComparisonModel.test.ts`,
+ * which asserts specific behaviours and would not notice a curve that simply
+ * stopped being emitted.
+ *
+ * Written 2026-08-02 ahead of the chart-layer refactor
+ * (`docs/CHART_ARCHITECTURE_REVIEW_2026-08-02.md`). When a diff appears here,
+ * the question to answer is "did I mean to change what this scenario plots?" —
+ * if yes, update the expectation in the same commit and say so in the message.
+ *
+ * The run is synthetic and deterministic: no WASM, no solver. Absolute values
+ * are irrelevant and deliberately not asserted; only the emitted structure is.
+ */
+
+import { describe, expect, it } from 'vitest';
+import type { BenchmarkFamily } from '../catalog/benchmarkCases';
+import { listScenarios, getScenario } from '../catalog/scenarios';
+import { resolveScenarioReferenceSeries } from '../catalog/opmFlowArtifacts';
+import { buildBenchmarkRunResult } from '../benchmarkRunModel';
+import type { BenchmarkRunSpec } from '../benchmarkRunModel';
+import { buildReferenceComparisonModel } from './buildChartData';
+import { getPoreVolume } from '../reservoirVolumes';
+
+/** A deterministic, physics-free rate history with every field the builder reads. */
+function syntheticRateHistory(params: Record<string, any>) {
+    const poreVolume = getPoreVolume(params);
+    const initialPressure = Number(params.initialPressure ?? 300);
+    const producerBhp = Number(params.producerBhp ?? 50);
+    const hasInjector = Boolean(params.injectorEnabled);
+
+    return Array.from({ length: 12 }, (_, index) => {
+        const step = index + 1;
+        const time = step * 10;
+        const decay = Math.exp(-step / 6);
+        const oilRate = 50 * decay;
+        const waterRate = hasInjector ? 20 * (1 - decay) : 0;
+        return {
+            time,
+            total_production_oil: oilRate,
+            total_production_liquid: oilRate + waterRate,
+            total_production_gas: 500 * (1 - decay),
+            total_injection: hasInjector ? poreVolume * 0.002 : 0,
+            avg_reservoir_pressure: producerBhp + (initialPressure - producerBhp) * decay,
+            avg_water_saturation: Number(params.initialSaturation ?? 0.2) + 0.2 * (1 - decay),
+            producing_gor: 200 + 300 * (1 - decay),
+        };
+    });
+}
+
+function runSpecFor(scenarioKey: string): BenchmarkRunSpec {
+    const scenario = getScenario(scenarioKey)!;
+    return {
+        key: scenario.key,
+        caseKey: scenario.key,
+        familyKey: scenario.key,
+        analyticalMethod: scenario.capabilities.analyticalMethod,
+        variantKey: null,
+        variantLabel: null,
+        label: scenario.label,
+        description: scenario.description,
+        params: { ...scenario.params },
+        steps: Number(scenario.params.steps),
+        deltaTDays: Number(scenario.params.delta_t_days),
+        historyInterval: 1,
+        reference: { kind: 'analytical', source: `${scenario.key}:analytical` },
+        comparisonMetric: null,
+        breakthroughCriterion: null,
+        comparisonMeaning: 'Characterisation fixture.',
+    } as BenchmarkRunSpec;
+}
+
+function familyFor(scenarioKey: string): BenchmarkFamily {
+    const scenario = getScenario(scenarioKey)!;
+    return {
+        key: scenario.key,
+        label: scenario.label,
+        description: scenario.description,
+        analyticalMethod: scenario.capabilities.analyticalMethod,
+        chartLayoutKey: scenario.chartLayoutKey,
+        chartLayoutPatch: scenario.chartLayoutPatch,
+        showSweepPanel: scenario.capabilities.analyticalMethod === 'sweep',
+        sweepGeometry: (scenario.capabilities as { sweepGeometry?: string | null }).sweepGeometry ?? null,
+        publishedReferenceSeries: resolveScenarioReferenceSeries(scenario.referenceSources),
+    } as unknown as BenchmarkFamily;
+}
+
+/** `panel:curveKey,curveKey` for every panel that emitted anything, sorted. */
+function digest(scenarioKey: string): string {
+    const spec = runSpecFor(scenarioKey);
+    const result = buildBenchmarkRunResult({
+        spec,
+        rateHistory: syntheticRateHistory(spec.params),
+    });
+    const model = buildReferenceComparisonModel({
+        family: familyFor(scenarioKey),
+        results: [result],
+        xAxisMode: 'time',
+    });
+
+    return Object.entries(model.panels)
+        .filter(([, panel]) => (panel?.curves?.length ?? 0) > 0)
+        .map(([panelKey, panel]) => {
+            const keys = [...new Set((panel?.curves ?? []).map((curve) => curve.curveKey ?? '?'))].sort();
+            return `${panelKey}: ${keys.join(',')}`;
+        })
+        .sort()
+        .join('\n');
+}
+
+describe('buildReferenceComparisonModel — emitted panel/curve structure', () => {
+    for (const scenario of listScenarios()) {
+        it(`${scenario.key} emits a stable set of panels and curves`, () => {
+            const actual = digest(scenario.key);
+            // Every scenario must plot *something*; an empty model is the
+            // failure mode this file exists to catch.
+            expect(actual.length, `${scenario.key} produced no curves at all`).toBeGreaterThan(0);
+        });
+    }
+
+    it('records the catalog-wide structure so a refactor can be compared against it', () => {
+        const all = listScenarios()
+            .map((scenario) => `── ${scenario.key}\n${digest(scenario.key)}`)
+            .join('\n');
+        expect(all).toMatchSnapshot();
+    });
+});
