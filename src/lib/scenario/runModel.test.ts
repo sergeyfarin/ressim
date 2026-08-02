@@ -95,6 +95,23 @@ describe('scenario-first run model', () => {
         }
     });
 
+    it('builds one base run for a sensitivity-free benchmark', () => {
+        const specs = buildScenarioRunSpecs({
+            scenarioKey: 'spe1_gas_injection',
+            dimensionKey: null,
+            variantKeys: [],
+        });
+
+        expect(specs).toHaveLength(1);
+        expect(specs[0]).toMatchObject({
+            key: 'spe1_gas_injection',
+            familyKey: 'spe1_gas_injection',
+            variantKey: null,
+            label: 'SPE1 Black-Oil Benchmark',
+            solver: 'fim',
+        });
+    });
+
     it('keeps solver names only when the sensitivity names them', () => {
         const specs = buildScenarioRunSpecs({
             scenarioKey: 'wf_numerics',

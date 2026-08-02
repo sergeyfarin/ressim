@@ -876,7 +876,7 @@ class RuntimeStoreImpl {
 
     buildScenarioSweepSpecs(
         scenarioKey: string,
-        dimensionKey: string,
+        dimensionKey: string | null,
         variantKeys: string[],
     ): RunSpec[] {
         return buildScenarioRunSpecs({
@@ -888,7 +888,7 @@ class RuntimeStoreImpl {
         });
     }
 
-    runScenarioSet(scenarioKey: string, dimensionKey: string, variantKeys: string[]): boolean {
+    runScenarioSet(scenarioKey: string, dimensionKey: string | null, variantKeys: string[]): boolean {
         if (this.#nav?.isPrerunScenario) return false;
         if (!this.wasmReady || !this.simWorker) {
             this.runtimeError = 'WASM not ready yet.';

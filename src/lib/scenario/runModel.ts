@@ -138,9 +138,40 @@ export function buildScenarioRunSpecs(input: {
     const dimension = input.dimensionKey
         ? scenario.sensitivities.find((candidate) => candidate.key === input.dimensionKey)
         : null;
-    if (!dimension) return [];
-
     const reference = getReferenceForScenario(scenario);
+    if (!dimension) {
+        if (scenario.sensitivities.length > 0) return [];
+        const params = scenario.params;
+        const runPolicy = buildScenarioRunPolicy({
+            params,
+            baseParams: params,
+            stepsOverride: input.stepsOverride,
+            deltaTDaysOverride: input.deltaTDaysOverride,
+            terminationPolicy: scenario.terminationPolicy,
+        });
+        return [{
+            key: scenario.key,
+            caseKey: scenario.key,
+            familyKey: scenario.key,
+            analyticalMethod: scenario.capabilities.analyticalMethod,
+            variantKey: null,
+            variantLabel: null,
+            label: scenario.label,
+            description: scenario.description,
+            params,
+            steps: runPolicy.steps,
+            deltaTDays: runPolicy.deltaTDays,
+            historyInterval: runPolicy.historyInterval,
+            reference: reference.benchmarkReference,
+            referenceSource: reference.source,
+            comparisonMetric: null,
+            breakthroughCriterion: null,
+            terminationPolicy: runPolicy.terminationPolicy,
+            comparisonMeaning: scenario.description,
+            solver: solverFromParams(params),
+        }];
+    }
+
     const specs: RunSpec[] = [];
 
     for (const variantKey of input.variantKeys) {

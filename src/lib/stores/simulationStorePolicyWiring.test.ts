@@ -51,7 +51,7 @@ describe('simulation store policy wiring', () => {
     expect(storeSource).toMatch(/buildScenarioRunSpecs\(\{/);
     expect(storeSource).toMatch(/stepsOverride: this\.\#params\.hasUserStepsOverride \? Number\(this\.\#params\.steps\) : null/);
     expect(storeSource).toMatch(/deltaTDaysOverride: this\.\#params\.hasUserDeltaTDaysOverride \? Number\(this\.\#params\.delta_t_days\) : null/);
-    expect(storeSource).toMatch(/runScenarioSet\(scenarioKey: string, dimensionKey: string, variantKeys: string\[\]\): boolean/);
+    expect(storeSource).toMatch(/runScenarioSet\(scenarioKey: string, dimensionKey: string \| null, variantKeys: string\[\]\): boolean/);
     expect(storeSource).toMatch(/clearRuntimeOverrides\(\)/);
   });
 

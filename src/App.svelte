@@ -26,7 +26,10 @@
     function handleRun() {
         const scenarioKey = scenario.activeScenarioKey;
         const dimensionKey = scenario.activeSensitivityDimensionKey;
-        if (scenarioKey && dimensionKey && scenario.activeVariantKeys.length > 0) {
+        if (scenarioKey && (
+            (dimensionKey && scenario.activeVariantKeys.length > 0)
+            || scenario.activeScenarioObject?.sensitivities.length === 0
+        )) {
             runtime.runScenarioSet(scenarioKey, dimensionKey, scenario.activeVariantKeys);
         } else {
             runtime.runSteps();
@@ -114,11 +117,11 @@
     <div class="mx-auto w-full space-y-4 p-4 lg:p-6 2xl:px-8 relative z-2">
         <!-- Header -->
         <header class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div>
+            <div class="min-w-0 flex-1">
                 <h1 class="title-gradient text-2xl font-bold lg:text-3xl">
                     Reservoir Simulation with Analytical Reference Solutions
                 </h1>
-                <p class="max-w-4xl text-sm leading-relaxed opacity-80">
+                <p class="text-sm leading-relaxed opacity-80">
                     A three-phase black-oil simulator on a 3D Cartesian grid — implicit-pressure (IMPES)
                     or fully implicit — that draws every run against the classical solution it should
                     reproduce: Buckley–Leverett, Dietz, Fetkovich, Arps, Craig, Dykstra–Parsons, and
@@ -144,6 +147,19 @@
                 </p>
             </div>
             <div class="flex items-center gap-2">
+                <a
+                    href="https://farin.nl"
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="Visit farin.nl"
+                    title="Visit farin.nl"
+                    class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-4.5 w-4.5" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+                    </svg>
+                </a>
                 <a
                     href="https://github.com/sergeyfarin/ressim"
                     target="_blank"

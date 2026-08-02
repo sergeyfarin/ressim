@@ -193,7 +193,14 @@ export function computeGasMaterialBalance(
             cumulativeGas: produced,
             pOverZ,
             pOverZCompactionCorrected: solveCompactionCorrected(
-                pOverZ, initialPOverZ, initialPressure, c_e, pvtTable, reservoirTemperature,
+                pOverZ,
+                initialPOverZ,
+                initialPressure,
+                c_f,
+                c_w,
+                initialWaterSaturation,
+                pvtTable,
+                reservoirTemperature,
             ),
         };
     });
@@ -212,17 +219,30 @@ function solveCompactionCorrected(
     target: number,
     initialPOverZ: number,
     initialPressure: number,
-    c_e: number,
+    c_f: number,
+    c_w: number,
+    initialWaterSaturation: number,
     pvtTable: readonly GasPvtRow[],
     reservoirTemperature: number,
 ): number {
     if (!Number.isFinite(target)) return Number.NaN;
-    if (c_e <= 0) return target;
+    if (c_f <= 0 && c_w <= 0) return target;
 
     let value = target;
     for (let iteration = 0; iteration < 40; iteration += 1) {
         const pressure = pressureForPOverZ(value, initialPressure, pvtTable, reservoirTemperature);
-        const correction = 1 - (c_e * Math.max(0, initialPressure - pressure));
+        const drawdown = Math.max(0, initialPressure - pressure);
+        const gasFraction = 1 - initialWaterSaturation;
+        if (!(gasFraction > 0)) return Number.NaN;
+        // Match the simulator/deck inventory exactly: pore volume contracts
+        // exponentially from the reference pressure while connate water
+        // expands from its initial volume. The usual Ramagost–Farshad linear
+        // term is only the first-order form and visibly drifts in the high-c_f
+        // cases this scenario is intended to demonstrate.
+        const correction = (
+            Math.exp(-Math.max(0, c_f) * drawdown)
+            - initialWaterSaturation * (1 + Math.max(0, c_w) * drawdown)
+        ) / gasFraction;
         if (!(correction > 1e-6)) return Number.NaN;
         const next = target / correction;
         if (Math.abs(next - value) < 1e-9 * Math.max(1, Math.abs(next))) return Math.min(next, initialPOverZ);
