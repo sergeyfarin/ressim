@@ -10,9 +10,9 @@
  */
 
 import type { ChartPanelFallback } from './chartPanelSelection';
-import type { RateChartPanelId } from './rateChartLayoutConfig';
+import type { KnownPrimaryPanelId, KnownSweepPanelId, RateChartPanelId } from './rateChartLayoutConfig';
 
-export const PANEL_DEFS: Record<RateChartPanelId, ChartPanelFallback> = {
+export const PANEL_DEFS: Record<KnownPrimaryPanelId | KnownSweepPanelId, ChartPanelFallback> = {
     // ── Primary panels ───────────────────────────────────────────────────────
     rates: {
         title: 'Rates',
@@ -165,3 +165,30 @@ export const PANEL_DEFS: Record<RateChartPanelId, ChartPanelFallback> = {
         expanded: false,
     },
 };
+
+/**
+ * Defaults for a panel this module has never heard of.
+ *
+ * Panel ids are an open type as of 2026-08-02, so a layout may name a panel that
+ * predates no entry here. It gets a readable title and a neutral scale rather
+ * than `undefined` reaching the renderer.
+ */
+export const GENERIC_PANEL_FALLBACK: ChartPanelFallback = {
+    title: 'Panel',
+    scalePreset: 'rates',
+    allowLogToggle: true,
+    visible: true,
+    expanded: false,
+};
+
+/** Panel defaults by id, with a generic fallback for ids not declared above. */
+export function getPanelFallback(panelId: RateChartPanelId): ChartPanelFallback {
+    const known = (PANEL_DEFS as Record<string, ChartPanelFallback | undefined>)[panelId];
+    if (known) return known;
+    return {
+        ...GENERIC_PANEL_FALLBACK,
+        // `mbe_ooip` → "Mbe Ooip" is poor, but it is a placeholder for a panel
+        // whose owner has not given it a title, not a naming scheme.
+        title: panelId.replaceAll('_', ' ').replace(/^./, (char) => char.toUpperCase()),
+    };
+}

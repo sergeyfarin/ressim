@@ -41,7 +41,7 @@
         SCALE_FRACTION,
         SCALE_SWEEP,
     } from './scalePresetRegistry';
-    import { PANEL_DEFS } from './panelDefs';
+    import { PANEL_DEFS, getPanelFallback } from './panelDefs';
     import { getAnalyticalMethodDescriptor } from './analyticalMethodRegistry';
     import type { AnalyticalMethod } from '../catalog/scenarios';
     import { resolveHistoryDivider } from './historyDivider';
@@ -348,7 +348,7 @@
     // Panel presentation comes from the active analytical method's descriptor
     // (analyticalMethodRegistry.ts) layered over PANEL_DEFS. Scenario-specific
     // titles and curve choices are applied later from layoutConfig.
-    const panelFallbacks = $derived.by((): Record<RateChartPanelId, ChartPanelFallback> => {
+    const panelFallbacks = $derived.by((): Record<string, ChartPanelFallback | undefined> => {
         const presentation = activeDescriptor.panelPresentation;
         return {
             ...PANEL_DEFS,
@@ -373,13 +373,14 @@
 
         return panelOrder
             .map((panelKey) => {
+                const fallback = panelFallbacks[panelKey] ?? getPanelFallback(panelKey);
                 const panelLayout = resolveChartPanelLayout({
                     override: layoutConfig?.rateChart?.panels?.[panelKey],
-                    fallback: panelFallbacks[panelKey],
+                    fallback,
                 });
                 const panelDefinition = resolveChartPanelDefinition({
                     override: layoutConfig?.rateChart?.panels?.[panelKey],
-                    fallback: panelFallbacks[panelKey],
+                    fallback,
                     entries: buildPanelEntries(panelKey),
                     getScalePresetConfig,
                 });
