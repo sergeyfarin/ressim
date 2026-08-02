@@ -20,11 +20,29 @@ ResSim has several validation surfaces with different costs and different owners
    one path reports `n/a`, reduced-system-only data, or a backend-specific failure payload, record
    the experiment as `INCONCLUSIVE` and repair the measurement contract first.
 
+## Two tiers
+
+The vitest suite is not uniform. 13 files under `src/lib/catalog/scenarios/` drive full WASM
+simulations and cost ~440 s; the other 48 files cost ~16 s combined. Running the scenario
+simulations after a chart or store edit buys nothing — a UI change cannot move a simulation
+trajectory.
+
+| Tier | Command | Cost | When |
+|---|---|---|---|
+| 1 — inner loop | `pnpm run validate` | ~75 s | Every iteration on Svelte/TS. Excludes the scenario sims (`test:fast`). |
+| 2 — pre-commit | `pnpm run validate:product` | ~9 min | Before commit/push, and for any catalog, worker-payload or Rust change. Full vitest + IMPES bucket. |
+| 3 — engine | `pnpm run validate:full` | ~10 min | Rust shared/solver changes. Tier 2 + `validate-solver-coverage.sh all`. |
+
+`pnpm test` remains the **full** suite. The fast subset is always spelled explicitly
+(`pnpm run test:fast`), so a run that skipped the scenario sims is visible at the call site
+rather than hidden behind a default.
+
 ## Decision table — what changed → what to run
 
 | Change touches | Run |
 |---|---|
-| Svelte/TS only (UI, charts, catalog, stores, workers) | `pnpm run validate` |
+| Svelte/TS only (UI, charts, stores, workers) — while iterating | `pnpm run validate` (tier 1) |
+| Same, before committing | `pnpm run validate:product` (tier 2) |
 | Anything shipped to users (frontend + product Rust path) | `pnpm run validate:product` |
 | Rust shared code (`relperm.rs`, `pvt.rs`, `mobility.rs`, `capillary.rs`, `well*.rs`, `step.rs`, `reporting.rs`, `frontend.rs`) | `bash scripts/validate-solver-coverage.sh all` + BL benchmarks |
 | IMPES only (`src/lib/ressim/src/impes/`) | `bash scripts/validate-solver-coverage.sh impes` then `shared` |
@@ -39,12 +57,19 @@ ResSim has several validation surfaces with different costs and different owners
 Frontend (from repo root, always pnpm — never npm):
 
 ```bash
-pnpm run typecheck        # tsc --noEmit
-pnpm run lint             # eslint, zero warnings allowed
-pnpm test                 # vitest run
-pnpm run validate         # typecheck + lint + test + build
-pnpm run validate:product # validate + Rust IMPES bucket
+pnpm run typecheck        # tsc --noEmit                          ~11 s
+pnpm run lint             # eslint, zero warnings allowed         ~15 s
+pnpm run check:cycles     # runtime import-cycle gate             ~3 s
+pnpm run test:fast        # vitest minus catalog/scenarios/**     ~16 s
+pnpm run test:scenarios   # only the WASM scenario simulations    ~440 s
+pnpm test                 # vitest run — the full suite           ~460 s
+pnpm run validate         # typecheck + lint + cycles + test:fast + build
+pnpm run validate:product # same but full vitest + Rust IMPES bucket
+pnpm run validate:full    # validate:product + solver coverage `all`
 ```
+
+Timings are wall-clock on a single-core box; multi-core machines and CI recover some of the
+scenario tier through vitest file parallelism.
 
 Rust buckets (grouped, curated, safe to run — no hanging tests):
 
@@ -115,4 +140,11 @@ bash scripts/build-wasm.sh
 
 ## CI reality check
 
-`.github/workflows/pr-tests.yml` runs only vitest + typecheck. **CI does not run any Rust test.** Local Rust validation is the only Rust gate — never assume CI caught an engine regression.
+`.github/workflows/pr-tests.yml` runs, in order: the Rust **IMPES** bucket
+(`scripts/validate-solver-coverage.sh impes`), the full vitest suite via `pnpm run test:coverage`,
+and `pnpm run typecheck`.
+
+So CI does cover IMPES — but **it runs no `shared` and no `fim` Rust test, no Buckley-Leverett
+benchmark, no lint, no cycle check, and no build.** A parity regression between the two solvers, a
+FIM convergence regression, or an import cycle will pass CI. Local validation is still the only
+gate for those.
