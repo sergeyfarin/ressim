@@ -46,7 +46,9 @@ describe('scenario sensitivities', () => {
     });
 
     it('provides analytical method metadata for every canonical scenario', () => {
-        expect(listScenarios()).toHaveLength(18);
+        // 17 offered; `dep_pvt` is defined but withheld from the catalog — see
+        // WITHHELD_SCENARIOS in scenarios.ts.
+        expect(listScenarios()).toHaveLength(17);
         for (const scenario of listScenarios()) {
             expect(scenario.analyticalMethodSummary.length, scenario.key).toBeGreaterThan(10);
             expect(scenario.analyticalMethodReference.length, scenario.key).toBeGreaterThan(5);
@@ -348,7 +350,6 @@ describe('scenario catalog taxonomy', () => {
         // reserves statement. `dep_gas_pz` moved here from flow-regimes-decline
         // on 2026-08-02 — it is not a flow-regime case, it is a reserves case.
         expect(getScenarioGroup(getScenario('dep_gas_pz')!)).toBe('material-balance-drive');
-        expect(getScenarioGroup(getScenario('dep_pvt')!)).toBe('material-balance-drive');
         expect(getScenarioGroup(getScenario('gas_drive')!)).toBe('material-balance-drive');
     });
 
@@ -644,8 +645,6 @@ describe('scenario capability validation', () => {
             dep_arps: 'pressure',
             // Skin changes flowing BHP, not the rate-controlled pressure field.
             dep_welltest: null,
-            // Black-oil depletion is a gas-liberation exhibit, unlike the oil-only depletion cases.
-            dep_pvt: 'saturation_gas',
             dep_gas_pz: 'pressure',
             gas_injection: 'saturation_gas',
             gas_drive: 'saturation_gas',

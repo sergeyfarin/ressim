@@ -759,8 +759,19 @@ describe('referenceComparisonModel', () => {
         const result = buildBenchmarkRunResult({
             spec,
             rateHistory: [
+                // A normal producing point, then the terminal one. The floor is
+                // a fraction of the run's own peak, so a run needs a peak to be
+                // judged against — a lone point is its own peak by definition.
                 {
                     time: 5,
+                    total_injection: 100,
+                    total_production_liquid: 1200,
+                    total_production_oil: 1000,
+                    avg_reservoir_pressure: 280,
+                    producing_gor: 500,
+                },
+                {
+                    time: 10,
                     total_injection: 100,
                     total_production_liquid: 1.5,
                     total_production_oil: 0.2,
@@ -781,7 +792,8 @@ describe('referenceComparisonModel', () => {
             xAxisMode: 'time',
         });
 
-        expect(model.panels.gor.series[0]?.[0]?.y).toBeNull();
+        expect(model.panels.gor.series[0]?.[0]?.y).toBe(500);
+        expect(model.panels.gor.series[0]?.[1]?.y).toBeNull();
     });
 
     it('renders extra SPE1 published overlays as dashed reference curves on the correct panels', () => {

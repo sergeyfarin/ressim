@@ -534,6 +534,16 @@ export type PublishedReferenceSeries = {
     sourceType?: import('./opmFlowArtifacts').ReferenceSourceType;
     /** Optional artifact key when this series comes from bundled precomputed data. */
     sourceArtifactKey?: string;
+    /**
+     * Human label for the whole artifact this series came from — the legend's
+     * toggle button, which groups every curve of one reference run.
+     */
+    sourceArtifactLabel?: string;
+    /**
+     * The sensitivity variant the source deck represents, e.g. 'base'. Appended
+     * to the curve label so a dotted reference says which rung it grades.
+     */
+    variantLabel?: string;
     /** Which chart panel this series appears in (e.g. 'diagnostics', 'rates', 'oil_rate'). */
     panelKey: string;
     /** Display label in the legend (e.g. 'Eclipse — Avg Pressure'). */
@@ -572,6 +582,19 @@ export type ScenarioReferenceSourceDef =
         kind: 'opm-flow';
         /** Bundled artifact case keys (`opm-flow-results/<caseKey>.json`). */
         artifactKeys: readonly string[];
+        /**
+         * Which sensitivity variant each deck was written for, keyed by artifact
+         * key — a short display phrase, not a variant key.
+         *
+         * A deck is a single set of parameters, so an OPM curve is a statement
+         * about *one* rung of a ladder the reader is looking at several rungs
+         * of. Without this the legend says "OPM Flow — Oil Rate" beside three
+         * ResSim curves and the reader cannot tell which one it grades; with two
+         * artifacts declared it is worse, because both toggle buttons read "OPM
+         * Flow reference". Almost always 'base'; say so explicitly rather than
+         * leaving it to be assumed.
+         */
+        artifactVariantLabels?: Readonly<Record<string, string>>;
         /**
          * 'overlay' (default) — dashed reference beside the live simulation curves.
          * 'primary' — solid content; the artifact *is* the exhibit, for
@@ -729,24 +752,44 @@ const SOURCE_SCENARIOS: Scenario[] = [
     dep_pss,
     dep_decline,
     dep_arps,
-    dep_pvt,
     dep_gas_pz,
     gas_injection,
     gas_drive,
     spe1_gas_injection,
 ];
 
+/**
+ * Defined and tested, but not offered in the picker.
+ *
+ * A withheld scenario stays resolvable by key — `getScenario` finds it, its
+ * params freeze with the rest, and its own test file keeps running — so
+ * withholding is a statement about what the catalog *offers*, not a soft
+ * delete. Nothing enumerates these into the UI.
+ *
+ * `dep_pvt` ("PVT Model Risk — One Calibration Point") is withheld pending a
+ * second sensitivity dimension. The 2026-08-02 redesign fixed its physics —
+ * see its file header and `dep_pvt.test.ts` — but it ships one dimension where
+ * every other case offers two to five, so there is nothing for a reader to
+ * interrogate once they have seen the single ladder. Move it back into
+ * `SOURCE_SCENARIOS` when that dimension exists.
+ */
+const WITHHELD_SCENARIOS: Scenario[] = [
+    dep_pvt,
+];
+
 export const SCENARIOS: CatalogScenario[] = SOURCE_SCENARIOS;
 
 // Freeze all scenario params objects to catch accidental in-place mutation early.
 // A mutation to one scenario's params cannot silently corrupt another.
-for (const scenario of SCENARIOS) {
+for (const scenario of [...SCENARIOS, ...WITHHELD_SCENARIOS]) {
     Object.freeze(scenario.params);
 }
 
 // ─── Lookup helpers ───────────────────────────────────────────────────────────
 
-const scenarioMap = new Map(SCENARIOS.map((s) => [s.key, s]));
+const scenarioMap = new Map(
+    [...SCENARIOS, ...WITHHELD_SCENARIOS].map((s) => [s.key, s]),
+);
 
 export function getScenario(key: string | null | undefined): CatalogScenario | null {
     if (!key) return null;

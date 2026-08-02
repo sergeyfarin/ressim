@@ -316,15 +316,18 @@ GAS_DRIVE = OpmCase(
     deck_name="GAS_DRIVE.DATA",
     supported_curves=("FOPR", "FGPR", "FOPT", "FGPT", "FPR", "FGOR"),
     units={"system": "METRIC", "time": "days", "pressure": "bar", "rate": "sm3/day"},
-    # FGPR/FGPT are requested in SUMMARY and parsed, but deliberately left
-    # unmapped: gas rate and cumulative gas are ~3 orders of magnitude larger
-    # than their oil counterparts, so overlaying them on the shared `rates` /
-    # `cumulative` axes would flatten the simulated curves. They stay available
-    # in the .RSM for grading (docs/THREE_PHASE_VALIDATION.md), which is done in
-    # the Rust acceptance test rather than through the chart overlay.
+    # FGPR/FGPT were requested in SUMMARY but left unmapped until 2026-08-02,
+    # because gas rate and cumulative gas are ~3 orders of magnitude larger than
+    # their oil counterparts and would have flattened the simulated curves on the
+    # shared `rates` / `cumulative` axes. That objection expired when the gas
+    # quantities got panels of their own: OPM's gas now lands beside ResSim's gas
+    # on `gas_rate` / `cumulative_gas`, one property per axis, and the reference
+    # covers every panel of this scenario that OPM reports rather than four of six.
     curve_display={
         "FOPR": {"panelKey": "rates", "curveKey": "opm-oil-rate", "label": "OPM Flow — Oil Rate"},
         "FOPT": {"panelKey": "cumulative", "curveKey": "opm-cum-oil", "label": "OPM Flow — Cum Oil"},
+        "FGPR": {"panelKey": "gas_rate", "curveKey": "opm-gas-rate", "label": "OPM Flow — Gas Rate"},
+        "FGPT": {"panelKey": "cumulative_gas", "curveKey": "opm-cum-gas", "label": "OPM Flow — Cum Gas"},
         "FPR": {"panelKey": "diagnostics", "curveKey": "opm-avg-pressure", "label": "OPM Flow — Avg Pressure"},
         "FGOR": {"panelKey": "gor", "curveKey": "opm-gor", "label": "OPM Flow — GOR"},
     },

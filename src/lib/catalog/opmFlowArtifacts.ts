@@ -82,15 +82,22 @@ export function getOpmFlowArtifactsForScenario(scenarioKey: string): OpmFlowArti
  */
 function getOpmFlowArtifactSeriesByKeys(
     caseKeys: readonly string[],
-    options: { primary?: boolean; defaultVisible?: boolean } = {},
+    options: {
+        primary?: boolean;
+        defaultVisible?: boolean;
+        variantLabels?: Readonly<Record<string, string>>;
+    } = {},
 ): PublishedReferenceSeries[] {
     return caseKeys.flatMap((caseKey) => {
         const artifact = ARTIFACTS.find((candidate) => candidate.caseKey === caseKey);
         if (!artifact || artifact.status !== 'parsed') return [];
+        const variantLabel = options.variantLabels?.[caseKey];
         return artifact.series.map((series) => ({
             ...series,
             sourceType: 'opm-flow-precomputed' as const,
             sourceArtifactKey: artifact.caseKey,
+            sourceArtifactLabel: artifact.label,
+            ...(variantLabel ? { variantLabel } : {}),
             // Carried per series so the chart layer never has to look an
             // artifact back up: a series knows how to place itself on any axis
             // it can honestly be placed on.
@@ -121,6 +128,7 @@ export function resolveScenarioReferenceSeries(
             : getOpmFlowArtifactSeriesByKeys(source.artifactKeys, {
                 primary: source.role === 'primary',
                 defaultVisible: source.defaultVisible,
+                variantLabels: source.artifactVariantLabels,
             })
     ));
 }

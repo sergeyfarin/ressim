@@ -58,6 +58,28 @@ export const SCALE_PRESSURE = {
     },
 };
 
+/**
+ * p/z, not pressure.
+ *
+ * p/z carries units of pressure and is quoted in bar, which is why it shared the
+ * pressure preset until 2026-08-02 — but a reader looking at a panel labelled
+ * "Pressure (bar)" beside an average-pressure panel has no way to tell that one
+ * of them has been divided by the gas deviation factor. The axis says which
+ * quantity it is.
+ */
+export const SCALE_P_OVER_Z = {
+    y: {
+        type: 'linear',
+        display: true,
+        position: 'left',
+        min: 0,
+        alignToPixels: true,
+        title: { display: true, text: 'p/z (bar)' },
+        ticks: { count: 6 },
+        _auto: true,
+    },
+};
+
 export const SCALE_PRODUCTIVITY = {
     y: {
         type: 'linear',
@@ -203,6 +225,7 @@ export function getScalePresetConfig(scalePreset: ChartScalePreset): Record<stri
     if (scalePreset === 'sweep_rf') return SCALE_SWEEP;
     if (scalePreset === 'breakthrough') return BREAKTHROUGH_SCALES;
     if (scalePreset === 'pressure') return SCALE_PRESSURE;
+    if (scalePreset === 'p_over_z') return SCALE_P_OVER_Z;
     if (scalePreset === 'productivity') return SCALE_PRODUCTIVITY;
     if (scalePreset === 'shape_factor') return SCALE_SHAPE_FACTOR;
     if (scalePreset === 'ratio') return SCALE_RATIO;

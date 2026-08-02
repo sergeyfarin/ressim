@@ -25,6 +25,8 @@ migration issue is retained as the closed record [#9](https://github.com/sergeyf
 - [#12 — Close remaining SPE1 and black-oil validation gaps](https://github.com/sergeyfarin/ressim/issues/12)
 - [#13 — Strengthen pull-request CI](https://github.com/sergeyfarin/ressim/issues/13)
 - [#14 — Consolidate chart architecture and output selection](https://github.com/sergeyfarin/ressim/issues/14)
+- [#25 — dep_gas_pz produced gas exceeds gas in place, collapsing the p/z reference](https://github.com/sergeyfarin/ressim/issues/25)
+- [#26 — Give the withheld dep_pvt case a second sensitivity dimension](https://github.com/sergeyfarin/ressim/issues/26)
 
 ## Tracking rules
 

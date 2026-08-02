@@ -59,7 +59,14 @@ export const gas_drive: Scenario = {
     description: 'Pressure depletion of a saturated black-oil reservoir. Initial pressure sits at the bubble point, so drawdown immediately liberates gas from solution: Rs falls, free gas builds past the critical gas saturation, and producing GOR climbs while oil rate declines. Vary the initial free-gas volume, the oil gravity, or the critical gas saturation to see how each changes the strength of the gas-expansion drive.',
     analyticalMethodSummary: 'Simulation-only — no analytical overlay. A Tarner–Tracy tank model was evaluated but rejected for this chart because its uniform-pressure/saturation assumptions do not represent the localized BHP drawdown and initially mobile free gas; its producing GOR diverges strongly even though ResSim agrees with OPM Flow. The optional OPM benchmark is disabled by default.',
     analyticalMethodReference: 'Standing (1979), Notes on Calculating Solution Gas Drive Reservoir Performance by Tarner’s Method (assumption review); Craft & Hawkins, Applied Petroleum Reservoir Engineering; quantitative grading: docs/THREE_PHASE_VALIDATION.md.',
-    referenceSources: [{ kind: 'opm-flow', artifactKeys: ['gas_drive'], defaultVisible: false }],
+    referenceSources: [{
+        kind: 'opm-flow',
+        artifactKeys: ['gas_drive'],
+        // One deck, and it is this scenario's base parameters — so it grades the
+        // base rung of whichever ladder the reader has selected, not the ladder.
+        artifactVariantLabels: { gas_drive: 'base' },
+        defaultVisible: false,
+    }],
     chartLayoutKey: 'gas',
     defaultSensitivityDimensionKey: 'sg_init',
     capabilities: {

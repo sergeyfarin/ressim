@@ -26,7 +26,7 @@ import {
     computeDepletionAnalyticalFromParams,
     computeWellTestOnTimeAxis,
     computeDietzPssSimulationDiagnostics,
-    MIN_GOR_OIL_RATE_SM3_DAY,
+    MIN_GOR_OIL_RATE_FRACTION_OF_PEAK,
     buildDerivedRunSeries,
     computeMbeDiagnostics,
 } from './analyticalParamAdapters';
@@ -520,7 +520,7 @@ describe('computeDepletionAnalyticalFromParams', () => {
     });
 });
 
-// ─── MIN_GOR_OIL_RATE_SM3_DAY ─────────────────────────────────────────────────
+// ─── GOR suppression floor ───────────────────────────────────────────────────
 
 describe('computeWellTestOnTimeAxis — Dietz PSS diagnostics', () => {
     it('hides the reference before PSS and exposes analytical PI and C_A afterwards', () => {
@@ -581,9 +581,10 @@ describe('computeWellTestOnTimeAxis — Dietz PSS diagnostics', () => {
     });
 });
 
-describe('MIN_GOR_OIL_RATE_SM3_DAY', () => {
-    it('is a positive number', () => {
-        expect(MIN_GOR_OIL_RATE_SM3_DAY).toBeGreaterThan(0);
+describe('MIN_GOR_OIL_RATE_FRACTION_OF_PEAK', () => {
+    it('is a small positive fraction', () => {
+        expect(MIN_GOR_OIL_RATE_FRACTION_OF_PEAK).toBeGreaterThan(0);
+        expect(MIN_GOR_OIL_RATE_FRACTION_OF_PEAK).toBeLessThan(0.01);
     });
 });
 
@@ -665,23 +666,34 @@ describe('buildDerivedRunSeries', () => {
         expect(derived.p_z[0]).toBeNull();
     });
 
-    it('gor is null when oil rate is below threshold', () => {
+    it('gor is null once the oil rate collapses relative to the run\'s own peak', () => {
         const result = makeResult({
-            rateHistory: [{ time: 10, total_production_oil: 1, producing_gor: 100 }],
-            watercutSeries: [0], pressureSeries: [280], recoverySeries: [0], pviSeries: [0],
+            rateHistory: [
+                { time: 10, total_production_oil: 1000, producing_gor: 100 },
+                { time: 20, total_production_oil: 0.5, producing_gor: 100 },
+            ],
+            watercutSeries: [0, 0], pressureSeries: [280, 260],
+            recoverySeries: [0, 0], pviSeries: [0, 0],
         });
         const derived = buildDerivedRunSeries(result);
-        // oil rate 1 < MIN_GOR_OIL_RATE_SM3_DAY, so gor should be null
-        expect(derived.gor[0]).toBeNull();
+        // 0.5 is 5e-4 of the 1000 peak — below the 1e-3 floor.
+        expect(derived.gor[0]).toBe(100);
+        expect(derived.gor[1]).toBeNull();
     });
 
-    it('gor is returned when oil rate exceeds threshold', () => {
+    it('gor survives a small absolute rate when that is the scale of the whole run', () => {
+        // The rule this replaced was an absolute 10 Sm³/d, which blanked a case
+        // like this one entirely even though 1 Sm³/d is its normal production.
         const result = makeResult({
-            rateHistory: [{ time: 10, total_production_oil: 100, producing_gor: 50 }],
-            watercutSeries: [0], pressureSeries: [280], recoverySeries: [0], pviSeries: [0],
+            rateHistory: [
+                { time: 10, total_production_oil: 1, producing_gor: 50 },
+                { time: 20, total_production_oil: 0.8, producing_gor: 60 },
+            ],
+            watercutSeries: [0, 0], pressureSeries: [280, 260],
+            recoverySeries: [0, 0], pviSeries: [0, 0],
         });
         const derived = buildDerivedRunSeries(result);
-        expect(derived.gor[0]).toBe(50);
+        expect(derived.gor).toEqual([50, 60]);
     });
 
     it('extracts producer BHP from well snapshots', () => {

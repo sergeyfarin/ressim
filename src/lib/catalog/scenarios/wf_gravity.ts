@@ -128,7 +128,11 @@ export const wf_gravity: Scenario = {
     // it is what says the tongue is physics rather than an IMPES artefact.
     // The artifact carries its own time -> PVI mapping (FVIT over the deck's
     // pore volume), so the curves land correctly on the scenario's PVI axis.
-    referenceSources: [{ kind: 'opm-flow', artifactKeys: ['wf_gravity'] }],
+    referenceSources: [{
+        kind: 'opm-flow',
+        artifactKeys: ['wf_gravity'],
+        artifactVariantLabels: { wf_gravity: 'base' },
+    }],
     sensitivities: [
         {
             key: 'gravity_number',

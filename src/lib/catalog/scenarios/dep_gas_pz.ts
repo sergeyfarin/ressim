@@ -61,6 +61,10 @@ export const dep_gas_pz: Scenario = {
     referenceSources: [{
         kind: 'opm-flow',
         artifactKeys: ['dep_gas_pz', 'dep_gas_pz_geopressured'],
+        // No `artifactVariantLabels` here on purpose: these two decks already
+        // carry their rung in every curve label ("… (c_f = 5e-6)"), and their
+        // legend toggles fall back to the artifacts' own distinct names. Adding
+        // a suffix would print the rung twice.
     }],
     chartLayoutKey: 'gas_material_balance',
     defaultSensitivityDimensionKey: 'pore_compressibility',

@@ -163,12 +163,22 @@ function appendPublishedReferenceSeries(
         // solid line means ResSim and an external reference must never read as
         // one. See curveStylePolicy.ts.
         const isPrimary = series.primary === true;
+        // Which rung of the ladder this deck is. A reference curve that does not
+        // say is a comparison the reader has to guess at, and two artifacts on
+        // one chart used to produce two toggle buttons both reading "OPM Flow
+        // reference". The artifact's own label names the run; the scenario's
+        // declared variant label names the rung.
+        const variantSuffix = series.variantLabel ? ` (${series.variantLabel})` : '';
         appendSeries(targetPanel, {
-            label: series.label,
+            label: `${series.label}${variantSuffix}`,
             curveKey: series.curveKey,
             referenceSourceType: series.sourceType ?? 'published-reference',
             toggleGroupKey: isOpmFlow ? `opm-flow-${series.sourceArtifactKey ?? 'reference'}` : 'published-reference',
-            toggleLabel: isOpmFlow ? 'OPM Flow reference' : 'Published reference',
+            toggleLabel: isOpmFlow
+                ? (series.variantLabel
+                    ? `OPM Flow (${series.variantLabel})`
+                    : series.sourceArtifactLabel ?? 'OPM Flow reference')
+                : 'Published reference',
             legendSection: 'published',
             legendSectionLabel: isOpmFlow ? 'OPM Flow reference (dotted lines):' : LEGEND_SECTIONS.published,
             color: isOpmFlow ? opmFlowColor : publishedColor,

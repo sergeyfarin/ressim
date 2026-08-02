@@ -644,7 +644,7 @@ const gasMaterialBalance: AnalyticalMethodDescriptor = {
         pz: {
             title: 'p/z',
             curveKeys: ['p-over-z-sim', 'p-over-z-reference', 'p-over-z-compaction-reference'],
-            scalePreset: 'pressure',
+            scalePreset: 'p_over_z',
         },
         diagnostics: {
             curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],

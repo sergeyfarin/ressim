@@ -81,7 +81,7 @@ export const DEFAULT_CHART_PANEL_ORDER: ChartPanelId[] = [
     'sweep_combined_mobile_oil',
 ];
 
-export type ChartScalePreset = 'rates' | 'cumulative' | 'cumulative_volumes' | 'diagnostics' | 'breakthrough' | 'pressure' | 'productivity' | 'shape_factor' | 'ratio' | 'gor' | 'recovery' | 'sweep' | 'sweep_rf' | 'fraction';
+export type ChartScalePreset = 'rates' | 'cumulative' | 'cumulative_volumes' | 'diagnostics' | 'breakthrough' | 'pressure' | 'productivity' | 'shape_factor' | 'ratio' | 'gor' | 'recovery' | 'sweep' | 'sweep_rf' | 'fraction' | 'p_over_z';
 
 export type ChartXAxisRangePolicy =
     | { mode: 'data-extent' }

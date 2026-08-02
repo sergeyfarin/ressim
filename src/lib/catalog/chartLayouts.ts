@@ -329,7 +329,7 @@ export const CHART_LAYOUTS: Record<string, ChartLayoutConfig> = {
                         'p-over-z-reference',
                         'p-over-z-compaction-reference',
                     ],
-                    scalePreset: 'pressure',
+                    scalePreset: 'p_over_z',
                     visible: true,
                     expanded: true,
                 },
@@ -498,8 +498,28 @@ export const CHART_LAYOUTS: Record<string, ChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: true,
             logScale: false,
-            panelOrder: ['gor', 'recovery', 'rates', 'cumulative', 'diagnostics', 'mbe_ooip', 'drive_indices'],
+            panelOrder: ['gor', 'recovery', 'rates', 'gas_rate', 'cumulative', 'cumulative_gas', 'diagnostics', 'mbe_ooip', 'drive_indices'],
             panels: {
+                // Gas on its own axes. A solution-gas-drive case produces gas
+                // three orders of magnitude larger than its oil, so the two
+                // cannot share a rate or a cumulative axis without flattening
+                // the oil curve — which is why the OPM deck requested FGPR and
+                // FGPT from the start and mapped neither until these panels
+                // existed. Both the simulated and the reference gas curves land
+                // here.
+                gas_rate: {
+                    title: 'Gas Rate',
+                    curveKeys: ['gas-rate-sim'],
+                    scalePreset: 'rates',
+                    allowLogToggle: true,
+                    expanded: false,
+                },
+                cumulative_gas: {
+                    title: 'Cum Gas',
+                    curveKeys: ['cum-gas-sim'],
+                    scalePreset: 'cumulative_volumes',
+                    expanded: false,
+                },
                 // The material-balance check. These cases carry no closed-form
                 // overlay, so this is the only curve on the chart that the run
                 // can be judged against — and it is judged against itself:
@@ -536,10 +556,21 @@ export const CHART_LAYOUTS: Record<string, ChartLayoutConfig> = {
                     expanded: true,
                 },
                 recovery: {
-                    // Both phases: a solution-gas-drive case recovers oil and
-                    // gas, and they are fractions of different volumes in place.
-                    title: 'Recovery Factor — Oil and Gas',
-                    curveKeys: ['recovery-factor-primary', 'recovery-factor-gas'],
+                    // Oil only. Both curves are called a "recovery factor" and
+                    // both are dimensionless, but they are fractions of two
+                    // different volumes in place — G_p/GIIP against N_p/STOIIP —
+                    // so one axis cannot mean both, and drawing them together
+                    // invited a comparison that is not defined. In a
+                    // solution-gas-drive reservoir the gas figure is the weaker
+                    // of the two anyway: the gas is produced *from* the oil, so
+                    // G_p/GIIP mostly restates how much oil has been produced
+                    // and how far below the bubble point the reservoir has
+                    // fallen. The oil recovery is the number the drive is
+                    // judged on. Gas production is still on the chart, as a
+                    // rate and a cumulative, and `dep_gas_pz` — where the gas
+                    // *is* the resource — keeps its own gas-recovery panel.
+                    title: 'Recovery Factor — Oil (of STOIIP)',
+                    curveKeys: ['recovery-factor-primary'],
                     scalePreset: 'recovery',
                     expanded: true,
                 },
