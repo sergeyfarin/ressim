@@ -801,15 +801,19 @@ Open, blocked on an enabler:
   doubles the cost of the rest.
 ### Chart-layer audit findings (2026-08-02) — surfaced by the new curve-property guard
 
-- [ ] **ResSim has no simulated gas-rate curve in the comparison chart.** `dep_gas_pz`'s rates panel
-  is titled "Gas Rate" and contains `oil-rate-sim` — which for a dry-gas reservoir is ~0 — drawn
-  beside OPM's real gas rates. `DerivedRunSeries` carries `oilRate` and no gas equivalent, so a gas
-  case cannot plot its own production rate at all. Affects every gas scenario, most visibly the one
-  whose entire subject is gas production.
-- [ ] **`spe1_gas_injection`'s cumulative panel mixes oil and gas.** The OPM artifact contributes
-  `opm-cum-gas` into the cumulative-*oil* panel. The single-property rule was only ever enforced
-  against layout-declared curve keys, and reference curves are appended by the builder, so the
-  layout validator never saw it. Either split the panel or give cumulative gas its own.
+- [x] **ResSim can plot its own gas rate and cumulative gas (fixed 2026-08-02).** `dep_gas_pz`'s
+  panel titled "Gas Rate" drew `oil-rate-sim` — ~0 in a reservoir with no oil — beside OPM's real
+  gas rates, because `DerivedRunSeries` had no gas-rate field and no scenario could ask for one.
+  `runQuantities.ts` now names quantities as data (`{ id, label, unit, property, source }`) and the
+  rate family is served from it; `gasRate` and a `cum-gas-sim` curve joined the derived series, with
+  `gas_rate` and `cumulative_gas` panels. The OPM case mappings and committed artifacts moved with
+  them, so `opm-gas-rate` and `opm-cum-gas` land beside the ResSim curve of the same property
+  instead of in the oil panels. Both mixed-property exceptions in the characterisation guard are
+  gone; only the deliberate `sweep_combined_mobile_oil` remains.
+  **Design decision recorded** in `docs/CHART_ARCHITECTURE_REVIEW_2026-08-02.md` §10: a component
+  per quantity (`GasRatePlot.svelte`, …) was considered and rejected — `ChartSubPanel` is already
+  the generic plot, the variation between plots is data rather than behaviour, and N components
+  would fork every presentation feature and put reservoir vocabulary back into the one clean layer.
 - [x] **Panel/curve classification no longer parsed from key prefixes (2026-08-02).** `CurveConfig`
   carries `property`, stamped in `appendSeries`/`appendXYSeries` so no built curve escapes
   unclassified, and `curvePropertyRegistry` reads an explicit table first. Two new guards in

@@ -24,8 +24,8 @@ export type RateChartXAxisMode =
 export const KNOWN_PRIMARY_PANEL_IDS = [
     'rates', 'recovery', 'cumulative', 'diagnostics', 'avg_water_sat', 'mbe_ooip',
     'drive_indices', 'pz', 'pss_drawdown', 'pss_productivity', 'pss_shape_factor',
-    'gor', 'volumes', 'oil_rate', 'injection_rate', 'producer_bhp', 'injector_bhp',
-    'control_limits',
+    'gor', 'volumes', 'oil_rate', 'gas_rate', 'injection_rate', 'producer_bhp', 'injector_bhp',
+    'control_limits', 'cumulative_gas',
 ] as const;
 
 export const KNOWN_SWEEP_PANEL_IDS = [
@@ -68,10 +68,12 @@ export const DEFAULT_RATE_CHART_PANEL_ORDER: RateChartPanelId[] = [
     'gor',
     'volumes',
     'oil_rate',
+    'gas_rate',
     'injection_rate',
     'producer_bhp',
     'injector_bhp',
     'control_limits',
+    'cumulative_gas',
     'sweep_rf',
     'sweep_areal',
     'sweep_vertical',

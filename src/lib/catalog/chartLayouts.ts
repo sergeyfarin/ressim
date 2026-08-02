@@ -306,7 +306,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: false,
             logScale: false,
-            panelOrder: ['pz', 'diagnostics', 'recovery', 'rates', 'control_limits'],
+            panelOrder: ['pz', 'diagnostics', 'recovery', 'gas_rate', 'control_limits'],
             panels: {
                 // Gas recovery, not oil. This reservoir holds no oil, and until
                 // 2026-08-02 the shared "OOIP" was a reservoir volume of
@@ -339,9 +339,12 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
                     scalePreset: 'pressure',
                     expanded: true,
                 },
-                rates: {
+                // ResSim's own gas rate, not its oil rate. Until 2026-08-02
+                // this panel was titled "Gas Rate" and drew `oil-rate-sim`,
+                // which in a reservoir with no oil is identically zero.
+                gas_rate: {
                     title: 'Gas Rate',
-                    curveKeys: ['oil-rate-sim'],
+                    curveKeys: ['gas-rate-sim'],
                     scalePreset: 'rates',
                     expanded: false,
                 },
@@ -413,7 +416,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: false,
             logScale: false,
-            panelOrder: ['diagnostics', 'producer_bhp', 'injector_bhp', 'control_limits', 'gor', 'oil_rate', 'injection_rate', 'rates', 'recovery', 'cumulative', 'volumes'],
+            panelOrder: ['diagnostics', 'producer_bhp', 'injector_bhp', 'control_limits', 'gor', 'oil_rate', 'injection_rate', 'rates', 'recovery', 'cumulative', 'cumulative_gas', 'volumes'],
             panels: {
                 diagnostics: {
                     title: 'Reservoir Pressure',

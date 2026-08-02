@@ -504,7 +504,7 @@
           "y": 849.6506
         }
       ],
-      "label": "OPM Flow \u2014 Oil Rate",
+      "label": "OPM Flow — Oil Rate",
       "panelKey": "oil_rate"
     },
     {
@@ -1003,7 +1003,7 @@
           "y": 2831680.0
         }
       ],
-      "label": "OPM Flow \u2014 Gas Injection Rate",
+      "label": "OPM Flow — Gas Injection Rate",
       "panelKey": "injection_rate"
     },
     {
@@ -1502,7 +1502,7 @@
           "y": 7168837.0
         }
       ],
-      "label": "OPM Flow \u2014 Cum Oil",
+      "label": "OPM Flow — Cum Oil",
       "panelKey": "cumulative"
     },
     {
@@ -2001,8 +2001,8 @@
           "y": 10085660000.0
         }
       ],
-      "label": "OPM Flow \u2014 Cum Gas",
-      "panelKey": "cumulative"
+      "label": "OPM Flow — Cum Gas",
+      "panelKey": "cumulative_gas"
     },
     {
       "curveKey": "opm-avg-pressure",
@@ -2500,7 +2500,7 @@
           "y": 249.0998
         }
       ],
-      "label": "OPM Flow \u2014 Avg Pressure",
+      "label": "OPM Flow — Avg Pressure",
       "panelKey": "diagnostics"
     },
     {
@@ -2999,7 +2999,7 @@
           "y": 288.1645
         }
       ],
-      "label": "OPM Flow \u2014 Injector BHP",
+      "label": "OPM Flow — Injector BHP",
       "panelKey": "injector_bhp"
     },
     {
@@ -3498,7 +3498,7 @@
           "y": 69.0
         }
       ],
-      "label": "OPM Flow \u2014 Producer BHP",
+      "label": "OPM Flow — Producer BHP",
       "panelKey": "producer_bhp"
     },
     {
@@ -3997,7 +3997,7 @@
           "y": 4148.199
         }
       ],
-      "label": "OPM Flow \u2014 GOR",
+      "label": "OPM Flow — GOR",
       "panelKey": "gor"
     }
   ],

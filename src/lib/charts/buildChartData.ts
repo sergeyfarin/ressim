@@ -59,6 +59,7 @@ import {
     type ReferenceComparisonTheme,
 } from './referenceChartTypes';
 import { buildPreviewSweepPanels, buildSweepPanels } from './sweepPanelBuilder';
+import { getRunQuantity, type RunQuantityId } from './runQuantities';
 import { DEFAULT_SWEEP_METHOD } from '../analytical/sweepMethods';
 import type { AnalyticalMethod } from '../catalog/scenarios';
 
@@ -133,6 +134,50 @@ function appendBhpLimitDiagnostics(
     }, input.xValues, input.injectorValues);
 }
 
+/**
+ * Emits one curve per registered rate quantity.
+ *
+ * The rate family is the pilot for `runQuantities.ts`: the curve's label, key
+ * and property come from the registry entry, so adding a rate is a registry
+ * row rather than another block here. `gas-rate` exists because ResSim could
+ * not plot its own gas production at all — `dep_gas_pz`'s "Gas Rate" panel drew
+ * the oil rate, which is ~0 in a dry-gas reservoir.
+ */
+function appendRateQuantities(
+    panels: Record<RateChartPanelKey, ReferenceComparisonPanel>,
+    input: {
+        result: BenchmarkRunResult;
+        derived: DerivedRunSeries;
+        caseLabel: string;
+        color: string;
+        defaultVisible: boolean;
+        xValues: Array<number | null>;
+    },
+) {
+    const panelByQuantity: Record<RunQuantityId, RateChartPanelKey> = {
+        'oil-rate': 'oil_rate',
+        'gas-rate': 'gas_rate',
+    };
+
+    for (const [quantityId, panelKey] of Object.entries(panelByQuantity) as [RunQuantityId, RateChartPanelKey][]) {
+        const quantity = getRunQuantity(quantityId);
+        appendSeries(panels[panelKey], {
+            label: `${input.result.label} ${quantity.label}`,
+            curveKey: `${quantity.id}-sim`,
+            caseKey: input.result.key,
+            toggleGroupKey: input.result.key,
+            toggleLabel: input.caseLabel,
+            legendSection: 'sim',
+            legendSectionLabel: LEGEND_SECTIONS.sim,
+            color: input.color,
+            borderWidth: simBorderWidth(input.result.variantKey),
+            yAxisID: 'y',
+            defaultVisible: input.defaultVisible,
+            property: quantity.property,
+        }, input.xValues, quantity.source(input.derived));
+    }
+}
+
 function appendPublishedReferenceSeries(
     panels: Record<RateChartPanelKey, ReferenceComparisonPanel>,
     family: BenchmarkFamily | null,
@@ -195,10 +240,12 @@ function emptyPanelMap(): ReferenceComparisonPanelMap {
         gor: createReferenceComparisonPanel(),
         volumes: createReferenceComparisonPanel(),
         oil_rate: createReferenceComparisonPanel(),
+        gas_rate: createReferenceComparisonPanel(),
         injection_rate: createReferenceComparisonPanel(),
         producer_bhp: createReferenceComparisonPanel(),
         injector_bhp: createReferenceComparisonPanel(),
         control_limits: createReferenceComparisonPanel(),
+        cumulative_gas: createReferenceComparisonPanel(),
         sweep_rf: null,
         sweep_areal: null,
         sweep_vertical: null,
@@ -227,10 +274,12 @@ function combinePanelMaps(input: {
         gor: input.primary.gor,
         volumes: input.primary.volumes,
         oil_rate: input.primary.oil_rate,
+        gas_rate: input.primary.gas_rate,
         injection_rate: input.primary.injection_rate,
         producer_bhp: input.primary.producer_bhp,
         injector_bhp: input.primary.injector_bhp,
         control_limits: input.primary.control_limits,
+        cumulative_gas: input.primary.cumulative_gas,
         sweep_rf: input.sweep?.rf ?? null,
         sweep_areal: input.sweep?.areal ?? null,
         sweep_vertical: input.sweep?.vertical ?? null,
@@ -339,10 +388,12 @@ function buildAnalyticalPreviewPanels(
         gor: createReferenceComparisonPanel(),
         volumes: createReferenceComparisonPanel(),
         oil_rate: createReferenceComparisonPanel(),
+        gas_rate: createReferenceComparisonPanel(),
         injection_rate: createReferenceComparisonPanel(),
         producer_bhp: createReferenceComparisonPanel(),
         injector_bhp: createReferenceComparisonPanel(),
         control_limits: createReferenceComparisonPanel(),
+        cumulative_gas: createReferenceComparisonPanel(),
     };
 
     const descriptor = getAnalyticalMethodDescriptor(analyticalMethod);
@@ -444,10 +495,12 @@ export function buildReferenceComparisonModel(input: {
         gor: createReferenceComparisonPanel(),
         volumes: createReferenceComparisonPanel(),
         oil_rate: createReferenceComparisonPanel(),
+        gas_rate: createReferenceComparisonPanel(),
         injection_rate: createReferenceComparisonPanel(),
         producer_bhp: createReferenceComparisonPanel(),
         injector_bhp: createReferenceComparisonPanel(),
         control_limits: createReferenceComparisonPanel(),
+        cumulative_gas: createReferenceComparisonPanel(),
     };
 
     if (!family || orderedResults.length === 0) {
@@ -597,9 +650,12 @@ export function buildReferenceComparisonModel(input: {
                 yAxisID: 'y',
                 defaultVisible,
             }, xValues, derived.cumulativeOil);
-            appendSeries(panels.oil_rate, {
-                label: `${result.label} Oil Rate`,
-                curveKey: 'oil-rate-sim',
+            appendRateQuantities(panels, {
+                result, derived, caseLabel, color, defaultVisible, xValues,
+            });
+            appendSeries(panels.cumulative_gas, {
+                label: `${result.label} Cum Gas`,
+                curveKey: 'cum-gas-sim',
                 caseKey: result.key,
                 toggleGroupKey: result.key,
                 toggleLabel: caseLabel,
@@ -609,7 +665,7 @@ export function buildReferenceComparisonModel(input: {
                 borderWidth: simBorderWidth(result.variantKey),
                 yAxisID: 'y',
                 defaultVisible,
-            }, xValues, derived.oilRate);
+            }, xValues, derived.cumulativeGas);
             appendSeries(panels.injection_rate, {
                 label: `${result.label} Injection Rate`,
                 curveKey: 'injection-rate-sim',
@@ -719,9 +775,12 @@ export function buildReferenceComparisonModel(input: {
                 yAxisID: 'y',
                 defaultVisible,
             }, xValues, derived.cumulativeOil);
-            appendSeries(panels.oil_rate, {
-                label: `${result.label} Oil Rate`,
-                curveKey: 'oil-rate-sim',
+            appendRateQuantities(panels, {
+                result, derived, caseLabel, color, defaultVisible, xValues,
+            });
+            appendSeries(panels.cumulative_gas, {
+                label: `${result.label} Cum Gas`,
+                curveKey: 'cum-gas-sim',
                 caseKey: result.key,
                 toggleGroupKey: result.key,
                 toggleLabel: caseLabel,
@@ -731,7 +790,7 @@ export function buildReferenceComparisonModel(input: {
                 borderWidth: simBorderWidth(result.variantKey),
                 yAxisID: 'y',
                 defaultVisible,
-            }, xValues, derived.oilRate);
+            }, xValues, derived.cumulativeGas);
             appendSeries(panels.injection_rate, {
                 label: `${result.label} Injection Rate`,
                 curveKey: 'injection-rate-sim',
@@ -893,9 +952,12 @@ export function buildReferenceComparisonModel(input: {
             borderWidth: simBorderWidth(result.variantKey),
             yAxisID: 'y',
         }, xValues, derived.cumulativeOil);
-        appendSeries(panels.oil_rate, {
-            label: `${result.label} Oil Rate`,
-            curveKey: 'oil-rate-sim',
+        appendRateQuantities(panels, {
+            result, derived, caseLabel, color, defaultVisible, xValues,
+        });
+        appendSeries(panels.cumulative_gas, {
+            label: `${result.label} Cum Gas`,
+            curveKey: 'cum-gas-sim',
             caseKey: result.key,
             toggleGroupKey: result.key,
             toggleLabel: caseLabel,
@@ -905,7 +967,7 @@ export function buildReferenceComparisonModel(input: {
             borderWidth: simBorderWidth(result.variantKey),
             yAxisID: 'y',
             defaultVisible,
-        }, xValues, derived.oilRate);
+        }, xValues, derived.cumulativeGas);
         appendSeries(panels.injection_rate, {
             label: `${result.label} Injection Rate`,
             curveKey: 'injection-rate-sim',

@@ -468,7 +468,9 @@ describe('referenceComparisonModel', () => {
         const scenario = getScenario('spe1_gas_injection');
         const layout = getScenarioChartLayout(scenario!);
 
-        expect(layout.rateChart?.panelOrder).toEqual(['diagnostics', 'producer_bhp', 'injector_bhp', 'control_limits', 'gor', 'oil_rate', 'injection_rate', 'rates', 'recovery', 'cumulative', 'volumes']);
+        // `cumulative_gas` is its own panel as of 2026-08-02: OPM's FGPT used to
+        // land in the cumulative *oil* panel, mixing two properties in one plot.
+        expect(layout.rateChart?.panelOrder).toEqual(['diagnostics', 'producer_bhp', 'injector_bhp', 'control_limits', 'gor', 'oil_rate', 'injection_rate', 'rates', 'recovery', 'cumulative', 'cumulative_gas', 'volumes']);
         expect(layout.rateChart?.panels?.diagnostics).toMatchObject({
             title: 'Reservoir Pressure',
             curveKeys: ['avg-pressure-sim', 'published-pressure'],

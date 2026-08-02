@@ -18,8 +18,8 @@ describe('panel identity is an open set', () => {
         // The point of step 3: a panel can be introduced beside the code that
         // fills it, without first editing a union and PANEL_DEFS. Before this,
         // an unknown id reached the renderer as `undefined` and threw.
-        const fallback = getPanelFallback('gas_rate');
-        expect(fallback.title).toBe('Gas rate');
+        const fallback = getPanelFallback('saturation_profile');
+        expect(fallback.title).toBe('Saturation profile');
         expect(fallback.scalePreset).toBe(GENERIC_PANEL_FALLBACK.scalePreset);
     });
 

@@ -891,6 +891,7 @@ export function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSer
         time: result.rateHistory.map((point) => toFiniteNumber(point.time, 0)),
         historyTime: wellBhpHistory.historyTime || [],
         oilRate: result.rateHistory.map((point) => Math.max(0, Math.abs(toFiniteNumber(point.total_production_oil, 0)))),
+        gasRate: result.rateHistory.map((point) => Math.max(0, Math.abs(toFiniteNumber(point.total_production_gas, 0)))),
         injectionRate: result.rateHistory.map((point) => Math.max(0, toFiniteNumber(point.total_injection, 0))),
         waterCut: [...result.watercutSeries],
         gasCut: result.rateHistory.map((point) => {

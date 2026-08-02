@@ -159,7 +159,7 @@ SPE1_GAS_INJECTION = OpmCase(
         "FOPR": {"panelKey": "oil_rate", "curveKey": "opm-oil-rate", "label": "OPM Flow — Oil Rate"},
         "FGIR": {"panelKey": "injection_rate", "curveKey": "opm-gas-injection-rate", "label": "OPM Flow — Gas Injection Rate"},
         "FOPT": {"panelKey": "cumulative", "curveKey": "opm-cum-oil", "label": "OPM Flow — Cum Oil"},
-        "FGPT": {"panelKey": "cumulative", "curveKey": "opm-cum-gas", "label": "OPM Flow — Cum Gas"},
+        "FGPT": {"panelKey": "cumulative_gas", "curveKey": "opm-cum-gas", "label": "OPM Flow — Cum Gas"},
         "FPR": {"panelKey": "diagnostics", "curveKey": "opm-avg-pressure", "label": "OPM Flow — Avg Pressure"},
         "WBHP:INJ": {"panelKey": "injector_bhp", "curveKey": "opm-injector-bhp", "label": "OPM Flow — Injector BHP"},
         "WBHP:PROD": {"panelKey": "producer_bhp", "curveKey": "opm-producer-bhp", "label": "OPM Flow — Producer BHP"},
@@ -881,7 +881,7 @@ DEP_GAS_PZ = OpmCase(
     cumulative_gas_curve="FGPT",
     curve_display={
         "FPR": {"panelKey": "diagnostics", "curveKey": "opm-avg-pressure", "label": "OPM Flow \u2014 Avg Pressure (c_f = 5e-6)"},
-        "FGPR": {"panelKey": "rates", "curveKey": "opm-gas-rate", "label": "OPM Flow \u2014 Gas Rate (c_f = 5e-6)"},
+        "FGPR": {"panelKey": "gas_rate", "curveKey": "opm-gas-rate", "label": "OPM Flow \u2014 Gas Rate (c_f = 5e-6)"},
     },
     deck=_clean_deck(
         """
@@ -1064,7 +1064,7 @@ DEP_GAS_PZ_GEOPRESSURED = OpmCase(
     cumulative_gas_curve="FGPT",
     curve_display={
         "FPR": {"panelKey": "diagnostics", "curveKey": "opm-geo-avg-pressure", "label": "OPM Flow \u2014 Avg Pressure (c_f = 5e-4)"},
-        "FGPR": {"panelKey": "rates", "curveKey": "opm-geo-gas-rate", "label": "OPM Flow \u2014 Gas Rate (c_f = 5e-4)"},
+        "FGPR": {"panelKey": "gas_rate", "curveKey": "opm-geo-gas-rate", "label": "OPM Flow \u2014 Gas Rate (c_f = 5e-4)"},
     },
     deck=_clean_deck(
         """

@@ -373,7 +373,7 @@ function appendSimulationSweepCurves(
 
 function emptyDerivedSeries(): DerivedRunSeries {
     return {
-        time: [], historyTime: [], oilRate: [], injectionRate: [],
+        time: [], historyTime: [], oilRate: [], gasRate: [], injectionRate: [],
         waterCut: [], gasCut: [], avgWaterSat: [], pressure: [],
         producerBhp: [], injectorBhp: [], recovery: [], recoveryGas: [], cumulativeOil: [],
         cumulativeInjection: [], cumulativeLiquid: [], cumulativeGas: [],

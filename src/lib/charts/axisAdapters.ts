@@ -23,6 +23,8 @@ export type DerivedRunSeries = {
     time: number[];
     historyTime: number[];
     oilRate: Array<number | null>;
+    /** Produced gas rate at surface conditions [Sm³/day]. */
+    gasRate: Array<number | null>;
     injectionRate: Array<number | null>;
     waterCut: Array<number | null>;
     gasCut: Array<number | null>;

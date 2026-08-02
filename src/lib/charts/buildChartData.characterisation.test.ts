@@ -145,23 +145,17 @@ describe('buildReferenceComparisonModel — emitted panel/curve structure', () =
     });
 
     /**
-     * Panels that mix properties today. Two are defects the guard found, one is
-     * deliberate. Recorded explicitly so the rule stays enforced everywhere
-     * else; see TODO.md, "Chart-layer audit findings".
+     * Panels that mix properties on purpose. The two defects this guard found
+     * on 2026-08-02 — `dep_gas_pz`'s gas-rate panel drawing the oil rate, and
+     * SPE1's cumulative-oil panel receiving OPM's cumulative gas — are fixed,
+     * not excused; gas rate and cumulative gas now have their own quantities
+     * and panels.
      */
     const KNOWN_MIXED_PROPERTY_PANELS = new Set([
         // Deliberate: the panel's own title is "Analytical Total E_vol vs
         // Simulated Mobile Oil Recovered" — comparing the two *is* the exhibit,
         // and it ships hidden by default.
         'sweep_combined / sweep_combined_mobile_oil',
-        // Defect: a panel titled "Gas Rate" whose ResSim curve is `oil-rate-sim`,
-        // which for a dry-gas reservoir is ~0. ResSim has no simulated gas-rate
-        // curve at all in the comparison chart.
-        'dep_gas_pz / rates',
-        // Defect: the OPM artifact contributes `opm-cum-gas` into the cumulative
-        // *oil* panel. The layout validator cannot see it, because reference
-        // curves are appended by the builder rather than declared by the layout.
-        'spe1_gas_injection / cumulative',
     ]);
 
     it('keeps every panel to a single property', () => {

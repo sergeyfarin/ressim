@@ -349,3 +349,45 @@ consumer. `ChartSubPanel.svelte` stays — it is used by `ReferenceComparisonCha
 
 Both are arguments for step 4 rather than exceptions to it: a panel that declared its own curves
 could not have acquired a foreign one.
+
+---
+
+## 10. Component-per-quantity, or quantity-as-data? (decided 2026-08-02)
+
+Raised while fixing the gas-rate gap: since the chart layer's rules kept leaking
+into components, should there be a component per plot — `GasRatePlot.svelte`,
+`SaturationPlot.svelte` — that a scenario picks and feeds?
+
+**Rejected, in favour of quantity-as-data.** Four reasons, in order of weight:
+
+1. **The generic component already exists and is clean.** `ChartSubPanel.svelte`
+   takes 13 props — title, curves, series, scales, theme, log toggle, gutters,
+   x-range, history divider — and contains one domain word in 813 lines. It *is*
+   "the component a scenario pulls". Nothing about a gas rate needs a different
+   component; it needs different data handed to this one.
+2. **The variation is data, not behaviour.** A gas-rate plot differs from a
+   saturation plot in which series, what title, what unit, what scale, what
+   colour. None of that is logic. Making it a component makes data differences
+   cost a file.
+3. **It would fork every presentation feature N ways.** Log toggling, legend
+   grouping and per-case toggles, history/forecast divider, leading-outlier
+   suppression, shared x-range across panels, theme response — each would need
+   to be inherited or reimplemented per plot type, and would drift, exactly as
+   the four cumulative-integration copies did.
+4. **It puts vocabulary back into the layer that is free of it.** Groups 1-3 of
+   this review's findings are about domain names in shared code. Naming
+   components after reservoir quantities is the same mistake with a nicer face.
+
+**What was missing instead**: a way to *name* a quantity. `DerivedRunSeries` was
+a closed struct of 22 fields; gas rate was not one of them, so no scenario could
+ask for it however it declared its panels. `runQuantities.ts` introduces
+`{ id, label, unit, property, source(derived) }` and serves the rate family from
+it. Adding a rate is now a registry row.
+
+**Scenario definitions were reviewed** for the same question and left alone. They
+are 100-576 lines, and the bulk is scenario-owned content that belongs there:
+physics parameters, the prose the picker shows, sensitivity dimensions. Chart
+declaration is a small tail (8 of 18 carry a `chartLayoutPatch`). The problem was
+never that scenarios say too much — it is that they can only choose from what the
+builder already emits. Splitting the files would move the symptom; the registry
+plus step 4 removes it.

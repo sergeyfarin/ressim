@@ -844,7 +844,7 @@
           "y": 30.37754
         }
       ],
-      "label": "OPM Flow \u2014 Avg Pressure (c_f = 5e-6)",
+      "label": "OPM Flow — Avg Pressure (c_f = 5e-6)",
       "panelKey": "diagnostics"
     },
     {
@@ -1683,8 +1683,8 @@
           "y": 183.5217
         }
       ],
-      "label": "OPM Flow \u2014 Gas Rate (c_f = 5e-6)",
-      "panelKey": "rates"
+      "label": "OPM Flow — Gas Rate (c_f = 5e-6)",
+      "panelKey": "gas_rate"
     }
   ],
   "sourceType": "opm-flow-precomputed",

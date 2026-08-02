@@ -35,6 +35,21 @@ export const PANEL_DEFS: Record<KnownPrimaryPanelId | KnownSweepPanelId, ChartPa
         visible: true,
         expanded: false,
     },
+    gas_rate: {
+        title: 'Gas Rate',
+        curveKeys: ['gas-rate-sim'],
+        scalePreset: 'rates',
+        allowLogToggle: true,
+        visible: true,
+        expanded: false,
+    },
+    cumulative_gas: {
+        title: 'Cum Gas',
+        curveKeys: ['cum-gas-sim'],
+        scalePreset: 'cumulative_volumes',
+        visible: true,
+        expanded: false,
+    },
     diagnostics: {
         title: 'Average Pressure',
         scalePreset: 'pressure',
