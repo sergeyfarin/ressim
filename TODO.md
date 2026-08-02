@@ -787,6 +787,24 @@ Open, blocked on an enabler:
   has given up 5 % of its eventual pressure drop; below that F/Et is a ratio of two near-zero
   numbers (1.147 on `gas_drive` before settling to 1.000). Drive indices are ratios *within* Et and
   stay visible throughout.
+- [ ] **Chart layer is presentation-agnostic but not domain-agnostic — full audit 2026-08-02:
+  `docs/CHART_ARCHITECTURE_REVIEW_2026-08-02.md`.** The rendering primitives are genuinely generic
+  (`ChartSubPanel` + `UniversalChart`: one domain word across 1,128 lines). Everything above them is
+  a closed enumeration of reservoir vocabulary — 23 panel ids, 8 x-axis modes, 14 scale presets, 22
+  derived-series fields, ~45 curve keys — so a scenario can only *select from* a fixed menu, never
+  declare a quantity. Measured cost: adding `dep_gas_pz`'s p/z curve (`9cf2daf`) required edits to
+  **nine shared modules**. `buildChartData.ts` names specific panels 41 times and mints the curve
+  keys itself, emit-everything-then-filter. `curvePropertyRegistry.ts` recovers what a curve *is* by
+  parsing its key prefix. The existing `scenarioAgnosticArchitecture.test.ts` enforces only "no
+  branching on a scenario key" — true, and not where the coupling lives. Target and a six-step
+  sequence are in the review; step 0 (decide the live path's fate) blocks nothing technically but
+  doubles the cost of the rest.
+- [ ] **Cumulative production is integrated in four places, and a pore-volume copy has drifted.**
+  `benchmarkRunModel`, `charts/analyticalParamAdapters`, `charts/buildLiveDerivedSeries`, and
+  `ReferenceComparisonChart.svelte:436` — inside a Svelte component, which also carries a private
+  `getPoreVolume` (`:411`) that omits `cellDzPerLayer` unlike the shared one. Latent today (only
+  `spe1_gas_injection` sets per-layer thicknesses and no layout offers the `pvp` axis) but it is the
+  same failure mode as the OOIP defect fixed in `3aa3637`. Step 1 of the review.
 - [ ] **The whole live-chart path appears unreferenced.** Found while fixing the third OOIP copy:
   `charts/RateChart.svelte` is never instantiated, `buildLiveDerivedSeries` has no caller outside
   it, and `Scenario.liveChartPanels` (with every `catalog/chartPanels/*` array it points at) is
