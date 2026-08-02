@@ -122,6 +122,70 @@ describe('buildReferenceComparisonModel — emitted panel/curve structure', () =
         });
     }
 
+    it('classifies every curve it emits, including runtime-minted reference keys', () => {
+        // The guarantee behind the single-property-per-panel rule: an
+        // unclassified curve would silently pass that check. `appendSeries`
+        // stamps `property` on every built curve, so a gap here means a new
+        // curve key reached the chart without being described anywhere.
+        const unclassified: string[] = [];
+        for (const scenario of listScenarios()) {
+            const spec = runSpecFor(scenario.key);
+            const model = buildReferenceComparisonModel({
+                family: familyFor(scenario.key),
+                results: [buildBenchmarkRunResult({ spec, rateHistory: syntheticRateHistory(spec.params) })],
+                xAxisMode: 'time',
+            });
+            for (const panel of Object.values(model.panels)) {
+                for (const curve of panel?.curves ?? []) {
+                    if (!curve.property) unclassified.push(`${scenario.key}: ${curve.curveKey ?? curve.label}`);
+                }
+            }
+        }
+        expect(unclassified).toEqual([]);
+    });
+
+    /**
+     * Panels that mix properties today. Two are defects the guard found, one is
+     * deliberate. Recorded explicitly so the rule stays enforced everywhere
+     * else; see TODO.md, "Chart-layer audit findings".
+     */
+    const KNOWN_MIXED_PROPERTY_PANELS = new Set([
+        // Deliberate: the panel's own title is "Analytical Total E_vol vs
+        // Simulated Mobile Oil Recovered" — comparing the two *is* the exhibit,
+        // and it ships hidden by default.
+        'sweep_combined / sweep_combined_mobile_oil',
+        // Defect: a panel titled "Gas Rate" whose ResSim curve is `oil-rate-sim`,
+        // which for a dry-gas reservoir is ~0. ResSim has no simulated gas-rate
+        // curve at all in the comparison chart.
+        'dep_gas_pz / rates',
+        // Defect: the OPM artifact contributes `opm-cum-gas` into the cumulative
+        // *oil* panel. The layout validator cannot see it, because reference
+        // curves are appended by the builder rather than declared by the layout.
+        'spe1_gas_injection / cumulative',
+    ]);
+
+    it('keeps every panel to a single property', () => {
+        // Enforced against what is actually *built*, not only against the curve
+        // keys a layout declares — the layout validator cannot see the OPM and
+        // published reference curves, which are appended by the builder.
+        const violations: string[] = [];
+        for (const scenario of listScenarios()) {
+            const spec = runSpecFor(scenario.key);
+            const model = buildReferenceComparisonModel({
+                family: familyFor(scenario.key),
+                results: [buildBenchmarkRunResult({ spec, rateHistory: syntheticRateHistory(spec.params) })],
+                xAxisMode: 'time',
+            });
+            for (const [panelKey, panel] of Object.entries(model.panels)) {
+                const properties = [...new Set((panel?.curves ?? []).map((curve) => curve.property))];
+                if (properties.length > 1 && !KNOWN_MIXED_PROPERTY_PANELS.has(`${scenario.key} / ${panelKey}`)) {
+                    violations.push(`${scenario.key} / ${panelKey}: ${properties.join(', ')}`);
+                }
+            }
+        }
+        expect(violations).toEqual([]);
+    });
+
     it('records the catalog-wide structure so a refactor can be compared against it', () => {
         const all = listScenarios()
             .map((scenario) => `── ${scenario.key}\n${digest(scenario.key)}`)

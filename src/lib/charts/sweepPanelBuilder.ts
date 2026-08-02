@@ -39,6 +39,7 @@ import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { RateChartXAxisMode } from './rateChartLayoutConfig';
 import {
     appendSeries,
+    appendXYSeries,
     compactCaseLabel,
     createSweepPanels,
     finalizeSweepPanels,
@@ -288,7 +289,7 @@ function appendSimulationSweepCurves(
     const caseLabel = compactCaseLabel(result.label);
 
     if (simulation.rf.length > 0) {
-        panels.rf.curves.push({
+        appendXYSeries(panels.rf, {
             label: `${result.label} RF`,
             curveKey: 'sweep-rf-sim',
             caseKey: result.key,
@@ -300,12 +301,11 @@ function appendSimulationSweepCurves(
             borderWidth: simBorderWidth(result.variantKey),
             yAxisID: 'y',
             defaultVisible: true,
-        });
-        panels.rf.series.push(simulation.rf);
+        }, simulation.rf);
     }
 
     if (simulation.areal.length > 0) {
-        panels.areal.curves.push({
+        appendXYSeries(panels.areal, {
             label: `${result.label} E_A`,
             curveKey: 'sweep-areal-sim',
             caseKey: result.key,
@@ -317,12 +317,11 @@ function appendSimulationSweepCurves(
             borderWidth: simBorderWidth(result.variantKey),
             yAxisID: 'y',
             defaultVisible: true,
-        });
-        panels.areal.series.push(simulation.areal);
+        }, simulation.areal);
     }
 
     if (simulation.vertical.length > 0) {
-        panels.vertical.curves.push({
+        appendXYSeries(panels.vertical, {
             label: `${result.label} E_V`,
             curveKey: 'sweep-vertical-sim',
             caseKey: result.key,
@@ -334,12 +333,11 @@ function appendSimulationSweepCurves(
             borderWidth: simBorderWidth(result.variantKey),
             yAxisID: 'y',
             defaultVisible: true,
-        });
-        panels.vertical.series.push(simulation.vertical);
+        }, simulation.vertical);
     }
 
     if (simulation.combined.length > 0) {
-        panels.combined.curves.push({
+        appendXYSeries(panels.combined, {
             label: `${result.label} E_vol`,
             curveKey: 'sweep-combined-sim',
             caseKey: result.key,
@@ -351,12 +349,11 @@ function appendSimulationSweepCurves(
             borderWidth: simBorderWidth(result.variantKey),
             yAxisID: 'y',
             defaultVisible: true,
-        });
-        panels.combined.series.push(simulation.combined);
+        }, simulation.combined);
     }
 
     if (simulation.combinedMobileOil.length > 0) {
-        panels.combinedMobileOil.curves.push({
+        appendXYSeries(panels.combinedMobileOil, {
             label: `${result.label} Mobile Oil Recovered`,
             curveKey: 'sweep-combined-mobile-oil-sim',
             caseKey: result.key,
@@ -368,8 +365,7 @@ function appendSimulationSweepCurves(
             borderWidth: SIM_BORDER_SECONDARY,
             yAxisID: 'y',
             defaultVisible: true,
-        });
-        panels.combinedMobileOil.series.push(simulation.combinedMobileOil);
+        }, simulation.combinedMobileOil);
     }
 }
 

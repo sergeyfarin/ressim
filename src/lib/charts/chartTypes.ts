@@ -20,4 +20,11 @@ export type CurveConfig = {
     referenceSourceType?: 'simulation' | 'analytical' | 'published-reference' | 'opm-flow-precomputed';
     /** Override point radius for scatter-style markers (default 0 = no markers). */
     pointRadius?: number;
+    /**
+     * What this curve *is* — 'oil-rate', 'average-pressure', 'drive-index'.
+     * Declared rather than parsed back out of `curveKey`; `appendSeries` stamps
+     * it from the curve registry when a builder does not set it, so every built
+     * curve carries one. A panel may only hold curves of a single property.
+     */
+    property?: string;
 };

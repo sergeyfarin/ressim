@@ -799,6 +799,25 @@ Open, blocked on an enabler:
   branching on a scenario key" — true, and not where the coupling lives. Target and a six-step
   sequence are in the review; step 0 (decide the live path's fate) blocks nothing technically but
   doubles the cost of the rest.
+### Chart-layer audit findings (2026-08-02) — surfaced by the new curve-property guard
+
+- [ ] **ResSim has no simulated gas-rate curve in the comparison chart.** `dep_gas_pz`'s rates panel
+  is titled "Gas Rate" and contains `oil-rate-sim` — which for a dry-gas reservoir is ~0 — drawn
+  beside OPM's real gas rates. `DerivedRunSeries` carries `oilRate` and no gas equivalent, so a gas
+  case cannot plot its own production rate at all. Affects every gas scenario, most visibly the one
+  whose entire subject is gas production.
+- [ ] **`spe1_gas_injection`'s cumulative panel mixes oil and gas.** The OPM artifact contributes
+  `opm-cum-gas` into the cumulative-*oil* panel. The single-property rule was only ever enforced
+  against layout-declared curve keys, and reference curves are appended by the builder, so the
+  layout validator never saw it. Either split the panel or give cumulative gas its own.
+- [x] **Panel/curve classification no longer parsed from key prefixes (2026-08-02).** `CurveConfig`
+  carries `property`, stamped in `appendSeries`/`appendXYSeries` so no built curve escapes
+  unclassified, and `curvePropertyRegistry` reads an explicit table first. Two new guards in
+  `buildChartData.characterisation.test.ts` assert every emitted curve is classified and every panel
+  holds one property — with three recorded exceptions: the two defects above, and
+  `sweep_combined_mobile_oil`, whose title says it compares E_vol against mobile oil recovered on
+  purpose.
+
 - [ ] **Cumulative production is integrated in four places, and a pore-volume copy has drifted.**
   `benchmarkRunModel`, `charts/analyticalParamAdapters`, `charts/buildLiveDerivedSeries`, and
   `ReferenceComparisonChart.svelte:436` — inside a Svelte component, which also carries a private

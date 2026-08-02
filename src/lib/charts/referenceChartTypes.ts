@@ -8,6 +8,7 @@
  */
 
 import type { CurveConfig } from './chartTypes';
+import { chartPropertyForCurveConfig } from './curvePropertyRegistry';
 import type { XYPoint } from './axisAdapters';
 import { toXYSeries } from './axisAdapters';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
@@ -151,8 +152,34 @@ export function appendSeries(
     xValues: Array<number | null>,
     yValues: Array<number | null>,
 ): void {
-    panel.curves.push(curve);
+    // Every built curve carries its property. Stamped here rather than at each
+    // of the ~45 call sites, so a new curve cannot be added without one — and
+    // so the classification stops being re-derived from the key downstream.
+    panel.curves.push(
+        curve.property !== undefined
+            ? curve
+            : { ...curve, property: chartPropertyForCurveConfig(curve) ?? undefined },
+    );
     panel.series.push(toXYSeries(xValues, yValues));
+}
+
+/**
+ * Appends a curve whose points are already mapped to (x, y) — a sweep series
+ * sampled on its own times, or an analytical curve native to another axis.
+ * Same property stamping as `appendSeries`; the only difference is that the
+ * caller has done the x mapping.
+ */
+export function appendXYSeries(
+    panel: ReferenceComparisonPanel,
+    curve: CurveConfig,
+    series: Array<{ x: number; y: number | null }>,
+): void {
+    panel.curves.push(
+        curve.property !== undefined
+            ? curve
+            : { ...curve, property: chartPropertyForCurveConfig(curve) ?? undefined },
+    );
+    panel.series.push(series);
 }
 
 export function createReferenceComparisonPanel(): ReferenceComparisonPanel {
