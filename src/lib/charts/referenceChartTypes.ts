@@ -12,7 +12,7 @@ import { chartPropertyForCurveConfig } from './curvePropertyRegistry';
 import type { XYPoint } from './axisAdapters';
 import { toXYSeries } from './axisAdapters';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
-import type { RateChartPanelKey, RateChartAuxiliaryPanelKey } from './rateChartLayoutConfig';
+import type { ChartPanelKey, ChartAuxiliaryPanelKey } from './chartLayoutConfig';
 
 // ─── Panel types ──────────────────────────────────────────────────────────────
 
@@ -29,8 +29,8 @@ export type ReferenceComparisonSweepPanels = {
     combinedMobileOil: ReferenceComparisonPanel | null;
 };
 
-export type ReferenceComparisonPrimaryPanelMap = Record<RateChartPanelKey, ReferenceComparisonPanel>;
-export type ReferenceComparisonAuxiliaryPanelMap = Record<RateChartAuxiliaryPanelKey, ReferenceComparisonPanel | null>;
+export type ReferenceComparisonPrimaryPanelMap = Record<ChartPanelKey, ReferenceComparisonPanel>;
+export type ReferenceComparisonAuxiliaryPanelMap = Record<ChartAuxiliaryPanelKey, ReferenceComparisonPanel | null>;
 export type ReferenceComparisonPanelMap = ReferenceComparisonPrimaryPanelMap & ReferenceComparisonAuxiliaryPanelMap;
 
 // ─── Model output type ────────────────────────────────────────────────────────

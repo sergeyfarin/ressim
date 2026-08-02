@@ -36,7 +36,7 @@ import {
     simBorderWidth,
 } from './curveStylePolicy';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
-import type { RateChartXAxisMode } from './rateChartLayoutConfig';
+import type { ChartXAxisMode } from './chartLayoutConfig';
 import {
     appendSeries,
     appendXYSeries,
@@ -76,7 +76,7 @@ function dedupeSweepSeries(points: XYPoint[]): XYPoint[] {
 
 function buildSimulationSweepSeries(
     result: BenchmarkRunResult,
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
     tau: number | null,
     derived: DerivedRunSeries,
     geometry: SweepGeometry,
@@ -133,7 +133,7 @@ function buildSimulationSweepSeries(
 function buildAnalyticalSweepSeries(
     params: Record<string, any>,
     derived: DerivedRunSeries,
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
     tau: number | null,
     geometry: SweepGeometry,
     method: SweepAnalyticalMethod,
@@ -176,7 +176,7 @@ function appendAnalyticalSweepCurves(
         color: string;
         params: Record<string, any>;
         derived: DerivedRunSeries;
-        xAxisMode: RateChartXAxisMode;
+        xAxisMode: ChartXAxisMode;
         tau: number | null;
         geometry: SweepGeometry;
         theme: ReferenceComparisonTheme;
@@ -280,7 +280,7 @@ function appendSimulationSweepCurves(
     panels: Record<keyof ReferenceComparisonSweepPanels, ReferenceComparisonPanel>,
     result: BenchmarkRunResult,
     color: string,
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
     tau: number | null,
     derived: DerivedRunSeries,
     geometry: SweepGeometry,
@@ -432,7 +432,7 @@ export function buildSweepPanels(input: {
     pendingPreviewVariants?: AnalyticalPreviewVariant[];
     previewVariantParams?: AnalyticalPreviewVariant[];
     theme: ReferenceComparisonTheme;
-    xAxisMode: RateChartXAxisMode;
+    xAxisMode: ChartXAxisMode;
     derivedByKey: Map<string, DerivedRunSeries>;
     geometry: SweepGeometry;
     method: SweepAnalyticalMethod;

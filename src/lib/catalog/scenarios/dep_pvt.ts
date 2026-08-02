@@ -95,7 +95,7 @@ export const dep_pvt: Scenario = {
      * narrative, which this measurement also undermines.
      */
     chartLayoutPatch: {
-        rateChart: {
+        chart: {
             panelOrder: ['gor', 'recovery', 'rates', 'cumulative', 'diagnostics'],
             panels: {
                 mbe_ooip: { visible: false },

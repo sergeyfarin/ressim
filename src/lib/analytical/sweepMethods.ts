@@ -32,7 +32,7 @@ export type SweepMethodDescriptor = {
 /**
  * Correlation used when a scenario declares none. Was a bare 'dykstra-parsons'
  * literal repeated as a default argument in `sweepEfficiency.ts` and as a `??`
- * fallback in the navigation store, the comparison builder and `RateChart`.
+ * fallback in the navigation store and the comparison builder.
  */
 export const DEFAULT_SWEEP_METHOD: SweepAnalyticalMethod = 'dykstra-parsons';
 

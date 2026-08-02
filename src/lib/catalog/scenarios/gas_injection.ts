@@ -17,7 +17,7 @@ export const gas_injection: Scenario = {
     // Scenario-owned comparison presentation. The generic renderer does not
     // infer this from gas parameters or scenario keys.
     chartLayoutPatch: {
-        rateChart: {
+        chart: {
             panels: {
                 diagnostics: { expanded: true },
             },

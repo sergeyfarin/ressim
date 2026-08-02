@@ -3,8 +3,8 @@ import { PANEL_DEFS, getPanelFallback, GENERIC_PANEL_FALLBACK } from './panelDef
 import {
     KNOWN_PRIMARY_PANEL_IDS,
     KNOWN_SWEEP_PANEL_IDS,
-    DEFAULT_RATE_CHART_PANEL_ORDER,
-} from './rateChartLayoutConfig';
+    DEFAULT_CHART_PANEL_ORDER,
+} from './chartLayoutConfig';
 
 describe('panel identity is an open set', () => {
     it('gives every known panel a declared default', () => {
@@ -30,9 +30,9 @@ describe('panel identity is an open set', () => {
     it('keeps the default render order in step with the known ids', () => {
         // The order is the list; a known panel missing from it would never render
         // under the default layout.
-        const ordered = new Set(DEFAULT_RATE_CHART_PANEL_ORDER);
+        const ordered = new Set(DEFAULT_CHART_PANEL_ORDER);
         for (const id of [...KNOWN_PRIMARY_PANEL_IDS, ...KNOWN_SWEEP_PANEL_IDS]) {
-            expect(ordered.has(id), `${id} missing from DEFAULT_RATE_CHART_PANEL_ORDER`).toBe(true);
+            expect(ordered.has(id), `${id} missing from DEFAULT_CHART_PANEL_ORDER`).toBe(true);
         }
     });
 });

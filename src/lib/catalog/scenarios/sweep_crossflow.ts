@@ -38,7 +38,7 @@ export const sweep_crossflow: Scenario = {
     analyticalMethodReference: 'Dykstra and Parsons (1950); Stiles (1949); Zapata and Lake (1981), SPE 10111 — "A Theoretical Analysis of Viscous Crossflow"; Root and Skiba (1965), SPEJ 5(3); Willhite, Waterflooding (SPE Textbook 3), ch. 5.',
     chartLayoutKey: 'sweep',
     chartLayoutPatch: {
-        rateChart: {
+        chart: {
             panels: {
                 sweep_areal: { visible: false },
                 sweep_combined: { visible: false },

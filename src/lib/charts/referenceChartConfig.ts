@@ -1,17 +1,17 @@
 import type { BenchmarkFamily } from '../scenario/referenceTypes';
 import type { BenchmarkReferencePolicy } from '../benchmarkRunModel';
-import type { RateChartLayoutConfig, RateChartXAxisMode } from './rateChartLayoutConfig';
+import type { ChartLayoutConfig, ChartXAxisMode } from './chartLayoutConfig';
 
-function toXAxisMode(value: BenchmarkFamily['displayDefaults']['xAxis']): RateChartXAxisMode {
+function toXAxisMode(value: BenchmarkFamily['displayDefaults']['xAxis']): ChartXAxisMode {
     if (value === 'pvi') return 'pvi';
     if (value === 'tD') return 'tD';
     return 'time';
 }
 
-export function getReferenceRateChartLayoutConfig(input: {
+export function getReferenceChartLayoutConfig(input: {
     family: BenchmarkFamily | null | undefined;
     referencePolicy?: BenchmarkReferencePolicy | null;
-}): RateChartLayoutConfig {
+}): ChartLayoutConfig {
     const family = input.family ?? null;
     if (!family) return {};
 
@@ -19,7 +19,7 @@ export function getReferenceRateChartLayoutConfig(input: {
         const analyticalOverlayPrimary = input.referencePolicy?.analyticalOverlayRole !== 'secondary';
 
         return {
-            rateChart: {
+            chart: {
                 xAxisMode: toXAxisMode(family.displayDefaults.xAxis),
                 xAxisOptions: ['pvi', 'time', 'cumInjection'],
                 allowLogScale: false,
@@ -73,12 +73,12 @@ export function getReferenceRateChartLayoutConfig(input: {
     }
 
     const depletionXAxis = toXAxisMode(family.displayDefaults.xAxis);
-    const depletionXAxisOptions: RateChartXAxisMode[] = depletionXAxis === 'tD'
+    const depletionXAxisOptions: ChartXAxisMode[] = depletionXAxis === 'tD'
         ? ['tD', 'time', 'logTime']
         : ['time', 'tD', 'logTime'];
 
     return {
-        rateChart: {
+        chart: {
             xAxisMode: depletionXAxis,
             xAxisOptions: depletionXAxisOptions,
             allowLogScale: true,

@@ -427,7 +427,7 @@ describe('scenario catalog taxonomy', () => {
     it('shows a tank-level result in every Material Balance & Drive case', () => {
         for (const scenario of listScenarios()) {
             if (scenario.catalog.group !== 'material-balance-drive') continue;
-            const panels = Object.keys(getScenarioChartLayout(scenario).rateChart?.panels ?? {});
+            const panels = Object.keys(getScenarioChartLayout(scenario).chart?.panels ?? {});
             expect(panels.some((panel) => ['mbe_ooip', 'drive_indices', 'pz'].includes(panel)), scenario.key)
                 .toBe(true);
         }
@@ -579,7 +579,7 @@ describe('scenario capability validation', () => {
     });
 
     it('prioritizes gas-drive GOR and recovery while collapsing oil rate by default', () => {
-        const layout = getScenarioChartLayout(getScenario('gas_drive')!).rateChart!;
+        const layout = getScenarioChartLayout(getScenario('gas_drive')!).chart!;
         expect(layout.panelOrder?.slice(0, 3)).toEqual(['gor', 'recovery', 'rates']);
         expect(layout.panels?.gor?.expanded).toBe(true);
         expect(layout.panels?.recovery?.expanded).toBe(true);
@@ -594,7 +594,7 @@ describe('scenario capability validation', () => {
             {
                 ...sweepScenario,
                 chartLayoutPatch: {
-                    rateChart: { panels: { rates: { curveKeys: ['water-cut-sim', 'water-cut-reference'] } } },
+                    chart: { panels: { rates: { curveKeys: ['water-cut-sim', 'water-cut-reference'] } } },
                 },
             },
             new Set<string>(),
@@ -607,7 +607,7 @@ describe('scenario capability validation', () => {
         const errors = validateScenarioChartLayout({
             ...scenario,
             chartLayoutPatch: {
-                rateChart: { panels: { diagnostics: { curveKeys: ['avg-pressure-sim', 'mbe-ooip-ratio'] } } },
+                chart: { panels: { diagnostics: { curveKeys: ['avg-pressure-sim', 'mbe-ooip-ratio'] } } },
             },
         }, new Set<string>());
         expect(errors.some((error) => error.includes('mixes properties'))).toBe(true);
@@ -795,19 +795,19 @@ describe('scenario capability validation', () => {
     });
 
     it('chart presets expose scenario-controlled x-axis range policies', () => {
-        expect(CHART_LAYOUTS.waterflood.rateChart?.xAxisRangePolicy).toEqual({
+        expect(CHART_LAYOUTS.waterflood.chart?.xAxisRangePolicy).toEqual({
             mode: 'rate-tail-threshold',
             relativeThreshold: 1e-7,
         });
-        expect(CHART_LAYOUTS.sweep.rateChart?.xAxisRangePolicy).toEqual({
+        expect(CHART_LAYOUTS.sweep.chart?.xAxisRangePolicy).toEqual({
             mode: 'pvi-window',
             minPvi: 0,
             maxPvi: 2.5,
         });
-        expect(CHART_LAYOUTS.oil_depletion.rateChart?.xAxisRangePolicy).toEqual({
+        expect(CHART_LAYOUTS.oil_depletion.chart?.xAxisRangePolicy).toEqual({
             mode: 'data-extent',
         });
-        expect(CHART_LAYOUTS.well_test.rateChart).toMatchObject({
+        expect(CHART_LAYOUTS.well_test.chart).toMatchObject({
             panelOrder: ['producer_bhp', 'diagnostics', 'oil_rate', 'control_limits'],
             panels: {
                 producer_bhp: { visible: true, expanded: true },
@@ -822,15 +822,15 @@ describe('scenario capability validation', () => {
         const arealLayout = getScenarioChartLayout(getScenario('sweep_areal')!);
         const combinedLayout = getScenarioChartLayout(getScenario('sweep_combined')!);
 
-        expect(arealLayout.rateChart?.panels?.sweep_vertical?.visible).toBe(false);
-        expect(arealLayout.rateChart?.panels?.sweep_areal?.visible).toBe(true);
-        expect(arealLayout.rateChart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim']);
-        expect(arealLayout.rateChart?.panels?.recovery?.curveKeys).toEqual(['recovery-factor-primary']);
+        expect(arealLayout.chart?.panels?.sweep_vertical?.visible).toBe(false);
+        expect(arealLayout.chart?.panels?.sweep_areal?.visible).toBe(true);
+        expect(arealLayout.chart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim']);
+        expect(arealLayout.chart?.panels?.recovery?.curveKeys).toEqual(['recovery-factor-primary']);
 
-        expect(combinedLayout.rateChart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim']);
-        expect(combinedLayout.rateChart?.panels?.recovery?.curveKeys).toEqual(['recovery-factor-primary']);
-        expect(combinedLayout.rateChart?.panels?.sweep_combined?.title).toBe('Total Sweep Efficiency (E_vol)');
-        expect(combinedLayout.rateChart?.panels?.sweep_combined_mobile_oil?.visible).toBe(true);
+        expect(combinedLayout.chart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim']);
+        expect(combinedLayout.chart?.panels?.recovery?.curveKeys).toEqual(['recovery-factor-primary']);
+        expect(combinedLayout.chart?.panels?.sweep_combined?.title).toBe('Total Sweep Efficiency (E_vol)');
+        expect(combinedLayout.chart?.panels?.sweep_combined_mobile_oil?.visible).toBe(true);
     });
 });
 

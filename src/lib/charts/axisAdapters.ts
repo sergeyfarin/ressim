@@ -8,7 +8,7 @@
  * Consumed by buildChartData.ts, referenceOverlayBuilders.ts, and sweepPanelBuilder.ts.
  */
 
-import type { RateChartXAxisMode } from './rateChartLayoutConfig';
+import type { ChartXAxisMode } from './chartLayoutConfig';
 
 // ─── Shared series type ───────────────────────────────────────────────────────
 
@@ -83,7 +83,7 @@ export function toXYSeries(
  */
 export function buildXAxisValues(
     derived: DerivedRunSeries,
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
     tau: number | null = null,
 ): Array<number | null> {
     if (xAxisMode === 'pvi') return [...derived.pvi];
@@ -102,7 +102,7 @@ export function buildXAxisValues(
  * The x-axis value that represents "zero" for sweep efficiency panels.
  * Returns `null` for log-time (log(0) is undefined), and `0` for all other modes.
  */
-export function getSweepZeroXAxisValue(xAxisMode: RateChartXAxisMode): number | null {
+export function getSweepZeroXAxisValue(xAxisMode: ChartXAxisMode): number | null {
     return xAxisMode === 'logTime' ? null : 0;
 }
 
@@ -122,7 +122,7 @@ export function getSweepZeroXAxisValue(xAxisMode: RateChartXAxisMode): number | 
 export function mapPviSeriesToXAxis(
     pviValues: Array<number | null>,
     derived: DerivedRunSeries,
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
     tau: number | null,
 ): Array<number | null> {
     if (xAxisMode === 'pvi') return [...pviValues];
@@ -256,7 +256,7 @@ export type ReferenceXAxisMap = {
  */
 export function mapReferenceTimesToXAxis(
     timeDays: Array<number | null>,
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
     map: ReferenceXAxisMap | null | undefined,
 ): Array<number | null> | null {
     if (xAxisMode === 'time') {
@@ -301,7 +301,7 @@ export function mapReferenceTimesToXAxis(
  */
 export function requiresRunMappedAnalyticalXAxis(
     nativeXAxis: 'pvi' | 'time' | null | undefined,
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
 ): boolean {
     return nativeXAxis === 'pvi' && xAxisMode !== 'pvi';
 }

@@ -15,7 +15,7 @@ export const sweep_areal: Scenario = {
     analyticalMethodReference: 'Craig (1971); Dyes, Caudle, and Erickson (1954).',
     chartLayoutKey: 'sweep',
     chartLayoutPatch: {
-        rateChart: {
+        chart: {
             panels: {
                 sweep_vertical: { visible: false },
                 sweep_combined: { visible: false },

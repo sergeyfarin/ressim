@@ -15,7 +15,7 @@ export const wf_bl1d: Scenario = {
     analyticalMethodReference: 'Buckley and Leverett (1942); Welge (1952).',
     chartLayoutKey: 'waterflood',
     chartLayoutPatch: {
-        rateChart: {
+        chart: {
             panels: {
                 oil_rate: {
                     suppressLeadingOutliers: { medianRatio: 2, maxLeadingFraction: 0.1 },

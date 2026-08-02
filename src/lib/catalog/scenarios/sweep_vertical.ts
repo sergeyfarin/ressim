@@ -15,7 +15,7 @@ export const sweep_vertical: Scenario = {
     analyticalMethodReference: 'Dykstra and Parsons (1950).',
     chartLayoutKey: 'sweep',
     chartLayoutPatch: {
-        rateChart: {
+        chart: {
             panels: {
                 sweep_areal: { visible: false },
                 sweep_combined: { visible: false },

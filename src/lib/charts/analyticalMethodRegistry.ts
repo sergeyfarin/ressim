@@ -37,7 +37,7 @@ import type { AnalyticalMethod, AnalyticalOverlayMode, PrimaryRateCurve } from '
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { ChartPanelFallback } from './chartPanelSelection';
 import { buildXAxisValues, type DerivedRunSeries } from './axisAdapters';
-import type { RateChartPanelId, RateChartPanelKey, RateChartXAxisMode } from './rateChartLayoutConfig';
+import type { ChartPanelId, ChartPanelKey, ChartXAxisMode } from './chartLayoutConfig';
 import {
     computeBLAnalyticalFromParams,
     computeDepletionAnalyticalFromParams,
@@ -81,7 +81,7 @@ const ALL_CONTEXTS: readonly AnalyticalOverlayContext[] = ['shared', 'per-result
  */
 export type AnalyticalCurveSlot = {
     /** Panel this curve is appended to. */
-    panelKey: RateChartPanelKey;
+    panelKey: ChartPanelKey;
     /** Curve key — also the lookup key into `AnalyticalCurveSet.values`. */
     curveKey: string;
     /** Full label in the `shared` context (no case prefix). */
@@ -144,15 +144,15 @@ export type AnalyticalMethodDescriptor = {
     slots: readonly AnalyticalCurveSlot[];
     /** Overlay from a completed run. Null when the method has no reference solution. */
     fromResult:
-        | ((result: BenchmarkRunResult, derived: DerivedRunSeries, xAxisMode: RateChartXAxisMode) => AnalyticalCurveSet | null)
+        | ((result: BenchmarkRunResult, derived: DerivedRunSeries, xAxisMode: ChartXAxisMode) => AnalyticalCurveSet | null)
         | null;
     /** Overlay from params alone — used for preview and still-pending variants. */
     fromParams:
-        | ((params: Record<string, any>, xAxisMode: RateChartXAxisMode) => AnalyticalCurveSet | null)
+        | ((params: Record<string, any>, xAxisMode: ChartXAxisMode) => AnalyticalCurveSet | null)
         | null;
     resolveOverlayMode: (input: AnalyticalOverlayModeInput) => 'shared' | 'per-result';
     /** Method-dependent panel presentation, layered over PANEL_DEFS. */
-    panelPresentation: Partial<Record<RateChartPanelId, Partial<ChartPanelFallback>>>;
+    panelPresentation: Partial<Record<ChartPanelId, Partial<ChartPanelFallback>>>;
     /** Reference-solution wording for the benchmark disclosure card. */
     referenceLabel: string;
 };

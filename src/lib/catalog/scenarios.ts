@@ -13,7 +13,7 @@
  * Sensitivity variant keys:   {dim_abbrev}_{value_tag} (e.g. mob_favorable, sor_low)
  */
 
-import { DEFAULT_RATE_CHART_PANEL_ORDER, type RateChartLayoutConfig } from '../charts/rateChartLayoutConfig';
+import { DEFAULT_CHART_PANEL_ORDER, type ChartLayoutConfig } from '../charts/chartLayoutConfig';
 import { validateSinglePropertyPanel } from '../charts/curvePropertyRegistry';
 import type { SweepAnalyticalMethod, SweepGeometry } from '../analytical/sweepEfficiency';
 import { DEFAULT_SWEEP_METHOD, describeSweepMethod } from '../analytical/sweepMethods';
@@ -192,7 +192,7 @@ export type AnalyticalOutputContract = {
     defaultPrimaryRateCurve: PrimaryRateCurve;
     /** Whether depletion tau (tD axis) is meaningful. */
     hasTau: boolean;
-    /** Default panel expansion state for the RateChart. */
+    /** Default panel expansion state for the comparison chart. */
     defaultPanelExpansion: {
         rates: boolean;
         recovery: boolean;
@@ -516,7 +516,7 @@ export type SensitivityDimension = {
      */
     chartLayoutKeyOverride?: string;
     /** Patch applied on top of the resolved shared layout for this dimension. */
-    chartLayoutPatchOverride?: RateChartLayoutConfig;
+    chartLayoutPatchOverride?: ChartLayoutConfig;
 };
 
 /**
@@ -655,7 +655,7 @@ export type Scenario = {
     /** Key into CHART_LAYOUTS — selects the shared chart layout template for this scenario. */
     chartLayoutKey: string;
     /** Scenario-local tweaks applied on top of the shared chart layout. */
-    chartLayoutPatch?: RateChartLayoutConfig;
+    chartLayoutPatch?: ChartLayoutConfig;
     /** Behavioral capability declarations — single source of truth for all routing logic. */
     capabilities: ScenarioCapabilities;
     /** Scenario-owned numerical formulation choice and user-facing rationale. */
@@ -809,7 +809,7 @@ export function getDefaultVariantKeys(dimension: SensitivityDimension): string[]
 export function getScenarioChartLayout(
     scenario: Pick<Scenario, 'chartLayoutKey' | 'chartLayoutPatch' | 'sensitivities'>,
     dimensionKey?: string | null,
-): RateChartLayoutConfig {
+): ChartLayoutConfig {
     const activeDimension = dimensionKey
         ? scenario.sensitivities.find((dimension) => dimension.key === dimensionKey)
         : undefined;
@@ -840,8 +840,8 @@ export function validateScenarioChartLayout(
 
     for (const dimensionKey of dimensionKeys) {
         const layout = getScenarioChartLayout(scenario, dimensionKey);
-        for (const panelKey of DEFAULT_RATE_CHART_PANEL_ORDER) {
-            const curveKeys = layout.rateChart?.panels?.[panelKey]?.curveKeys ?? [];
+        for (const panelKey of DEFAULT_CHART_PANEL_ORDER) {
+            const curveKeys = layout.chart?.panels?.[panelKey]?.curveKeys ?? [];
             for (const propertyError of validateSinglePropertyPanel(panelKey, curveKeys)) {
                 errors.push(`scenario '${scenario.key}'${dimensionKey ? ` / ${dimensionKey}` : ''} ${propertyError}`);
             }

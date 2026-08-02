@@ -1,11 +1,11 @@
 import type {
-    RateChartConfig,
-    RateChartLayoutConfig,
-} from '../charts/rateChartLayoutConfig';
+    ChartConfig,
+    ChartLayoutConfig,
+} from '../charts/chartLayoutConfig';
 
-export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
+export const CHART_LAYOUTS: Record<string, ChartLayoutConfig> = {
     waterflood: {
-        rateChart: {
+        chart: {
             xAxisMode: 'pvi',
             xAxisOptions: ['pvi', 'time', 'cumInjection'],
             xAxisRangePolicy: { mode: 'rate-tail-threshold', relativeThreshold: 1e-7 },
@@ -66,7 +66,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
     },
 
     sweep: {
-        rateChart: {
+        chart: {
             xAxisMode: 'pvi',
             xAxisOptions: ['pvi', 'time'],
             xAxisRangePolicy: { mode: 'pvi-window', minPvi: 0, maxPvi: 2.5 },
@@ -139,7 +139,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
     },
 
     oil_depletion: {
-        rateChart: {
+        chart: {
             xAxisMode: 'time',
             xAxisOptions: ['time', 'tD', 'logTime'],
             xAxisRangePolicy: { mode: 'data-extent' },
@@ -191,7 +191,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
     },
 
     fetkovich: {
-        rateChart: {
+        chart: {
             xAxisMode: 'logTime',
             xAxisOptions: ['logTime', 'time', 'tD'],
             xAxisRangePolicy: { mode: 'data-extent' },
@@ -250,7 +250,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
      * produced over the hours-to-days span of a test.
      */
     well_test: {
-        rateChart: {
+        chart: {
             xAxisMode: 'logTime',
             xAxisOptions: ['logTime', 'time'],
             xAxisRangePolicy: { mode: 'data-extent' },
@@ -300,7 +300,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
      * declines and the reserves statement is invisible.
      */
     gas_material_balance: {
-        rateChart: {
+        chart: {
             xAxisMode: 'cumGas',
             xAxisOptions: ['cumGas', 'time'],
             xAxisRangePolicy: { mode: 'data-extent' },
@@ -360,7 +360,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
     },
 
     gas_oil_bl: {
-        rateChart: {
+        chart: {
             xAxisMode: 'pvi',
             xAxisOptions: ['pvi', 'time', 'cumInjection'],
             xAxisRangePolicy: { mode: 'rate-tail-threshold', relativeThreshold: 1e-7 },
@@ -410,7 +410,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
     },
 
     spe1: {
-        rateChart: {
+        chart: {
             xAxisMode: 'time',
             xAxisOptions: ['time', 'logTime'],
             xAxisRangePolicy: { mode: 'data-extent' },
@@ -492,7 +492,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
     },
 
     gas: {
-        rateChart: {
+        chart: {
             xAxisMode: 'time',
             xAxisOptions: ['time', 'logTime'],
             xAxisRangePolicy: { mode: 'data-extent' },
@@ -586,10 +586,10 @@ function mergeObjectMap<T extends Record<string, unknown>>(
     return merged;
 }
 
-function mergeRateChartConfig(
-    base?: RateChartConfig,
-    patch?: RateChartConfig,
-): RateChartConfig | undefined {
+function mergeChartConfig(
+    base?: ChartConfig,
+    patch?: ChartConfig,
+): ChartConfig | undefined {
     if (!base && !patch) return undefined;
 
     return {
@@ -599,28 +599,28 @@ function mergeRateChartConfig(
         panels: mergeObjectMap(
             base?.panels as Record<string, Record<string, unknown>> | undefined,
             patch?.panels as Record<string, Record<string, unknown>> | undefined,
-        ) as RateChartConfig['panels'],
+        ) as ChartConfig['panels'],
         curves: mergeObjectMap(
             base?.curves as Record<string, Record<string, unknown>> | undefined,
             patch?.curves as Record<string, Record<string, unknown>> | undefined,
-        ) as RateChartConfig['curves'],
+        ) as ChartConfig['curves'],
     };
 }
 
 export function mergeChartLayoutConfig(
-    base?: RateChartLayoutConfig,
-    patch?: RateChartLayoutConfig,
-): RateChartLayoutConfig {
+    base?: ChartLayoutConfig,
+    patch?: ChartLayoutConfig,
+): ChartLayoutConfig {
     if (!base && !patch) return {};
 
     return {
         ...(base ?? {}),
         ...(patch ?? {}),
-        rateChart: mergeRateChartConfig(base?.rateChart, patch?.rateChart),
+        chart: mergeChartConfig(base?.chart, patch?.chart),
     };
 }
 
-export function getChartLayout(layoutKey: string | null | undefined): RateChartLayoutConfig {
+export function getChartLayout(layoutKey: string | null | undefined): ChartLayoutConfig {
     const baseLayout = CHART_LAYOUTS[layoutKey ?? ''];
     return baseLayout ? mergeChartLayoutConfig({}, baseLayout) : {};
 }

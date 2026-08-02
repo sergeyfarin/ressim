@@ -15,7 +15,7 @@ export const sweep_combined: Scenario = {
     analyticalMethodReference: 'Stiles (1949); Craig (1971); Buckley and Leverett (1942); Welge (1952).',
     chartLayoutKey: 'sweep',
     chartLayoutPatch: {
-        rateChart: {
+        chart: {
             panels: {
                 rates: { curveKeys: ['water-cut-sim'] },
                 cumulative: { curveKeys: ['cum-oil-sim'] },

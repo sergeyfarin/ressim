@@ -1,12 +1,11 @@
 /**
  * scalePresetRegistry.ts — shared Chart.js scale configuration objects.
  *
- * Exports the scale configs that are identical across RateChart and
- * ReferenceComparisonChart. Component-specific configs (rates, breakthrough,
- * recovery, diagnostics) stay local because they differ in axis placement,
- * dynamic titles, or derived values.
+ * Exports the scale configs shared by every panel. The presets that depend on
+ * context (rates, breakthrough, recovery, diagnostics) stay with their consumer,
+ * because they differ in axis placement, dynamic titles, or derived values.
  *
- * Import individual scale objects for use inside each component's own
+ * Import individual scale objects for use inside a consumer's own
  * getScalePresetConfig function.
  */
 

@@ -18,14 +18,14 @@
 
 import type { DerivedRunSeries } from './axisAdapters';
 import type { PrimaryRateCurve } from '../catalog/scenarios';
-import type { RateChartPanelKey } from './rateChartLayoutConfig';
+import type { ChartPanelKey } from './chartLayoutConfig';
 import { RUN_QUANTITIES, type RunQuantityId } from './runQuantities';
 
 export type SimulationCurveDescriptor = {
     /** The quantity plotted, from the run-quantity registry. */
     quantity: RunQuantityId;
     /** Where it goes. */
-    panel: RateChartPanelKey;
+    panel: ChartPanelKey;
     /** Curve key, kept explicit because layouts and artifacts reference it. */
     curveKey: string;
     /**

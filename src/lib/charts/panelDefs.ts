@@ -6,11 +6,11 @@
  * override only the fields that depend on context (family, analyticalMethod,
  * dynamic curve lists, etc.).
  *
- * Kept in sync with DEFAULT_RATE_CHART_PANEL_ORDER in rateChartLayoutConfig.ts.
+ * Kept in sync with DEFAULT_CHART_PANEL_ORDER in chartLayoutConfig.ts.
  */
 
 import type { ChartPanelFallback } from './chartPanelSelection';
-import type { KnownPrimaryPanelId, KnownSweepPanelId, RateChartPanelId } from './rateChartLayoutConfig';
+import type { KnownPrimaryPanelId, KnownSweepPanelId, ChartPanelId } from './chartLayoutConfig';
 
 export const PANEL_DEFS: Record<KnownPrimaryPanelId | KnownSweepPanelId, ChartPanelFallback> = {
     // ── Primary panels ───────────────────────────────────────────────────────
@@ -197,7 +197,7 @@ export const GENERIC_PANEL_FALLBACK: ChartPanelFallback = {
 };
 
 /** Panel defaults by id, with a generic fallback for ids not declared above. */
-export function getPanelFallback(panelId: RateChartPanelId): ChartPanelFallback {
+export function getPanelFallback(panelId: ChartPanelId): ChartPanelFallback {
     const known = (PANEL_DEFS as Record<string, ChartPanelFallback | undefined>)[panelId];
     if (known) return known;
     return {

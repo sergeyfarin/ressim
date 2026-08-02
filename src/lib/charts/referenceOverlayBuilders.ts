@@ -25,7 +25,7 @@ import {
 import type { DerivedRunSeries } from './axisAdapters';
 import { buildXAxisValues } from './axisAdapters';
 import type { AnalyticalOverlay } from './referenceChartTypes';
-import type { RateChartXAxisMode } from './rateChartLayoutConfig';
+import type { ChartXAxisMode } from './chartLayoutConfig';
 
 export type { AnalyticalOverlay };
 
@@ -40,7 +40,7 @@ function emptyOverlay(): AnalyticalOverlay {
 export function buildBuckleyLeverettReference(
     baseResult: BenchmarkRunResult,
     derived: DerivedRunSeries,
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
 ): AnalyticalOverlay {
     if (xAxisMode === 'pvi') {
         const analytical = computeBLAnalyticalFromParams(baseResult.params);
@@ -85,7 +85,7 @@ export function buildBuckleyLeverettReference(
 export function buildDepletionReference(
     baseResult: BenchmarkRunResult,
     derived: DerivedRunSeries,
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
 ): AnalyticalOverlay {
     let analyticalResult: ReturnType<typeof computeDepletionOnTimeAxis>;
     try {
@@ -136,7 +136,7 @@ export function buildDepletionReference(
 export function buildWellTestReference(
     baseResult: BenchmarkRunResult,
     derived: DerivedRunSeries,
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
 ): AnalyticalOverlay {
     const solution = computeWellTestOnTimeAxis(baseResult.params, derived.time);
     if (!solution) return emptyOverlay();
@@ -161,7 +161,7 @@ export function buildWellTestReference(
 export function buildGasOilBLReference(
     baseResult: BenchmarkRunResult,
     derived: DerivedRunSeries,
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
 ): AnalyticalOverlay {
     if (xAxisMode === 'pvi') {
         const analytical = computeGasOilBLAnalyticalFromParams(baseResult.params);

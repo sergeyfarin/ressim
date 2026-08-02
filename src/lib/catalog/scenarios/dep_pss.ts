@@ -117,7 +117,7 @@ export const dep_pss: Scenario = {
     analyticalMethodReference: 'Dietz (1965), JPT 17(8); Earlougher (1977), Advances in Well Test Analysis, SPE Monograph 5, Table C.1; Dake (1978), Fundamentals of Reservoir Engineering, ch. 7; Peaceman (1978), SPEJ 18(3).',
     chartLayoutKey: 'well_test',
     chartLayoutPatch: {
-        rateChart: {
+        chart: {
             xAxisMode: 'logTime',
             xAxisOptions: ['logTime', 'time'],
             allowLogScale: true,

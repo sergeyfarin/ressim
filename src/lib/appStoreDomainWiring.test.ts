@@ -35,7 +35,7 @@ describe('App store domain wiring', () => {
   it('uses resolved library metadata for non-benchmark layout config', () => {
     // Phase 7: chart layout config computation moved to nav store; App.svelte delegates.
     expect(navStoreSource).toMatch(/activeLibraryEntry\?\.layoutConfig \?\? \{\}/);
-    expect(appSource).toMatch(/scenario\.activeRateChartLayoutConfig/);
+    expect(appSource).toMatch(/scenario\.activeChartLayoutConfig/);
   });
 
   it('routes results through the scenario chart entrypoint', () => {
@@ -45,7 +45,7 @@ describe('App store domain wiring', () => {
     expect(appSource).not.toMatch(/primaryResultKey=\{activePrimaryComparisonResultKey\}/);
     expect(appSource).not.toMatch(/comparedResultKeys=\{activeComparedResultKeys\}/);
     // During migration the nav store still derives legacy-compatible layout data; App only consumes the scenario chart shell.
-    expect(navStoreSource).toMatch(/getReferenceRateChartLayoutConfig/);
+    expect(navStoreSource).toMatch(/getReferenceChartLayoutConfig/);
     expect(appSource).toMatch(/ScenarioChartComponent/);
     expect(appSource).toMatch(/runResults=\{scenario\.activeRunResults\}/);
     expect(appSource).not.toMatch(/ReferenceComparisonChartComponent/);

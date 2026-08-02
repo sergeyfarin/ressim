@@ -224,7 +224,7 @@
                                 activeDimensionKey={scenario.activeSensitivityDimensionKey}
                                 analyticalOption={scenario.activeAnalyticalOption}
                                 runResults={scenario.activeRunResults}
-                                layoutConfig={scenario.activeRateChartLayoutConfig}
+                                layoutConfig={scenario.activeChartLayoutConfig}
                                 analyticalPerVariant={scenario.analyticalPerVariant}
                                 previewVariantParams={scenario.previewVariantParams}
                                 pendingPreviewVariants={scenario.pendingPreviewVariants}

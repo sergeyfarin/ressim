@@ -3,7 +3,7 @@
     import { buildScenarioComparisonFamily } from './scenarioChartModel';
     import type { Scenario, ScenarioAnalyticalOption } from '../catalog/scenarios';
     import type { RunResult } from '../scenario/runModel';
-    import type { RateChartLayoutConfig } from './rateChartLayoutConfig';
+    import type { ChartLayoutConfig } from './chartLayoutConfig';
     import type { RateHistoryPoint, AnalyticalProductionPoint } from '../simulator-types';
     import type { SweepAnalyticalMethod, SweepGeometry, SweepRFResult } from '../analytical/sweepEfficiency';
     import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
@@ -25,7 +25,7 @@
         activeDimensionKey?: string | null;
         analyticalOption?: ScenarioAnalyticalOption | null;
         runResults?: RunResult[];
-        layoutConfig?: RateChartLayoutConfig;
+        layoutConfig?: ChartLayoutConfig;
         analyticalPerVariant?: boolean;
         previewVariantParams?: AnalyticalPreviewVariant[];
         pendingPreviewVariants?: AnalyticalPreviewVariant[];

@@ -470,38 +470,38 @@ describe('referenceComparisonModel', () => {
 
         // `cumulative_gas` is its own panel as of 2026-08-02: OPM's FGPT used to
         // land in the cumulative *oil* panel, mixing two properties in one plot.
-        expect(layout.rateChart?.panelOrder).toEqual(['diagnostics', 'producer_bhp', 'injector_bhp', 'control_limits', 'gor', 'oil_rate', 'injection_rate', 'rates', 'recovery', 'cumulative', 'cumulative_gas', 'volumes']);
-        expect(layout.rateChart?.panels?.diagnostics).toMatchObject({
+        expect(layout.chart?.panelOrder).toEqual(['diagnostics', 'producer_bhp', 'injector_bhp', 'control_limits', 'gor', 'oil_rate', 'injection_rate', 'rates', 'recovery', 'cumulative', 'cumulative_gas', 'volumes']);
+        expect(layout.chart?.panels?.diagnostics).toMatchObject({
             title: 'Reservoir Pressure',
             curveKeys: ['avg-pressure-sim', 'published-pressure'],
             scalePreset: 'pressure',
         });
-        expect(layout.rateChart?.panels?.producer_bhp).toMatchObject({
+        expect(layout.chart?.panels?.producer_bhp).toMatchObject({
             title: 'Producer WBHP',
             curveKeys: ['producer-bhp-sim', 'published-producer-bhp'],
             scalePreset: 'pressure',
         });
-        expect(layout.rateChart?.panels?.injector_bhp).toMatchObject({
+        expect(layout.chart?.panels?.injector_bhp).toMatchObject({
             title: 'Injector WBHP',
             curveKeys: ['injector-bhp-sim', 'published-injector-bhp'],
             scalePreset: 'pressure',
         });
-        expect(layout.rateChart?.panels?.control_limits).toMatchObject({
+        expect(layout.chart?.panels?.control_limits).toMatchObject({
             title: 'Control-Limit Fraction',
             curveKeys: ['producer-bhp-limited-sim', 'injector-bhp-limited-sim'],
             scalePreset: 'fraction',
         });
-        expect(layout.rateChart?.panels?.injection_rate).toMatchObject({
+        expect(layout.chart?.panels?.injection_rate).toMatchObject({
             title: 'Gas Injection Rate',
             curveKeys: ['injection-rate-sim', 'published-injection-rate'],
             scalePreset: 'rates',
         });
-        expect(layout.rateChart?.panels?.gor).toMatchObject({
+        expect(layout.chart?.panels?.gor).toMatchObject({
             title: 'GOR',
             curveKeys: ['gor-sim', 'published-gor'],
             scalePreset: 'gor',
         });
-        expect(layout.rateChart?.panels?.oil_rate).toMatchObject({
+        expect(layout.chart?.panels?.oil_rate).toMatchObject({
             title: 'Oil Rate',
             curveKeys: ['oil-rate-sim', 'published-oil-rate'],
             scalePreset: 'rates',

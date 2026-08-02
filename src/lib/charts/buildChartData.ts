@@ -14,7 +14,7 @@
 import type { BenchmarkFamily } from '../scenario/referenceTypes';
 import type { CurveConfig } from './chartTypes';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
-import type { RateChartPanelKey, RateChartXAxisMode } from './rateChartLayoutConfig';
+import type { ChartPanelKey, ChartXAxisMode } from './chartLayoutConfig';
 import {
     ANALYTICAL_BORDER, ANALYTICAL_BORDER_MULTI, ANALYTICAL_DASH,
     LEGEND_SECTIONS, REFERENCE_STYLE, REFERENCE_STYLE_PRIMARY,
@@ -135,16 +135,16 @@ function appendBhpLimitDiagnostics(
 }
 
 function appendPublishedReferenceSeries(
-    panels: Record<RateChartPanelKey, ReferenceComparisonPanel>,
+    panels: Record<ChartPanelKey, ReferenceComparisonPanel>,
     family: BenchmarkFamily | null,
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
 ) {
     if (!family?.publishedReferenceSeries?.length) return;
 
     const publishedColor = '#e74c3c';
     const opmFlowColor = '#15803d';
     for (const series of family.publishedReferenceSeries) {
-        const targetPanel = panels[series.panelKey as RateChartPanelKey];
+        const targetPanel = panels[series.panelKey as ChartPanelKey];
         if (!targetPanel) continue;
         // Reference data is recorded against days. On an injection-based axis
         // it has to be converted through the reference run's own mapping, and
@@ -257,7 +257,7 @@ function emptySweepPanels(): ReferenceComparisonSweepPanels {
  * per-overlay-section null guards this replaced.
  */
 function appendAnalyticalSlots(
-    panels: Record<RateChartPanelKey, ReferenceComparisonPanel>,
+    panels: Record<ChartPanelKey, ReferenceComparisonPanel>,
     descriptor: AnalyticalMethodDescriptor,
     context: AnalyticalOverlayContext,
     curveSet: AnalyticalCurveSet,
@@ -325,11 +325,11 @@ function sharedAnalyticalStyle(input: {
  */
 function buildAnalyticalPreviewPanels(
     variants: AnalyticalPreviewVariant[],
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
     analyticalMethod: AnalyticalMethod,
     theme: ReferenceComparisonTheme,
-): Record<RateChartPanelKey, ReferenceComparisonPanel> {
-    const panels: Record<RateChartPanelKey, ReferenceComparisonPanel> = {
+): Record<ChartPanelKey, ReferenceComparisonPanel> {
+    const panels: Record<ChartPanelKey, ReferenceComparisonPanel> = {
         rates: createReferenceComparisonPanel(),
         recovery: createReferenceComparisonPanel(),
         cumulative: createReferenceComparisonPanel(),
@@ -390,7 +390,7 @@ function buildAnalyticalPreviewPanels(
 export function buildReferenceComparisonModel(input: {
     family: BenchmarkFamily | null | undefined;
     results: BenchmarkRunResult[];
-    xAxisMode: RateChartXAxisMode;
+    xAxisMode: ChartXAxisMode;
     theme?: ReferenceComparisonTheme;
     /** True when the active sensitivity variants change parameters that feed the
      *  analytical solution (e.g. viscosity → fractional flow). Each result then
@@ -436,7 +436,7 @@ export function buildReferenceComparisonModel(input: {
     });
     let hidesPendingAnalyticalWithoutMapping = false;
 
-    const panels: Record<RateChartPanelKey, ReferenceComparisonPanel> = {
+    const panels: Record<ChartPanelKey, ReferenceComparisonPanel> = {
         rates: createReferenceComparisonPanel(),
         recovery: createReferenceComparisonPanel(),
         cumulative: createReferenceComparisonPanel(),

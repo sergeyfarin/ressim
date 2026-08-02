@@ -37,7 +37,7 @@ import {
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { AnalyticalOverlayMode } from '../catalog/scenarios';
 import type { DerivedRunSeries } from './axisAdapters';
-import type { RateChartXAxisMode } from './rateChartLayoutConfig';
+import type { ChartXAxisMode } from './chartLayoutConfig';
 
 // ─── Geometry, in-place volumes, numeric utilities ────────────────────────────
 
@@ -379,7 +379,7 @@ export function computeDepletionOnTimeAxis(
  */
 export function computeDepletionAnalyticalFromParams(
     params: Record<string, any>,
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
 ): {
     xValues: (number | null)[];
     oilRates: (number | null)[];
@@ -573,7 +573,7 @@ export function computeWellTestOnTimeAxis(
  */
 export function computeWellTestFromParams(
     params: Record<string, any>,
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
 ): {
     xValues: (number | null)[];
     flowingBhp: (number | null)[];

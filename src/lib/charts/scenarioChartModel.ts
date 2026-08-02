@@ -7,7 +7,7 @@ import {
 } from '../catalog/scenarios';
 import { resolveScenarioReferenceSeries } from '../catalog/opmFlowArtifacts';
 import type { CurveConfig } from './chartTypes';
-import type { RateChartLayoutConfig, RateChartPanelId, RateChartXAxisMode } from './rateChartLayoutConfig';
+import type { ChartLayoutConfig, ChartPanelId, ChartXAxisMode } from './chartLayoutConfig';
 
 export type ChartCurveModel = CurveConfig & {
     sourceType: 'simulation' | 'analytical' | 'published-reference' | 'opm-flow-precomputed';
@@ -15,7 +15,7 @@ export type ChartCurveModel = CurveConfig & {
 };
 
 export type ChartPanelModel = {
-    key: RateChartPanelId;
+    key: ChartPanelId;
     title: string;
     visible: boolean;
     expanded: boolean;
@@ -24,7 +24,7 @@ export type ChartPanelModel = {
 };
 
 export type ChartModel = {
-    xAxisMode: RateChartXAxisMode;
+    xAxisMode: ChartXAxisMode;
     panels: ChartPanelModel[];
     warnings: string[];
 };
@@ -33,7 +33,7 @@ export function buildScenarioComparisonFamily(input: {
     scenario: Scenario | null | undefined;
     activeDimensionKey?: string | null;
     analyticalOption?: ScenarioAnalyticalOption | null;
-    layoutConfig?: RateChartLayoutConfig;
+    layoutConfig?: ChartLayoutConfig;
 }): BenchmarkFamily | null {
     const scenario = input.scenario ?? null;
     if (!scenario) return null;

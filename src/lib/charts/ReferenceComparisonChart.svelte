@@ -18,12 +18,12 @@
     import { buildXAxisValues } from './axisAdapters';
     import { buildDerivedRunSeries } from './analyticalParamAdapters';
     import type {
-        RateChartLayoutConfig,
-        RateChartPanelId,
-        RateChartScalePreset,
-        RateChartXAxisMode,
-    } from './rateChartLayoutConfig';
-    import { DEFAULT_RATE_CHART_PANEL_ORDER } from './rateChartLayoutConfig';
+        ChartLayoutConfig,
+        ChartPanelId,
+        ChartScalePreset,
+        ChartXAxisMode,
+    } from './chartLayoutConfig';
+    import { DEFAULT_CHART_PANEL_ORDER } from './chartLayoutConfig';
     import {
         buildReferenceComparisonModel,
         getReferenceComparisonCaseColor,
@@ -61,7 +61,7 @@
     }: {
         results?: BenchmarkRunResult[];
         family?: BenchmarkFamily | null;
-        layoutConfig?: RateChartLayoutConfig;
+        layoutConfig?: ChartLayoutConfig;
         theme?: 'dark' | 'light';
         analyticalPerVariant?: boolean;
         /** Optional history/forecast divider marker (scenario-declared). */
@@ -79,31 +79,31 @@
         previewAnalyticalMethod?: AnalyticalMethod;
     } = $props();
 
-    function createDefaultPanelExpandedState(): Record<RateChartPanelId, boolean> {
+    function createDefaultPanelExpandedState(): Record<ChartPanelId, boolean> {
         return Object.fromEntries(
-            DEFAULT_RATE_CHART_PANEL_ORDER.map((panelKey) => [panelKey, false]),
-        ) as Record<RateChartPanelId, boolean>;
+            DEFAULT_CHART_PANEL_ORDER.map((panelKey) => [panelKey, false]),
+        ) as Record<ChartPanelId, boolean>;
     }
 
-    function createDefaultPanelLogScaleState(): Record<RateChartPanelId, boolean> {
+    function createDefaultPanelLogScaleState(): Record<ChartPanelId, boolean> {
         return Object.fromEntries(
-            DEFAULT_RATE_CHART_PANEL_ORDER.map((panelKey) => [panelKey, false]),
-        ) as Record<RateChartPanelId, boolean>;
+            DEFAULT_CHART_PANEL_ORDER.map((panelKey) => [panelKey, false]),
+        ) as Record<ChartPanelId, boolean>;
     }
 
     function equalPanelExpandedState(
-        left: Record<RateChartPanelId, boolean>,
-        right: Record<RateChartPanelId, boolean>,
+        left: Record<ChartPanelId, boolean>,
+        right: Record<ChartPanelId, boolean>,
     ): boolean {
-        return DEFAULT_RATE_CHART_PANEL_ORDER.every((panelKey) => left[panelKey] === right[panelKey]);
+        return DEFAULT_CHART_PANEL_ORDER.every((panelKey) => left[panelKey] === right[panelKey]);
     }
 
-    let xAxisMode = $state<RateChartXAxisMode>('time');
+    let xAxisMode = $state<ChartXAxisMode>('time');
     const resolvedHistoryDivider = $derived(resolveHistoryDivider(historyWindow, xAxisMode));
     // Log scaling is per panel: panels on one chart carry different properties
     // over different dynamic ranges, so one shared axis type cannot suit them.
-    let panelLogScale = $state<Record<RateChartPanelId, boolean>>(createDefaultPanelLogScaleState());
-    let panelExpanded = $state<Record<RateChartPanelId, boolean>>(createDefaultPanelExpandedState());
+    let panelLogScale = $state<Record<ChartPanelId, boolean>>(createDefaultPanelLogScaleState());
+    let panelExpanded = $state<Record<ChartPanelId, boolean>>(createDefaultPanelExpandedState());
     let visibleCaseKeys = $state<Record<string, boolean>>({});
     let caseSelectorSignature = $state('');
     const MAX_RECOMMENDED_VISIBLE_CASES = 20;
@@ -129,14 +129,14 @@
     }
 
     $effect(() => {
-        const config = layoutConfig?.rateChart;
+        const config = layoutConfig?.chart;
         if (!config) return;
         if (config.xAxisMode !== undefined) xAxisMode = config.xAxisMode;
         const currentExpanded = untrack(() => panelExpanded);
         const nextExpanded = { ...currentExpanded };
         const currentLogScale = untrack(() => panelLogScale);
         const nextLogScale = { ...currentLogScale };
-        const panelOrder = config.panelOrder ?? DEFAULT_RATE_CHART_PANEL_ORDER;
+        const panelOrder = config.panelOrder ?? DEFAULT_CHART_PANEL_ORDER;
         for (const panelKey of panelOrder) {
             const expanded = config.panels?.[panelKey]?.expanded;
             if (expanded !== undefined) nextExpanded[panelKey] = expanded;
@@ -150,7 +150,7 @@
         if (!equalPanelExpandedState(currentExpanded, nextExpanded)) {
             panelExpanded = nextExpanded;
         }
-        if (DEFAULT_RATE_CHART_PANEL_ORDER.some((key) => currentLogScale[key] !== nextLogScale[key])) {
+        if (DEFAULT_CHART_PANEL_ORDER.some((key) => currentLogScale[key] !== nextLogScale[key])) {
             panelLogScale = nextLogScale;
         }
     });
@@ -273,7 +273,7 @@
         },
     };
 
-    function getScalePresetConfig(scalePreset: RateChartScalePreset): Record<string, any> {
+    function getScalePresetConfig(scalePreset: ChartScalePreset): Record<string, any> {
         if (scalePreset === 'sweep') return SCALE_SWEEP;
         if (scalePreset === 'sweep_rf') return SCALE_SWEEP;
         if (scalePreset === 'breakthrough') return breakthroughScales;
@@ -303,7 +303,7 @@
     const xAxisOptions = $derived.by(() => {
         return getConfiguredXAxisOptions(
             allXAxisOptions,
-            layoutConfig?.rateChart?.xAxisOptions,
+            layoutConfig?.chart?.xAxisOptions,
         );
     });
 
@@ -312,13 +312,13 @@
             xAxisMode,
             xAxisOptions,
             logScale: false,
-            allowLogScale: layoutConfig?.rateChart?.allowLogScale,
+            allowLogScale: layoutConfig?.chart?.allowLogScale,
         });
 
         if (nextAxisState.xAxisMode !== xAxisMode) xAxisMode = nextAxisState.xAxisMode;
     });
 
-    function buildPanelEntries(panelKey: RateChartPanelId): Array<ChartPanelEntry<NonNullable<(typeof overlayModel.panels)[RateChartPanelId]>['curves'][number], NonNullable<(typeof overlayModel.panels)[RateChartPanelId]>['series'][number]>> {
+    function buildPanelEntries(panelKey: ChartPanelId): Array<ChartPanelEntry<NonNullable<(typeof overlayModel.panels)[ChartPanelId]>['curves'][number], NonNullable<(typeof overlayModel.panels)[ChartPanelId]>['series'][number]>> {
         const panel = overlayModel.panels[panelKey];
         if (!panel) return [];
 
@@ -369,17 +369,17 @@
     });
 
     const resolvedPanels = $derived.by(() => {
-        const panelOrder = layoutConfig?.rateChart?.panelOrder ?? DEFAULT_RATE_CHART_PANEL_ORDER;
+        const panelOrder = layoutConfig?.chart?.panelOrder ?? DEFAULT_CHART_PANEL_ORDER;
 
         return panelOrder
             .map((panelKey) => {
                 const fallback = panelFallbacks[panelKey] ?? getPanelFallback(panelKey);
                 const panelLayout = resolveChartPanelLayout({
-                    override: layoutConfig?.rateChart?.panels?.[panelKey],
+                    override: layoutConfig?.chart?.panels?.[panelKey],
                     fallback,
                 });
                 const panelDefinition = resolveChartPanelDefinition({
-                    override: layoutConfig?.rateChart?.panels?.[panelKey],
+                    override: layoutConfig?.chart?.panels?.[panelKey],
                     fallback,
                     entries: buildPanelEntries(panelKey),
                     getScalePresetConfig,
@@ -395,7 +395,7 @@
                             || panelDefinition.curves[index]?.curveKey?.endsWith('-sim'))
                             ? suppressLeadingOutliers(
                                 series,
-                                layoutConfig?.rateChart?.panels?.[panelKey]?.suppressLeadingOutliers,
+                                layoutConfig?.chart?.panels?.[panelKey]?.suppressLeadingOutliers,
                             )
                             : series
                     )),
@@ -420,7 +420,7 @@
      */
     function buildComparisonXAxisValues(
         result: BenchmarkRunResult,
-        axisMode: RateChartXAxisMode,
+        axisMode: ChartXAxisMode,
     ): Array<number | null> {
         return buildXAxisValues(buildDerivedRunSeries(result), axisMode);
     }
@@ -437,7 +437,7 @@
             allSeries: resolvedPanels.flatMap((panel) => panel.series),
             rateSeries: resolvedPanels.find((panel) => panel.key === 'rates')?.series ?? [],
             xAxisMode,
-            policy: layoutConfig?.rateChart?.xAxisRangePolicy,
+            policy: layoutConfig?.chart?.xAxisRangePolicy,
             pviMappings: visiblePviMappings,
         });
     });
@@ -530,7 +530,7 @@
                 options={xAxisOptions}
                 bind:value={xAxisMode}
                 onChange={(value) => {
-                    xAxisMode = value as RateChartXAxisMode;
+                    xAxisMode = value as ChartXAxisMode;
                 }}
             />
             {#if overlayModel.axisMappingWarning}
@@ -551,7 +551,7 @@
             scaleConfigs={panel.scales}
             {theme}
             bind:logScale={panelLogScale[panel.key]}
-            allowLogToggle={layoutConfig?.rateChart?.allowLogScale ?? panel.allowLogToggle}
+            allowLogToggle={layoutConfig?.chart?.allowLogScale ?? panel.allowLogToggle}
             xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}

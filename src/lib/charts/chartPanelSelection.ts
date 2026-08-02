@@ -1,11 +1,11 @@
 import type {
-    RateChartPanelLayout,
-    RateChartScalePreset,
-    RateChartXAxisMode,
-} from './rateChartLayoutConfig';
+    ChartPanelLayout,
+    ChartScalePreset,
+    ChartXAxisMode,
+} from './chartLayoutConfig';
 
 export type ChartXAxisOption = {
-    value: RateChartXAxisMode;
+    value: ChartXAxisMode;
     label: string;
     disabled?: boolean;
     title?: string;
@@ -28,7 +28,7 @@ export type ChartPanelFallback = {
     title: string;
     curveKeys?: string[];
     curveLabels?: string[];
-    scalePreset: RateChartScalePreset;
+    scalePreset: ChartScalePreset;
     allowLogToggle?: boolean;
     visible?: boolean;
     expanded?: boolean;
@@ -101,7 +101,7 @@ function selectPanelEntries<TCurve extends SelectableCurve, TSeries>(input: {
 
 export function getConfiguredXAxisOptions(
     allOptions: ChartXAxisOption[],
-    configured?: RateChartXAxisMode[],
+    configured?: ChartXAxisMode[],
 ): ChartXAxisOption[] {
     if (!Array.isArray(configured) || configured.length === 0) return allOptions;
 
@@ -110,12 +110,12 @@ export function getConfiguredXAxisOptions(
 }
 
 export function coerceChartAxisState(input: {
-    xAxisMode: RateChartXAxisMode;
+    xAxisMode: ChartXAxisMode;
     xAxisOptions: ChartXAxisOption[];
     logScale: boolean;
     allowLogScale?: boolean;
 }): {
-    xAxisMode: RateChartXAxisMode;
+    xAxisMode: ChartXAxisMode;
     logScale: boolean;
 } {
     const allowedModes = input.xAxisOptions.map((option) => option.value);
@@ -133,10 +133,10 @@ export function resolveChartPanelDefinition<
     TCurve extends SelectableCurve,
     TSeries,
 >(input: {
-    override?: RateChartPanelLayout;
+    override?: ChartPanelLayout;
     fallback: ChartPanelFallback;
     entries: Array<ChartPanelEntry<TCurve, TSeries>>;
-    getScalePresetConfig: (scalePreset: RateChartScalePreset) => Record<string, any>;
+    getScalePresetConfig: (scalePreset: ChartScalePreset) => Record<string, any>;
 }): ChartPanelDefinition<TCurve, TSeries> {
     const { override, fallback, entries, getScalePresetConfig } = input;
     const selectedEntries = selectPanelEntries({
@@ -155,7 +155,7 @@ export function resolveChartPanelDefinition<
 }
 
 export function resolveChartPanelLayout(input: {
-    override?: RateChartPanelLayout;
+    override?: ChartPanelLayout;
     fallback: ChartPanelFallback;
 }): Required<Pick<ChartPanelFallback, 'title' | 'scalePreset' | 'visible' | 'expanded'>> & {
     allowLogToggle: boolean;

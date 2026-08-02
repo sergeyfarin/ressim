@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { getBenchmarkFamily } from '../catalog/benchmarkCases';
-import { getReferenceRateChartLayoutConfig } from './referenceChartConfig';
+import { getReferenceChartLayoutConfig } from './referenceChartConfig';
 
 describe('referenceChartConfig', () => {
     it.skip('builds breakthrough-centric BL chart defaults with PVI x-axis' + ' [ARCHIVED FIXTURE — see .archive/README.md, TODO.md]', () => {
         const family = getBenchmarkFamily('bl_case_a_refined');
-        const config = getReferenceRateChartLayoutConfig({
+        const config = getReferenceChartLayoutConfig({
             family,
             referencePolicy: {
                 analyticalMethod: 'buckley-leverett',
@@ -19,7 +19,7 @@ describe('referenceChartConfig', () => {
         });
 
         expect(config).toMatchObject({
-            rateChart: {
+            chart: {
                 xAxisMode: 'pvi',
                 panelOrder: ['rates', 'cumulative', 'diagnostics'],
                 panels: {
@@ -39,12 +39,12 @@ describe('referenceChartConfig', () => {
                 },
             },
         });
-        expect(config.rateChart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim', 'water-cut-reference', 'avg-water-sat']);
+        expect(config.chart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim', 'water-cut-reference', 'avg-water-sat']);
     });
 
     it.skip('drops the reference-solution BL overlay from primary panel defaults when numerical reference is primary' + ' [ARCHIVED FIXTURE — see .archive/README.md, TODO.md]', () => {
         const family = getBenchmarkFamily('bl_case_b_refined');
-        const config = getReferenceRateChartLayoutConfig({
+        const config = getReferenceChartLayoutConfig({
             family,
             referencePolicy: {
                 analyticalMethod: 'buckley-leverett',
@@ -57,18 +57,18 @@ describe('referenceChartConfig', () => {
             },
         });
 
-        expect(config.rateChart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim', 'avg-water-sat']);
-        expect(config.rateChart?.panels?.cumulative?.curveKeys).toEqual(['recovery-factor', 'cum-oil-sim', 'cum-injection']);
+        expect(config.chart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim', 'avg-water-sat']);
+        expect(config.chart?.panels?.cumulative?.curveKeys).toEqual(['recovery-factor', 'cum-oil-sim', 'cum-injection']);
     });
 
     it.skip('builds depletion-focused chart defaults and log-time Fetkovich preference' + ' [ARCHIVED FIXTURE — see .archive/README.md, TODO.md]', () => {
         const dietz = getBenchmarkFamily('dietz_sq_center');
         const fetkovich = getBenchmarkFamily('fetkovich_exp');
-        const dietzConfig = getReferenceRateChartLayoutConfig({ family: dietz });
-        const fetkovichConfig = getReferenceRateChartLayoutConfig({ family: fetkovich });
+        const dietzConfig = getReferenceChartLayoutConfig({ family: dietz });
+        const fetkovichConfig = getReferenceChartLayoutConfig({ family: fetkovich });
 
         expect(dietzConfig).toMatchObject({
-            rateChart: {
+            chart: {
                 xAxisMode: 'time',
                 panels: {
                     rates: { title: 'Oil Rate' },
@@ -77,8 +77,8 @@ describe('referenceChartConfig', () => {
                 },
             },
         });
-        expect(fetkovichConfig.rateChart?.xAxisMode).toBe('logTime');
-        expect(fetkovichConfig.rateChart?.logScale).toBe(true);
-        expect(dietzConfig.rateChart?.panels?.rates?.curveKeys).toEqual(['oil-rate-sim', 'oil-rate-reference', 'oil-rate-error']);
+        expect(fetkovichConfig.chart?.xAxisMode).toBe('logTime');
+        expect(fetkovichConfig.chart?.logScale).toBe(true);
+        expect(dietzConfig.chart?.panels?.rates?.curveKeys).toEqual(['oil-rate-sim', 'oil-rate-reference', 'oil-rate-error']);
     });
 });

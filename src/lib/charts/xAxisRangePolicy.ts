@@ -1,4 +1,4 @@
-import type { RateChartXAxisMode, RateChartXAxisRangePolicy } from './rateChartLayoutConfig';
+import type { ChartXAxisMode, ChartXAxisRangePolicy } from './chartLayoutConfig';
 
 export type XYPoint = { x: number; y: number | null };
 
@@ -101,7 +101,7 @@ function computeSeriesExtent(seriesGroups: XYPoint[][]): { min: number; max: num
 export function interpolateMappedAxisValue(
     targetDomainValue: number,
     mapping: AxisMapping,
-    xAxisMode: RateChartXAxisMode,
+    xAxisMode: ChartXAxisMode,
 ): number | null {
     if (!Number.isFinite(targetDomainValue)) return null;
     if (targetDomainValue <= 1e-12) return xAxisMode === 'logTime' ? null : 0;
@@ -144,8 +144,8 @@ export function interpolateMappedAxisValue(
 export function resolveSharedXAxisRange(input: {
     allSeries: XYPoint[][];
     rateSeries?: XYPoint[][];
-    xAxisMode: RateChartXAxisMode;
-    policy?: RateChartXAxisRangePolicy;
+    xAxisMode: ChartXAxisMode;
+    policy?: ChartXAxisRangePolicy;
     pviMappings?: AxisMapping[];
 }): { min: number; max: number } | undefined {
     const extent = computeSeriesExtent(input.allSeries);

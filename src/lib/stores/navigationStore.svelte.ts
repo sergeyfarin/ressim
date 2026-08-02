@@ -47,7 +47,7 @@ import {
 } from './phase2PresetContract';
 import type { ParameterStore } from './parameterStore.svelte';
 import type { RuntimeStore } from './runtimeStore.svelte';
-import { getReferenceRateChartLayoutConfig } from '../charts/referenceChartConfig';
+import { getReferenceChartLayoutConfig } from '../charts/referenceChartConfig';
 import { buildScenarioComparisonFamily } from '../charts/scenarioChartModel';
 import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
 import {
@@ -389,12 +389,12 @@ class NavigationStoreImpl {
 
     // ===== $derived: Chart Layout =====
 
-    activeRateChartLayoutConfig = $derived.by(() => {
+    activeChartLayoutConfig = $derived.by(() => {
         if (this.activeScenarioObject) {
             return getScenarioChartLayout(this.activeScenarioObject, this.activeSensitivityDimensionKey);
         }
         if (this.activeChartFamily) {
-            return getReferenceRateChartLayoutConfig({
+            return getReferenceChartLayoutConfig({
                 family: this.activeChartFamily,
                 referencePolicy: this.activeReferenceBaseResult?.referencePolicy ?? null,
             });

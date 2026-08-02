@@ -1,4 +1,4 @@
-export type RateChartXAxisMode =
+export type ChartXAxisMode =
     | 'time'
     | 'tD'
     | 'logTime'
@@ -11,7 +11,7 @@ export type RateChartXAxisMode =
 /**
  * The panels the builder emits today.
  *
- * A *documented set*, not a closed type: `RateChartPanelId` accepts any string,
+ * A *documented set*, not a closed type: `ChartPanelId` accepts any string,
  * so a panel can be introduced beside the code that fills it instead of by
  * editing this union first. The literals are kept because they still buy
  * autocomplete and catch typos in the ~20 places that name a panel directly —
@@ -37,23 +37,23 @@ export type KnownSweepPanelId = typeof KNOWN_SWEEP_PANEL_IDS[number];
 
 // `(string & {})` keeps editor completion for the known ids while accepting any
 // other string — the standard TypeScript idiom for an open enumeration.
-export type RateChartPrimaryPanelId = KnownPrimaryPanelId | (string & {});
-export type RateChartSweepPanelId = KnownSweepPanelId | (string & {});
+export type ChartPrimaryPanelId = KnownPrimaryPanelId | (string & {});
+export type ChartSweepPanelId = KnownSweepPanelId | (string & {});
 
-export type RateChartPanelId = RateChartPrimaryPanelId | RateChartSweepPanelId;
+export type ChartPanelId = ChartPrimaryPanelId | ChartSweepPanelId;
 
 /**
  * Keys of the builder's *current* panel map.
  *
  * Deliberately the closed known set while `buildChartData` still constructs one
- * record with a slot per panel. `RateChartPanelId` above is the open type — what
+ * record with a slot per panel. `ChartPanelId` above is the open type — what
  * a layout or a scenario may name. The two converge when panels carry their own
  * descriptors and the fixed record goes away (step 4 of the review).
  */
-export type RateChartPanelKey = KnownPrimaryPanelId;
-export type RateChartAuxiliaryPanelKey = KnownSweepPanelId;
+export type ChartPanelKey = KnownPrimaryPanelId;
+export type ChartAuxiliaryPanelKey = KnownSweepPanelId;
 
-export const DEFAULT_RATE_CHART_PANEL_ORDER: RateChartPanelId[] = [
+export const DEFAULT_CHART_PANEL_ORDER: ChartPanelId[] = [
     'rates',
     'recovery',
     'cumulative',
@@ -81,23 +81,23 @@ export const DEFAULT_RATE_CHART_PANEL_ORDER: RateChartPanelId[] = [
     'sweep_combined_mobile_oil',
 ];
 
-export type RateChartScalePreset = 'rates' | 'cumulative' | 'cumulative_volumes' | 'diagnostics' | 'breakthrough' | 'pressure' | 'productivity' | 'shape_factor' | 'ratio' | 'gor' | 'recovery' | 'sweep' | 'sweep_rf' | 'fraction';
+export type ChartScalePreset = 'rates' | 'cumulative' | 'cumulative_volumes' | 'diagnostics' | 'breakthrough' | 'pressure' | 'productivity' | 'shape_factor' | 'ratio' | 'gor' | 'recovery' | 'sweep' | 'sweep_rf' | 'fraction';
 
-export type RateChartXAxisRangePolicy =
+export type ChartXAxisRangePolicy =
     | { mode: 'data-extent' }
     | { mode: 'rate-tail-threshold'; relativeThreshold?: number }
     | { mode: 'pvi-window'; minPvi?: number; maxPvi: number };
 
-export type RateChartCurveOverride = {
+export type ChartCurveOverride = {
     disabled?: boolean;
     visible?: boolean;
 };
 
-export type RateChartPanelLayout = {
+export type ChartPanelLayout = {
     title?: string;
     curveKeys?: string[];
     curveLabels?: string[];
-    scalePreset?: RateChartScalePreset;
+    scalePreset?: ChartScalePreset;
     allowLogToggle?: boolean;
     /**
      * Default y-axis scaling for this panel. Log scaling is per panel — a
@@ -118,23 +118,23 @@ export type RateChartPanelLayout = {
     };
 };
 
-export type RateChartConfig = {
+export type ChartConfig = {
     logScale?: boolean;
     allowLogScale?: boolean;
-    xAxisMode?: RateChartXAxisMode;
-    xAxisOptions?: RateChartXAxisMode[];
-    xAxisRangePolicy?: RateChartXAxisRangePolicy;
+    xAxisMode?: ChartXAxisMode;
+    xAxisOptions?: ChartXAxisMode[];
+    xAxisRangePolicy?: ChartXAxisRangePolicy;
     ratesExpanded?: boolean;
     recoveryExpanded?: boolean;
     cumulativeExpanded?: boolean;
     diagnosticsExpanded?: boolean;
     volumesExpanded?: boolean;
     oilRateExpanded?: boolean;
-    panelOrder?: RateChartPanelId[];
-    panels?: Partial<Record<RateChartPanelId, RateChartPanelLayout>>;
-    curves?: Record<string, RateChartCurveOverride>;
+    panelOrder?: ChartPanelId[];
+    panels?: Partial<Record<ChartPanelId, ChartPanelLayout>>;
+    curves?: Record<string, ChartCurveOverride>;
 };
 
-export type RateChartLayoutConfig = {
-    rateChart?: RateChartConfig;
+export type ChartLayoutConfig = {
+    chart?: ChartConfig;
 };
