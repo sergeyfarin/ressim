@@ -9,36 +9,58 @@ import { generateBlackOilTable } from '../../physics/pvt';
  * generateBlackOilTable(), so they are numerically IDENTICAL at and below
  * the bubble point — same Rs(P), same Bo(P), the one point a single flash
  * test can directly calibrate. They differ only in the assumed
- * undersaturated oil compressibility (1e-5/bar "correlation" vs 1e-4/bar
- * "lab report") — a value a single flash test cannot pin down, since it
- * governs behavior only *above* the bubble point.
+ * undersaturated oil compressibility (1.0e-4/bar "correlation" vs
+ * 2.5e-4/bar "lab report") — a value a single flash test cannot pin down,
+ * since it governs behavior only *above* the bubble point.
  *
- * In FIM, undersaturated oil follows a fixed-Rs PVTO branch and uses the
- * scalar c_o to extrapolate that branch above its bubble point. Each variant
- * therefore supplies both its generated display table and the matching c_o.
- * The two fluid models produce genuinely
- * different average-pressure and GOR trajectories above the bubble point,
- * converging once pressure drops back into the saturated region where both
- * tables share the identical, directly-calibrated Rs(P)/Bo(P) branch. The
- * divergence is real but modest (order 0.1% early, growing slowly with
- * distance from the bubble point) — undersaturated oil compressibility is
- * inherently a second-order effect on Bo (Bo = Bo_pb * exp(-c_o * dP)), so
- * even a 10x disagreement in c_o cannot produce a dramatic swing the way
- * OOIP/N ambiguity or a strongly coupled gravity/vertical-flow interaction can.
- * That itself is the honest lesson: PVT-model risk from unmeasured
- * undersaturated compressibility is bounded, and matters most for large,
- * sustained excursions above the bubble point — not for typical depletion.
+ * WHAT THE DIVERGENCE ACTUALLY IS. It is not Bo. Over the 130 bar of
+ * undersaturation here, Bo = Bo_pb * exp(-c_o * dP) differs between the two
+ * tables by only ~2%; that really is a second-order effect. What separates
+ * the curves is *storage*: the well withdraws a fixed volume per day, and an
+ * undersaturated reservoir can only supply it by expanding, so
+ *
+ *     dP/dt = -q_res / (V_p * c_t),   c_t = c_o*S_o + c_w*S_w + c_rock
+ *
+ * c_t is 9.1e-5/bar for the correlation table and 2.26e-4/bar for the lab
+ * report — a factor 2.48 — and the depletion rate is inversely proportional
+ * to it. The two fluid models therefore reach the bubble point at *measured*
+ * 36 d and 88 d, a factor 2.4. Unmeasured undersaturated compressibility does
+ * not bend the fluid; it rescales the clock.
+ *
+ * WHY IT RECONVERGES. Below the bubble point both variants are the same
+ * fluid — identical Rs(P), Bo(P) — and liberated gas dominates c_t, so the
+ * two trajectories stop diverging and close back up. Measured average-pressure
+ * gap over the shipped 225 d run: 15 bar at t = 7 d, peaking at 77.5 bar at
+ * t = 35 d (just as the fast variant crosses Pb), then falling back to 14 bar
+ * at t = 169 d and 17 bar at the end. The residual is the offset banked above
+ * the bubble point, not continuing disagreement.
+ *
+ * WHY THE PRODUCER IS RATE-CONTROLLED, AND WHY k IS 200 mD. Both exist to
+ * make one number — the volumetric average pressure — actually describe the
+ * reservoir, because that is this case's headline chart and its
+ * material-balance self-check. An earlier design produced 0.5 mD against a
+ * 30 bar BHP; the near-well cells sat far below the bubble point liberating
+ * gas while the volumetric average was still undersaturated and saw only c_o,
+ * and the Havlena-Odeh balance read N_mbe/N_volumetric = 2.5 to 7.8 instead of
+ * 1 — the tank under-counted the reservoir's energy up to eight-fold. A
+ * near-uniform-pressure reservoir drawn down at a constant rate closes that
+ * balance to 0.9998-1.0166 (correlation) and 0.9995-1.0069 (lab report)
+ * across the whole run, which is why the `gas` layout's material-balance
+ * panels are shown here rather than hidden.
  *
  * References: Standing (1947) correlations; McCain, "The Properties of
- * Petroleum Fluids" on undersaturated-oil PVT uncertainty; the general
- * "representation risk" framing complements the material-balance
+ * Petroleum Fluids" on undersaturated-oil PVT uncertainty (undersaturated
+ * black oils run 5-30e-6 psi^-1, i.e. 0.7-4e-4 /bar — both rungs here sit
+ * inside that band, which is what makes them "equally plausible"); the
+ * general "representation risk" framing complements the material-balance
  * non-uniqueness point to the PVT-table axis.
  *
- * No analytical reference: this is a three-phase black-oil blowdown: the
- * Dietz depletion model (used by dep_decline/dep_pss/dep_arps) is an
- * oil-only PSS model and does not represent gas liberation/expansion, so no
- * honest quantitative overlay exists here (same precedent as gas_drive) —
- * the comparison is between the two simulated PVT-table variants directly.
+ * No analytical overlay is wired: the run spans the bubble point, and the
+ * Dietz depletion model used by dep_decline/dep_pss/dep_arps is an oil-only
+ * PSS model that does not represent gas liberation. The undersaturated leg
+ * *is* analytically predictable (the dP/dt relation above, which the measured
+ * 36 d / 88 d crossings satisfy), and the on-chart material-balance ratio is
+ * a real quantitative self-check.
  */
 
 // Correlation inputs shared by both tables — this is the ONE calibration
@@ -50,15 +72,25 @@ const BUBBLE_POINT_BAR = 150;
 const PVT_TABLE_PMAX_BAR = 300;
 const PVT_TABLE_POINTS = 20;
 
+/**
+ * Vasquez-Beggs at this case's own inputs (35 API, 0.75 gas gravity, 80 C,
+ * Rs at Pb, ~4000 psia) gives ~1e-5 psi^-1 = ~1.4e-4 /bar. Both rungs are
+ * within a factor ~1.8 of that and inside McCain's 0.7-4e-4 /bar band for
+ * undersaturated black oils, which is the point: neither is the "wrong"
+ * answer a flash test would have caught.
+ */
+const C_O_CORRELATION_PER_BAR = 1.0e-4;
+const C_O_LAB_REPORT_PER_BAR = 2.5e-4;
+
 const PVT_TABLE_CORRELATION = generateBlackOilTable(
     API_GRAVITY, GAS_SPECIFIC_GRAVITY, RESERVOIR_TEMP_C,
     BUBBLE_POINT_BAR, PVT_TABLE_PMAX_BAR, PVT_TABLE_POINTS,
-    1e-5, // "correlation" undersaturated compressibility
+    C_O_CORRELATION_PER_BAR,
 );
 const PVT_TABLE_LAB_REPORT = generateBlackOilTable(
     API_GRAVITY, GAS_SPECIFIC_GRAVITY, RESERVOIR_TEMP_C,
     BUBBLE_POINT_BAR, PVT_TABLE_PMAX_BAR, PVT_TABLE_POINTS,
-    1e-4, // "lab report" undersaturated compressibility — 10x steeper Bo decline above Pb
+    C_O_LAB_REPORT_PER_BAR,
 );
 
 export const dep_pvt: Scenario = {
@@ -68,38 +100,27 @@ export const dep_pvt: Scenario = {
         group: 'material-balance-drive',
         role: 'interpretation',
         caseMode: '3p',
-        parameterSummary: 'Black-oil blowdown · two PVT tables share one calibration point · pressure and GOR divergence',
+        parameterSummary: 'Constant-rate black-oil blowdown · two PVT tables share one calibration point · time to bubble point differs 2.4x',
     },
-    description: 'Single-well black-oil blowdown starting above the bubble point. Two PVT tables share the exact same bubble-point pressure, Rs, and Bo — the one point a flash test directly measures — but assume different undersaturated oil compressibility above it (a value no single flash test can pin down). Watch Avg Pressure and GOR diverge while undersaturated, then reconverge once pressure drops back below the bubble point into the shared, directly-calibrated branch. The divergence is real but modest — that bound is itself the lesson.',
-    analyticalMethodSummary: 'Simulation-only — no analytical overlay. The Dietz PSS depletion model used elsewhere in this catalog is oil-only and does not represent gas liberation, so no honest quantitative reference exists for a black-oil blowdown (same precedent as gas_drive).',
-    analyticalMethodReference: 'Standing (1947); McCain, "The Properties of Petroleum Fluids".',
+    description: 'Constant-rate blowdown of a black-oil reservoir starting 130 bar above the bubble point. Two PVT tables share the exact same bubble-point pressure, Rs, and Bo — the one point a flash test directly measures — but assume different undersaturated oil compressibility above it, a value no single flash test can pin down. Above the bubble point the reservoir can only supply the well by expanding, so that unmeasured compressibility sets the depletion *rate*: the two models reach the bubble point 36 and 88 days in. Below it they are the same fluid again and the curves close back up. Watch Avg Pressure, and check the material-balance ratio panel — it holds 1.0, so the average really does describe this reservoir.',
+    analyticalMethodSummary: 'No closed-form overlay is drawn: the run crosses the bubble point, and the Dietz PSS depletion model used elsewhere in this catalog is oil-only and does not represent gas liberation. Two quantitative checks stand in its place. The undersaturated leg must obey dP/dt = -q_res/(V_p·c_t), and does — the 2.48x ratio in c_t between the two tables produces a measured 2.4x ratio in time-to-bubble-point. And the Havlena-Odeh material-balance ratio on the chart is a genuine self-check: it holds within 2% of 1.0 for the whole run.',
+    analyticalMethodReference: 'Standing (1947); McCain, "The Properties of Petroleum Fluids" (undersaturated oil compressibility 5-30e-6 psi^-1); Havlena & Odeh (1963), The Material Balance as an Equation of a Straight Line.',
     chartLayoutKey: 'gas',
     /**
-     * The `gas` layout's material-balance panels are hidden here, and the reason
-     * is a measurement rather than a preference.
+     * Pressure leads, and the balance that grades it follows immediately.
      *
-     * A tank balance assumes one pressure describes the reservoir. This case is
-     * 0.5 mD produced against a 30 bar BHP, so the near-well cells sit far below
-     * the 150 bar bubble point — liberating gas, which is enormously
-     * compressible — while the volumetric average is still undersaturated and
-     * sees only c_o. Measured on the shipped case, N_mbe/N_volumetric runs 2.5
-     * to 7.8 instead of 1: the balance under-counts the reservoir's energy by
-     * up to eight-fold. Two controls confirm the balance itself is sound and
-     * the case is what breaks it — at k = 500 mD (uniform pressure) it closes to
-     * 1.000, and at a 200 bar BHP (nothing anywhere below the bubble point) it
-     * closes to 1.000 at the original 0.5 mD.
-     *
-     * Drawing that curve would read as a solver defect. It is instead evidence
-     * about this scenario's design, and it is recorded against the open redesign
-     * item in TODO.md — the same item that has to fix the case's average-pressure
-     * narrative, which this measurement also undermines.
+     * This is the whole shape of the case: the exhibit is a depletion *rate*,
+     * so Avg Pressure is the headline rather than the fifth panel the `gas`
+     * layout gives a solution-gas-drive case, and `mbe_ooip` sits next to it
+     * because it is the evidence that one pressure describes this reservoir.
+     * The predecessor patched this same field to *hide* those two panels; see
+     * the header for what changed and what it was measured at.
      */
     chartLayoutPatch: {
         chart: {
-            panelOrder: ['gor', 'recovery', 'rates', 'cumulative', 'diagnostics'],
+            panelOrder: ['diagnostics', 'mbe_ooip', 'gor', 'recovery', 'rates', 'cumulative', 'drive_indices'],
             panels: {
-                mbe_ooip: { visible: false },
-                drive_indices: { visible: false },
+                mbe_ooip: { expanded: true },
             },
         },
     },
@@ -119,7 +140,7 @@ export const dep_pvt: Scenario = {
         mu_w: 0.5,
         mu_o: 1.0,
         mu_g: 0.02,
-        c_o: 1e-5,
+        c_o: C_O_CORRELATION_PER_BAR,
         c_w: 3e-6,
         c_g: 1e-4,
         rock_compressibility: 1e-6,
@@ -146,10 +167,11 @@ export const dep_pvt: Scenario = {
         capillaryEnabled: false,
         capillaryPEntry: 0,
         capillaryLambda: 2,
-        // Grid: tight single-cell-column 1D slab, 48 x 1 x 1, 480 m x 10 m x 10 m.
-        // Low permeability keeps the reservoir undersaturated for a long enough
-        // window for the two tables' Bo trends to visibly separate before the
-        // system depletes down through the bubble point.
+        // Grid: single-cell-column 1D slab, 48 x 1 x 1, 480 m x 10 m x 10 m
+        // (pore volume 9,600 m3). 200 mD is high enough that the pressure
+        // gradient across the slab stays small next to the 130 bar of
+        // undersaturation, so the volumetric average is a fair description of
+        // the whole reservoir and the tank balance closes — see the header.
         nx: 48,
         ny: 1,
         nz: 1,
@@ -157,10 +179,10 @@ export const dep_pvt: Scenario = {
         cellDy: 10,
         cellDz: 10,
         permMode: 'uniform',
-        uniformPermX: 0.5,
-        uniformPermY: 0.5,
-        uniformPermZ: 0.05,
-        // Initial conditions: undersaturated start, well above the bubble point
+        uniformPermX: 200,
+        uniformPermY: 200,
+        uniformPermZ: 20,
+        // Initial conditions: undersaturated start, 130 bar above the bubble point
         initialPressure: 280,
         initialSaturation: 0.1,
         initialGasSaturation: 0,
@@ -169,23 +191,32 @@ export const dep_pvt: Scenario = {
         pvtTable: PVT_TABLE_CORRELATION,
         threePhaseModeEnabled: true,
         gasRedissolutionEnabled: true,
-        // Wells: single producer, no injector
+        // Wells: one rate-controlled producer, no injector. Constant withdrawal
+        // is what turns the unmeasured compressibility into a depletion *rate*
+        // and keeps the reservoir near-uniform in pressure; a BHP-controlled
+        // well instead front-loads the drawdown and breaks the tank
+        // description this case's headline chart depends on.
         injectorEnabled: false,
         injectorControlMode: 'pressure',
-        producerControlMode: 'pressure',
+        producerControlMode: 'rate',
         injectorBhp: 500,
+        // Floor only — never reached: the minimum cell pressure at the end of
+        // the run is ~78 bar.
         producerBhp: 30,
         targetInjectorRate: 0,
-        targetProducerRate: 0,
+        targetProducerRate: 3,
+        targetProducerSurfaceRate: 3,
         injectorI: 0,
         injectorJ: 0,
         producerI: 47,
         producerJ: 0,
         well_radius: 0.1,
         well_skin: 0,
-        // Numerics
+        // Numerics: 300 x 0.75 d = 225 d, long enough to carry the slower
+        // variant across the bubble point at 88 d and past the 169 d minimum
+        // of the average-pressure gap.
         fimEnabled: true,
-        delta_t_days: 0.5,
+        delta_t_days: 0.75,
         steps: 300,
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 75,
@@ -196,23 +227,23 @@ export const dep_pvt: Scenario = {
         {
             key: 'pvt_model',
             label: 'PVT Table (Undersaturated Compressibility)',
-            description: 'Both tables share the identical bubble-point pressure, Rs, and Bo — the one calibrated point — and diverge only above it, where undersaturated compressibility cannot be measured by a single flash test. Watch Avg Pressure (Diagnostics panel) and GOR diverge while pressure stays above 150 bar, then reconverge once it drops below.',
+            description: 'Both tables share the identical bubble-point pressure, Rs, and Bo — the one calibrated point — and diverge only above it, where undersaturated compressibility cannot be measured by a single flash test. Under constant-rate withdrawal that value sets how fast the reservoir depletes: the two models reach the 150 bar bubble point 36 and 88 days in. Below it they are the same fluid, and the Avg Pressure curves stop separating.',
             analyticalOverlayMode: 'shared',
             variants: [
                 {
                     key: 'pvt_correlation',
-                    label: 'Correlation  (c_o = 1e-5/bar above Pb)',
-                    description: 'Standing-correlation-derived undersaturated compressibility — base case.',
+                    label: 'Correlation  (c_o = 1.0e-4/bar above Pb)',
+                    description: 'Correlation-derived undersaturated compressibility — base case. c_t = 9.1e-5/bar; bubble point reached at t = 36 d.',
                     paramPatch: {},
                     affectsAnalytical: false,
                 },
                 {
                     key: 'pvt_lab_report',
-                    label: 'Lab Report  (c_o = 1e-4/bar above Pb)',
-                    description: 'A different, equally plausible undersaturated compressibility — 10x steeper Bo decline above the bubble point, identical Rs/Bo at and below it.',
+                    label: 'Lab Report  (c_o = 2.5e-4/bar above Pb)',
+                    description: 'A different, equally plausible undersaturated compressibility — 2.5x more storage above the bubble point, identical Rs/Bo at and below it. c_t = 2.26e-4/bar; bubble point reached at t = 88 d.',
                     // FIM extrapolates a fixed-Rs undersaturated branch with
                     // scalar c_o; keep it consistent with the generated table.
-                    paramPatch: { pvtTable: PVT_TABLE_LAB_REPORT, c_o: 1e-4 },
+                    paramPatch: { pvtTable: PVT_TABLE_LAB_REPORT, c_o: C_O_LAB_REPORT_PER_BAR },
                     affectsAnalytical: false,
                 },
             ],

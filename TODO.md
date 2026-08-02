@@ -744,18 +744,28 @@ Open, blocked on an enabler:
   (1.147 at t = 1 d, where F and Et are both near zero), drive indices ~0.50 oil expansion /
   ~0.50 free-gas expansion / 0.001 compaction. That is a real self-check, so the panels are wired
   into the `gas` layout.
-- [ ] **`dep_pvt` cannot close a tank balance, and that is a fact about the case (2026-08-02).**
-  N_mbe/N_volumetric runs **2.5 → 7.8**, not 1. Cause: 0.5 mD against a 30 bar BHP puts the
+- [x] **`dep_pvt` could not close a tank balance — fixed by redesign 2026-08-02.** The case is now
+  a **rate-controlled** blowdown (3 Sm³/d) at **200 mD** over 300 × 0.75 d = 225 d. Constant
+  withdrawal from a near-uniform-pressure reservoir closes the Havlena-Odeh balance to
+  **0.9998–1.0166** (correlation) and **0.9995–1.0069** (lab report) across the whole run, so the
+  `chartLayoutPatch` that hid `mbe_ooip` / `drive_indices` is gone and the average-pressure headline
+  is earned rather than asserted. The redesign also discharges the four `dep_pvt` findings below it
+  in this file — see the entries marked *(closed by the 2026-08-02 redesign)*.
+  Replay: `pnpm vitest run src/lib/catalog/scenarios/dep_pvt.test.ts` (three of its four tests are
+  the measurements: bubble-point clock, balance closure, gap peak-and-close). Numbers above were
+  reproduced on the redesigned tree with a 300-step run of the shipped params.
+  *Superseded measurement (kept for the record):*
+  N_mbe/N_volumetric ran **2.5 → 7.8**, not 1. Cause: 0.5 mD against a 30 bar BHP puts the
   near-well cells far below the 150 bar bubble point, liberating gas, while the volumetric average
   is still undersaturated and the tank sees only c_o — the balance under-counts the reservoir's
   energy up to eight-fold. Two controls prove the balance itself is sound: at k = 500 mD it closes
   to 1.000, and at a 200 bar BHP (nothing below the bubble point anywhere) it closes to 1.000 at the
-  original 0.5 mD. The panels are therefore hidden for this scenario via `chartLayoutPatch` rather
-  than drawn as an apparent defect. **This also undermines the case's own headline framing** — its
-  primary chart is Avg Pressure, and this measurement says the average is not representative of the
-  reservoir it is drawn for. Fold into the `dep_pvt` redesign item below: whatever else changes,
-  the case must either become tank-valid (higher k, or a BHP above the bubble point) or stop
-  narrating a single average pressure.
+  original 0.5 mD. The panels were therefore hidden for this scenario via `chartLayoutPatch` rather
+  than drawn as an apparent defect. That also undermined the case's own headline framing — its
+  primary chart is Avg Pressure, and this measurement said the average was not representative of
+  the reservoir it was drawn for. The redesign took the third option neither control suggested:
+  rate control, which fixes the *cause* (a front-loaded BHP drawdown) rather than trading away the
+  bubble-point crossing the exhibit needs.
 ### Audit of the rest of the material-balance path (2026-08-02) — beyond the three fixed defects
 
 - [x] **(MAJOR) The recovery-factor denominator was not a stock-tank OOIP — fixed 2026-08-02.**
@@ -876,8 +886,14 @@ Open, blocked on an enabler:
 Measured on the committed tree at `6a27836` with a scratch vitest harness modelled on
 `dep_pvt.test.ts` (full scenario params via `getScenarioWithVariantParams`, FIM, wasm `pkg/`).
 **Provisional** — the numbers must be re-measured inside a committed test before being quoted.
+The `dep_pvt` and `gas_drive` items closed on 2026-08-02 have been: their measurements now live in
+`dep_pvt.test.ts` and the new `gas_drive.test.ts`, and the numbers quoted in those entries are from
+the redesigned tree, not from `6a27836`.
 
-- [ ] **`dep_pvt`'s stated magnitude is wrong by ~500x, in the user-facing description.** The file
+- [x] **`dep_pvt`'s stated magnitude was wrong by ~500x, in the user-facing description** *(closed
+  by the 2026-08-02 redesign)*. The header, `description` and dimension text are rewritten around
+  measured numbers: time to the bubble point 36 d vs 88 d, average-pressure gap peaking at 77.5 bar
+  at t = 35 d and closing to 16.8 bar by t = 225 d. The file
   comment and `description` say the two PVT variants diverge by "order 0.1% early", "real but
   modest", and reconverge below the bubble point. Measured average pressure at t = 120 d:
   142.7 bar (correlation) vs 212.8 bar (lab report) — **+49%**, growing monotonically to t = 120 d
@@ -885,30 +901,66 @@ Measured on the committed tree at `6a27836` with a scratch vitest harness modell
   paramPatch that actually drives the divergence was added later in `b88ee28` (2026-07-24,
   "Corrected the depletion-PVT experiment so its undersaturated c_o sensitivity is physically
   consistent with FIM"). The prose was never re-measured after that fix.
-- [ ] **`dep_pvt` never delivers the reconvergence it promises.** The run is 300 x 0.5 d = 150 d.
+- [x] **`dep_pvt` never delivered the reconvergence it promised** *(closed by the 2026-08-02
+  redesign)*. Both variants now cross the bubble point inside the run (36 d and 88 d of 225 d) and
+  the gap closes from 77.5 bar to 14 bar; `dep_pvt.test.ts` asserts the crossing window and the
+  peak-then-close shape. Superseded measurement: the run was 300 x 0.5 d = 150 d.
   At t = 150 d the lab-report variant is still at ~205 bar against a 150 bar bubble point, so it
   never enters the saturated branch and the two curves never rejoin. Needs a longer horizon (or a
   higher-rate/permeability case) before the described exhibit exists.
-- [ ] **`dep_pvt`'s "two equally plausible" c_o ladder is unphysical at the base end.** c_o =
+- [x] **`dep_pvt`'s "two equally plausible" c_o ladder was unphysical at the base end** *(closed by
+  the 2026-08-02 redesign)*. The ladder is now the pair this item recommended, **1.0e-4 vs
+  2.5e-4 /bar**, both inside McCain's 0.7-4e-4 /bar band and bracketing the ~1.4e-4 /bar
+  Vasquez-Beggs value; the scenario file cites the band. Superseded reasoning: c_o =
   1e-5/bar = 0.69e-6 psi^-1; undersaturated black oils run 5-30e-6 psi^-1 (0.7-4e-4 /bar), and
   Vasquez-Beggs at this case's own inputs (35 API, 0.75 gas gravity, 80 C, Rs at Pb, ~4000 psia)
   gives ~1e-5 psi^-1 = ~1.4e-4 /bar. The *base* rung is an order of magnitude too stiff and the
   "lab report" rung is roughly the correlation value — the ladder is inverted in realism. A
   defensible pair is ~1.0e-4 vs ~2.5e-4 /bar, both plausible, ~2.5x apart.
-- [ ] **`dep_pvt` explains the wrong mechanism.** Bo divergence really is second order (~1-2% over
+- [~] **`dep_pvt` explained the wrong mechanism** *(mechanism fixed 2026-08-02; the analytical
+  overlay remains open)*. The case is re-aimed at storage: the header derives
+  dP/dt = -q_res/(V_p·c_t), and the c_t ratio 2.48 predicts the measured 2.44 ratio in
+  time-to-bubble-point (36 d vs 88 d), which `dep_pvt.test.ts` now asserts. The
+  `analyticalMethodSummary` no longer claims no quantitative check exists — it names two (the dP/dt
+  relation and the on-chart material balance).
+  **Still open:** wiring the Dietz/PSS depletion overlay itself. Blocker found while redesigning —
+  `depletionAnalytical.ts` takes a scalar `muO`, but this case is `pvtMode: 'black-oil'` and its
+  oil viscosity comes from the table, so the overlay would be drawn for a different fluid than the
+  one simulated. Wiring it honestly means teaching the depletion adapter to read viscosity from a
+  PVT table; that is an analytical-layer change, not a scenario change. Superseded reasoning below.
+  Bo divergence really is second order (~1-2% over
   130 bar of undersaturation); what moves the curves is c_t setting the depletion *rate* above the
   bubble point. Re-aim the case at that, and it gains a reference: above Pb an undersaturated oil
   reservoir is single-phase, which is exactly the Dietz/PSS depletion model the catalog already
   ships (`depletionAnalytical.ts` builds c_t from `c_o`, `c_w`, rock). The scenario's
   `analyticalMethodSummary` ("no honest quantitative overlay exists here") is therefore too strong
   for its undersaturated leg.
+- [ ] **`dep_decline.test.ts`'s 60 s timeout is load-sensitive, and the scenario tier just got
+  another file (2026-08-02).** `exposes numerical-resolution error against one fixed physical
+  reference` passes in **45.6 s** run alone but timed out at **82 s** inside a `validate:product`
+  whose vitest stage took 1092 s instead of the documented ~460 s. Nothing in that test changed;
+  what changed is contention — adding `gas_drive.test.ts` to `src/lib/catalog/scenarios/` puts one
+  more full-WASM file in the tier. A 1.3x headroom margin on a simulation test is not a margin.
+  Either raise that test's timeout to match the tier's actual variance, or cap vitest's concurrency
+  for the scenario tier so wall-clock per file stops depending on what else is running.
+
 - [ ] **`gas_drive` is filed as reference-less but is the catalog's best-graded three-phase case.**
   It carries `referenceSources: [{ kind: 'opm-flow', ... }]` with a parsed artifact and a Rust
   acceptance test (pressure 1.6%, GOR 6.1%, cum oil 4.3% worst case), but `defaultVisible: false`
   hides the OPM curve, so out of the box the chart shows one line and the group heading tells the
   reader nothing can check it. Either default the OPM overlay on, or move the case to
   `validation-benchmarks`.
-- [ ] **`gas_drive`'s `perm` dimension is degenerate.** Under BHP control, permeability rescales
+- [x] **`gas_drive`'s `perm` dimension was degenerate — replaced 2026-08-02 with `s_gc`.** Critical
+  gas saturation changes the drive rather than the clock, and separates on exactly the axis the perm
+  ladder collapsed on. Measured at a matched **130 bar** average pressure (rungs 0.02 / 0.05 / 0.15):
+  GOR **685 / 474 / 103** m3/m3, Sg **0.114 / 0.120 / 0.160**, oil recovery **2.2 / 3.0 / 8.9 %** —
+  a 6.6x GOR spread and a 4x recovery spread, against the 1.01x the perm ladder managed. The base
+  rung is unchanged at s_gc = 0.05, so the OPM Flow reference deck and the Rust acceptance test are
+  untouched.
+  Replay: `pnpm vitest run src/lib/catalog/scenarios/gas_drive.test.ts` — a new file, which also
+  partly discharges the "no TS scenario test" item below (it covers the `s_gc` ladder only; the
+  saturated-start / liberation / GOR-rise claims are still guarded only in Rust).
+  Superseded measurement: under BHP control, permeability rescales
   time and nothing else: at matched average pressure (< 150 bar) the three rungs give GOR
   459/463/460 m3/m3 and Sg 0.106/0.109/0.110 across a 100x permeability range. On the time axis the
   k = 1000 mD rung reaches the 100 bar BHP floor by ~t = 30 d and draws a flat line for the
@@ -929,8 +981,10 @@ Measured on the committed tree at `6a27836` with a scratch vitest harness modell
   `materialBalance.ts` computes Havlena-Odeh drive indices and the `mbe_ooip` / `drive_indices`
   panels ship in the `oil_depletion` and `decline` layouts; the `gas` layout omits them. Adding
   them gives both scenarios an internal reference for free.
-- [ ] **`gas_drive` has no TS scenario test** (`dep_pvt` does). Its catalog claims — saturated
-  start, gas liberation, GOR rise — are guarded only in the Rust acceptance test.
+- [~] **`gas_drive`'s TS scenario test covers only the `s_gc` ladder (2026-08-02).**
+  `gas_drive.test.ts` now exists and asserts that critical gas saturation moves GOR, Sg and oil
+  recovery at matched average pressure. Still unguarded in TypeScript: the catalog's saturated-start,
+  gas-liberation and GOR-rise claims, which remain covered only by the Rust acceptance test.
 
 ## Priority 2 — Validation & correctness
 - [x] **Validation pipeline split into two tiers (done 2026-08-02).** `pnpm run validate` cost

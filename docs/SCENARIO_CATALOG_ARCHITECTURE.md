@@ -50,8 +50,10 @@ must never become a group, because it is not a property the members of a physica
 4. **Material Balance & Drive Mechanism** — where the energy comes from and how much is in place:
    expansion, solution-gas liberation, compaction, PVT representation. Rule: the case's layout
    offers a tank-level result — an `mbe_ooip`, `drive_indices` or `pz` panel. A member may hide it
-   when the balance provably does not close for that case, but must say why in the scenario file;
-   `dep_pvt` does, and its reason is measured (`TODO.md`, 2026-08-02).
+   when the balance provably does not close for that case, but must say why in the scenario file.
+   No member currently does: `dep_pvt` hid its panels until 2026-08-02, and the redesign that
+   removed the patch (rate-controlled producer, 200 mD) is the shape of the answer — a case whose
+   headline is an average pressure has to earn that average, not suppress the panel that grades it.
 5. **Published Benchmark Decks** — SPE1 and future SPE9/SPE10. Rule: **deck fixity** — sensitivity
    variants may patch discretization and solver settings only, never a reservoir property.
 

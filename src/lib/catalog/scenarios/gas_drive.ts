@@ -56,7 +56,7 @@ export const gas_drive: Scenario = {
         caseMode: '3p',
         parameterSummary: 'Saturated black-oil depletion · solution-gas liberation · OPM Flow reference',
     },
-    description: 'Pressure depletion of a saturated black-oil reservoir. Initial pressure sits at the bubble point, so drawdown immediately liberates gas from solution: Rs falls, free gas builds past the critical gas saturation, and producing GOR climbs while oil rate declines. Vary the initial free-gas volume, the oil gravity, or the permeability to see how each changes the strength and timing of the gas-expansion drive.',
+    description: 'Pressure depletion of a saturated black-oil reservoir. Initial pressure sits at the bubble point, so drawdown immediately liberates gas from solution: Rs falls, free gas builds past the critical gas saturation, and producing GOR climbs while oil rate declines. Vary the initial free-gas volume, the oil gravity, or the critical gas saturation to see how each changes the strength of the gas-expansion drive.',
     analyticalMethodSummary: 'Simulation-only — no analytical overlay. A Tarner–Tracy tank model was evaluated but rejected for this chart because its uniform-pressure/saturation assumptions do not represent the localized BHP drawdown and initially mobile free gas; its producing GOR diverges strongly even though ResSim agrees with OPM Flow. The optional OPM benchmark is disabled by default.',
     analyticalMethodReference: 'Standing (1979), Notes on Calculating Solution Gas Drive Reservoir Performance by Tarner’s Method (assumption review); Craft & Hawkins, Applied Petroleum Reservoir Engineering; quantitative grading: docs/THREE_PHASE_VALIDATION.md.',
     referenceSources: [{ kind: 'opm-flow', artifactKeys: ['gas_drive'], defaultVisible: false }],
@@ -175,30 +175,47 @@ export const gas_drive: Scenario = {
                 },
             ],
         },
+        /**
+         * Replaces a permeability ladder (10/100/1000 mD) that was measured
+         * degenerate on 2026-08-02: under BHP control permeability rescales
+         * time and nothing else, so at matched average pressure the three rungs
+         * gave GOR 459/463/460 m3/m3 and Sg 0.106/0.109/0.110 across a 100x
+         * range — three copies of one curve on a different clock, with the
+         * 1000 mD rung reaching the BHP floor by t = 30 d and drawing a flat
+         * line for the remaining 570 d.
+         *
+         * Critical gas saturation is the textbook lever that changes the drive
+         * itself rather than its clock, and it separates on exactly the axis
+         * the perm ladder collapsed on. Measured at a matched 130 bar average
+         * pressure (scratch harness, 2026-08-02; the committed check is
+         * `gas_drive.test.ts`): GOR 685 / 474 / 103 m3/m3 and oil recovery
+         * 2.2% / 3.0% / 8.9% for s_gc = 0.02 / 0.05 / 0.15 — a 6.6x spread in
+         * GOR and a 4x spread in recovery at the same reservoir pressure.
+         */
         {
-            key: 'perm',
-            label: 'Permeability',
-            description: 'Permeability controls total flow rate, affecting how quickly the reservoir depressurizes.',
+            key: 's_gc',
+            label: 'Critical Gas Saturation',
+            description: 'Critical gas saturation is the free-gas volume the rock must accumulate before gas becomes mobile. It sets how much liberated gas stays in the reservoir doing work instead of being produced, so it changes the drive itself rather than just its speed: raise it and producing GOR falls, the reservoir holds its pressure longer, and oil recovery rises. Compare the rungs at the same average pressure, not the same time.',
             variants: [
                 {
-                    key: 'perm_low',
-                    label: 'k = 10 mD  (tight)',
-                    description: 'Low permeability — slower depletion.',
-                    paramPatch: { uniformPermX: 10, uniformPermY: 10, uniformPermZ: 1 },
+                    key: 'sgc_low',
+                    label: 's_gc = 0.02  (gas mobile early)',
+                    description: 'Gas becomes mobile almost as soon as it is liberated — and the initial 0.08 free gas is already mobile at t = 0. The reservoir vents its own drive energy: GOR is high from the start and oil recovery is the lowest of the three.',
+                    paramPatch: { s_gc: 0.02 },
                     affectsAnalytical: false,
                 },
                 {
-                    key: 'perm_base',
-                    label: 'k = 100 mD  (base)',
-                    description: 'Base permeability.',
+                    key: 'sgc_base',
+                    label: 's_gc = 0.05  (base)',
+                    description: 'Base case — the initial 0.08 free gas sits just above critical saturation. This is the rung the OPM Flow reference deck was generated for.',
                     paramPatch: {},
                     affectsAnalytical: false,
                 },
                 {
-                    key: 'perm_high',
-                    label: 'k = 1000 mD  (high)',
-                    description: 'High permeability — faster depletion.',
-                    paramPatch: { uniformPermX: 1000, uniformPermY: 1000, uniformPermZ: 100 },
+                    key: 'sgc_high',
+                    label: 's_gc = 0.15  (gas trapped)',
+                    description: 'Gas stays immobile until Sg reaches 0.15, so even the initial 0.08 free gas cannot flow. Liberated gas is retained and expands against the oil: producing GOR stays low far longer and oil recovery roughly quadruples at the same average pressure.',
+                    paramPatch: { s_gc: 0.15 },
                     affectsAnalytical: false,
                 },
             ],
