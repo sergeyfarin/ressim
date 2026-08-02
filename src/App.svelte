@@ -135,7 +135,7 @@
                     your device; no analytics, uploads, or cookies. Your theme preference is saved
                     locally in your browser.
                     <br />
-                    <strong>Scientific-use notice:</strong>
+                    <strong>Notice:</strong>
                     ResSim is educational and research software, not for reserves booking,
                     operational decisions, or safety-critical use. Review the
                     <a
@@ -144,6 +144,21 @@
                         rel="noreferrer"
                         class="font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
                     >validation scope and limitations</a> before interpreting results.
+                    <br />
+                    Feedback is welcome through
+                    <a
+                        href="https://github.com/sergeyfarin/ressim/issues"
+                        target="_blank"
+                        rel="noreferrer"
+                        class="font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
+                    >GitHub</a>
+                    or
+                    <a
+                        href="https://www.linkedin.com/in/sergeyfarin/"
+                        target="_blank"
+                        rel="noreferrer"
+                        class="font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
+                    >LinkedIn</a>.
                 </p>
             </div>
             <div class="flex items-center gap-2">
