@@ -18,7 +18,7 @@ import {
     computeWellTestOnTimeAxis,
     extractGasOilFluidProps,
     extractGasOilRockProps,
-    getOoip,
+    getDisplacementOilInPlace,
     getPoreVolume,
     toFiniteNumber,
 } from './analyticalParamAdapters';
@@ -63,7 +63,7 @@ export function buildBuckleyLeverettReference(
         timeHistory: derived.time,
         injectionRateSeries: baseResult.rateHistory.map((point) => Math.max(0, toFiniteNumber(point.total_injection, 0))),
         poreVolume: getPoreVolume(baseResult.params),
-        recoveryDenominator: getOoip(baseResult.params),
+        recoveryDenominator: getDisplacementOilInPlace(baseResult.params),
     });
     if (!analytical) return emptyOverlay();
 
@@ -94,7 +94,7 @@ export function buildDepletionReference(
         return emptyOverlay();
     }
 
-    const ooip = getOoip(baseResult.params);
+    const ooip = getDisplacementOilInPlace(baseResult.params);
     const tau = analyticalResult.meta.tau ?? null;
 
     return {
@@ -166,7 +166,7 @@ export function buildGasOilBLReference(
     if (xAxisMode === 'pvi') {
         const analytical = computeGasOilBLAnalyticalFromParams(baseResult.params);
         if (analytical) {
-            const ooip = getOoip(baseResult.params);
+            const ooip = getDisplacementOilInPlace(baseResult.params);
             return {
                 rates: { label: 'Reference Solution Gas Cut', values: analytical.gasCut },
                 cumulative: {
@@ -184,7 +184,7 @@ export function buildGasOilBLReference(
     }
 
     const poreVolume = getPoreVolume(baseResult.params);
-    const ooip = getOoip(baseResult.params);
+    const ooip = getDisplacementOilInPlace(baseResult.params);
     const analyticalProduction = calculateGasOilAnalyticalProduction(
         extractGasOilRockProps(baseResult.params),
         extractGasOilFluidProps(baseResult.params),

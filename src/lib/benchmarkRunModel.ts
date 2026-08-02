@@ -1,6 +1,16 @@
 import { calculateDepletionAnalyticalProduction } from './analytical/depletionAnalytical';
 import { calculateAnalyticalProduction, computeWelgeMetrics } from './analytical/fractionalFlow';
 import { buildCreatePayloadFromState } from './buildCreatePayload';
+import {
+    toFiniteNumber,
+    getLayerThicknesses,
+    getTotalThickness,
+    getAverageLayerThickness,
+    getPoreVolume,
+    getStockTankOilInPlace,
+    getGasInPlace,
+    getDisplacementOilInPlace,
+} from './reservoirVolumes';
 import type {
     BenchmarkBreakthroughCriterion,
     BenchmarkComparisonMetric,
@@ -89,6 +99,8 @@ export type BenchmarkRunResult = {
     watercutSeries: Array<number | null>;
     pressureSeries: Array<number | null>;
     recoverySeries: Array<number | null>;
+    /** Produced gas over gas initially in place; null when the case holds no gas. */
+    gasRecoverySeries: Array<number | null>;
     pviSeries: Array<number | null>;
     referencePolicy: BenchmarkReferencePolicy;
     referenceComparison: BenchmarkReferenceComparison;
@@ -188,48 +200,6 @@ function cloneSimulatorHistory(history: SimulatorSnapshot[]): SimulatorSnapshot[
     return history
         .map((snapshot) => cloneSimulatorSnapshot(snapshot))
         .filter((snapshot): snapshot is SimulatorSnapshot => Boolean(snapshot));
-}
-
-function toFiniteNumber(value: unknown, fallback: number): number {
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? numeric : fallback;
-}
-
-function getLayerThicknesses(params: Record<string, any>): number[] {
-    const nz = Math.max(1, Math.round(toFiniteNumber(params.nz, 1)));
-    const fallback = Math.max(1e-12, toFiniteNumber(params.cellDz, 1));
-    if (!Array.isArray(params.cellDzPerLayer) || params.cellDzPerLayer.length === 0) {
-        return Array.from({ length: nz }, () => fallback);
-    }
-
-    return Array.from({ length: nz }, (_, index) => {
-        const thickness = toFiniteNumber(params.cellDzPerLayer[index], fallback);
-        return thickness > 0 ? thickness : fallback;
-    });
-}
-
-function getTotalThickness(params: Record<string, any>): number {
-    return getLayerThicknesses(params).reduce((sum, thickness) => sum + thickness, 0);
-}
-
-function getAverageLayerThickness(params: Record<string, any>): number {
-    const layers = getLayerThicknesses(params);
-    return layers.reduce((sum, thickness) => sum + thickness, 0) / layers.length;
-}
-
-function getPoreVolume(params: Record<string, any>): number {
-    return toFiniteNumber(params.nx, 1)
-        * toFiniteNumber(params.ny, 1)
-        * toFiniteNumber(params.cellDx, 10)
-        * toFiniteNumber(params.cellDy, 10)
-        * getTotalThickness(params)
-        * toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2);
-}
-
-function getOoip(params: Record<string, any>): number {
-    const poreVolume = getPoreVolume(params);
-    const initialSaturation = toFiniteNumber(params.initialSaturation, 0.3);
-    return poreVolume * Math.max(0, 1 - initialSaturation);
 }
 
 function formatPercent(value: number | null | undefined, digits = 1): string {
@@ -363,7 +333,7 @@ function buildBuckleyLeverettAnalyticalDiagnostics(input: {
         rateHistory.map((point) => Math.max(0, toFiniteNumber(point.total_injection, 0))),
         poreVolume,
     );
-    const ooip = getOoip(spec.params);
+    const ooip = getDisplacementOilInPlace(spec.params);
     const analyticalRecoverySeries = analyticalProduction.map((point) => (
         ooip > 1e-12 ? Math.max(0, Math.min(1, point.cumulativeOil / ooip)) : null
     ));
@@ -472,7 +442,7 @@ function buildDepletionAnalyticalDiagnostics(input: {
         producerJ: spec.params.producerJ != null ? toFiniteNumber(spec.params.producerJ, 0) : undefined,
     });
 
-    const ooip = getOoip(spec.params);
+    const ooip = getDisplacementOilInPlace(spec.params);
     const analyticalRecoverySeries = depletionReference.production.map((point) => (
         ooip > 1e-12 ? Math.max(0, Math.min(1, point.cumulativeOil / ooip)) : null
     ));
@@ -685,11 +655,17 @@ export function buildBenchmarkRunResult(input: {
     const finalSnapshot = cloneSimulatorSnapshot(input.finalSnapshot ?? history.at(-1) ?? null);
     const watercutThreshold = spec.breakthroughCriterion?.value ?? 0.01;
     const poreVolume = getPoreVolume(spec.params);
-    const ooip = getOoip(spec.params);
+    // Recovery is produced surface volume over surface volume in place, and oil
+    // and gas are asked for separately. Either is null when the reservoir holds
+    // none of that phase, so a dry-gas case shows no oil recovery rather than a
+    // fraction of a denominator that does not exist.
+    const stockTankOilInPlace = getStockTankOilInPlace(spec.params);
+    const gasInPlace = getGasInPlace(spec.params);
     const referencePolicy = buildReferencePolicy(spec);
 
     let cumulativeInjection = 0;
     let cumulativeOil = 0;
+    let cumulativeGas = 0;
     let previousTime = 0;
     let breakthroughPvi: number | null = null;
     let breakthroughTime: number | null = null;
@@ -697,6 +673,7 @@ export function buildBenchmarkRunResult(input: {
     const watercutSeries: Array<number | null> = [];
     const pressureSeries: Array<number | null> = [];
     const recoverySeries: Array<number | null> = [];
+    const gasRecoverySeries: Array<number | null> = [];
     const pviSeries: Array<number | null> = [];
 
     for (const point of rateHistory) {
@@ -711,10 +688,16 @@ export function buildBenchmarkRunResult(input: {
 
         cumulativeInjection += injectionRate * dt;
         cumulativeOil += oilRate * dt;
+        cumulativeGas += Math.max(0, Math.abs(toFiniteNumber(point.total_production_gas, 0))) * dt;
 
         const watercut = liquidRate > 1e-12 ? Math.max(0, Math.min(1, waterRate / liquidRate)) : 0;
         const pvi = poreVolume > 1e-12 ? cumulativeInjection / poreVolume : null;
-        const recovery = ooip > 1e-12 ? Math.max(0, Math.min(1, cumulativeOil / ooip)) : null;
+        const recovery = stockTankOilInPlace !== null
+            ? Math.max(0, Math.min(1, cumulativeOil / stockTankOilInPlace))
+            : null;
+        const gasRecovery = gasInPlace !== null
+            ? Math.max(0, Math.min(1, cumulativeGas / gasInPlace))
+            : null;
         const pressure = [
             point.avg_reservoir_pressure,
             point.avg_pressure,
@@ -724,6 +707,7 @@ export function buildBenchmarkRunResult(input: {
         watercutSeries.push(watercut);
         pressureSeries.push(Number.isFinite(pressure) ? Number(pressure) : null);
         recoverySeries.push(recovery);
+        gasRecoverySeries.push(gasRecovery);
         pviSeries.push(pvi);
 
         if (breakthroughPvi === null && watercut >= watercutThreshold) {
@@ -768,6 +752,7 @@ export function buildBenchmarkRunResult(input: {
         watercutSeries,
         pressureSeries,
         recoverySeries,
+        gasRecoverySeries,
         pviSeries,
         referencePolicy,
         referenceComparison: referenceDetails.referenceComparison,

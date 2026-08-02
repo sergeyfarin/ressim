@@ -379,7 +379,7 @@ function emptyDerivedSeries(): DerivedRunSeries {
     return {
         time: [], historyTime: [], oilRate: [], injectionRate: [],
         waterCut: [], gasCut: [], avgWaterSat: [], pressure: [],
-        producerBhp: [], injectorBhp: [], recovery: [], cumulativeOil: [],
+        producerBhp: [], injectorBhp: [], recovery: [], recoveryGas: [], cumulativeOil: [],
         cumulativeInjection: [], cumulativeLiquid: [], cumulativeGas: [],
         p_z: [], pvi: [], pvp: [], gor: [],
         producerBhpLimitedFraction: [], injectorBhpLimitedFraction: [],

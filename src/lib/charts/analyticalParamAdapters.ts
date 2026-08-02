@@ -38,55 +38,34 @@ import type { AnalyticalOverlayMode } from '../catalog/scenarios';
 import type { DerivedRunSeries } from './axisAdapters';
 import type { RateChartXAxisMode } from './rateChartLayoutConfig';
 
-// ─── Numeric utilities ────────────────────────────────────────────────────────
+// ─── Geometry, in-place volumes, numeric utilities ────────────────────────────
 
-/** Coerces `value` to a finite number, returning `fallback` for NaN/Infinity/null/undefined. */
-export function toFiniteNumber(value: unknown, fallback: number): number {
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? numeric : fallback;
-}
+// Defined once in `reservoirVolumes.ts` and re-exported here so existing callers
+// keep their import site. Three copies of the in-place definition is what let a
+// reservoir-volume "OOIP" sit under a surface-volume numerator in all three.
+export {
+    toFiniteNumber,
+    getLayerThicknesses,
+    getTotalThickness,
+    getAverageLayerThickness,
+    getPoreVolume,
+    getInitialSaturations,
+    getStockTankOilInPlace,
+    getGasInPlace,
+    getDisplacementOilInPlace,
+} from '../reservoirVolumes';
 
-// ─── Geometry / reservoir volume helpers ──────────────────────────────────────
-
-/**
- * Returns per-layer thicknesses (m). Falls back to `cellDz` when
- * `cellDzPerLayer` is absent or empty.
- */
-export function getLayerThicknesses(params: Record<string, any>): number[] {
-    const nz = Math.max(1, Math.round(toFiniteNumber(params.nz, 1)));
-    const fallback = Math.max(1e-12, toFiniteNumber(params.cellDz, 1));
-    if (!Array.isArray(params.cellDzPerLayer) || params.cellDzPerLayer.length === 0) {
-        return Array.from({ length: nz }, () => fallback);
-    }
-    return Array.from({ length: nz }, (_, index) => {
-        const thickness = toFiniteNumber(params.cellDzPerLayer[index], fallback);
-        return thickness > 0 ? thickness : fallback;
-    });
-}
-
-export function getTotalThickness(params: Record<string, any>): number {
-    return getLayerThicknesses(params).reduce((sum, t) => sum + t, 0);
-}
-
-export function getAverageLayerThickness(params: Record<string, any>): number {
-    const layers = getLayerThicknesses(params);
-    return layers.reduce((sum, t) => sum + t, 0) / layers.length;
-}
-
-/** Bulk pore volume (m³). Supports per-layer cellDz via getLayerThicknesses. */
-export function getPoreVolume(params: Record<string, any>): number {
-    return toFiniteNumber(params.nx, 1)
-        * toFiniteNumber(params.ny, 1)
-        * toFiniteNumber(params.cellDx, 10)
-        * toFiniteNumber(params.cellDy, 10)
-        * getTotalThickness(params)
-        * toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2);
-}
-
-/** Original oil in place (m³). */
-export function getOoip(params: Record<string, any>): number {
-    return getPoreVolume(params) * Math.max(0, 1 - toFiniteNumber(params.initialSaturation, 0.3));
-}
+import {
+    toFiniteNumber,
+    getLayerThicknesses,
+    getTotalThickness,
+    getAverageLayerThickness,
+    getPoreVolume,
+    getInitialSaturations,
+    getStockTankOilInPlace,
+    getGasInPlace,
+    getDisplacementOilInPlace,
+} from '../reservoirVolumes';
 
 /**
  * Returns permeability values per layer (mD). Uses `layerPermsX` in perLayer
@@ -420,7 +399,7 @@ export function computeDepletionAnalyticalFromParams(
         return null;
     }
 
-    const ooip = getOoip(params);
+    const ooip = getDisplacementOilInPlace(params);
     const tau = analyticalResult.meta.tau ?? null;
     const xValues = analyticalResult.production.map((pt) => {
         if (xAxisMode === 'logTime') return pt.time > 0 ? Math.log10(pt.time) : null;
@@ -726,6 +705,12 @@ export type MbeDiagnostics = {
     driveCompaction: Array<number | null>;
 };
 
+/**
+ * Fraction of a run's total pressure drop below which the MBE OOIP ratio is
+ * division noise rather than a measurement.
+ */
+const MBE_OOIP_MIN_DEPLETION_FRACTION = 0.05;
+
 const NOT_APPLICABLE: MbeDiagnostics = {
     applicable: false,
     ooipRatio: [],
@@ -748,6 +733,7 @@ export function computeMbeDiagnostics(
 ): MbeDiagnostics {
     const params = result.params;
     const poreVolume = getPoreVolume(params);
+    const initialSaturations = getInitialSaturations(params);
     const pvtMode = String(params.pvtMode ?? 'constant');
 
     const injected = result.rateHistory.some(
@@ -777,10 +763,16 @@ export function computeMbeDiagnostics(
         cumWater.push(cw);
     }
 
+    const initialPressure = toFiniteNumber(params.initialPressure, 300);
+    const pressureValid = derived.pressure.map((v) => Number.isFinite(v));
+
     const mbeResult = calculateMaterialBalance({
-        initialPressure: toFiniteNumber(params.initialPressure, 300),
-        initialWaterSaturation: toFiniteNumber(params.initialSaturation, 0.3),
-        initialGasSaturation: toFiniteNumber(params.initialGasSaturation, 0),
+        initialPressure,
+        // Pore-volume-weighted, so a per-layer gas cap is seen as a gas cap.
+        // The scalar `initialGasSaturation` reports a segregated cap as m = 0,
+        // which is precisely the geometry `dep_gas_cap` is meant to vary.
+        initialWaterSaturation: initialSaturations.water,
+        initialGasSaturation: initialSaturations.gas,
         porosity: toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2),
         poreVolume,
         c_w: toFiniteNumber(params.c_w, 3e-6),
@@ -794,7 +786,12 @@ export function computeMbeDiagnostics(
         gasSpecificGravity: toFiniteNumber(params.gasSpecificGravity, 0.7),
         reservoirTemperature: toFiniteNumber(params.reservoirTemperature, 80),
         bubblePoint: toFiniteNumber(params.bubblePoint, 150),
-        pressureHistory: derived.pressure.map((v) => toFiniteNumber(v, 0)),
+        // A missing average pressure must not become 0 bar: that would read as a
+        // full-reservoir depletion to vacuum, making Et enormous and N_mbe ~ 0.
+        // The point is dropped downstream instead (`pressureValid`).
+        pressureHistory: derived.pressure.map((v, index) =>
+            pressureValid[index] ? Number(v) : initialPressure,
+        ),
         cumulativeOilSC: cumOil,
         cumulativeGasSC: cumGas,
         cumulativeWaterSC: cumWater,
@@ -802,19 +799,32 @@ export function computeMbeDiagnostics(
     });
 
     const Nvol = mbeResult.volumetricOoip;
+    // F/Et at the first report points is a ratio of two numbers that are both
+    // still near zero, and it prints as a spike that sets the panel's y-scale —
+    // 1.147 on `gas_drive` before the curve settles to 1.000. Suppress the ratio
+    // until the reservoir has actually given up some of its expansion energy.
+    // The drive indices are ratios *within* Et and stay meaningful throughout.
+    const totalDepletion = Math.max(
+        0,
+        initialPressure - Math.min(...mbeResult.points.map((pt) => pt.pressure)),
+    );
+    const depletionFloor = MBE_OOIP_MIN_DEPLETION_FRACTION * totalDepletion;
+    const usable = (index: number, pt: { pressure: number }) =>
+        pressureValid[index] !== false && (initialPressure - pt.pressure) >= depletionFloor;
+
     return {
         applicable: true,
-        ooipRatio: mbeResult.points.map((pt) =>
-            pt.N_mbe === null || Nvol < 1e-12 ? null : pt.N_mbe / Nvol,
+        ooipRatio: mbeResult.points.map((pt, index) =>
+            pt.N_mbe === null || Nvol < 1e-12 || !usable(index, pt) ? null : pt.N_mbe / Nvol,
         ),
-        driveOilExpansion: mbeResult.points.map((pt) =>
-            pt.Et > 1e-15 ? pt.driveIndex_oilExpansion : null,
+        driveOilExpansion: mbeResult.points.map((pt, index) =>
+            pt.Et > 1e-15 && pressureValid[index] !== false ? pt.driveIndex_oilExpansion : null,
         ),
-        driveGasCap: mbeResult.points.map((pt) =>
-            pt.Et > 1e-15 ? pt.driveIndex_gasCap : null,
+        driveGasCap: mbeResult.points.map((pt, index) =>
+            pt.Et > 1e-15 && pressureValid[index] !== false ? pt.driveIndex_gasCap : null,
         ),
-        driveCompaction: mbeResult.points.map((pt) =>
-            pt.Et > 1e-15 ? pt.driveIndex_compaction : null,
+        driveCompaction: mbeResult.points.map((pt, index) =>
+            pt.Et > 1e-15 && pressureValid[index] !== false ? pt.driveIndex_compaction : null,
         ),
     };
 }
@@ -864,16 +874,18 @@ function extractWellBhpHistory(result: BenchmarkRunResult): {
  */
 export function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSeries {
     const poreVolume = getPoreVolume(result.params);
-    const ooip = getOoip(result.params);
+    const gasInPlace = getGasInPlace(result.params);
     const wellBhpHistory = extractWellBhpHistory(result);
 
     let cumulativeInjection = 0;
     let cumulativeLiquid = 0;
     let cumulativeGas = 0;
+    let cumulativeOil = 0;
 
     const cumulativeInjectionSeries: Array<number | null> = [];
     const cumulativeLiquidSeries: Array<number | null> = [];
     const cumulativeGasSeries: Array<number | null> = [];
+    const cumulativeOilSeries: Array<number | null> = [];
     const pZSeries: Array<number | null> = [];
 
     // p/z is only p/z when z is real. The gas deviation factor is recovered from
@@ -899,10 +911,12 @@ export function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSer
         cumulativeInjection += Math.max(0, toFiniteNumber(point.total_injection, 0)) * dt;
         cumulativeLiquid += Math.max(0, Math.abs(toFiniteNumber(point.total_production_liquid, 0))) * dt;
         cumulativeGas += Math.max(0, Math.abs(toFiniteNumber(point.total_production_gas, 0))) * dt;
+        cumulativeOil += Math.max(0, Math.abs(toFiniteNumber(point.total_production_oil, 0))) * dt;
 
         cumulativeInjectionSeries.push(cumulativeInjection);
         cumulativeLiquidSeries.push(cumulativeLiquid);
         cumulativeGasSeries.push(cumulativeGas);
+        cumulativeOilSeries.push(cumulativeOil);
 
         const pressure = toFiniteNumber(point.avg_reservoir_pressure, 0);
         if (!canComputePOverZ || !(pressure > 0)) {
@@ -933,9 +947,12 @@ export function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSer
         producerBhp: wellBhpHistory.producerBhp,
         injectorBhp: wellBhpHistory.injectorBhp,
         recovery: [...result.recoverySeries],
-        cumulativeOil: result.recoverySeries.map((value) =>
-            Number.isFinite(value) && ooip > 1e-12 ? Number(value) * ooip : null,
-        ),
+        recoveryGas: [...(result.gasRecoverySeries ?? cumulativeOilSeries.map(() => null))],
+        // Integrated directly rather than reconstructed as `recovery x OOIP`.
+        // That reconstruction tied the cumulative curve to the recovery
+        // denominator, so a case with no oil in place (`dep_gas_pz`) lost its
+        // cumulative-oil curve the moment recovery correctly became null.
+        cumulativeOil: cumulativeOilSeries,
         cumulativeInjection: cumulativeInjectionSeries,
         cumulativeLiquid: cumulativeLiquidSeries,
         cumulativeGas: cumulativeGasSeries,

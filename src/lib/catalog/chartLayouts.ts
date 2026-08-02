@@ -306,8 +306,22 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: false,
             logScale: false,
-            panelOrder: ['pz', 'diagnostics', 'rates', 'control_limits'],
+            panelOrder: ['pz', 'diagnostics', 'recovery', 'rates', 'control_limits'],
             panels: {
+                // Gas recovery, not oil. This reservoir holds no oil, and until
+                // 2026-08-02 the shared "OOIP" was a reservoir volume of
+                // everything that is not water, so a dry-gas case had a recovery
+                // factor quoted against 480,000 m3 of oil that does not exist.
+                // The oil curve is now null here by construction and the gas
+                // curve is the one that means something: G_p/G, which on the p/z
+                // plot above is the x-intercept the straight line is drawn to.
+                recovery: {
+                    title: 'Recovery Factor — Gas (of GIIP)',
+                    curveKeys: ['recovery-factor-gas'],
+                    scalePreset: 'recovery',
+                    visible: true,
+                    expanded: false,
+                },
                 pz: {
                     title: 'p/z',
                     curveKeys: [
@@ -519,8 +533,10 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
                     expanded: true,
                 },
                 recovery: {
-                    title: 'Recovery Factor',
-                    curveKeys: ['recovery-factor-primary'],
+                    // Both phases: a solution-gas-drive case recovers oil and
+                    // gas, and they are fractions of different volumes in place.
+                    title: 'Recovery Factor — Oil and Gas',
+                    curveKeys: ['recovery-factor-primary', 'recovery-factor-gas'],
                     scalePreset: 'recovery',
                     expanded: true,
                 },

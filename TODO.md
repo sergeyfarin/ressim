@@ -758,34 +758,42 @@ Open, blocked on an enabler:
   narrating a single average pressure.
 ### Audit of the rest of the material-balance path (2026-08-02) — beyond the three fixed defects
 
-- [ ] **(MAJOR) The recovery-factor denominator is not a stock-tank OOIP.** `getOoip` — duplicated
-  in `benchmarkRunModel.ts:229` and `analyticalParamAdapters.ts:87` — is
-  `poreVolume × (1 − S_w,init)`. It ignores initial *gas* saturation and never divides by B_oi,
-  while the numerator (cumulative oil) is a surface volume, so the ratio mixes reservoir and stock-tank
-  volumes. Measured chart-OOIP ÷ stock-tank OOIP across the shipped catalog: 1.000 for every
-  two-phase/constant-PVT case (unaffected), **1.099 `dep_pvt`, 1.245 `gas_drive`, 1.797
-  `spe1_gas_injection`** — recovery understated by 10 %, 20 % and 44 % relative. Worst is
-  `dep_gas_pz`: chart OOIP = 480,000 m³ of "oil" in a reservoir with S_o = 0, so its recovery panel
-  is meaningless. Does *not* affect cumulative oil (`derived.cumulativeOil = recovery × ooip`
-  cancels the denominator) nor BL/sweep analytical comparisons (same denominator both sides,
-  B_o = 1 there). The MBE's own `N_volumetric` is computed correctly, so the two OOIP definitions on
-  one chart now disagree. Fix is one shared stock-tank definition — `V_p (1 − S_w − S_g) / B_oi` —
-  used by both modules; expect every black-oil recovery curve to move, so check the benchmark
-  comparisons in the same change.
-- [ ] **Null average pressures are zero-filled into the balance.**
-  `pressureHistory: derived.pressure.map((v) => toFiniteNumber(v, 0))` in `computeMbeDiagnostics`.
-  `pressureSeries` genuinely pushes `null` when the engine reports no average pressure
-  (`benchmarkRunModel.ts`), and a null becomes 0 bar — ΔP = P_i, Et enormous, N_mbe ≈ 0. Propagate
-  the null and skip the point instead.
-- [ ] **The gas-cap ratio m ignores per-layer initial saturations.** `m` is built from the scalar
-  `initialGasSaturation`, but the engine accepts `initialGasSaturationPerLayer` /
-  `initialSaturationPerLayer` (`buildCreatePayload.ts:392`). The planned `dep_gas_cap` case's
-  sharper dimension is *specifically* a segregated per-layer cap against a uniform gas saturation of
-  the same total volume — with the scalar, m reads 0 for the segregated variant, exactly where the
-  balance is meant to be the reference. Blocks T7.2's remaining half.
-- [ ] **Early-time N_mbe spikes set the panel's y-scale.** At the first report points F and Et are
-  both near zero and the ratio is 1.147 on `gas_drive` before settling to 1.000. Suppress the ratio
-  below a depletion floor rather than drawing division noise.
+- [x] **(MAJOR) The recovery-factor denominator was not a stock-tank OOIP — fixed 2026-08-02.**
+  `getOoip` was `poreVolume × (1 − S_w,init)`, a *reservoir* volume of oil-plus-gas used as the
+  denominator of a *surface* cumulative-oil numerator — ignoring initial gas and never dividing by
+  B_oi — and it existed in **three** copies (`benchmarkRunModel.ts`, `charts/analyticalParamAdapters.ts`,
+  and the live `stores/parameterStore.svelte.ts`). Measured chart-OOIP ÷ stock-tank OOIP before the
+  fix: 1.000 for every two-phase/constant-PVT case, **1.099 `dep_pvt`, 1.245 `gas_drive`, 1.797
+  `spe1_gas_injection`**, and `dep_gas_pz` reported a recovery factor against 480,000 m³ of oil in a
+  reservoir with S_o = 0.
+  Replaced by one leaf module, `src/lib/reservoirVolumes.ts`, holding the grid/saturation/PVT
+  helpers and three distinct quantities: `getStockTankOilInPlace` (V_p·S_o/B_oi, **null** when there
+  is no oil), `getGasInPlace` (free + dissolved at surface conditions, null without gas PVT), and
+  `getDisplacementOilInPlace` (reservoir volume — Buckley-Leverett, the depletion model and the
+  sweep correlations all produce a displaced *reservoir* volume, so their overlays keep a reservoir
+  denominator). The two coincide for every displacement scenario in the catalog (B_o = 1, no initial
+  gas), which is why no waterflood or sweep comparison moves; a test pins that.
+  Recovery is now reported per phase — `recoverySeries` (oil, of STOIIP) and the new
+  `gasRecoverySeries` (gas, of GIIP) — both null where the reservoir holds none of that phase.
+  The `gas` layout shows both curves; `dep_gas_pz` gains a gas-recovery panel and no longer draws an
+  oil one. `derived.cumulativeOil` is now integrated from the oil rate instead of reconstructed as
+  `recovery × OOIP`, which had tied the cumulative curve to the recovery denominator.
+- [x] **Null average pressures are no longer zero-filled into the balance (2026-08-02).** A null
+  became 0 bar, i.e. depletion to vacuum. Invalid samples are now dropped from every MBE series.
+- [x] **The gas-cap ratio m is per-layer aware (2026-08-02).** `getInitialSaturations` weights
+  `initialGasSaturationPerLayer` / `initialSaturationPerLayer` by layer thickness, so a segregated
+  cap is no longer reported as m = 0. Unblocks the `dep_gas_cap` cap-geometry dimension.
+- [x] **Early-time MBE OOIP spikes suppressed (2026-08-02).** The ratio is withheld until the run
+  has given up 5 % of its eventual pressure drop; below that F/Et is a ratio of two near-zero
+  numbers (1.147 on `gas_drive` before settling to 1.000). Drive indices are ratios *within* Et and
+  stay visible throughout.
+- [ ] **The whole live-chart path appears unreferenced.** Found while fixing the third OOIP copy:
+  `charts/RateChart.svelte` is never instantiated, `buildLiveDerivedSeries` has no caller outside
+  it, and `Scenario.liveChartPanels` (with every `catalog/chartPanels/*` array it points at) is
+  declared and typed but read by nothing — the product renders `ScenarioChart` →
+  `ReferenceComparisonChart` → `buildChartData`. Either it is dead and should go, or a live mode
+  regressed out of the app and should come back. Worth an explicit decision before more work lands
+  on those files.
 
 **Checked and cleared** (recorded so the next reader does not re-open them):
 - *The rectangle-rule cumulative is correct, not a bug.* `rate × dt` at the report point closes the

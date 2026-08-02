@@ -7,7 +7,7 @@ import {
     getTotalThickness,
     getAverageLayerThickness,
     getPoreVolume,
-    getOoip,
+    getStockTankOilInPlace,
     getLayerPermeabilities,
     extractRockProps,
     extractFluidProps,
@@ -70,6 +70,7 @@ function makeResult(override: Partial<BenchmarkRunResult> = {}): BenchmarkRunRes
         watercutSeries: Array(n).fill(0),
         pressureSeries: [280, 260, 240],
         recoverySeries: [0.05, 0.10, 0.15],
+        gasRecoverySeries: [null, null, null],
         pviSeries: [0.2, 0.4, 0.6],
         referencePolicy: {} as any,
         referenceComparison: {} as any,
@@ -180,15 +181,29 @@ describe('getPoreVolume', () => {
     });
 });
 
-describe('getOoip', () => {
-    it('equals poreVolume × (1 - initialSaturation)', () => {
+describe('getStockTankOilInPlace', () => {
+    it('is a surface volume: poreVolume × S_o / B_oi', () => {
         const params = baseParams({ initialSaturation: 0.2 });
         const pv = getPoreVolume(params);
-        expect(getOoip(params)).toBeCloseTo(pv * 0.8);
+        // B_o = 1 for this constant-PVT fixture, so it reduces to pv × S_o.
+        expect(getStockTankOilInPlace(params)).toBeCloseTo(pv * 0.8);
     });
 
-    it('clamps at 0 when initialSaturation >= 1', () => {
-        expect(getOoip(baseParams({ initialSaturation: 1.0 }))).toBe(0);
+    it('excludes initial free gas from the oil volume', () => {
+        const params = baseParams({ initialSaturation: 0.2, initialGasSaturation: 0.1 });
+        expect(getStockTankOilInPlace(params)).toBeCloseTo(getPoreVolume(params) * 0.7);
+    });
+
+    it('divides by the constant-PVT formation volume factor', () => {
+        const params = baseParams({ initialSaturation: 0.2, volume_expansion_o: 1.25 });
+        expect(getStockTankOilInPlace(params)).toBeCloseTo(getPoreVolume(params) * 0.8 / 1.25);
+    });
+
+    it('returns null when there is no oil in place at all', () => {
+        // A dry-gas case must show no oil recovery, not a fraction of a
+        // denominator that does not exist.
+        expect(getStockTankOilInPlace(baseParams({ initialSaturation: 0.2, initialGasSaturation: 0.8 }))).toBeNull();
+        expect(getStockTankOilInPlace(baseParams({ initialSaturation: 1.0 }))).toBeNull();
     });
 });
 
@@ -615,17 +630,27 @@ describe('buildDerivedRunSeries', () => {
         expect(derived.pressure).toEqual(result.pressureSeries);
     });
 
-    it('cumulativeOil is proportional to recoverySeries × ooip', () => {
+    it('integrates cumulativeOil from the oil rate rather than from the recovery curve', () => {
+        // It used to be reconstructed as `recovery x OOIP`, which tied the
+        // cumulative curve to the recovery *denominator*: a case with no oil in
+        // place (`dep_gas_pz`) lost its cumulative-oil curve the moment recovery
+        // correctly became null.
         const result = makeResult();
-        const ooip = getOoip(result.params);
         const derived = buildDerivedRunSeries(result);
-        for (let i = 0; i < result.recoverySeries.length; i++) {
-            const rf = result.recoverySeries[i];
-            const co = derived.cumulativeOil[i];
-            if (rf !== null && co !== null) {
-                expect(co).toBeCloseTo(rf * ooip, 6);
-            }
+        let expected = 0;
+        for (let i = 0; i < result.rateHistory.length; i++) {
+            const point = result.rateHistory[i];
+            const dt = i > 0 ? point.time - result.rateHistory[i - 1].time : point.time;
+            expected += Math.max(0, point.total_production_oil ?? 0) * dt;
+            expect(derived.cumulativeOil[i]).toBeCloseTo(expected, 9);
         }
+    });
+
+    it('still produces a cumulative-oil curve when there is no oil in place', () => {
+        const result = makeResult({ recoverySeries: [null, null, null] });
+        const derived = buildDerivedRunSeries(result);
+        expect(derived.cumulativeOil.every((value) => value !== null)).toBe(true);
+        expect(derived.cumulativeOil.at(-1)).toBeGreaterThan(0);
     });
 
     it('p_z is null when avg_reservoir_pressure is 0', () => {

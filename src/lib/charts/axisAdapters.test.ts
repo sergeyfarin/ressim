@@ -23,6 +23,7 @@ function makeDerived(override: Partial<DerivedRunSeries> = {}): DerivedRunSeries
         oilRate: Array(n).fill(null),
         injectionRate: Array(n).fill(null),
         waterCut: Array(n).fill(null),
+        recoveryGas: Array(n).fill(null),
         gasCut: Array(n).fill(null),
         avgWaterSat: Array(n).fill(null),
         pressure: Array(n).fill(null),

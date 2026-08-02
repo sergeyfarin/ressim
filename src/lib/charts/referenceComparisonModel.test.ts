@@ -1286,7 +1286,10 @@ describe('referenceComparisonModel', () => {
         });
 
         expect(model.panels.rates.curves.find((curve) => curve.label === `${result.label} Oil Rate`)?.curveKey).toBe('oil-rate-sim');
-        expect(model.panels.recovery.curves.find((curve) => curve.label === `${result.label} Recovery`)?.curveKey).toBe('recovery-factor-primary');
+        // Oil and gas recovery are separate curves against separate volumes in
+        // place, so the label names the phase and its denominator.
+        expect(model.panels.recovery.curves.find((curve) => curve.label === `${result.label} Recovery — Oil (of STOIIP)`)?.curveKey).toBe('recovery-factor-primary');
+        expect(model.panels.recovery.curves.find((curve) => curve.label === `${result.label} Recovery — Gas (of GIIP)`)?.curveKey).toBe('recovery-factor-gas');
         expect(model.panels.diagnostics.curves.find((curve) => curve.label === `${result.label} Avg Pressure`)?.curveKey).toBe('avg-pressure-sim');
     });
 

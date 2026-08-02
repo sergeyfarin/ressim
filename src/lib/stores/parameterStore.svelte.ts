@@ -4,6 +4,7 @@ import type {
     ThreePhaseScalTables,
 } from '../simulator-types';
 import { generateBlackOilTable } from '../physics/pvt';
+import { getStockTankOilInPlace, getGasInPlace } from '../reservoirVolumes';
 import { buildCreatePayloadFromState } from '../buildCreatePayload';
 import {
     validateInputs as validateSimulationInputs,
@@ -216,10 +217,14 @@ class ParameterStoreImpl {
 
     defaultHistoryInterval = $derived(Math.max(1, Math.ceil(this.steps / 25)));
 
-    ooipM3 = $derived(
-        this.nx * this.ny * this.nz * this.cellDx * this.cellDy * this.cellDz *
-        this.reservoirPorosity * Math.max(0, 1 - this.initialSaturation),
-    );
+    // Stock-tank oil in place, from the one shared definition. This used to be
+    // `V_p × (1 − S_w)` inline — a reservoir volume of oil-plus-gas under a
+    // surface-volume numerator, the third copy of the same defect. Zero when the
+    // reservoir holds no oil, so a dry-gas configuration reports no oil recovery.
+    ooipM3 = $derived(getStockTankOilInPlace(this.buildInPlaceParams()) ?? 0);
+
+    /** Gas initially in place at standard conditions [Sm³]; 0 when there is no gas PVT. */
+    giipM3 = $derived(getGasInPlace(this.buildInPlaceParams()) ?? 0);
 
     poreVolumeM3 = $derived(
         this.nx * this.ny * this.nz * this.cellDx * this.cellDy * this.cellDz * this.reservoirPorosity,
@@ -246,6 +251,27 @@ class ParameterStoreImpl {
     set historyInterval(v: number | null) { this.userHistoryInterval = v; }
 
     // ===== Methods =====
+
+    /**
+     * The subset of state the shared in-place volume helpers read. Kept as a
+     * plain object so the live path and the run path answer "how much is in
+     * place?" through exactly the same code.
+     */
+    buildInPlaceParams(): Record<string, unknown> {
+        return {
+            nx: this.nx, ny: this.ny, nz: this.nz,
+            cellDx: this.cellDx, cellDy: this.cellDy, cellDz: this.cellDz,
+            cellDzPerLayer: this.cellDzPerLayer,
+            reservoirPorosity: this.reservoirPorosity,
+            initialSaturation: this.initialSaturation,
+            initialGasSaturation: this.initialGasSaturation,
+            initialPressure: this.initialPressure,
+            pvtMode: this.pvtMode,
+            pvtTable: this.pvtTable,
+            c_o: this.c_o,
+            volume_expansion_o: this.volume_expansion_o,
+        };
+    }
 
     buildValidationInput(): SimulationInputs {
         return {

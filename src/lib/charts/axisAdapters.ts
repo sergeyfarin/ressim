@@ -31,6 +31,8 @@ export type DerivedRunSeries = {
     producerBhp: Array<number | null>;
     injectorBhp: Array<number | null>;
     recovery: Array<number | null>;
+    /** Gas recovery (produced gas / GIIP); null where the case holds no gas. */
+    recoveryGas: Array<number | null>;
     cumulativeOil: Array<number | null>;
     cumulativeInjection: Array<number | null>;
     cumulativeLiquid: Array<number | null>;

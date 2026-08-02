@@ -850,8 +850,13 @@ export function buildReferenceComparisonModel(input: {
             yAxisID: 'y',
             defaultVisible,
         }, xValues, derived.oilRate);
+        // Oil and gas recovery are different quantities against different
+        // denominators (STOIIP and GIIP), so they are different curves. Either
+        // is null throughout where the reservoir holds none of that phase —
+        // a dry-gas case draws no oil recovery at all rather than a fraction of
+        // a denominator that does not exist.
         appendSeries(panels.recovery, {
-            label: `${result.label} Recovery`,
+            label: `${result.label} Recovery — Oil (of STOIIP)`,
             curveKey: 'recovery-factor-primary',
             caseKey: result.key,
             toggleGroupKey: result.key,
@@ -863,6 +868,19 @@ export function buildReferenceComparisonModel(input: {
             yAxisID: 'y',
             defaultVisible,
         }, xValues, derived.recovery);
+        appendSeries(panels.recovery, {
+            label: `${result.label} Recovery — Gas (of GIIP)`,
+            curveKey: 'recovery-factor-gas',
+            caseKey: result.key,
+            toggleGroupKey: result.key,
+            toggleLabel: caseLabel,
+            legendSection: 'sim',
+            legendSectionLabel: LEGEND_SECTIONS.sim,
+            color,
+            borderWidth: SIM_BORDER_SECONDARY,
+            yAxisID: 'y',
+            defaultVisible,
+        }, xValues, derived.recoveryGas);
         appendSeries(panels.cumulative, {
             label: `${result.label} Cum Oil`,
             curveKey: 'cum-oil-sim',

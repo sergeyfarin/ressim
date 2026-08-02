@@ -275,3 +275,70 @@ export function generateBlackOilTable(
 
     return table;
 }
+
+/**
+ * Black-oil properties read from a PVT table at `pressureBar`, using the
+ * engine's own interpolation.
+ *
+ * Mirrors `PvtTable::interpolate_rows` in `src/lib/ressim/src/pvt.rs`, which
+ * follows OPM/ECL PVTO/PVDG: linear in `1/Bo` and `1/Bg` across a segment,
+ * linear in `Rs`, clamped to the first row below the table, and extrapolated
+ * above it along the fixed-Rs undersaturated branch as `Bo·exp(-c_o·ΔP)` with
+ * `Bg·p_last/p`.
+ *
+ * This lives here, beside the table generator, because every consumer that
+ * needs "what fluid did the simulator actually see?" must answer it the same
+ * way. Reading the table with a different rule is how an analytical reference
+ * silently grades a run against a fluid it never used.
+ */
+export function interpolatePvtAtPressure(
+    table: readonly PvtRow[],
+    pressureBar: number,
+    undersaturatedCompressibilityPerBar: number,
+): PvtRow {
+    const rows = table
+        .filter((row) => Number.isFinite(row.p_bar) && row.bo_m3m3 > 0 && row.bg_m3m3 > 0)
+        .slice()
+        .sort((a, b) => a.p_bar - b.p_bar);
+
+    if (rows.length === 0) {
+        return { p_bar: pressureBar, rs_m3m3: 0, bo_m3m3: 1, mu_o_cp: 1, bg_m3m3: 1, mu_g_cp: 0.02 };
+    }
+    if (rows.length === 1 || pressureBar <= rows[0].p_bar) {
+        return { ...rows[0] };
+    }
+
+    const last = rows[rows.length - 1];
+    if (pressureBar >= last.p_bar) {
+        return {
+            ...last,
+            p_bar: pressureBar,
+            bo_m3m3: last.bo_m3m3 * Math.exp(-undersaturatedCompressibilityPerBar * (pressureBar - last.p_bar)),
+            bg_m3m3: last.bg_m3m3 * (last.p_bar / pressureBar),
+        };
+    }
+
+    let lower = rows[0];
+    let upper = rows[1];
+    for (let index = 1; index < rows.length; index += 1) {
+        if (rows[index].p_bar >= pressureBar) {
+            [lower, upper] = [rows[index - 1], rows[index]];
+            break;
+        }
+    }
+
+    const span = upper.p_bar - lower.p_bar;
+    if (span < 1e-6) return { ...lower };
+    const t = (pressureBar - lower.p_bar) / span;
+    const invBo = (1 / lower.bo_m3m3) + t * ((1 / upper.bo_m3m3) - (1 / lower.bo_m3m3));
+    const invBg = (1 / lower.bg_m3m3) + t * ((1 / upper.bg_m3m3) - (1 / lower.bg_m3m3));
+
+    return {
+        p_bar: pressureBar,
+        rs_m3m3: lower.rs_m3m3 + t * (upper.rs_m3m3 - lower.rs_m3m3),
+        bo_m3m3: invBo > 0 ? 1 / invBo : lower.bo_m3m3,
+        mu_o_cp: lower.mu_o_cp + t * (upper.mu_o_cp - lower.mu_o_cp),
+        bg_m3m3: invBg > 0 ? 1 / invBg : lower.bg_m3m3,
+        mu_g_cp: lower.mu_g_cp + t * (upper.mu_g_cp - lower.mu_g_cp),
+    };
+}
