@@ -48,13 +48,14 @@ must never become a group, because it is not a property the members of a physica
    flow, pseudo-steady productivity, boundary-dominated decline, and layered superposition. Rule:
    no injector, and the analytical method is `well-test` or `depletion`.
 4. **Material Balance & Drive Mechanism** — where the energy comes from and how much is in place:
-   expansion, solution-gas liberation, compaction, PVT representation. Rule: the case shows a
-   tank-level result — an `mbe_ooip`, `drive_indices` or `pz` panel.
+   expansion, solution-gas liberation, compaction, PVT representation. Rule: the case's layout
+   offers a tank-level result — an `mbe_ooip`, `drive_indices` or `pz` panel. A member may hide it
+   when the balance provably does not close for that case, but must say why in the scenario file;
+   `dep_pvt` does, and its reason is measured (`TODO.md`, 2026-08-02).
 5. **Published Benchmark Decks** — SPE1 and future SPE9/SPE10. Rule: **deck fixity** — sensitivity
    variants may patch discretization and solver settings only, never a reservoir property.
 
-Every rule above is enforced in `scenarios.test.ts`; rule 4 is present but skipped until the
-Havlena-Odeh drive-index panels reach the `gas` chart layout (`TODO.md`).
+Every rule above is enforced in `scenarios.test.ts`.
 
 Replaced 2026-08-02: groups 4 and 5 were **Simulation Only — No Analytical Reference** and
 **Validation Benchmarks**, which sorted by epistemic status while groups 1–3 sorted by physics —

@@ -32,6 +32,7 @@ import {
     SCF_PER_BBL_TO_M3_PER_M3,
     DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR,
 } from '../physics/pvt';
+import type { PvtRow } from '../simulator-types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -55,7 +56,20 @@ export type MaterialBalanceParams = {
     Bw_constant: number;            // Water FVF [m³/m³] (typically ~1.0)
     c_o: number;                    // Oil compressibility [1/bar] (constant PVT only)
 
-    // Black-oil PVT correlation inputs (used when pvtMode = 'black-oil')
+    /**
+     * The scenario's own black-oil table — the one the simulator integrates.
+     *
+     * When present it is the fluid, and the correlation inputs below are unused.
+     * This matters more than it looks: a scenario carrying a generated table has
+     * no `apiGravity` / `bubblePoint` in its params at all, so a correlation-based
+     * balance silently fell back to defaults and graded the run against a
+     * different fluid. It also made `dep_pvt` undiagnosable — its two variants
+     * differ *only* by their table, so a correlation reference is identical for
+     * both. Same principle `dep_gas_pz` already applies to z.
+     */
+    pvtTable?: readonly PvtRow[];
+
+    // Black-oil PVT correlation inputs (used when pvtMode = 'black-oil' and no table)
     apiGravity: number;
     gasSpecificGravity: number;
     reservoirTemperature: number;   // [°C]
@@ -151,6 +165,70 @@ export function evaluateBlackOilPvt(params: MaterialBalanceParams, pressure: num
     };
 }
 
+/**
+ * PVT read from the scenario's own table, with the engine's interpolation.
+ *
+ * Mirrors `PvtTable::interpolate_rows` in `src/lib/ressim/src/pvt.rs`, which
+ * follows OPM/ECL PVTO/PVDG: linear in `1/Bo` and `1/Bg` across a segment,
+ * linear in `Rs`, clamped to the first row below the table and extrapolated
+ * above it as `Bo * exp(-c_o * dP)` and `Bg * p_last / p`. Reading the table
+ * with a different rule would reintroduce the mismatch this evaluator exists
+ * to remove.
+ */
+export function evaluateTablePvt(
+    table: readonly PvtRow[],
+    pressure: number,
+    undersaturatedCompressibilityPerBar: number,
+): PvtAtPressure {
+    const rows = table
+        .filter((row) => Number.isFinite(row.p_bar) && row.bo_m3m3 > 0 && row.bg_m3m3 > 0)
+        .slice()
+        .sort((a, b) => a.p_bar - b.p_bar);
+
+    const asPvt = (row: PvtRow): PvtAtPressure => ({
+        Bo: row.bo_m3m3,
+        Rs: row.rs_m3m3,
+        Bg: row.bg_m3m3,
+        Bw: 1.0,
+    });
+
+    if (rows.length === 0) return { Bo: 1, Rs: 0, Bg: 0, Bw: 1 };
+    if (rows.length === 1 || pressure <= rows[0].p_bar) return asPvt(rows[0]);
+
+    const last = rows[rows.length - 1];
+    if (pressure >= last.p_bar) {
+        // Above the table: the fixed-Rs undersaturated branch the engine extrapolates.
+        return {
+            Bo: last.bo_m3m3 * Math.exp(-undersaturatedCompressibilityPerBar * (pressure - last.p_bar)),
+            Rs: last.rs_m3m3,
+            Bg: last.bg_m3m3 * (last.p_bar / pressure),
+            Bw: 1.0,
+        };
+    }
+
+    let lower = rows[0];
+    let upper = rows[1];
+    for (let index = 1; index < rows.length; index += 1) {
+        if (rows[index].p_bar >= pressure) {
+            [lower, upper] = [rows[index - 1], rows[index]];
+            break;
+        }
+    }
+
+    const span = upper.p_bar - lower.p_bar;
+    if (span < 1e-6) return asPvt(lower);
+    const t = (pressure - lower.p_bar) / span;
+    const invBo = (1 / lower.bo_m3m3) + t * ((1 / upper.bo_m3m3) - (1 / lower.bo_m3m3));
+    const invBg = (1 / lower.bg_m3m3) + t * ((1 / upper.bg_m3m3) - (1 / lower.bg_m3m3));
+
+    return {
+        Bo: invBo > 0 ? 1 / invBo : lower.bo_m3m3,
+        Rs: lower.rs_m3m3 + t * (upper.rs_m3m3 - lower.rs_m3m3),
+        Bg: invBg > 0 ? 1 / invBg : lower.bg_m3m3,
+        Bw: 1.0,
+    };
+}
+
 // ─── Main Computation ────────────────────────────────────────────────────────
 
 export function calculateMaterialBalance(
@@ -175,8 +253,15 @@ export function calculateMaterialBalance(
     const Sgi = Math.max(0, Math.min(1, initialGasSaturation));
     const Soi = Math.max(0, 1 - Swi - Sgi);
 
-    // Evaluate PVT at initial pressure
-    const evalPvt = pvtMode === 'black-oil' ? evaluateBlackOilPvt : evaluateConstantPvt;
+    // Evaluate PVT at initial pressure. A supplied table wins over the
+    // correlations: it is the fluid the simulator actually integrated.
+    const table = params.pvtTable;
+    const evalPvt = pvtMode !== 'black-oil'
+        ? evaluateConstantPvt
+        : (table && table.length > 0)
+            ? (p: MaterialBalanceParams, pressure: number) =>
+                evaluateTablePvt(table, pressure, p.c_o)
+            : evaluateBlackOilPvt;
     const pvtInitial = evalPvt(params, initialPressure);
     const Boi = pvtInitial.Bo;
     const Rsi = pvtInitial.Rs;
@@ -241,13 +326,19 @@ export function calculateMaterialBalance(
         if (pvtMode === 'black-oil' && Bg > 1e-15) {
             Eo = (Bo - Boi) + (Rsi - Rs) * Bg;
         } else {
-            // Constant PVT: Bo doesn't change, Rs = 0
-            // However, for undersaturated oil with constant co:
-            // Bo(P) ≈ Boi × [1 + co × (P - Pi)] (small compressibility expansion)
-            // E_o = Bo - Boi ≈ Boi × co × (Pi - P)
-            // This is already captured in Efw for the simplified single-phase case.
-            // To avoid double-counting, set Eo = 0 for constant PVT.
-            Eo = 0;
+            // Constant PVT: Bo is a constant, so the oil's expansion is not in
+            // the table — it is the scalar compressibility the engine applies in
+            // its accumulation term: Bo(P) ≈ Boi × [1 + c_o × (Pi - P)], so
+            // E_o = Bo - Boi ≈ Boi × c_o × ΔP.
+            //
+            // This used to be folded into Efw with Eo pinned at 0, which left
+            // the total expansion right but reported an undersaturated oil
+            // reservoir as 100 % compaction drive — the drive-index panel of
+            // `dep_decline` and `dep_arps` showed a single curve at 1.0 labelled
+            // "Compaction" for a case whose energy is almost entirely oil
+            // expansion. Et is unchanged by this split (see below); only the
+            // attribution is corrected.
+            Eo = params.Bo_constant * params.c_o * dP;
         }
 
         // ── E_g: Gas cap expansion ───────────────────────────────────
@@ -265,20 +356,23 @@ export function calculateMaterialBalance(
         // Eo = 0 above. The total compressibility term effectively captures
         // all expansion: E_fw = Boi × c_t / (1 - S_wi) × ΔP
         // where c_t = S_o × c_o + S_w × c_w + c_f (Craft & Hawkins 1959)
-        let Efw: number;
-        if (pvtMode === 'constant') {
-            // For constant PVT, include oil compressibility in the effective
-            // compaction term since Eo = 0. This gives the standard depletion MBE.
-            const Soi_eff = 1 - Swi;
-            const ct = Soi_eff * params.c_o + Swi * c_w + c_rock;
-            Efw = Boi * ct / (1 - Swi) * dP;
-        } else {
-            // Black-oil PVT: oil expansion is captured in Eo, so Efw only
-            // includes water + rock compressibility.
-            Efw = Boi * (c_w * Swi + c_rock) / (1 - Swi) * dP;
-        }
+        // Dake (1978) Eq. 3.20: E_fw = Boi × (c_w S_wc + c_f) / (1 - S_wc) × Δp,
+        // and it enters the balance as (1 + m) × E_fw, because the connate water
+        // and pore volume of the gas cap expand too. Reported here with the
+        // (1 + m) factor already applied so that `Et = Eo + m·Eg + Efw` and the
+        // drive indices sum to 1 without the caller re-deriving m.
+        //
+        // Identical to the previous formula whenever m = 0, which is every
+        // scenario shipping today; the factor exists for the gas-cap case
+        // (`dep_gas_cap`, CASE_LIBRARY_ROADMAP T7.2) that this group is for.
+        const Efw = (1 + m) * Boi * (c_w * Swi + c_rock) / (1 - Swi) * dP;
 
         // ── Total expansion ──────────────────────────────────────────
+        // For constant PVT this reproduces the previous single-term result
+        // exactly: Eo + Efw = Boi·c_o·ΔP + Boi(S_w c_w + c_f)/(1-S_wi)·ΔP
+        //                   = Boi·[(1-S_wi)c_o + S_w c_w + c_f]/(1-S_wi)·ΔP,
+        // which is what the old combined c_t expression evaluated to. Only the
+        // split between the oil-expansion and compaction indices changed.
         const Et = Eo + m * Eg + Efw;
 
         // ── MBE OOIP estimate ────────────────────────────────────────

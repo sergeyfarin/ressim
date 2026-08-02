@@ -722,6 +722,40 @@ Open, blocked on an enabler:
   across ≥ 3 groups. The Material Balance rule (a `mbe_ooip` / `drive_indices` / `pz` panel) is
   written but `it.skip`ped until the Havlena-Odeh wiring below lands — it is the forcing function
   for it.
+- [x] **Havlena-Odeh material balance corrected and wired (2026-08-02).** It was implemented but
+  wrong in three ways and invisible where it mattered. (1) *It read a different fluid from the
+  simulator*: `evaluateBlackOilPvt` built Bo/Rs/Bg from Standing correlations keyed on
+  `params.apiGravity` / `bubblePoint` / `gasSpecificGravity` — parameters that no scenario carrying
+  a generated table even has, so the adapter silently fell back to 30 API / 0.7 / 150 bar. For
+  `dep_pvt`, whose two variants differ *only* by their table, that made the balance identical for
+  both. `calculateMaterialBalance` now takes the run's own `pvtTable` and reads it with the engine's
+  own interpolation (`evaluateTablePvt` mirrors `PvtTable::interpolate_rows`: linear in 1/Bo and
+  1/Bg, linear in Rs, `Bo·exp(-c_o·ΔP)` above the table). (2) *Dake's (1+m) factor was missing* from
+  E_fw — no effect at m = 0, which is every shipped case, but wrong for the gas-cap case this group
+  exists to host. (3) *Constant-PVT runs reported 100 % compaction drive*: Eo was pinned at 0 and
+  c_o folded into E_fw, so `dep_decline` and `dep_arps` showed a single drive curve at 1.0 labelled
+  "Compaction" for reservoirs whose energy is ~83 % oil expansion. Et is unchanged by the split, so
+  no OOIP number moved. The chart gate moved off `analyticalMethod === 'depletion'` — a material
+  balance is a check the run performs on itself and needs no closed-form overlay — onto
+  `mbe.applicable`, which is false when the run injected, since this MBE has no G_inj/W_inj or
+  aquifer term.
+  **Measured on the shipped `gas_drive`** (scratch harness on this branch, provisional until a
+  committed test replays it): N_mbe/N_volumetric converges to **1.000** from t ≈ 120 d onward
+  (1.147 at t = 1 d, where F and Et are both near zero), drive indices ~0.50 oil expansion /
+  ~0.50 free-gas expansion / 0.001 compaction. That is a real self-check, so the panels are wired
+  into the `gas` layout.
+- [ ] **`dep_pvt` cannot close a tank balance, and that is a fact about the case (2026-08-02).**
+  N_mbe/N_volumetric runs **2.5 → 7.8**, not 1. Cause: 0.5 mD against a 30 bar BHP puts the
+  near-well cells far below the 150 bar bubble point, liberating gas, while the volumetric average
+  is still undersaturated and the tank sees only c_o — the balance under-counts the reservoir's
+  energy up to eight-fold. Two controls prove the balance itself is sound: at k = 500 mD it closes
+  to 1.000, and at a 200 bar BHP (nothing below the bubble point anywhere) it closes to 1.000 at the
+  original 0.5 mD. The panels are therefore hidden for this scenario via `chartLayoutPatch` rather
+  than drawn as an apparent defect. **This also undermines the case's own headline framing** — its
+  primary chart is Avg Pressure, and this measurement says the average is not representative of the
+  reservoir it is drawn for. Fold into the `dep_pvt` redesign item below: whatever else changes,
+  the case must either become tank-valid (higher k, or a BHP above the bubble point) or stop
+  narrating a single average pressure.
 - [ ] **Reference-status badges on the scenario card.** The regrouping deliberately dropped the
   (misleading) reference signal the old group names carried; the honest replacement is a derived
   badge — `analyticalMethod !== 'none'` → analytical, `referenceSources` kind `opm-flow` /

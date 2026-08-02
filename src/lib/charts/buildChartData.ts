@@ -1030,8 +1030,16 @@ export function buildReferenceComparisonModel(input: {
         }
 
         // ── MBE diagnostics (Havlena-Odeh) ─────────────────────────────────
-        if (analyticalMethod === 'depletion') {
-            const mbe = computeMbeDiagnostics(result, derived);
+        // Gated on the run, not on the analytical method: a material balance is
+        // a check the simulation performs on itself and does not need a
+        // closed-form overlay to exist. Gating it on `analyticalMethod ===
+        // 'depletion'` hid it from every black-oil depletion case in the
+        // catalog — `gas_drive`, `dep_pvt` — which are exactly the cases with
+        // no other reference. `computeMbeDiagnostics` reports `applicable:
+        // false` where this balance has no injection or influx term for what
+        // the run did.
+        const mbe = computeMbeDiagnostics(result, derived);
+        if (mbe.applicable) {
             appendSeries(panels.mbe_ooip, {
                 label: `${result.label} MBE OOIP Ratio`,
                 curveKey: 'mbe-ooip-ratio',
@@ -1074,7 +1082,7 @@ export function buildReferenceComparisonModel(input: {
                 defaultVisible: false,
             }, xValues, mbe.driveOilExpansion);
             appendSeries(panels.drive_indices, {
-                label: `${result.label} Drive: Gas Cap`,
+                label: `${result.label} Drive: Free-Gas Expansion`,
                 curveKey: 'drive-gas-cap',
                 caseKey: result.key,
                 toggleGroupKey: `${result.key}-drive`,

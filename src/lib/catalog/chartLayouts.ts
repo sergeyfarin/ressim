@@ -481,8 +481,29 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: true,
             logScale: false,
-            panelOrder: ['gor', 'recovery', 'rates', 'cumulative', 'diagnostics'],
+            panelOrder: ['gor', 'recovery', 'rates', 'cumulative', 'diagnostics', 'mbe_ooip', 'drive_indices'],
             panels: {
+                // The material-balance check. These cases carry no closed-form
+                // overlay, so this is the only curve on the chart that the run
+                // can be judged against — and it is judged against itself:
+                // N_mbe/N_volumetric away from 1.0 is a balance the simulation
+                // did not close, and the drive indices say which mechanism is
+                // actually producing the oil rather than leaving the reader to
+                // infer it from the GOR.
+                mbe_ooip: {
+                    title: 'Material-Balance OOIP Ratio',
+                    curveKeys: ['mbe-ooip-ratio'],
+                    scalePreset: 'ratio',
+                    visible: true,
+                    expanded: false,
+                },
+                drive_indices: {
+                    title: 'Material-Balance Drive Indices',
+                    curveKeys: ['drive-compaction', 'drive-oil-expansion', 'drive-gas-cap'],
+                    scalePreset: 'fraction',
+                    visible: true,
+                    expanded: false,
+                },
                 rates: {
                     title: 'Oil Rate',
                     curveKeys: ['oil-rate-sim'],

@@ -75,6 +75,35 @@ export const dep_pvt: Scenario = {
     analyticalMethodSummary: 'Simulation-only — no analytical overlay. The Dietz PSS depletion model used elsewhere in this catalog is oil-only and does not represent gas liberation, so no honest quantitative reference exists for a black-oil blowdown (same precedent as gas_drive).',
     analyticalMethodReference: 'Standing (1947); McCain, "The Properties of Petroleum Fluids".',
     chartLayoutKey: 'gas',
+    /**
+     * The `gas` layout's material-balance panels are hidden here, and the reason
+     * is a measurement rather than a preference.
+     *
+     * A tank balance assumes one pressure describes the reservoir. This case is
+     * 0.5 mD produced against a 30 bar BHP, so the near-well cells sit far below
+     * the 150 bar bubble point — liberating gas, which is enormously
+     * compressible — while the volumetric average is still undersaturated and
+     * sees only c_o. Measured on the shipped case, N_mbe/N_volumetric runs 2.5
+     * to 7.8 instead of 1: the balance under-counts the reservoir's energy by
+     * up to eight-fold. Two controls confirm the balance itself is sound and
+     * the case is what breaks it — at k = 500 mD (uniform pressure) it closes to
+     * 1.000, and at a 200 bar BHP (nothing anywhere below the bubble point) it
+     * closes to 1.000 at the original 0.5 mD.
+     *
+     * Drawing that curve would read as a solver defect. It is instead evidence
+     * about this scenario's design, and it is recorded against the open redesign
+     * item in TODO.md — the same item that has to fix the case's average-pressure
+     * narrative, which this measurement also undermines.
+     */
+    chartLayoutPatch: {
+        rateChart: {
+            panelOrder: ['gor', 'recovery', 'rates', 'cumulative', 'diagnostics'],
+            panels: {
+                mbe_ooip: { visible: false },
+                drive_indices: { visible: false },
+            },
+        },
+    },
     defaultSensitivityDimensionKey: 'pvt_model',
     capabilities: {
         analyticalMethod: 'none',

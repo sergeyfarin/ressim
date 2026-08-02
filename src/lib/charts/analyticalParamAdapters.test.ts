@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
+import { generateBlackOilTable } from '../physics/pvt';
 import {
     toFiniteNumber,
     getLayerThicknesses,
@@ -27,6 +28,7 @@ import {
     computeDietzPssSimulationDiagnostics,
     MIN_GOR_OIL_RATE_SM3_DAY,
     buildDerivedRunSeries,
+    computeMbeDiagnostics,
 } from './analyticalParamAdapters';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -666,5 +668,63 @@ describe('buildDerivedRunSeries', () => {
         const derived = buildDerivedRunSeries(result);
         expect(derived.producerBhp[0]).toBe(150);
         expect(derived.injectorBhp[0]).toBe(200);
+    });
+});
+
+// ─── computeMbeDiagnostics (Havlena-Odeh) ─────────────────────────────────────
+
+describe('computeMbeDiagnostics', () => {
+    const depletionHistory = [
+        { time: 10, total_production_oil: 50, total_production_liquid: 50, total_injection: 0,
+          avg_reservoir_pressure: 280, total_production_gas: 0, producing_gor: 0 },
+        { time: 20, total_production_oil: 45, total_production_liquid: 45, total_injection: 0,
+          avg_reservoir_pressure: 260, total_production_gas: 0, producing_gor: 0 },
+        { time: 30, total_production_oil: 40, total_production_liquid: 40, total_injection: 0,
+          avg_reservoir_pressure: 240, total_production_gas: 0, producing_gor: 0 },
+    ];
+
+    function depletionResult(paramOverride: Record<string, any> = {}): BenchmarkRunResult {
+        return makeResult({
+            params: baseParams({ initialPressure: 300, ...paramOverride }),
+            rateHistory: depletionHistory,
+            pressureSeries: [280, 260, 240],
+        });
+    }
+
+    it('reports itself inapplicable on a run with injection', () => {
+        // This MBE has no G_inj/W_inj or aquifer influx term, so on an injected
+        // run F is missing a withdrawal counterpart: N_mbe would be wrong, not
+        // merely uncertain. `makeResult`'s default history is a waterflood.
+        const result = makeResult();
+        const diagnostics = computeMbeDiagnostics(result, buildDerivedRunSeries(result));
+        expect(diagnostics.applicable).toBe(false);
+        expect(diagnostics.ooipRatio).toEqual([]);
+        expect(diagnostics.driveOilExpansion).toEqual([]);
+    });
+
+    it('produces drive indices that sum to 1 on a depletion run', () => {
+        const result = depletionResult();
+        const diagnostics = computeMbeDiagnostics(result, buildDerivedRunSeries(result));
+        expect(diagnostics.applicable).toBe(true);
+        for (let index = 0; index < diagnostics.driveOilExpansion.length; index += 1) {
+            const sum = (diagnostics.driveOilExpansion[index] ?? 0)
+                + (diagnostics.driveGasCap[index] ?? 0)
+                + (diagnostics.driveCompaction[index] ?? 0);
+            expect(sum).toBeCloseTo(1.0, 9);
+        }
+    });
+
+    it('passes the run\'s own PVT table through to the balance', () => {
+        // Without this the balance falls back to correlation defaults keyed on
+        // `params.apiGravity` / `params.bubblePoint`, which a scenario carrying a
+        // generated table does not have at all.
+        const table = generateBlackOilTable(35, 0.75, 80, 150, 300, 20, 1e-4);
+        const withTable = depletionResult({ pvtMode: 'black-oil', pvtTable: table, c_o: 1e-4 });
+        const withoutTable = depletionResult({ pvtMode: 'black-oil', c_o: 1e-4 });
+
+        const a = computeMbeDiagnostics(withTable, buildDerivedRunSeries(withTable));
+        const b = computeMbeDiagnostics(withoutTable, buildDerivedRunSeries(withoutTable));
+        expect(a.applicable && b.applicable).toBe(true);
+        expect(a.ooipRatio[2]).not.toBeCloseTo(b.ooipRatio[2] ?? 0, 6);
     });
 });

@@ -49,9 +49,14 @@ describe('materialBalance', () => {
         // At ΔP = 100 bar: Np = 16000 × 1.2e-5 × 100 = 19.2 m³
         const dP = 100;
         const ct = 0.8 * 1e-5 + 0.2 * 3e-6 + 1e-6; // 9.6e-6
-        const Efw = 1.0 * ct / 0.8 * dP; // 1.2e-5 × 100 = 1.2e-3
+        const Et = 1.0 * ct / 0.8 * dP; // 1.2e-5 × 100 = 1.2e-3
+        // Split into the two mechanisms it is actually made of. The sum is the
+        // invariant: this is the same total expansion the combined c_t form gave
+        // before the attribution was corrected.
+        const Eo = 1.0 * 1e-5 * dP;                          // oil expansion
+        const Efw = 1.0 * (0.2 * 3e-6 + 1e-6) / 0.8 * dP;    // water + rock
         const N_vol = 16000;
-        const Np = N_vol * Efw; // 16000 × 1.2e-3 = 19.2
+        const Np = N_vol * Et; // 16000 × 1.2e-3 = 19.2
 
         const result = calculateMaterialBalance({
             ...CONSTANT_PVT_BASE,
@@ -69,13 +74,18 @@ describe('materialBalance', () => {
         const pt = result.points[1];
         expect(pt.F).toBeCloseTo(Np, 9);
         expect(pt.Efw).toBeCloseTo(Efw, 12);
-        expect(pt.Eo).toBe(0);
+        expect(pt.Eo).toBeCloseTo(Eo, 12);
         expect(pt.Eg).toBe(0);
-        expect(pt.Et).toBeCloseTo(Efw, 12);
+        expect(pt.Et).toBeCloseTo(Et, 12);
         expect(pt.N_mbe).toBeCloseTo(N_vol, 6);
     });
 
-    it('drive indices sum to 1 for constant PVT (100% compaction drive)', () => {
+    it('attributes constant-PVT depletion energy to oil expansion, not to compaction', () => {
+        // This case is an undersaturated oil reservoir: c_o = 1e-5/bar against
+        // S_w c_w + c_f = 1.6e-6/bar, so roughly five sixths of the energy is
+        // the oil expanding. The balance used to report it as 100 % compaction
+        // because Eo was pinned at 0 and c_o folded into the compaction term —
+        // the total was right, the label on the chart was not.
         const result = calculateMaterialBalance({
             ...CONSTANT_PVT_BASE,
             timeHistory: [0, 50],
@@ -86,9 +96,13 @@ describe('materialBalance', () => {
         });
 
         const pt = result.points[1];
-        expect(pt.driveIndex_compaction).toBeCloseTo(1.0, 10);
-        expect(pt.driveIndex_oilExpansion).toBe(0);
+        // c_o / (c_o + (S_w c_w + c_f)/(1 - S_wi)) = 1e-5 / 1.2e-5
+        expect(pt.driveIndex_oilExpansion).toBeCloseTo(1e-5 / 1.2e-5, 10);
+        expect(pt.driveIndex_compaction).toBeCloseTo(0.2e-5 / 1.2e-5, 10);
         expect(pt.driveIndex_gasCap).toBe(0);
+        expect(
+            pt.driveIndex_oilExpansion + pt.driveIndex_compaction + pt.driveIndex_gasCap,
+        ).toBeCloseTo(1.0, 10);
     });
 
     it('gas cap ratio m is correctly computed from initial saturations', () => {
@@ -166,6 +180,72 @@ describe('materialBalance', () => {
             const ratio = (result.points[i].N_mbe ?? 0) / N_vol;
             expect(ratio).toBeCloseTo(1.0, 6);
         }
+    });
+
+    it('reads the run\'s own PVT table in preference to the correlations', () => {
+        // The scenario's table is the fluid the simulator integrated. A balance
+        // built from correlations grades the run against a different fluid — and
+        // for `dep_pvt`, whose two variants differ *only* by their table, it
+        // would return byte-identical diagnostics for both.
+        const table = generateBlackOilTable(35, 0.75, 80, 150, 300, 20, 1e-4);
+        const shared = {
+            ...CONSTANT_PVT_BASE,
+            pvtMode: 'black-oil' as const,
+            initialPressure: 300,
+            // Deliberately wrong correlation inputs: if they were consulted the
+            // table result would move with them.
+            apiGravity: 12,
+            gasSpecificGravity: 0.55,
+            bubblePoint: 40,
+            timeHistory: [0, 100],
+            pressureHistory: [300, 200],
+            cumulativeOilSC: [0, 400],
+            cumulativeGasSC: [0, 20000],
+            cumulativeWaterSC: [0, 0],
+        };
+
+        const fromTable = calculateMaterialBalance({ ...shared, pvtTable: table });
+        const fromCorrelation = calculateMaterialBalance(shared);
+        expect(fromTable.points[1].Eo).not.toBeCloseTo(fromCorrelation.points[1].Eo, 6);
+
+        // And it reads it the way the engine does: at a table pressure the
+        // balance's Bo/Rs must be that row, not an interpolation of a different curve.
+        const row = table.find((r) => r.p_bar > 150 && r.p_bar < 300)!;
+        const atRow = calculateMaterialBalance({
+            ...shared,
+            pvtTable: table,
+            initialPressure: row.p_bar,
+            pressureHistory: [row.p_bar, row.p_bar],
+        });
+        // Eo at the initial pressure is identically zero, so probe Boi through N.
+        const Boi = (CONSTANT_PVT_BASE.poreVolume * 0.8) / atRow.volumetricOoip;
+        expect(Boi).toBeCloseTo(row.bo_m3m3, 9);
+    });
+
+    it('applies Dake\'s (1 + m) factor to the connate-water and pore term', () => {
+        // Dake (1978) Eq. 3.20: the gas cap has connate water and pore volume
+        // that expand too. Identical to the old formula at m = 0, which is why
+        // no shipped scenario moves; it exists for the gas-cap case.
+        const withCap = calculateMaterialBalance({
+            ...CONSTANT_PVT_BASE,
+            initialGasSaturation: 0.1, // Soi = 0.7, m = 1/7
+            timeHistory: [0, 50],
+            pressureHistory: [300, 200],
+            cumulativeOilSC: [0, 10],
+            cumulativeGasSC: [0, 0],
+            cumulativeWaterSC: [0, 0],
+        });
+        const noCap = calculateMaterialBalance({
+            ...CONSTANT_PVT_BASE,
+            timeHistory: [0, 50],
+            pressureHistory: [300, 200],
+            cumulativeOilSC: [0, 10],
+            cumulativeGasSC: [0, 0],
+            cumulativeWaterSC: [0, 0],
+        });
+
+        expect(withCap.gasCapRatio).toBeCloseTo(1 / 7, 12);
+        expect(withCap.points[1].Efw / noCap.points[1].Efw).toBeCloseTo(1 + 1 / 7, 12);
     });
 });
 

@@ -19,6 +19,7 @@ import {
     dietzShapeFactorFromProductivityIndex,
 } from '../analytical/depletionAnalytical';
 import { calculateMaterialBalance } from '../analytical/materialBalance';
+import { DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR } from '../physics/pvt';
 import {
     computeGasMaterialBalance,
     gasFormationVolumeFactor,
@@ -710,16 +711,36 @@ export function computeDietzPssSimulationDiagnostics(
 // ─── Material balance diagnostics ─────────────────────────────────────────────
 
 export type MbeDiagnostics = {
+    /**
+     * False when this balance cannot be closed for the run, in which case every
+     * series below is empty. The MBE implemented here is the depletion form: it
+     * carries no injection (G_inj, W_inj) and no aquifer influx (W_e) term, so
+     * on a run with an injector `F` would be missing a withdrawal counterpart
+     * and `N_mbe` would be wrong rather than merely uncertain. Better to draw
+     * nothing than a confidently wrong OOIP.
+     */
+    applicable: boolean;
     ooipRatio: Array<number | null>;
     driveOilExpansion: Array<number | null>;
     driveGasCap: Array<number | null>;
     driveCompaction: Array<number | null>;
 };
 
+const NOT_APPLICABLE: MbeDiagnostics = {
+    applicable: false,
+    ooipRatio: [],
+    driveOilExpansion: [],
+    driveGasCap: [],
+    driveCompaction: [],
+};
+
 /**
  * Computes Havlena-Odeh MBE diagnostics from simulation output:
  * - OOIP ratio (N_mbe / N_volumetric) — should converge to ~1.0
  * - Drive indices (oil expansion, gas cap, compaction) — fractional, sum to 1.0
+ *
+ * The PVT comes from the run's own `pvtTable` when it has one, so the balance
+ * and the simulation read the same fluid rather than agreeing by correlation.
  */
 export function computeMbeDiagnostics(
     result: BenchmarkRunResult,
@@ -728,6 +749,11 @@ export function computeMbeDiagnostics(
     const params = result.params;
     const poreVolume = getPoreVolume(params);
     const pvtMode = String(params.pvtMode ?? 'constant');
+
+    const injected = result.rateHistory.some(
+        (point) => Math.abs(toFiniteNumber(point.total_injection, 0)) > 0,
+    );
+    if (injected) return NOT_APPLICABLE;
 
     const n = result.rateHistory.length;
     const cumOil: number[] = [];
@@ -762,7 +788,8 @@ export function computeMbeDiagnostics(
         pvtMode: pvtMode === 'black-oil' ? 'black-oil' : 'constant',
         Bo_constant: toFiniteNumber(params.volume_expansion_o, 1.0),
         Bw_constant: toFiniteNumber(params.volume_expansion_w, 1.0),
-        c_o: toFiniteNumber(params.c_o, 1e-5),
+        c_o: toFiniteNumber(params.c_o, DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR),
+        pvtTable: Array.isArray(params.pvtTable) ? params.pvtTable : undefined,
         apiGravity: toFiniteNumber(params.apiGravity, 30),
         gasSpecificGravity: toFiniteNumber(params.gasSpecificGravity, 0.7),
         reservoirTemperature: toFiniteNumber(params.reservoirTemperature, 80),
@@ -776,6 +803,7 @@ export function computeMbeDiagnostics(
 
     const Nvol = mbeResult.volumetricOoip;
     return {
+        applicable: true,
         ooipRatio: mbeResult.points.map((pt) =>
             pt.N_mbe === null || Nvol < 1e-12 ? null : pt.N_mbe / Nvol,
         ),

@@ -424,11 +424,7 @@ describe('scenario catalog taxonomy', () => {
         }
     });
 
-    // TODO (TODO.md, "Review of the simulation-only group"): enable once the
-    // Havlena-Odeh drive-index panels are wired into the `gas` chart layout.
-    // `dep_gas_pz` already satisfies this via its `pz` panel; `gas_drive` and
-    // `dep_pvt` will once that lands, which is the point of stating the rule now.
-    it.skip('shows a tank-level result in every Material Balance & Drive case', () => {
+    it('shows a tank-level result in every Material Balance & Drive case', () => {
         for (const scenario of listScenarios()) {
             if (scenario.catalog.group !== 'material-balance-drive') continue;
             const panels = Object.keys(getScenarioChartLayout(scenario).rateChart?.panels ?? {});
