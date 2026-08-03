@@ -91,6 +91,7 @@
             <div class="flex flex-1 flex-col gap-2">
               {#each groupScenarios as scenario}
                 <Button
+                  data-testid={`scenario-${scenario.key}`}
                   size="sm"
                   class="h-auto min-h-8 w-full whitespace-normal py-2 text-center leading-tight"
                   variant={activeScenarioKey === scenario.key ? "default" : "outline"}
@@ -160,6 +161,7 @@
           <div class="flex flex-wrap items-center gap-2">
             {#each activeScenario.sensitivities as dim}
               <Button
+                data-testid={`sensitivity-${dim.key}`}
                 size="sm"
                 variant={activeDimension?.key === dim.key ? "default" : "outline"}
                 onclick={() => onSelectSensitivityDimension(dim.key)}
@@ -192,6 +194,7 @@
             {#each activeDimension.variants as variant}
               <button
                 type="button"
+                data-testid={`variant-${variant.key}`}
                 aria-pressed={validActiveVariantKeys.includes(variant.key)}
                 class={`ui-chip cursor-pointer transition-colors ${
                   validActiveVariantKeys.includes(variant.key)

@@ -2,18 +2,20 @@ import { expect, test, type Page } from '@playwright/test'
 
 const expectedCommit = process.env.RESIM_EXPECTED_SHA
 
-async function selectVariants(page: Page, dimension: string, variants: string[]): Promise<void> {
-  await page.getByRole('button', { name: dimension, exact: true }).click()
-  const wanted = new Set(variants)
+async function selectVariants(page: Page, dimensionKey: string, variantKeys: string[]): Promise<void> {
+  const dimension = page.getByTestId(`sensitivity-${dimensionKey}`)
+  await expect(dimension).toBeVisible({ timeout: 15_000 })
+  await dimension.click()
+  const wanted = new Set(variantKeys)
 
-  for (const button of await page.locator('button.ui-chip').all()) {
-    const label = (await button.textContent())?.trim() ?? ''
+  for (const button of await page.locator('[data-testid^="variant-"]').all()) {
+    const key = (await button.getAttribute('data-testid'))?.replace('variant-', '') ?? ''
     const selected = (await button.getAttribute('aria-pressed')) === 'true'
-    if (selected !== wanted.has(label)) await button.click()
+    if (selected !== wanted.has(key)) await button.click()
   }
 
-  for (const variant of variants) {
-    await expect(page.getByRole('button', { name: variant, exact: true })).toHaveAttribute('aria-pressed', 'true')
+  for (const variantKey of variantKeys) {
+    await expect(page.getByTestId(`variant-${variantKey}`)).toHaveAttribute('aria-pressed', 'true')
   }
 }
 
@@ -67,7 +69,10 @@ test('public deployment loads assets and runs IMPES, FIM, charts, and 3D', async
   await page.reload({ waitUntil: 'networkidle' })
   await expect(page.getByTestId('run-status')).toHaveText('Ready')
 
-  await selectVariants(page, 'Solver (FIM vs IMPES)', ['IMPES 5-day steps', 'FIM 5-day steps'])
+  const numericalConvergenceScenario = page.getByTestId('scenario-wf_numerics')
+  await expect(numericalConvergenceScenario).toBeVisible({ timeout: 15_000 })
+  await numericalConvergenceScenario.click()
+  await selectVariants(page, 'solver_formulation', ['solver_impes_base', 'solver_fim_base'])
   await page.getByRole('button', { name: 'Run 2 Sensitivities', exact: true }).click()
   await expect(page.getByTestId('run-status')).toHaveText('Complete', { timeout: 3 * 60 * 1000 })
 
