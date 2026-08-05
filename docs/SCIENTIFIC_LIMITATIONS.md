@@ -1,4 +1,4 @@
-# Scientific-use notice and limitations
+# Limitations
 
 ResSim is educational and research software, not a qualified tool for reserves booking,
 operational, investment, regulatory, or safety-critical decisions. Its models and references cover

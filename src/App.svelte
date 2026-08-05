@@ -135,7 +135,7 @@
                     your device; no analytics, uploads, or cookies. Your theme preference is saved
                     locally in your browser.
                     <br />
-                    <strong>Scientific-use notice:</strong>
+                    <strong>Use notice and limitations:</strong>
                     ResSim is educational and research software, not a qualified tool for real-world
                     reservoir decisions. See the concise
                     <a
@@ -143,7 +143,7 @@
                         target="_blank"
                         rel="noreferrer"
                         class="font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
-                    >validation scope and limitations</a> before interpreting results.
+                    >limitations</a> before interpreting results.
                     <br />
                     Feedback is welcome through
                     <a
