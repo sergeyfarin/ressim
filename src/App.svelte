@@ -154,7 +154,7 @@
                     >GitHub</a>
                     or
                     <a
-                        href="https://www.linkedin.com/in/sergeyfarin/"
+                        href="https://www.linkedin.com/in/farin/"
                         target="_blank"
                         rel="noreferrer"
                         class="font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
