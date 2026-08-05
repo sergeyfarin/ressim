@@ -77,18 +77,18 @@
   <!-- ── Scenario selection ── -->
   <div class="space-y-2 p-3">
     <div class="ui-panel-kicker text-muted-foreground">Scenario Selection</div>
-    <div class="grid auto-rows-fr grid-cols-[repeat(auto-fill,minmax(16rem,18rem))] gap-2">
+    <div class="grid grid-cols-[repeat(auto-fill,minmax(16rem,18rem))] items-start gap-2">
       {#each SCENARIO_GROUPS as group}
         {@const groupScenarios = SCENARIOS.filter((s) => getScenarioGroup(s) === group.key)}
         {#if groupScenarios.length > 0}
           <section
             aria-labelledby={`scenario-group-${group.key}`}
-            class="flex h-full flex-col rounded-md border border-border/60 bg-muted/10 p-2.5"
+            class="flex flex-col rounded-md border border-border/60 bg-muted/10 p-2.5"
           >
             <div class="mb-1.5 flex min-h-9 items-start">
               <div id={`scenario-group-${group.key}`} class="ui-support-copy font-semibold text-foreground">{group.label}</div>
             </div>
-            <div class="flex flex-1 flex-col gap-2">
+            <div class="flex flex-col gap-2">
               {#each groupScenarios as scenario}
                 <Button
                   data-testid={`scenario-${scenario.key}`}

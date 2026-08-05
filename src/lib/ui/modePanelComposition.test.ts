@@ -30,7 +30,8 @@ describe("Scenario picker composition", () => {
   });
 
   it("presents the catalog as grouped cards with explicit input hierarchy", () => {
-    expect(scenarioPickerSource).toMatch(/auto-rows-fr/);
+    expect(scenarioPickerSource).not.toMatch(/auto-rows-fr|h-full flex-col|flex-1 flex-col/);
+    expect(scenarioPickerSource).toMatch(/items-start gap-2/);
     expect(scenarioPickerSource).toMatch(/grid-cols-\[repeat\(auto-fill,minmax\(16rem,18rem\)\)\]/);
     expect(scenarioPickerSource).toMatch(/w-full whitespace-normal/);
     expect(scenarioPickerSource).not.toMatch(/role !== 'simulation'/);

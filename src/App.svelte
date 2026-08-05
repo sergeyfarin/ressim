@@ -135,9 +135,9 @@
                     your device; no analytics, uploads, or cookies. Your theme preference is saved
                     locally in your browser.
                     <br />
-                    <strong>Notice:</strong>
-                    ResSim is educational and research software, not for reserves booking,
-                    operational decisions, or safety-critical use. Review the
+                    <strong>Scientific-use notice:</strong>
+                    ResSim is educational and research software, not a qualified tool for real-world
+                    reservoir decisions. See the concise
                     <a
                         href="https://github.com/sergeyfarin/ressim/blob/master/docs/SCIENTIFIC_LIMITATIONS.md"
                         target="_blank"
