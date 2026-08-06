@@ -115,7 +115,7 @@ Main causes:
 
 ## Relation to Plot Analytical Curve
 
-The plot analytical curve (and MAE/RMSE/MAPE shown in the rate chart) compares time-series rate behavior during interactive runs.
+The plotted analytical curve (and MAE/RMSE/MAPE shown in the comparison chart) compares time-series rate behavior during interactive runs.
 
 - Benchmark table in this page: breakthrough PV comparison against analytical Buckley-Leverett shock reference.
 - Plot metrics in UI: time-series mismatch metrics between simulator rates and analytical rate curve for the current run settings.
@@ -129,8 +129,8 @@ Frontend alignment note:
 
 ## User-Facing Surface
 
-- README includes a Model Validation Benchmarks (P4-1) section with tolerance policy and a link to this page.
-- Chart-level reference-solution mismatch metrics (MAE/RMSE/MAPE) remain visible in the rate chart panel for quick run-time comparison.
+- README links this benchmark record from its documentation map; the tolerance policy lives here.
+- Chart-level reference-solution mismatch metrics (MAE/RMSE/MAPE) remain visible in the comparison panel for quick run-time comparison.
 - The active waterflood scenario is `wf_bl1d` in `src/lib/catalog/scenarios.ts`; BL Case A / BL Case B behavior now lives under its mobility sensitivity variants.
 - Benchmark execution uses the sensitivity sweep workflow: run base only, or select sensitivity variants (grid refinement, viscosity) for a sweep.
 - Stored reference-run results feed benchmark-specific comparison charts.

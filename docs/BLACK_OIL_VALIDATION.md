@@ -197,11 +197,13 @@ the two sides stay equal, so an analytical overlay can silently disagree with th
   default moves. A cross-language regression guard now asserts the shared value. Scenarios that set
   their own value (SPE1 uses 2.06e-4 /bar) override it on both sides.
 
-**Material-balance diagnostics are not a full per-phase closure.** Water and gas cumulative
-errors are reported explicitly; oil is reported against stock-tank inventory change but the
-three-phase closure is still residual-based (`docs/UNIT_SYSTEM.md`, note 5). The SPE1 acceptance
-criteria above therefore grade oil and gas drift separately and normalize each against its own
-inventory.
+**Material-balance diagnostics report each phase explicitly, with one structural limitation.**
+Water and gas cumulative errors are direct inventory comparisons, and oil is reported against
+stock-tank inventory depletion. Oil *saturation* is still residual by construction
+(`S_o = 1 - S_w - S_g`), so the oil diagnostic checks reporting/FVF closure rather than an
+independently transported oil-saturation equation. The SPE1 acceptance criteria therefore grade
+oil and gas drift separately and normalize each against its own inventory. See
+`docs/THREE_PHASE_VALIDATION.md` section 4.
 
 **Gas redissolution is off in SPE1.** `gasRedissolutionEnabled: false` matches the reference
 deck's behavior for this case: liberated free gas does not re-enter solution when pressure

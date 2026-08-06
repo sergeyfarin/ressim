@@ -92,12 +92,13 @@ in `FIM_EXPERIMENT_REGISTRY.md`; the docs themselves are provenance, not live sp
 
 ## Current repo-level facts
 
-- `src/lib/catalog/scenarios/` is the primary scenario registry: **18 active canonical scenarios**
-  (`.ts`, excluding co-located `*.test.ts`).
+- `src/lib/catalog/scenarios/` is the primary scenario registry: **17 scenarios are offered in the
+  picker**. A further definition, `dep_pvt`, is resolvable and tested but explicitly withheld in
+  `scenarios.ts` pending a second sensitivity dimension.
 - `ScenarioPicker.svelte` is the only live case-selection surface, driven entirely by
-  `scenarios.ts`. The legacy benchmark-family system and Custom Mode's JSON facet catalog were
-  archived 2026-07 (`.archive/README.md`); production case definitions live only in
-  `src/lib/catalog/scenarios/`.
+  `scenarios.ts`. The legacy benchmark-family data and Custom Mode's preset/facet entries were
+  archived in 2026-07 (`.archive/README.md`); compatibility types and empty stubs remain, but
+  production case definitions live only in `src/lib/catalog/scenarios/`.
 - Public simulations execute in browser-side WASM through scenario-declared **IMPES or FIM**
   policies. Offline OPM Flow artifacts are precomputed reference data, not live simulation. The
   **8 committed artifacts** are `status: "parsed"` and are rendered only when a scenario declares

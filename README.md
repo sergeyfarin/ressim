@@ -5,10 +5,10 @@ classical solution it is supposed to reproduce. Three-phase black-oil flow on a 
 grid — implicit-pressure (IMPES) or fully implicit — with Peaceman wells, gravity, capillarity
 and correlation or tabular PVT, plotted live against Buckley–Leverett, Craig, Dykstra–Parsons,
 Stiles, Dietz, Fetkovich, Arps, Havlena–Odeh and line-source well-test solutions, plus
-precomputed OPM Flow runs where no closed form exists. Fifteen scenarios ship as
-self-contained studies, each with sensitivity dimensions, a 3D view, saturation profiles, and
-an explicit statement of what its reference assumes and where the simulation is expected to
-leave it. Nothing is uploaded: the solver is WebAssembly running on the page, fonts are bundled
+precomputed OPM Flow runs where no closed form exists. Seventeen scenarios ship as
+self-contained studies with sensitivity dimensions, scenario-appropriate charts and (where the
+case is spatial) a 3D view and saturation profile. Each states what its reference assumes and
+where the simulation is expected to leave it. Nothing is uploaded: the solver is WebAssembly running on the page, fonts are bundled
 with the app, and there are no analytics or cookies. The selected theme is stored locally in the
 browser.
 
@@ -36,8 +36,8 @@ browser.
 ## How To Use It
 
 1. **Pick a scenario** from the picker at the top. The groups say what kind of question each
-   answers: 1D displacement, sweep efficiency, flow regimes and decline, simulation-only, or
-   validation benchmarks. The description below the picker states the case, its solver, and the
+   answers: 1D displacement, sweep efficiency, flow regimes and decline, material balance and
+   drive, or published benchmark decks. The description below the picker states the case, its solver, and the
    reference solution it is judged against.
 2. **Choose a sensitivity dimension**, then toggle the variants to include. The dimension
    description explains what the study is for; each variant chip carries what it changes.
@@ -72,7 +72,7 @@ browser.
 | Flow Regimes & Decline | Layered Depletion (Arps) | `dep_arps` | Spatial layered depletion approaching a late-time Dietz/Fetkovich superposition, plus a crossflow limitation study |
 | Material Balance & Drive Mechanism | Gas Reserves from p/z | `dep_gas_pz` | Dry-gas depletion against the p/z material-balance straight line; pore compressibility, compartmentalisation and how much history you have each inflate the reserves estimate; OPM Flow cross-check at both ends of the compressibility ladder |
 | Material Balance & Drive Mechanism | Solution Gas Drive | `gas_drive` | Saturated black-oil depletion — liberation, free-gas build-up and the GOR rise; graded against an OPM Flow reference (`docs/THREE_PHASE_VALIDATION.md` §2) |
-| Material Balance & Drive Mechanism | PVT Model Risk — One Calibration Point | `dep_pvt` | Two PVT representations constrained at one point; constant-rate blowdown, so unmeasured undersaturated compressibility shows up as a 2.4x difference in time to the bubble point; no external reference — the comparison is between the variants, checked by the on-chart material balance |
+| Material Balance & Drive Mechanism | PVT Model Risk — One Calibration Point *(defined and tested; withheld from picker)* | `dep_pvt` | Two PVT representations constrained at one point; constant-rate blowdown, so unmeasured undersaturated compressibility shows up as a 2.4x difference in time to the bubble point; withheld until it has a second sensitivity dimension ([issue #26](https://github.com/sergeyfarin/ressim/issues/26)) |
 | Published Benchmark Decks | SPE1 Black-Oil Benchmark | `spe1_gas_injection` | Published Eclipse and OPM Flow comparative-solution references |
 
 ## Reading The Results — Model Validity Notes
@@ -128,7 +128,9 @@ Note: full `cargo test` is not used as a gate — FIM diagnostic tests can domin
 
 ### Status
 
-- 15 canonical scenarios grouped as 1D displacement, sweep efficiency, flow regimes and decline, simulation-only, and validation benchmarks.
+- 17 canonical scenarios are offered in the picker across five physics-question groups. An 18th,
+  `dep_pvt`, remains defined and tested but is deliberately withheld pending a second sensitivity
+  dimension.
 - Two-phase oil/water IMPES workflow validated against Buckley-Leverett breakthrough references.
 - Analytical overlays for Buckley-Leverett, Craig areal sweep, Dykstra-Parsons vertical sweep, Stiles-style combined sweep, Dietz pseudo-steady-state depletion, Fetkovich decline, Arps decline, line-source well-test drawdown, and Havlena-Odeh material-balance diagnostics.
 - Black-oil PVT mode is available for volatile-oil style studies through correlation-based or tabular PVT input.
@@ -176,15 +178,16 @@ Note: full `cargo test` is not used as a gate — FIM diagnostic tests can domin
 - Frontend and catalog tests cover scenario contracts, analytical overlay wiring, chart layout behavior, and payload generation.
 - Analytical-contract tests verify that scenario dimensions marked `affectsAnalytical: true` actually perturb the analytical result.
 
-### In Progress
+### Verified numerical-reference acceptance
 
-- SPE1 black-oil benchmark scenario is defined with published Eclipse reference overlays and offline OPM Flow artifact hooks. Quantitative match remains a validation task.
-
-### Still Needed
-
-- Quantitative SPE1 acceptance criteria once tabular SCAL and surface-rate control are implemented.
-- Stronger three-phase acceptance tests before gas cases can be described as production-grade.
-- Additional chart-model coverage for preview-only and per-variant depletion comparison flows.
+- SPE1 is graded against committed published/OPM reference samples for field pressure, producer
+  oil rate, producing GOR, and oil/gas material balance. The full-horizon replay and tolerances are
+  recorded in `docs/BLACK_OIL_VALIDATION.md`.
+- Solution-gas drive is graded against OPM Flow, and the gas-injection path has quantitative
+  breakthrough and saturation-profile criteria. Three-phase status is validated for these bounded
+  cases; the remaining model envelope is listed in `docs/THREE_PHASE_VALIDATION.md`.
+- Eight parsed OPM Flow artifacts are bundled and appear only when explicitly declared by a
+  scenario.
 
 ## Why The Roadmap Is Ordered This Way
 
@@ -253,7 +256,7 @@ See `ROADMAP.md` and the
 ordering. The next major engineering priorities are:
 
 1. Deploy and smoke-test the stable public link.
-2. Close the remaining black-oil and gravity validation gaps.
+2. Close the remaining black-oil, gravity, and IMPES/FIM agreement gaps.
 3. Consolidate output selection and chart architecture.
 4. Add scenario enablers only with consuming cases and independent references.
 5. Keep the FIM OPM-parity frontier parked behind product validation unless a user-visible defect

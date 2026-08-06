@@ -10,7 +10,11 @@ Scenarios are the product's core content unit: a self-describing definition that
 ## Before you start
 
 - Pick the analytical reference **first** and be honest about its assumptions (project principle: "analytical methods only where assumptions remain explicit and defensible"). If no quantitative reference exists, use `analyticalMethod: 'none'` and say so in the description — `gas_drive` is the precedent.
-- Check physics support: 3D Cartesian grid only (no radial/LGR), two-phase O/W validated, three-phase O/W/G experimental, black-oil PVT available, no aquifer models, no well schedules. Don't define a scenario the engine can't honestly run.
+- Check physics support: 3D Cartesian grid only (no radial/LGR), validated two-phase O/W and
+  bounded three-phase O/W/G cases, black-oil PVT available, no aquifer models, and no declarative
+  time-varying well schedule. The worker can apply each well's initial control, target, limit, and
+  enabled state; it is not a full deck scheduler. Don't define a scenario the engine can't
+  honestly run. Read `docs/THREE_PHASE_VALIDATION.md` before extending the three-phase envelope.
 - Read one exemplar end-to-end: `src/lib/catalog/scenarios/wf_bl1d.ts` (simple) or `spe1_gas_injection.ts` (black-oil, per-layer dz, PVT table, published references).
 
 ## Checklist
