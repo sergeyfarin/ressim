@@ -12,7 +12,7 @@ where the simulation is expected to leave it. Nothing is uploaded: the solver is
 with the app, and there are no analytics or cookies. The selected theme is stored locally in the
 browser.
 
-https://farin.nl/ressim
+https://farin.nl/ressim - No installation required
 
 <img width="2463" height="1895" alt="image" src="https://github.com/user-attachments/assets/74e00ab8-6c5f-42fc-ae7b-5a85cb27089a" />
 
