@@ -28,28 +28,28 @@
     "opm:artifacts": "uv run --directory tools/opm_flow python -m opm_flow_tool.cli build-artifacts"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
-    "@sveltejs/vite-plugin-svelte": "7.2.0",
+    "@playwright/test": "1.63.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.0",
     "@tailwindcss/postcss": "4.3.3",
-    "@types/node": "26.1.2",
+    "@types/node": "26.5.1",
     "@types/three": "0.185.4",
-    "@typescript-eslint/eslint-plugin": "8.66.0",
-    "@typescript-eslint/parser": "8.66.0",
-    "@vitest/coverage-v8": "4.1.10",
-    "autoprefixer": "10.5.4",
-    "eslint": "10.8.0",
-    "eslint-plugin-svelte": "3.22.0",
-    "svelte": "5.56.8",
+    "@typescript-eslint/eslint-plugin": "8.70.0",
+    "@typescript-eslint/parser": "8.70.0",
+    "@vitest/coverage-v8": "5.0.0",
+    "autoprefixer": "10.5.6",
+    "eslint": "10.10.0",
+    "eslint-plugin-svelte": "3.23.0",
+    "svelte": "5.57.0",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
-    "vite": "8.2.0",
-    "vitest": "4.1.10"
+    "vite": "8.3.0",
+    "vitest": "5.0.0"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "5.3.0",
     "@fontsource/ibm-plex-sans": "5.3.0",
     "chart.js": "4.5.1",
-    "three": "0.185.1"
+    "three": "0.186.0"
   },
-  "packageManager": "pnpm@11.20.0+sha512.9a6f330a95b66446ea088faf1521405a8a01f07fde7124cc9958dfed52d4bb436737e65b08f85f37b46fcba375092558ac51262b816844b22f63406ed166bfee"
+  "packageManager": "pnpm@12.3.4+sha512.961aa41fb077da3a04a441d9f8e15ebc0c96da8ef710b2eb67bf9ee7cb0610eabd48f1fd85f51cffe73846785fa0f87c56a3a872a1d893f8446741b5cce45457"
 }
