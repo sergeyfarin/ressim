@@ -21,6 +21,13 @@ fi
 # ... N filtered out"). A renamed, deleted or cfg-ed-out test would silently
 # turn its gate line into a no-op that still reports success, so every filter
 # must be shown to have actually executed at least one test.
+#
+# "Executed" means *passed*, not merely *matched*. An `#[ignore]`d test is
+# reported on the `test result:` line under `ignored`, so counting passed and
+# ignored together would accept a filter that ran no code at all — exactly the
+# silent-omission failure this check exists to prevent. Release-only replays in
+# this repository are `#[ignore]`d, so that is a reachable state, not a
+# hypothetical one.
 run_test() {
     local filter="$1"
     local status=0
@@ -31,17 +38,34 @@ run_test() {
         exit "$status"
     fi
 
-    local ran
-    ran="$(awk '/^test result:/ {
+    local counts passed ignored
+    counts="$(awk '/^test result:/ {
         gsub(/;/, "")
-        for (i = 2; i <= NF; i++) if ($i == "passed" || $i == "ignored") total += $(i - 1)
-    } END { print total + 0 }' "$log_file")"
-    if [ "$ran" -eq 0 ]; then
-        echo "FAIL: filter '$filter' matched no tests — the gate did not run." >&2
-        echo "      A test was probably renamed, removed or cfg-ed out; fix the filter." >&2
+        for (i = 2; i <= NF; i++) {
+            if ($i == "passed") p += $(i - 1)
+            if ($i == "ignored") g += $(i - 1)
+        }
+    } END { print (p + 0) " " (g + 0) }' "$log_file")"
+    passed="${counts%% *}"
+    ignored="${counts##* }"
+
+    if [ "$passed" -eq 0 ]; then
+        if [ "$ignored" -gt 0 ]; then
+            echo "FAIL: filter '$filter' matched only $ignored ignored test(s) — no code ran." >&2
+            echo "      An \`#[ignore]\`d test cannot serve as a gate; select a running test" >&2
+            echo "      or move this replay to the explicit release gate." >&2
+        else
+            echo "FAIL: filter '$filter' matched no tests — the gate did not run." >&2
+            echo "      A test was probably renamed, removed or cfg-ed out; fix the filter." >&2
+        fi
         exit 1
     fi
-    echo "gate ok: '$filter' ran $ran test(s)"
+
+    if [ "$ignored" -gt 0 ]; then
+        echo "gate ok: '$filter' ran $passed test(s) ($ignored ignored)"
+    else
+        echo "gate ok: '$filter' ran $passed test(s)"
+    fi
 }
 
 run_shared() {
@@ -74,6 +98,14 @@ run_fim() {
     run_test three_phase_gas_flood_phase_closure_holds_for_all_three_phases
     run_test fim::tests::spe1::
     run_test fim::tests::wells::
+    # `fim::wells::tests::` is a *different* module from `fim::tests::wells::` — the unit tests
+    # living beside `fim/wells.rs` rather than the integration tests under `fim/tests/`. It was
+    # in no bucket, which is how two failures there (#27, #28) survived every green gate run
+    # until the compositional-readiness audit found them by hand (#13).
+    run_test fim::wells::tests::
+    # The AD assembly and well-AD parity gates were likewise unselected by any bucket.
+    run_test assembly_ad
+    run_test wells_ad
     run_test dep_pss_fim_closed_system_depletion_invariants_hold
     run_test dep_pss_fim_single_cell_local_newton_leaves_small_absolute_oil_residual
     run_test dep_pss_fim_single_cell_depletion_is_timestep_stable

@@ -76,11 +76,15 @@ scenario tier through vitest file parallelism.
 Rust buckets (grouped, curated, safe to run — no hanging tests):
 
 ```bash
-bash scripts/validate-solver-coverage.sh shared   # both-solver parity contracts
-bash scripts/validate-solver-coverage.sh impes    # IMPES-owned tests
-bash scripts/validate-solver-coverage.sh fim      # FIM-owned fast tests
-bash scripts/validate-solver-coverage.sh all
+bash scripts/validate-solver-coverage.sh shared   # both-solver parity contracts   17 gates,  ~11 s
+bash scripts/validate-solver-coverage.sh impes    # IMPES-owned tests               4 gates,   ~3 s
+bash scripts/validate-solver-coverage.sh fim      # FIM-owned fast tests           14 gates,  ~26 s
+bash scripts/validate-solver-coverage.sh all      #                                35 gates,  ~40 s
 ```
+
+Times are warm-cache wall clock on a single-core box, excluding the initial `cargo test --no-run`
+compile. They are small enough that there is no reason to run a narrower bucket than the decision
+table calls for.
 
 The script builds the test target first (a compile break fails as a build error before
 any bucket runs) and prints a `gate ok: '<filter>' ran N test(s)` line per filter. A
@@ -88,6 +92,10 @@ filter that matches **no** tests is a hard failure — `cargo test <filter>` exi
 nothing matches, so without that check a renamed or deleted test would silently turn its
 gate line into a no-op that still reported success. If you rename a test, update the
 filter in the script.
+
+A filter that matches **only `#[ignore]`d tests** is also a hard failure (#13): the count
+is of *passed* tests, not matched ones, so a release-only replay cannot masquerade as a
+gate that ran. `gate ok` lines report ignored tests separately when both are present.
 
 FIM locked day-to-day baseline (exact commands from `docs/FIM_STATUS.md`):
 
@@ -143,11 +151,23 @@ bash scripts/build-wasm.sh
 
 ## CI reality check
 
-`.github/workflows/pr-tests.yml` runs, in order: the Rust **IMPES** bucket
-(`scripts/validate-solver-coverage.sh impes`), the full vitest suite via `pnpm run test:coverage`,
-and `pnpm run typecheck`.
+`.github/workflows/pr-tests.yml` runs, in order: `pnpm install`, an explicit
+`scripts/build-wasm.sh`, `pnpm run lint`, `pnpm run check:cycles`, `pnpm run typecheck`,
+`scripts/validate-solver-coverage.sh all` (shared + FIM + IMPES), the Buckley-Leverett
+benchmarks, the full vitest suite via `pnpm run test:coverage`, and `pnpm run build`.
 
-So CI does cover IMPES — but **it runs no `shared` and no `fim` Rust test, no Buckley-Leverett
-benchmark, no lint, no cycle check, and no build.** A parity regression between the two solvers, a
-FIM convergence regression, or an import cycle will pass CI. Local validation is still the only
-gate for those.
+That covers the same ground as local `validate:full`, with two deliberate exceptions:
+
+- The `#[ignore]`d release replays (`spe1_full_horizon_matches_published_reference`,
+  `spe1_areal_refinement_reference_error_replay`, `physics_depletion_grid_convergence_fim`) are
+  **not** in PR CI. They are explicit release/relevant-change gates — run them yourself when a
+  change touches what they measure.
+- The wasm control matrix (`scripts/fim-wasm-diagnostic.mjs`) is not in CI either; see the
+  `fim-solver-debug` skill.
+
+The explicit WASM build matters: `src/lib/ressim/pkg/` is committed, so without it every frontend
+simulation test in CI would run against the checked-in bindings rather than the Rust source in
+the pull request.
+
+Before 2026-09-14 (#13) CI ran only the IMPES bucket, no lint, no cycle check, no build and no
+Buckley-Leverett gate. If you are reading an older run, do not assume it covered FIM.

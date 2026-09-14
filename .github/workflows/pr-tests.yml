@@ -33,11 +33,31 @@ jobs:
         with:
           shared-key: "ressim-benchmark-cache"
 
-      - name: Run Rust engine regression gate (IMPES)
-        run: bash scripts/validate-solver-coverage.sh impes
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # `src/lib/ressim/pkg/` is committed, so without this step every frontend
+      # simulation test runs against whatever bindings happen to be checked in
+      # rather than against the Rust source in the pull request.
+      - name: Build WASM bindings from this revision
+        run: bash scripts/build-wasm.sh
+
+      - name: Run ESLint
+        run: pnpm run lint
+
+      - name: Check for runtime import cycles
+        run: pnpm run check:cycles
+
+      - name: Run TypeScript typecheck
+        run: pnpm run typecheck
+
+      # Previously only the IMPES bucket ran here, so a FIM convergence regression
+      # or a cross-solver parity break passed CI. `all` is shared + FIM + IMPES.
+      - name: Run Rust engine regression gates (shared + FIM + IMPES)
+        run: bash scripts/validate-solver-coverage.sh all
+
+      - name: Run Buckley-Leverett physics benchmarks
+        run: cargo test --manifest-path src/lib/ressim/Cargo.toml benchmark_buckley -- --nocapture
 
       # `test:coverage` is the full vitest suite (`vitest run --coverage`), so it is
       # the pass/fail gate as well as the coverage producer. Running `pnpm run test`
@@ -51,5 +71,5 @@ jobs:
           name: vitest-coverage
           path: coverage/**
 
-      - name: Run TypeScript typecheck
-        run: pnpm run typecheck
+      - name: Build production bundle
+        run: pnpm run build

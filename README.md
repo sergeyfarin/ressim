@@ -122,10 +122,16 @@ pnpm run dev
 ### Validate
 
 ```bash
-pnpm run validate           # frontend: typecheck + lint + test + build
-pnpm run validate:product   # + Rust IMPES solver bucket
-bash scripts/validate-solver-coverage.sh all   # Rust solver test buckets
+pnpm run validate           # frontend: typecheck + lint + cycles + fast tests + build
+pnpm run validate:product   # + full vitest + Rust IMPES solver bucket
+pnpm run validate:full      # + all Rust solver buckets (shared + FIM + IMPES)
+bash scripts/validate-solver-coverage.sh all   # Rust solver test buckets on their own
+cargo test --manifest-path src/lib/ressim/Cargo.toml benchmark_buckley   # physics benchmark
 ```
+
+Pull-request CI runs the same ground as `validate:full` plus the Buckley-Leverett benchmarks.
+The `#[ignore]`d release replays and the wasm control matrix stay out of PR CI and are run
+explicitly; `.claude/skills/ressim-validation/SKILL.md` lists them and says when each applies.
 
 Note: full `cargo test` is not used as a gate — FIM diagnostic tests can dominate runtime (see `docs/FIM_DEFERRED_BACKLOG.md` and `.claude/skills/ressim-validation/SKILL.md`).
 
