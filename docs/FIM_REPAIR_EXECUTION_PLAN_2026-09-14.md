@@ -357,7 +357,8 @@ test or reinterpret a timeout as a physics refutation.
 ### G0 — Initial and repaired well/AD contracts
 
 ```bash
-cargo test --manifest-path src/lib/ressim/Cargo.toml local_block_perforation_control_cells_match_existing_control_stencil -- --nocapture
+cargo test --manifest-path src/lib/ressim/Cargo.toml local_block_perforation_control_cells_are_the_connected_cell_only -- --nocapture
+cargo test --manifest-path src/lib/ressim/Cargo.toml perforation_control_quantities_ignore_neighbor_cell_state -- --nocapture
 cargo test --manifest-path src/lib/ressim/Cargo.toml gas_injector_surface_pressure_derivatives_match_local_fd -- --nocapture
 cargo test --manifest-path src/lib/ressim/Cargo.toml fim::tests::wells:: -- --nocapture
 cargo test --manifest-path src/lib/ressim/Cargo.toml fim::wells::tests:: -- --nocapture

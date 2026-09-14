@@ -154,7 +154,11 @@ Current implementation status as of 2026-04-06:
   - the old free-function entry points are retained only as test-compatibility shims, so the physical well/perforation block view is now the main home for both assembly-side and diagnostic-side well logic
 - Focused Rust coverage is green for:
   - `local_block_exposes_bhp_and_perforation_offsets`
-  - `local_block_perforation_control_cells_match_existing_control_stencil`
+  - `local_block_perforation_control_cells_are_the_connected_cell_only` (renamed in F1/#28 from
+    `local_block_perforation_control_cells_match_existing_control_stencil`, whose nine-cell
+    expectation was a stale pre-`FIM-BUNDLE-X` oracle)
+  - `perforation_control_quantities_ignore_neighbor_cell_state`
+  - `well_control_rate_aggregates_all_completions`
   - `local_block_derivative_helpers_match_free_functions`
   - `local_well_block_control_helpers_match_free_functions`
   - `local_well_block_rate_helpers_match_free_functions`

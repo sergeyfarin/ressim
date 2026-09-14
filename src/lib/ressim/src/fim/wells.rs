@@ -1759,8 +1759,15 @@ mod tests {
         );
     }
 
+    /// `FIM-REPAIR-F1` (#28): the connected-cell locality invariant for a perforation's control
+    /// stencil. OPM's `WellInterface::getMobility` (`WellInterface_impl.hpp`, pinned `062cb1998`)
+    /// reads `well_cells_[local_perf_index]` — the single connected cell — for every well type,
+    /// with no areal neighborhood. `FIM-BUNDLE-X` removed ResSim's pre-OPM-alignment 3x3 areal
+    /// blend for exactly that reason; this test replaces the stale nine-cell oracle that survived
+    /// the fix. Do not restore averaging: see `perforation_control_cells` for the measured
+    /// convergence cost (heavy case 18,015 -> 16 substeps).
     #[test]
-    fn local_block_perforation_control_cells_match_existing_control_stencil() {
+    fn local_block_perforation_control_cells_are_the_connected_cell_only() {
         let mut sim = ReservoirSimulator::new(3, 3, 1, 0.2);
         sim.add_well(1, 1, 0, 100.0, 0.1, 0.0, false).unwrap();
 
@@ -1768,23 +1775,168 @@ mod tests {
         let state = FimState::from_simulator(&sim);
         let block = well_local_block(&topology, &state, 0);
         let perf = block.perforations().next().expect("expected perforation");
-        let mut cells = perf.control_influence_cells(&sim);
-        cells.sort_unstable();
 
-        let mut expected = vec![
-            sim.idx(0, 0, 0),
-            sim.idx(1, 0, 0),
-            sim.idx(2, 0, 0),
-            sim.idx(0, 1, 0),
-            sim.idx(1, 1, 0),
-            sim.idx(2, 1, 0),
-            sim.idx(0, 2, 0),
-            sim.idx(1, 2, 0),
-            sim.idx(2, 2, 0),
-        ];
-        expected.sort_unstable();
+        assert_eq!(perf.control_influence_cells(&sim), vec![sim.idx(1, 1, 0)]);
+    }
 
-        assert_eq!(cells, expected);
+    /// `FIM-REPAIR-F1` (#28): regression guard for the locality invariant above. A heterogeneous
+    /// 3x3 fixture (every neighbor carries a different saturation and pressure) is required —
+    /// a uniform state cannot reveal unintended averaging. Perturbing a neighbor primary must
+    /// leave every control/source quantity and its cell derivatives untouched, while perturbing
+    /// the connected cell's own primary must move them. The second half is what stops this test
+    /// from passing vacuously if the helpers were ever stubbed out.
+    #[test]
+    fn perforation_control_quantities_ignore_neighbor_cell_state() {
+        let mut sim = ReservoirSimulator::new(3, 3, 1, 0.2);
+        // Rate control with a *surface* producer target keeps `uses_surface_target` live, so
+        // `perforation_surface_rate_cell_derivatives_sc_day` is actually evaluated instead of
+        // short-circuiting to zero on a BHP-only or reservoir-volume control.
+        sim.set_rate_controlled_wells(true);
+        sim.target_producer_surface_rate_m3_day = Some(25.0);
+        sim.add_well(1, 1, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let topology = build_well_topology(&sim);
+        let well_cell = sim.idx(1, 1, 0);
+
+        // Heterogeneous base state: each cell gets its own saturation and pressure.
+        let mut base = FimState::from_simulator(&sim);
+        // A nonzero reservoir connection rate is required for the producer rate derivatives to
+        // be nonzero at all (they scale with q), so the non-vacuity half below is meaningful.
+        *base
+            .reservoir_connection_q_mut(0)
+            .expect("historical well path requires a reservoir-q primary") = 9.0;
+        for j in 0..3 {
+            for i in 0..3 {
+                let idx = sim.idx(i, j, 0);
+                let cell = base.cell_mut(idx);
+                cell.sw = 0.25 + 0.05 * (idx as f64);
+                cell.pressure_bar = 200.0 + 3.0 * (idx as f64);
+            }
+        }
+
+        let probe = |state: &FimState| {
+            let perf = perforation_local_block(&topology, state, 0);
+            let producer = producer_control_state(&sim, state, perf.perforation());
+            let sources = perforation_component_rates_sc_day(&sim, state, &topology, 0);
+            let surface = perf
+                .surface_rate_sc_day(&sim, perf.current_rate_unknown_m3_day())
+                .expect("producer surface rate is defined");
+            let own_derivs = perf.surface_rate_cell_derivatives_sc_day(&sim, well_cell);
+            (
+                producer.water_fraction,
+                producer.oil_fraction,
+                producer.gas_fraction,
+                sources,
+                surface,
+                own_derivs,
+            )
+        };
+
+        let baseline = probe(&base);
+
+        // (a) Neighbor independence: perturb each of the eight neighbors, one at a time.
+        for j in 0..3 {
+            for i in 0..3 {
+                let idx = sim.idx(i, j, 0);
+                if idx == well_cell {
+                    continue;
+                }
+
+                let mut perturbed = base.clone();
+                {
+                    let cell = perturbed.cell_mut(idx);
+                    cell.sw += 0.15;
+                    cell.pressure_bar += 25.0;
+                }
+
+                assert_eq!(
+                    probe(&perturbed),
+                    baseline,
+                    "neighbor cell {idx} must not influence the perforation control stencil"
+                );
+
+                // Cross-cell derivative entries are structurally absent, so the assembler's
+                // sparsity pattern and the physics agree.
+                let perf = perforation_local_block(&topology, &perturbed, 0);
+                assert_eq!(
+                    perf.surface_rate_cell_derivatives_sc_day(&sim, idx),
+                    [0.0; 3]
+                );
+                assert_eq!(
+                    perf.component_rate_cell_derivatives_sc_day_by_var(&sim, idx),
+                    [[0.0; 3]; 3]
+                );
+            }
+        }
+
+        // (b) The connected cell still drives the same quantities.
+        let mut own = base.clone();
+        {
+            let cell = own.cell_mut(well_cell);
+            cell.sw += 0.15;
+            cell.pressure_bar += 25.0;
+        }
+        let moved = probe(&own);
+        assert_ne!(
+            moved.0, baseline.0,
+            "connected-cell saturation must move the producer water fraction"
+        );
+        assert_ne!(
+            moved.4, baseline.4,
+            "connected-cell state must move the perforation surface rate"
+        );
+        assert!(
+            perforation_local_block(&topology, &own, 0)
+                .surface_rate_cell_derivatives_sc_day(&sim, well_cell)
+                .iter()
+                .any(|d| d.abs() > 0.0),
+            "connected-cell derivatives must be structurally present"
+        );
+    }
+
+    /// `FIM-REPAIR-F1` (#28): the well *control* deliberately aggregates all of a physical well's
+    /// completions. That aggregation is a different quantity from the per-perforation mobility
+    /// stencil tested above; keeping them in separate tests stops a future locality change from
+    /// silently deleting multi-completion coupling.
+    #[test]
+    fn well_control_rate_aggregates_all_completions() {
+        let mut sim = ReservoirSimulator::new(1, 1, 3, 0.2);
+        sim.add_well_with_id(0, 0, 0, 120.0, 0.1, 0.0, false, "prod-a".to_string())
+            .unwrap();
+        sim.add_well_with_id(0, 0, 2, 120.0, 0.1, 0.0, false, "prod-a".to_string())
+            .unwrap();
+
+        let topology = build_well_topology(&sim);
+        assert_eq!(topology.wells.len(), 1);
+        assert_eq!(topology.perforations.len(), 2);
+
+        let mut state = FimState::from_simulator(&sim);
+        *state
+            .reservoir_connection_q_mut(0)
+            .expect("historical well path uses a reservoir-q primary") = 7.0;
+        *state
+            .reservoir_connection_q_mut(1)
+            .expect("historical well path uses a reservoir-q primary") = 11.0;
+
+        let block = well_local_block(&topology, &state, 0);
+        let total = block.total_rate_from_unknowns(&sim);
+        let per_perf: f64 = block
+            .perforations()
+            .map(|perf| {
+                let q = perf.current_rate_unknown_m3_day();
+                if block.control(&sim).uses_surface_target {
+                    perf.surface_rate_sc_day(&sim, q).unwrap_or(0.0)
+                } else {
+                    q.max(0.0)
+                }
+            })
+            .sum();
+
+        assert!((total - per_perf).abs() < 1e-12);
+        assert!(
+            total > 0.0,
+            "both completions must contribute to the aggregated control rate"
+        );
     }
 
     #[test]
