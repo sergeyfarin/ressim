@@ -20,6 +20,7 @@ under `.archive/`.
 |----------|------------|
 | `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
 | [Compositional readiness assessment](COMPOSITIONAL_READINESS_ASSESSMENT_2026-09-14.md) | Rust/OPM reuse map, FIM prerequisites, reproduced well-contract gaps, and staged compositional scope |
+| [Compositional fluid execution plan](COMPOSITIONAL_FLUID_EXECUTION_PLAN_2026-09-14.md) | C0–C15 implementation tasks, EOS/flash contracts, component equations, wells, native/WASM admission and immiscible-water extension |
 | `docs/UNIT_SYSTEM.md` | Unit conventions, equations, solver / PVT notes |
 | `docs/UNIT_REFERENCE.md` | Quick unit lookup card |
 | `docs/TRANSMISSIBILITY_FACTOR.md` | Derivation of the transmissibility conversion factor |
@@ -42,6 +43,7 @@ the registry **by mechanism name** before proposing any convergence change.
 | Document | Use it for |
 |----------|------------|
 | `docs/FIM_STATUS.md` | Consolidated FIM state, blockers, validation entry points, canonical source map |
+| [FIM repair execution plan](FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md) | F0–F8 repair order, issue mapping, exact gates and handoff to compositional integration |
 | `docs/FIM_EXPERIMENT_REGISTRY.md` | Searchable anti-repeat ledger of levers, verdicts, retry conditions |
 | `docs/FIM_CONVERGENCE_WORKLOG.md` | Active investigation log: current-head traces, temporary hypotheses |
 | `docs/SOLVER_COMPARISON_SUMMARY.md` | Current OPM/FIM/IMPES timing + convergence re-baseline (clean tree `663e380`, 2026-07-24) |

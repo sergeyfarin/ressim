@@ -1,5 +1,11 @@
 # FIM–OPM Convergence Execution Plan
 
+Execution entry point (2026-09-14): use the
+[FIM repair plan](FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md) for the current contract-repair and
+compositional-readiness sequence. The status and research sequence below are historical to their
+named experiments; later registry/worklog entries supersede several statements. Do not restart
+parked WATER/G4/G5 experiments from this opening status alone.
+
 Status: **WATER-008 establishes a Flow-vs-ResSim stopping-norm mismatch: Flow's `.005` is raw
 residual reduction, while ResSim may accept on a re-applied preconditioned residual; WATER-009
 shows that raw `.005` accepts the same tail; next isolate Flow's nonlinear acceptance/update

@@ -7,6 +7,10 @@ tests, not a new convergence experiment or a compositional benchmark.
 
 ## Recommendation
 
+Detailed follow-through: [FIM repair execution plan](FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md)
+and [compositional fluid execution plan](COMPOSITIONAL_FLUID_EXECUTION_PLAN_2026-09-14.md).
+These are implementation instructions; their tasks are not recorded as completed by this audit.
+
 Compositional simulation is feasible, but it is a substantial new fluid-model implementation,
 not an extension of the current PVT table. Reuse the grid, finite-volume geometry, AD arithmetic,
 sparse linear algebra, well topology, and browser execution infrastructure. Introduce a separate
