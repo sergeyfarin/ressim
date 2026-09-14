@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises';
-// wasm-bindgen 0.2.117 bundler target no longer exports init — bootstrap manually for Node.js.
-// Import from simulator_bg.js (no static .wasm import) with types from simulator_bg.d.ts.
-import { ReservoirSimulator, __wbg_set_wasm } from '../src/lib/ressim/pkg/simulator_bg.js';
-import * as bgNamespace from '../src/lib/ressim/pkg/simulator_bg.js';
+// `scripts/build-wasm.sh` emits the wasm-bindgen `web` target, whose entry point is
+// `simulator.js` with a default `init`. This used to import `simulator_bg.js`, a leftover
+// from a one-off `bundler`-target build that had been committed once and never regenerated
+// since wasm-bindgen 0.2.117 — it disappeared with the rest of the committed `pkg/` (#30).
+import initWasm, { ReservoirSimulator } from '../src/lib/ressim/pkg/simulator.js';
 import { getScenarioWithVariantParams } from '../src/lib/catalog/scenarios';
 import { buildBenchmarkCreatePayload } from '../src/lib/benchmarkRunModel';
 import type { SimulatorCreatePayload, SimulatorWellDefinition, SimulatorWellSchedule } from '../src/lib/simulator-types';
@@ -186,9 +187,7 @@ function configureSimulator(payload: SimulatorCreatePayload): ReservoirSimulator
 }
 
 const wasmBytes = await readFile(new URL('../src/lib/ressim/pkg/simulator_bg.wasm', import.meta.url));
-const { instance } = await WebAssembly.instantiate(wasmBytes, { './simulator_bg.js': bgNamespace });
-__wbg_set_wasm(instance.exports as WebAssembly.Exports);
-(instance.exports as Record<string, (() => void) | undefined>).__wbindgen_start?.();
+await initWasm({ module_or_path: wasmBytes });
 
 const params = getScenarioWithVariantParams('spe1_gas_injection', 'grid', 'grid_5');
 const payload = buildBenchmarkCreatePayload(params);

@@ -26,6 +26,8 @@ dist-ssr
 # Project exclude paths
 /tmp/opm-flow-runs/
 /src/lib/ressim/target/
+# Generated wasm-bindgen output (#30) — built by scripts/build-wasm.sh, never committed.
+/src/lib/ressim/pkg/
 /target/
 /worklog/
 
