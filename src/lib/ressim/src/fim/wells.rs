@@ -1229,6 +1229,18 @@ pub(crate) fn perforation_target_rate_derivative(
     1.0
 }
 
+/// Per-component pressure derivative of a perforation's standard-condition source term,
+/// `d(component source)/d(perforated cell pressure)`, in sm3/day/bar.
+///
+/// `FIM-REPAIR-F2` (#27): this used to be a second, hand-written copy of the injector source
+/// derivative whose `InjectedFluid::Water` branch returned all zeros. The water injector source
+/// is `q * water_inverse_fvf(p)` (see `perforation_component_rates_sc_day`), so its pressure
+/// derivative is `q * d(1/Bw)/dp`, which is *not* zero — the duplicate was simply never
+/// completed. It now delegates to the production assembler's own derivative, taking the
+/// pressure column (`local_var == 0`, the convention `assembly.rs` uses when it maps this array
+/// onto `unknown_offset(cell_idx, local_var)`). Keeping one implementation is what stops the two
+/// from drifting apart again; the FD tests below now validate production code rather than a
+/// parallel hand derivative that no production path ever evaluates.
 #[cfg(test)]
 pub(crate) fn perforation_source_pressure_derivatives_sc_day(
     sim: &ReservoirSimulator,
@@ -1236,26 +1248,25 @@ pub(crate) fn perforation_source_pressure_derivatives_sc_day(
     topology: &FimWellTopology,
     perf_idx: usize,
 ) -> [f64; 3] {
-    let perforation = &topology.perforations[perf_idx];
-    let well = perforation_well(sim, perforation);
-    if !well.injector {
-        return [0.0, 0.0, 0.0];
-    }
-
-    match effective_injected_fluid(sim) {
-        InjectedFluid::Water => [0.0, 0.0, 0.0],
-        InjectedFluid::Gas => {
-            let id = perforation.cell_index;
-            let bg = state.derive_cell(sim, id).bg.max(1e-9);
-            let dbg_dp = sim.get_d_bg_d_p_for_state(state.cell(id).pressure_bar);
-            let q_m3_day = state
-                .reservoir_connection_q(perf_idx)
-                .expect("historical well path requires a reservoir-q primary");
-            [0.0, 0.0, -q_m3_day * dbg_dp / (bg * bg)]
-        }
-    }
+    let cell_idx = topology.perforations[perf_idx].cell_index;
+    perforation_component_rate_cell_derivatives_sc_day_by_var(
+        sim, state, topology, perf_idx, cell_idx,
+    )[0]
 }
 
+/// Pressure derivative of the surface rate a perforation contributes to its well's
+/// surface-rate control target, in sm3/day/bar.
+///
+/// `FIM-REPAIR-F2` (#27): as with `perforation_source_pressure_derivatives_sc_day` above, this
+/// was a hand-written duplicate whose `InjectedFluid::Water` branch returned `0.0`. The water
+/// injector's surface contribution is `max(-q, 0) * water_inverse_fvf(p)`, so the correct
+/// derivative is `max(-q, 0) * d(1/Bw)/dp` — which the production assembler has computed all
+/// along (`perforation_surface_rate_cell_derivatives_sc_day`, whose comment records that
+/// omitting it left the legacy hand-Jacobian one column short of the AD assembler on the
+/// rate-controlled water-injector row). This now takes the pressure column of that production
+/// derivative, so there is a single implementation. It returns zero for a disabled or
+/// non-surface-target control because the production function does, which is the intended
+/// contract: no control means no control-row derivative, independent of the physical source.
 #[cfg(test)]
 pub(crate) fn perforation_surface_rate_pressure_derivative(
     sim: &ReservoirSimulator,
@@ -1263,25 +1274,8 @@ pub(crate) fn perforation_surface_rate_pressure_derivative(
     topology: &FimWellTopology,
     perf_idx: usize,
 ) -> f64 {
-    let perforation = &topology.perforations[perf_idx];
-    let control = physical_well_control(sim, topology, perforation.physical_well_index);
-    let well = perforation_well(sim, perforation);
-    if !control.enabled || !control.uses_surface_target || !well.injector {
-        return 0.0;
-    }
-
-    match effective_injected_fluid(sim) {
-        InjectedFluid::Water => 0.0,
-        InjectedFluid::Gas => {
-            let id = perforation.cell_index;
-            let bg = state.derive_cell(sim, id).bg.max(1e-9);
-            let dbg_dp = sim.get_d_bg_d_p_for_state(state.cell(id).pressure_bar);
-            let q_m3_day = state
-                .reservoir_connection_q(perf_idx)
-                .expect("historical well path requires a reservoir-q primary");
-            q_m3_day * dbg_dp / (bg * bg)
-        }
-    }
+    let cell_idx = topology.perforations[perf_idx].cell_index;
+    perforation_surface_rate_cell_derivatives_sc_day(sim, state, topology, perf_idx, cell_idx)[0]
 }
 
 #[cfg(test)]
@@ -1664,6 +1658,44 @@ pub(crate) fn perforation_component_rates_sc_day(
         oil_sc_day,
         free_gas_sc_day + dissolved_gas_sc_day,
     ]
+}
+
+/// Builds a black-oil PVT table whose gas FVF varies with pressure, so `dBg/dp` is nonzero.
+/// Without a table `gas_props_for_state` returns a constant `Bg = 1.0` and
+/// `get_d_bg_d_p_for_state` returns `0.0` — mutually consistent, but it makes every gas
+/// derivative assertion vacuously `0 == 0`.
+#[cfg(test)]
+pub(crate) fn gas_injector_pvt_table(sim: &ReservoirSimulator) -> crate::pvt::PvtTable {
+    use crate::pvt::{PvtRow, PvtTable};
+    PvtTable::new(
+        vec![
+            PvtRow {
+                p_bar: 100.0,
+                rs_m3m3: 10.0,
+                bo_m3m3: 1.10,
+                mu_o_cp: 1.20,
+                bg_m3m3: 0.0120,
+                mu_g_cp: 0.0180,
+            },
+            PvtRow {
+                p_bar: 250.0,
+                rs_m3m3: 40.0,
+                bo_m3m3: 1.20,
+                mu_o_cp: 1.05,
+                bg_m3m3: 0.0055,
+                mu_g_cp: 0.0200,
+            },
+            PvtRow {
+                p_bar: 400.0,
+                rs_m3m3: 70.0,
+                bo_m3m3: 1.28,
+                mu_o_cp: 0.95,
+                bg_m3m3: 0.0034,
+                mu_g_cp: 0.0225,
+            },
+        ],
+        sim.pvt.c_o,
+    )
 }
 
 #[cfg(test)]
@@ -2212,41 +2244,197 @@ mod tests {
         assert!((exact - fd).abs() < 1e-6);
     }
 
+    /// Central-difference `d f / d p` at the perforated cell, perturbing **only**
+    /// `pressure_bar` on a clone of the frozen state. `FIM-REPAIR-F2` (#27) requires this rather
+    /// than `apply_newton_update`: that path can also project saturations, switch the
+    /// hydrocarbon regime or move another primary, in which case the difference quotient is not
+    /// the partial derivative the assembler claims to compute.
+    ///
+    /// Sweeps relative steps `1e-4 .. 1e-7` and returns the quotient whose error against
+    /// `exact` is smallest, together with that relative error. A single step size cannot
+    /// distinguish truncation error from roundoff or from a crossed PVT table knot; requiring a
+    /// stable region across the sweep can.
+    #[cfg(test)]
+    fn pressure_central_difference<F>(
+        state: &FimState,
+        cell_idx: usize,
+        exact: f64,
+        mut f: F,
+    ) -> (f64, f64)
+    where
+        F: FnMut(&FimState) -> f64,
+    {
+        let p0 = state.cell(cell_idx).pressure_bar;
+        let scale = p0.abs().max(1.0);
+        let mut best = (f64::NAN, f64::INFINITY);
+        for exponent in 4..=7 {
+            let h = scale * 10f64.powi(-exponent);
+            let mut up = state.clone();
+            up.cell_mut(cell_idx).pressure_bar = p0 + h;
+            let mut down = state.clone();
+            down.cell_mut(cell_idx).pressure_bar = p0 - h;
+            let fd = (f(&up) - f(&down)) / (2.0 * h);
+            let error = (exact - fd).abs() / exact.abs().max(fd.abs()).max(1e-12);
+            if error < best.1 {
+                best = (fd, error);
+            }
+        }
+        best
+    }
+
+    /// `FIM-REPAIR-F2` (#27). This test previously failed, and for a reason unrelated to its
+    /// name: `effective_injected_fluid` returns `InjectedFluid::Water` unless three-phase mode
+    /// is on, so despite `set_injected_fluid("gas")` the fixture was a *water* injector. Its gas
+    /// source assertion was therefore vacuous (`0 == 0`), while its surface-rate assertion was
+    /// accidentally exercising the water branch — and catching a real defect there: both
+    /// `#[cfg(test)]` hand derivatives returned zero for water injection, even though the water
+    /// surface rate `max(-q, 0) * (1/Bw)(p)` plainly depends on pressure. Those helpers now
+    /// delegate to the production assembler, and this fixture enables three-phase mode with a
+    /// PVT table so the gas branch is actually reached with `dBg/dp != 0`.
     #[test]
     fn gas_injector_surface_pressure_derivatives_match_local_fd() {
         let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_mode_enabled(true);
         sim.set_injected_fluid("gas").unwrap();
+        sim.pvt_table = Some(gas_injector_pvt_table(&sim));
         sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
         sim.injector_enabled = true;
         sim.injector_rate_controlled = true;
         sim.target_injector_surface_rate_m3_day = Some(200.0);
 
-        let mut state = FimState::from_simulator(&sim);
-        state.perforation_primaries[0].value = -120.0;
         let topology = build_well_topology(&sim);
+        assert_eq!(
+            effective_injected_fluid(&sim),
+            InjectedFluid::Gas,
+            "fixture must actually be a gas injector"
+        );
+        let control = physical_well_control(&sim, &topology, 0);
+        assert!(control.enabled && control.uses_surface_target);
+
+        let mut state = FimState::from_simulator(&sim);
+        // Interior PVT point, away from both table knots, so the central difference does not
+        // straddle a kink in the piecewise-linear interpolation.
+        state.cell_mut(0).pressure_bar = 300.0;
+        state.perforation_primaries[0].value = -120.0;
+
+        // Both `dBg/dp` and the resulting derivatives must be nonzero, or the comparison below
+        // proves nothing.
+        assert!(sim.get_d_bg_d_p_for_state(300.0).abs() > 0.0);
 
         let source_exact =
             perforation_source_pressure_derivatives_sc_day(&sim, &state, &topology, 0)[2];
         let target_exact = perforation_surface_rate_pressure_derivative(&sim, &state, &topology, 0);
+        assert!(
+            source_exact.abs() > 0.0,
+            "gas source derivative must be live"
+        );
+        assert!(
+            target_exact.abs() > 0.0,
+            "gas control derivative must be live"
+        );
 
-        let mut update = DVector::zeros(state.n_unknowns());
-        let step = 1e-5 * state.cells[0].pressure_bar.abs().max(1.0);
-        update[0] = step;
-        let perturbed = state.apply_newton_update(&sim, &update, 1.0);
+        let (source_fd, source_error) =
+            pressure_central_difference(&state, 0, source_exact, |probe| {
+                perforation_component_rates_sc_day(&sim, probe, &topology, 0)[2]
+            });
+        let (target_fd, target_error) =
+            pressure_central_difference(&state, 0, target_exact, |probe| {
+                total_rate_from_unknowns(&sim, probe, &topology, 0)
+            });
 
-        let base_source = perforation_component_rates_sc_day(&sim, &state, &topology, 0)[2];
-        let shifted_source = perforation_component_rates_sc_day(&sim, &perturbed, &topology, 0)[2];
-        let source_fd = (shifted_source - base_source) / step;
+        assert!(
+            source_error < 1e-3,
+            "gas source pressure derivative: exact {source_exact:e} vs fd {source_fd:e} \
+             (relative error {source_error:e})"
+        );
+        assert!(
+            target_error < 1e-3,
+            "gas control pressure derivative: exact {target_exact:e} vs fd {target_fd:e} \
+             (relative error {target_error:e})"
+        );
+    }
 
-        let base_target = total_rate_from_unknowns(&sim, &state, &topology, 0);
-        let shifted_target = total_rate_from_unknowns(&sim, &perturbed, &topology, 0);
-        let target_fd = (shifted_target - base_target) / step;
+    /// `FIM-REPAIR-F2` (#27): the water-injector counterpart. This is the branch the gas test
+    /// above was silently running before the fixture was corrected, and the one whose hand
+    /// derivative was hard-coded to zero. Two-phase mode is the default, so
+    /// `effective_injected_fluid` is `Water` here regardless of `set_injected_fluid`.
+    #[test]
+    fn water_injector_surface_pressure_derivatives_match_local_fd() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.injector_enabled = true;
+        sim.injector_rate_controlled = true;
+        sim.target_injector_surface_rate_m3_day = Some(200.0);
 
-        let source_scale = source_exact.abs().max(source_fd.abs()).max(1e-9);
-        let target_scale = target_exact.abs().max(target_fd.abs()).max(1e-9);
+        let topology = build_well_topology(&sim);
+        assert_eq!(effective_injected_fluid(&sim), InjectedFluid::Water);
 
-        assert!((source_exact - source_fd).abs() / source_scale < 1e-3);
-        assert!((target_exact - target_fd).abs() / target_scale < 1e-3);
+        let mut state = FimState::from_simulator(&sim);
+        state.perforation_primaries[0].value = -120.0;
+
+        let source_exact =
+            perforation_source_pressure_derivatives_sc_day(&sim, &state, &topology, 0)[0];
+        let target_exact = perforation_surface_rate_pressure_derivative(&sim, &state, &topology, 0);
+        assert!(
+            source_exact.abs() > 0.0,
+            "water source derivative is q * d(1/Bw)/dp and must not be zero"
+        );
+        assert!(
+            target_exact.abs() > 0.0,
+            "water control derivative is max(-q, 0) * d(1/Bw)/dp and must not be zero"
+        );
+
+        let (source_fd, source_error) =
+            pressure_central_difference(&state, 0, source_exact, |probe| {
+                perforation_component_rates_sc_day(&sim, probe, &topology, 0)[0]
+            });
+        let (target_fd, target_error) =
+            pressure_central_difference(&state, 0, target_exact, |probe| {
+                total_rate_from_unknowns(&sim, probe, &topology, 0)
+            });
+
+        assert!(
+            source_error < 1e-3,
+            "water source pressure derivative: exact {source_exact:e} vs fd {source_fd:e} \
+             (relative error {source_error:e})"
+        );
+        assert!(
+            target_error < 1e-3,
+            "water control pressure derivative: exact {target_exact:e} vs fd {target_fd:e} \
+             (relative error {target_error:e})"
+        );
+    }
+
+    /// `FIM-REPAIR-F2` (#27): a disabled or BHP-only control contributes no control-row
+    /// derivative even though the physical source derivative stays nonzero. Pinning both halves
+    /// separately stops a future change from "fixing" a zero control derivative that is
+    /// deliberate.
+    #[test]
+    fn bhp_controlled_injector_has_zero_control_but_live_source_derivative() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.injector_enabled = true;
+        sim.injector_rate_controlled = false;
+
+        let topology = build_well_topology(&sim);
+        let control = physical_well_control(&sim, &topology, 0);
+        assert!(!control.uses_surface_target);
+
+        let mut state = FimState::from_simulator(&sim);
+        state.perforation_primaries[0].value = -120.0;
+
+        assert_eq!(
+            perforation_surface_rate_pressure_derivative(&sim, &state, &topology, 0),
+            0.0,
+            "no surface-rate control means no control-row pressure derivative"
+        );
+        assert!(
+            perforation_source_pressure_derivatives_sc_day(&sim, &state, &topology, 0)[0].abs()
+                > 0.0,
+            "the physical water source derivative does not depend on the control mode"
+        );
     }
 
     #[test]

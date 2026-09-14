@@ -1205,18 +1205,30 @@ fn producer_control_row_matches_exact_surface_rate_derivative() {
     }
 }
 
+/// `FIM-REPAIR-F2` (#27): this fixture used to enable neither three-phase mode nor a PVT table,
+/// so `effective_injected_fluid` returned `Water` and the gas-component entry it asserts on was
+/// `0 == 0` — it could not have detected a wrong gas conversion derivative. It now builds an
+/// actual gas injector with a pressure-dependent `Bg`, and asserts the compared value is
+/// nonzero, so the assembled row is checked against a live derivative.
 #[test]
 fn gas_injector_source_row_has_exact_pressure_conversion_derivative() {
     let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+    sim.set_three_phase_mode_enabled(true);
     sim.set_injected_fluid("gas").unwrap();
+    sim.pvt_table = Some(crate::fim::wells::gas_injector_pvt_table(&sim));
     sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
 
     let mut state = FimState::from_simulator(&sim);
+    state.cells[0].pressure_bar = 300.0;
     state.perforation_primaries[0].value = -120.0;
     let topology = build_well_topology(&sim);
     let expected = crate::fim::wells::perforation_source_pressure_derivatives_sc_day(
         &sim, &state, &topology, 0,
     )[2];
+    assert!(
+        expected.abs() > 0.0,
+        "the gas conversion derivative must be live for this assertion to mean anything"
+    );
 
     let assembly = assemble_fim_system(
         &sim,
