@@ -19,6 +19,7 @@ under `.archive/`.
 | Document | Use it for |
 |----------|------------|
 | `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
+| [Compositional readiness assessment](COMPOSITIONAL_READINESS_ASSESSMENT_2026-09-14.md) | Rust/OPM reuse map, FIM prerequisites, reproduced well-contract gaps, and staged compositional scope |
 | `docs/UNIT_SYSTEM.md` | Unit conventions, equations, solver / PVT notes |
 | `docs/UNIT_REFERENCE.md` | Quick unit lookup card |
 | `docs/TRANSMISSIBILITY_FACTOR.md` | Derivation of the transmissibility conversion factor |
