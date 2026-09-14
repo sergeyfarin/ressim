@@ -24,6 +24,18 @@ impl ReservoirSimulator {
         if self.three_phase_mode {
             return self.total_mobility_3p(id);
         }
+        self.total_mobility_2p(id)
+    }
+
+    /// The two-phase total mobility, independent of `three_phase_mode`.
+    ///
+    /// Split out so that the three-phase entry point can fall back to it when no three-phase
+    /// SCAL table has been supplied. Previously that fallback called `total_mobility`, which
+    /// re-dispatches on `three_phase_mode` and came straight back — an infinite recursion
+    /// whenever `three_phase_mode` was on with `scal_3p == None`. This mirrors how
+    /// `phase_mobilities_for_state` and `phase_mobilities_for_state_generic` already handle a
+    /// missing `scal_3p`.
+    fn total_mobility_2p(&self, id: usize) -> f64 {
         let krw = self.scal.k_rw(self.sat_water[id]);
         let kro = self.scal.k_ro(self.sat_water[id]);
         krw / self.get_mu_w(self.pressure[id]) + kro / self.get_mu_o(self.pressure[id])
@@ -45,7 +57,10 @@ impl ReservoirSimulator {
     pub(crate) fn total_mobility_3p(&self, id: usize) -> f64 {
         let s = match &self.scal_3p {
             Some(s) => s,
-            None => return self.total_mobility(id),
+            // No three-phase SCAL table: use the two-phase formula directly. Calling
+            // `total_mobility` here recursed forever, because it dispatches straight back to
+            // this function whenever `three_phase_mode` is set.
+            None => return self.total_mobility_2p(id),
         };
         let sw = self.sat_water[id];
         let sg = self.sat_gas[id];
@@ -398,5 +413,36 @@ impl ReservoirSimulator {
 
     pub(crate) fn interface_density_barrier(&self, rho_i: f64, rho_j: f64) -> f64 {
         0.5 * (rho_i + rho_j)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ReservoirSimulator;
+
+    /// Three-phase mode with no three-phase SCAL table used to recurse between
+    /// `total_mobility` and `total_mobility_3p` until the stack overflowed — an abort, not a
+    /// catchable error, and reachable from the public API by enabling three-phase mode before
+    /// supplying relative-permeability props (`addWell` calls `total_mobility` through the
+    /// productivity-index calculation). The documented fallback is the two-phase formula, which
+    /// is what the sibling `phase_mobilities_for_state` already does for a missing `scal_3p`.
+    #[test]
+    fn three_phase_mode_without_scal_table_falls_back_to_two_phase_total_mobility() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        let two_phase = sim.total_mobility(0);
+
+        sim.set_three_phase_mode_enabled(true);
+        assert!(sim.scal_3p.is_none());
+
+        let fallback = sim.total_mobility(0);
+        assert_eq!(
+            fallback, two_phase,
+            "the missing-table fallback must be the two-phase total mobility"
+        );
+        assert!(fallback.is_finite() && fallback > 0.0);
+
+        // The path that first hit the overflow in practice.
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true)
+            .expect("adding a well must not depend on a three-phase SCAL table");
     }
 }
