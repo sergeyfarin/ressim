@@ -1018,7 +1018,7 @@ pub(crate) fn run_fim_timestep(
     let mut previous_face_upwind_snapshot: Vec<FaceUpwindSample> = Vec::new();
     let block_layout = Some(FimLinearBlockLayout {
         cell_block_count: state.cells.len(),
-        cell_block_size: 3,
+        cell_block_size: crate::fim::layout::CELL_BLOCK_SIZE,
         well_bhp_count: state.n_well_unknowns(),
         perforation_tail_start: state.n_cell_unknowns() + state.n_well_unknowns(),
     });

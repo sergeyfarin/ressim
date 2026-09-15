@@ -2,6 +2,7 @@ use nalgebra::DVector;
 
 use crate::ReservoirSimulator;
 use crate::fim::flow_resv::FlowResvReportStepContext;
+use crate::fim::layout::{CELL_BLOCK_SIZE, CellEquation};
 use crate::fim::state::{FimState, HydrocarbonState};
 use crate::fim::wells::FimWellTopology;
 use crate::fim::wells::{physical_well_control, well_local_block};
@@ -38,17 +39,23 @@ impl EquationScaling {
         let mut peaks = EquationFamilyPeaks::default();
         let n_cells = self.water.len();
 
+        // `FIM-REPAIR-F7` (#22): the row a family lives on comes from `CellEquation`, so this
+        // loop states which equation it is reading rather than leaving `+ 1` / `+ 2` to be
+        // matched against the struct field order by eye.
         for i in 0..n_cells {
-            peaks.water = peaks.water.max(residual[i * 3].abs() / self.water[i]);
+            let row = |equation: CellEquation| i * CELL_BLOCK_SIZE + equation.local_index();
+            peaks.water = peaks
+                .water
+                .max(residual[row(CellEquation::Water)].abs() / self.water[i]);
             peaks.oil_component = peaks
                 .oil_component
-                .max(residual[i * 3 + 1].abs() / self.oil_component[i]);
+                .max(residual[row(CellEquation::OilComponent)].abs() / self.oil_component[i]);
             peaks.gas_component = peaks
                 .gas_component
-                .max(residual[i * 3 + 2].abs() / self.gas_component[i]);
+                .max(residual[row(CellEquation::GasComponent)].abs() / self.gas_component[i]);
         }
 
-        let mut offset = n_cells * 3;
+        let mut offset = n_cells * CELL_BLOCK_SIZE;
         for (i, scale) in self.well_constraint.iter().enumerate() {
             peaks.well_constraint = peaks
                 .well_constraint

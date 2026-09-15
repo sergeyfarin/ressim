@@ -10,6 +10,7 @@ use crate::fim::flow_resv::{
     FimWellRoute, FlowResvInjectorResidual, fim_well_route, flow_resv_context_for_perforation,
     flow_resv_injector_residual,
 };
+use crate::fim::layout::{CELL_BLOCK_SIZE, CellPrimary};
 use crate::fim::scaling::{EquationScaling, VariableScaling};
 #[cfg(test)]
 use crate::fim::scaling::{
@@ -99,12 +100,17 @@ pub(crate) struct FimAssemblyOptions<'a> {
     pub(crate) flow_resv_context: Option<FlowResvReportStepContext>,
 }
 
+/// Matrix column of a cell primary. `local_var` is a [`CellPrimary::local_index`].
+///
+/// `FIM-REPAIR-F7` (#22): the stride is [`CELL_BLOCK_SIZE`] rather than a bare `3`, so the
+/// black-oil block size is stated once (`fim/layout.rs`) instead of at every index site.
 pub(crate) fn unknown_offset(cell_idx: usize, local_var: usize) -> usize {
-    cell_idx * 3 + local_var
+    cell_idx * CELL_BLOCK_SIZE + local_var
 }
 
+/// Matrix row of a cell component equation. `local_eq` is a [`CellEquation::local_index`].
 pub(crate) fn equation_offset(cell_idx: usize, local_eq: usize) -> usize {
-    cell_idx * 3 + local_eq
+    cell_idx * CELL_BLOCK_SIZE + local_eq
 }
 
 #[cfg(test)]
@@ -551,14 +557,16 @@ fn add_exact_perforation_cell_pressure_jacobian(
 fn finite_difference_step(state: &FimState, unknown_idx: usize) -> f64 {
     debug_assert!(unknown_idx < state.n_cell_unknowns());
     if unknown_idx < state.n_cell_unknowns() {
-        let cell_idx = unknown_idx / 3;
-        let local_var = unknown_idx % 3;
+        let cell_idx = unknown_idx / CELL_BLOCK_SIZE;
         let cell = state.cell(cell_idx);
-        return match local_var {
-            0 => 1e-5 * cell.pressure_bar.abs().max(1.0),
-            1 => 1e-7,
-            2 => 1e-7 * cell.hydrocarbon_var.abs().max(1.0),
-            _ => unreachable!(),
+        // Per-primary FD step. Naming the primary makes it visible that the three steps are
+        // chosen for different physical quantities (a pressure in bar, a saturation, and a
+        // ratio), not three arbitrary slots.
+        return match CellPrimary::from_local_index(unknown_idx % CELL_BLOCK_SIZE) {
+            Some(CellPrimary::Pressure) => 1e-5 * cell.pressure_bar.abs().max(1.0),
+            Some(CellPrimary::WaterSaturation) => 1e-7,
+            Some(CellPrimary::Hydrocarbon) => 1e-7 * cell.hydrocarbon_var.abs().max(1.0),
+            None => unreachable!(),
         };
     }
 
