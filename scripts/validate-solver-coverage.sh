@@ -106,6 +106,10 @@ run_fim() {
     # The AD assembly and well-AD parity gates were likewise unselected by any bucket.
     run_test assembly_ad
     run_test wells_ad
+    # `FIM-REPAIR-F4`: the whole linear stack (dispatch, well-Schur elimination/recovery, CPR,
+    # direct backends and the report contract) was in no bucket either. The expensive offline
+    # solver labs in this module are `#[ignore]`d and stay out; the gate counts passed tests.
+    run_test fim::linear::
     run_test dep_pss_fim_closed_system_depletion_invariants_hold
     run_test dep_pss_fim_single_cell_local_newton_leaves_small_absolute_oil_residual
     run_test dep_pss_fim_single_cell_depletion_is_timestep_stable

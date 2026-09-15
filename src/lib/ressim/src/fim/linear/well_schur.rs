@@ -470,65 +470,66 @@ fn recover_full_system_report(
     }
 }
 
+/// Synthetic 2-cell + 1-well + 2-perforation system mirroring the real row layout: cells
+/// `[0..6)` (2 cells x 3 vars), well BHP at `6`, perforations at `7, 8`. Coupling mirrors the
+/// real assembly structure (confirmed by direct code read, `assembly_ad.rs:183-289`): each
+/// perforation couples to its own rate column, its connected cell's 3 columns, and the well's
+/// BHP column; each perforated cell's rows get a term against that perforation's rate column;
+/// the well constraint row couples to its own BHP and both perforations' rates.
+#[cfg(test)]
+pub(super) fn sample_system() -> (CsMat<f64>, DVector<f64>, FimLinearBlockLayout) {
+    let n = 9;
+    let mut tri = TriMatI::<f64, usize>::new((n, n));
+
+    // Cell 0 (rows/cols 0,1,2) and cell 1 (rows/cols 3,4,5): diagonal-dominant with a little
+    // cross-cell coupling so the reservoir block alone is well-conditioned.
+    for cell in 0..2 {
+        let base = cell * 3;
+        for local in 0..3 {
+            tri.add_triplet(base + local, base + local, 5.0 + local as f64);
+        }
+    }
+    tri.add_triplet(0, 3, -0.3);
+    tri.add_triplet(3, 0, -0.3);
+
+    // Perforation 0 (row/col 7) connects to cell 0; perforation 1 (row/col 8) connects to
+    // cell 1. Both belong to well 0 (BHP row/col 6).
+    // Rate-consistency rows (own q, own connected cell, own well BHP):
+    tri.add_triplet(7, 7, 1.0);
+    tri.add_triplet(7, 0, 0.05);
+    tri.add_triplet(7, 1, 0.02);
+    tri.add_triplet(7, 6, -1.0);
+
+    tri.add_triplet(8, 8, 1.0);
+    tri.add_triplet(8, 3, 0.04);
+    tri.add_triplet(8, 4, 0.01);
+    tri.add_triplet(8, 6, -1.0);
+
+    // Perforated cells' own mass-balance rows pick up a term against their own perforation's
+    // rate column (mirrors `add_if_nonzero(tri, eq_row, q_col, row[3] * dt_days)`).
+    tri.add_triplet(0, 7, 0.2);
+    tri.add_triplet(1, 7, 0.1);
+    tri.add_triplet(3, 8, 0.15);
+    tri.add_triplet(4, 8, 0.08);
+
+    // Well constraint row (BHP-controlled): bhp == target, no coupling to perforations.
+    tri.add_triplet(6, 6, 1.0);
+
+    let jacobian = tri.to_csr();
+    let rhs = DVector::from_vec(vec![1.0, 0.5, 0.2, -0.8, 0.3, 0.1, 2.0, 0.6, -0.4]);
+    let layout = FimLinearBlockLayout {
+        cell_block_count: 2,
+        cell_block_size: 3,
+        well_bhp_count: 1,
+        perforation_tail_start: 7,
+    };
+    (jacobian, rhs, layout)
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{FimLinearSolverKind, sparse_lu_debug};
     use super::*;
-
-    /// Synthetic 2-cell + 1-well + 2-perforation system mirroring the real row layout: cells
-    /// `[0..6)` (2 cells x 3 vars), well BHP at `6`, perforations at `7, 8`. Coupling mirrors the
-    /// real assembly structure (confirmed by direct code read, `assembly_ad.rs:183-289`): each
-    /// perforation couples to its own rate column, its connected cell's 3 columns, and the well's
-    /// BHP column; each perforated cell's rows get a term against that perforation's rate column;
-    /// the well constraint row couples to its own BHP and both perforations' rates.
-    fn sample_system() -> (CsMat<f64>, DVector<f64>, FimLinearBlockLayout) {
-        let n = 9;
-        let mut tri = TriMatI::<f64, usize>::new((n, n));
-
-        // Cell 0 (rows/cols 0,1,2) and cell 1 (rows/cols 3,4,5): diagonal-dominant with a little
-        // cross-cell coupling so the reservoir block alone is well-conditioned.
-        for cell in 0..2 {
-            let base = cell * 3;
-            for local in 0..3 {
-                tri.add_triplet(base + local, base + local, 5.0 + local as f64);
-            }
-        }
-        tri.add_triplet(0, 3, -0.3);
-        tri.add_triplet(3, 0, -0.3);
-
-        // Perforation 0 (row/col 7) connects to cell 0; perforation 1 (row/col 8) connects to
-        // cell 1. Both belong to well 0 (BHP row/col 6).
-        // Rate-consistency rows (own q, own connected cell, own well BHP):
-        tri.add_triplet(7, 7, 1.0);
-        tri.add_triplet(7, 0, 0.05);
-        tri.add_triplet(7, 1, 0.02);
-        tri.add_triplet(7, 6, -1.0);
-
-        tri.add_triplet(8, 8, 1.0);
-        tri.add_triplet(8, 3, 0.04);
-        tri.add_triplet(8, 4, 0.01);
-        tri.add_triplet(8, 6, -1.0);
-
-        // Perforated cells' own mass-balance rows pick up a term against their own perforation's
-        // rate column (mirrors `add_if_nonzero(tri, eq_row, q_col, row[3] * dt_days)`).
-        tri.add_triplet(0, 7, 0.2);
-        tri.add_triplet(1, 7, 0.1);
-        tri.add_triplet(3, 8, 0.15);
-        tri.add_triplet(4, 8, 0.08);
-
-        // Well constraint row (BHP-controlled): bhp == target, no coupling to perforations.
-        tri.add_triplet(6, 6, 1.0);
-
-        let jacobian = tri.to_csr();
-        let rhs = DVector::from_vec(vec![1.0, 0.5, 0.2, -0.8, 0.3, 0.1, 2.0, 0.6, -0.4]);
-        let layout = FimLinearBlockLayout {
-            cell_block_count: 2,
-            cell_block_size: 3,
-            well_bhp_count: 1,
-            perforation_tail_start: 7,
-        };
-        (jacobian, rhs, layout)
-    }
 
     #[test]
     fn well_elimination_matches_direct_full_system_solve() {
