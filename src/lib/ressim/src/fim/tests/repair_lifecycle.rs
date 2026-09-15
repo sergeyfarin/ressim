@@ -269,3 +269,125 @@ fn fim_repair_closed_system_conserves_component_inventory() {
         point.material_balance_error_m3
     );
 }
+
+/// `FIM-REPAIR-F6` (#10): a `wf_gravity`-shaped vertical cross-section, optionally with **every**
+/// layer perforated.
+///
+/// Issue #10 reports that a fully perforated gravity well exhausts the IMPES physical-pressure
+/// recovery budget near t=0, and its acceptance criteria ask for a focused regression with
+/// multi-layer completions. The shipped `wf_gravity` scenario uses single-layer completions by
+/// design, so no test covered the multi-completion geometry at all — on either solver.
+///
+/// This is a reconstruction of that geometry, not a replay of the scenario's exact deck; a
+/// negative result here does not prove the shipped case is clean. What it does establish is a
+/// backend-neutral comparison: well geometry, the Peaceman productivity index and
+/// `refresh_well_head_offsets` are *shared* code, so a well-geometry defect would show on both
+/// solvers, while an IMPES-only pressure-recovery failure would not.
+fn gravity_section(fim: bool, fully_perforated: bool) -> ReservoirSimulator {
+    let nz = 20;
+    let mut sim = ReservoirSimulator::new(30, 1, nz, 0.2);
+    sim.set_fim_enabled(fim);
+    sim.set_cell_dimensions(10.0, 100.0, 2.0);
+    sim.set_fluid_properties(5.0, 0.5).unwrap();
+    sim.set_fluid_densities(700.0, 1000.0).unwrap();
+    sim.set_rel_perm_props(0.2, 0.2, 2.0, 2.0, 0.4, 1.0)
+        .unwrap();
+    sim.set_initial_pressure(200.0);
+    sim.set_initial_saturation(0.2);
+    sim.set_gravity_enabled(true);
+    sim.set_permeability_per_layer(vec![500.0; nz], vec![500.0; nz], vec![50.0; nz])
+        .unwrap();
+    sim.set_well_control_modes("rate".to_string(), "rate".to_string());
+    sim.set_target_well_rates(160.0, 160.0).unwrap();
+    sim.set_well_bhp_limits(50.0, 500.0).unwrap();
+    let layers: Vec<usize> = if fully_perforated {
+        (0..nz).collect()
+    } else {
+        vec![nz - 1]
+    };
+    for &k in &layers {
+        sim.add_well_with_id(0, 0, k, 400.0, 0.1, 0.0, true, "inj".to_string())
+            .unwrap();
+        sim.add_well_with_id(29, 0, k, 100.0, 0.1, 0.0, false, "prod".to_string())
+            .unwrap();
+    }
+    sim
+}
+
+/// `FIM-REPAIR-F6` (#10): multi-layer completions under gravity must stay physical on **both**
+/// solvers, and the two must not diverge.
+///
+/// Measured at `5ebdc78` over 12 days: no solver warning on either backend for either completion
+/// strategy, saturations inside `[s_wc, 1]`, and pressures bounded. Fully perforated, IMPES and
+/// FIM agree to about 1 % on the pressure envelope and to 5e-3 on peak water saturation — so this
+/// reconstruction finds no shared well-geometry error. Issue #10 remains scoped to IMPES on its
+/// own deck.
+#[test]
+fn fim_repair_multi_completion_gravity_stays_physical_on_both_solvers() {
+    for fully_perforated in [false, true] {
+        let mut results = Vec::new();
+        for fim in [false, true] {
+            let mut sim = gravity_section(fim, fully_perforated);
+            for _ in 0..12 {
+                sim.step(1.0);
+                assert!(
+                    sim.last_solver_warning.is_empty(),
+                    "fully_perforated={fully_perforated} fim={fim}: solver warning at \
+                     t={:.3} d: {}",
+                    sim.time_days,
+                    sim.last_solver_warning
+                );
+            }
+
+            let pressure_min = sim.pressure.iter().cloned().fold(f64::INFINITY, f64::min);
+            let pressure_max = sim
+                .pressure
+                .iter()
+                .cloned()
+                .fold(f64::NEG_INFINITY, f64::max);
+            let sw_min = sim.sat_water.iter().cloned().fold(f64::INFINITY, f64::min);
+            let sw_max = sim
+                .sat_water
+                .iter()
+                .cloned()
+                .fold(f64::NEG_INFINITY, f64::max);
+
+            assert!(
+                pressure_min > 0.0 && pressure_max.is_finite(),
+                "fully_perforated={fully_perforated} fim={fim}: nonphysical pressure state \
+                 [{pressure_min:.3}, {pressure_max:.3}]"
+            );
+            // `s_wc` is not an exact floor. FIM keeps OPM's raw primary-variable state
+            // (`apply_newton_update_frozen` -> `resolve_cell_flash`, which deliberately does not
+            // clamp so component accumulation retains its derivative through a switch), so a
+            // converged cell may sit a few parts in 1e6 outside the endpoint. Measured here:
+            // 0.199998 against `s_wc = 0.2`. The contract is "physical to within the raw-primary
+            // tolerance", not "exactly bounded" — asserting the latter would be asserting a
+            // clamp the engine intentionally does not apply.
+            const SATURATION_ENDPOINT_TOLERANCE: f64 = 1e-4;
+            assert!(
+                sw_min >= 0.2 - SATURATION_ENDPOINT_TOLERANCE
+                    && sw_max <= 1.0 + SATURATION_ENDPOINT_TOLERANCE,
+                "fully_perforated={fully_perforated} fim={fim}: saturation left its bounds \
+                 [{sw_min:.6}, {sw_max:.6}]"
+            );
+            results.push((pressure_min, pressure_max, sw_max));
+        }
+
+        // Well geometry, the Peaceman PI and the wellbore-datum head offset are shared code. A
+        // defect there would move both solvers together; a solver-specific failure would not.
+        let (impes, fim) = (results[0], results[1]);
+        assert!(
+            (impes.0 - fim.0).abs() / impes.0 < 0.02 && (impes.1 - fim.1).abs() / impes.1 < 0.02,
+            "fully_perforated={fully_perforated}: IMPES and FIM pressure envelopes diverged \
+             ({impes:?} vs {fim:?})"
+        );
+        assert!(
+            (impes.2 - fim.2).abs() < 0.02,
+            "fully_perforated={fully_perforated}: IMPES and FIM peak water saturation diverged \
+             ({:.6} vs {:.6})",
+            impes.2,
+            fim.2
+        );
+    }
+}
