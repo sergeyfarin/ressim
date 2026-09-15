@@ -108,7 +108,9 @@ residual on the original full system. That safety net is load-bearing and is now
   separately under [#30](https://github.com/sergeyfarin/ressim/issues/30). **Correction
   (2026-09-15):** this line originally read "was deliberately not committed during this series",
   and F8 (`6be6d08`) is the commit that committed it. See "Correction to F8" below.
-- CI workflow changes (F3) are locally equivalent-verified only; the remote job has never run.
+- ~~CI workflow changes (F3) are locally equivalent-verified only; the remote job has never
+  run.~~ **Superseded (2026-09-15):** the remote job has now run and passed. See "F3 CI verified
+  remotely" below.
 
 ## Correction to F8 (added 2026-09-15)
 
@@ -137,6 +139,31 @@ validation replay silently enters the commit. That is the exact mechanism #30 de
 instance of it, not a process lapse to be corrected by more care. The fix is #30's: stop
 committing `src/lib/ressim/pkg/` and build it at every entry point. After that change the
 "does not establish" bullet above is moot, because there are no committed bindings to churn.
+
+## F3 CI verified remotely (added 2026-09-15)
+
+`pr-tests.yml` first executed on a real pull request in
+[#33](https://github.com/sergeyfarin/ressim/pull/33) (run
+[`35013467285`](https://github.com/sergeyfarin/ressim/actions/runs/35013467285), head `02a5c01`),
+and succeeded in 3m37s. Every step F3 added ran green:
+
+```text
+ 9. Build WASM bindings from this revision            success
+10. Run ESLint                                        success
+11. Check for runtime import cycles                   success
+12. Run TypeScript typecheck                          success
+13. Run Rust engine regression gates (shared+FIM+IMPES)  success
+14. Run Buckley-Leverett physics benchmarks           success
+15. Run unit tests (Vitest) and upload coverage       success
+17. Build production bundle                           success
+```
+
+This closes the F3 caveat: the workflow is no longer locally-equivalent-verified only.
+
+It is also a stronger result than F3 originally claimed. #33 removed the committed
+`src/lib/ressim/pkg/`, so that run executed against a checkout with **no** bindings present.
+Step 9 is therefore load-bearing rather than belt-and-braces — without it the Vitest step would
+have had nothing to load — and CI demonstrated it produces them from the revision under test.
 
 ## Provenance
 
