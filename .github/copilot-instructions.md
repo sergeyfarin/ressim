@@ -74,6 +74,11 @@ See `README.md` for full feature list and `docs/` for technical deep-dives.
 
 - Three.js version pinned — do not upgrade.
 - WASM requires `wasm32-unknown-unknown` target.
+- **`src/lib/ressim/pkg/` is generated, never committed** (#30). wasm-bindgen does not emit a
+  stable declaration order and the release wasm embeds host-absolute rustc/registry paths, so a
+  committed copy is pure diff noise that also goes stale against `src/lib/ressim/src/`. Every
+  entry point that resolves it (`dev`, `build`, `typecheck`, the vitest scripts) builds it first
+  via `scripts/build-wasm.sh`, which no-ops when the output is newer than its inputs.
 - Worker ↔ UI communication: structured cloning only.
 - **No runtime import cycles under `src/`.** A value-level cycle makes whichever module the bundler
   enters first read the other's top-level `const`s from their temporal dead zone, throwing

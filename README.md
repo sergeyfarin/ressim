@@ -119,6 +119,11 @@ cargo install wasm-pack
 pnpm run dev
 ```
 
+`src/lib/ressim/pkg/` (the wasm-bindgen output) is generated and not committed. `pnpm run dev`,
+`build`, `typecheck` and the `test*` scripts all build it first; `scripts/build-wasm.sh` skips the
+work when the output is already newer than the Rust sources, so the hook is close to free once
+warm.
+
 ### Validate
 
 ```bash

@@ -46,6 +46,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # `src/lib/ressim/pkg/` is generated and no longer committed (#30). Without
+      # this step the wasm would first be built by `validate:product`'s leading
+      # `typecheck` hook; building it explicitly keeps a Rust failure in its own
+      # step and matches `pr-tests.yml`.
+      - name: Build WASM bindings from this revision
+        run: bash scripts/build-wasm.sh
+
       - name: Validate product and build deployment
         run: pnpm run validate:product
 

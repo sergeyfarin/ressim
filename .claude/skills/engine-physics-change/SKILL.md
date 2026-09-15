@@ -65,7 +65,9 @@ Naming: cross-solver contracts are `*_on_both_solvers`; physics regressions are 
 ## Exposing new API to the frontend
 
 1. Add the method/field in `frontend.rs` (wasm-bindgen).
-2. Rebuild: `bash scripts/build-wasm.sh` (regenerates `src/lib/ressim/pkg/`, which is committed).
+2. Rebuild: `bash scripts/build-wasm.sh` (regenerates `src/lib/ressim/pkg/`, which is generated
+   output and **not** committed — #30). The `pretypecheck` / `pretest*` / `prebuild` hooks do this
+   for you; run it by hand when you want the failure on its own.
 3. Wire through `src/lib/workers/sim.worker.ts` — worker messages must be **structured-cloneable** (plain objects/arrays only, no functions or class instances).
 4. Update `src/lib/simulator-types.ts` / `buildCreatePayload.ts` as needed; `pnpm run typecheck`.
 

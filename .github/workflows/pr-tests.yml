@@ -36,9 +36,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # `src/lib/ressim/pkg/` is committed, so without this step every frontend
-      # simulation test runs against whatever bindings happen to be checked in
-      # rather than against the Rust source in the pull request.
+      # `src/lib/ressim/pkg/` is generated and no longer committed (#30), so this
+      # step is what produces the bindings every frontend simulation test loads.
+      # The npm `pre*` hooks would build them anyway; doing it explicitly keeps a
+      # Rust build failure in its own step instead of inside `pnpm run typecheck`.
       - name: Build WASM bindings from this revision
         run: bash scripts/build-wasm.sh
 
