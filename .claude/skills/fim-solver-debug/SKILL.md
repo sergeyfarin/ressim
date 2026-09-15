@@ -67,7 +67,7 @@ Many plausible levers were already tried and **reverted**. Check these, in order
 
 1. `docs/FIM_STATUS.md` — current state, baselines with replay commands, open gaps (rewritten 2026-07-05).
 2. `docs/FIM_EXPERIMENT_REGISTRY.md` — fast searchable index of promoted, reverted, refuted, diagnostic, and open FIM levers. **Search by mechanism name and by file, not just by target case** — the `FIM-NEWTON-007`→`FIM-DAMP-004` episode cost 3 live-test cycles because the "loosen the inflection chop" axis was searched by case, not by mechanism. If an equivalent experiment is already listed, do **not** repeat it unless the row's `Retry only if` condition is satisfied.
-3. `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md` + `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` — the standing 95%-track-OPM policy, Bundle A/B/C sequencing, and the FIM-vs-OPM gap decomposition with current triage. Any proposed change should be locatable on this map.
+3. `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md` + `.archive/docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` — the standing 95%-track-OPM policy, Bundle A/B/C sequencing, and the FIM-vs-OPM gap decomposition with current triage. Any proposed change should be locatable on this map.
 4. The active FIM GitHub Issues linked from `ROADMAP.md` — scope and acceptance criteria only;
    experiment detail belongs in the registry/worklog.
 5. `docs/FIM_CONVERGENCE_WORKLOG.md` — active hypotheses and traces (Phase 9 onward — component-isolation lab, Phase 10's OPM `cprw` bundle, Phase 11's well-Schur-elimination/OSC-DETECT work, `FIM-DAMP-004`).
@@ -132,6 +132,35 @@ node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --st
 ```
 
 Do **not** trust expected counts written in old docs — re-derive them (baseline discipline below).
+
+### The bounded matrix is not enough on its own
+
+Every command above runs **1-6 report steps**, which is short enough to hide substep
+fragmentation: a case can look clean at `--steps 1` and still fragment badly once the controller
+has a trajectory to accumulate on. Pair the bounded matrix with a long horizon before concluding
+anything about convergence:
+
+```bash
+node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 20 --dt 1    --diagnostic outer --no-json
+node scripts/fim-wasm-diagnostic.mjs --preset gas-rate       --grid 10x10x3 --steps 24 --dt 0.25 --diagnostic outer --no-json
+```
+
+The quantity to read is **substeps / report steps**. Measured 2026-09-15 on `6be6d08`:
+
+| case | steps | substeps | ratio | retries l/n/o | lin+pc share |
+|---|---|---|---|---|---|
+| water-pressure 20x20x3 dt .25 | 20 | 20 | 1.00 | 0/0/0 | 54% |
+| water-pressure 23x23x1 dt .25 | 20 | 22 | 1.10 | 0/1/0 | 50% |
+| gas-rate 10x10x3 dt .25 | 24 | 27 | 1.12 | 0/1/0 | — |
+| water-pressure 12x12x3 dt 1 | 20 | 23 | 1.15 | 0/0/0 | — |
+| water-pressure 22x22x1 dt .25 | 20 | 23 | 1.15 | 0/1/0 | 50% |
+
+Ratios of 1.00-1.15 are OPM-class, and **no measured case stalls**. Linear solve plus
+preconditioner build is 50-54% of FIM wall-clock, which is the expected profile for a
+fully-implicit simulator rather than something to fix. Before proposing convergence work, re-run
+the table above — if it still reads like this, the work is not justified by measurement. Full
+evidence: [issue #23](https://github.com/sergeyfarin/ressim/issues/23), `docs/FIM_STATUS.md`
+2026-09-15 banner.
 
 ## Baseline & promotion discipline (non-negotiable)
 

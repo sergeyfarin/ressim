@@ -42,17 +42,15 @@ the registry **by mechanism name** before proposing any convergence change.
 
 | Document | Use it for |
 |----------|------------|
-| `docs/FIM_STATUS.md` | Consolidated FIM state, blockers, validation entry points, canonical source map |
+| `docs/FIM_STATUS.md` | Consolidated FIM state, blockers, validation entry points, canonical source map. Its **2026-09-15 banner** carries the current measured convergence baseline; the "Known Open Gaps" list below it is 2026-07-05 provenance |
 | [FIM repair execution plan](FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md) | F0–F8 repair order, issue mapping, exact gates and handoff to compositional integration |
 | [FIM repair handoff](FIM_REPAIR_HANDOFF_2026-09-15.md) | What F0–F8 repaired, the validated envelope, reusable interfaces, final G0–G5 replay and the release-equivalence measurement |
 | `docs/FIM_EXPERIMENT_REGISTRY.md` | Searchable anti-repeat ledger of levers, verdicts, retry conditions |
 | `docs/FIM_CONVERGENCE_WORKLOG.md` | Active investigation log: current-head traces, temporary hypotheses |
 | `docs/SOLVER_COMPARISON_SUMMARY.md` | Current OPM/FIM/IMPES timing + convergence re-baseline (clean tree `663e380`, 2026-07-24) |
-| `docs/FIM_RELPERM_ENDPOINT_SINGULARITY_ANALYSIS.md` | Scoping + recommendation for the deferred relperm-endpoint singularity (do-not-do-Option-B verdict) |
 | `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md` | The 95%-track-OPM policy and Bundle A/B/C sequencing |
-| `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` | Six-item FIM-vs-OPM Newton-efficiency gap decomposition + triage |
 | `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` | Decision-frontier execution plan (oracle repair, raw-state replay, promotion matrix) |
-| `docs/FIM_OPM_PARITY_PLAN.md` | Bundle Y evidence record and original Y0–Y4 roadmap |
+| `docs/FIM_OPM_PARITY_PLAN.md` | Bundle Y evidence record and original Y0–Y4 roadmap. **Frontier superseded 2026-09-15** — the 695-substep gas-rate stall it tracks is fixed; read its top banner before acting on anything inside |
 | `docs/FIM_DEFERRED_BACKLOG.md` | Deferred FIM convergence/validation work and the gates that remain open |
 
 ## FIM — design frontier (paused behind the WATER track)
@@ -78,7 +76,7 @@ issues #21–#23). Kept because they are prescriptive and not yet superseded.
 | `docs/CASE_LIBRARY_ROADMAP.md` | Sourcing map for new scenarios: SPE benchmarks, field datasets, textbook cases |
 | `docs/MULTI_SOURCE_COMPARISON_ROADMAP.md` | Comparison-axis roadmap across analytical/IMPES/FIM/OPM/published sources |
 | `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` | 2026-07 comparison-architecture findings and forward plan |
-| `docs/WAVE4_REVIEW_2026-07-19.md` | Open post-Wave-4 review findings (ranked) |
+| `docs/WAVE4_REVIEW_2026-07-19.md` | Open post-Wave-4 review findings (ranked). **Untracked** — its findings were pointed at `TODO.md` checkboxes that no longer exist after the 2026-08-02 tracker migration, and finding 1 is an unverified BLOCKER. Needs an issue or a verification pass before it can be archived |
 | `.claude/skills/README.md` | Workflow skill library index |
 
 ## Archived material

@@ -24,16 +24,25 @@ ResSim has several validation surfaces with different costs and different owners
 
 ## Two tiers
 
-The vitest suite is not uniform. 13 files under `src/lib/catalog/scenarios/` drive full WASM
-simulations and cost ~440 s; the other 48 files cost ~16 s combined. Running the scenario
+The vitest suite is not uniform. 14 files under `src/lib/catalog/scenarios/` drive full WASM
+simulations and dominate its cost; the other ~54 files are quick. Running the scenario
 simulations after a chart or store edit buys nothing — a UI change cannot move a simulation
 trajectory.
 
 | Tier | Command | Cost | When |
 |---|---|---|---|
-| 1 — inner loop | `pnpm run validate` | ~75 s | Every iteration on Svelte/TS. Excludes the scenario sims (`test:fast`). |
-| 2 — pre-commit | `pnpm run validate:product` | ~9 min | Before commit/push, and for any catalog, worker-payload or Rust change. Full vitest + IMPES bucket. |
-| 3 — engine | `pnpm run validate:full` | ~10 min | Rust shared/solver changes. Tier 2 + `validate-solver-coverage.sh all`. |
+| 1 — inner loop | `pnpm run validate` | ~60 s | Every iteration on Svelte/TS. Excludes the scenario sims (`test:fast`). |
+| 2 — pre-commit | `pnpm run validate:product` | ~4 min | Before commit/push, and for any catalog, worker-payload or Rust change. Full vitest + IMPES bucket. |
+| 3 — engine | `pnpm run validate:full` | ~5 min | Rust shared/solver changes. Tier 2 + `validate-solver-coverage.sh all`. |
+
+Re-measured 2026-09-15 on `6be6d08`. The scenario tier is **~116 s**, not the ~440 s recorded
+through 2026-08 — the FIM convergence work of 2026-07 (`efde1f4`, Bundle X, the WATER series)
+removed the substep fragmentation that dominated it. The full vitest suite is **~115 s**.
+
+Worth knowing before optimizing: the slowest single test is `dep_pss` at ~72 s CPU, and that
+scenario is `fimEnabled: false`. It runs 7 variants x 400 report steps at ~25 ms/step — that is
+volume, not solver convergence. Of the eight slowest scenario tests only `wf_capillary` and
+`dep_gas_pz` are FIM at all.
 
 `pnpm test` remains the **full** suite. The fast subset is always spelled explicitly
 (`pnpm run test:fast`), so a run that skipped the scenario sims is visible at the call site
@@ -63,8 +72,8 @@ pnpm run typecheck        # tsc --noEmit                          ~11 s
 pnpm run lint             # eslint, zero warnings allowed         ~15 s
 pnpm run check:cycles     # runtime import-cycle gate             ~3 s
 pnpm run test:fast        # vitest minus catalog/scenarios/**     ~16 s
-pnpm run test:scenarios   # only the WASM scenario simulations    ~440 s
-pnpm test                 # vitest run — the full suite           ~460 s
+pnpm run test:scenarios   # only the WASM scenario simulations    ~116 s
+pnpm test                 # vitest run — the full suite           ~115 s
 pnpm run validate         # typecheck + lint + cycles + test:fast + build
 pnpm run validate:product # same but full vitest + Rust IMPES bucket
 pnpm run validate:full    # validate:product + solver coverage `all`

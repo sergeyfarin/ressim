@@ -34,6 +34,16 @@ these files are provenance, not live specs.
 - **Dated snapshots / reviews** — `FRONTEND_UI_AUDIT_2026-03-07.md`,
   `IMPLEMENTATION_REVIEW_2026-03-19.md`, `DELIVERED_WORK_2026_Q1.md`.
 
+### Added 2026-09-15 (documentation staleness review)
+
+- `FIM_RELPERM_ENDPOINT_SINGULARITY_ANALYSIS.md` — scoping analysis for the relperm-endpoint
+  singularity. Self-declares **resolved 2026-07-28 by `FIM-LINEAR-014`**, and the 2026-09-15
+  convergence re-measurement corroborates it: the `linear-bad` singularity backstop it analyses no
+  longer fires on `22x22x1` or `23x23x1`. Verdict retained in `FIM_EXPERIMENT_REGISTRY.md`.
+- `FIM_OPM_GAP_ANALYSIS_SPE1.md` — six-item SPE1 Newton-efficiency decomposition. Its own
+  2026-07-13 addendum already marked it "historical decomposition, not the active execution
+  order". Strategic ordering now lives in `ROADMAP.md` and GitHub Issues.
+
 Also archived here: `PLAN.md` (historical scenario-first rewrite plan),
 `docs/REFACTOR_PLAN.md` (historical refactor plan), and
 `CODEX_FIM_DIALOGUE_03.07.2026.md` (historical design dialogue).

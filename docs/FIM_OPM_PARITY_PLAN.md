@@ -1,5 +1,31 @@
 # FIM Bundle Y: OPM Convergence Parity (post-Bundle-X roadmap)
 
+> ## Superseded frontier — re-measured 2026-09-15 (`6be6d08`)
+>
+> **Bundle Y's headline open item is closed.** This document records `gas-rate 10x10x3` needing
+> **695 substeps against OPM Flow's 6** (Y1g/Y1h), diagnosed as a nonlinear well-cell stall and
+> paused pending a fix-scope decision. That frontier no longer exists.
+>
+> Verified by direct old-vs-new replay on the byte-identical preset: `ab5b497` (this document's
+> era) took **888 substeps for report step 1 alone**; `6be6d08` takes **6 substeps for 6 report
+> steps, zero retries**, with 27 Newton updates against Flow's 26. Fixed by `efde1f4` /
+> `FIM-FLAVOR-002` (2026-07-24).
+>
+> **Y1g's mechanism attribution was wrong**, which is the part worth carrying forward. It
+> concluded the stall was nonlinear and explicitly ruled the linear side out ("the gap is 100%
+> nonlinear"). The real cause was linear: the fixed-left GMRES recurrence is invalid with
+> input-dependent CPR and reported an internal residual of `1.344e-21` where the true full-system
+> residual was `1.883e-7`. The symptom looked nonlinear only because the linear report was wrong.
+>
+> **Do not implement the `would_widen` / `if !opm_aligned` change this document proposes.** Its
+> premise was that OPM has no trend-based bailout and would also grind through the budget; the
+> root cause was elsewhere, and `FIM-NEWTON-004`/`005` remain correctly reverted.
+>
+> Everything below is retained as provenance for the Y0-Y4 investigation. Current measured
+> baseline: `docs/FIM_STATUS.md` 2026-09-15 banner and
+> [issue #23](https://github.com/sergeyfarin/ressim/issues/23).
+
+
 Status: **Y0-Y2a complete through 2026-07-13.** The exact Flow oracle, linear-stack refutation,
 injector isolation, and active-bound Jacobian audit are recorded in §§11-14. The original Y1-Y4
 checkpoint order below is historical where later evidence supersedes it. The current decision
@@ -70,7 +96,7 @@ through the same transient, at 12x the dt. The gap therefore decomposes:
   Bundle X's fallback item, never needed for the heavy case — becomes relevant again only if
   Y1 attributes G1's transient stall to the well rows.
 - **G5 — Three-phase specifics.** The gas-rate 459 case may add gaps beyond G2 (variable
-  substitution / regime switching inside Newton — `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` gap #5,
+  substitution / regime switching inside Newton — `.archive/docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` gap #5,
   deliberately deferred since Bundle N). Y0 classifies before anything is built.
 - **G6 — Per-iteration wall-clock** (preconditioner rebuild dominance, Task #41's 24x factor,
   partially addressed by `FIM-LINEAR-011`). A cost axis, not a convergence axis — explicitly

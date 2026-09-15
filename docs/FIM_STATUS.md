@@ -2,6 +2,47 @@
 
 This is the consolidated current-state summary for the Rust FIM solver.
 
+> ## 2026-09-15 measured baseline (clean tree `6be6d08`) — read this before any convergence work
+>
+> **There is no FIM convergence stall left on any measured case.** Long-horizon runs (20-24 report
+> steps, not the 1-6 the bounded control matrix uses, because short runs can hide fragmentation):
+>
+> | case | steps | substeps | ratio | retries l/n/o | fim_ms | lin+pc |
+> |---|---|---|---|---|---|---|
+> | water-pressure 20x20x3 dt .25 | 20 | 20 | **1.00** | 0/0/0 | 2679 | 54% |
+> | water-pressure 23x23x1 dt .25 | 20 | 22 | 1.10 | 0/1/0 | 1114 | 50% |
+> | gas-rate 10x10x3 dt .25 | 24 | 27 | 1.12 | 0/1/0 | 1170 | — |
+> | water-pressure 12x12x3 dt 1 (heavy) | 20 | 23 | 1.15 | 0/0/0 | 929 | — |
+> | water-pressure 22x22x1 dt .25 | 20 | 23 | 1.15 | 0/1/0 | 1052 | 50% |
+>
+> Ratios of 1.00-1.15 are OPM-class. The `linear-bad` singularity backstop the 2026-07-24 banner
+> below names as "the remaining default-path convergence gap" **no longer fires** on 22x22x1 or
+> 23x23x1 (measured `0/1/0`, i.e. one nonlinear retry and zero linear ones, against the `8` and `4`
+> linear-bad retries recorded then).
+>
+> **The gas-rate stall is closed.** `gas-rate 10x10x3 x6` was 695 substeps against Flow's 6 in the
+> Bundle Y frontier. Verified by direct old-vs-new replay on the byte-identical preset: `ab5b497`
+> took **888 substeps for report step 1 alone**; `6be6d08` takes **6 substeps for 6 report steps,
+> zero retries**, with 27 Newton updates against Flow's 26. Fixed by `efde1f4` / `FIM-FLAVOR-002`
+> (2026-07-24): the historical fixed-left GMRES recurrence is invalid with input-dependent CPR and
+> reported `1.344e-21` where the true full-system residual was `1.883e-7`.
+>
+> **Where the time goes now: 50-54% in linear solve + preconditioner build.** That is the expected
+> profile for a fully-implicit simulator, not a defect. This **supersedes "Known Open Gaps" item 2
+> below**, whose "preconditioner rebuilt every Newton iteration = 89% of wall-clock" predates
+> `FIM-LINEAR-011`.
+>
+> **The slowest user-facing tests are not FIM.** Scenario tier is 116 s wall clock; the slowest
+> single test is `dep_pss` at 71.7 s CPU and that scenario is `fimEnabled: false` — 7 variants x
+> 400 report steps at ~25 ms/step. Volume, not convergence.
+>
+> **Consequence for planning: measurement does not currently justify FIM convergence work.** Do not
+> implement the `would_widen` / `if !opm_aligned` change the parked Bundle Y frontier proposed —
+> its root cause was elsewhere. `FIM-NEWTON-004`/`005` remain correctly reverted. The "Known Open
+> Gaps" list below was written 2026-07-05 and predates Bundle X, the WATER series and
+> `FIM-FLAVOR-002`; treat every substep number in it as provenance. Replay commands and the full
+> evidence are in [GitHub issue #23](https://github.com/sergeyfarin/ressim/issues/23).
+
 > **2026-07-24 convergence re-baseline (clean tree `663e380`).** The full control matrix +
 > three-phase + SPE1 rows were re-measured on the committed default (`OpmAligned`); results live in
 > `docs/SOLVER_COMPARISON_SUMMARY.md` and **supersede the older substep counts quoted in the
@@ -9,7 +50,7 @@ This is the consolidated current-state summary for the Rust FIM solver.
 > retries** on the default, not `50`; `Legacy` = 24; OPM Flow = 1). Exact gas stays ~2x Flow; SPE1
 > runs 1 substep/step uncut. The remaining default-path convergence gap is the `linear-bad`
 > singularity backstop on small well-dominated cases — see
-> `docs/FIM_RELPERM_ENDPOINT_SINGULARITY_ANALYSIS.md`. Numbers below this banner predate the
+> `.archive/docs/FIM_RELPERM_ENDPOINT_SINGULARITY_ANALYSIS.md`. Numbers below this banner predate the
 > re-baseline and are kept for provenance.
 
 Current execution status: **WATER-005 validated default-off property replay, no direct-day
@@ -332,7 +373,7 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
 5. **AMG coarse solver for CPR ("Bundle C", `FIM-LINEAR-006`)** — still deferred, and the Task
    #41 traces confirm the deferral: coarse-stage per-application quality is already ~1e-7 at
    current sizes. AMG is a scale-up item, not part of closing the current measured gap.
-6. **Variable substitution** (regime switching inside Newton; `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md`
+6. **Variable substitution** (regime switching inside Newton; `.archive/docs/FIM_OPM_GAP_ANALYSIS_SPE1.md`
    gap #5) — deliberately excluded from Bundle N; candidate follow-on after the well-coupling
    question settles.
 
@@ -342,7 +383,7 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
   `docs/FIM_EXPERIMENT_REGISTRY.md`
 - Active investigation log (Phase 9 onward): `docs/FIM_CONVERGENCE_WORKLOG.md`
 - Strategy: `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md` (95%-track-OPM policy, Bundle A/B/C
-  sequencing + 2026-07-05 status), `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` (gap decomposition +
+  sequencing + 2026-07-05 status), `.archive/docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` (gap decomposition +
   2026-07-05 triage)
 - Archives: `.archive/docs/FIM_CONVERGENCE_ARCHIVE_2026-04-08_to_2026-07-03.md` (shelf investigations,
   AD cutover, Phases 5-8), `.archive/docs/FIM_CONVERGENCE_ARCHIVE_2026-03_to_2026-04-06.md`,
