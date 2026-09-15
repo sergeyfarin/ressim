@@ -44,6 +44,7 @@ the registry **by mechanism name** before proposing any convergence change.
 |----------|------------|
 | `docs/FIM_STATUS.md` | Consolidated FIM state, blockers, validation entry points, canonical source map |
 | [FIM repair execution plan](FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md) | F0–F8 repair order, issue mapping, exact gates and handoff to compositional integration |
+| [FIM repair handoff](FIM_REPAIR_HANDOFF_2026-09-15.md) | What F0–F8 repaired, the validated envelope, reusable interfaces, final G0–G5 replay and the release-equivalence measurement |
 | `docs/FIM_EXPERIMENT_REGISTRY.md` | Searchable anti-repeat ledger of levers, verdicts, retry conditions |
 | `docs/FIM_CONVERGENCE_WORKLOG.md` | Active investigation log: current-head traces, temporary hypotheses |
 | `docs/SOLVER_COMPARISON_SUMMARY.md` | Current OPM/FIM/IMPES timing + convergence re-baseline (clean tree `663e380`, 2026-07-24) |

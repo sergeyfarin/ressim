@@ -21,8 +21,8 @@ export class ReservoirSimulator {
      */
     getLatestRatePoint(): any;
     getPressures(): Float64Array;
-    getRateHistory(): any;
     getRateHistorySince(start_index: number): any;
+    getRateHistory(): any;
     getRs(): Float64Array;
     getSatGas(): Float64Array;
     getSatOil(): Float64Array;
@@ -37,8 +37,8 @@ export class ReservoirSimulator {
      */
     constructor(nx: number, ny: number, nz: number, porosity_val: number);
     setCapillaryParams(p_entry: number, lambda: number): void;
-    setCellDimensions(dx: number, dy: number, dz: number): void;
     setCellDimensionsPerLayer(dx: number, dy: number, dz_per_layer: Float64Array): void;
+    setCellDimensions(dx: number, dy: number, dz: number): void;
     /**
      * Evaluate relative permeability from a piecewise-linear table with `points` knots sampled
      * from ResSim's own Corey curves, the way OPM evaluates SWOF. Zero selects the historical
@@ -70,12 +70,12 @@ export class ReservoirSimulator {
     setGasOilCapillaryParams(p_entry: number, lambda: number): void;
     setGasRedissolutionEnabled(enabled: boolean): void;
     setGravityEnabled(enabled: boolean): void;
-    setInitialGasSaturation(sat_gas: number): void;
     setInitialGasSaturationPerLayer(sg: Float64Array): void;
+    setInitialGasSaturation(sat_gas: number): void;
     setInitialPressure(pressure: number): void;
     setInitialRs(rs: number): void;
-    setInitialSaturation(sat_water: number): void;
     setInitialSaturationPerLayer(sw: Float64Array): void;
+    setInitialSaturation(sat_water: number): void;
     setInjectedFluid(fluid: string): void;
     setInjectorEnabled(enabled: boolean): void;
     /**
@@ -90,8 +90,8 @@ export class ReservoirSimulator {
      */
     setPermeabilityField(perms_x: Float64Array, perms_y: Float64Array, perms_z: Float64Array): void;
     setPermeabilityPerLayer(perms_x: Float64Array, perms_y: Float64Array, perms_z: Float64Array): void;
-    setPermeabilityRandom(min_perm: number, max_perm: number): void;
     setPermeabilityRandomSeeded(min_perm: number, max_perm: number, seed: bigint): void;
+    setPermeabilityRandom(min_perm: number, max_perm: number): void;
     setPvtTable(table_js: any): void;
     setRateControlledWells(enabled: boolean): void;
     setRelPermProps(s_wc: number, s_or: number, n_w: number, n_o: number, k_rw_max: number, k_ro_max: number): void;
@@ -123,8 +123,8 @@ export class ReservoirSimulator {
      */
     setWellDatum(physical_well_id: string, datum_depth_m: number, wellbore_density_kg_m3: number): void;
     setWellSchedule(physical_well_id: string, control_mode: string, target_rate_m3_day: number, target_surface_rate_m3_day: number, bhp_limit: number, enabled: boolean): void;
-    step(target_dt_days: number): void;
     stepWithDiagnostics(target_dt_days: number): string;
+    step(target_dt_days: number): void;
     cumulative_mb_error_m3: number;
     cumulative_mb_gas_error_m3: number;
 }
@@ -140,7 +140,6 @@ export interface InitOutput {
     readonly __wbg_reservoirsimulator_free: (a: number, b: number) => void;
     readonly __wbg_set_reservoirsimulator_cumulative_mb_error_m3: (a: number, b: number) => void;
     readonly __wbg_set_reservoirsimulator_cumulative_mb_gas_error_m3: (a: number, b: number) => void;
-    readonly set_panic_hook: () => void;
     readonly reservoirsimulator_addWellWithId: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number];
     readonly reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
     readonly reservoirsimulator_getDimensions: (a: number) => any;
@@ -205,6 +204,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setWellSchedule: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number];
     readonly reservoirsimulator_step: (a: number, b: number) => void;
     readonly reservoirsimulator_stepWithDiagnostics: (a: number, b: number) => [number, number];
+    readonly set_panic_hook: () => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;
