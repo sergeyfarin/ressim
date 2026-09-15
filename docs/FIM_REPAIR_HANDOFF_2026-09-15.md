@@ -97,16 +97,46 @@ residual on the original full system. That safety net is load-bearing and is now
 | [#12](https://github.com/sergeyfarin/ressim/issues/12) | Scenario/frontend scope. Both SPE1 release replays pass. |
 | [#21](https://github.com/sergeyfarin/ressim/issues/21) | Not attempted. Needs source-pinned OPM Flow artifacts. |
 | [#22](https://github.com/sergeyfarin/ressim/issues/22) | Damping/convergence extraction was already done; layout seam added. `flow_lifecycle.rs` still uses a literal `col % 3 == 0`. **Not closed.** |
-| [#25](https://github.com/sergeyfarin/ressim/issues/25) | **Did not reproduce.** Recovery `0.9280` vs the issue's `1.006`; closure `+0.0109` vs `+0.0885`. Recommend closing. |
+| [#25](https://github.com/sergeyfarin/ressim/issues/25) | **Did not reproduce.** Recovery `0.9280` vs the issue's `1.006`; closure `+0.0109` vs `+0.0885`. **Closed 2026-09-15** as fixed by `df08f3c`, which landed the day before the issue was filed. |
 
 ## What this handoff does not establish
 
 - No OPM iteration-count parity claim is made anywhere in this series.
 - #11's 9 % gap is measured; no mechanism is identified.
 - #10 was tested through a reconstruction of the `wf_gravity` geometry, not its shipped deck.
-- The committed `src/lib/ressim/pkg/` bindings regenerate with non-semantic ordering churn; that
-  is tracked separately and was deliberately not committed during this series.
+- The `src/lib/ressim/pkg/` bindings regenerate with non-semantic ordering churn; that is tracked
+  separately under [#30](https://github.com/sergeyfarin/ressim/issues/30). **Correction
+  (2026-09-15):** this line originally read "was deliberately not committed during this series",
+  and F8 (`6be6d08`) is the commit that committed it. See "Correction to F8" below.
 - CI workflow changes (F3) are locally equivalent-verified only; the remote job has never run.
+
+## Correction to F8 (added 2026-09-15)
+
+Two statements made by F8 (`6be6d08`) about its own contents are wrong, and are corrected here
+rather than silently left in place.
+
+| Where | Claim | What `6be6d08` actually contains |
+|---|---|---|
+| commit message | "No code changed." | `simulator_bg.wasm` `1012352` → `1023300` bytes; `simulator.js` 172 lines changed; `simulator.d.ts` 14; `simulator_bg.wasm.d.ts` 2 |
+| this document | the churn "was deliberately not committed during this series" | it was committed, by that commit |
+
+**What is and is not affected.**
+
+- The **physics claims stand.** F8's replay and the release-equivalence measurement were run on
+  the tree at `9e3fff1`, and `scripts/build-wasm.sh` regenerates `pkg/` as part of G3/G4. The
+  committed bindings are the ones that were measured. The 6/6 identical-physics result is
+  unaffected.
+- The **`simulator.d.ts` delta is provably pure reordering** — its added and removed lines are
+  identical as multisets (`git show 6be6d08 -- src/lib/ressim/pkg/simulator.d.ts`). The
+  `1012352 → 1023300` wasm size delta is the different-`rustc` signature #30 predicts.
+- What is wrong is only the **bookkeeping**: a commit that set out to state precisely what it did
+  and did not change shipped a regenerated binary and then documented the opposite.
+
+**Why it happened, and what fixes it.** Nothing gates the artifact, so a rebuild during a
+validation replay silently enters the commit. That is the exact mechanism #30 describes; F8 is an
+instance of it, not a process lapse to be corrected by more care. The fix is #30's: stop
+committing `src/lib/ressim/pkg/` and build it at every entry point. After that change the
+"does not establish" bullet above is moot, because there are no committed bindings to churn.
 
 ## Provenance
 
