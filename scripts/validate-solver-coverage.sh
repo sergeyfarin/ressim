@@ -110,6 +110,9 @@ run_fim() {
     # direct backends and the report contract) was in no bucket either. The expensive offline
     # solver labs in this module are `#[ignore]`d and stay out; the gate counts passed tests.
     run_test fim::linear::
+    # `FIM-REPAIR-F7`: `fim::flow_resv::` was likewise ungated, which is how a stale 1x1x1
+    # fixture sat failing in it. Same omission class as #13.
+    run_test fim::flow_resv::
     # `FIM-REPAIR-F5`: the lifecycle/rollback/conservation contracts, runnable as one named
     # group. Covers acceptance-residual identity, rejected-attempt rollback and closed-system
     # component conservation.

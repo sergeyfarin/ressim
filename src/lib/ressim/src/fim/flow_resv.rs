@@ -254,7 +254,15 @@ mod tests {
     use crate::well::WellSchedule;
 
     fn gas_resv_sim() -> ReservoirSimulator {
-        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        gas_resv_sim_with_cells(1)
+    }
+
+    /// `nx`-cell variant of [`gas_resv_sim`]. A test that needs a *second* physical well has to
+    /// have a second cell to put it in: the engine rejects two completions in one block
+    /// (`multiple_wells_in_same_block_are_rejected_without_state_change`, shared gate), so the
+    /// single-cell fixture cannot express a mixed-route case at all.
+    fn gas_resv_sim_with_cells(nx: usize) -> ReservoirSimulator {
+        let mut sim = ReservoirSimulator::new(nx, 1, 1, 0.2);
         sim.set_three_phase_mode_enabled(true);
         sim.pvt_table = Some(PvtTable::new(
             vec![
@@ -793,8 +801,13 @@ mod tests {
 
     #[test]
     fn g4b3_mixed_route_preserves_historical_well_inner_solve() {
-        let mut sim = gas_resv_sim();
-        sim.add_well_with_id(0, 0, 0, 150.0, 0.1, 0.0, false, "prod".to_string())
+        // Two cells: the RESV-routed injector keeps (0,0,0) from `gas_resv_sim_with_cells`, and
+        // the historical-route producer needs a block of its own. This fixture previously reused
+        // the 1x1x1 `gas_resv_sim()` and put the producer in the injector's cell, which
+        // `add_well_with_id` correctly rejects — so the test had been failing on an impossible
+        // setup rather than on the mixed-route behaviour it is named for.
+        let mut sim = gas_resv_sim_with_cells(2);
+        sim.add_well_with_id(1, 0, 0, 150.0, 0.1, 0.0, false, "prod".to_string())
             .unwrap();
         let mut state = FimState::from_simulator(&sim);
         let context = begin_flow_resv_report_step_context(&sim, &state, true)
