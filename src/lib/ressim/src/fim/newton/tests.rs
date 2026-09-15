@@ -1878,3 +1878,180 @@ fn candidate_update_bounds_include_oil_saturation_change() {
         &FimNewtonOptions::default(),
     ));
 }
+
+/// `FIM-REPAIR-F5`: a small two-phase producer that converges in a few Newton iterations.
+fn fim_repair_two_phase_sim() -> ReservoirSimulator {
+    let mut sim = ReservoirSimulator::new(3, 1, 1, 0.2);
+    sim.set_fim_enabled(true);
+    sim.set_fluid_properties(2.0, 0.5).unwrap();
+    sim.set_fluid_compressibilities(1.5e-4, 4.5e-5).unwrap();
+    sim.set_initial_pressure(250.0);
+    sim.set_initial_saturation(0.25);
+    sim.set_gravity_enabled(false);
+    sim.add_well(2, 0, 0, 180.0, 0.1, 0.0, false).unwrap();
+    sim
+}
+
+/// `FIM-REPAIR-F5`: a three-phase producer whose BHP is far below the bubble point, so solution
+/// gas is liberated during the step and every cell crosses `Undersaturated -> Saturated`. This
+/// is the case that actually exercises the phase-transition lifecycle; the two-phase fixture
+/// above cannot, because `classify_cell_regime` returns `Saturated` unconditionally without
+/// three-phase mode.
+fn fim_repair_three_phase_liberation_sim() -> ReservoirSimulator {
+    let mut sim = ReservoirSimulator::new(3, 1, 1, 0.2);
+    sim.set_fim_enabled(true);
+    sim.set_three_phase_mode_enabled(true);
+    sim.set_three_phase_rel_perm_props(
+        0.12, 0.12, 0.04, 0.04, 0.18, 2.0, 2.5, 1.5, 1e-5, 1.0, 0.984,
+    )
+    .unwrap();
+    sim.pvt_table = Some(PvtTable::new(
+        vec![
+            PvtRow {
+                p_bar: 100.0,
+                rs_m3m3: 20.0,
+                bo_m3m3: 1.10,
+                mu_o_cp: 1.20,
+                bg_m3m3: 0.0120,
+                mu_g_cp: 0.0180,
+            },
+            PvtRow {
+                p_bar: 200.0,
+                rs_m3m3: 60.0,
+                bo_m3m3: 1.22,
+                mu_o_cp: 1.05,
+                bg_m3m3: 0.0055,
+                mu_g_cp: 0.0200,
+            },
+            PvtRow {
+                p_bar: 300.0,
+                rs_m3m3: 95.0,
+                bo_m3m3: 1.32,
+                mu_o_cp: 0.95,
+                bg_m3m3: 0.0034,
+                mu_g_cp: 0.0225,
+            },
+        ],
+        sim.pvt.c_o,
+    ));
+    sim.set_initial_pressure(250.0);
+    sim.set_initial_saturation(0.20);
+    sim.set_initial_gas_saturation(0.0);
+    sim.set_initial_rs(60.0);
+    sim.set_gravity_enabled(false);
+    sim.add_well(2, 0, 0, 90.0, 0.1, 0.0, false).unwrap();
+    sim
+}
+
+/// `FIM-REPAIR-F5`, plan step 3: **the residual reported for an accepted step must be the
+/// residual of the state actually committed, and that state must be flash-consistent.**
+///
+/// Neither half is guaranteed by construction. Inside a Newton solve the hydrocarbon regime map
+/// is deliberately frozen (`apply_newton_update_frozen`) so the Jacobian stays smooth, and
+/// `classify_regimes` runs in exactly one production place — inside
+/// `evaluate_accepted_state_convergence`, which clones the candidate, reclassifies, *re-assembles*
+/// and returns that reclassified state. The `OpmAligned` converged-on-entry path does not go
+/// through it at all: it returns the frozen `state` with the residual assembled from that same
+/// frozen state.
+///
+/// Measured on the three-phase liberation fixture, the two flavors therefore commit **different
+/// parameterizations of the same physical state**:
+///
+/// ```text
+/// OpmAligned  regime=Undersaturated  hydrocarbon_var=Rs=31.42  (19 Newton iterations)
+/// Legacy      regime=Saturated       hydrocarbon_var=Sg=0.1196 ( 7 Newton iterations)
+/// derived by both: so=0.680299  sg=0.119612  rs=20.5441  p=101.360
+/// ```
+///
+/// That is sound, not a defect: `resolve_cell_flash` treats an `Undersaturated` cell whose `Rs`
+/// exceeds the saturation cap as already flashed, splitting the gas inventory and reporting a
+/// corrected regime, so assembly, `write_back_to_simulator` and the next step's
+/// `FimState::from_simulator` all observe the same physical cell. The invariant worth pinning is
+/// therefore on the **derived physical state**, not on the regime label — asserting label
+/// equality would wrongly fail `OpmAligned` while proving nothing about the physics.
+#[test]
+fn fim_repair_accepted_residual_belongs_to_the_committed_state() {
+    for (case, build, dt_days) in [
+        (
+            "two-phase",
+            fim_repair_two_phase_sim as fn() -> ReservoirSimulator,
+            0.5,
+        ),
+        (
+            "three-phase-liberation",
+            fim_repair_three_phase_liberation_sim as fn() -> ReservoirSimulator,
+            1.0,
+        ),
+    ] {
+        for flavor in [FimNonlinearFlavor::OpmAligned, FimNonlinearFlavor::Legacy] {
+            let mut sim = build();
+            let previous_state = FimState::from_simulator(&sim);
+            let initial_iterate = previous_state.clone();
+            let options = FimNewtonOptions {
+                nonlinear_flavor: flavor,
+                ..FimNewtonOptions::default()
+            };
+
+            let report = run_fim_timestep(
+                &mut sim,
+                &previous_state,
+                &initial_iterate,
+                dt_days,
+                &options,
+            );
+            assert!(
+                report.converged,
+                "{case}/{flavor:?}: fixture must converge for the acceptance contract to be \
+                 under test"
+            );
+
+            // (a) Independent re-assembly of the committed state. Nothing below reads the report
+            //     except the state itself.
+            let topology = crate::fim::wells::build_well_topology(&sim);
+            let assembly = assemble_fim_system(
+                &sim,
+                &previous_state,
+                &report.accepted_state,
+                &FimAssemblyOptions {
+                    dt_days,
+                    include_wells: true,
+                    assemble_residual_only: true,
+                    topology: Some(&topology),
+                    flow_resv_context: None,
+                },
+            );
+            let independent_norm =
+                scaled_residual_inf_norm(&assembly.residual, &assembly.equation_scaling);
+            assert!(
+                (independent_norm - report.final_residual_inf_norm).abs()
+                    <= 1e-9 * report.final_residual_inf_norm.max(1.0),
+                "{case}/{flavor:?}: reported accepted residual {:e} is not the residual of the \
+                 committed state ({:e}) — a state mutation applied after the acceptance check \
+                 would look exactly like this",
+                report.final_residual_inf_norm,
+                independent_norm
+            );
+
+            // (b) Flash consistency: reclassifying the committed state re-labels the primary
+            //     variable but must not move the physical cell, or the next step would silently
+            //     start from different physics than the one just accepted.
+            let mut reclassified = report.accepted_state.clone();
+            reclassified.classify_regimes(&sim);
+            for idx in 0..report.accepted_state.cells.len() {
+                let before = report.accepted_state.derive_cell(&sim, idx);
+                let after = reclassified.derive_cell(&sim, idx);
+                for (name, lhs, rhs) in [
+                    ("so", before.so, after.so),
+                    ("sg", before.sg, after.sg),
+                    ("rs", before.rs, after.rs),
+                ] {
+                    assert!(
+                        (lhs - rhs).abs() <= 1e-9 * lhs.abs().max(1.0),
+                        "{case}/{flavor:?}: cell {idx} {name} moved under reclassification \
+                         ({lhs:e} -> {rhs:e}) — the committed state is not flash-consistent"
+                    );
+                }
+            }
+        }
+    }
+}
