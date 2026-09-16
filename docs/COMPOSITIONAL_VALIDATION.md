@@ -269,6 +269,8 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C11 wells** — injectivity | must not vanish | a vapour injector into a single-phase liquid cell still injects — the failure the plan names | **Met** |
 | **C11 wells** — inventory closure | — | over 5 accepted steps, the grid's loss equals the well's production to `< 1e-6` relative | **Met** |
 | **C11 wells** — control switching | limit overrides target | a binding BHP limit reverts to BHP control and reports the achieved rate, not the target | **Met** |
+| **C11 wells** — crossflow | implemented **or** explicitly rejected, never clipped | **rejected**, with a typed error naming the completion, cell and potential. A single-completion well at or above cell pressure is shut in instead, since nothing is being invented there | **Met** |
+| **C11 wells** — multi-completion | one shared BHP | rates scale with each completion's index; head offsets differentiate the connections; rate control targets the well total | **Met** |
 | Derivative closure | — | `sum_i d(x_i)/du_v` and `sum_i d(y_i)/du_v` worst 6.1e-16 (`binary_T333_p150`) | The oracle's derivatives satisfy the normalization identity to roundoff |
 | Smooth property derivatives | ≤ 1e-4 relative, on a frozen nonzero derivative scale, over an FD step plateau | Deferred to C4 — needs the Rust implementation to compare against | Not yet |
 | Tiny assembled Jacobian | ≤ 1e-5 scaled entrywise vs FD at smooth states | Deferred to C8/C9 | Not yet |
@@ -340,7 +342,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C8 | Cell inventory, accumulation and scaling | **COMPLETE** | `compositional/accumulation.rs`; 19 `comp_accumulation_*` / `comp_scaling_*` tests |
 | C9 | Component face flux, gravity and global assembly | **COMPLETE** | `compositional/{flux,assembly}.rs`; 33 `comp_flux_*` / `comp_assembly_*` / `comp_gravity_*` tests |
 | C10 | Linear solve, Newton, timestep lifecycle | **COMPLETE** on the direct path | `compositional/{newton,timestep}.rs`; 20 `comp_newton_*` / `comp_rollback_*` tests. The iterative/CPR adapter is deferred — see the C10 record |
-| C11 | Compositional wells | **COMPLETE** for one completion | `compositional/wells.rs`, [design note](COMPOSITIONAL_WELL_DESIGN.md); 20 `comp_well_*` tests. **Derived from first principles — C11's OPM reference is unavailable here** (plan correction 3), so no OPM agreement is claimed. Multiple completions are a separate commit |
+| C11 | Compositional wells | **COMPLETE** | `compositional/wells.rs`, [design note](COMPOSITIONAL_WELL_DESIGN.md); 29 `comp_well_*` tests, single and multiple completions. **Derived from first principles — C11's OPM reference is unavailable here** (plan correction 3), so no OPM agreement is claimed |
 | C12 | NATIVE-COMPOSITIONAL-READY | **BLOCKED** | No compositional Flow executable (§3b) |
 | C13–C14 | WASM, product integration, release | NOT STARTED | Gated on C12 |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
@@ -383,8 +385,8 @@ Commands:              bash scripts/validate-compositional.sh all
 Results:               233 comp_ tests pass; compositional gate green; solver coverage 38/38
 Out of scope here:     multiple completions, crossflow, wellbore mixing and friction,
                        multisegment wells, separator trains beyond C5's single stage
-Completed gate:        C11 (single completion)
-Next permitted task:   C11 multi-completion, or C12 - which is BLOCKED (section 3b)
+Completed gate:        C11
+Next permitted task:   C12 - which is BLOCKED (section 3b)
 ```
 
 ### C10 — linear solve, Newton and the timestep lifecycle

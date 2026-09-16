@@ -15,12 +15,27 @@
 //! expects. Getting this backwards produces a well that fills the reservoir while reporting
 //! production, and every test below that checks a sign is checking this one.
 //!
-//! # One completion
+//! # Completions and crossflow
 //!
-//! Multiple completions sharing a BHP are a separate commit, as the plan requires. With a single
-//! connection there is no crossflow to implement or clip, and no wellbore mixing to resolve — the
-//! producer's stream is the cell's and the injector's is prescribed. That is why no wellbore flash
-//! appears here, and it is exactly what changes when a second completion is added.
+//! A well has one or more completions sharing a single BHP, each with its own connected cell, well
+//! index and head offset.
+//!
+//! **Crossflow is explicitly rejected, not clipped.** The plan permits either implementing it or
+//! rejecting it as outside V1, and forbids silently clipping it. Rejection is what is implemented:
+//! a producer whose connection would take fluid *from* the wellbore, or an injector whose
+//! connection would draw formation fluid *into* it, returns [`WellError::Crossflow`] naming the
+//! completion.
+//!
+//! The reason it is rejected rather than implemented is that crossflow is the one thing in this
+//! model that genuinely requires a wellbore state. Without it, a producer's stream is just the sum
+//! of its connections' and an injector's is prescribed, so there is nothing to mix and no wellbore
+//! flash to solve. With it, the fluid re-entering the formation is the wellbore mixture, which
+//! depends on every other connection — a coupled wellbore equation that would have to be posed,
+//! solved and validated, and which nothing in V1's scope needs.
+//!
+//! A **single-completion** producer at or above its cell pressure is a different case and is shut
+//! in rather than rejected: there is no other connection for fluid to have come from, so there is
+//! no wellbore mixture being silently invented.
 
 use crate::ad::Ad;
 use crate::fluid::derivatives::{DerivativeError, FlashDerivatives, flash_derivatives};
@@ -70,20 +85,58 @@ pub enum SurfacePhase {
     Total,
 }
 
-/// A single-completion compositional well.
+/// One connection between a well and a cell.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CompositionalWell {
-    /// Stable identifier for reporting.
-    pub id: String,
+pub struct Completion {
     /// The connected cell.
     pub cell: usize,
     /// Geometric well index [m³·cP/(day·bar)] — Peaceman **without** mobility folded in.
     pub well_index: f64,
     /// Hydrostatic head from the datum down to this completion [bar]; `p_conn = bhp + head`.
+    ///
+    /// Positive for a completion below the datum. With gravity enabled these differ between
+    /// completions, which is what makes a multi-completion well's connections see different
+    /// connection pressures from one shared BHP.
     pub head_offset_bar: f64,
+}
+
+/// A compositional well: one or more completions sharing a single BHP.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CompositionalWell {
+    /// Stable identifier for reporting.
+    pub id: String,
+    /// Connections, in no particular order. At least one.
+    pub completions: Vec<Completion>,
     pub control: WellControl,
     /// Prescribed injection composition, `N` overall mole fractions. Required for an injector.
     pub injection_composition: Option<Vec<f64>>,
+}
+
+impl CompositionalWell {
+    /// A single-completion well, which is what most tests and the simplest cases need.
+    pub fn single(
+        id: impl Into<String>,
+        cell: usize,
+        well_index: f64,
+        control: WellControl,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            completions: vec![Completion {
+                cell,
+                well_index,
+                head_offset_bar: 0.0,
+            }],
+            control,
+            injection_composition: None,
+        }
+    }
+
+    /// True when this well has more than one connection, and therefore a wellbore in which fluid
+    /// could mix if crossflow were permitted.
+    pub fn is_multi_completion(&self) -> bool {
+        self.completions.len() > 1
+    }
 }
 
 /// Why a well source could not be evaluated.
@@ -111,6 +164,18 @@ pub enum WellError {
     },
     /// The surface conversion needs surface conditions the specification does not carry.
     SurfaceConditionsNotPinned,
+    /// A completion would flow the wrong way for the well's overall direction.
+    ///
+    /// Rejected rather than clipped: the fluid re-entering the formation would be the wellbore
+    /// mixture, which V1 does not model. See the module docs.
+    Crossflow {
+        well: String,
+        completion: usize,
+        cell: usize,
+        potential_bar: f64,
+    },
+    /// A well has no completions.
+    NoCompletions { well: String },
 }
 
 impl core::fmt::Display for WellError {
@@ -142,6 +207,19 @@ impl core::fmt::Display for WellError {
                 f,
                 "surface volumetric control needs pinned surface conditions on the specification"
             ),
+            Self::Crossflow {
+                well,
+                completion,
+                cell,
+                potential_bar,
+            } => write!(
+                f,
+                "well {well}: completion {completion} (cell {cell}) would cross-flow at a \
+                 potential of {potential_bar} bar. Crossflow is outside V1 and is rejected \
+                 rather than clipped, because the fluid re-entering the formation would be the \
+                 wellbore mixture, which is not modelled"
+            ),
+            Self::NoCompletions { well } => write!(f, "well {well} has no completions"),
         }
     }
 }
@@ -161,6 +239,10 @@ pub struct WellSource {
     pub reservoir_rate_m3_per_day: f64,
     /// True when a rate target was overridden by its BHP limit.
     pub on_bhp_limit: bool,
+    /// The connected cell, so a caller placing sources into a grid does not have to track it.
+    pub cell: usize,
+    /// `p_cell - p_conn` [bar]. Positive draws from the formation.
+    pub potential_bar: f64,
 }
 
 impl WellSource {
@@ -183,19 +265,20 @@ pub fn source_at_bhp(
     spec: &FluidSpecification,
     relperm: HydrocarbonRelPerm,
     well: &CompositionalWell,
+    completion: &Completion,
     cell: &CompositionalCellState,
     bhp_bar: f64,
 ) -> Result<WellSource, WellError> {
-    if !well.well_index.is_finite() || well.well_index < 0.0 {
+    if !completion.well_index.is_finite() || completion.well_index < 0.0 {
         return Err(WellError::InvalidWellIndex {
-            value: well.well_index,
+            value: completion.well_index,
         });
     }
     let n = spec.component_count();
     match n {
-        2 => source_sized::<2>(spec, relperm, well, cell, bhp_bar),
-        3 => source_sized::<3>(spec, relperm, well, cell, bhp_bar),
-        4 => source_sized::<4>(spec, relperm, well, cell, bhp_bar),
+        2 => source_sized::<2>(spec, relperm, well, completion, cell, bhp_bar),
+        3 => source_sized::<3>(spec, relperm, well, completion, cell, bhp_bar),
+        4 => source_sized::<4>(spec, relperm, well, completion, cell, bhp_bar),
         count => Err(WellError::UnsupportedComponentCount { count }),
     }
 }
@@ -235,15 +318,16 @@ fn source_sized<const N: usize>(
     spec: &FluidSpecification,
     relperm: HydrocarbonRelPerm,
     well: &CompositionalWell,
+    completion: &Completion,
     cell: &CompositionalCellState,
     bhp_bar: f64,
 ) -> Result<WellSource, WellError> {
     // Slots: 0 = p_cell, 1..N = independent z, N = bhp. `Ad` needs a const size, so the four
     // supported component counts are instantiated explicitly.
     match N {
-        2 => source_ad::<2, 3>(spec, relperm, well, cell, bhp_bar),
-        3 => source_ad::<3, 4>(spec, relperm, well, cell, bhp_bar),
-        4 => source_ad::<4, 5>(spec, relperm, well, cell, bhp_bar),
+        2 => source_ad::<2, 3>(spec, relperm, well, completion, cell, bhp_bar),
+        3 => source_ad::<3, 4>(spec, relperm, well, completion, cell, bhp_bar),
+        4 => source_ad::<4, 5>(spec, relperm, well, completion, cell, bhp_bar),
         count => Err(WellError::UnsupportedComponentCount { count }),
     }
 }
@@ -252,6 +336,7 @@ fn source_ad<const N: usize, const M: usize>(
     spec: &FluidSpecification,
     relperm: HydrocarbonRelPerm,
     well: &CompositionalWell,
+    completion: &Completion,
     cell: &CompositionalCellState,
     bhp_bar: f64,
 ) -> Result<WellSource, WellError> {
@@ -265,7 +350,7 @@ fn source_ad<const N: usize, const M: usize>(
     let mut bhp_deriv = [0.0; M];
     bhp_deriv[N] = 1.0;
     let bhp = Ad::<M>::seeded(bhp_bar, bhp_deriv);
-    let p_conn = bhp + well.head_offset_bar;
+    let p_conn = bhp + completion.head_offset_bar;
     let dp = p_cell - p_conn;
 
     let injecting = dp.value() < 0.0 && well.injection_composition.is_some();
@@ -304,7 +389,7 @@ fn source_ad<const N: usize, const M: usize>(
         // cell-primary derivative: the cell's own fluid plays no part in what is injected, which
         // is what makes injection auditable. The *rate* still depends on the cell pressure
         // through the drawdown, which is not the same thing.
-        let q = (-dp) * lambda * well.well_index;
+        let q = (-dp) * lambda * completion.well_index;
         reservoir_rate = q.value();
         let c_mixture = mixture_molar_density::<N, M>(&inj_state, &inj_derivatives);
         for (i, flux) in component_flux.iter_mut().enumerate() {
@@ -326,7 +411,7 @@ fn source_ad<const N: usize, const M: usize>(
             else {
                 continue;
             };
-            let q = phase.mobility * dp * well.well_index;
+            let q = phase.mobility * dp * completion.well_index;
             total_rate = total_rate + q;
             for (i, flux) in component_flux.iter_mut().enumerate() {
                 // Negative: production removes moles from the cell.
@@ -355,6 +440,8 @@ fn source_ad<const N: usize, const M: usize>(
         bhp_bar,
         reservoir_rate_m3_per_day: reservoir_rate,
         on_bhp_limit: false,
+        cell: completion.cell,
+        potential_bar: dp.value(),
     })
 }
 
@@ -510,15 +597,131 @@ const BHP_SEARCH_MIN_BAR: f64 = 1.0;
 /// Bracketing tolerance on BHP [bar].
 const BHP_SOLVE_TOLERANCE_BAR: f64 = 1e-9;
 
+/// Every completion's contribution, plus the well-level totals.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WellResult {
+    /// One entry per completion, in the well's completion order.
+    pub completions: Vec<WellSource>,
+    /// The BHP used [bar] — shared by every completion.
+    pub bhp_bar: f64,
+    /// True when a rate target was overridden by its BHP limit.
+    pub on_bhp_limit: bool,
+}
+
+impl WellResult {
+    /// Total component molar rate into the reservoir [mol/day], summed over completions.
+    pub fn total_component_moles_per_day(&self, component_count: usize) -> Vec<f64> {
+        let mut out = vec![0.0; component_count];
+        for source in &self.completions {
+            for (i, q) in source.component_moles_per_day.iter().enumerate() {
+                out[i] += q;
+            }
+        }
+        out
+    }
+
+    /// Total molar rate into the reservoir [mol/day]. Negative for a producer.
+    pub fn total_moles_per_day(&self) -> f64 {
+        self.completions
+            .iter()
+            .map(|s| s.total_moles_per_day())
+            .sum()
+    }
+
+    pub fn is_producing(&self) -> bool {
+        self.total_moles_per_day() < 0.0
+    }
+
+    /// Place this well's sources into a per-cell source table.
+    ///
+    /// Additive, so several wells can contribute to one table and two completions of the same well
+    /// in one cell accumulate rather than overwrite.
+    pub fn add_to_sources(&self, sources: &mut [Vec<f64>]) {
+        for source in &self.completions {
+            for (i, q) in source.component_moles_per_day.iter().enumerate() {
+                sources[source.cell][i] += q;
+            }
+        }
+    }
+}
+
+/// Every completion at a given BHP, with crossflow rejected.
+///
+/// The well's overall direction is decided by the sum of the completions' potentials weighted by
+/// their well indices — a well whose connections mostly draw is a producer — and any completion
+/// flowing against that direction is [`WellError::Crossflow`]. A single-completion well cannot
+/// cross-flow against itself, so its at-or-above-cell-pressure case stays the shut-in it was.
+pub fn well_source_at_bhp(
+    spec: &FluidSpecification,
+    relperm: HydrocarbonRelPerm,
+    well: &CompositionalWell,
+    cells: &[CompositionalCellState],
+    bhp_bar: f64,
+) -> Result<WellResult, WellError> {
+    if well.completions.is_empty() {
+        return Err(WellError::NoCompletions {
+            well: well.id.clone(),
+        });
+    }
+
+    let mut sources = Vec::with_capacity(well.completions.len());
+    for completion in &well.completions {
+        sources.push(source_at_bhp(
+            spec,
+            relperm,
+            well,
+            completion,
+            &cells[completion.cell],
+            bhp_bar,
+        )?);
+    }
+
+    if well.is_multi_completion() {
+        // Direction from the index-weighted potential: a completion with a larger well index has
+        // more say in which way the well as a whole is flowing.
+        let weighted: f64 = well
+            .completions
+            .iter()
+            .zip(&sources)
+            .map(|(c, s)| c.well_index * s.potential_bar)
+            .sum();
+        let producing = weighted > 0.0;
+
+        for (index, (completion, source)) in well.completions.iter().zip(&sources).enumerate() {
+            let against = if producing {
+                source.potential_bar < 0.0
+            } else {
+                source.potential_bar > 0.0
+            };
+            if against {
+                return Err(WellError::Crossflow {
+                    well: well.id.clone(),
+                    completion: index,
+                    cell: completion.cell,
+                    potential_bar: source.potential_bar,
+                });
+            }
+        }
+    }
+
+    Ok(WellResult {
+        completions: sources,
+        bhp_bar,
+        on_bhp_limit: false,
+    })
+}
+
 /// Evaluate a well under its control, solving for BHP when the control is a rate.
 pub fn well_source(
     spec: &FluidSpecification,
     relperm: HydrocarbonRelPerm,
     well: &CompositionalWell,
-    cell: &CompositionalCellState,
-) -> Result<WellSource, WellError> {
+    cells: &[CompositionalCellState],
+) -> Result<WellResult, WellError> {
     match &well.control {
-        WellControl::Bhp { target_bar } => source_at_bhp(spec, relperm, well, cell, *target_bar),
+        WellControl::Bhp { target_bar } => {
+            well_source_at_bhp(spec, relperm, well, cells, *target_bar)
+        }
         WellControl::MolarRate {
             target_mol_per_day,
             bhp_limit_bar,
@@ -526,10 +729,10 @@ pub fn well_source(
             spec,
             relperm,
             well,
-            cell,
+            cells,
             *bhp_limit_bar,
             *target_mol_per_day,
-            |source, _| Ok(source.total_moles_per_day()),
+            |result, _| Ok(result.total_moles_per_day()),
         ),
         WellControl::SurfaceRate {
             target_m3_per_day,
@@ -537,40 +740,43 @@ pub fn well_source(
             bhp_limit_bar,
         } => {
             let phase = *phase;
+            let n = spec.component_count();
             solve_for_rate(
                 spec,
                 relperm,
                 well,
-                cell,
+                cells,
                 *bhp_limit_bar,
                 *target_m3_per_day,
-                move |source, spec| surface_rate(spec, source, phase),
+                move |result, spec| surface_rate(spec, result, phase, n),
             )
         }
     }
 }
 
-/// Surface volumetric rate of a source [m³/day], signed the same way the source is.
+/// Surface volumetric rate of a well's total stream [m³/day], signed as the stream is.
 fn surface_rate(
     spec: &FluidSpecification,
-    source: &WellSource,
+    result: &WellResult,
     phase: SurfacePhase,
+    component_count: usize,
 ) -> Result<f64, WellError> {
     if spec.surface().is_none() {
         return Err(WellError::SurfaceConditionsNotPinned);
     }
-    let total: f64 = source.component_moles_per_day.iter().sum();
+    let components = result.total_component_moles_per_day(component_count);
+    let total: f64 = components.iter().sum();
     if total == 0.0 {
         return Ok(0.0);
     }
-    // The separation works on a non-negative stream, so a producer's stream is negated and the
-    // sign reapplied afterwards. Flashing a negative composition would be flashing nothing.
+    // The separation works on a non-negative stream, so a producer's is negated and the sign
+    // reapplied afterwards. Flashing a negative composition would be flashing nothing.
+    //
+    // The stream flashed here is the **sum over completions**, which is the wellbore mixture as
+    // far as surface reporting is concerned. That much mixing is just addition; what V1 does not
+    // model is a mixture flowing back *into* the formation, which is why crossflow is rejected.
     let sign = if total < 0.0 { -1.0 } else { 1.0 };
-    let stream: Vec<f64> = source
-        .component_moles_per_day
-        .iter()
-        .map(|m| sign * m)
-        .collect();
+    let stream: Vec<f64> = components.iter().map(|m| sign * m).collect();
     let separated = surface_separation(spec, &stream).map_err(WellError::Transport)?;
     let volume = match phase {
         SurfacePhase::Liquid => separated.liquid_volume,
@@ -590,13 +796,13 @@ fn solve_for_rate<F>(
     spec: &FluidSpecification,
     relperm: HydrocarbonRelPerm,
     well: &CompositionalWell,
-    cell: &CompositionalCellState,
+    cells: &[CompositionalCellState],
     bhp_limit_bar: f64,
     target: f64,
     measure: F,
-) -> Result<WellSource, WellError>
+) -> Result<WellResult, WellError>
 where
-    F: Fn(&WellSource, &FluidSpecification) -> Result<f64, WellError>,
+    F: Fn(&WellResult, &FluidSpecification) -> Result<f64, WellError>,
 {
     let injecting = target > 0.0;
 
@@ -608,14 +814,14 @@ where
         (bhp_limit_bar.max(BHP_SEARCH_MIN_BAR), BHP_SEARCH_MAX_BAR)
     };
     if !(lo < hi) {
-        let mut at_limit = source_at_bhp(spec, relperm, well, cell, bhp_limit_bar)?;
+        let mut at_limit = well_source_at_bhp(spec, relperm, well, cells, bhp_limit_bar)?;
         at_limit.on_bhp_limit = true;
         return Ok(at_limit);
     }
 
     // At the limit the well is working as hard as it is allowed to.
     let limit_bhp = if injecting { hi } else { lo };
-    let mut at_limit = source_at_bhp(spec, relperm, well, cell, limit_bhp)?;
+    let mut at_limit = well_source_at_bhp(spec, relperm, well, cells, limit_bhp)?;
     let achieved_at_limit = measure(&at_limit, spec)?;
 
     let limit_binds = if injecting {
@@ -632,11 +838,11 @@ where
 
     for _ in 0..200 {
         let mid = 0.5 * (lo + hi);
-        let source = source_at_bhp(spec, relperm, well, cell, mid)?;
-        let value = measure(&source, spec)?;
+        let result = well_source_at_bhp(spec, relperm, well, cells, mid)?;
+        let value = measure(&result, spec)?;
 
         if hi - lo < BHP_SOLVE_TOLERANCE_BAR {
-            return Ok(source);
+            return Ok(result);
         }
         // `measure` increases with BHP for an injector and decreases for a producer.
         let too_little = if injecting {
@@ -657,6 +863,5 @@ where
         }
     }
 
-    let source = source_at_bhp(spec, relperm, well, cell, 0.5 * (lo + hi))?;
-    Ok(source)
+    well_source_at_bhp(spec, relperm, well, cells, 0.5 * (lo + hi))
 }

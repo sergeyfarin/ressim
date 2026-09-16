@@ -48,10 +48,25 @@ splitting is not: that is the new semantics, and it is below.
 
 ## Unknowns and equations
 
-**This commit: one completion.** Multiple completions sharing one BHP are a separate commit, as
-the plan requires, and are rejected rather than silently mishandled until then. With one
-completion there is no crossflow to implement or clip — the concept needs two connections — so it
-is out of scope by construction rather than by omission.
+A well has one or more completions sharing a **single BHP**, each with its own connected cell,
+well index and head offset. Multiple completions landed in their own commit, as the plan requires.
+
+**Crossflow is explicitly rejected, not clipped**, which is one of the two options the plan
+permits and the one it insists must not be silent. A producer whose connection would take fluid
+*from* the wellbore, or an injector whose connection would draw formation fluid *into* it, returns
+a typed `Crossflow` error naming the completion, the cell and the potential.
+
+The reason for rejecting rather than implementing is that crossflow is the one thing in this model
+that genuinely needs a wellbore state. Without it a producer's stream is the sum of its
+connections' and an injector's is prescribed, so there is nothing to mix; with it, the fluid
+re-entering the formation is the wellbore mixture, which depends on every other connection — a
+coupled wellbore equation that would have to be posed, solved and validated, and which nothing in
+V1's scope needs.
+
+A **single-completion** producer at or above its cell pressure is a different case and is shut in
+rather than rejected: there is no other connection for wellbore fluid to have come from, so
+nothing is being silently invented. The distinction between those two cases is the whole content
+of the policy.
 
 | Control | Unknowns | Equations |
 | --- | --- | --- |
@@ -117,12 +132,14 @@ composition, which is the property that makes injection auditable.
 ### Wellbore flash
 
 The formulation above needs **no** wellbore flash. The injector's stream composition is prescribed
-data, and the producer's is the cell's, so there is no wellbore state variable whose equilibrium
-would have to be solved. The plan asks whether the selected formulation requires one and, if so,
-that it be solved coherently rather than half-ported; the answer here is that it does not, and the
-reason is that a single completion with a prescribed injection composition has no mixing to
-resolve. **A multi-completion well does** — the streams from several connections mix in the
-wellbore — and that is one of the reasons multi-completion is a separate commit rather than a loop.
+data, and the producer's is the sum of its connections', so there is no wellbore state variable
+whose equilibrium has to be solved. The plan asks whether the selected formulation requires one
+and, if so, that it be solved coherently rather than half-ported; the answer here is that it does
+not, and the reason is the crossflow policy above.
+
+Summing mole rates across completions is all the mixing a producing wellbore needs, and the
+surface separation flashes that sum. What would require a wellbore equilibrium is a mixture
+flowing back *into* the formation — which is precisely the case that is rejected.
 
 ## Controls
 
@@ -158,5 +175,5 @@ Internal, since no external well oracle exists:
 
 ## Explicitly out of scope for this commit
 
-Multiple completions, crossflow, wellbore mixing, wellbore friction, multisegment wells, separator
+Crossflow (rejected, per the policy above), wellbore friction, multisegment wells, separator
 trains beyond C5's single stage, and any claim of OPM parity.
