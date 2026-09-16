@@ -12,6 +12,6 @@
     "libdune-common-dev": "2.11.0-1~noble"
   },
   "sha256": "98f523bbdc0fb1d1465d3c85e6acdf2d55cd82266256e7b3dcd0c349a533b739",
-  "generated_from_commit": "6e6b47224635c19da70d9ee3f12b22c58ba5fa87",
-  "worktree_clean_at_generation": false
+  "generated_from_commit": "c005d2033df4f2fc9ba0243688bb1e068507d9b9",
+  "worktree_clean_at_generation": true
 }
