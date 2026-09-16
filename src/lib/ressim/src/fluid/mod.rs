@@ -23,6 +23,7 @@
 // every unit conversion here.
 #![allow(dead_code)]
 
+pub mod derivatives;
 pub mod eos;
 #[cfg(test)]
 pub(crate) mod fixture;
@@ -32,6 +33,8 @@ pub mod specification;
 pub mod stability;
 pub(crate) mod units;
 
+#[cfg(test)]
+mod derivative_tests;
 #[cfg(test)]
 mod eos_tests;
 #[cfg(test)]

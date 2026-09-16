@@ -33,6 +33,7 @@
 
 use super::specification::{EosVariant, FluidSpecification};
 use super::units::GAS_CONSTANT_J_PER_MOL_K;
+use crate::ad::Scalar;
 
 /// Which root of the cubic to take.
 ///
@@ -127,13 +128,17 @@ pub const PHASE_COMPOSITION_SUM_TOLERANCE: f64 = 1.0e-9;
 /// `A` and `B` are the usual dimensionless groups; `a_i`/`b_i` are the per-component ones, and
 /// `a_ij` the mixed matrix. All are `R`-independent: `A_i = Omega_A * p_r / T_r^2` and
 /// `B_i = Omega_B * p_r / T_r` contain only reduced pressure and temperature.
+///
+/// Generic over the scalar type so the same code produces the plain parameters with `f64` and
+/// their derivatives with `Ad<N>`. C4 differentiates the converged equilibrium, and an EOS written
+/// twice — once for values and once for derivatives — is an EOS that can disagree with itself.
 #[derive(Clone, Debug, PartialEq)]
-pub struct MixtureParams {
-    pub a: f64,
-    pub b: f64,
-    pub a_i: Vec<f64>,
-    pub b_i: Vec<f64>,
-    pub a_ij: Vec<Vec<f64>>,
+pub struct MixtureParams<S = f64> {
+    pub a: S,
+    pub b: S,
+    pub a_i: Vec<S>,
+    pub b_i: Vec<S>,
+    pub a_ij: Vec<Vec<S>>,
 }
 
 /// The real roots of the cubic, ascending.
@@ -288,15 +293,24 @@ pub fn mixture_params(
     temperature_k: f64,
     x: &[f64],
 ) -> Result<MixtureParams, EosError> {
+    mixture_params_generic::<f64>(spec, pressure_pa, temperature_k, x)
+}
+
+/// [`mixture_params`] over any differentiable scalar, so values and derivatives come from one
+/// implementation of the mixing rule rather than two.
+pub fn mixture_params_generic<S: Scalar>(
+    spec: &FluidSpecification,
+    pressure_pa: S,
+    temperature_k: f64,
+    x: &[S],
+) -> Result<MixtureParams<S>, EosError> {
     let EosVariant::PengRobinson = spec.eos();
 
-    if !pressure_pa.is_finite()
-        || pressure_pa <= 0.0
-        || !temperature_k.is_finite()
-        || temperature_k <= 0.0
+    let p_value = pressure_pa.value();
+    if !p_value.is_finite() || p_value <= 0.0 || !temperature_k.is_finite() || temperature_k <= 0.0
     {
         return Err(EosError::NonPhysicalState {
-            pressure_pa,
+            pressure_pa: p_value,
             temperature_k,
         });
     }
@@ -308,7 +322,8 @@ pub fn mixture_params(
         });
     }
     let mut sum = 0.0;
-    for (index, &value) in x.iter().enumerate() {
+    for (index, entry) in x.iter().enumerate() {
+        let value = entry.value();
         if !value.is_finite() || value < 0.0 {
             return Err(EosError::CompositionEntry { index, value });
         }
@@ -328,14 +343,14 @@ pub fn mixture_params(
         let p_r = pressure_pa / c.critical_pressure_pa;
         let t_r = temperature_k / c.critical_temperature_k;
         let omega_a = pr_omega_a(t_r, c.acentric_factor);
-        a_i.push(omega_a * p_r / (t_r * t_r));
-        b_i.push(PR_OMEGA_B * p_r / t_r);
+        a_i.push(p_r * (omega_a / (t_r * t_r)));
+        b_i.push(p_r * (PR_OMEGA_B / t_r));
     }
 
     // a_ij = sqrt(a_i a_j) (1 - k_ij). `CubicEOSParams.hpp::updateACache_`. Note this mixes the
     // already-dimensionless A_i, not the dimensional attraction parameters; the two differ by a
     // factor that is identical for every component and therefore cancels out of the square root.
-    let mut a_ij = vec![vec![0.0; n]; n];
+    let mut a_ij = vec![vec![S::from_f64(0.0); n]; n];
     for i in 0..n {
         for j in 0..n {
             a_ij[i][j] = (a_i[i] * a_i[j]).sqrt() * (1.0 - spec.interaction(i, j));
@@ -344,17 +359,20 @@ pub fn mixture_params(
 
     // A = sum_i sum_j x_i x_j a_ij, B = sum_i x_i b_i. OPM clamps each x into [0,1] first; the
     // composition was validated above, so there is nothing to clamp.
-    let mut a = 0.0;
-    let mut b = 0.0;
+    let mut a = S::from_f64(0.0);
+    let mut b = S::from_f64(0.0);
     for i in 0..n {
         for j in 0..n {
-            a += x[i] * x[j] * a_ij[i][j];
+            a = a + x[i] * x[j] * a_ij[i][j];
         }
-        b += x[i] * b_i[i];
+        b = b + x[i] * b_i[i];
     }
 
-    if !a.is_finite() || !b.is_finite() || a <= 0.0 || b <= 0.0 {
-        return Err(EosError::DegenerateMixtureParameters { a, b });
+    if !a.value().is_finite() || !b.value().is_finite() || a.value() <= 0.0 || b.value() <= 0.0 {
+        return Err(EosError::DegenerateMixtureParameters {
+            a: a.value(),
+            b: b.value(),
+        });
     }
     Ok(MixtureParams {
         a,
@@ -370,7 +388,7 @@ pub fn mixture_params(
 /// `Z^3 + [(m1 + m2 - 1) B - 1] Z^2 + [A + m1 m2 B^2 - (m1 + m2) B (B + 1)] Z
 ///      - [A B + m1 m2 B^2 (B + 1)] = 0`, from `eos/CubicEOS.hpp::computeMolarVolume`.
 /// For PR, `m1 + m2 = 2` and `m1 m2 = -1`.
-pub fn z_roots(params: &MixtureParams) -> Result<CubicRoots, EosError> {
+pub fn z_roots(params: &MixtureParams<f64>) -> Result<CubicRoots, EosError> {
     let (m1, m2) = pr_m1_m2();
     let (a, b) = (params.a, params.b);
     let c2 = (m1 + m2 - 1.0) * b - 1.0;
@@ -483,49 +501,62 @@ pub fn evaluate(
 /// argument that can go non-positive first.
 pub fn ln_fugacity_coefficients(
     spec: &FluidSpecification,
-    params: &MixtureParams,
+    params: &MixtureParams<f64>,
     z: f64,
     x: &[f64],
 ) -> Result<Vec<f64>, EosError> {
+    ln_fugacity_coefficients_generic::<f64>(spec, params, z, x)
+}
+
+/// [`ln_fugacity_coefficients`] over any differentiable scalar.
+pub fn ln_fugacity_coefficients_generic<S: Scalar>(
+    spec: &FluidSpecification,
+    params: &MixtureParams<S>,
+    z: S,
+    x: &[S],
+) -> Result<Vec<S>, EosError> {
     let (m1, m2) = pr_m1_m2();
     let (a, b) = (params.a, params.b);
     let n = spec.component_count();
 
     let z_minus_b = z - b;
-    if !(z_minus_b > 0.0) {
+    if !(z_minus_b.value() > 0.0) {
         return Err(EosError::LogDomain {
             what: "Z - B",
-            argument: z_minus_b,
+            argument: z_minus_b.value(),
         });
     }
-    let upper = z + m2 * b;
-    let lower = z + m1 * b;
-    if !(upper > 0.0) {
+    let upper = z + b * m2;
+    let lower = z + b * m1;
+    if !(upper.value() > 0.0) {
         return Err(EosError::LogDomain {
             what: "Z + m2*B",
-            argument: upper,
+            argument: upper.value(),
         });
     }
-    if !(lower > 0.0) {
+    if !(lower.value() > 0.0) {
         return Err(EosError::LogDomain {
             what: "Z + m1*B",
-            argument: lower,
+            argument: lower.value(),
         });
     }
 
-    let beta = (upper / lower).ln() * a / ((m1 - m2) * b);
+    let beta = (upper / lower).ln() * a / (b * (m1 - m2));
 
     let mut out = Vec::with_capacity(n);
     for i in 0..n {
         let bi_over_b = params.b_i[i] / b;
-        let a_sum: f64 = (0..n).map(|j| params.a_ij[i][j] * x[j]).sum();
+        let mut a_sum = S::from_f64(0.0);
+        for j in 0..n {
+            a_sum = a_sum + params.a_ij[i][j] * x[j];
+        }
         let alpha = -z_minus_b.ln() + bi_over_b * (z - 1.0);
-        let gamma = (2.0 / a) * a_sum - bi_over_b;
+        let gamma = a_sum * 2.0 / a - bi_over_b;
         let value = alpha + beta * gamma;
-        if !value.is_finite() {
+        if !value.value().is_finite() {
             return Err(EosError::NotFinite {
                 what: "ln phi",
-                value,
+                value: value.value(),
             });
         }
         out.push(value);

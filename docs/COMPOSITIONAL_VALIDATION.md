@@ -223,6 +223,13 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C3 flash vs fixture** — phase compositions | 1e-8 absolute | `< 1e-8` absolute on every `x_i` and `y_i` | **Met** |
 | **C3 flash** — own equilibrium residual | 1e-8 on the log-fugacity ratio | `< 1e-11`, three orders inside the target | **Met** |
 | **C3 flash** — normalization, `z` reconstruction | 1e-12, 1e-10 | `<= 1e-12`, `<= 1e-10` | **Met** |
+| **C4 derivatives vs fixture** — `dbeta`, `dx`, `dy` | 1e-4 relative on a frozen scale | `< 1e-9`; worst 8.7e-10 at `binary_p100/dbeta/dp` | **Met**, five orders of margin |
+| **C4 derivatives vs fixture** — molar density | 1e-4 relative | `< 1e-9`; worst 3.4e-10, after the same exact `R` correction | **Met** |
+| **C4 derivatives** — FD plateau | plateau demonstrated, not a single step | `dbeta/dp` agrees to `< 1e-7` with at least 4 of 8 steps inside 1e-5 | **Met** |
+| **C4 derivatives** — `sum_i dx_i/du = 0` | — | `< 1e-12` relative to the column's own magnitude | **Met** |
+| **C4 derivatives** — `dz_(N-1)/dz_k = -1` | exact | exact, on all 18 single-phase states | **Met** |
+| **C4 conditioning** — equilibrium Jacobian | — | min pivot `> 1e-6` across all 29 two-phase states | Recorded |
+| **C4 conditioning** — cubic root separation | — | min `\|dP/dZ\|` `> 1e-3` across all 47 states | Recorded |
 | Derivative closure | — | `sum_i d(x_i)/du_v` and `sum_i d(y_i)/du_v` worst 6.1e-16 (`binary_T333_p150`) | The oracle's derivatives satisfy the normalization identity to roundoff |
 | Smooth property derivatives | ≤ 1e-4 relative, on a frozen nonzero derivative scale, over an FD step plateau | Deferred to C4 — needs the Rust implementation to compare against | Not yet |
 | Tiny assembled Jacobian | ≤ 1e-5 scaled entrywise vs FD at smooth states | Deferred to C8/C9 | Not yet |
@@ -259,7 +266,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C1 | Fluid specification and unit-safe input | **COMPLETE** | `src/lib/ressim/src/fluid/{specification,units,pinned}.rs`; 26 `comp_spec_*` / `comp_units_*` tests |
 | C2 | PR mixture EOS and single-phase properties | **COMPLETE** | `src/lib/ressim/src/fluid/eos.rs`; 22 `comp_eos_*` tests |
 | C3 | Stability and scalar PT flash | **COMPLETE** | `fluid/{stability,flash}.rs`; 7 `comp_stability_*`, 12 `comp_flash_*`, 4 `comp_rr_*`; 47/47 states match OPM |
-| C4 | Equilibrium and property derivatives | NOT STARTED | — |
+| C4 | Equilibrium and property derivatives | **COMPLETE** | `fluid/derivatives.rs`; 11 `comp_derivatives_*` tests |
 | C5 | Transport properties and surface flash | NOT STARTED | — |
 | C6 | THERMO-READY | NOT STARTED | External flash parity available (§3a); trajectory parity blocked |
 | C7 | Component layout and state | NOT STARTED | Prerequisite `fim/layout.rs` available |
@@ -269,6 +276,38 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
 ## 8. Completion records
+
+### C4 — equilibrium and property derivatives
+
+```text
+C-task:                C4
+Start / final commit:  eb50726 / this commit
+Component/phase count: N=2, 3 and 4 AD instantiations; two-phase and both single-phase branches
+Source equations:      PTFlash.hpp::updateDerivatives_ - implicit differentiation of the
+                       converged equilibrium, not of the iteration
+                       F = [ln K_i - ln phi_i^L + ln phi_i^V ; sum(v_i - x_i)]
+                       y = [ln K_0..ln K_(N-1), beta], u = [p_Pa, z_0..z_(N-2)]
+                       dy/du = -F_y^{-1} F_u by a pivoted dense solve, never an inverse
+Changed interfaces:    new `fluid::derivatives`; `fluid::eos` mixing rule and fugacity
+                       coefficients generified over the `Scalar` trait, with the f64 path
+                       value-identical (the C2 tests are unchanged and still pass);
+                       `crate::fim::ad` moved to `crate::ad` in its own commit
+Tests created:         11 comp_derivatives_* in fluid/derivative_tests.rs
+Commands:              cargo test --manifest-path src/lib/ressim/Cargo.toml comp_
+                       cargo fmt --manifest-path src/lib/ressim/Cargo.toml -- --check
+                       cargo check --manifest-path src/lib/ressim/Cargo.toml \
+                           --target wasm32-unknown-unknown
+                       bash scripts/validate-solver-coverage.sh all
+Results:               82/82 comp_ pass; fmt clean; wasm32 compiles; solver coverage 38/38
+Worst errors:          dbeta/du and dx,dy/du 8.7e-10 vs OPM; molar density 3.4e-10;
+                       composition-column closure 1e-12; dependent-z derivative exact
+Native/WASM coverage:  both
+Unsupported states:    near-repeated cubic roots (DegenerateRoot) and a singular equilibrium
+                       Jacobian (SingularEquilibriumJacobian) are typed errors carrying the
+                       offending quantity. No fixture state reaches either
+Completed gate:        C4
+Next permitted task:   C5
+```
 
 ### C2 — Peng–Robinson mixture EOS and single-phase properties
 
