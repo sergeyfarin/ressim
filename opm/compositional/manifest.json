@@ -1,0 +1,17 @@
+{
+  "fixture": "ptflash_fixtures.json",
+  "generator": "tools/opm_compositional/generate.sh",
+  "source": "tools/opm_compositional/ptflash_harness.cpp",
+  "regenerate": "bash tools/opm_compositional/generate.sh",
+  "verify": "bash tools/opm_compositional/generate.sh --check",
+  "environment": {
+    "compiler": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+    "cxx_standard": "c++20",
+    "libopm-common-dev": "2026.04-1~noble",
+    "libopm-simulators-dev": "2026.04-1~noble",
+    "libdune-common-dev": "2.11.0-1~noble"
+  },
+  "sha256": "98f523bbdc0fb1d1465d3c85e6acdf2d55cd82266256e7b3dcd0c349a533b739",
+  "generated_from_commit": "6e6b47224635c19da70d9ee3f12b22c58ba5fa87",
+  "worktree_clean_at_generation": false
+}
