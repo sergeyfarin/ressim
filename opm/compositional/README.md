@@ -24,6 +24,9 @@ Read `tools/opm_compositional/README.md` before using it — in particular the *
 limits* section, which records the states OPM's PTFlash cannot resolve and therefore cannot
 referee.
 
-This directory holds **thermodynamics only**. Trajectory references for the black-oil path live
-in `../reference-decks/`. There is no compositional trajectory reference: no compositional Flow
-executable exists on this machine.
+`1d_comp/` holds the **trajectory** reference: OPM's `flowexp_comp` running a five-cell 1D CO2
+flood in ResSim's own V1 fluid. See [`1d_comp/README.md`](1d_comp/README.md), including the three
+places that deck's data deliberately differs from the pinned specification.
+
+Trajectory references for the black-oil path live in `../reference-decks/` and are a different
+simulator (`flow`) entirely.

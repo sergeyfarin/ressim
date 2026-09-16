@@ -6,9 +6,12 @@ set -euo pipefail
 # Modes:
 #   thermo   the standalone thermodynamics: specification, units, EOS, stability, flash,
 #            derivatives, transport, surface separation, and the domain sweep. ~20 s.
-#   fixture  rebuild the C0 reference fixture and verify it reproduces byte for byte.
+#   fixture  rebuild the C0 thermodynamic fixture and verify it reproduces byte for byte.
 #            Needs the OPM headers and a C++20 compiler. ~15 s.
-#   native   thermo + fixture. This is THERMO-READY.
+#   reference re-run the 1D compositional case through flowexp_comp and verify its fixture.
+#            Skips with a note when flowexp_comp has not been built; the committed fixture is
+#            still checked by the comp_reference_* tests either way.
+#   native   thermo + fixture + reference.
 #   wasm     compile-only check for the wasm32 target. Not a substitute for the
 #            execution-based native/WASM parity C13 owes.
 #   all      every mode above.
@@ -93,6 +96,7 @@ run_thermo() {
     run_filter comp_newton_      10   # C10 Newton solve and update policy
     run_filter comp_rollback_    10   # C10 timestep lifecycle, retry and commit
     run_filter comp_well_        29   # C11 wells: sources, derivatives, controls, multi-completion
+    run_filter comp_reference_    6   # C12 against OPM's flowexp_comp on 1D_COMP
 }
 
 run_fixture() {
@@ -107,6 +111,19 @@ run_fixture() {
     fi
     bash "$repo_root/tools/opm_compositional/generate.sh" --check
     echo "gate ok: the committed fixture reproduces from the installed OPM headers"
+}
+
+run_reference() {
+    echo "== reference: re-run the 1D compositional case and verify its fixture =="
+    local binary="${FLOWEXP_COMP:-$(cd "${repo_root}/.." && pwd)/ressim-opm-build/opm-simulators/build/bin/flowexp_comp}"
+    if [ ! -x "${binary}" ]; then
+        echo "SKIP: flowexp_comp not built; the committed fixture is still checked by the" >&2
+        echo "      comp_reference_* tests, but it was not regenerated." >&2
+        echo "      Build it with: bash tools/opm_compositional/build-flowexp-comp.sh" >&2
+        return 0
+    fi
+    bash "$repo_root/tools/opm_compositional/run-1d-comp.sh" --check
+    echo "gate ok: the 1D compositional reference reproduces from flowexp_comp"
 }
 
 run_wasm() {
@@ -124,11 +141,12 @@ run_wasm() {
 case "$mode" in
     thermo)  run_thermo ;;
     fixture) run_fixture ;;
-    native)  run_thermo; run_fixture ;;
+    native)  run_thermo; run_fixture; run_reference ;;
     wasm)    run_wasm ;;
-    all)     run_thermo; run_fixture; run_wasm ;;
+    reference) run_reference ;;
+    all)     run_thermo; run_fixture; run_reference; run_wasm ;;
     *)
-        echo "usage: $0 {thermo|fixture|native|wasm|all}" >&2
+        echo "usage: $0 {thermo|fixture|reference|native|wasm|all}" >&2
         exit 2
         ;;
 esac

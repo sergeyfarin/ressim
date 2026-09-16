@@ -39,6 +39,8 @@ mod layout_tests;
 #[cfg(test)]
 mod newton_tests;
 #[cfg(test)]
+mod reference_tests;
+#[cfg(test)]
 mod relperm_tests;
 #[cfg(test)]
 mod state_tests;
