@@ -1,9 +1,10 @@
 //! C10 timestep-lifecycle contract tests (`comp_rollback_*`).
 
 use super::assembly::Face;
-use super::flux::{Gravity, HydrocarbonRelPerm};
+use super::flux::Gravity;
 use super::layout::CompositionalLayout;
 use super::newton::NewtonOptions;
+use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalCellState, CompositionalState, FlashCacheKey, RockView};
 use super::timestep::{CompositionalRun, FailureKind, TimestepOptions};
 use crate::fluid::flash::flash;
@@ -11,7 +12,9 @@ use crate::fluid::pinned;
 use crate::fluid::specification::FluidSpecification;
 use crate::fluid::units::bar_to_pa;
 
-const RELPERM: HydrocarbonRelPerm = HydrocarbonRelPerm::StraightLine;
+fn relperm() -> RelativePermeabilityModel {
+    RelativePermeabilityModel::Linear
+}
 const GEOM_T: f64 = 8.526_988_8e-3 * 100.0 * (100.0 * 10.0) / 100.0;
 const PORE_VOLUMES: [f64; 3] = [1000.0, 1000.0, 1000.0];
 
@@ -72,7 +75,7 @@ fn comp_rollback_a_successful_step_advances_everything_together() {
         &spec,
         &layout,
         &rock,
-        RELPERM,
+        &relperm(),
         &faces,
         &sources,
         1.0,
@@ -117,7 +120,14 @@ fn comp_rollback_a_rejected_step_changes_nothing() {
         ..TimestepOptions::default()
     };
     let report = run.step(
-        &spec, &layout, &rock, RELPERM, &faces, &sources, 1.0, options,
+        &spec,
+        &layout,
+        &rock,
+        &relperm(),
+        &faces,
+        &sources,
+        1.0,
+        options,
     );
 
     assert!(
@@ -155,7 +165,14 @@ fn comp_rollback_the_retry_ladder_halves_dt_and_records_every_attempt() {
         ..TimestepOptions::default()
     };
     let report = run.step(
-        &spec, &layout, &rock, RELPERM, &faces, &sources, 8.0, options,
+        &spec,
+        &layout,
+        &rock,
+        &relperm(),
+        &faces,
+        &sources,
+        8.0,
+        options,
     );
 
     assert!(!report.succeeded());
@@ -192,7 +209,14 @@ fn comp_rollback_a_cut_step_succeeds_and_reports_the_dt_that_worked() {
         ..TimestepOptions::default()
     };
     let report = run.step(
-        &spec, &layout, &rock, RELPERM, &faces, &sources, 1.0, options,
+        &spec,
+        &layout,
+        &rock,
+        &relperm(),
+        &faces,
+        &sources,
+        1.0,
+        options,
     );
 
     if report.succeeded() {
@@ -230,7 +254,14 @@ fn comp_rollback_failures_are_classified() {
         ..TimestepOptions::default()
     };
     let report = run.step(
-        &spec, &layout, &rock, RELPERM, &faces, &sources, 1.0, options,
+        &spec,
+        &layout,
+        &rock,
+        &relperm(),
+        &faces,
+        &sources,
+        1.0,
+        options,
     );
 
     let (kind, message) = report
@@ -277,7 +308,14 @@ fn comp_rollback_budget_exhaustion_is_its_own_classification() {
         ..TimestepOptions::default()
     };
     let report = run.step(
-        &spec, &layout, &rock, RELPERM, &faces, &sources, 1.0, options,
+        &spec,
+        &layout,
+        &rock,
+        &relperm(),
+        &faces,
+        &sources,
+        1.0,
+        options,
     );
 
     let (kind, message) = report.failure.unwrap();
@@ -305,7 +343,7 @@ fn comp_rollback_accepted_steps_accumulate() {
             &spec,
             &layout,
             &rock,
-            RELPERM,
+            &relperm(),
             &faces,
             &sources,
             1.0,
@@ -353,7 +391,7 @@ fn comp_rollback_multi_step_depletion_closes_the_inventory() {
             &spec,
             &layout,
             &rock,
-            RELPERM,
+            &relperm(),
             &faces,
             &sources,
             1.0,
@@ -411,7 +449,7 @@ fn comp_rollback_cache_entries_cannot_outlive_their_state_version() {
         &spec,
         &layout,
         &rock,
-        RELPERM,
+        &relperm(),
         &faces,
         &sources,
         1.0,
@@ -445,7 +483,7 @@ fn comp_rollback_a_checkpoint_restores_a_steppable_state() {
             &spec,
             &layout,
             &rock,
-            RELPERM,
+            &relperm(),
             &faces,
             &sources,
             1.0,
@@ -464,7 +502,7 @@ fn comp_rollback_a_checkpoint_restores_a_steppable_state() {
         &spec,
         &layout,
         &rock,
-        RELPERM,
+        &relperm(),
         &faces,
         &sources,
         1.0,
@@ -474,7 +512,7 @@ fn comp_rollback_a_checkpoint_restores_a_steppable_state() {
         &spec,
         &layout,
         &rock,
-        RELPERM,
+        &relperm(),
         &faces,
         &sources,
         1.0,

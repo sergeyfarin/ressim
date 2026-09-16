@@ -40,8 +40,8 @@
 use crate::fluid::specification::FluidSpecification;
 
 use super::assembly::{AssemblyError, AssemblyResult, Face, assemble};
-use super::flux::HydrocarbonRelPerm;
 use super::layout::{CellPrimary, CompositionalLayout};
+use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalState, RockView, StateError, TrialState};
 
 /// How close to the domain boundary a step is allowed to land.
@@ -150,7 +150,7 @@ pub struct NewtonProblem<'a> {
     pub spec: &'a FluidSpecification,
     pub layout: &'a CompositionalLayout,
     pub rock: RockView<'a>,
-    pub relperm: HydrocarbonRelPerm,
+    pub relperm: &'a RelativePermeabilityModel,
     pub faces: &'a [Face],
     /// Previous accepted inventory, one row per cell. Constant for the whole timestep.
     pub previous_moles: &'a [Vec<f64>],

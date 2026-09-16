@@ -14,14 +14,17 @@
 
 use super::accumulation::cell_inventory;
 use super::assembly::{Face, assemble};
-use super::flux::{Gravity, HydrocarbonRelPerm, STANDARD_GRAVITY, UpstreamSide, face_flux};
+use super::flux::{Gravity, STANDARD_GRAVITY, UpstreamSide, face_flux};
 use super::layout::CompositionalLayout;
+use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalCellState, CompositionalState, RockView};
 use crate::fluid::flash::{PhaseState, flash};
 use crate::fluid::pinned;
 use crate::fluid::units::bar_to_pa;
 
-const RELPERM: HydrocarbonRelPerm = HydrocarbonRelPerm::StraightLine;
+fn relperm() -> RelativePermeabilityModel {
+    RelativePermeabilityModel::Linear
+}
 const GEOM_T: f64 = 8.526_988_8e-3 * 100.0 * (100.0 * 10.0) / 100.0;
 
 fn cell(p_bar: f64, z: &[f64]) -> CompositionalCellState {
@@ -39,19 +42,19 @@ fn comp_gravity_off_is_exactly_off() {
     let a = cell(170.0, &[0.2, 0.5]);
     let b = cell(150.0, &[0.2, 0.5]);
 
-    let without = face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &a), (1, &b)).unwrap();
+    let without = face_flux(&spec, &relperm(), GEOM_T, Gravity::OFF, (0, &a), (1, &b)).unwrap();
     // A disabled gravity with a large depth difference must change nothing at all.
     let disabled = Gravity {
         enabled: false,
         depth_i_m: 0.0,
         depth_j_m: 500.0,
     };
-    let with_disabled = face_flux(&spec, RELPERM, GEOM_T, disabled, (0, &a), (1, &b)).unwrap();
+    let with_disabled = face_flux(&spec, &relperm(), GEOM_T, disabled, (0, &a), (1, &b)).unwrap();
     assert_eq!(without, with_disabled);
 
     // And equal depths with gravity enabled is the same as gravity off, because the head is zero.
     let level = Gravity::between(2000.0, 2000.0);
-    let with_level = face_flux(&spec, RELPERM, GEOM_T, level, (0, &a), (1, &b)).unwrap();
+    let with_level = face_flux(&spec, &relperm(), GEOM_T, level, (0, &a), (1, &b)).unwrap();
     assert_eq!(
         without.component_moles_per_day,
         with_level.component_moles_per_day
@@ -99,7 +102,7 @@ fn comp_gravity_single_phase_hydrostatic_column_is_stationary() {
     let bottom = cell(p_bottom, &z);
     // Cell i is the deeper one, so depth_i > depth_j.
     let gravity = Gravity::between(depth_bottom, depth_top);
-    let f = face_flux(&spec, RELPERM, GEOM_T, gravity, (0, &bottom), (1, &top)).unwrap();
+    let f = face_flux(&spec, &relperm(), GEOM_T, gravity, (0, &bottom), (1, &top)).unwrap();
 
     // The phase potential must vanish, and with it the flux.
     assert!(
@@ -141,7 +144,15 @@ fn comp_gravity_drives_flow_toward_equilibrium() {
     // fall *into* it — flux from j to i, i.e. negative.
     let deep = cell(400.0, &z);
     let shallow = cell(400.0, &z);
-    let f = face_flux(&spec, RELPERM, GEOM_T, gravity, (0, &deep), (1, &shallow)).unwrap();
+    let f = face_flux(
+        &spec,
+        &relperm(),
+        GEOM_T,
+        gravity,
+        (0, &deep),
+        (1, &shallow),
+    )
+    .unwrap();
     assert!(
         f.phase_potential_bar[0] < 0.0,
         "with equal pressures the deeper cell must be under-pressured: {:e}",
@@ -157,7 +168,15 @@ fn comp_gravity_drives_flow_toward_equilibrium() {
 
     // Over-pressure the deep cell far past hydrostatic and the flow reverses.
     let over = cell(420.0, &z);
-    let g = face_flux(&spec, RELPERM, GEOM_T, gravity, (0, &over), (1, &shallow)).unwrap();
+    let g = face_flux(
+        &spec,
+        &relperm(),
+        GEOM_T,
+        gravity,
+        (0, &over),
+        (1, &shallow),
+    )
+    .unwrap();
     assert!(g.phase_potential_bar[0] > 0.0);
     assert_eq!(g.upstream[0], UpstreamSide::First);
     for c in 0..2 {
@@ -206,7 +225,15 @@ fn comp_gravity_phases_can_flow_in_opposite_directions() {
     let deep = cell(p + dp, &z);
     let shallow = cell(p, &z);
     let gravity = Gravity::between(2000.0 + dz, 2000.0);
-    let f = face_flux(&spec, RELPERM, GEOM_T, gravity, (0, &deep), (1, &shallow)).unwrap();
+    let f = face_flux(
+        &spec,
+        &relperm(),
+        GEOM_T,
+        gravity,
+        (0, &deep),
+        (1, &shallow),
+    )
+    .unwrap();
 
     assert!(
         f.phase_potential_bar[0] < 0.0,
@@ -262,7 +289,15 @@ fn comp_gravity_head_uses_mass_density_not_molar() {
     let deep = cell(p, &z);
     let shallow = cell(p, &z);
     let gravity = Gravity::between(2000.0 + dz, 2000.0);
-    let f = face_flux(&spec, RELPERM, GEOM_T, gravity, (0, &deep), (1, &shallow)).unwrap();
+    let f = face_flux(
+        &spec,
+        &relperm(),
+        GEOM_T,
+        gravity,
+        (0, &deep),
+        (1, &shallow),
+    )
+    .unwrap();
 
     // With equal pressures, the potential is exactly minus the head.
     let expected = -rho_mass * STANDARD_GRAVITY * dz * 1e-5;
@@ -305,7 +340,15 @@ fn comp_gravity_uses_a_single_sided_density_when_a_phase_is_absent() {
 
     let dz = 100.0;
     let gravity = Gravity::between(2000.0 + dz, 2000.0);
-    let f = face_flux(&spec, RELPERM, GEOM_T, gravity, (0, &deep), (1, &shallow)).unwrap();
+    let f = face_flux(
+        &spec,
+        &relperm(),
+        GEOM_T,
+        gravity,
+        (0, &deep),
+        (1, &shallow),
+    )
+    .unwrap();
 
     // The vapour exists only in the shallow cell, so its head uses that density alone.
     let rho_v = shallow_state.vapour.as_ref().unwrap().mass_density;
@@ -344,7 +387,15 @@ fn comp_gravity_jacobian_matches_finite_differences() {
 
     let base_i = cell(p_i, &z_i);
     let base_j = cell(p_j, &z_j);
-    let base = face_flux(&spec, RELPERM, GEOM_T, gravity, (0, &base_i), (1, &base_j)).unwrap();
+    let base = face_flux(
+        &spec,
+        &relperm(),
+        GEOM_T,
+        gravity,
+        (0, &base_i),
+        (1, &base_j),
+    )
+    .unwrap();
 
     let mut worst = (0.0f64, String::new());
     let n = 3;
@@ -361,8 +412,8 @@ fn comp_gravity_jacobian_matches_finite_differences() {
         };
         let (ui, uj) = step(1.0);
         let (di, dj) = step(-1.0);
-        let up = face_flux(&spec, RELPERM, GEOM_T, gravity, (0, &ui), (1, &uj)).unwrap();
-        let dn = face_flux(&spec, RELPERM, GEOM_T, gravity, (0, &di), (1, &dj)).unwrap();
+        let up = face_flux(&spec, &relperm(), GEOM_T, gravity, (0, &ui), (1, &uj)).unwrap();
+        let dn = face_flux(&spec, &relperm(), GEOM_T, gravity, (0, &di), (1, &dj)).unwrap();
         for c in 0..n {
             let fd = (up.component_moles_per_day[c] - dn.component_moles_per_day[c]) / (2.0 * h);
             let scale = fd
@@ -390,8 +441,8 @@ fn comp_gravity_jacobian_matches_finite_differences() {
             };
             let (ui, uj) = step(1.0);
             let (di, dj) = step(-1.0);
-            let up = face_flux(&spec, RELPERM, GEOM_T, gravity, (0, &ui), (1, &uj)).unwrap();
-            let dn = face_flux(&spec, RELPERM, GEOM_T, gravity, (0, &di), (1, &dj)).unwrap();
+            let up = face_flux(&spec, &relperm(), GEOM_T, gravity, (0, &ui), (1, &uj)).unwrap();
+            let dn = face_flux(&spec, &relperm(), GEOM_T, gravity, (0, &di), (1, &dj)).unwrap();
             for c in 0..n {
                 let fd =
                     (up.component_moles_per_day[c] - dn.component_moles_per_day[c]) / (2.0 * hz);
@@ -424,10 +475,10 @@ fn comp_gravity_couples_the_downstream_composition() {
     let a = cell(170.0, &[0.2, 0.5]);
     let b = cell(150.0, &[0.25, 0.45]);
 
-    let without = face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &a), (1, &b)).unwrap();
+    let without = face_flux(&spec, &relperm(), GEOM_T, Gravity::OFF, (0, &a), (1, &b)).unwrap();
     let with = face_flux(
         &spec,
-        RELPERM,
+        &relperm(),
         GEOM_T,
         Gravity::between(2050.0, 2000.0),
         (0, &a),
@@ -526,7 +577,7 @@ fn comp_gravity_hydrostatic_column_assembles_to_zero() {
         &spec,
         &layout,
         &rock,
-        RELPERM,
+        &relperm(),
         &state,
         &faces,
         &previous,

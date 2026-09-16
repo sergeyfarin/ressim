@@ -5,8 +5,9 @@
 
 use super::accumulation::cell_inventory;
 use super::assembly::Face;
-use super::flux::{Gravity, HydrocarbonRelPerm};
+use super::flux::Gravity;
 use super::layout::CompositionalLayout;
+use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalCellState, CompositionalState, RockView};
 use super::timestep::{CompositionalRun, TimestepOptions};
 use super::wells::{
@@ -18,7 +19,9 @@ use crate::fluid::specification::{FluidSpecification, SurfaceConditions};
 use crate::fluid::transport::pinned_surface_conditions;
 use crate::fluid::{pinned, units::bar_to_pa};
 
-const RELPERM: HydrocarbonRelPerm = HydrocarbonRelPerm::StraightLine;
+fn relperm() -> RelativePermeabilityModel {
+    RelativePermeabilityModel::Linear
+}
 /// Peaceman geometry without mobility: 100 mD, 10 m of pay, 200 m spacing, 0.1 m radius.
 const WELL_INDEX: f64 = 8.526_988_8e-3 * 2.0 * std::f64::consts::PI * 100.0 * 10.0 / 5.3;
 
@@ -79,7 +82,7 @@ fn comp_well_bhp_sign_convention_is_moles_into_the_cell() {
     let spec = pinned::ternary().unwrap();
     let c = cell(200.0, &[0.2, 0.5]);
 
-    let p = well_source(&spec, RELPERM, &producer(150.0), &one(c.clone())).unwrap();
+    let p = well_source(&spec, &relperm(), &producer(150.0), &one(c.clone())).unwrap();
     assert!(p.is_producing());
     for (i, q) in only(&p).component_moles_per_day.iter().enumerate() {
         assert!(
@@ -91,7 +94,7 @@ fn comp_well_bhp_sign_convention_is_moles_into_the_cell() {
 
     let inj = well_source(
         &spec,
-        RELPERM,
+        &relperm(),
         &injector(250.0, vec![1.0, 0.0, 0.0]),
         &one(c.clone()),
     )
@@ -109,7 +112,7 @@ fn comp_well_bhp_production_increases_with_drawdown() {
 
     let mut previous = 0.0;
     for bhp in [199.0, 190.0, 170.0, 150.0, 120.0] {
-        let s = well_source(&spec, RELPERM, &producer(bhp), &one(c.clone())).unwrap();
+        let s = well_source(&spec, &relperm(), &producer(bhp), &one(c.clone())).unwrap();
         let rate = -s.total_moles_per_day();
         assert!(
             rate > previous,
@@ -126,7 +129,7 @@ fn comp_well_a_producer_above_cell_pressure_is_shut_in() {
     let spec = pinned::ternary().unwrap();
     let c = cell(150.0, &[0.2, 0.5]);
     for bhp in [150.0, 160.0, 300.0] {
-        let s = well_source(&spec, RELPERM, &producer(bhp), &one(c.clone())).unwrap();
+        let s = well_source(&spec, &relperm(), &producer(bhp), &one(c.clone())).unwrap();
         assert_eq!(s.total_moles_per_day(), 0.0, "bhp {bhp}");
         assert_eq!(only(&s).reservoir_rate_m3_per_day, 0.0);
         assert!(only(&s).component_moles_per_day.iter().all(|q| *q == 0.0));
@@ -142,13 +145,13 @@ fn comp_well_head_offset_shifts_the_connection_pressure() {
     let mut deep = producer(150.0);
     deep.completions[0].head_offset_bar = 20.0;
 
-    let flat = well_source(&spec, RELPERM, &producer(150.0), &one(c.clone())).unwrap();
-    let with_head = well_source(&spec, RELPERM, &deep, &one(c.clone())).unwrap();
+    let flat = well_source(&spec, &relperm(), &producer(150.0), &one(c.clone())).unwrap();
+    let with_head = well_source(&spec, &relperm(), &deep, &one(c.clone())).unwrap();
 
     // p_conn = 170 instead of 150, so the drawdown is smaller and so is the rate.
     assert!(-with_head.total_moles_per_day() < -flat.total_moles_per_day());
     // And it matches shifting the BHP directly.
-    let equivalent = well_source(&spec, RELPERM, &producer(170.0), &one(c.clone())).unwrap();
+    let equivalent = well_source(&spec, &relperm(), &producer(170.0), &one(c.clone())).unwrap();
     assert!(
         rel(
             with_head.total_moles_per_day(),
@@ -177,7 +180,7 @@ fn comp_well_producer_draws_the_cells_fluid() {
     .unwrap();
     assert_eq!(state.phase_state, PhaseState::TwoPhase);
 
-    let s = well_source(&spec, RELPERM, &producer(120.0), &one(c.clone())).unwrap();
+    let s = well_source(&spec, &relperm(), &producer(120.0), &one(c.clone())).unwrap();
     let total = s.total_moles_per_day();
     let produced: Vec<f64> = only(&s)
         .component_moles_per_day
@@ -217,7 +220,7 @@ fn comp_well_injector_delivers_exactly_the_prescribed_composition() {
         let c = cell(150.0, &cell_z);
         let s = well_source(
             &spec,
-            RELPERM,
+            &relperm(),
             &injector(250.0, z_inj.clone()),
             &one(c.clone()),
         )
@@ -257,7 +260,7 @@ fn comp_well_a_vapour_injector_into_a_liquid_cell_still_injects() {
     // supercritical fluid — in either case not the cell's liquid.
     let s = well_source(
         &spec,
-        RELPERM,
+        &relperm(),
         &injector(450.0, vec![0.999, 0.001]),
         &one(c.clone()),
     )
@@ -280,7 +283,7 @@ fn comp_well_an_injector_without_a_composition_is_rejected() {
     // the type requires the composition for the injection branch to be taken at all.
     let mut well = producer(250.0);
     well.injection_composition = None;
-    let s = well_source(&spec, RELPERM, &well, &one(c.clone())).unwrap();
+    let s = well_source(&spec, &relperm(), &well, &one(c.clone())).unwrap();
     assert_eq!(s.total_moles_per_day(), 0.0);
 }
 
@@ -292,7 +295,7 @@ fn comp_well_rejects_an_invalid_well_index() {
         let mut well = producer(150.0);
         well.completions[0].well_index = bad;
         assert!(matches!(
-            well_source(&spec, RELPERM, &well, &one(c.clone())),
+            well_source(&spec, &relperm(), &well, &one(c.clone())),
             Err(WellError::InvalidWellIndex { .. })
         ));
     }
@@ -339,12 +342,12 @@ fn comp_well_derivatives_match_finite_differences() {
             WellControl::Bhp { target_bar } => target_bar,
             _ => unreachable!(),
         };
-        let base = well_source_at_bhp(&spec, RELPERM, &well, &one(cell(p, &z)), bhp).unwrap();
+        let base = well_source_at_bhp(&spec, &relperm(), &well, &one(cell(p, &z)), bhp).unwrap();
 
         // Cell pressure.
         let h = 1e-3;
-        let up = well_source_at_bhp(&spec, RELPERM, &well, &one(cell(p + h, &z)), bhp).unwrap();
-        let dn = well_source_at_bhp(&spec, RELPERM, &well, &one(cell(p - h, &z)), bhp).unwrap();
+        let up = well_source_at_bhp(&spec, &relperm(), &well, &one(cell(p + h, &z)), bhp).unwrap();
+        let dn = well_source_at_bhp(&spec, &relperm(), &well, &one(cell(p - h, &z)), bhp).unwrap();
         for i in 0..n {
             let fd = (only(&up).component_moles_per_day[i] - only(&dn).component_moles_per_day[i])
                 / (2.0 * h);
@@ -365,8 +368,8 @@ fn comp_well_derivatives_match_finite_differences() {
             let mut zm = z.clone();
             zp[k] += hz;
             zm[k] -= hz;
-            let up = well_source_at_bhp(&spec, RELPERM, &well, &one(cell(p, &zp)), bhp).unwrap();
-            let dn = well_source_at_bhp(&spec, RELPERM, &well, &one(cell(p, &zm)), bhp).unwrap();
+            let up = well_source_at_bhp(&spec, &relperm(), &well, &one(cell(p, &zp)), bhp).unwrap();
+            let dn = well_source_at_bhp(&spec, &relperm(), &well, &one(cell(p, &zm)), bhp).unwrap();
             for i in 0..n {
                 let fd = (only(&up).component_moles_per_day[i]
                     - only(&dn).component_moles_per_day[i])
@@ -384,8 +387,8 @@ fn comp_well_derivatives_match_finite_differences() {
 
         // BHP.
         let hb = 1e-3;
-        let up = well_source_at_bhp(&spec, RELPERM, &well, &one(cell(p, &z)), bhp + hb).unwrap();
-        let dn = well_source_at_bhp(&spec, RELPERM, &well, &one(cell(p, &z)), bhp - hb).unwrap();
+        let up = well_source_at_bhp(&spec, &relperm(), &well, &one(cell(p, &z)), bhp + hb).unwrap();
+        let dn = well_source_at_bhp(&spec, &relperm(), &well, &one(cell(p, &z)), bhp - hb).unwrap();
         for i in 0..n {
             let fd = (only(&up).component_moles_per_day[i] - only(&dn).component_moles_per_day[i])
                 / (2.0 * hb);
@@ -415,7 +418,8 @@ fn comp_well_bhp_derivative_has_the_right_sign() {
     let spec = pinned::ternary().unwrap();
     let c = cell(200.0, &[0.2, 0.5]);
 
-    let p = well_source_at_bhp(&spec, RELPERM, &producer(150.0), &one(c.clone()), 150.0).unwrap();
+    let p =
+        well_source_at_bhp(&spec, &relperm(), &producer(150.0), &one(c.clone()), 150.0).unwrap();
     for (i, d) in only(&p).bhp_derivative.iter().enumerate() {
         assert!(
             *d > 0.0,
@@ -425,7 +429,7 @@ fn comp_well_bhp_derivative_has_the_right_sign() {
 
     let z_inj = vec![0.7, 0.3, 0.0];
     let inj = injector(250.0, z_inj.clone());
-    let s = well_source_at_bhp(&spec, RELPERM, &inj, &one(c.clone()), 250.0).unwrap();
+    let s = well_source_at_bhp(&spec, &relperm(), &inj, &one(c.clone()), 250.0).unwrap();
     for (i, d) in only(&s).bhp_derivative.iter().enumerate() {
         if z_inj[i] == 0.0 {
             // A component the stream does not contain has an exactly zero rate and an exactly
@@ -446,8 +450,14 @@ fn comp_well_bhp_derivative_has_the_right_sign() {
 fn comp_well_injector_source_is_independent_of_the_cell_composition() {
     let spec = pinned::ternary().unwrap();
     let inj = injector(250.0, vec![0.7, 0.3, 0.0]);
-    let base =
-        well_source_at_bhp(&spec, RELPERM, &inj, &one(cell(200.0, &[0.2, 0.5])), 250.0).unwrap();
+    let base = well_source_at_bhp(
+        &spec,
+        &relperm(),
+        &inj,
+        &one(cell(200.0, &[0.2, 0.5])),
+        250.0,
+    )
+    .unwrap();
 
     for i in 0..3 {
         assert_eq!(
@@ -474,8 +484,14 @@ fn comp_well_injector_source_is_independent_of_the_cell_composition() {
 
     // And the composition entering the cell is unchanged by the cell pressure: every component's
     // rate scales by the same factor, so the ratios are constant.
-    let nearby =
-        well_source_at_bhp(&spec, RELPERM, &inj, &one(cell(210.0, &[0.4, 0.4])), 250.0).unwrap();
+    let nearby = well_source_at_bhp(
+        &spec,
+        &relperm(),
+        &inj,
+        &one(cell(210.0, &[0.4, 0.4])),
+        250.0,
+    )
+    .unwrap();
     let base_total: f64 = only(&base).component_moles_per_day.iter().sum();
     let nearby_total: f64 = only(&nearby).component_moles_per_day.iter().sum();
     for i in 0..3 {
@@ -499,7 +515,7 @@ fn comp_well_molar_rate_control_hits_its_target() {
     let c = cell(200.0, &[0.2, 0.5]);
 
     // Find an achievable rate by asking what a moderate drawdown gives.
-    let reference = well_source(&spec, RELPERM, &producer(180.0), &one(c.clone())).unwrap();
+    let reference = well_source(&spec, &relperm(), &producer(180.0), &one(c.clone())).unwrap();
     let target = reference.total_moles_per_day();
     assert!(target < 0.0);
 
@@ -508,7 +524,7 @@ fn comp_well_molar_rate_control_hits_its_target() {
         target_mol_per_day: target,
         bhp_limit_bar: 50.0,
     };
-    let s = well_source(&spec, RELPERM, &well, &one(c.clone())).unwrap();
+    let s = well_source(&spec, &relperm(), &well, &one(c.clone())).unwrap();
 
     assert!(!s.on_bhp_limit, "the limit should not have bound");
     assert!(
@@ -530,7 +546,7 @@ fn comp_well_a_binding_bhp_limit_overrides_the_rate_target() {
     let spec = pinned::ternary().unwrap();
     let c = cell(200.0, &[0.2, 0.5]);
 
-    let at_limit = well_source(&spec, RELPERM, &producer(150.0), &one(c.clone())).unwrap();
+    let at_limit = well_source(&spec, &relperm(), &producer(150.0), &one(c.clone())).unwrap();
     // Ask for ten times what the limit can deliver.
     let target = at_limit.total_moles_per_day() * 10.0;
 
@@ -539,7 +555,7 @@ fn comp_well_a_binding_bhp_limit_overrides_the_rate_target() {
         target_mol_per_day: target,
         bhp_limit_bar: 150.0,
     };
-    let s = well_source(&spec, RELPERM, &well, &one(c.clone())).unwrap();
+    let s = well_source(&spec, &relperm(), &well, &one(c.clone())).unwrap();
 
     assert!(s.on_bhp_limit, "the limit must be reported as binding");
     assert_eq!(s.bhp_bar, 150.0);
@@ -562,7 +578,7 @@ fn comp_well_an_injector_respects_its_bhp_limit() {
 
     let at_limit = well_source(
         &spec,
-        RELPERM,
+        &relperm(),
         &injector(230.0, z_inj.clone()),
         &one(c.clone()),
     )
@@ -574,7 +590,7 @@ fn comp_well_an_injector_respects_its_bhp_limit() {
         target_mol_per_day: target,
         bhp_limit_bar: 230.0,
     };
-    let s = well_source(&spec, RELPERM, &well, &one(c.clone())).unwrap();
+    let s = well_source(&spec, &relperm(), &well, &one(c.clone())).unwrap();
 
     assert!(s.on_bhp_limit);
     assert_eq!(s.bhp_bar, 230.0);
@@ -590,7 +606,7 @@ fn comp_well_surface_rate_control_is_not_a_reservoir_rate() {
     let spec = spec_with_surface();
     let c = cell(200.0, &[0.2, 0.5]);
 
-    let reference = well_source(&spec, RELPERM, &producer(180.0), &one(c.clone())).unwrap();
+    let reference = well_source(&spec, &relperm(), &producer(180.0), &one(c.clone())).unwrap();
     let reservoir_rate = only(&reference).reservoir_rate_m3_per_day;
     assert!(reservoir_rate < 0.0);
 
@@ -617,7 +633,7 @@ fn comp_well_surface_rate_control_is_not_a_reservoir_rate() {
         phase: SurfacePhase::Vapour,
         bhp_limit_bar: 50.0,
     };
-    let s = well_source(&spec, RELPERM, &well, &one(c.clone())).unwrap();
+    let s = well_source(&spec, &relperm(), &well, &one(c.clone())).unwrap();
     assert!(!s.on_bhp_limit);
     assert!(
         (s.bhp_bar - 180.0).abs() < 1e-2,
@@ -641,7 +657,7 @@ fn comp_well_surface_control_requires_pinned_conditions() {
         bhp_limit_bar: 50.0,
     };
     assert!(matches!(
-        well_source(&spec, RELPERM, &well, &one(c.clone())),
+        well_source(&spec, &relperm(), &well, &one(c.clone())),
         Err(WellError::SurfaceConditionsNotPinned)
     ));
 }
@@ -717,7 +733,7 @@ fn comp_well_production_closes_the_grid_inventory_over_several_steps() {
     for _ in 0..5 {
         // The well's source is re-evaluated at the current state each step, which is what makes
         // this a well rather than a fixed source.
-        let source = well_source(&spec, RELPERM, &well, run.state().cells()).unwrap();
+        let source = well_source(&spec, &relperm(), &well, run.state().cells()).unwrap();
         let mut sources = vec![vec![0.0; 3]; cells];
         source.add_to_sources(&mut sources);
 
@@ -725,7 +741,7 @@ fn comp_well_production_closes_the_grid_inventory_over_several_steps() {
             &spec,
             &layout,
             &rock,
-            RELPERM,
+            &relperm(),
             &faces,
             &sources,
             1.0,
@@ -781,7 +797,7 @@ fn comp_well_injection_adds_the_prescribed_stream_to_the_grid() {
 
     let mut injected = vec![0.0; 3];
     for step in 0..3 {
-        let source = well_source(&spec, RELPERM, &well, run.state().cells()).unwrap();
+        let source = well_source(&spec, &relperm(), &well, run.state().cells()).unwrap();
         assert!(
             source.total_moles_per_day() > 0.0,
             "step {step}: injection stopped at cell pressure {}",
@@ -792,7 +808,7 @@ fn comp_well_injection_adds_the_prescribed_stream_to_the_grid() {
             &spec,
             &layout,
             &rock,
-            RELPERM,
+            &relperm(),
             &[],
             &sources,
             0.05,
@@ -857,7 +873,7 @@ fn comp_well_multiperf_completions_share_one_bhp() {
     let cells = three_cells(200.0);
     let well = multi_producer(150.0, [WELL_INDEX, WELL_INDEX, WELL_INDEX], [0.0; 3]);
 
-    let result = well_source(&spec, RELPERM, &well, &cells).unwrap();
+    let result = well_source(&spec, &relperm(), &well, &cells).unwrap();
     assert_eq!(result.completions.len(), 3);
     assert_eq!(result.bhp_bar, 150.0);
     assert!(result.is_producing());
@@ -906,7 +922,7 @@ fn comp_well_multiperf_rate_scales_with_each_completions_index() {
         [WELL_INDEX, 2.0 * WELL_INDEX, 0.5 * WELL_INDEX],
         [0.0; 3],
     );
-    let result = well_source(&spec, RELPERM, &well, &cells).unwrap();
+    let result = well_source(&spec, &relperm(), &well, &cells).unwrap();
 
     let base = result.completions[0].total_moles_per_day();
     assert!(rel(result.completions[1].total_moles_per_day(), 2.0 * base) < 1e-12);
@@ -921,7 +937,7 @@ fn comp_well_multiperf_head_offsets_differentiate_the_connections() {
     let cells = three_cells(220.0);
     // Completion 0 at the datum, 1 and 2 progressively deeper.
     let well = multi_producer(150.0, [WELL_INDEX; 3], [0.0, 10.0, 20.0]);
-    let result = well_source(&spec, RELPERM, &well, &cells).unwrap();
+    let result = well_source(&spec, &relperm(), &well, &cells).unwrap();
 
     let rates: Vec<f64> = result
         .completions
@@ -954,7 +970,7 @@ fn comp_well_multiperf_crossflow_is_rejected_not_clipped() {
     ];
     let well = multi_producer(150.0, [WELL_INDEX; 3], [0.0; 3]);
 
-    match well_source(&spec, RELPERM, &well, &cells) {
+    match well_source(&spec, &relperm(), &well, &cells) {
         Err(WellError::Crossflow {
             completion,
             cell,
@@ -987,7 +1003,7 @@ fn comp_well_multiperf_injector_crossflow_is_rejected() {
     well.id = "I-MULTI".to_string();
     well.injection_composition = Some(vec![0.7, 0.3, 0.0]);
 
-    match well_source(&spec, RELPERM, &well, &cells) {
+    match well_source(&spec, &relperm(), &well, &cells) {
         Err(WellError::Crossflow {
             completion,
             potential_bar,
@@ -1007,7 +1023,7 @@ fn comp_well_multiperf_injector_crossflow_is_rejected() {
 fn comp_well_a_single_completion_is_shut_in_rather_than_rejected() {
     let spec = pinned::ternary().unwrap();
     let c = cell(150.0, &[0.2, 0.5]);
-    let result = well_source(&spec, RELPERM, &producer(200.0), &one(c)).unwrap();
+    let result = well_source(&spec, &relperm(), &producer(200.0), &one(c)).unwrap();
     assert_eq!(result.total_moles_per_day(), 0.0);
     assert!(!result.completions.is_empty());
 }
@@ -1021,7 +1037,7 @@ fn comp_well_multiperf_rate_control_targets_the_well_total() {
 
     let reference = well_source(
         &spec,
-        RELPERM,
+        &relperm(),
         &multi_producer(180.0, [WELL_INDEX; 3], [0.0; 3]),
         &cells,
     )
@@ -1034,7 +1050,7 @@ fn comp_well_multiperf_rate_control_targets_the_well_total() {
         target_mol_per_day: target,
         bhp_limit_bar: 50.0,
     };
-    let result = well_source(&spec, RELPERM, &well, &cells).unwrap();
+    let result = well_source(&spec, &relperm(), &well, &cells).unwrap();
 
     assert!(!result.on_bhp_limit);
     assert!(
@@ -1065,7 +1081,7 @@ fn comp_well_multiperf_surface_control_flashes_the_summed_stream() {
         cell(220.0, &[0.20, 0.20]),
     ];
     let well = multi_producer(180.0, [WELL_INDEX; 3], [0.0; 3]);
-    let result = well_source(&spec, RELPERM, &well, &cells).unwrap();
+    let result = well_source(&spec, &relperm(), &well, &cells).unwrap();
 
     let totals = result.total_component_moles_per_day(3);
     // The mixture is not any one completion's stream.
@@ -1089,7 +1105,7 @@ fn comp_well_multiperf_surface_control_flashes_the_summed_stream() {
         phase: SurfacePhase::Vapour,
         bhp_limit_bar: 50.0,
     };
-    let solved = well_source(&spec, RELPERM, &rate_well, &cells).unwrap();
+    let solved = well_source(&spec, &relperm(), &rate_well, &cells).unwrap();
     assert!(!solved.on_bhp_limit);
     assert!(
         (solved.bhp_bar - 180.0).abs() < 1e-2,
@@ -1108,7 +1124,7 @@ fn comp_well_a_well_without_completions_is_rejected() {
         injection_composition: None,
     };
     assert!(matches!(
-        well_source(&spec, RELPERM, &well, &three_cells(200.0)),
+        well_source(&spec, &relperm(), &well, &three_cells(200.0)),
         Err(WellError::NoCompletions { .. })
     ));
 }

@@ -256,6 +256,7 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C9 assembly** — closed-grid closure | — | internal faces cancel exactly; the residual sums to the source term to `< 1e-9` relative | **Met** |
 | **C9 assembly** — Jacobian vs numerical | 1e-5 scaled entrywise | `< 1e-5` on 2- and 3-cell grids, binary and ternary, column-scaled | **Met** |
 | **C9 assembly** — sparsity | neighbours only | every non-adjacent entry is exactly zero | **Met** |
+| **Relperm** — pluggability | caller-supplied, no engine default | `Linear`/`Corey`/`Tabulated`, no `Default` impl, all parameters required and validated; flux gives different answers under different models | **Met** |
 | **C10 Newton** — convergence rate | quadratic near the solution | a quadratic reduction is observed and asserted; a merely-close Jacobian would converge linearly and still terminate | **Met** |
 | **C10 Newton** — domain | `p > 0`, `z` on the simplex including `z_(N-1)` | fraction-to-boundary at 0.99, one global scale factor, no clamping or renormalization after the step | **Met** |
 | **C10 lifecycle** — rejected step | nothing mutates | state, clock and cumulative totals all unchanged, structurally | **Met** |
@@ -292,23 +293,30 @@ No existing black-oil benchmark tolerance is changed by any of this.
    inherited from the black-oil path, whose standard-volume outputs keep their own separate
    meaning. The surface flash produces no `Bo`, `Bg` or `Rs`, and its gas/liquid ratio is
    deliberately not called GOR.
-2. **The hydrocarbon relative permeability law is pinned only provisionally — this is the one
-   modelling assumption in the compositional model that is not sourced data, and it needs a
-   decision.** C9 declares **straight-line** relative permeability (`kr_L = S_L`, `kr_V = S_V`, no
-   residual saturations, no endpoint scaling) as the single variant of
-   `compositional::flux::HydrocarbonRelPerm`.
+2. ~~**The hydrocarbon relative permeability law is pinned only provisionally.**~~
+   **DECIDED 2026-09-16 by the maintainer.** V1 runs on **straight-line** relative permeability
+   (`kr_L = S_L`, `kr_V = S_V`, no residual saturations, no endpoint scaling) as an **explicitly
+   documented verification assumption**. No arbitrary Corey parameters and no residual saturations
+   are introduced, and the straight-line model is **not** the physical or default model for real
+   reservoirs.
 
-   *Why this rather than something else.* The plan forbids reusing the existing water/oil curves,
+   *Why straight lines for verification.* The plan forbids reusing the existing water/oil curves,
    which were fitted for a different pair of phases, and no sourced hydrocarbon liquid/vapour table
-   exists in this environment. Inventing Corey exponents would be exactly the invented data the
-   plan prohibits. Straight lines add no fitted parameters and no residual saturations, so any
-   error in a displacement front is attributable to the thermodynamics and the discretization
-   rather than to a curve nobody can cite.
+   exists in this environment. Straight lines add no fitted parameters, so an error in a
+   displacement front is attributable to the thermodynamics and the discretization rather than to a
+   curve nobody can cite.
 
-   *What it is not.* It is not a claim about any real rock, and it will make a real displacement
-   front less sharp than a Corey-type curve would. **A sourced table is still owed before any case
-   is admitted to the catalog (C12/C13).** When one arrives it becomes a second enum variant; the
-   enum exists so that addition cannot happen silently.
+   *How the decision is enforced structurally.* `compositional::relperm::RelativePermeabilityModel`
+   has three variants — `Linear`, `Corey` and `Tabulated` — and **no `Default`**, because a default
+   would make the most consequential unsourced assumption the one nobody had to type. `Corey` and
+   `Tabulated` take every parameter as a required, validated input, so a benchmark case can supply
+   its own curves and no number in that file describes any particular rock.
+   `is_verification_only()` returns true for `Linear` so a scenario-admission check can refuse to
+   ship a case still running on it, instead of relying on someone noticing.
+
+   *What it is still not.* A real displacement front will be less sharp under straight lines than
+   under a Corey curve. A sourced table remains preferable for any case that claims to represent a
+   reservoir.
 3. **The first flow fixture is specified but not built.** 1D uniform column, no gravity or
    capillarity, fixed temperature, one injection and one production boundary, composition chosen
    to force a phase change inside the declared domain. It cannot be given an external reference

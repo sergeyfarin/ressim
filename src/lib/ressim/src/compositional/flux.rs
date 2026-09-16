@@ -54,11 +54,11 @@
 //! differentiable at `dphi = 0`, and a Jacobian that tried to differentiate through it would be
 //! differentiating a discontinuity.
 //!
-//! # Relative permeability — a declared choice, not sourced data
+//! # Relative permeability
 //!
-//! See [`HydrocarbonRelPerm`]. This is the one place in the compositional model where V1 uses a
-//! modelling assumption rather than a sourced dataset, and it is flagged in
-//! `docs/COMPOSITIONAL_VALIDATION.md` §6 as still owed before any case is admitted.
+//! Supplied by the caller as a [`RelativePermeabilityModel`], never assumed here. V1 runs on its
+//! `Linear` variant, which is a verification device rather than a description of a rock; see that
+//! module's docs and `docs/COMPOSITIONAL_VALIDATION.md` §6.
 
 use crate::ad::{Ad, Scalar};
 use crate::fluid::derivatives::{DerivativeError, FlashDerivatives, flash_derivatives};
@@ -67,38 +67,8 @@ use crate::fluid::specification::FluidSpecification;
 use crate::fluid::transport::{TransportError, lbc_viscosity};
 use crate::fluid::units::{bar_to_pa, dpa_to_dbar};
 
+use super::relperm::RelativePermeabilityModel;
 use super::state::CompositionalCellState;
-
-/// The hydrocarbon liquid/vapour relative permeability law.
-///
-/// **One variant, and it is a declared modelling choice rather than sourced data.** The plan is
-/// explicit that the existing water/oil curves are not implicitly a hydrocarbon liquid/vapour law,
-/// and no sourced hydrocarbon table is available in this environment — so rather than adapt a
-/// curve that was fitted for a different pair of phases, or invent parameters, V1 declares
-/// straight-line relative permeability and says so everywhere it matters.
-///
-/// Straight lines are the standard neutral choice for verifying compositional transport, because
-/// they add no fitted parameters and no residual saturations: any error in a displacement front is
-/// then attributable to the thermodynamics and the discretization rather than to a curve nobody
-/// can cite. It is **not** a claim about any real rock.
-///
-/// A sourced table is still owed before a case is admitted to the catalog
-/// (`docs/COMPOSITIONAL_VALIDATION.md` §6). When one arrives it becomes a second variant here;
-/// the enum exists so that addition cannot be made silently.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum HydrocarbonRelPerm {
-    /// `kr_L = S_L`, `kr_V = S_V`, no residual saturations, no endpoint scaling.
-    StraightLine,
-}
-
-impl HydrocarbonRelPerm {
-    /// Relative permeability of a phase at its saturation.
-    pub fn kr<S: Scalar>(self, saturation: S) -> S {
-        match self {
-            Self::StraightLine => saturation,
-        }
-    }
-}
 
 /// Why a face flux could not be produced.
 #[derive(Clone, Debug, PartialEq)]
@@ -244,7 +214,7 @@ fn evaluate_cell(
 /// quantity the black-oil assembler passes to `fim/flux.rs`.
 pub fn face_flux(
     spec: &FluidSpecification,
-    relperm: HydrocarbonRelPerm,
+    relperm: &RelativePermeabilityModel,
     geom_t: f64,
     gravity: Gravity,
     cell_i: (usize, &CompositionalCellState),
@@ -281,8 +251,11 @@ fn seed<const N: usize, const M: usize>(row: &[f64], offset: usize) -> [f64; M] 
 
 /// Phase molar density, composition and viscosity of the upstream cell, as AD quantities.
 struct UpstreamPhase<const M: usize> {
-    /// Saturation of this phase in the upstream cell.
-    saturation: Ad<M>,
+    /// **Liquid** saturation of the upstream cell, whichever phase this is.
+    ///
+    /// Both curves are keyed on the liquid saturation, so one value serves both phases and the
+    /// two cannot be evaluated at inconsistent saturations.
+    liquid_saturation: Ad<M>,
     /// Molar density [mol/m³].
     molar_density: Ad<M>,
     /// Viscosity [cP].
@@ -293,7 +266,7 @@ struct UpstreamPhase<const M: usize> {
 
 fn face_flux_sized<const N: usize, const M: usize>(
     spec: &FluidSpecification,
-    relperm: HydrocarbonRelPerm,
+    relperm: &RelativePermeabilityModel,
     geom_t: f64,
     gravity: Gravity,
     i: &CellFaceData,
@@ -363,7 +336,7 @@ fn face_flux_sized<const N: usize, const M: usize>(
             continue;
         };
 
-        let kr = relperm.kr(phase.saturation);
+        let kr = relperm.kr(phase.liquid_saturation, liquid);
         let mobility = kr / phase.viscosity_cp;
         let q = mobility * dphi * geom_t;
         phase_rates[phase_index] = q.value();
@@ -458,10 +431,11 @@ fn upstream_phase<const N: usize, const M: usize>(
         })
         .collect();
 
-    // Saturation. In a single-phase state it is exactly one and carries no derivative: it is a
-    // constant, not a quantity that happens to sit at an endpoint.
-    let saturation = match up.state.phase_state {
-        PhaseState::SingleLiquid | PhaseState::SingleVapour => Ad::<M>::constant(1.0),
+    // The upstream cell's liquid saturation. In a single-phase state it is exactly one or zero
+    // and carries no derivative: a constant, not a quantity that happens to sit at an endpoint.
+    let liquid_saturation = match up.state.phase_state {
+        PhaseState::SingleLiquid => Ad::<M>::constant(1.0),
+        PhaseState::SingleVapour => Ad::<M>::constant(0.0),
         PhaseState::TwoPhase => {
             let cl = Ad::<M>::seeded(
                 up.state.liquid.as_ref().expect("liquid").molar_density,
@@ -475,7 +449,7 @@ fn upstream_phase<const N: usize, const M: usize>(
             let one = Ad::<M>::constant(1.0);
             let v_mix = (one - beta) / cl + beta / cv;
             let s_v = (beta / cv) / v_mix;
-            if liquid { one - s_v } else { s_v }
+            one - s_v
         }
     };
 
@@ -491,7 +465,7 @@ fn upstream_phase<const N: usize, const M: usize>(
     let viscosity_cp = viscosity_pa_s / crate::fluid::units::PA_S_PER_CP;
 
     Ok(Some(UpstreamPhase {
-        saturation,
+        liquid_saturation,
         molar_density,
         viscosity_cp,
         composition,

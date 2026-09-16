@@ -19,8 +19,9 @@
 use crate::fluid::specification::FluidSpecification;
 
 use super::accumulation::{AccumulationError, CellInventory, EquationScaling, cell_accumulation};
-use super::flux::{FluxError, Gravity, HydrocarbonRelPerm, face_flux};
+use super::flux::{FluxError, Gravity, face_flux};
 use super::layout::CompositionalLayout;
+use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalCellState, CompositionalState, RockView};
 
 /// One connection between two cells.
@@ -114,7 +115,7 @@ pub fn assemble(
     spec: &FluidSpecification,
     layout: &CompositionalLayout,
     rock: &RockView<'_>,
-    relperm: HydrocarbonRelPerm,
+    relperm: &RelativePermeabilityModel,
     state: &CompositionalState,
     faces: &[Face],
     previous_moles: &[Vec<f64>],
@@ -254,7 +255,7 @@ pub fn numerical_jacobian(
     spec: &FluidSpecification,
     layout: &CompositionalLayout,
     rock: &RockView<'_>,
-    relperm: HydrocarbonRelPerm,
+    relperm: &RelativePermeabilityModel,
     state: &CompositionalState,
     faces: &[Face],
     previous_moles: &[Vec<f64>],

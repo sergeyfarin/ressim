@@ -2,13 +2,16 @@
 
 use super::accumulation::cell_inventory;
 use super::assembly::{AssemblyError, Face, assemble, numerical_jacobian};
-use super::flux::{Gravity, HydrocarbonRelPerm};
+use super::flux::Gravity;
 use super::layout::CompositionalLayout;
+use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalCellState, CompositionalState, RockView};
 use crate::fluid::pinned;
 use crate::fluid::specification::FluidSpecification;
 
-const RELPERM: HydrocarbonRelPerm = HydrocarbonRelPerm::StraightLine;
+fn relperm() -> RelativePermeabilityModel {
+    RelativePermeabilityModel::Linear
+}
 const GEOM_T: f64 = 8.526_988_8e-3 * 100.0 * (100.0 * 10.0) / 100.0;
 
 struct Grid {
@@ -94,7 +97,7 @@ fn comp_assembly_internal_faces_cancel_globally() {
         &grid.spec,
         &grid.layout,
         &rock,
-        RELPERM,
+        &relperm(),
         &grid.state,
         &grid.faces,
         &previous,
@@ -142,7 +145,7 @@ fn comp_assembly_a_uniform_closed_grid_is_stationary() {
             &grid.spec,
             &grid.layout,
             &rock,
-            RELPERM,
+            &relperm(),
             &grid.state,
             &grid.faces,
             &previous,
@@ -178,7 +181,7 @@ fn comp_assembly_a_source_is_the_only_way_material_enters() {
         &grid.spec,
         &grid.layout,
         &rock,
-        RELPERM,
+        &relperm(),
         &grid.state,
         &grid.faces,
         &previous,
@@ -209,7 +212,7 @@ fn comp_assembly_a_1d_column_transports_from_the_high_pressure_end() {
         &grid.spec,
         &grid.layout,
         &rock,
-        RELPERM,
+        &relperm(),
         &grid.state,
         &grid.faces,
         &previous,
@@ -282,7 +285,7 @@ fn comp_assembly_jacobian_matches_a_numerical_jacobian_entrywise() {
             &grid.spec,
             &grid.layout,
             &rock,
-            RELPERM,
+            &relperm(),
             &grid.state,
             &grid.faces,
             &previous,
@@ -295,7 +298,7 @@ fn comp_assembly_jacobian_matches_a_numerical_jacobian_entrywise() {
             &grid.spec,
             &grid.layout,
             &rock,
-            RELPERM,
+            &relperm(),
             &grid.state,
             &grid.faces,
             &previous,
@@ -345,7 +348,7 @@ fn comp_assembly_jacobian_couples_only_face_neighbours() {
         &grid.spec,
         &grid.layout,
         &rock,
-        RELPERM,
+        &relperm(),
         &grid.state,
         &grid.faces,
         &previous,
@@ -390,7 +393,7 @@ fn comp_assembly_is_deterministic_and_mutates_nothing() {
         &grid.spec,
         &grid.layout,
         &rock,
-        RELPERM,
+        &relperm(),
         &grid.state,
         &grid.faces,
         &previous,
@@ -402,7 +405,7 @@ fn comp_assembly_is_deterministic_and_mutates_nothing() {
         &grid.spec,
         &grid.layout,
         &rock,
-        RELPERM,
+        &relperm(),
         &grid.state,
         &grid.faces,
         &previous,
@@ -430,7 +433,7 @@ fn comp_assembly_reports_per_cell_scaling() {
         &grid.spec,
         &grid.layout,
         &rock,
-        RELPERM,
+        &relperm(),
         &grid.state,
         &grid.faces,
         &previous,
@@ -471,7 +474,7 @@ fn comp_assembly_rejects_malformed_input() {
             &grid.spec,
             &grid.layout,
             &rock,
-            RELPERM,
+            &relperm(),
             &grid.state,
             &bad_face,
             &previous,
@@ -492,7 +495,7 @@ fn comp_assembly_rejects_malformed_input() {
             &grid.spec,
             &grid.layout,
             &rock,
-            RELPERM,
+            &relperm(),
             &grid.state,
             &self_face,
             &previous,
@@ -507,7 +510,7 @@ fn comp_assembly_rejects_malformed_input() {
             &grid.spec,
             &grid.layout,
             &rock,
-            RELPERM,
+            &relperm(),
             &grid.state,
             &grid.faces,
             &previous[..1],
@@ -524,7 +527,7 @@ fn comp_assembly_rejects_malformed_input() {
             &grid.spec,
             &grid.layout,
             &rock,
-            RELPERM,
+            &relperm(),
             &grid.state,
             &grid.faces,
             &previous,

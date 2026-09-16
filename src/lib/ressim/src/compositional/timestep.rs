@@ -26,9 +26,9 @@ use crate::fluid::specification::FluidSpecification;
 
 use super::accumulation::{AccumulationError, cell_inventory};
 use super::assembly::AssemblyError;
-use super::flux::HydrocarbonRelPerm;
 use super::layout::CompositionalLayout;
 use super::newton::{NewtonError, NewtonOptions, NewtonProblem, NewtonReport, solve_newton};
+use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalState, FlashCache, RockView};
 
 /// What kind of failure a rejected attempt hit.
@@ -185,7 +185,7 @@ impl CompositionalRun {
         spec: &FluidSpecification,
         layout: &CompositionalLayout,
         rock: &RockView<'_>,
-        relperm: HydrocarbonRelPerm,
+        relperm: &RelativePermeabilityModel,
         faces: &[super::assembly::Face],
         sources: &[Vec<f64>],
         dt_days: f64,

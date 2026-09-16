@@ -21,6 +21,7 @@ pub mod assembly;
 pub mod flux;
 pub mod layout;
 pub mod newton;
+pub mod relperm;
 pub mod state;
 pub mod timestep;
 pub mod wells;
@@ -37,6 +38,8 @@ mod gravity_tests;
 mod layout_tests;
 #[cfg(test)]
 mod newton_tests;
+#[cfg(test)]
+mod relperm_tests;
 #[cfg(test)]
 mod state_tests;
 #[cfg(test)]

@@ -2,14 +2,17 @@
 
 use super::accumulation::cell_inventory;
 use super::assembly::Face;
-use super::flux::{Gravity, HydrocarbonRelPerm};
+use super::flux::Gravity;
 use super::layout::CompositionalLayout;
 use super::newton::{NewtonError, NewtonOptions, NewtonProblem, solve_newton};
+use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalCellState, CompositionalState, RockView};
 use crate::fluid::pinned;
 use crate::fluid::specification::FluidSpecification;
 
-const RELPERM: HydrocarbonRelPerm = HydrocarbonRelPerm::StraightLine;
+fn relperm() -> RelativePermeabilityModel {
+    RelativePermeabilityModel::Linear
+}
 const GEOM_T: f64 = 8.526_988_8e-3 * 100.0 * (100.0 * 10.0) / 100.0;
 
 struct Case {
@@ -84,7 +87,7 @@ fn comp_newton_converges_immediately_on_a_stationary_state() {
             spec: &case.spec,
             layout: &case.layout,
             rock,
-            relperm: RELPERM,
+            relperm: &relperm(),
             faces: &case.faces,
             previous_moles: &previous,
             sources: &sources,
@@ -126,7 +129,7 @@ fn comp_newton_one_cell_depletion_conserves_and_depletes() {
         spec: &case.spec,
         layout: &case.layout,
         rock,
-        relperm: RELPERM,
+        relperm: &relperm(),
         faces: &case.faces,
         previous_moles: &previous,
         sources: &sources,
@@ -177,7 +180,7 @@ fn comp_newton_1d_displacement_moves_the_injected_component_downstream() {
         spec: &case.spec,
         layout: &case.layout,
         rock,
-        relperm: RELPERM,
+        relperm: &relperm(),
         faces: &case.faces,
         previous_moles: &previous,
         sources: &sources,
@@ -227,7 +230,7 @@ fn comp_newton_step_bound_protects_the_dependent_composition() {
         spec: &case.spec,
         layout: &case.layout,
         rock,
-        relperm: RELPERM,
+        relperm: &relperm(),
         faces: &case.faces,
         previous_moles: &previous,
         sources: &sources,
@@ -267,7 +270,7 @@ fn comp_newton_an_absent_component_can_be_injected_into_existence() {
         spec: &case.spec,
         layout: &case.layout,
         rock,
-        relperm: RELPERM,
+        relperm: &relperm(),
         faces: &case.faces,
         previous_moles: &previous,
         sources: &sources,
@@ -303,7 +306,7 @@ fn comp_newton_reports_a_negative_direction_on_an_absent_component() {
         spec: &case.spec,
         layout: &case.layout,
         rock,
-        relperm: RELPERM,
+        relperm: &relperm(),
         faces: &case.faces,
         previous_moles: &previous,
         sources: &sources,
@@ -333,7 +336,7 @@ fn comp_newton_reports_a_budget_exhaustion_with_its_history() {
         spec: &case.spec,
         layout: &case.layout,
         rock,
-        relperm: RELPERM,
+        relperm: &relperm(),
         faces: &case.faces,
         previous_moles: &previous,
         sources: &sources,
@@ -368,7 +371,7 @@ fn comp_newton_a_failed_solve_does_not_touch_the_input_state() {
         spec: &case.spec,
         layout: &case.layout,
         rock,
-        relperm: RELPERM,
+        relperm: &relperm(),
         faces: &case.faces,
         previous_moles: &previous,
         sources: &sources,
@@ -399,7 +402,7 @@ fn comp_newton_converges_quadratically_near_the_solution() {
         spec: &case.spec,
         layout: &case.layout,
         rock,
-        relperm: RELPERM,
+        relperm: &relperm(),
         faces: &case.faces,
         previous_moles: &previous,
         sources: &sources,
@@ -449,7 +452,7 @@ fn comp_newton_uses_one_step_scale_for_the_whole_system() {
         spec: &case.spec,
         layout: &case.layout,
         rock,
-        relperm: RELPERM,
+        relperm: &relperm(),
         faces: &case.faces,
         previous_moles: &previous,
         sources: &sources,

@@ -44,7 +44,7 @@ use crate::fluid::specification::FluidSpecification;
 use crate::fluid::transport::{TransportError, lbc_viscosity, surface_separation};
 use crate::fluid::units::{PA_S_PER_CP, bar_to_pa, dpa_to_dbar};
 
-use super::flux::HydrocarbonRelPerm;
+use super::relperm::RelativePermeabilityModel;
 use super::state::CompositionalCellState;
 
 /// What a well is controlled on.
@@ -263,7 +263,7 @@ impl WellSource {
 /// would this well do at that pressure" should not have to construct a fake control to find out.
 pub fn source_at_bhp(
     spec: &FluidSpecification,
-    relperm: HydrocarbonRelPerm,
+    relperm: &RelativePermeabilityModel,
     well: &CompositionalWell,
     completion: &Completion,
     cell: &CompositionalCellState,
@@ -316,7 +316,7 @@ fn seed_bhp<const N: usize, const M: usize>(row: &[f64]) -> [f64; M] {
 /// BHP derivative ends up disagreeing with the cell derivative it shares every term with.
 fn source_sized<const N: usize>(
     spec: &FluidSpecification,
-    relperm: HydrocarbonRelPerm,
+    relperm: &RelativePermeabilityModel,
     well: &CompositionalWell,
     completion: &Completion,
     cell: &CompositionalCellState,
@@ -334,7 +334,7 @@ fn source_sized<const N: usize>(
 
 fn source_ad<const N: usize, const M: usize>(
     spec: &FluidSpecification,
-    relperm: HydrocarbonRelPerm,
+    relperm: &RelativePermeabilityModel,
     well: &CompositionalWell,
     completion: &Completion,
     cell: &CompositionalCellState,
@@ -480,7 +480,7 @@ fn mixture_molar_density<const N: usize, const M: usize>(
 /// One phase of the **injected** stream, with derivatives in the BHP slot only.
 fn injected_phase<const N: usize, const M: usize>(
     spec: &FluidSpecification,
-    relperm: HydrocarbonRelPerm,
+    relperm: &RelativePermeabilityModel,
     state: &FlashState,
     d: &FlashDerivatives,
     liquid: bool,
@@ -497,7 +497,7 @@ struct CellPhase<const M: usize> {
 
 fn cell_phase<const N: usize, const M: usize>(
     spec: &FluidSpecification,
-    relperm: HydrocarbonRelPerm,
+    relperm: &RelativePermeabilityModel,
     state: &FlashState,
     d: &FlashDerivatives,
     liquid: bool,
@@ -513,7 +513,7 @@ fn cell_phase<const N: usize, const M: usize>(
 /// place for the saturation and mobility expressions to drift apart.
 fn phase_common<const N: usize, const M: usize>(
     spec: &FluidSpecification,
-    relperm: HydrocarbonRelPerm,
+    relperm: &RelativePermeabilityModel,
     state: &FlashState,
     d: &FlashDerivatives,
     liquid: bool,
@@ -556,8 +556,10 @@ fn phase_common<const N: usize, const M: usize>(
         })
         .collect();
 
-    let saturation = match state.phase_state {
-        PhaseState::SingleLiquid | PhaseState::SingleVapour => Ad::<M>::constant(1.0),
+    // Both curves are keyed on the **liquid** saturation, so one value serves both phases.
+    let liquid_saturation = match state.phase_state {
+        PhaseState::SingleLiquid => Ad::<M>::constant(1.0),
+        PhaseState::SingleVapour => Ad::<M>::constant(0.0),
         PhaseState::TwoPhase => {
             let cl = Ad::<M>::seeded(
                 state.liquid.as_ref().expect("liquid").molar_density,
@@ -571,7 +573,7 @@ fn phase_common<const N: usize, const M: usize>(
             let one = Ad::<M>::constant(1.0);
             let v_mix = (one - beta) / cl + beta / cv;
             let s_v = (beta / cv) / v_mix;
-            if liquid { one - s_v } else { s_v }
+            one - s_v
         }
     };
 
@@ -581,7 +583,7 @@ fn phase_common<const N: usize, const M: usize>(
         &composition,
         molar_density,
     )?;
-    let mobility = relperm.kr(saturation) / (mu_pa_s / PA_S_PER_CP);
+    let mobility = relperm.kr(liquid_saturation, liquid) / (mu_pa_s / PA_S_PER_CP);
 
     Ok(Some(CellPhase {
         mobility,
@@ -653,7 +655,7 @@ impl WellResult {
 /// cross-flow against itself, so its at-or-above-cell-pressure case stays the shut-in it was.
 pub fn well_source_at_bhp(
     spec: &FluidSpecification,
-    relperm: HydrocarbonRelPerm,
+    relperm: &RelativePermeabilityModel,
     well: &CompositionalWell,
     cells: &[CompositionalCellState],
     bhp_bar: f64,
@@ -714,7 +716,7 @@ pub fn well_source_at_bhp(
 /// Evaluate a well under its control, solving for BHP when the control is a rate.
 pub fn well_source(
     spec: &FluidSpecification,
-    relperm: HydrocarbonRelPerm,
+    relperm: &RelativePermeabilityModel,
     well: &CompositionalWell,
     cells: &[CompositionalCellState],
 ) -> Result<WellResult, WellError> {
@@ -794,7 +796,7 @@ fn surface_rate(
 /// and because a well control solve is not where the run's time goes.
 fn solve_for_rate<F>(
     spec: &FluidSpecification,
-    relperm: HydrocarbonRelPerm,
+    relperm: &RelativePermeabilityModel,
     well: &CompositionalWell,
     cells: &[CompositionalCellState],
     bhp_limit_bar: f64,
