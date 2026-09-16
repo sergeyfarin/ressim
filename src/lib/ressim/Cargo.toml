@@ -24,3 +24,11 @@ rand = "0.10.2"
 [dependencies.getrandom]
 version = "0.4.3"
 features = ["wasm_js"]
+
+[dev-dependencies]
+# Test-only, and only for the compositional fluid specification's serialization contract
+# (`comp_spec_serde_*`). It is not compiled into the wasm artifact and adds nothing to the
+# shipped bundle. The contract it checks - that component order survives a roundtrip and that an
+# unknown EOS/viscosity tag is rejected rather than silently defaulted - is a property of serde's
+# behaviour, so testing it against a hand-rolled format would prove nothing.
+serde_json = "1.0.151"

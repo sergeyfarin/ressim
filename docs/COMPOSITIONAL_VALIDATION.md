@@ -227,7 +227,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | Task | Deliverable | Status | Evidence |
 | --- | --- | --- | --- |
 | C0 | Frozen scope, fluid dataset, oracles, acceptance contract | **COMPLETE** | This document; `opm/compositional/`; `tools/opm_compositional/` |
-| C1 | Fluid specification and unit-safe input | NOT STARTED | — |
+| C1 | Fluid specification and unit-safe input | **COMPLETE** | `src/lib/ressim/src/fluid/{specification,units,pinned}.rs`; 26 `comp_spec_*` / `comp_units_*` tests |
 | C2 | PR mixture EOS and single-phase properties | NOT STARTED | — |
 | C3 | Stability and scalar PT flash | NOT STARTED | — |
 | C4 | Equilibrium and property derivatives | NOT STARTED | — |
@@ -239,7 +239,34 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C13–C14 | WASM, product integration, release | NOT STARTED | Gated on C12 |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
-## 8. C0 completion record
+## 8. Completion records
+
+### C1 — fluid specification and unit-safe input
+
+```text
+C-task:                C1
+Start / final commit:  2483fb3 / this commit
+Component/phase count: N=2 and N=3 pinned; the type admits N=4 for C7's layout-only test
+Source equations:      none - C1 implements no physics. Component data is transcribed from
+                       /usr/include/opm/material/components/{C1,C10,SimpleCO2}.hpp and is
+                       checked against opm/compositional/ptflash_fixtures.json by a test
+Changed interfaces:    new private module `fluid`; no existing interface changed; the crate's
+                       public API and the WASM surface are untouched
+Tests created:         26 - comp_spec_* (18, fluid/tests.rs) and comp_units_* (8, units.rs)
+Commands:              cargo test --manifest-path src/lib/ressim/Cargo.toml comp_
+                       cargo fmt --manifest-path src/lib/ressim/Cargo.toml -- --check
+                       cargo check --manifest-path src/lib/ressim/Cargo.toml \
+                           --target wasm32-unknown-unknown
+                       bash scripts/validate-solver-coverage.sh shared
+Results:               26/26 comp_ pass; fmt clean; wasm32 target compiles; shared gate 17/17
+Worst errors:          n/a - C1 has no numerical output
+Native/WASM coverage:  both; the module has no wasm-bindgen or browser dependency
+Missing oracle:        surface conditions are unpinned and therefore Optional (section 6)
+Completed gate:        C1
+Next permitted task:   C2
+```
+
+### C0 — fluid, oracle and acceptance contract
 
 ```text
 C-task:                C0
