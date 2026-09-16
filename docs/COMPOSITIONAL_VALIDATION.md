@@ -218,6 +218,11 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C2 EOS vs fixture** — fugacity coefficients | 1e-7 relative | `< 1e-11` relative over 244 comparisons | **Met**, 4 orders of margin |
 | **C2 EOS vs fixture** — densities | 1e-7 relative | `< 1e-7` after the exact gas-constant correction; the uncorrected discrepancy is a pure ratio to `< 1e-12` | **Met** |
 | **C2 EOS vs fixture** — flash-free states | — | `< 1e-11` relative over 150+ comparisons including 7 multi-root states | **Met** |
+| **C3 flash vs fixture** — phase state | — | 47/47 states, 29 two-phase / 15 liquid / 3 vapour | **Met** |
+| **C3 flash vs fixture** — vapour fraction | 1e-8 absolute | `< 1e-8` absolute on `L`, converted from `beta` | **Met** |
+| **C3 flash vs fixture** — phase compositions | 1e-8 absolute | `< 1e-8` absolute on every `x_i` and `y_i` | **Met** |
+| **C3 flash** — own equilibrium residual | 1e-8 on the log-fugacity ratio | `< 1e-11`, three orders inside the target | **Met** |
+| **C3 flash** — normalization, `z` reconstruction | 1e-12, 1e-10 | `<= 1e-12`, `<= 1e-10` | **Met** |
 | Derivative closure | — | `sum_i d(x_i)/du_v` and `sum_i d(y_i)/du_v` worst 6.1e-16 (`binary_T333_p150`) | The oracle's derivatives satisfy the normalization identity to roundoff |
 | Smooth property derivatives | ≤ 1e-4 relative, on a frozen nonzero derivative scale, over an FD step plateau | Deferred to C4 — needs the Rust implementation to compare against | Not yet |
 | Tiny assembled Jacobian | ≤ 1e-5 scaled entrywise vs FD at smooth states | Deferred to C8/C9 | Not yet |
@@ -253,7 +258,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C0 | Frozen scope, fluid dataset, oracles, acceptance contract | **COMPLETE** | This document; `opm/compositional/`; `tools/opm_compositional/` |
 | C1 | Fluid specification and unit-safe input | **COMPLETE** | `src/lib/ressim/src/fluid/{specification,units,pinned}.rs`; 26 `comp_spec_*` / `comp_units_*` tests |
 | C2 | PR mixture EOS and single-phase properties | **COMPLETE** | `src/lib/ressim/src/fluid/eos.rs`; 22 `comp_eos_*` tests |
-| C3 | Stability and scalar PT flash | **IN PROGRESS** — stability complete | `src/lib/ressim/src/fluid/stability.rs`; 7 `comp_stability_*` tests, 47/47 verdicts match OPM |
+| C3 | Stability and scalar PT flash | **COMPLETE** | `fluid/{stability,flash}.rs`; 7 `comp_stability_*`, 12 `comp_flash_*`, 4 `comp_rr_*`; 47/47 states match OPM |
 | C4 | Equilibrium and property derivatives | NOT STARTED | — |
 | C5 | Transport properties and surface flash | NOT STARTED | — |
 | C6 | THERMO-READY | NOT STARTED | External flash parity available (§3a); trajectory parity blocked |

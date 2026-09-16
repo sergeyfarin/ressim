@@ -26,6 +26,7 @@
 pub mod eos;
 #[cfg(test)]
 pub(crate) mod fixture;
+pub mod flash;
 pub mod pinned;
 pub mod specification;
 pub mod stability;
@@ -33,6 +34,8 @@ pub(crate) mod units;
 
 #[cfg(test)]
 mod eos_tests;
+#[cfg(test)]
+mod flash_tests;
 #[cfg(test)]
 mod stability_tests;
 #[cfg(test)]

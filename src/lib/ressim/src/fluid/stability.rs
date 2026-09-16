@@ -125,8 +125,14 @@ struct TrialOutcome {
     sum: f64,
     /// True when the trial collapsed onto the feed, which indicates nothing.
     trivial: bool,
-    /// The converged trial `K`, which seeds the flash when the feed turns out to be unstable.
-    k: Vec<f64>,
+    /// The **normalized trial composition**, `W_i / sum W`.
+    ///
+    /// This, not the trial's `K`, is what the equilibrium-ratio estimate is built from: the two
+    /// trials converge to two different stationary points of the same tangent plane, and dividing
+    /// one trial's composition by the other's gives the split. Multiplying their `K` vectors
+    /// instead gives a meaningless product — in the C1/C10 binary at 20 bar it produced
+    /// `K = [3.1e13, 1.4e-17]`, which sends Rachford–Rice to `-inf` at `beta = 1`.
+    composition: Vec<f64>,
 }
 
 /// One Michelsen trial phase, by successive substitution on `K`.
@@ -163,10 +169,9 @@ fn run_trial(
     };
 
     let mut w = vec![0.0; n];
-    let mut sum = 0.0;
 
     for iteration in 0..MAX_TRIAL_ITERATIONS {
-        sum = 0.0;
+        let mut sum = 0.0;
         for i in 0..n {
             w[i] = if !active[i] {
                 0.0
@@ -216,7 +221,11 @@ fn run_trial(
 
         let trivial = k_norm < TRIVIAL_SOLUTION_TOLERANCE;
         if trivial || residual_norm < TRIAL_RESIDUAL_TOLERANCE {
-            return Ok(TrialOutcome { sum, trivial, k });
+            return Ok(TrialOutcome {
+                sum,
+                trivial,
+                composition: normalized,
+            });
         }
 
         if iteration + 1 == MAX_TRIAL_ITERATIONS {
@@ -330,12 +339,14 @@ pub fn test_stability(
             continue;
         }
 
-        // OPM recovers K from Michelsen's two trial compositions: K_i = y_i / x_i, with y from the
-        // vapour-like trial and x from the liquid-like one, both normalized. Reproduced here.
+        // `PTFlash.hpp::phaseStabilityTest_` recovers K from the two trial *compositions*:
+        // `K_i = y_i / x_i`, with `y` the normalized vapour-like trial and `x` the normalized
+        // liquid-like one. An absent component has `y_i = x_i = 0` and no split to describe, so it
+        // falls back to the Wilson value, which Rachford-Rice then skips anyway.
         let mut k = Vec::with_capacity(n);
         for i in 0..n {
-            let y = vapour.k[i] * z[i];
-            let x = z[i] / liquid.k[i];
+            let y = vapour.composition[i];
+            let x = liquid.composition[i];
             k.push(if x > 0.0 && y > 0.0 { y / x } else { wilson[i] });
         }
         return Ok(StabilityVerdict::Unstable { k });
