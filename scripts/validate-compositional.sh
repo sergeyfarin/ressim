@@ -84,6 +84,8 @@ run_thermo() {
     run_filter comp_domain_      4   # C6 domain sweep
     run_filter comp_layout_     12   # C7 component layout
     run_filter comp_state_      18   # C7 accepted/trial state, cache, checkpoints
+    run_filter comp_accumulation_ 12  # C8 cell inventory, residual and Jacobian
+    run_filter comp_scaling_      7   # C8 row and primary-variable scaling
 }
 
 run_fixture() {

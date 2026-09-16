@@ -247,6 +247,10 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C7 layout** — indexing | bijective for N=2,3,4 | every cell column and row reached exactly once, round-tripping through the split | **Met** |
 | **C7 layout** — shared metadata | identical partition | `FimLinearBlockLayout` and `CompositionalLayout` agree on every cell column, for all three N | **Met** |
 | **C7 state** — cache neutrality | results unchanged | bit-identical flash results with the cache dropped | **Met** |
+| **C8 inventory** — phase-sum vs `PV z_i / v_mix` | roundoff | `< 1e-12` relative across all three phase regimes | **Met** |
+| **C8 residual** — stationary closed cell | exactly zero | exactly zero in all three regimes | **Met** |
+| **C8 Jacobian** — vs FD | 1e-5 scaled entrywise | `< 1e-5` over every entry, both phase regimes, pressure and composition columns | **Met** |
+| **C8 scaling** — trace component visibility | a trace component must not hide | a 20% error in a component holding 1e-4 of the cell reports `> 0.1`, where a cell-wide scale reports `< 1e-5` | **Met** |
 | Derivative closure | — | `sum_i d(x_i)/du_v` and `sum_i d(y_i)/du_v` worst 6.1e-16 (`binary_T333_p150`) | The oracle's derivatives satisfy the normalization identity to roundoff |
 | Smooth property derivatives | ≤ 1e-4 relative, on a frozen nonzero derivative scale, over an FD step plateau | Deferred to C4 — needs the Rust implementation to compare against | Not yet |
 | Tiny assembled Jacobian | ≤ 1e-5 scaled entrywise vs FD at smooth states | Deferred to C8/C9 | Not yet |
@@ -295,12 +299,47 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C5 | Transport properties and surface flash | **COMPLETE** | `fluid/transport.rs`; 17 `comp_transport_*` / `comp_surface_*` tests |
 | C6 | **THERMO-READY** | **DECLARED** | `scripts/validate-compositional.sh`; 110 tests; 7 620-sample domain sweep. External flash parity met (§3a); **trajectory parity remains blocked** (§3b) |
 | C7 | Component layout and state | **COMPLETE** | `compositional/{layout,state}.rs`; 30 `comp_layout_*` / `comp_state_*` tests |
-| C8–C11 | Accumulation, flux, Newton, wells | NOT STARTED | `FIM-COMPOSITIONAL-SEAM-READY` declared at `6be6d08` |
+| C8 | Cell inventory, accumulation and scaling | **COMPLETE** | `compositional/accumulation.rs`; 19 `comp_accumulation_*` / `comp_scaling_*` tests |
+| C9–C11 | Flux, Newton, wells | NOT STARTED | `FIM-COMPOSITIONAL-SEAM-READY` declared at `6be6d08` |
 | C12 | NATIVE-COMPOSITIONAL-READY | **BLOCKED** | No compositional Flow executable (§3b) |
 | C13–C14 | WASM, product integration, release | NOT STARTED | Gated on C12 |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
 ## 8. Completion records
+
+### C8 — cell inventory, accumulation and scaling
+
+```text
+C-task:                C8
+Start / final commit:  6f22cdb / this commit
+Prerequisites:         THERMO-READY (C6), C7, FIM-COMPOSITIONAL-SEAM-READY - all satisfied
+Component/phase count: N=2 and N=3, with AD instantiations through N=4; two-phase,
+                       single-liquid and single-vapour regimes all covered by the test fixture
+Source equation:       n_i = PV(p) (S_L cL x_i + S_V cV y_i)     [mol]
+                       R_i = n_i(new) - n_i(previous) - dt source_i
+                       PV(p) = PV_ref exp(c_rock (p - p_ref)), the existing sourced relation
+Units:                 mol and mol/day throughout; dt in days; the pressure primary is bar, so
+                       the Jacobian's pressure column is per bar and the conversion to the
+                       EOS's pascals happens once, at the boundary
+Changed interfaces:    new `compositional::accumulation`. Nothing existing changed
+Tests created:         19 - comp_accumulation_* 12, comp_scaling_* 7
+Commands:              bash scripts/validate-compositional.sh all
+                       bash scripts/validate-solver-coverage.sh all
+Results:               159 comp_ tests pass; compositional gate green; solver coverage 38/38
+Worst errors:          inventory identity 1e-12; Jacobian vs FD < 1e-5; a stationary closed
+                       cell is exactly zero, not approximately
+Equation count:        N component balances against N primaries [p, z_0..z_(N-2)] - the
+                       plan's "exactly as many independent equations as primaries", asserted
+                       by comp_layout_has_as_many_equations_as_primaries
+Scaling:               per-component row scales from the PREVIOUS accepted inventory, with a
+                       floor at 1e-8 of the cell's total moles. Per-component rather than
+                       cell-wide because a cell-wide scale lets a component holding 1e-4 of
+                       the material stall at 20% error while reporting 1e-5; referenced to the
+                       previous state because a scale that moved with the iterate would let a
+                       step converge by shrinking its own denominator
+Completed gate:        C8
+Next permitted task:   C9
+```
 
 ### C7 — component layout, state and the geometry boundary
 

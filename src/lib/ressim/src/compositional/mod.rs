@@ -7,15 +7,19 @@
 //! The split matters because it is what let C1–C6 validate the thermodynamics against an external
 //! oracle in isolation. Nothing here reaches back into `fluid` except to call it.
 //!
-//! Status: C7 complete (layout and state). C8 onward not yet implemented.
+//! Status: C7 and C8 complete — layout, state, and the cell accumulation term with its
+//! scaling. C9 (face flux and global assembly) onward not yet implemented.
 
 // Consumed by this module's tests and, from C8 on, by the accumulation and assembly code. The
 // crate has no non-test caller yet; scoped here and removable as soon as C8 lands.
 #![allow(dead_code)]
 
+pub mod accumulation;
 pub mod layout;
 pub mod state;
 
+#[cfg(test)]
+mod accumulation_tests;
 #[cfg(test)]
 mod layout_tests;
 #[cfg(test)]
