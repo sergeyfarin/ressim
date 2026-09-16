@@ -18,6 +18,15 @@ fixture="${out_dir}/ptflash_fixtures.json"
 manifest="${out_dir}/manifest.json"
 bin="$(mktemp -d)/ptflash_harness"
 
+# Snapshot cleanliness BEFORE writing anything: this script's own outputs are tracked files, so
+# checking afterwards would always report a dirty tree and the field would be worthless.
+if [[ -z "$(cd "${root}" && git status --porcelain)" ]]; then
+    worktree_clean=true
+else
+    worktree_clean=false
+fi
+head_commit="$(cd "${root}" && git rev-parse HEAD)"
+
 # -std=c++20 is required, not preferred: opm/material/Constants.hpp and PolynomialUtils.hpp use
 # std::numbers, and dune/common/std/algorithm.hh hard-errors without three-way comparison.
 # NDEBUG is deliberately NOT defined - OPM's EOS asserts are the harness's last line of defence
@@ -65,8 +74,8 @@ cat > "${manifest}" <<JSON
     "libdune-common-dev": "${dune_ver}"
   },
   "sha256": "$(sha256sum "${fixture}" | cut -d' ' -f1)",
-  "generated_from_commit": "$(cd "${root}" && git rev-parse HEAD)",
-  "worktree_clean_at_generation": $(cd "${root}" && [[ -z "$(git status --porcelain)" ]] && echo true || echo false)
+  "generated_from_commit": "${head_commit}",
+  "worktree_clean_at_generation": ${worktree_clean}
 }
 JSON
 
