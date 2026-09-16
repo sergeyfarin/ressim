@@ -253,7 +253,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C0 | Frozen scope, fluid dataset, oracles, acceptance contract | **COMPLETE** | This document; `opm/compositional/`; `tools/opm_compositional/` |
 | C1 | Fluid specification and unit-safe input | **COMPLETE** | `src/lib/ressim/src/fluid/{specification,units,pinned}.rs`; 26 `comp_spec_*` / `comp_units_*` tests |
 | C2 | PR mixture EOS and single-phase properties | **COMPLETE** | `src/lib/ressim/src/fluid/eos.rs`; 22 `comp_eos_*` tests |
-| C3 | Stability and scalar PT flash | NOT STARTED | — |
+| C3 | Stability and scalar PT flash | **IN PROGRESS** — stability complete | `src/lib/ressim/src/fluid/stability.rs`; 7 `comp_stability_*` tests, 47/47 verdicts match OPM |
 | C4 | Equilibrium and property derivatives | NOT STARTED | — |
 | C5 | Transport properties and surface flash | NOT STARTED | — |
 | C6 | THERMO-READY | NOT STARTED | External flash parity available (§3a); trajectory parity blocked |
