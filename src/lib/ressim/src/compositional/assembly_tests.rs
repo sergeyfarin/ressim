@@ -2,7 +2,7 @@
 
 use super::accumulation::cell_inventory;
 use super::assembly::{AssemblyError, Face, assemble, numerical_jacobian};
-use super::flux::HydrocarbonRelPerm;
+use super::flux::{Gravity, HydrocarbonRelPerm};
 use super::layout::CompositionalLayout;
 use super::state::{CompositionalCellState, CompositionalState, RockView};
 use crate::fluid::pinned;
@@ -53,6 +53,7 @@ fn column(spec: FluidSpecification, cells: usize, p_high: f64, p_low: f64, z: &[
                 cell_i: i,
                 cell_j: i + 1,
                 geom_t: GEOM_T,
+                gravity: Gravity::OFF,
             })
             .collect(),
         state,
@@ -463,6 +464,7 @@ fn comp_assembly_rejects_malformed_input() {
         cell_i: 0,
         cell_j: 5,
         geom_t: GEOM_T,
+        gravity: Gravity::OFF,
     }];
     assert!(matches!(
         assemble(
@@ -483,6 +485,7 @@ fn comp_assembly_rejects_malformed_input() {
         cell_i: 1,
         cell_j: 1,
         geom_t: GEOM_T,
+        gravity: Gravity::OFF,
     }];
     assert!(matches!(
         assemble(

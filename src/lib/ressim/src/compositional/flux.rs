@@ -2,13 +2,13 @@
 //!
 //! # The equation
 //!
-//! For each phase `P` present in the upstream cell, at zero gravity and zero hydrocarbon
-//! capillary pressure:
+//! For each phase `P`, at zero hydrocarbon capillary pressure:
 //!
 //! ```text
-//! dphi       = p_i - p_j                                    [bar]
-//! q_P        = geom_t * (kr_P / mu_P)|upstream * dphi        [m3/day]
-//! flux_i     = sum_P q_P * c_P|upstream * x_(P,i)|upstream   [mol/day]
+//! grav_P     = rho_P(avg) * 9.80665 * (depth_i - depth_j) * 1e-5   [bar]
+//! dphi_P     = (p_i - p_j) - grav_P                                 [bar]
+//! q_P        = geom_t * (kr_P / mu_P)|upstream(P) * dphi_P          [m3/day]
+//! flux_i     = sum_P q_P * c_P|upstream(P) * x_(P,i)|upstream(P)    [mol/day]
 //! ```
 //!
 //! `geom_t` is the precomputed `DARCY_METRIC_FACTOR * geometric_transmissibility` the black-oil
@@ -20,14 +20,31 @@
 //! into the two cells' residuals, so an internal face conserves by construction rather than by
 //! arithmetic that happens to cancel.
 //!
-//! # Zero gravity, zero capillary pressure
+//! # Gravity
 //!
-//! Both are V1 scope decisions, not simplifications made here. Gravity gets its own subtask and
-//! its own commit; hydrocarbon capillary pressure stays zero for V1 because unequal phase
-//! pressures need a separately derived equilibrium contract and cannot be enabled by passing an
-//! old flag. With both zero, every phase shares one potential difference — which is why the
-//! upstream side is computed once per face and the per-phase structure below is nonetheless kept:
-//! gravity is what makes the phases disagree, and the shape has to already be there.
+//! Off by default and enabled per face through [`Gravity`], matching V1's scope. The head uses
+//! **mass** density, `rho = c_molar * sum(x_i MW_i)` — passing the molar density instead is
+//! dimensionally undetectable and wrong by three orders of magnitude, which is why
+//! [`crate::fluid::units::mass_density_kg_per_m3`] is a named function.
+//!
+//! The constant and the sign convention are `fim/flux.rs::gravity_head_generic`'s, reproduced
+//! exactly: `9.80665 * (depth_i - depth_j) * 1e-5` with depth increasing downward, so a deeper
+//! cell sits at higher pressure at equilibrium. A compositional model that disagreed with the
+//! black-oil one about which way is down would be a remarkable bug to find later.
+//!
+//! **With gravity on, the two phases have different potentials and therefore different upstream
+//! sides.** A vapour can rise through a face while the liquid falls through it. That is why the
+//! upstream side is per phase rather than per face, and why it stays per phase even at zero
+//! gravity where the two happen to agree.
+//!
+//! When a phase is present in only one of the two cells, the head uses that cell's density alone;
+//! averaging against an absent phase's density would be averaging against a number that does not
+//! describe anything.
+//!
+//! # Zero capillary pressure
+//!
+//! A V1 scope decision, not a simplification made here: unequal phase pressures need a separately
+//! derived equilibrium contract and cannot be enabled by passing an old flag.
 //!
 //! # Upstream weighting
 //!
@@ -122,6 +139,45 @@ impl core::fmt::Display for FluxError {
     }
 }
 
+/// Standard gravity [m/s²], as `fim/flux.rs` uses it.
+pub const STANDARD_GRAVITY: f64 = 9.80665;
+
+/// Gravity configuration for one face.
+///
+/// Depths increase downward, in metres, and are the cell-centre depths of the two neighbours.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Gravity {
+    pub enabled: bool,
+    pub depth_i_m: f64,
+    pub depth_j_m: f64,
+}
+
+impl Gravity {
+    /// Gravity off — V1's default, and what every case before the gravity subtask uses.
+    pub const OFF: Self = Self {
+        enabled: false,
+        depth_i_m: 0.0,
+        depth_j_m: 0.0,
+    };
+
+    /// Gravity on, between two cell-centre depths.
+    pub fn between(depth_i_m: f64, depth_j_m: f64) -> Self {
+        Self {
+            enabled: true,
+            depth_i_m,
+            depth_j_m,
+        }
+    }
+
+    /// `9.80665 * (depth_i - depth_j) * 1e-5`, the bar-per-(kg/m³) head coefficient.
+    fn head_coefficient(&self) -> f64 {
+        if !self.enabled {
+            return 0.0;
+        }
+        STANDARD_GRAVITY * (self.depth_i_m - self.depth_j_m) * 1e-5
+    }
+}
+
 /// Which side of a face a phase is drawn from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UpstreamSide {
@@ -141,9 +197,11 @@ pub struct FaceFlux {
     /// Columns `0..N` are cell `i`'s primaries `[p_bar, z_0..z_(N-2)]`, columns `N..2N` are cell
     /// `j`'s. This is the `2N`-seed face kernel the plan's C7 specifies.
     pub jacobian: Vec<Vec<f64>>,
-    /// The frozen upstream side, per phase: `[liquid, vapour]`.
+    /// The frozen upstream side, per phase: `[liquid, vapour]`. With gravity on these can differ.
     pub upstream: [UpstreamSide; 2],
-    /// Potential difference `p_i - p_j` [bar].
+    /// Per-phase potential difference `[liquid, vapour]` [bar]. Equal at zero gravity.
+    pub phase_potential_bar: [f64; 2],
+    /// Pressure difference `p_i - p_j` [bar], without any gravity head.
     pub potential_difference_bar: f64,
     /// Phase volumetric rates `[liquid, vapour]` [m³/day], positive from `i` to `j`.
     pub phase_rates_m3_per_day: [f64; 2],
@@ -188,6 +246,7 @@ pub fn face_flux(
     spec: &FluidSpecification,
     relperm: HydrocarbonRelPerm,
     geom_t: f64,
+    gravity: Gravity,
     cell_i: (usize, &CompositionalCellState),
     cell_j: (usize, &CompositionalCellState),
 ) -> Result<FaceFlux, FluxError> {
@@ -199,9 +258,9 @@ pub fn face_flux(
     let j = evaluate_cell(spec, cell_j.0, cell_j.1)?;
 
     match n {
-        2 => face_flux_sized::<2, 4>(spec, relperm, geom_t, &i, &j),
-        3 => face_flux_sized::<3, 6>(spec, relperm, geom_t, &i, &j),
-        4 => face_flux_sized::<4, 8>(spec, relperm, geom_t, &i, &j),
+        2 => face_flux_sized::<2, 4>(spec, relperm, geom_t, gravity, &i, &j),
+        3 => face_flux_sized::<3, 6>(spec, relperm, geom_t, gravity, &i, &j),
+        4 => face_flux_sized::<4, 8>(spec, relperm, geom_t, gravity, &i, &j),
         count => Err(FluxError::UnsupportedComponentCount { count }),
     }
 }
@@ -236,40 +295,62 @@ fn face_flux_sized<const N: usize, const M: usize>(
     spec: &FluidSpecification,
     relperm: HydrocarbonRelPerm,
     geom_t: f64,
+    gravity: Gravity,
     i: &CellFaceData,
     j: &CellFaceData,
 ) -> Result<FaceFlux, FluxError> {
     debug_assert_eq!(M, 2 * N);
 
-    // The potential difference. With zero gravity and zero capillary pressure it is the pressure
-    // difference, and every phase shares it.
     let mut p_i_deriv = [0.0; M];
     p_i_deriv[0] = 1.0;
     let p_i = Ad::<M>::seeded(i.pressure_bar, p_i_deriv);
     let mut p_j_deriv = [0.0; M];
     p_j_deriv[N] = 1.0;
     let p_j = Ad::<M>::seeded(j.pressure_bar, p_j_deriv);
-    let dphi = p_i - p_j;
-
-    // Branch on the value, then freeze. Matches `fim/flux.rs`'s `dphi >= 0.0`: at exactly zero the
-    // first cell is upstream, which is a convention rather than a physical fact and is therefore
-    // tested as one.
-    let upstream_is_first = dphi.value() >= 0.0;
-    let side = if upstream_is_first {
-        UpstreamSide::First
-    } else {
-        UpstreamSide::Second
-    };
-    let (up, offset) = if upstream_is_first {
-        (i, 0usize)
-    } else {
-        (j, N)
-    };
+    let dp = p_i - p_j;
+    let head_coefficient = gravity.head_coefficient();
 
     let mut component_flux = vec![Ad::<M>::constant(0.0); N];
     let mut phase_rates = [0.0f64; 2];
+    let mut phase_potentials = [dp.value(); 2];
+    let mut upstream = [UpstreamSide::First; 2];
 
     for (phase_index, liquid) in [(0usize, true), (1usize, false)] {
+        // The gravity head needs both cells' mass densities, so it is built before the upstream
+        // side is known — that is the whole reason gravity makes the phases disagree about which
+        // way material moves.
+        let rho_i = phase_mass_density::<N, M>(i, 0, liquid);
+        let rho_j = phase_mass_density::<N, M>(j, N, liquid);
+        let rho_avg = match (rho_i, rho_j) {
+            (Some(a), Some(b)) => Some((a + b) * 0.5),
+            // Present in one cell only: use that cell's density rather than averaging against a
+            // number that describes nothing.
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        };
+        let Some(rho_avg) = rho_avg else {
+            // The phase exists nowhere on this face.
+            continue;
+        };
+
+        let dphi = dp - rho_avg * head_coefficient;
+        phase_potentials[phase_index] = dphi.value();
+
+        // Branch on the value, then freeze. `dphi >= 0` selects the first cell, matching
+        // `fim/flux.rs` exactly, including at zero — a convention rather than a physical fact.
+        let upstream_is_first = dphi.value() >= 0.0;
+        upstream[phase_index] = if upstream_is_first {
+            UpstreamSide::First
+        } else {
+            UpstreamSide::Second
+        };
+        let (up, offset) = if upstream_is_first {
+            (i, 0usize)
+        } else {
+            (j, N)
+        };
+
         let Some(phase) = upstream_phase::<N, M>(spec, up, offset, liquid).map_err(|source| {
             FluxError::Transport {
                 cell: if upstream_is_first { 0 } else { 1 },
@@ -277,8 +358,8 @@ fn face_flux_sized<const N: usize, const M: usize>(
             }
         })?
         else {
-            // The phase is absent upstream, so it carries no material across the face. Not a zero
-            // mobility multiplied by an undefined density — no term at all.
+            // The phase is absent in the cell it would be drawn from, so it carries no material
+            // across the face. Not a zero mobility multiplied by an undefined density — no term.
             continue;
         };
 
@@ -300,10 +381,44 @@ fn face_flux_sized<const N: usize, const M: usize>(
     Ok(FaceFlux {
         component_moles_per_day: component_flux.iter().map(|f| f.value()).collect(),
         jacobian,
-        upstream: [side, side],
-        potential_difference_bar: dphi.value(),
+        upstream,
+        phase_potential_bar: phase_potentials,
+        potential_difference_bar: dp.value(),
         phase_rates_m3_per_day: phase_rates,
     })
+}
+
+/// A phase's **mass** density in one cell, with derivatives seeded into that cell's half of the
+/// face's derivative space. `None` when the phase is not present there.
+fn phase_mass_density<const N: usize, const M: usize>(
+    cell: &CellFaceData,
+    offset: usize,
+    liquid: bool,
+) -> Option<Ad<M>> {
+    let present = match (cell.state.phase_state, liquid) {
+        (PhaseState::TwoPhase, _) => true,
+        (PhaseState::SingleLiquid, true) => true,
+        (PhaseState::SingleVapour, false) => true,
+        _ => false,
+    };
+    if !present {
+        return None;
+    }
+    let (props, row) = if liquid {
+        (
+            cell.state.liquid.as_ref().expect("liquid present"),
+            &cell.derivatives.dliquid_mass_density,
+        )
+    } else {
+        (
+            cell.state.vapour.as_ref().expect("vapour present"),
+            &cell.derivatives.dvapour_mass_density,
+        )
+    };
+    Some(Ad::<M>::seeded(
+        props.mass_density,
+        seed::<N, M>(row, offset),
+    ))
 }
 
 /// Build one phase's upstream quantities, or `None` when that phase is absent there.

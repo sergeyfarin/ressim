@@ -88,6 +88,7 @@ run_thermo() {
     run_filter comp_scaling_      7   # C8 row and primary-variable scaling
     run_filter comp_flux_        15   # C9 component face flux
     run_filter comp_assembly_     9   # C9 global residual and Jacobian assembly
+    run_filter comp_gravity_      9   # C9 gravity subtask
     run_filter comp_newton_      10   # C10 Newton solve and update policy
     run_filter comp_rollback_    10   # C10 timestep lifecycle, retry and commit
 }

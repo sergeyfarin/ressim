@@ -261,6 +261,9 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C10 lifecycle** — rejected step | nothing mutates | state, clock and cumulative totals all unchanged, structurally | **Met** |
 | **C10 lifecycle** — multi-step closure | — | over 5 accepted steps, what the grid lost equals what was produced to `< 1e-6` relative | **Met** |
 | **C10 diagnostics** — failure classification | five kinds distinguished | flash, linear, nonlinear, admissibility and budget are separate, and budget carries the underlying failure | **Met** |
+| **C9 gravity** — single-phase hydrostatic | stationary at analytic equilibrium | liquid potential `< 1e-10` bar, flux `< 1e-8` mol/day; a 4-cell column assembles to a scaled residual `< 1e-12` | **Met** |
+| **C9 gravity** — head uses mass density | analytic | matches `rho_mass g dz 1e-5` to `< 1e-9` relative; the molar density is 10x larger and would not | **Met** |
+| **C9 gravity** — Jacobian vs FD | 1e-5 scaled | `< 1e-4` including the new downstream-composition coupling | **Met** |
 | Derivative closure | — | `sum_i d(x_i)/du_v` and `sum_i d(y_i)/du_v` worst 6.1e-16 (`binary_T333_p150`) | The oracle's derivatives satisfy the normalization identity to roundoff |
 | Smooth property derivatives | ≤ 1e-4 relative, on a frozen nonzero derivative scale, over an FD step plateau | Deferred to C4 — needs the Rust implementation to compare against | Not yet |
 | Tiny assembled Jacobian | ≤ 1e-5 scaled entrywise vs FD at smooth states | Deferred to C8/C9 | Not yet |
@@ -330,7 +333,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C6 | **THERMO-READY** | **DECLARED** | `scripts/validate-compositional.sh`; 110 tests; 7 620-sample domain sweep. External flash parity met (§3a); **trajectory parity remains blocked** (§3b) |
 | C7 | Component layout and state | **COMPLETE** | `compositional/{layout,state}.rs`; 30 `comp_layout_*` / `comp_state_*` tests |
 | C8 | Cell inventory, accumulation and scaling | **COMPLETE** | `compositional/accumulation.rs`; 19 `comp_accumulation_*` / `comp_scaling_*` tests |
-| C9 | Component face flux and global assembly | **COMPLETE** except gravity | `compositional/{flux,assembly}.rs`; 24 `comp_flux_*` / `comp_assembly_*` tests. Gravity is its own subtask and is not done |
+| C9 | Component face flux, gravity and global assembly | **COMPLETE** | `compositional/{flux,assembly}.rs`; 33 `comp_flux_*` / `comp_assembly_*` / `comp_gravity_*` tests |
 | C10 | Linear solve, Newton, timestep lifecycle | **COMPLETE** on the direct path | `compositional/{newton,timestep}.rs`; 20 `comp_newton_*` / `comp_rollback_*` tests. The iterative/CPR adapter is deferred — see the C10 record |
 | C11 | Compositional wells | NOT STARTED | `FIM-COMPOSITIONAL-SEAM-READY` declared; **C11's OPM reading list is unavailable here** (plan correction 3) |
 | C12 | NATIVE-COMPOSITIONAL-READY | **BLOCKED** | No compositional Flow executable (§3b) |
@@ -399,10 +402,12 @@ Worst errors:          face Jacobian vs FD < 1e-4; assembled Jacobian vs an inde
                        numerical one < 1e-5 column-scaled; internal-face cancellation exact
 Modelling assumption:  straight-line hydrocarbon relative permeability. Declared, not sourced.
                        See section 6, item 2 - this needs a decision before C12/C13
-NOT done:              gravity. The plan makes it a separate subtask with its own commit, and
-                       it requires a sourced single-phase hydrostatic equilibrium before any
-                       multiphase gravity case. V1 starts at zero gravity, so nothing
-                       downstream is blocked by its absence
+Gravity subtask:       DONE, in its own commit as the plan requires, and gated on a
+                       single-phase hydrostatic equilibrium before any multiphase case. The
+                       oracle is analytic - dp/dz = rho g - not a fixture. Head constant and
+                       sign convention are fim/flux.rs::gravity_head_generic's, reproduced, so
+                       the two models agree about which way is down. Off by default; V1 starts
+                       at zero gravity
 Still zero in V1:      hydrocarbon capillary pressure. Unequal phase pressures need a
                        separately derived equilibrium contract and cannot be enabled by
                        passing an old flag

@@ -2,7 +2,7 @@
 
 use super::accumulation::cell_inventory;
 use super::assembly::Face;
-use super::flux::HydrocarbonRelPerm;
+use super::flux::{Gravity, HydrocarbonRelPerm};
 use super::layout::CompositionalLayout;
 use super::newton::{NewtonError, NewtonOptions, NewtonProblem, solve_newton};
 use super::state::{CompositionalCellState, CompositionalState, RockView};
@@ -62,6 +62,7 @@ fn column(spec: FluidSpecification, cells: usize, p: f64, z: &[f64]) -> Case {
                 cell_i: i,
                 cell_j: i + 1,
                 geom_t: GEOM_T,
+                gravity: Gravity::OFF,
             })
             .collect(),
         state,

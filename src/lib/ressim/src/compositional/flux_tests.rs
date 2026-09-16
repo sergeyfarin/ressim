@@ -1,6 +1,6 @@
 //! C9 face-flux contract tests (`comp_flux_*`).
 
-use super::flux::{FluxError, HydrocarbonRelPerm, UpstreamSide, face_flux};
+use super::flux::{FluxError, Gravity, HydrocarbonRelPerm, UpstreamSide, face_flux};
 use super::state::CompositionalCellState;
 use crate::fluid::flash::{PhaseState, flash};
 use crate::fluid::pinned;
@@ -34,8 +34,8 @@ fn comp_flux_runs_downhill_and_reverses_with_the_pair() {
     let hot = cell(160.0, &[0.2, 0.5]);
     let cold = cell(150.0, &[0.2, 0.5]);
 
-    let forward = face_flux(&spec, RELPERM, GEOM_T, (0, &hot), (1, &cold)).unwrap();
-    let reverse = face_flux(&spec, RELPERM, GEOM_T, (0, &cold), (1, &hot)).unwrap();
+    let forward = face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &hot), (1, &cold)).unwrap();
+    let reverse = face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &cold), (1, &hot)).unwrap();
 
     assert!(forward.potential_difference_bar > 0.0);
     assert_eq!(forward.upstream, [UpstreamSide::First; 2]);
@@ -67,7 +67,7 @@ fn comp_flux_vanishes_between_identical_cells() {
         for p in [50.0, 150.0, 300.0] {
             let a = cell(p, &z);
             let b = cell(p, &z);
-            let f = face_flux(&spec, RELPERM, GEOM_T, (0, &a), (1, &b)).unwrap();
+            let f = face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &a), (1, &b)).unwrap();
             assert_eq!(f.potential_difference_bar, 0.0);
             for c in 0..spec.component_count() {
                 assert_eq!(
@@ -87,7 +87,7 @@ fn comp_flux_contributions_to_the_two_cells_cancel_exactly() {
     let spec = pinned::ternary().unwrap();
     let a = cell(170.0, &[0.25, 0.45]);
     let b = cell(140.0, &[0.15, 0.55]);
-    let f = face_flux(&spec, RELPERM, GEOM_T, (0, &a), (1, &b)).unwrap();
+    let f = face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &a), (1, &b)).unwrap();
 
     for c in 0..3 {
         let into_i = -f.component_moles_per_day[c];
@@ -105,7 +105,7 @@ fn comp_flux_uses_the_upstream_composition() {
     let rich = cell(200.0, &[0.05, 0.10]);
     let lean = cell(150.0, &[0.45, 0.45]);
 
-    let f = face_flux(&spec, RELPERM, GEOM_T, (0, &rich), (1, &lean)).unwrap();
+    let f = face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &rich), (1, &lean)).unwrap();
     assert_eq!(f.upstream, [UpstreamSide::First; 2]);
 
     let total: f64 = f.component_moles_per_day.iter().sum();
@@ -160,6 +160,7 @@ fn comp_flux_single_phase_upstream_moves_only_the_phase_that_exists() {
         &spec,
         RELPERM,
         GEOM_T,
+        Gravity::OFF,
         (0, &liquid_up),
         (1, &two_phase_down),
     )
@@ -186,8 +187,8 @@ fn comp_flux_depends_on_the_downstream_cell_only_through_its_pressure() {
     // phase states.
     let down_a = cell(150.0, &[0.2, 0.5]);
     let down_b = cell(150.0, &[0.05, 0.05]);
-    let a = face_flux(&spec, RELPERM, GEOM_T, (0, &up), (1, &down_a)).unwrap();
-    let b = face_flux(&spec, RELPERM, GEOM_T, (0, &up), (1, &down_b)).unwrap();
+    let a = face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &up), (1, &down_a)).unwrap();
+    let b = face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &up), (1, &down_b)).unwrap();
 
     for c in 0..3 {
         assert_eq!(
@@ -216,7 +217,7 @@ fn comp_flux_two_phase_upstream_moves_both_phases_at_different_mobilities() {
     .unwrap();
     assert_eq!(state.phase_state, PhaseState::TwoPhase);
 
-    let f = face_flux(&spec, RELPERM, GEOM_T, (0, &up), (1, &down)).unwrap();
+    let f = face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &up), (1, &down)).unwrap();
     let (q_l, q_v) = (f.phase_rates_m3_per_day[0], f.phase_rates_m3_per_day[1]);
     assert!(
         q_l > 0.0 && q_v > 0.0,
@@ -245,7 +246,7 @@ fn comp_flux_zero_potential_takes_the_first_cell_upstream() {
     // Same pressure, different compositions, so the choice of upstream side is observable.
     let a = cell(150.0, &[0.2, 0.5]);
     let b = cell(150.0, &[0.05, 0.05]);
-    let f = face_flux(&spec, RELPERM, GEOM_T, (0, &a), (1, &b)).unwrap();
+    let f = face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &a), (1, &b)).unwrap();
 
     assert_eq!(f.potential_difference_bar, 0.0);
     assert_eq!(f.upstream, [UpstreamSide::First; 2]);
@@ -263,10 +264,18 @@ fn comp_flux_upstream_branch_is_stable_away_from_zero() {
     let down = cell(150.0, &[0.6]);
     for delta in [1e-9, 1e-6, 1e-3, 1.0, 50.0] {
         let up = cell(150.0 + delta, &[0.6]);
-        let f = face_flux(&spec, RELPERM, GEOM_T, (0, &up), (1, &down)).unwrap();
+        let f = face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &up), (1, &down)).unwrap();
         assert_eq!(f.upstream, [UpstreamSide::First; 2], "delta = {delta}");
         let flipped = cell(150.0 - delta, &[0.6]);
-        let g = face_flux(&spec, RELPERM, GEOM_T, (0, &flipped), (1, &down)).unwrap();
+        let g = face_flux(
+            &spec,
+            RELPERM,
+            GEOM_T,
+            Gravity::OFF,
+            (0, &flipped),
+            (1, &down),
+        )
+        .unwrap();
         assert_eq!(g.upstream, [UpstreamSide::Second; 2], "delta = -{delta}");
     }
 }
@@ -313,7 +322,15 @@ fn comp_flux_jacobian_matches_finite_differences_on_both_neighbours() {
         let n = spec.component_count();
         let base_i = cell(p_i, &z_i);
         let base_j = cell(p_j, &z_j);
-        let base = face_flux(&spec, RELPERM, GEOM_T, (0, &base_i), (1, &base_j)).unwrap();
+        let base = face_flux(
+            &spec,
+            RELPERM,
+            GEOM_T,
+            Gravity::OFF,
+            (0, &base_i),
+            (1, &base_j),
+        )
+        .unwrap();
 
         // Pressure columns on each side.
         for (side, offset) in [(0usize, 0usize), (1usize, n)] {
@@ -328,8 +345,10 @@ fn comp_flux_jacobian_matches_finite_differences_on_both_neighbours() {
             } else {
                 (base_i.clone(), cell(p_j - h, &z_j))
             };
-            let up = face_flux(&spec, RELPERM, GEOM_T, (0, &up_i), (1, &up_j)).unwrap();
-            let dn = face_flux(&spec, RELPERM, GEOM_T, (0, &dn_i), (1, &dn_j)).unwrap();
+            let up =
+                face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &up_i), (1, &up_j)).unwrap();
+            let dn =
+                face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &dn_i), (1, &dn_j)).unwrap();
 
             for c in 0..n {
                 let fd =
@@ -361,8 +380,10 @@ fn comp_flux_jacobian_matches_finite_differences_on_both_neighbours() {
                 };
                 let (ui, uj) = perturb(1.0);
                 let (di, dj) = perturb(-1.0);
-                let up = face_flux(&spec, RELPERM, GEOM_T, (0, &ui), (1, &uj)).unwrap();
-                let dn = face_flux(&spec, RELPERM, GEOM_T, (0, &di), (1, &dj)).unwrap();
+                let up =
+                    face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &ui), (1, &uj)).unwrap();
+                let dn =
+                    face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &di), (1, &dj)).unwrap();
 
                 for c in 0..n {
                     let fd =
@@ -396,7 +417,7 @@ fn comp_flux_jacobian_depends_on_both_neighbours() {
     let spec = pinned::ternary().unwrap();
     let a = cell(170.0, &[0.2, 0.5]);
     let b = cell(140.0, &[0.25, 0.45]);
-    let f = face_flux(&spec, RELPERM, GEOM_T, (0, &a), (1, &b)).unwrap();
+    let f = face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &a), (1, &b)).unwrap();
 
     assert_eq!(f.jacobian.len(), 3);
     assert_eq!(f.jacobian[0].len(), 6);
@@ -450,7 +471,7 @@ fn comp_flux_a_sealed_face_carries_nothing() {
     let spec = pinned::ternary().unwrap();
     let a = cell(200.0, &[0.2, 0.5]);
     let b = cell(150.0, &[0.2, 0.5]);
-    let f = face_flux(&spec, RELPERM, 0.0, (0, &a), (1, &b)).unwrap();
+    let f = face_flux(&spec, RELPERM, 0.0, Gravity::OFF, (0, &a), (1, &b)).unwrap();
     for c in 0..3 {
         assert_eq!(f.component_moles_per_day[c], 0.0);
         assert!(f.jacobian[c].iter().all(|d| *d == 0.0));
@@ -464,8 +485,16 @@ fn comp_flux_is_linear_in_the_transmissibility() {
     let spec = pinned::binary().unwrap();
     let a = cell(170.0, &[0.6]);
     let b = cell(150.0, &[0.6]);
-    let one = face_flux(&spec, RELPERM, GEOM_T, (0, &a), (1, &b)).unwrap();
-    let ten = face_flux(&spec, RELPERM, 10.0 * GEOM_T, (0, &a), (1, &b)).unwrap();
+    let one = face_flux(&spec, RELPERM, GEOM_T, Gravity::OFF, (0, &a), (1, &b)).unwrap();
+    let ten = face_flux(
+        &spec,
+        RELPERM,
+        10.0 * GEOM_T,
+        Gravity::OFF,
+        (0, &a),
+        (1, &b),
+    )
+    .unwrap();
     for c in 0..2 {
         assert!(
             rel(
@@ -483,7 +512,7 @@ fn comp_flux_rejects_an_invalid_transmissibility() {
     let b = cell(150.0, &[0.6]);
     for bad in [-1.0, f64::NAN, f64::INFINITY] {
         assert!(matches!(
-            face_flux(&spec, RELPERM, bad, (0, &a), (1, &b)),
+            face_flux(&spec, RELPERM, bad, Gravity::OFF, (0, &a), (1, &b)),
             Err(FluxError::InvalidTransmissibility { .. })
         ));
     }

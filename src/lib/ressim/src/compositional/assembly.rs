@@ -19,7 +19,7 @@
 use crate::fluid::specification::FluidSpecification;
 
 use super::accumulation::{AccumulationError, CellInventory, EquationScaling, cell_accumulation};
-use super::flux::{FluxError, HydrocarbonRelPerm, face_flux};
+use super::flux::{FluxError, Gravity, HydrocarbonRelPerm, face_flux};
 use super::layout::CompositionalLayout;
 use super::state::{CompositionalCellState, CompositionalState, RockView};
 
@@ -30,6 +30,8 @@ pub struct Face {
     pub cell_j: usize,
     /// `DARCY_METRIC_FACTOR * geometric_transmissibility` [m³/day/bar per 1/cP].
     pub geom_t: f64,
+    /// Gravity for this face. [`Gravity::OFF`] is V1's default.
+    pub gravity: Gravity,
 }
 
 /// Why assembly failed.
@@ -192,6 +194,7 @@ pub fn assemble(
             spec,
             relperm,
             face.geom_t,
+            face.gravity,
             (face.cell_i, state.cell(face.cell_i)),
             (face.cell_j, state.cell(face.cell_j)),
         )

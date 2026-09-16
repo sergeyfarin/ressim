@@ -1,7 +1,7 @@
 //! C10 timestep-lifecycle contract tests (`comp_rollback_*`).
 
 use super::assembly::Face;
-use super::flux::HydrocarbonRelPerm;
+use super::flux::{Gravity, HydrocarbonRelPerm};
 use super::layout::CompositionalLayout;
 use super::newton::NewtonOptions;
 use super::state::{CompositionalCellState, CompositionalState, FlashCacheKey, RockView};
@@ -46,6 +46,7 @@ fn setup(
             cell_i: i,
             cell_j: i + 1,
             geom_t: GEOM_T,
+            gravity: Gravity::OFF,
         })
         .collect();
     (spec, layout, faces, CompositionalRun::new(state))

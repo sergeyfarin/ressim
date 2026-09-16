@@ -31,6 +31,8 @@ mod assembly_tests;
 #[cfg(test)]
 mod flux_tests;
 #[cfg(test)]
+mod gravity_tests;
+#[cfg(test)]
 mod layout_tests;
 #[cfg(test)]
 mod newton_tests;
