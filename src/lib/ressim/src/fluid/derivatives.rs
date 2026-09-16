@@ -81,8 +81,7 @@
 //! single-phase state would be solving a singular one.
 
 use super::eos::{
-    CubicRoots, EosError, PhaseBranch, ln_fugacity_coefficients_generic, mixture_params_generic,
-    z_roots,
+    EosError, PhaseBranch, ln_fugacity_coefficients_generic, mixture_params_generic, z_roots,
 };
 use super::flash::{FlashState, PhaseState};
 use super::specification::FluidSpecification;

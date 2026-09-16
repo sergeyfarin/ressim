@@ -21,6 +21,7 @@ use wasm_bindgen::prelude::*;
 
 mod ad;
 mod capillary;
+mod compositional;
 mod fim;
 mod fluid;
 mod frontend;

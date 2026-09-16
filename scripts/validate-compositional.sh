@@ -82,6 +82,8 @@ run_thermo() {
     run_filter comp_transport_  11   # C5 LBC and saturations
     run_filter comp_surface_    10   # C5 surface separation
     run_filter comp_domain_      4   # C6 domain sweep
+    run_filter comp_layout_     12   # C7 component layout
+    run_filter comp_state_      18   # C7 accepted/trial state, cache, checkpoints
 }
 
 run_fixture() {

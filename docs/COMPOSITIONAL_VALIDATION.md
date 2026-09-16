@@ -244,6 +244,9 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C6 sweep** — equilibrium-Jacobian pivot | — | 4.8e-4 worst | Recorded |
 | **C6 sweep** — substitution iterations | bounded below the 5 000 cap | 747 worst | Recorded |
 | **C6 trace components** | conserved | `< 1e-8` relative down to `z_i = 1e-10` | **Met** |
+| **C7 layout** — indexing | bijective for N=2,3,4 | every cell column and row reached exactly once, round-tripping through the split | **Met** |
+| **C7 layout** — shared metadata | identical partition | `FimLinearBlockLayout` and `CompositionalLayout` agree on every cell column, for all three N | **Met** |
+| **C7 state** — cache neutrality | results unchanged | bit-identical flash results with the cache dropped | **Met** |
 | Derivative closure | — | `sum_i d(x_i)/du_v` and `sum_i d(y_i)/du_v` worst 6.1e-16 (`binary_T333_p150`) | The oracle's derivatives satisfy the normalization identity to roundoff |
 | Smooth property derivatives | ≤ 1e-4 relative, on a frozen nonzero derivative scale, over an FD step plateau | Deferred to C4 — needs the Rust implementation to compare against | Not yet |
 | Tiny assembled Jacobian | ≤ 1e-5 scaled entrywise vs FD at smooth states | Deferred to C8/C9 | Not yet |
@@ -291,13 +294,44 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C4 | Equilibrium and property derivatives | **COMPLETE** | `fluid/derivatives.rs`; 11 `comp_derivatives_*` tests |
 | C5 | Transport properties and surface flash | **COMPLETE** | `fluid/transport.rs`; 17 `comp_transport_*` / `comp_surface_*` tests |
 | C6 | **THERMO-READY** | **DECLARED** | `scripts/validate-compositional.sh`; 110 tests; 7 620-sample domain sweep. External flash parity met (§3a); **trajectory parity remains blocked** (§3b) |
-| C7 | Component layout and state | NOT STARTED | Prerequisite `fim/layout.rs` available |
+| C7 | Component layout and state | **COMPLETE** | `compositional/{layout,state}.rs`; 30 `comp_layout_*` / `comp_state_*` tests |
 | C8–C11 | Accumulation, flux, Newton, wells | NOT STARTED | `FIM-COMPOSITIONAL-SEAM-READY` declared at `6be6d08` |
 | C12 | NATIVE-COMPOSITIONAL-READY | **BLOCKED** | No compositional Flow executable (§3b) |
 | C13–C14 | WASM, product integration, release | NOT STARTED | Gated on C12 |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
 ## 8. Completion records
+
+### C7 — component layout, state and the geometry boundary
+
+```text
+C-task:                C7
+Start / final commit:  26bb4b1 / this commit
+Component/phase count: N=2 and N=3 production layouts, plus a layout-only N=4 case
+Consumed from F7:      FimLinearBlockLayout (fim/linear/mod.rs) as the shared linear metadata,
+                       and fim::layout::CellPrimary::Pressure's local index as the CPR
+                       pressure-column convention. Neither is re-derived
+Changed interfaces:    new private module `compositional` with `layout` and `state`. The
+                       black-oil CELL_BLOCK_SIZE, offsets and layout are untouched, and a test
+                       asserts it
+Tests created:         30 - comp_layout_* 12, comp_state_* 18
+Commands:              bash scripts/validate-compositional.sh all
+                       bash scripts/validate-solver-coverage.sh all
+Results:               140 comp_ tests pass; compositional gate green; solver coverage 38/38;
+                       fmt clean; wasm32 compiles; no new build warnings
+Design decisions:      - a cell stores p and z_0..z_(N-2); the dependent component is derived,
+                         never stored, so sum z = 1 cannot be broken by an update
+                       - accepted state and Newton trial are separate types and the only route
+                         between them is commit(), so "a rejected step changed nothing" is a
+                         property rather than a claim
+                       - the flash cache keys on exact bit patterns plus the state version, so
+                         a commit invalidates everything without walking the cache
+                       - RockView borrows the pore-volume array and the two rock constants, and
+                         nothing else; no ReservoirSimulator reaches the physics
+Completed gate:        C7
+Next permitted task:   C8 (prerequisites THERMO-READY and FIM-COMPOSITIONAL-SEAM-READY are both
+                       satisfied)
+```
 
 ### C6 — THERMO-READY
 
