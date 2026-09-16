@@ -14,7 +14,7 @@
 //! Units inside this module are SI — Pa, K, mol, m³, kg/mol — without exception. The reservoir's
 //! oil-field units stop at [`units`].
 //!
-//! Status: C1 complete (specification and units). C2–C5 not yet implemented.
+//! Status: C1 and C2 complete (specification, units, PR EOS). C3–C5 not yet implemented.
 
 // The specification and unit API is consumed by this module's own tests and, from C2 onward, by
 // the EOS. Until then the crate has no non-test caller, and without this the build gains ~30
@@ -23,9 +23,14 @@
 // every unit conversion here.
 #![allow(dead_code)]
 
+pub mod eos;
+#[cfg(test)]
+pub(crate) mod fixture;
 pub mod pinned;
 pub mod specification;
 pub(crate) mod units;
 
+#[cfg(test)]
+mod eos_tests;
 #[cfg(test)]
 mod tests;

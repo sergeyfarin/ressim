@@ -105,6 +105,15 @@ The two that have already caused confusion in the source material:
 - **`beta` is the vapour mole fraction.** OPM's `L` is the **liquid** mole fraction and its
   `rachfordRice_g_` solves for `L`. `beta = 1 - L`. The fixture writes both fields out so nothing
   downstream infers which is which.
+- **The gas constant differs from the oracle's.** OPM's `Constants.hpp` uses the superseded
+  `R = 8.314472`; ResSim uses the exact SI `8.31446261815324`. The difference is **+1.128e-6
+  relative**, an order of magnitude above the 1e-7 density target. It is handled by an exact
+  conversion rather than a widened tolerance, because the dependence is analytic: `A_i = Omega_A
+  p_r / T_r^2` and `B_i = Omega_B p_r / T_r` contain no `R`, so `Z`, `A`, `B` and every fugacity
+  coefficient are `R`-independent, and only `V_m = Z R T / p` and its reciprocal carry the factor,
+  linearly. A C2 test asserts the uncorrected density discrepancy is that ratio and nothing else,
+  which turns the mismatch into a check on where `R` enters. LBC viscosity depends on `R`
+  non-linearly through the reduced density, so C5 must handle it separately.
 - **Flash phase fraction is not saturation.** `S_vapour = (beta/cV) / v_mixture` with
   `v_mixture = (1-beta)/cL + beta/cV`. Never set `S_vapour = beta`.
 
@@ -133,12 +142,22 @@ bash tools/opm_compositional/generate.sh --check  # verify the committed fixture
 | Packages | `libopm-common-dev` / `libopm-simulators-dev` 2026.04-1~noble, `libdune-common-dev` 2.11.0-1~noble |
 | Compiler | `g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0`, `-std=c++20` (C++17 does not compile) |
 
-**Contents:** 47 states — 29 two-phase, 15 single-liquid, 3 single-vapour — across both fluid
+**Flashed states: 47** — 29 two-phase, 15 single-liquid, 3 single-vapour — across both fluid
 systems, two isotherms, a 10–500 bar pressure traverse that crosses a phase boundary, composition
-sweeps from light-rich to heavy-rich, and trace-component states at 1e-6. Each state carries
+sweeps from light-rich to heavy-rich, and trace-component states at 1e-6. Each carries
 `L`/`beta`, `x`, `y`, per-phase molar volume, molar and mass density, Z factor, EOS `A`/`B`,
 fugacity coefficients, LBC viscosity, and analytic derivatives of `L`, `x`, `y`, molar density,
 mass density and viscosity with respect to `u = [p_Pa, z_0 .. z_(N-2)]`.
+
+**Flash-free EOS states: 21**, added during C2 (schema `/2`). These evaluate OPM's cubic directly
+at a given `(p, T, x)` with no stability test, and report both extreme roots. They exist because
+**none of the 47 flashed states has three real roots** — at 150 °C every one is monotonic, so a
+port could get the root-labelling rule completely wrong and still reproduce the entire flashed
+fixture. C2 requires a multi-root state explicitly, and seven of these are genuinely multi-root:
+pure n-decane below its vapour pressure at `T_r = 0.685`, plus C10-rich binary and ternary
+mixtures in the same region. Pure methane is supercritical there and gives one root at every
+pressure, which is the contrast that makes the test meaningful. They also cover pure components,
+which PTFlash cannot flash at all (§4, limit 1) but the EOS evaluates without difficulty.
 
 **Derivatives are a first-class part of this oracle, not a bonus.** PTFlash reconstructs them by
 implicit differentiation of the converged equilibrium, which is the pattern C4 is instructed to
@@ -175,7 +194,7 @@ instead.
 
 | Limit | Evidence | Consequence |
 | --- | --- | --- |
-| An exactly zero component is unsupported | `checkStability_` forms `z_i/K_i` and `K_i*z_i`; every `z_i = 0` state throws `Stability test did not converge`. OPM's own TODO: "make sure that no mole fraction is smaller than 1e-8?" | The binary is its own fluid system, not the ternary with `z_CO2 = 0`. Composition sweeps stop at 0.001. **C1's active-component policy for true zeros and C3's zero-component handling cannot be validated against this oracle.** |
+| An exactly zero component is unsupported **by the flash** | `checkStability_` forms `z_i/K_i` and `K_i*z_i`; every `z_i = 0` state throws `Stability test did not converge`. OPM's own TODO: "make sure that no mole fraction is smaller than 1e-8?" | The binary is its own fluid system, not the ternary with `z_CO2 = 0`. Composition sweeps stop at 0.001. **C1's active-component policy for true zeros and C3's zero-component handling cannot be validated against the flash.** The *EOS* has no such limit, and the flash-free section covers pure components — so this constrains C3, not C2 |
 | `K` must be seeded by the caller | PTFlash never applies its own `wilsonK_`; `K = 0` fails every state | "Cold start" in this fixture means the Wilson correlation, not zero |
 | Flash tolerance floor ≈ 1e-9 | At `--tolerance 1e-11`, 27 of 47 states fail `Newton composition update did not converge`; at `1e-9` all 47 resolve | Pinned tolerance is `1e-9`. This caps the achievable equilibrium residual — see §5 |
 | Six states need the SSI-only path | Method chain is `ssi+newton` then `ssi`; `method_used` is recorded per state | No fixture value is anonymous about how it was reached |
@@ -194,6 +213,11 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | Flash `z` reconstruction | ≤ 1e-10 max absolute per component | 1.1e-16 (`ternary_p90`) | Yes, 6 orders of margin |
 | Two-phase equilibrium | ≤ 1e-8 max abs log-fugacity ratio | 5.1e-10 (`binary_p100`) | Yes, ~20x margin. Set by the 1e-9 flash tolerance floor; a tighter target would need a better reference |
 | Scalar EOS/flash fixture | 1e-7 relative on density/fugacity, 1e-8 absolute on `beta`/composition | Fixture stores 17 significant digits, so serialization never limits the test; the reference's own equilibrium quality is 5.1e-10 | Yes |
+| **C2 EOS vs fixture** — mixture `A`, `B` | — | `< 1e-13` relative over 188 comparisons | **Met** |
+| **C2 EOS vs fixture** — compressibility factor | — | `< 1e-12` relative over 94 branch evaluations | **Met** |
+| **C2 EOS vs fixture** — fugacity coefficients | 1e-7 relative | `< 1e-11` relative over 244 comparisons | **Met**, 4 orders of margin |
+| **C2 EOS vs fixture** — densities | 1e-7 relative | `< 1e-7` after the exact gas-constant correction; the uncorrected discrepancy is a pure ratio to `< 1e-12` | **Met** |
+| **C2 EOS vs fixture** — flash-free states | — | `< 1e-11` relative over 150+ comparisons including 7 multi-root states | **Met** |
 | Derivative closure | — | `sum_i d(x_i)/du_v` and `sum_i d(y_i)/du_v` worst 6.1e-16 (`binary_T333_p150`) | The oracle's derivatives satisfy the normalization identity to roundoff |
 | Smooth property derivatives | ≤ 1e-4 relative, on a frozen nonzero derivative scale, over an FD step plateau | Deferred to C4 — needs the Rust implementation to compare against | Not yet |
 | Tiny assembled Jacobian | ≤ 1e-5 scaled entrywise vs FD at smooth states | Deferred to C8/C9 | Not yet |
@@ -228,7 +252,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | --- | --- | --- | --- |
 | C0 | Frozen scope, fluid dataset, oracles, acceptance contract | **COMPLETE** | This document; `opm/compositional/`; `tools/opm_compositional/` |
 | C1 | Fluid specification and unit-safe input | **COMPLETE** | `src/lib/ressim/src/fluid/{specification,units,pinned}.rs`; 26 `comp_spec_*` / `comp_units_*` tests |
-| C2 | PR mixture EOS and single-phase properties | NOT STARTED | — |
+| C2 | PR mixture EOS and single-phase properties | **COMPLETE** | `src/lib/ressim/src/fluid/eos.rs`; 22 `comp_eos_*` tests |
 | C3 | Stability and scalar PT flash | NOT STARTED | — |
 | C4 | Equilibrium and property derivatives | NOT STARTED | — |
 | C5 | Transport properties and surface flash | NOT STARTED | — |
@@ -240,6 +264,39 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
 ## 8. Completion records
+
+### C2 — Peng–Robinson mixture EOS and single-phase properties
+
+```text
+C-task:                C2
+Start / final commit:  cbf2142 / this commit
+Component/phase count: N=2 and N=3; single-phase branches only - no equilibrium is computed
+Source equations:      eos/PRParams.hpp        - Omega_A, Omega_B, m1, m2, f(w)
+                       eos/CubicEOSParams.hpp  - A_i, B_i, a_ij mixing rule, mixture A and B
+                       eos/CubicEOS.hpp        - cubic coefficients, root labelling, ln phi
+                       common/PolynomialUtils.hpp - trigonometric/hyperbolic cubic solver
+                       all libopm-common-dev 2026.04-1~noble
+Changed interfaces:    new `fluid::eos`; fixture schema /1 -> /2 (adds `eos_states`); no
+                       existing interface, public API or WASM surface changed
+Tests created:         22 comp_eos_* in fluid/eos_tests.rs
+Commands:              cargo test --manifest-path src/lib/ressim/Cargo.toml comp_
+                       cargo fmt --manifest-path src/lib/ressim/Cargo.toml -- --check
+                       cargo check --manifest-path src/lib/ressim/Cargo.toml \
+                           --target wasm32-unknown-unknown
+                       bash tools/opm_compositional/generate.sh --check
+                       bash scripts/validate-solver-coverage.sh shared
+Results:               48/48 comp_ pass; fmt clean; wasm32 compiles; fixture reproduces
+                       byte-for-byte; shared gate 17/17
+Worst errors:          A/B 1e-13, Z 1e-12, phi 1e-11, density 1e-7 after the exact R correction,
+                       flash-free states 1e-11. See the acceptance matrix in section 5
+Native/WASM coverage:  both
+Fixture change:        the original 47 flashed states contain no three-root cubic, so 21
+                       flash-free EOS states were added to satisfy C2's multi-root requirement
+Deliberate divergence: OPM's phi clamp, mole-fraction clamp and molar-volume floor are NOT
+                       reproduced; a test confirms no fixture state approaches any of them
+Completed gate:        C2
+Next permitted task:   C3
+```
 
 ### C1 — fluid specification and unit-safe input
 

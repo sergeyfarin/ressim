@@ -22,13 +22,39 @@ pub(crate) const PA_PER_BAR: f64 = 1.0e5;
 /// Pascal-seconds per centipoise. Exact by definition of the poise.
 pub(crate) const PA_S_PER_CP: f64 = 1.0e-3;
 
-/// Universal gas constant, J/(mol·K).
-///
-/// The 2019 SI redefinition makes this exact: `R = N_A * k_B` with both defined constants.
-/// OPM's `Opm::Constants<Scalar>::R` carries the same value, which matters because the fixture in
-/// `opm/compositional/` was generated with it — a different `R` would shift every reported
-/// compressibility factor and molar volume by a constant relative amount.
+/// Universal gas constant, J/(mol·K). Exact since the 2019 SI redefinition: `R = N_A * k_B`.
 pub(crate) const GAS_CONSTANT_J_PER_MOL_K: f64 = 8.314_462_618_153_24;
+
+/// The gas constant OPM uses, and therefore the one baked into
+/// `opm/compositional/ptflash_fixtures.json`.
+///
+/// `/usr/include/opm/material/Constants.hpp` line 47 defines `R = 8.314472` — the CODATA-2006
+/// value, superseded by the 2019 redefinition. It differs from [`GAS_CONSTANT_J_PER_MOL_K`] by
+/// **+1.128e-6 relative**, which is an order of magnitude *above* the plan's 1e-7 relative
+/// admission target for density. Ignoring it would make every density comparison against the
+/// fixture fail for a reason that has nothing to do with the EOS.
+///
+/// ResSim uses the exact SI value in its own physics. This constant exists only so the fixture
+/// comparison can convert, and the conversion is exact rather than absorbed into a tolerance,
+/// because the dependence is analytic: `A` and `B` contain no `R` at all (`A_i = OmegaA * p_r /
+/// T_r^2`, `B_i = OmegaB * p_r / T_r`), so the compressibility factor and the fugacity
+/// coefficients are `R`-independent, and only `V_m = Z R T / p` and its reciprocal carry the
+/// factor — linearly. See [`opm_density_to_si`].
+pub(crate) const OPM_GAS_CONSTANT_J_PER_MOL_K: f64 = 8.314472;
+
+/// Convert a molar or mass density computed with OPM's `R` to one computed with the SI `R`.
+///
+/// Density is `p / (Z R T)`, so it scales as `1/R`: a larger `R` gives a smaller density. OPM's
+/// `R` is the larger of the two, so its densities are the smaller ones and this factor is
+/// slightly greater than 1.
+pub(crate) fn opm_density_to_si(density_with_opm_r: f64) -> f64 {
+    density_with_opm_r * (OPM_GAS_CONSTANT_J_PER_MOL_K / GAS_CONSTANT_J_PER_MOL_K)
+}
+
+/// Convert a molar volume computed with OPM's `R` to one computed with the SI `R`.
+pub(crate) fn opm_molar_volume_to_si(vm_with_opm_r: f64) -> f64 {
+    vm_with_opm_r * (GAS_CONSTANT_J_PER_MOL_K / OPM_GAS_CONSTANT_J_PER_MOL_K)
+}
 
 /// Zero Celsius in kelvin.
 pub(crate) const KELVIN_AT_ZERO_CELSIUS: f64 = 273.15;
@@ -166,8 +192,6 @@ mod tests {
         assert!((mass_density_kg_per_m3(molar_density, mean_mw) - 510.0).abs() < 1e-9);
     }
 
-    /// `R` must match the value OPM used to generate the fixture, or every compressibility factor
-    /// comparison in C2 inherits a constant relative offset.
     #[test]
     fn comp_units_gas_constant_matches_si_definition() {
         // R = N_A * k_B, both exact since the 2019 SI redefinition.
@@ -177,6 +201,42 @@ mod tests {
         assert!(
             (GAS_CONSTANT_J_PER_MOL_K - r).abs() / r < 1e-15,
             "R disagrees with N_A * k_B: {GAS_CONSTANT_J_PER_MOL_K} vs {r}"
+        );
+    }
+
+    /// The offset between OPM's legacy `R` and the SI one is large enough to break a 1e-7 density
+    /// comparison on its own. This test pins its size so the number quoted in
+    /// `COMPOSITIONAL_VALIDATION.md` cannot drift away from the code.
+    #[test]
+    fn comp_units_opm_gas_constant_offset_is_above_the_density_tolerance() {
+        let rel = (OPM_GAS_CONSTANT_J_PER_MOL_K - GAS_CONSTANT_J_PER_MOL_K).abs()
+            / GAS_CONSTANT_J_PER_MOL_K;
+        assert!(
+            (rel - 1.128e-6).abs() < 1e-9,
+            "the OPM/SI gas-constant offset moved: {rel:e}"
+        );
+        assert!(
+            rel > 1e-7,
+            "if this ever drops below the density tolerance the conversion can be retired"
+        );
+    }
+
+    /// Density scales as `1/R`, so converting one way and back is the identity, and OPM's larger
+    /// `R` must yield the *smaller* density — i.e. the correction factor is above one.
+    #[test]
+    fn comp_units_opm_density_conversion_is_invertible_and_signed_correctly() {
+        let rho_opm = 543.54;
+        let rho_si = opm_density_to_si(rho_opm);
+        assert!(
+            rho_si > rho_opm,
+            "OPM's larger R gives a smaller density, so the SI value must be larger"
+        );
+        // Round-trip through the molar-volume form, which carries the reciprocal factor.
+        let vm_opm = 1.0 / rho_opm;
+        let vm_si = opm_molar_volume_to_si(vm_opm);
+        assert!(
+            (1.0 / vm_si - rho_si).abs() / rho_si < 1e-15,
+            "the volume and density conversions must be exact reciprocals"
         );
     }
 }

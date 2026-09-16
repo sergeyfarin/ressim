@@ -123,10 +123,35 @@ tool must never be cited as though it had.
 It is also not a validation of ResSim. It produces reference numbers. The tests that consume them
 live in the Rust crate and are listed in `COMPOSITIONAL_VALIDATION.md`.
 
+## Two kinds of state
+
+`states` are **flashed**: PTFlash decides the phase state and the harness reports the equilibrium.
+
+`eos_states` are **not flashed**. The harness evaluates OPM's cubic EOS directly at a given
+`(p, T, x)` and reports both extreme roots, with no stability test and therefore no claim about
+which phase is present. They were added after the first fixture revealed that **none of the 47
+flashed states has three real roots** — at 150 °C every one of them is monotonic, so a port could
+get the root-labelling rule completely wrong and still reproduce the entire fixture. The plan's C2
+requires "at least one state where two algebraic roots must not be treated as two coexisting
+stable phases"; these supply it, and they also cover pure components, which PTFlash cannot flash
+at all but the EOS evaluates without difficulty.
+
+Both roots come out of OPM unchanged: `PTFlashParameterCache::updateMolarVolume_` calls
+`computeMolarVolume` with `isGasPhase=true` for the gas index and `false` for the oil index,
+selecting the largest and smallest root of the same cubic. Setting both phase compositions to the
+same `x` reads both off one composition. When the cubic has a single real root the two are
+identical — itself a contract worth testing.
+
+Seven of the 21 flash-free states are genuinely multi-root: pure n-decane below its vapour
+pressure at 423 K (`T_r = 0.685`), and C10-rich binary and ternary mixtures in the same region.
+Pure methane (`T_c = 190.6 K`) is supercritical there and gives one root at every pressure, which
+is the contrast that makes the test meaningful.
+
 ## Output
 
 One JSON object with two `systems` entries (binary first, then ternary), each carrying its
-component table, interaction matrix, and a list of flashed `states`. Units are SI throughout —
+component table, interaction matrix, a list of flash-free `eos_states`, and a list of flashed
+`states`. Units are SI throughout —
 Pa, K, mol, m³, kg, Pa·s — and stated in the `units` field. Critical volume is m³/kmol, matching
 how `LBC.hpp` consumes `criticalVolume()` (it divides by 1000).
 

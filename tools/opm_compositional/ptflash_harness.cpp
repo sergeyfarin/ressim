@@ -235,6 +235,91 @@ private:
     }
 };
 
+// -------------------------------------------------------------------------------------------
+// Flash-free EOS states
+//
+// The flashed states above never exercise the cubic's three-real-root branch: at 150 C every one
+// of them is monotonic, so a Rust port could get the root-labelling rule completely wrong and
+// still reproduce the whole fixture. The plan's C2 explicitly requires "at least one state where
+// two algebraic roots must not be treated as two coexisting stable phases", so these states exist
+// to supply exactly that.
+//
+// They also close the gap PTFlash leaves at pure components: Michelsen's stability test cannot
+// handle z_i = 0, but the EOS itself has no such limitation, and evaluating it directly is
+// legitimate precisely because no stability claim is being made. A three-root state here is a
+// statement about the *algebra*, and nothing in this section should be read as saying which phase
+// is present.
+//
+// Both extreme roots come out of OPM unchanged: `PTFlashParameterCache::updateMolarVolume_` calls
+// `computeMolarVolume` with isGasPhase=true for the gas index and false for the oil index, which
+// selects the largest and smallest root of the same cubic. Setting both phase compositions to the
+// same x therefore reads both roots off one composition.
+// -------------------------------------------------------------------------------------------
+
+template <int NC>
+struct EosCase {
+    std::string id;
+    Scalar p_pa;
+    Scalar t_k;
+    std::array<Scalar, NC> x;
+    std::string note;
+};
+
+template <int NC>
+struct EosResult {
+    std::string status = "ok";
+    std::string error;
+    std::array<Scalar, 2> vm{}, rho_molar{}, rho_mass{}, z_factor{};
+    std::array<std::array<Scalar, NC>, 2> phi{};
+    Scalar eos_A = 0.0, eos_B = 0.0;
+};
+
+template <class FluidSystem>
+static EosResult<FluidSystem::numComponents> run_eos_case(
+    const EosCase<FluidSystem::numComponents>& c, const EOSType eos_type)
+{
+    constexpr int NC = FluidSystem::numComponents;
+    constexpr int OIL = FluidSystem::oilPhaseIdx;
+    constexpr int GAS = FluidSystem::gasPhaseIdx;
+    using FS = Opm::CompositionalFluidState<Scalar, FluidSystem>;
+
+    EosResult<NC> r;
+    FS fs;
+    fs.setTemperature(c.t_k);
+    fs.setPressure(OIL, c.p_pa);
+    fs.setPressure(GAS, c.p_pa);
+    // The same composition in both phase slots: the two "phases" here are the two roots of one
+    // cubic, not two coexisting fluids.
+    for (int ph = 0; ph < 2; ++ph) {
+        for (int i = 0; i < NC; ++i) {
+            fs.setMoleFraction(ph, i, c.x[i]);
+        }
+    }
+
+    typename FluidSystem::template ParameterCache<Scalar> cache(eos_type);
+    try {
+        for (int ph = 0; ph < 2; ++ph) {
+            cache.updatePhase(fs, ph);
+            const Scalar vm = cache.molarVolume(ph);
+            r.vm[ph] = vm;
+            r.rho_molar[ph] = 1.0 / vm;
+            r.rho_mass[ph] = fs.averageMolarMass(ph) / vm;
+            r.z_factor[ph] = c.p_pa * vm / (Opm::Constants<Scalar>::R * c.t_k);
+            for (int i = 0; i < NC; ++i) {
+                r.phi[ph][i] = FluidSystem::fugacityCoefficient(fs, cache, ph, i);
+            }
+        }
+        // A and B depend only on (p, T, x), so one phase's values are the mixture's.
+        cache.updatePhase(fs, OIL);
+        r.eos_A = cache.A(OIL);
+        r.eos_B = cache.B(OIL);
+    } catch (const std::exception& e) {
+        r.status = "eos_failure";
+        r.error = e.what();
+    }
+    return r;
+}
+
 template <size_t N>
 static void emit_array(std::ostream& os, const std::array<Scalar, N>& a)
 {
@@ -259,6 +344,7 @@ static void emit_matrix(std::ostream& os, const std::array<std::array<Scalar, CO
 template <class FluidSystem>
 static void emit_system(std::ostream& os, const std::string& system_name,
                         const std::vector<Case<FluidSystem::numComponents>>& cases,
+                        const std::vector<EosCase<FluidSystem::numComponents>>& eos_cases,
                         const EOSType eos_type, const Scalar tol,
                         const std::vector<std::string>& methods, bool last)
 {
@@ -294,6 +380,40 @@ static void emit_system(std::ostream& os, const std::string& system_name,
         os << ", \"z_" << k << "\"";
     }
     os << "],\n";
+
+    os << "      \"eos_states\": [\n";
+    for (size_t n = 0; n < eos_cases.size(); ++n) {
+        const auto& c = eos_cases[n];
+        const auto r = run_eos_case<FluidSystem>(c, eos_type);
+        os << "        {\n";
+        os << "          \"id\": \"" << c.id << "\",\n";
+        os << "          \"status\": \"" << r.status << "\",\n";
+        os << "          \"note\": \"" << c.note << "\",\n";
+        os << "          \"pressure_pa\": " << num(c.p_pa) << ",\n";
+        os << "          \"temperature_k\": " << num(c.t_k) << ",\n";
+        os << "          \"x\": ";
+        emit_array(os, c.x);
+        if (r.status != "ok") {
+            os << ",\n          \"error\": \"" << r.error << "\"\n";
+            os << "        }" << (n + 1 < eos_cases.size() ? "," : "") << "\n";
+            continue;
+        }
+        os << ",\n";
+        os << "          \"eos_A\": " << num(r.eos_A) << ",\n";
+        os << "          \"eos_B\": " << num(r.eos_B) << ",\n";
+        for (int ph = 0; ph < 2; ++ph) {
+            const char* tag = (ph == FluidSystem::oilPhaseIdx) ? "smallest_root" : "largest_root";
+            os << "          \"" << tag << "\": {\"molar_volume\": " << num(r.vm[ph])
+               << ", \"molar_density\": " << num(r.rho_molar[ph])
+               << ", \"mass_density\": " << num(r.rho_mass[ph])
+               << ", \"z_factor\": " << num(r.z_factor[ph])
+               << ", \"fugacity_coefficient\": ";
+            emit_array(os, r.phi[ph]);
+            os << "}" << (ph == 0 ? "," : "") << "\n";
+        }
+        os << "        }" << (n + 1 < eos_cases.size() ? "," : "") << "\n";
+    }
+    os << "      ],\n";
 
     os << "      \"states\": [\n";
     for (size_t n = 0; n < cases.size(); ++n) {
@@ -429,9 +549,52 @@ int main(int argc, char** argv)
         add2("binary_T333_p" + std::to_string(static_cast<int>(p)), p, 333.15, 0.6, 0.4);
     }
 
+    // Flash-free EOS states. Pressures around each subcritical component's saturation region,
+    // where the isotherm is non-monotonic and the cubic has three real roots.
+    std::vector<EosCase<3>> e3;
+    auto adde3 = [&](const std::string& id, Scalar p_bar, Scalar t_k, Scalar x0, Scalar x1,
+                     Scalar x2, const std::string& note) {
+        e3.push_back(EosCase<3>{id, p_bar * 1e5, t_k, {x0, x1, x2}, note});
+    };
+    std::vector<EosCase<2>> e2;
+    auto adde2 = [&](const std::string& id, Scalar p_bar, Scalar t_k, Scalar x0, Scalar x1,
+                     const std::string& note) {
+        e2.push_back(EosCase<2>{id, p_bar * 1e5, t_k, {x0, x1}, note});
+    };
+
+    // Pure n-decane at 423.15 K is well subcritical (Tc = 617.7 K, so T_r = 0.685). Its vapour
+    // pressure there is a few bar, and the isotherm is non-monotonic across it.
+    for (const Scalar p : {1.0, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0}) {
+        adde2("eos_pure_c10_p" + std::to_string(static_cast<int>(p)), p, 423.15, 0.0, 1.0,
+              "pure n-decane, subcritical: expect three real roots near its vapour pressure");
+    }
+    // Pure methane is supercritical at 423.15 K (Tc = 190.6 K): one root at every pressure. The
+    // contrast is the point - the same code must give one root here and three above.
+    for (const Scalar p : {1.0, 50.0, 300.0}) {
+        adde2("eos_pure_c1_p" + std::to_string(static_cast<int>(p)), p, 423.15, 1.0, 0.0,
+              "pure methane, supercritical: expect a single real root");
+    }
+    // A C10-rich binary just below its own saturation region.
+    for (const Scalar p : {2.0, 4.0, 6.0, 10.0}) {
+        adde2("eos_binary_c10rich_p" + std::to_string(static_cast<int>(p)), p, 423.15, 0.02, 0.98,
+              "C10-rich binary near the heavy component's saturation region");
+    }
+    // The ideal-gas limit, where Z must approach 1 on both roots because there is only one.
+    adde2("eos_binary_ideal_limit", 0.001, 423.15, 0.6, 0.4, "ideal-gas limit");
+
+    // Pure CO2 at 333.15 K is above its critical temperature (304.1 K) but only just, so the
+    // isotherm is steep; at 423.15 K it is firmly supercritical.
+    adde3("eos_pure_co2_333_p70", 70.0, 333.15, 1.0, 0.0, 0.0, "pure CO2 just above Tc");
+    adde3("eos_pure_co2_333_p90", 90.0, 333.15, 1.0, 0.0, 0.0, "pure CO2 just above Tc");
+    for (const Scalar p : {2.0, 4.0, 8.0}) {
+        adde3("eos_ternary_c10rich_p" + std::to_string(static_cast<int>(p)), p, 423.15, 0.01, 0.01,
+              0.98, "C10-rich ternary near the heavy component's saturation region");
+    }
+    adde3("eos_ternary_ideal_limit", 0.001, 423.15, 0.2, 0.5, 0.3, "ideal-gas limit");
+
     std::ostream& os = std::cout;
     os << "{\n";
-    os << "  \"schema\": \"ressim-compositional-ptflash-fixture/1\",\n";
+    os << "  \"schema\": \"ressim-compositional-ptflash-fixture/2\",\n";
     os << "  \"generator\": \"tools/opm_compositional/ptflash_harness.cpp\",\n";
     os << "  \"eos\": \"PR\",\n";
     os << "  \"flash_tolerance\": " << num(tol) << ",\n";
@@ -449,8 +612,10 @@ int main(int argc, char** argv)
           "dependent z_(N-1) was seeded with dz/dz_k = -1, so that invariant is enforced by the "
           "oracle rather than assumed by the consumer.\",\n";
     os << "  \"systems\": [\n";
-    emit_system<Binary>(os, "ressim::TwoComponentFluidSystem", t2, eos_type, tol, methods, false);
-    emit_system<Ternary>(os, "Opm::ThreeComponentFluidSystem", t3, eos_type, tol, methods, true);
+    emit_system<Binary>(os, "ressim::TwoComponentFluidSystem", t2, e2, eos_type, tol, methods,
+                        false);
+    emit_system<Ternary>(os, "Opm::ThreeComponentFluidSystem", t3, e3, eos_type, tol, methods,
+                         true);
     os << "  ]\n";
     os << "}\n";
     return 0;
