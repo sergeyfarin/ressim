@@ -311,8 +311,20 @@ fn two_phase<const N: usize, const M: usize, const NU: usize>(
     //   N          beta            |
     //   N+1        p               | F_u
     //   N+2 .. 2N  z_0 .. z_(N-2)  |
+    // ln K from the fugacity coefficients, not from ln(y_i / x_i).
+    //
+    // They are the same number for a component that is present — `K_i = phi_i^L / phi_i^V` is the
+    // equilibrium condition, and the flash converged on it. They are not the same for an **absent**
+    // component, where `x_i = y_i = 0` makes the ratio `0/0`. The fugacity form stays well defined
+    // there, because `ln phi_i` depends on the mixture parameters and component `i`'s own `a_ij`
+    // and `b_i`, not on `x_i` being nonzero — so the equilibrium ratio of a component that is not
+    // present is still the ratio it *would* have, which is exactly what its derivative needs to
+    // describe. Without this, a cell with an exactly zero component produces a NaN here and the
+    // whole assembly fails, which is how C10's injection-into-an-empty-component test found it.
+    let liquid_props = state.liquid.as_ref().expect("two-phase state has a liquid");
+    let vapour_props = state.vapour.as_ref().expect("two-phase state has a vapour");
     let ln_k: Vec<Ad<M>> = (0..N)
-        .map(|i| Ad::variable((state.y[i] / state.x[i]).ln(), i))
+        .map(|i| Ad::variable(liquid_props.ln_phi[i] - vapour_props.ln_phi[i], i))
         .collect();
     let beta = Ad::<M>::variable(state.beta, N);
     let p = Ad::<M>::variable(pressure_pa, N + 1);
@@ -360,7 +372,8 @@ fn two_phase<const N: usize, const M: usize, const NU: usize>(
         .map(|i| {
             let mut d = [0.0; NU];
             d[..N].copy_from_slice(&dy_du[i][..N]);
-            Ad::seeded(state.y[i].ln() - state.x[i].ln(), d)
+            // Same reason as pass one: `ln y_i - ln x_i` is `-inf + inf` for an absent component.
+            Ad::seeded(liquid_props.ln_phi[i] - vapour_props.ln_phi[i], d)
         })
         .collect();
     let mut beta_d = [0.0; NU];
@@ -381,15 +394,12 @@ fn two_phase<const N: usize, const M: usize, const NU: usize>(
     let (x_raw, v_raw) = compositions_from(&ln_k_t, &z_t, beta_t);
     let (x, v) = normalize_pair(&x_raw, &v_raw);
 
-    let liquid = state.liquid.as_ref().expect("two-phase state has a liquid");
-    let vapour = state.vapour.as_ref().expect("two-phase state has a vapour");
-
     let (cl, rho_l, sep_l) = phase_density_ad::<NU>(
         spec,
         p_t,
         temperature_k,
         &x,
-        liquid.z_factor,
+        liquid_props.z_factor,
         PhaseBranch::Liquid,
     )?;
     let (cv, rho_v, sep_v) = phase_density_ad::<NU>(
@@ -397,7 +407,7 @@ fn two_phase<const N: usize, const M: usize, const NU: usize>(
         p_t,
         temperature_k,
         &v,
-        vapour.z_factor,
+        vapour_props.z_factor,
         PhaseBranch::Vapour,
     )?;
 

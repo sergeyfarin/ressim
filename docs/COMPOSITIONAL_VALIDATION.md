@@ -256,6 +256,11 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C9 assembly** — closed-grid closure | — | internal faces cancel exactly; the residual sums to the source term to `< 1e-9` relative | **Met** |
 | **C9 assembly** — Jacobian vs numerical | 1e-5 scaled entrywise | `< 1e-5` on 2- and 3-cell grids, binary and ternary, column-scaled | **Met** |
 | **C9 assembly** — sparsity | neighbours only | every non-adjacent entry is exactly zero | **Met** |
+| **C10 Newton** — convergence rate | quadratic near the solution | a quadratic reduction is observed and asserted; a merely-close Jacobian would converge linearly and still terminate | **Met** |
+| **C10 Newton** — domain | `p > 0`, `z` on the simplex including `z_(N-1)` | fraction-to-boundary at 0.99, one global scale factor, no clamping or renormalization after the step | **Met** |
+| **C10 lifecycle** — rejected step | nothing mutates | state, clock and cumulative totals all unchanged, structurally | **Met** |
+| **C10 lifecycle** — multi-step closure | — | over 5 accepted steps, what the grid lost equals what was produced to `< 1e-6` relative | **Met** |
+| **C10 diagnostics** — failure classification | five kinds distinguished | flash, linear, nonlinear, admissibility and budget are separate, and budget carries the underlying failure | **Met** |
 | Derivative closure | — | `sum_i d(x_i)/du_v` and `sum_i d(y_i)/du_v` worst 6.1e-16 (`binary_T333_p150`) | The oracle's derivatives satisfy the normalization identity to roundoff |
 | Smooth property derivatives | ≤ 1e-4 relative, on a frozen nonzero derivative scale, over an FD step plateau | Deferred to C4 — needs the Rust implementation to compare against | Not yet |
 | Tiny assembled Jacobian | ≤ 1e-5 scaled entrywise vs FD at smooth states | Deferred to C8/C9 | Not yet |
@@ -298,7 +303,13 @@ No existing black-oil benchmark tolerance is changed by any of this.
    capillarity, fixed temperature, one injection and one production boundary, composition chosen
    to force a phase change inside the declared domain. It cannot be given an external reference
    (§3b), so its acceptance rests on invariants.
-4. ~~**The near-critical domain is unclassified.**~~ **CLOSED by C6, and declared supported** for
+4. **The iterative linear adapter is deferred.** C10 delivers the direct dense solve the plan
+   asks it to start with. A component-aware block-ILU or CPR path is not implemented, and it is
+   not needed until C14's performance work gives it a budget to meet: its entire value is being
+   compared against a correction known to be right, which is what the direct solve now provides.
+   When it lands, the plan's warning applies — do not copy black-oil quasi-IMPES weights because
+   the matrix sizes happen to match.
+5. ~~**The near-critical domain is unclassified.**~~ **CLOSED by C6, and declared supported** for
    the pinned fluids over 10–500 bar at 423.15 K. The C1/C10 binary's two-phase envelope closes
    between 200 and 250 bar at `z = [0.6, 0.4]`; a 0.1 bar traverse across it finds the phase
    boundary sharp (the two states do not interleave over more than 0.15 bar), every sample
@@ -320,12 +331,50 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C7 | Component layout and state | **COMPLETE** | `compositional/{layout,state}.rs`; 30 `comp_layout_*` / `comp_state_*` tests |
 | C8 | Cell inventory, accumulation and scaling | **COMPLETE** | `compositional/accumulation.rs`; 19 `comp_accumulation_*` / `comp_scaling_*` tests |
 | C9 | Component face flux and global assembly | **COMPLETE** except gravity | `compositional/{flux,assembly}.rs`; 24 `comp_flux_*` / `comp_assembly_*` tests. Gravity is its own subtask and is not done |
-| C10–C11 | Newton lifecycle, wells | NOT STARTED | `FIM-COMPOSITIONAL-SEAM-READY` declared at `6be6d08` |
+| C10 | Linear solve, Newton, timestep lifecycle | **COMPLETE** on the direct path | `compositional/{newton,timestep}.rs`; 20 `comp_newton_*` / `comp_rollback_*` tests. The iterative/CPR adapter is deferred — see the C10 record |
+| C11 | Compositional wells | NOT STARTED | `FIM-COMPOSITIONAL-SEAM-READY` declared; **C11's OPM reading list is unavailable here** (plan correction 3) |
 | C12 | NATIVE-COMPOSITIONAL-READY | **BLOCKED** | No compositional Flow executable (§3b) |
 | C13–C14 | WASM, product integration, release | NOT STARTED | Gated on C12 |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
 ## 8. Completion records
+
+### C10 — linear solve, Newton and the timestep lifecycle
+
+```text
+C-task:                C10 (direct linear path; iterative adapter deferred)
+Start / final commit:  095147e / this commit
+Component/phase count: N=2 and N=3; two-phase and both single-phase regimes
+Linear solve:          dense Gaussian elimination with partial pivoting, on the row-scaled
+                       system. This is the plan's step 1 - the correction-quality oracle a
+                       component-aware block-ILU/CPR adapter would be measured against. That
+                       adapter is NOT implemented: its whole value is the comparison, and
+                       building it before the oracle exists would invert the argument
+Update policy:         fraction-to-boundary at 0.99, with ONE global scale factor. A per-cell
+                       factor would change the Newton direction rather than its length, and
+                       the Jacobian was computed for the direction. The bound includes the
+                       dependent z_(N-1), whose direction is -sum(dz_k) and which has no
+                       column to inspect. Nothing is clamped or renormalized after the step
+Zero components:       a positive direction on an empty component is unconstrained, so an
+                       absent component can be injected into existence. A materially negative
+                       one is a named failure, not a clamp - it means that component's
+                       residual was not what it should have been
+Changed interfaces:    new `compositional::newton` and `compositional::timestep`.
+                       `fluid::derivatives` fixed - see below
+Tests created:         20 - comp_newton_* 10, comp_rollback_* 10, plus one C4 regression
+Commands:              bash scripts/validate-compositional.sh all
+                       bash scripts/validate-solver-coverage.sh all
+Results:               203 comp_ tests pass; compositional gate green; solver coverage 38/38
+Defect found by C10:   `fluid::derivatives` computed ln K as ln(y_i / x_i), which is 0/0 for an
+                       exactly zero component - so a cell with an absent component produced a
+                       NaN before any Newton step was taken. Equilibrium ratios now come from
+                       the fugacity coefficients, which are the same number wherever both are
+                       defined and are defined where the ratio is not. C4 gained a regression
+                       test; the C3 flash was already correct, because it skips absent
+                       components rather than dividing by them
+Completed gate:        C10 (direct path)
+Next permitted task:   C11, or C9's gravity subtask, or C10's iterative adapter
+```
 
 ### C9 — component face flux and global assembly
 

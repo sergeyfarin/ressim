@@ -603,3 +603,70 @@ fn comp_derivatives_report_conditioning_diagnostics() {
         "cubic roots are closer than recorded: min |dP/dZ| {worst_separation:e}"
     );
 }
+
+/// An exactly zero component must be differentiable. `ln K = ln(y_i / x_i)` is `0/0` there, so the
+/// equilibrium ratios are taken from the fugacity coefficients instead — the same number wherever
+/// both are defined, and defined where the ratio is not.
+///
+/// Found by C10: a cell with an absent component made the whole assembly fail with a NaN before
+/// any Newton step was taken, which is the shape of an error that would otherwise have surfaced as
+/// an unexplained solver failure much later.
+#[test]
+fn comp_derivatives_handle_an_exactly_zero_component() {
+    let spec = pinned::ternary().unwrap();
+    let binary = pinned::binary().unwrap();
+    let t = 423.15;
+
+    for p in [2.0e6, 5.0e6, 1.0e7, 1.5e7, 2.0e7] {
+        let z = [0.0, 0.6, 0.4];
+        let state = flash(&spec, p, t, &z, None).unwrap();
+        let d =
+            flash_derivatives(&spec, p, t, &z, &state).unwrap_or_else(|e| panic!("p = {p}: {e}"));
+
+        for row in d.dx.iter().chain(d.dy.iter()) {
+            assert!(
+                row.iter().all(|v| v.is_finite()),
+                "p = {p}: a composition derivative is not finite: {row:?}"
+            );
+        }
+        assert!(d.dbeta.iter().all(|v| v.is_finite()), "p = {p}");
+        assert!(
+            d.dliquid_molar_density.iter().all(|v| v.is_finite()),
+            "p = {p}"
+        );
+
+        if state.phase_state != PhaseState::TwoPhase {
+            continue;
+        }
+
+        // The absent component stays absent when the *other* coordinates move, so its derivative
+        // with respect to pressure is zero and with respect to z_1 is zero.
+        assert_eq!(
+            d.dx[0][0], 0.0,
+            "p = {p}: an absent component moved with pressure"
+        );
+        assert_eq!(d.dy[0][0], 0.0);
+        assert_eq!(
+            d.dx[0][2], 0.0,
+            "p = {p}: an absent component moved with z_1"
+        );
+
+        // But introducing it has a finite, positive effect: dx_0/dz_0 > 0.
+        assert!(
+            d.dx[0][1] > 0.0 && d.dy[0][1] > 0.0,
+            "p = {p}: the absent component cannot be introduced: dx {} dy {}",
+            d.dx[0][1],
+            d.dy[0][1]
+        );
+
+        // And the remaining two components must behave exactly as the equivalent binary does.
+        let b_state = flash(&binary, p, t, &[0.6, 0.4], None).unwrap();
+        let b = flash_derivatives(&binary, p, t, &[0.6, 0.4], &b_state).unwrap();
+        assert!(
+            (d.dbeta[0] - b.dbeta[0]).abs() / b.dbeta[0].abs().max(1e-12) < 1e-6,
+            "p = {p}: dbeta/dp differs from the binary's: {} vs {}",
+            d.dbeta[0],
+            b.dbeta[0]
+        );
+    }
+}
