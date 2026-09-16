@@ -612,3 +612,61 @@ fn comp_flash_li_estimate_reduces_to_pure_component_critical_temperatures() {
         previous = tc;
     }
 }
+
+/// The negative-flash window. A `K` estimate can put the Rachford–Rice root outside `[0, 1]`
+/// while the converged answer is firmly inside it, so the iteration must be allowed to go there.
+#[test]
+fn comp_rr_extended_window_finds_a_root_outside_the_physical_range() {
+    use super::flash::solve_rachford_rice_extended;
+
+    // Mostly heavy with a little light: the split is at the edge, and this K puts it past it.
+    let k = [35.0, 158.0, 0.0011];
+    let z = [0.001, 0.001, 0.998];
+
+    // The physical solve refuses, correctly.
+    assert!(matches!(
+        solve_rachford_rice(&k, &z),
+        Err(FlashError::RachfordRiceNoRoot { .. })
+    ));
+
+    // The extended one finds the root, which is below zero.
+    let beta = solve_rachford_rice_extended(&k, &z).unwrap();
+    assert!(
+        beta < 0.0,
+        "expected a negative vapour fraction, got {beta}"
+    );
+
+    // And it is a root: g is zero there.
+    let g: f64 = (0..3)
+        .map(|i| z[i] * (k[i] - 1.0) / (1.0 + beta * (k[i] - 1.0)))
+        .sum();
+    assert!(g.abs() < 1e-10, "g({beta}) = {g:e}");
+}
+
+/// Every `K` on one side of one means no split of any sign exists, and the extended window must
+/// say so rather than inventing a bracket.
+#[test]
+fn comp_rr_extended_window_still_reports_no_root_when_there_is_none() {
+    use super::flash::solve_rachford_rice_extended;
+    assert!(matches!(
+        solve_rachford_rice_extended(&[3.0, 2.0], &[0.5, 0.5]),
+        Err(FlashError::RachfordRiceNoRoot { .. })
+    ));
+    assert!(matches!(
+        solve_rachford_rice_extended(&[0.3, 0.2], &[0.5, 0.5]),
+        Err(FlashError::RachfordRiceNoRoot { .. })
+    ));
+}
+
+/// A feed the stability test calls unstable but whose equilibrium collapses to one phase must come
+/// back as a single-phase state, not an error. This is the case that exposed the gap: a nearly
+/// pure n-decane stream with 0.2 mol% light ends, at surface conditions.
+#[test]
+fn comp_flash_reports_single_phase_when_the_split_collapses() {
+    let spec = pinned::ternary().unwrap();
+    let r = flash(&spec, 101_325.0, 288.71, &[0.001, 0.001, 0.998], None)
+        .expect("a collapsing split is a determination, not a failure");
+    assert_eq!(r.phase_state, PhaseState::SingleLiquid);
+    assert_eq!(r.beta, 0.0);
+    assert!(r.liquid.is_some() && r.vapour.is_none());
+}

@@ -14,7 +14,9 @@
 //! Units inside this module are SI — Pa, K, mol, m³, kg/mol — without exception. The reservoir's
 //! oil-field units stop at [`units`].
 //!
-//! Status: C1 and C2 complete (specification, units, PR EOS). C3–C5 not yet implemented.
+//! Status: C1–C5 complete — specification and units, the PR EOS, phase stability, the PT
+//! flash, equilibrium derivatives, LBC viscosity and the surface separation. C6 (the standalone
+//! thermodynamic admission gate) and everything from C7 on are not yet started.
 
 // The specification and unit API is consumed by this module's own tests and, from C2 onward, by
 // the EOS. Until then the crate has no non-test caller, and without this the build gains ~30
@@ -31,6 +33,7 @@ pub mod flash;
 pub mod pinned;
 pub mod specification;
 pub mod stability;
+pub mod transport;
 pub(crate) mod units;
 
 #[cfg(test)]
@@ -43,3 +46,5 @@ mod flash_tests;
 mod stability_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod transport_tests;

@@ -230,6 +230,11 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C4 derivatives** — `dz_(N-1)/dz_k = -1` | exact | exact, on all 18 single-phase states | **Met** |
 | **C4 conditioning** — equilibrium Jacobian | — | min pivot `> 1e-6` across all 29 two-phase states | Recorded |
 | **C4 conditioning** — cubic root separation | — | min `\|dP/dZ\|` `> 1e-3` across all 47 states | Recorded |
+| **C5 LBC vs fixture** | 1e-7 relative | `< 1e-13` relative over 94 comparisons, evaluated at OPM's own molar density | **Met** |
+| **C5 LBC** — gas-constant sensitivity | — | the `R` shift moves viscosity by `< 1e-5` relative; **not** a clean ratio, since LBC's density dependence is a quartic | Recorded |
+| **C5 saturations** | reconstruction exact | `< 1e-14` against an independent volume split; `S_V - beta` reaches `> 0.3` | **Met** |
+| **C5 surface** — component conservation | — | `<= 1e-9` relative per component, on binary and ternary streams | **Met** |
+| **C5 surface** — gas molar volume | — | within 2% of `RT/p` at 1 atm, as an ideal-gas sanity anchor | **Met** |
 | Derivative closure | — | `sum_i d(x_i)/du_v` and `sum_i d(y_i)/du_v` worst 6.1e-16 (`binary_T333_p150`) | The oracle's derivatives satisfy the normalization identity to roundoff |
 | Smooth property derivatives | ≤ 1e-4 relative, on a frozen nonzero derivative scale, over an FD step plateau | Deferred to C4 — needs the Rust implementation to compare against | Not yet |
 | Tiny assembled Jacobian | ≤ 1e-5 scaled entrywise vs FD at smooth states | Deferred to C8/C9 | Not yet |
@@ -243,11 +248,14 @@ No existing black-oil benchmark tolerance is changed by any of this.
 
 ## 6. Open decisions this document owes
 
-1. **Surface conditions are not pinned.** C5 needs an explicit `p_surface`, `T_surface` and a
-   single declared surface flash stage. 1 atm / 15.56 °C is the obvious candidate but has not been
-   sourced against anything in this repository's existing conventions, and the black-oil path's
-   standard conditions must not be assumed to carry over. C5 must pin it before writing the
-   surface flash, and record it here.
+1. ~~**Surface conditions are not pinned.**~~ **CLOSED by C5.** `1 atm = 101 325 Pa` and
+   `288.71 K` (15.56 °C), a **single equilibrium stage**. Sourced, not chosen:
+   `opm/input/eclipse/EclipseState/Compositional/CompositionalConfig.hpp` sets
+   `standard_pressure = 1 * unit::atm` and `standard_temperature = 288.71` as the defaults for
+   **compositional** runs specifically, and `Units.hpp` defines `atm = 101325 Pa`. These are not
+   inherited from the black-oil path, whose standard-volume outputs keep their own separate
+   meaning. The surface flash produces no `Bo`, `Bg` or `Rs`, and its gas/liquid ratio is
+   deliberately not called GOR.
 2. **The hydrocarbon relative permeability law is not pinned.** The plan is explicit that the
    existing water/oil curves are not implicitly a hydrocarbon liquid/vapour law. C9 and C12 need
    one, sourced. Nothing in C0–C5 depends on it.
@@ -267,7 +275,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C2 | PR mixture EOS and single-phase properties | **COMPLETE** | `src/lib/ressim/src/fluid/eos.rs`; 22 `comp_eos_*` tests |
 | C3 | Stability and scalar PT flash | **COMPLETE** | `fluid/{stability,flash}.rs`; 7 `comp_stability_*`, 12 `comp_flash_*`, 4 `comp_rr_*`; 47/47 states match OPM |
 | C4 | Equilibrium and property derivatives | **COMPLETE** | `fluid/derivatives.rs`; 11 `comp_derivatives_*` tests |
-| C5 | Transport properties and surface flash | NOT STARTED | — |
+| C5 | Transport properties and surface flash | **COMPLETE** | `fluid/transport.rs`; 17 `comp_transport_*` / `comp_surface_*` tests |
 | C6 | THERMO-READY | NOT STARTED | External flash parity available (§3a); trajectory parity blocked |
 | C7 | Component layout and state | NOT STARTED | Prerequisite `fim/layout.rs` available |
 | C8–C11 | Accumulation, flux, Newton, wells | NOT STARTED | `FIM-COMPOSITIONAL-SEAM-READY` declared at `6be6d08` |
@@ -276,6 +284,38 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
 ## 8. Completion records
+
+### C5 — viscosity, saturations and the surface separation
+
+```text
+C-task:                C5
+Start / final commit:  ec5c399 / this commit
+Component/phase count: N=2 and N=3; both phases, and the single-phase and zero-flow limits
+Source equations:      viscositymodels/LBC.hpp - Lohrenz, Bray & Clark, JPT 16.10 (1964), with
+                       that header's correction of the paper's -0.40758 typo to -0.040758
+                       CompositionalConfig.hpp - standard_temperature 288.71 K,
+                       standard_pressure 1 atm; Units.hpp - atm = 101325 Pa
+Changed interfaces:    new `fluid::transport`; `fluid::flash` gains the extended
+                       (negative-flash) Rachford-Rice window
+Tests created:         17 - comp_transport_* and comp_surface_*
+Commands:              cargo test --manifest-path src/lib/ressim/Cargo.toml comp_
+                       cargo fmt --manifest-path src/lib/ressim/Cargo.toml -- --check
+                       cargo check --manifest-path src/lib/ressim/Cargo.toml \
+                           --target wasm32-unknown-unknown
+                       bash scripts/validate-solver-coverage.sh all
+Results:               106/106 comp_ pass; fmt clean; wasm32 compiles; solver coverage 38/38
+Worst errors:          LBC 1e-13 vs the fixture at OPM's own density; saturation
+                       reconstruction 1e-14; surface component conservation 1e-9
+Native/WASM coverage:  both
+Open decision closed:  surface conditions (section 6, item 1)
+Flash change:          the iteration now runs on Whitson & Michelsen's extended window. A
+                       nearly pure n-decane stream with 0.2 mol% light ends at surface
+                       conditions is declared unstable by the stability test and has no
+                       Rachford-Rice root in [0, 1]; the extended window resolves it as a
+                       single-phase liquid, which is a determination rather than a failure
+Completed gate:        C5
+Next permitted task:   C6
+```
 
 ### C4 — equilibrium and property derivatives
 

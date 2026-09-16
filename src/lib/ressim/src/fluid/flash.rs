@@ -224,38 +224,56 @@ fn rachford_rice_dg(k: &[f64], z: &[f64], beta: f64) -> f64 {
     dg
 }
 
-/// Solve Rachford–Rice for the vapour fraction in `[0, 1]`.
+/// Solve Rachford–Rice for the vapour fraction on the **extended** window.
 ///
-/// Newton from the bracket midpoint, with a bisection step whenever Newton would leave the
-/// bracket. That safeguard is what makes this unconditionally convergent: `g` is monotonically
-/// decreasing, so a sign change across the bracket is a root, and bisection can always make
-/// progress even where Newton cannot.
+/// `g` has a pole at `1/(1 - K_i)` for each component. The poles from `K_i > 1` are negative and
+/// those from `K_i < 1` exceed one, so between the largest negative pole and the smallest positive
+/// one, `g` is continuous, monotonically decreasing, and runs from `+inf` to `-inf`. A unique root
+/// therefore always exists there whenever some `K_i > 1 > K_j` — including when it lies **outside**
+/// `[0, 1]`.
 ///
-/// Returns [`FlashError::RachfordRiceNoRoot`] rather than clamping when there is no sign change.
-/// A clamp would turn a contradiction between the stability test and the flash into a silently
-/// single-phase answer, which is precisely the failure mode the plan forbids.
-pub fn solve_rachford_rice(k: &[f64], z: &[f64]) -> Result<f64, FlashError> {
-    let g0 = rachford_rice_g(k, z, 0.0);
-    let g1 = rachford_rice_g(k, z, 1.0);
+/// Allowing that window is Whitson & Michelsen's negative flash (1989), and it is not a
+/// convenience. The stability test's `K` estimate is a starting point, not an equilibrium, and a
+/// crude estimate can put the root outside `[0, 1]` on an iteration whose converged answer is
+/// firmly inside it. Refusing to solve there would abandon a real two-phase state because its
+/// first guess was poor. Conversely, a root that is still outside `[0, 1]` *at convergence* is a
+/// positive determination that the feed is single phase — which is what the caller does with it.
+///
+/// Returns [`FlashError::RachfordRiceNoRoot`] when there is no window at all: every `K_i` on one
+/// side of one, which means no split of any sign exists.
+pub fn solve_rachford_rice_extended(k: &[f64], z: &[f64]) -> Result<f64, FlashError> {
+    let active: Vec<usize> = (0..k.len()).filter(|&i| z[i] > 0.0).collect();
+    let k_max = active
+        .iter()
+        .map(|&i| k[i])
+        .fold(f64::NEG_INFINITY, f64::max);
+    let k_min = active.iter().map(|&i| k[i]).fold(f64::INFINITY, f64::min);
 
-    if !g0.is_finite() || !g1.is_finite() {
+    if !(k_max > 1.0 && k_min < 1.0) {
         return Err(FlashError::RachfordRiceNoRoot {
             k: k.to_vec(),
-            g_at_zero: g0,
-            g_at_one: g1,
-        });
-    }
-    // g is decreasing, so a physical two-phase root needs g(0) > 0 > g(1).
-    if !(g0 > 0.0 && g1 < 0.0) {
-        return Err(FlashError::RachfordRiceNoRoot {
-            k: k.to_vec(),
-            g_at_zero: g0,
-            g_at_one: g1,
+            g_at_zero: rachford_rice_g(k, z, 0.0),
+            g_at_one: rachford_rice_g(k, z, 1.0),
         });
     }
 
-    let (mut lo, mut hi) = (0.0f64, 1.0f64);
-    let mut beta = 0.5;
+    // The pole-free window, inset so `g` stays finite at the bracket ends.
+    let pole_low = 1.0 / (1.0 - k_max);
+    let pole_high = 1.0 / (1.0 - k_min);
+    let inset = (pole_high - pole_low) * 1e-10;
+    let (mut lo, mut hi) = (pole_low + inset, pole_high - inset);
+
+    let g_lo = rachford_rice_g(k, z, lo);
+    let g_hi = rachford_rice_g(k, z, hi);
+    if !(g_lo > 0.0 && g_hi < 0.0) {
+        return Err(FlashError::RachfordRiceNoRoot {
+            k: k.to_vec(),
+            g_at_zero: g_lo,
+            g_at_one: g_hi,
+        });
+    }
+
+    let mut beta = 0.5 * (lo + hi);
 
     for _ in 0..MAX_RACHFORD_RICE_ITERATIONS {
         let g = rachford_rice_g(k, z, beta);
@@ -264,7 +282,7 @@ pub fn solve_rachford_rice(k: &[f64], z: &[f64]) -> Result<f64, FlashError> {
         } else {
             hi = beta;
         }
-        if hi - lo < RACHFORD_RICE_TOLERANCE || g == 0.0 {
+        if hi - lo < RACHFORD_RICE_TOLERANCE * (1.0 + hi.abs()) || g == 0.0 {
             return Ok(beta);
         }
 
@@ -276,10 +294,24 @@ pub fn solve_rachford_rice(k: &[f64], z: &[f64]) -> Result<f64, FlashError> {
             0.5 * (lo + hi)
         };
     }
-
-    // The bracket is still valid; return its midpoint rather than failing, since after 200
-    // bisections alone the interval is below any representable tolerance.
     Ok(0.5 * (lo + hi))
+}
+
+/// Solve Rachford–Rice for a **physical** vapour fraction in `[0, 1]`.
+///
+/// A wrapper on [`solve_rachford_rice_extended`] that rejects a root outside the physical window
+/// rather than clamping it. Clamping would turn a contradiction between the stability test and the
+/// flash into a silently single-phase answer, which is precisely the failure the plan forbids.
+pub fn solve_rachford_rice(k: &[f64], z: &[f64]) -> Result<f64, FlashError> {
+    let beta = solve_rachford_rice_extended(k, z)?;
+    if !(0.0..=1.0).contains(&beta) {
+        return Err(FlashError::RachfordRiceNoRoot {
+            k: k.to_vec(),
+            g_at_zero: rachford_rice_g(k, z, 0.0),
+            g_at_one: rachford_rice_g(k, z, 1.0),
+        });
+    }
+    Ok(beta)
 }
 
 /// Phase compositions from `K`, `z` and `beta`.
@@ -331,11 +363,14 @@ pub fn flash(
         }
     };
 
-    let mut beta = solve_rachford_rice(&k, z)?;
+    // The iteration runs on the extended window: the stability test's K is an estimate, and a
+    // poor estimate can put the root outside [0, 1] on the way to a converged answer well inside
+    // it. Whether the state is really two-phase is decided at convergence, not at the first step.
+    let mut beta;
     let mut residual = f64::INFINITY;
 
     for iteration in 1..=MAX_SUBSTITUTION_ITERATIONS {
-        beta = solve_rachford_rice(&k, z)?;
+        beta = solve_rachford_rice_extended(&k, z)?;
         let (x, y) = phase_compositions(&k, z, beta);
 
         let xs: f64 = x.iter().sum();
@@ -379,7 +414,15 @@ pub fn flash(
         }
 
         if residual < EQUILIBRIUM_TOLERANCE {
-            let beta = solve_rachford_rice(&k, z)?;
+            let beta = solve_rachford_rice_extended(&k, z)?;
+            // Converged with the vapour fraction outside the physical window: the two phases have
+            // collapsed onto one another, and the stability test's instability verdict is not
+            // borne out. That is a determination, not a failure — Whitson & Michelsen's negative
+            // flash is exactly the test for it — so the single-phase result is returned rather
+            // than an error.
+            if !(0.0..=1.0).contains(&beta) {
+                return single_phase(spec, pressure_pa, temperature_k, z);
+            }
             let (x, y) = phase_compositions(&k, z, beta);
             let xs: f64 = x.iter().sum();
             let ys: f64 = y.iter().sum();
@@ -406,7 +449,7 @@ pub fn flash(
     Err(FlashError::NotConverged {
         iterations: MAX_SUBSTITUTION_ITERATIONS,
         equilibrium_residual: residual,
-        beta,
+        beta: solve_rachford_rice_extended(&k, z).unwrap_or(f64::NAN),
     })
 }
 
