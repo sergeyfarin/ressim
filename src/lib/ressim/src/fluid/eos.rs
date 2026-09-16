@@ -398,49 +398,47 @@ pub fn z_roots(params: &MixtureParams<f64>) -> Result<CubicRoots, EosError> {
     cubic_roots(c2, c1, c0).ok_or(EosError::DegenerateMixtureParameters { a, b })
 }
 
-/// Pick the root for a branch, requiring `Z > B`.
+/// Pick the root for a branch from among the **admissible** ones — those satisfying `Z > B`.
 ///
-/// Three roots: largest for vapour, smallest for liquid. One root: that root for both, which is
-/// how a single-phase state ends up reporting identical properties on both branches — the fixture
-/// shows exactly that. `eos/CubicEOS.hpp::computeMolarVolume`.
+/// Largest admissible root for vapour, smallest for liquid. When only one root is admissible it
+/// serves both labels, exactly as `eos/CubicEOS.hpp::computeMolarVolume` does when the cubic has a
+/// single real root.
 ///
-/// Where OPM would floor the molar volume at `1e-7`, this returns [`EosError::NoAdmissibleRoot`].
-/// `Z > B` is the covolume constraint; below it `ln(Z - B)` has no real value and the state is not
-/// a fluid.
-fn select_root(roots: &CubicRoots, b: f64, branch: PhaseBranch) -> Result<f64, EosError> {
-    let candidate = match (roots, branch) {
-        (CubicRoots::One(z), _) => *z,
-        (CubicRoots::Three(z), PhaseBranch::Liquid) => z[0],
-        (CubicRoots::Three(z), PhaseBranch::Vapour) => z[2],
-    };
-    if !candidate.is_finite() {
-        return Err(EosError::NotFinite {
-            what: "compressibility factor",
-            value: candidate,
-        });
-    }
-    if candidate <= b {
-        // Fall back to the other admissible root if there is one: with three roots the smallest is
-        // sometimes below the covolume while the largest is not, and rejecting the whole state in
-        // that case would discard a perfectly good vapour branch.
-        if let CubicRoots::Three(z) = roots {
-            if let Some(&alt) = z.iter().rev().find(|&&r| r > b) {
-                if branch == PhaseBranch::Liquid {
-                    // The liquid label has no admissible root of its own here.
-                    return Err(EosError::NoAdmissibleRoot {
-                        roots: z.to_vec(),
-                        b,
-                    });
-                }
-                return Ok(alt);
-            }
-        }
-        return Err(EosError::NoAdmissibleRoot {
+/// That last rule is load-bearing and was found by the C6 sweep, not written down in advance. At
+/// 500–600 bar and 96–98 mol% methane the cubic has three real roots of which two are **negative**:
+/// there is one fluid state, and the other two "roots" are not states at all. Selecting the
+/// smallest root for the liquid label there returns a negative `Z` below the covolume, and the
+/// stability test — which evaluates the feed on the opposite branch from the trial — fails on a
+/// state that is perfectly well defined. Counting admissibility rather than root multiplicity is
+/// what makes "three real roots" and "one fluid" the same case, which they physically are.
+///
+/// Where OPM would floor the molar volume at `1e-7` to paper over this, no admissible root at all
+/// returns [`EosError::NoAdmissibleRoot`]. `Z > B` is the covolume constraint; below it
+/// `ln(Z - B)` has no real value and the state is not a fluid.
+pub(crate) fn select_root(
+    roots: &CubicRoots,
+    b: f64,
+    branch: PhaseBranch,
+) -> Result<f64, EosError> {
+    let admissible: Vec<f64> = roots
+        .as_slice()
+        .iter()
+        .copied()
+        .filter(|z| z.is_finite() && *z > b)
+        .collect();
+
+    match admissible.len() {
+        0 => Err(EosError::NoAdmissibleRoot {
             roots: roots.as_slice().to_vec(),
             b,
-        });
+        }),
+        // One fluid state, whatever the algebra says about the others.
+        1 => Ok(admissible[0]),
+        _ => Ok(match branch {
+            PhaseBranch::Liquid => admissible[0],
+            PhaseBranch::Vapour => admissible[admissible.len() - 1],
+        }),
     }
-    Ok(candidate)
 }
 
 /// Evaluate one phase branch: compressibility factor, volume, densities and log fugacities.

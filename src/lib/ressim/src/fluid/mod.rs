@@ -45,6 +45,8 @@ mod flash_tests;
 #[cfg(test)]
 mod stability_tests;
 #[cfg(test)]
+mod sweep_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod transport_tests;

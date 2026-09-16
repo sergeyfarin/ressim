@@ -518,18 +518,10 @@ fn scalar_root<S: Scalar>(
             .collect(),
     };
     let roots = z_roots(&plain)?;
-    let b = plain.b;
-    let value = match (&roots, branch) {
-        (CubicRoots::One(z), _) => *z,
-        (CubicRoots::Three(z), PhaseBranch::Liquid) => z[0],
-        (CubicRoots::Three(z), PhaseBranch::Vapour) => z[2],
-    };
-    if value <= b {
-        return Err(EosError::NoAdmissibleRoot {
-            roots: roots.as_slice().to_vec(),
-            b,
-        });
-    }
+    // The same admissibility rule `eos::evaluate` uses, reached through the same function rather
+    // than restated: a derivative taken at a different root from the one the flash converged on
+    // would be a derivative of a different state.
+    let value = super::eos::select_root(&roots, plain.b, branch)?;
 
     z_factor_with_derivatives(params.a, params.b, value, branch).map_err(|e| match e {
         DerivativeError::DegenerateRoot { dp_dz, .. } => EosError::NotFinite {

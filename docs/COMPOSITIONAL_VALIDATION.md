@@ -130,7 +130,9 @@ OPM's PTFlash / CubicEOS / LBC stack, called directly through a header-only harn
 no link against `flow`, no MPI.
 
 ```bash
-bash tools/opm_compositional/generate.sh          # regenerate
+bash scripts/validate-compositional.sh all        # the whole compositional gate
+bash scripts/validate-compositional.sh thermo     # tests only, ~20 s
+bash tools/opm_compositional/generate.sh          # regenerate the fixture
 bash tools/opm_compositional/generate.sh --check  # verify the committed fixture reproduces
 ```
 
@@ -235,6 +237,13 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C5 saturations** | reconstruction exact | `< 1e-14` against an independent volume split; `S_V - beta` reaches `> 0.3` | **Met** |
 | **C5 surface** — component conservation | — | `<= 1e-9` relative per component, on binary and ternary streams | **Met** |
 | **C5 surface** — gas molar volume | — | within 2% of `RT/p` at 1 atm, as an ideal-gas sanity anchor | **Met** |
+| **C6 sweep** — binary, 2 940 samples | every sample classified | 0 failures: 743 two-phase, 1 901 liquid, 296 vapour | **Met** |
+| **C6 sweep** — ternary, 4 680 samples | every sample classified | 0 failures: 1 273 two-phase, 2 826 liquid, 581 vapour | **Met** |
+| **C6 sweep** — `z` reconstruction | 1e-10 | 1.1e-14 worst over 7 620 samples | **Met** |
+| **C6 sweep** — `sum_i dx_i/du = 0` | — | 2.9e-16 worst | **Met** |
+| **C6 sweep** — equilibrium-Jacobian pivot | — | 4.8e-4 worst | Recorded |
+| **C6 sweep** — substitution iterations | bounded below the 5 000 cap | 747 worst | Recorded |
+| **C6 trace components** | conserved | `< 1e-8` relative down to `z_i = 1e-10` | **Met** |
 | Derivative closure | — | `sum_i d(x_i)/du_v` and `sum_i d(y_i)/du_v` worst 6.1e-16 (`binary_T333_p150`) | The oracle's derivatives satisfy the normalization identity to roundoff |
 | Smooth property derivatives | ≤ 1e-4 relative, on a frozen nonzero derivative scale, over an FD step plateau | Deferred to C4 — needs the Rust implementation to compare against | Not yet |
 | Tiny assembled Jacobian | ≤ 1e-5 scaled entrywise vs FD at smooth states | Deferred to C8/C9 | Not yet |
@@ -263,8 +272,13 @@ No existing black-oil benchmark tolerance is changed by any of this.
    capillarity, fixed temperature, one injection and one production boundary, composition chosen
    to force a phase change inside the declared domain. It cannot be given an external reference
    (§3b), so its acceptance rests on invariants.
-4. **The near-critical domain is unclassified.** C6 decides whether to declare it supported or to
-   narrow the domain and reject those inputs. The current fixture deliberately does not probe it.
+4. ~~**The near-critical domain is unclassified.**~~ **CLOSED by C6, and declared supported** for
+   the pinned fluids over 10–500 bar at 423.15 K. The C1/C10 binary's two-phase envelope closes
+   between 200 and 250 bar at `z = [0.6, 0.4]`; a 0.1 bar traverse across it finds the phase
+   boundary sharp (the two states do not interleave over more than 0.15 bar), every sample
+   classified, and **no** degenerate derivative state. The declaration is conditional in the test
+   itself: if a merged cubic root or a singular equilibrium Jacobian ever appears on that traverse,
+   the test fails and the domain must be narrowed rather than the assertion relaxed.
 
 ## 7. Gate status
 
@@ -276,7 +290,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C3 | Stability and scalar PT flash | **COMPLETE** | `fluid/{stability,flash}.rs`; 7 `comp_stability_*`, 12 `comp_flash_*`, 4 `comp_rr_*`; 47/47 states match OPM |
 | C4 | Equilibrium and property derivatives | **COMPLETE** | `fluid/derivatives.rs`; 11 `comp_derivatives_*` tests |
 | C5 | Transport properties and surface flash | **COMPLETE** | `fluid/transport.rs`; 17 `comp_transport_*` / `comp_surface_*` tests |
-| C6 | THERMO-READY | NOT STARTED | External flash parity available (§3a); trajectory parity blocked |
+| C6 | **THERMO-READY** | **DECLARED** | `scripts/validate-compositional.sh`; 110 tests; 7 620-sample domain sweep. External flash parity met (§3a); **trajectory parity remains blocked** (§3b) |
 | C7 | Component layout and state | NOT STARTED | Prerequisite `fim/layout.rs` available |
 | C8–C11 | Accumulation, flux, Newton, wells | NOT STARTED | `FIM-COMPOSITIONAL-SEAM-READY` declared at `6be6d08` |
 | C12 | NATIVE-COMPOSITIONAL-READY | **BLOCKED** | No compositional Flow executable (§3b) |
@@ -284,6 +298,43 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
 ## 8. Completion records
+
+### C6 — THERMO-READY
+
+**Milestone declared.** The standalone thermodynamics is admitted for the pinned fluids over
+10–500 bar at 423.15 K (and 333.15 K, where the fixture samples it). **This is a thermodynamics
+milestone and nothing more**: no transport, no wells, no browser exposure, and the compositional
+*trajectory* oracle remains blocked (§3b), so nothing here supports a claim about a flow result.
+
+```text
+C-task:                C6
+Start / final commit:  49d6da0 / this commit
+Component/phase count: N=2 and N=3, both phases and both single-phase branches
+Gate:                  bash scripts/validate-compositional.sh all
+                         thermo  - 110 tests across 10 filters, each with a floor count
+                         fixture - regenerates the C0 oracle and diffs it byte for byte
+                         wasm    - cargo check --target wasm32-unknown-unknown
+Tests:                 110 total. comp_spec_ 19, comp_units_ 9, comp_eos_ 20,
+                       comp_stability_ 7, comp_rr_ 6, comp_flash_ 13, comp_derivatives_ 11,
+                       comp_transport_ 11, comp_surface_ 10, comp_domain_ 4
+Sweep:                 7 620 deterministic samples, 10-600 bar (past the declared envelope on
+                       purpose), over both simplices. Every sample classified; zero failures
+Worst errors:          z reconstruction 1.1e-14; dx column closure 2.9e-16; trace-component
+                       conservation < 1e-8 down to z_i = 1e-10
+Conditioning:          min equilibrium-Jacobian pivot 4.8e-4; min |dP/dZ| > 1e-3
+Native/WASM:           the crate compiles for wasm32-unknown-unknown. No dependency blocks it
+External parity:       flash parity MET against the OPM PTFlash harness (section 3a)
+                       trajectory parity BLOCKED - no compositional executable (section 3b)
+Defect found by C6:    root selection counted root *multiplicity* rather than *admissibility*.
+                       At 500-600 bar and 96-98 mol% methane the cubic has three real roots of
+                       which two are negative: one fluid state, and two non-states. Selecting
+                       the smallest for the liquid label returned a Z below the covolume and
+                       failed the stability test on a perfectly well-defined state. Now the
+                       largest and smallest *admissible* roots are selected, and a single
+                       admissible root serves both labels
+Completed gate:        C6 / THERMO-READY
+Next permitted task:   C7
+```
 
 ### C5 — viscosity, saturations and the surface separation
 
