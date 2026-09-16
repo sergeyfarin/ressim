@@ -1,5 +1,5 @@
 use crate::ReservoirSimulator;
-use crate::fim::ad::Scalar;
+use crate::ad::Scalar;
 
 /// Generic (differentiable) mirror of [`PhaseMobilities`].
 pub(crate) struct PhaseMobilitiesGeneric<S> {

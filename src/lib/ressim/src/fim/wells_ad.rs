@@ -21,7 +21,7 @@
 
 use crate::InjectedFluid;
 use crate::ReservoirSimulator;
-use crate::fim::ad::{Ad, Scalar};
+use crate::ad::{Ad, Scalar};
 use crate::fim::properties::cell_props_generic;
 use crate::fim::state::HydrocarbonState;
 

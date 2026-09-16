@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::fim::ad::Scalar;
+use crate::ad::Scalar;
 
 /// Generic mirror of [`interpolate_piecewise`] over a differentiable scalar.
 /// The segment is chosen from `x.value()` (matching the f64 branch exactly),
@@ -701,7 +701,7 @@ impl RockFluidProps {
 #[cfg(test)]
 mod endpoint_derivative_tests {
     use super::*;
-    use crate::fim::ad::Ad;
+    use crate::ad::Ad;
 
     #[test]
     fn opm_endpoint_replay_freezes_corey_ad_without_changing_values() {

@@ -1,4 +1,3 @@
-pub(crate) mod ad;
 pub(crate) mod assembly;
 pub(crate) mod assembly_ad;
 pub(crate) mod flash;

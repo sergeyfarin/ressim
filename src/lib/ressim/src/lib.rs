@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::f64;
 use wasm_bindgen::prelude::*;
 
+mod ad;
 mod capillary;
 mod fim;
 mod fluid;

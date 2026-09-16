@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::RockFluidProps;
-use crate::fim::ad::Scalar;
+use crate::ad::Scalar;
 use crate::relperm::RockFluidPropsThreePhase;
 
 #[derive(Clone, Copy, Serialize, Deserialize)]

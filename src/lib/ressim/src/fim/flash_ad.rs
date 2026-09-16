@@ -22,7 +22,7 @@
 //! function theorem, applied without needing a closed form for `rs*(theta)`.
 
 use crate::ReservoirSimulator;
-use crate::fim::ad::{Ad, Scalar};
+use crate::ad::{Ad, Scalar};
 
 /// `dissolved_gas_sc(rs) = oil_saturation * pore_volume_m3 * rs / Bo(p, rs)`,
 /// the same closed-form expression `solve_rs_for_dissolved_gas`'s bisection

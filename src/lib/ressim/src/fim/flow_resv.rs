@@ -4,7 +4,7 @@
 //! scope. It does not route an assembler or reinterpret a FIM rate unknown; those coupled changes
 //! belong to G4b1/G4b2.
 
-use crate::fim::ad::Scalar;
+use crate::ad::Scalar;
 use crate::fim::state::FimState;
 use crate::fim::wells::{FimWellTopology, build_well_topology};
 use crate::well::WellScheduleControl;
@@ -240,7 +240,7 @@ mod tests {
     use nalgebra::DVector;
 
     use super::*;
-    use crate::fim::ad::Ad;
+    use crate::ad::Ad;
     use crate::fim::assembly::{FimAssemblyOptions, assemble_fim_system};
     use crate::fim::assembly_ad::{
         assemble_fim_system_ad, cell_equation_residual_breakdown_ad, flow_resv_terms_f64,

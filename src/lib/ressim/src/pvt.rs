@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::ReservoirSimulator;
-use crate::fim::ad::{Ad, Scalar};
+use crate::ad::{Ad, Scalar};
 
 /// Generic (differentiable) counterpart of the fields interpolated from the
 /// saturated PVT curve. Parameterized by a `Scalar` so the same interpolation

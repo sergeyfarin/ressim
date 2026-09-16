@@ -13,6 +13,12 @@
 //! This mirrors OPM Flow's `DenseAd::Evaluation` local-AD approach, specialized
 //! to a small fixed `N` (the per-cell block size, plus a couple of extra well
 //! directions) so there is no heap allocation and it stays wasm-friendly.
+//!
+//! It lives at the crate root rather than under `fim/` because it is not FIM's. The shared
+//! property modules — `relperm`, `pvt`, `mobility`, `capillary` — already depended on it from
+//! outside the solver tree, and `fluid/` needs it for the compositional equilibrium derivatives
+//! (compositional plan, C4) while owning no simulation state and no dependency on the black-oil
+//! solver. Nothing about the arithmetic changed in the move.
 
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
@@ -337,6 +343,9 @@ pub(crate) trait Scalar:
     fn from_f64(v: f64) -> Self;
     fn value(self) -> f64;
     fn exp(self) -> Self;
+    /// Natural logarithm. Added for the compositional fugacity coefficients, which are computed
+    /// and compared as logs throughout — `ln phi` stays representable where `phi` underflows.
+    fn ln(self) -> Self;
     fn sqrt(self) -> Self;
     fn powf(self, p: f64) -> Self;
     fn recip(self) -> Self;
@@ -359,6 +368,9 @@ impl Scalar for f64 {
     }
     fn exp(self) -> Self {
         f64::exp(self)
+    }
+    fn ln(self) -> Self {
+        f64::ln(self)
     }
     fn sqrt(self) -> Self {
         f64::sqrt(self)
@@ -392,6 +404,9 @@ impl<const N: usize> Scalar for Ad<N> {
     }
     fn exp(self) -> Self {
         Ad::exp(self)
+    }
+    fn ln(self) -> Self {
+        Ad::ln(self)
     }
     fn sqrt(self) -> Self {
         Ad::sqrt(self)

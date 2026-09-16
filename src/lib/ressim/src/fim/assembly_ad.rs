@@ -18,7 +18,7 @@ use nalgebra::DVector;
 use sprs::TriMatI;
 
 use crate::ReservoirSimulator;
-use crate::fim::ad::Ad;
+use crate::ad::Ad;
 use crate::fim::assembly::{
     CellResidualBreakdown, DARCY_METRIC_FACTOR, FimAssembly, FimAssemblyOptions, FimAssemblyTiming,
     equation_offset, unknown_offset,
