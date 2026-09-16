@@ -5,6 +5,17 @@ Date: 2026-09-14. Reviewed ResSim commit
 reported “Already up to date.” This is an architecture/source audit with focused native
 tests, not a new convergence experiment or a compositional benchmark.
 
+> **Superseded facts, 2026-09-16.** Three statements below were true at `ffaf18f` and are not
+> true now. (1) The two failing well tests in *Audit validation* were fixed by the FIM repair
+> series; #27 and #28 are closed as stale test oracles, and #13's gate gap is closed. (2) The
+> three OPM git checkouts in *OPM available on this machine* do not exist in this environment;
+> OPM is installed as `2026.04-1~noble` Debian packages with headers under `/usr/include/opm/`.
+> (3) `flowexperimental/comp/` is not packaged, so `CompWellModel` and `CompWellFlash.hpp`
+> cannot be read here. The architectural conclusions are unaffected. Corrected prerequisites,
+> paths and the pinned fluid/oracle are in
+> [the execution plan's 2026-09-16 corrections](COMPOSITIONAL_FLUID_EXECUTION_PLAN_2026-09-14.md#plan-corrections--2026-09-16)
+> and [`COMPOSITIONAL_VALIDATION.md`](COMPOSITIONAL_VALIDATION.md).
+
 ## Recommendation
 
 Detailed follow-through: [FIM repair execution plan](FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md)
@@ -214,6 +225,11 @@ cargo test --manifest-path src/lib/ressim/Cargo.toml fim::wells::tests:: -- --no
 cargo test --manifest-path src/lib/ressim/Cargo.toml assembly_ad -- --nocapture
 # test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 516 filtered out
 ```
+
+**These two failures no longer reproduce.** They were adjudicated and fixed by the FIM repair
+series (`de4f23d`, `31a176a`) and #27/#28 are closed: in both cases the test oracle was wrong and
+production was correct. The paragraph below records what the 2026-09-14 audit observed at
+`ffaf18f`, which remains a correct historical statement about that commit.
 
 The two failures are exactly the tests named in #27/#28. The derivative assertion is
 `(target_exact - target_fd).abs() / target_scale < 1e-3`; the stencil assertion compares

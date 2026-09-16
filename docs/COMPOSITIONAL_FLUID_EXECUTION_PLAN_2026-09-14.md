@@ -1,20 +1,121 @@
 # Compositional fluid and FIM integration execution plan
 
-Date: 2026-09-14. Planning base: `f9dd22e`. **No compositional implementation is delivered by
-this document.** Execution tracking belongs to
+Date: 2026-09-14; **corrected 2026-09-16** (see [Plan corrections](#plan-corrections--2026-09-16)).
+Planning base: `f9dd22e`; corrections verified on `f5838eb`. **No compositional implementation is
+delivered by this document.** Execution tracking belongs to
 [#29](https://github.com/sergeyfarin/ressim/issues/29); create linked child issues when starting
 independent implementation stages. The [readiness assessment](COMPOSITIONAL_READINESS_ASSESSMENT_2026-09-14.md)
 contains the audit and source hashes. The [FIM repair plan](FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md)
 defines the integration prerequisite.
+
+## Plan corrections — 2026-09-16
+
+Applied on branch `compositional-modelling`, base `f5838eb`. Every item below was verified
+against this machine, not inferred from the 2026-09-14 planning session. The task list, scope
+and acceptance matrix are **unchanged**; these corrections fix stale prerequisites, wrong source
+paths and one unavailable dataset, and they upgrade one oracle from "contingent" to "available".
+
+### 1. The FIM prerequisite is satisfied
+
+`FIM-COMPOSITIONAL-SEAM-READY` was declared at `6be6d08`
+([handoff](FIM_REPAIR_HANDOFF_2026-09-15.md) line 13); `FIM-REPAIR-READY` at `57ecb8e`.
+[#27](https://github.com/sergeyfarin/ressim/issues/27),
+[#28](https://github.com/sergeyfarin/ressim/issues/28) and
+[#13](https://github.com/sergeyfarin/ressim/issues/13) are **closed** — both well findings were
+stale test oracles, not production defects. The gate this plan names for C8-and-later is
+therefore open, and C7 may consume `fim/layout.rs` (`CELL_BLOCK_SIZE`, `CellPrimary`,
+`CellEquation`), `FimLinearBlockLayout` / `FimLinearSolveReport` (`fim/linear/mod.rs`) and
+`EquationScaling` / `EquationFamilyPeaks` (`fim/scaling.rs`) as delivered interfaces.
+`fim/ad.rs` referenced by C4 exists.
+
+### 2. OPM is installed as packages, not as git checkouts
+
+The readiness assessment pins `OPM/opm-simulators`, `OPM/opm-common` and `OPM/opm-models`
+working copies at three commit hashes. **Those checkouts do not exist on this machine.** What
+exists is the Ubuntu noble OPM packaging:
+
+| Package | Version | Supplies |
+| --- | --- | --- |
+| `libopm-common-dev:amd64` | `2026.04-1~noble` | `/usr/include/opm/material/**` — `eos/`, `constraintsolvers/PTFlash.hpp`, `fluidsystems/`, `viscositymodels/LBC.hpp`, `components/` |
+| `libopm-simulators-dev:amd64` | `2026.04-1~noble` | `/usr/include/opm/models/ptflash/*.hh` |
+| `libopm-simulators-bin` | `2026.04-1~noble` | `/usr/bin/flow` only |
+| `libopm-grid-dev:amd64` | `2026.04-1~noble` | grid headers |
+
+Read every C0/C3/C11 "OPM source" reference at `/usr/include/opm/...`, and record provenance as
+the package version plus `dpkg -S <header>`, not a git hash. The three hashes in the assessment
+remain valid as upstream citations; they are not reproducible artifacts here.
+
+### 3. `flowexperimental/comp/` is not packaged — C11's reading list is unavailable
+
+`CompWellModel`, `wells/CompWellFlash.hpp` and `flow_comp.cpp/.hpp` are an unpackaged
+experimental application in `opm-simulators`. `find /usr/include/opm -path '*comp*'` returns no
+well headers. C11 therefore **cannot** open its named reference in this environment. C11 must
+either (a) fetch upstream `opm-simulators` source over the network under the normal approval
+rules, or (b) derive the compositional well contract from first principles and the installed
+`opm/models/ptflash/` residual headers, and say so. It must not paraphrase a header it has not
+read. This does not block C0–C10.
+
+### 4. Fluid dataset: adopt OPM's installed CO2/C1/C10 system, not C1/nC4/nC10
+
+The plan suggested a methane/n-butane/n-decane ternary "only after C0 pins a complete sourced
+dataset". No complete sourced n-butane dataset exists on this machine, and the plan forbids
+inventing critical properties. `/usr/include/opm/material/fluidsystems/ThreeComponentFluidSystem.hh`
+(installed, SINTEF 2022, GPL-2+) instead pins a **complete** ternary — CO2 / C1 / C10 — with
+every quantity C2/C3/C5 need, including the critical volumes LBC requires and an explicit
+`interactionCoefficient() == 0.0` for all pairs. It is also the fluid OPM's own compositional
+path is written around, which makes the harness oracle and the model agree by construction.
+
+**V1 fluid is therefore CO2/C1/C10** (ternary) with a **C1/C10 binary** reduction for N=2.
+Full values and provenance live in `COMPOSITIONAL_VALIDATION.md`. CO2 here is a PR-EOS
+hydrocarbon-system component at fixed temperature; this is **not** aqueous CO2, and the plan's
+exclusion of brine/aqueous-CO2 thermodynamics is unchanged and still binding.
+
+### 5. The thermodynamic oracle is available now; the trajectory oracle is still blocked
+
+C0 treats a runnable OPM reference as contingent ("prepare a pinned build recipe"). For
+**thermodynamics that contingency is resolved**: OPM's PTFlash/CubicEOS/LBC stack is
+header-only and compiles against the installed packages with no OPM build and no MPI:
+
+```bash
+g++ -std=c++20 -I/usr/include -I/usr/include/dune harness.cpp -o harness
+```
+
+`-std=c++20` is required — `opm/material/Constants.hpp` and `PolynomialUtils.hpp` use
+`std::numbers`, and `dune/common/std/algorithm.hh` requires three-way comparison. C17 fails.
+
+The **trajectory** oracle remains **BLOCKED**, exactly as
+[#29](https://github.com/sergeyfarin/ressim/issues/29) states: `libopm-simulators-bin` ships
+`/usr/bin/flow` and nothing else, and `flow` 2026.04 is the black-oil simulator. C12 cannot be
+closed from this environment without building the experimental compositional application.
+These two oracle capabilities stay separately tracked, as the plan already requires.
+
+### 6. Pinned conventions read out of the installed source
+
+Recorded here because three of them are exactly the confusions the plan warns about.
+
+| Convention | Installed source | Value |
+| --- | --- | --- |
+| Phase-split variable | `PTFlash.hpp` `flash_solve_scalar_`, `rachfordRice_g_` | OPM solves for **`L` = liquid mole fraction**. This plan's `beta` is the **vapor** fraction: `beta = 1 - L`. Never pass one where the other is meant. |
+| EOS variant | `CompositionalConfig::EOSType` | `{PR, PRCORR, RK, SRK, ZJ}`. **V1 pins `PR`** (unmodified). |
+| PR constants | `eos/PRParams.hpp` | `OmegaA = 0.457235529 * (1 + f(w)(1 - sqrt(Tr)))^2`, `OmegaB = 0.077796074`, `m1 = 1 + sqrt(2)`, `m2 = 1 - sqrt(2)`, `f(w) = 0.37464 + 1.54226 w - 0.26992 w^2`. The `PRCORR` branch swaps `f(w)` for a quartic when `w > 0.49`; C10's acentric factor is 0.488, just under that threshold, so PR and PRCORR agree on this fluid. Do not treat that coincidence as permission to leave the variant unpinned. |
+| Fugacity coefficient | `eos/CubicEOS.hpp` | `ln phi_i = -ln(Z - B) + (Bi/B)(Z - 1) + [ln((Z + m2 B)/(Z + m1 B)) * A / ((m1 - m2) B)] * ((2/A) sum_j A_ij y_j - Bi/B)`. OPM then clamps `phi` into `[1e-10, 1e10]`; the Rust port **must not** copy that clamp into the delivered model — plan rule 6 forbids clamping an invalid result — but a fixture generated at a clamped state is unusable and must be excluded by C0, not matched. |
+| Root selection | `eos/CubicEOS.hpp::computeMolarVolume` | Three real roots: largest `Z` for the gas branch, smallest for the liquid branch; one real root: that root for both. Root *labelling*, not stability — the plan's C2 rule stands. |
+
+### 7. Consequent edits already applied to the task text
+
+C0 "Read", C3, C5 and C11 source paths now point at `/usr/include/opm/...`; C0's dataset step
+names the CO2/C1/C10 system; C0's oracle step records the verified harness command. Nothing
+else in C0–C15, the acceptance matrix or the stop conditions was changed.
 
 ## Target and explicit scope
 
 Deliver **V1: isothermal hydrocarbon compositional flow**, with a Peng–Robinson EOS, two supported
 component counts (2 and 3), one or two hydrocarbon phases, phase appearance/disappearance,
 composition-dependent density/viscosity, component-conservative fully implicit transport,
-specified-composition injection and component production. Start with a three-component
-methane/n-butane/n-decane fluid only after C0 pins a complete sourced dataset and suitable
-temperature/pressure envelope. Do not invent critical properties or binary interaction values.
+specified-composition injection and component production. The V1 fluid is the **CO2/C1/C10 ternary** pinned by correction 4 from OPM's installed
+`ThreeComponentFluidSystem`, with a **C1/C10 binary** as the N=2 reduction. (The original text
+suggested methane/n-butane/n-decane; no complete sourced n-butane dataset is available here.)
+Do not invent critical properties or binary interaction values.
 
 V1 uses Cartesian geometry, a single fluid region, constant prescribed temperature, no water,
 no hydrocarbon capillary pressure, initially zero gravity, and no reactions/diffusion. Gravity
@@ -170,27 +271,35 @@ Absent-phase composition/property derivatives must not be read as valid transpor
 
 ## C0 — Pin the fluid, consuming case and independent oracle
 
-**Read:** OPM source inventory/hashes in the assessment; local
-`OPM/opm-common/opm/material/constraintsolvers/PTFlash.hpp`, `eos/CubicEOS.hpp`,
-`eos/PRParams.hpp`, `fluidsystems/GenericOilGasWaterFluidSystem.hpp`; compositional model/wells
-under `OPM/opm-simulators/flowexperimental/comp/` and its `opm/models/ptflash/` headers.
+**Read:** the installed OPM headers (correction 2) —
+`/usr/include/opm/material/constraintsolvers/PTFlash.hpp`,
+`/usr/include/opm/material/eos/{CubicEOS,PRParams,CubicEOSParams}.hpp`,
+`/usr/include/opm/material/fluidsystems/{ThreeComponentFluidSystem.hh,GenericOilGasWaterFluidSystem.hpp}`,
+`/usr/include/opm/material/viscositymodels/LBC.hpp`,
+`/usr/include/opm/material/components/{C1,C10,SimpleCO2}.hpp`,
+`/usr/include/opm/models/ptflash/*.hh`. The compositional wells under
+`opm-simulators/flowexperimental/comp/` are **not packaged** and cannot be read here
+(correction 3).
 
-1. Record current checkout hashes/status and exact source symbols. Do not assume the separate
-   `opm-models` checkout is the version linked into an OPM executable.
+1. Record package versions (`dpkg -l | grep opm`), the `dpkg -S` owner of every header cited,
+   and the exact source symbols. There are no git checkouts here; do not present the assessment's
+   three upstream hashes as reproducible local artifacts, and do not assume the packaged headers
+   are the source that built `/usr/bin/flow`.
 2. Pin a full fluid dataset with units, temperature, critical data, acentric factors, molecular
-   weights, interaction matrix, PR variant/constants, viscosity parameters and surface conditions.
-   If the suggested ternary mixture lacks a complete trusted dataset, choose a fully sourced
-   binary/ternary fixture and document the change before coding. Zero binary interactions are
-   a model choice requiring an explicit source/fixture, not a universal default.
-3. Locate a runnable compositional reference executable with `rg --files OPM` and PATH checks.
-   Stock `flow --version` was 2026.04 in the audit; that does not establish compositional support.
-   Inspect local build targets/README before selecting a command. Do not fabricate a `flow --comp`
-   flag. If no executable exists, prepare a pinned build recipe and use the environment's normal
-   approval rules for installation/build writes. Until available, mark external parity blocked;
-   independent thermodynamic invariants can still be developed.
-   A small pinned OPM PTFlash harness can supply thermodynamic fixtures without a full Flow
-   build; it does not replace the compositional trajectory executable required by C12. Record
-   these as distinct oracle capabilities and keep their build recipes separate.
+   weights, critical volumes, interaction matrix, PR variant/constants, viscosity parameters and
+   surface conditions. Correction 4 selects CO2/C1/C10 from `ThreeComponentFluidSystem.hh`; copy
+   the numbers out of `components/{SimpleCO2,C1,C10}.hpp` with line references rather than from
+   memory. Its all-zero interaction matrix is an explicit choice made by that source
+   (`interactionCoefficient()` returns `0.0`), which is what makes it citable — zero BIPs are
+   never a universal default.
+3. Two oracle capabilities, tracked separately (correction 5).
+   **Thermodynamic — available.** Build the header-only OPM PTFlash/CubicEOS/LBC harness with
+   `g++ -std=c++20 -I/usr/include -I/usr/include/dune`; no OPM build, link step or MPI is needed.
+   Commit its source, exact command and outputs.
+   **Trajectory — blocked.** `libopm-simulators-bin` ships only `/usr/bin/flow`, which is the
+   black-oil simulator at 2026.04. Do not fabricate a `flow --comp` flag. Mark external
+   trajectory parity BLOCKED and leave it blocked until a compositional executable is actually
+   built; the harness does not substitute for it, and C12 cannot close without it.
 4. Store proposed fixtures under `opm/compositional/` with a README, generator/replay command,
    source/license provenance and small machine-readable outputs. Large raw runs belong outside
    Git. Include binary/build identity, fluid/deck checksum, units, solver tolerances and phase
@@ -245,14 +354,17 @@ No flash, global Newton or viscosity fitting in this task.
 
 ## C3 — Stability and scalar PT flash
 
-**Create:** `fluid/stability.rs`, `flash.rs`; use OPM PTFlash as a sourced algorithm reference.
+**Create:** `fluid/stability.rs`, `flash.rs`; use
+`/usr/include/opm/material/constraintsolvers/PTFlash.hpp` as the sourced algorithm reference.
 
 1. Implement stable-phase testing with a specified tangent-plane/stability criterion and
    multiple appropriate trial seeds. A Wilson K estimate is only an initial guess. Do not
    conclude single phase merely because a Rachford–Rice root is absent for one guessed K vector.
 2. For a two-phase state, solve the **vapor-fraction** Rachford–Rice equation
-   `sum(z_i*(K_i-1)/(1+beta*(K_i-1))) = 0`, bounded to the physical interval. Name the convention:
-   OPM code may use a liquid fraction L; convert explicitly, never interchange the symbols.
+   `sum(z_i*(K_i-1)/(1+beta*(K_i-1))) = 0`, bounded to the physical interval. OPM does **not**:
+   `PTFlash.hpp` solves `rachfordRice_g_` for `L`, the **liquid** mole fraction, so every
+   comparison against harness output needs `beta = 1 - L` applied explicitly at the boundary.
+   Never interchange the symbols.
 3. Compute `x_i=z_i/(1+beta*(K_i-1))`, `y_i=K_i*x_i`; update K from fugacity equilibrium with
    bounded iterations and sourced acceleration/fallback. Validate fugacity residual, both
    phase normalizations and reconstructed z before returning success.
@@ -429,7 +541,11 @@ unchanged accepted state. No changes to black-oil damping/default tolerances.
 
 ## C11 — Compositional wells and control switching
 
-**Read:** repaired black-oil topology/Peaceman code; OPM `CompWellModel` and `CompWellFlash.hpp`.
+**Read:** repaired black-oil topology/Peaceman code. OPM's `CompWellModel` and
+`CompWellFlash.hpp` are **not available in this environment** (correction 3): either fetch
+upstream `opm-simulators` source under the normal approval rules, or derive the well contract
+from first principles plus the installed `opm/models/ptflash/` residual headers and say which
+was done. Do not paraphrase a header that was not read.
 
 1. Write a well design note before coding: unknowns/equations, signed reservoir/molar rates,
    injection composition, mixture mobility/density, BHP datum, connection source and surface
