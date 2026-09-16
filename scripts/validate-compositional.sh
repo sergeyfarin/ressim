@@ -91,6 +91,7 @@ run_thermo() {
     run_filter comp_gravity_      9   # C9 gravity subtask
     run_filter comp_newton_      10   # C10 Newton solve and update policy
     run_filter comp_rollback_    10   # C10 timestep lifecycle, retry and commit
+    run_filter comp_well_        20   # C11 wells: sources, derivatives and controls
 }
 
 run_fixture() {

@@ -264,6 +264,11 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C9 gravity** — single-phase hydrostatic | stationary at analytic equilibrium | liquid potential `< 1e-10` bar, flux `< 1e-8` mol/day; a 4-cell column assembles to a scaled residual `< 1e-12` | **Met** |
 | **C9 gravity** — head uses mass density | analytic | matches `rho_mass g dz 1e-5` to `< 1e-9` relative; the molar density is 10x larger and would not | **Met** |
 | **C9 gravity** — Jacobian vs FD | 1e-5 scaled | `< 1e-4` including the new downstream-composition coupling | **Met** |
+| **C11 wells** — derivatives | AD/FD agreement | `< 1e-4` on the `N x N` cell block and the `N x 1` BHP column, producer and injector | **Met** |
+| **C11 wells** — injected composition | exactly the prescribed one | `< 1e-12` on every component, for three different cell compositions | **Met** |
+| **C11 wells** — injectivity | must not vanish | a vapour injector into a single-phase liquid cell still injects — the failure the plan names | **Met** |
+| **C11 wells** — inventory closure | — | over 5 accepted steps, the grid's loss equals the well's production to `< 1e-6` relative | **Met** |
+| **C11 wells** — control switching | limit overrides target | a binding BHP limit reverts to BHP control and reports the achieved rate, not the target | **Met** |
 | Derivative closure | — | `sum_i d(x_i)/du_v` and `sum_i d(y_i)/du_v` worst 6.1e-16 (`binary_T333_p150`) | The oracle's derivatives satisfy the normalization identity to roundoff |
 | Smooth property derivatives | ≤ 1e-4 relative, on a frozen nonzero derivative scale, over an FD step plateau | Deferred to C4 — needs the Rust implementation to compare against | Not yet |
 | Tiny assembled Jacobian | ≤ 1e-5 scaled entrywise vs FD at smooth states | Deferred to C8/C9 | Not yet |
@@ -335,12 +340,52 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C8 | Cell inventory, accumulation and scaling | **COMPLETE** | `compositional/accumulation.rs`; 19 `comp_accumulation_*` / `comp_scaling_*` tests |
 | C9 | Component face flux, gravity and global assembly | **COMPLETE** | `compositional/{flux,assembly}.rs`; 33 `comp_flux_*` / `comp_assembly_*` / `comp_gravity_*` tests |
 | C10 | Linear solve, Newton, timestep lifecycle | **COMPLETE** on the direct path | `compositional/{newton,timestep}.rs`; 20 `comp_newton_*` / `comp_rollback_*` tests. The iterative/CPR adapter is deferred — see the C10 record |
-| C11 | Compositional wells | NOT STARTED | `FIM-COMPOSITIONAL-SEAM-READY` declared; **C11's OPM reading list is unavailable here** (plan correction 3) |
+| C11 | Compositional wells | **COMPLETE** for one completion | `compositional/wells.rs`, [design note](COMPOSITIONAL_WELL_DESIGN.md); 20 `comp_well_*` tests. **Derived from first principles — C11's OPM reference is unavailable here** (plan correction 3), so no OPM agreement is claimed. Multiple completions are a separate commit |
 | C12 | NATIVE-COMPOSITIONAL-READY | **BLOCKED** | No compositional Flow executable (§3b) |
 | C13–C14 | WASM, product integration, release | NOT STARTED | Gated on C12 |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
 ## 8. Completion records
+
+### C11 — compositional wells
+
+Design note written before the implementation, as the plan requires:
+[`COMPOSITIONAL_WELL_DESIGN.md`](COMPOSITIONAL_WELL_DESIGN.md).
+
+```text
+C-task:                C11 (one completion; multiple completions are a separate commit)
+Start / final commit:  d1ea1e4 / this commit
+Provenance:            DERIVED FROM FIRST PRINCIPLES plus this repository's Peaceman geometry.
+                       C11's named reference - OPM's CompWellModel and CompWellFlash.hpp -
+                       lives in opm-simulators/flowexperimental/comp/, which Debian does not
+                       package (plan correction 3). No OPM well header was read, so **no
+                       claim of agreement with OPM's well model is made or gated**
+Geometry reuse:        the geometric part of well_control.rs's productivity index, with total
+                       mobility factored back out so one connection can carry two phases at
+                       different mobilities. Same Darcy constant, same Peaceman form
+Sign convention:       positive source = moles ENTERING the cell, matching C8's residual
+Injection rule:        the injected stream's own total mobility at connection conditions. Its
+                       saturations sum to one, so no phase is evaluated at a saturation
+                       belonging to a different fluid and the injectivity cannot vanish for
+                       the wrong reason - the failure the plan names explicitly. A modelling
+                       choice, stated as one: it assumes the near-wellbore region is occupied
+                       by the injected fluid
+Wellbore flash:        NOT required by this formulation, and the design note says why: a
+                       single completion with a prescribed injection composition has no mixing
+                       to resolve. A multi-completion well does, which is one reason that is a
+                       separate commit rather than a loop
+Controls:              BHP; total molar rate with a BHP limit; surface volumetric rate through
+                       C5's single-stage flash. The last is explicitly NOT a reservoir rate and
+                       not a black-oil RESV target
+Tests created:         20 comp_well_*
+Commands:              bash scripts/validate-compositional.sh all
+                       bash scripts/validate-solver-coverage.sh all
+Results:               233 comp_ tests pass; compositional gate green; solver coverage 38/38
+Out of scope here:     multiple completions, crossflow, wellbore mixing and friction,
+                       multisegment wells, separator trains beyond C5's single stage
+Completed gate:        C11 (single completion)
+Next permitted task:   C11 multi-completion, or C12 - which is BLOCKED (section 3b)
+```
 
 ### C10 — linear solve, Newton and the timestep lifecycle
 

@@ -23,6 +23,7 @@ pub mod layout;
 pub mod newton;
 pub mod state;
 pub mod timestep;
+pub mod wells;
 
 #[cfg(test)]
 mod accumulation_tests;
@@ -40,3 +41,5 @@ mod newton_tests;
 mod state_tests;
 #[cfg(test)]
 mod timestep_tests;
+#[cfg(test)]
+mod wells_tests;
