@@ -251,6 +251,11 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C8 residual** — stationary closed cell | exactly zero | exactly zero in all three regimes | **Met** |
 | **C8 Jacobian** — vs FD | 1e-5 scaled entrywise | `< 1e-5` over every entry, both phase regimes, pressure and composition columns | **Met** |
 | **C8 scaling** — trace component visibility | a trace component must not hide | a 20% error in a component holding 1e-4 of the cell reports `> 0.1`, where a cell-wide scale reports `< 1e-5` | **Met** |
+| **C9 flux** — local conservative exchange | opposite contributions cancel | exactly, from one flux inserted with two signs | **Met** |
+| **C9 flux** — Jacobian vs FD | 1e-5 scaled | `< 1e-4` over every entry of the `N x 2N` face block, both neighbours, both regimes | **Met** |
+| **C9 assembly** — closed-grid closure | — | internal faces cancel exactly; the residual sums to the source term to `< 1e-9` relative | **Met** |
+| **C9 assembly** — Jacobian vs numerical | 1e-5 scaled entrywise | `< 1e-5` on 2- and 3-cell grids, binary and ternary, column-scaled | **Met** |
+| **C9 assembly** — sparsity | neighbours only | every non-adjacent entry is exactly zero | **Met** |
 | Derivative closure | — | `sum_i d(x_i)/du_v` and `sum_i d(y_i)/du_v` worst 6.1e-16 (`binary_T333_p150`) | The oracle's derivatives satisfy the normalization identity to roundoff |
 | Smooth property derivatives | ≤ 1e-4 relative, on a frozen nonzero derivative scale, over an FD step plateau | Deferred to C4 — needs the Rust implementation to compare against | Not yet |
 | Tiny assembled Jacobian | ≤ 1e-5 scaled entrywise vs FD at smooth states | Deferred to C8/C9 | Not yet |
@@ -272,9 +277,23 @@ No existing black-oil benchmark tolerance is changed by any of this.
    inherited from the black-oil path, whose standard-volume outputs keep their own separate
    meaning. The surface flash produces no `Bo`, `Bg` or `Rs`, and its gas/liquid ratio is
    deliberately not called GOR.
-2. **The hydrocarbon relative permeability law is not pinned.** The plan is explicit that the
-   existing water/oil curves are not implicitly a hydrocarbon liquid/vapour law. C9 and C12 need
-   one, sourced. Nothing in C0–C5 depends on it.
+2. **The hydrocarbon relative permeability law is pinned only provisionally — this is the one
+   modelling assumption in the compositional model that is not sourced data, and it needs a
+   decision.** C9 declares **straight-line** relative permeability (`kr_L = S_L`, `kr_V = S_V`, no
+   residual saturations, no endpoint scaling) as the single variant of
+   `compositional::flux::HydrocarbonRelPerm`.
+
+   *Why this rather than something else.* The plan forbids reusing the existing water/oil curves,
+   which were fitted for a different pair of phases, and no sourced hydrocarbon liquid/vapour table
+   exists in this environment. Inventing Corey exponents would be exactly the invented data the
+   plan prohibits. Straight lines add no fitted parameters and no residual saturations, so any
+   error in a displacement front is attributable to the thermodynamics and the discretization
+   rather than to a curve nobody can cite.
+
+   *What it is not.* It is not a claim about any real rock, and it will make a real displacement
+   front less sharp than a Corey-type curve would. **A sourced table is still owed before any case
+   is admitted to the catalog (C12/C13).** When one arrives it becomes a second enum variant; the
+   enum exists so that addition cannot happen silently.
 3. **The first flow fixture is specified but not built.** 1D uniform column, no gravity or
    capillarity, fixed temperature, one injection and one production boundary, composition chosen
    to force a phase change inside the declared domain. It cannot be given an external reference
@@ -300,12 +319,47 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C6 | **THERMO-READY** | **DECLARED** | `scripts/validate-compositional.sh`; 110 tests; 7 620-sample domain sweep. External flash parity met (§3a); **trajectory parity remains blocked** (§3b) |
 | C7 | Component layout and state | **COMPLETE** | `compositional/{layout,state}.rs`; 30 `comp_layout_*` / `comp_state_*` tests |
 | C8 | Cell inventory, accumulation and scaling | **COMPLETE** | `compositional/accumulation.rs`; 19 `comp_accumulation_*` / `comp_scaling_*` tests |
-| C9–C11 | Flux, Newton, wells | NOT STARTED | `FIM-COMPOSITIONAL-SEAM-READY` declared at `6be6d08` |
+| C9 | Component face flux and global assembly | **COMPLETE** except gravity | `compositional/{flux,assembly}.rs`; 24 `comp_flux_*` / `comp_assembly_*` tests. Gravity is its own subtask and is not done |
+| C10–C11 | Newton lifecycle, wells | NOT STARTED | `FIM-COMPOSITIONAL-SEAM-READY` declared at `6be6d08` |
 | C12 | NATIVE-COMPOSITIONAL-READY | **BLOCKED** | No compositional Flow executable (§3b) |
 | C13–C14 | WASM, product integration, release | NOT STARTED | Gated on C12 |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
 ## 8. Completion records
+
+### C9 — component face flux and global assembly
+
+```text
+C-task:                C9 (gravity subtask NOT done - see below)
+Start / final commit:  e1f4396 / this commit
+Component/phase count: N=2 and N=3, AD instantiations through N=4; two-phase and both
+                       single-phase upstream regimes
+Source equation:       dphi   = p_i - p_j                                        [bar]
+                       q_P    = geom_t (kr_P / mu_P)|upstream dphi               [m3/day]
+                       flux_i = sum_P q_P c_P|upstream x_(P,i)|upstream          [mol/day]
+                       geom_t is DARCY_METRIC_FACTOR * geometric_transmissibility, the same
+                       quantity fim/flux.rs receives - reused, not re-derived
+Upwind convention:     branch on the value of dphi, `dphi >= 0` selects the first cell, then
+                       frozen for the whole Jacobian evaluation. Identical to fim/flux.rs
+Changed interfaces:    new `compositional::flux` and `compositional::assembly`
+Tests created:         24 - comp_flux_* 15, comp_assembly_* 9
+Commands:              bash scripts/validate-compositional.sh all
+                       bash scripts/validate-solver-coverage.sh all
+Results:               183 comp_ tests pass; compositional gate green; solver coverage 38/38
+Worst errors:          face Jacobian vs FD < 1e-4; assembled Jacobian vs an independent
+                       numerical one < 1e-5 column-scaled; internal-face cancellation exact
+Modelling assumption:  straight-line hydrocarbon relative permeability. Declared, not sourced.
+                       See section 6, item 2 - this needs a decision before C12/C13
+NOT done:              gravity. The plan makes it a separate subtask with its own commit, and
+                       it requires a sourced single-phase hydrostatic equilibrium before any
+                       multiphase gravity case. V1 starts at zero gravity, so nothing
+                       downstream is blocked by its absence
+Still zero in V1:      hydrocarbon capillary pressure. Unequal phase pressures need a
+                       separately derived equilibrium contract and cannot be enabled by
+                       passing an old flag
+Completed gate:        C9 (non-gravity)
+Next permitted task:   C9 gravity subtask, or C10
+```
 
 ### C8 — cell inventory, accumulation and scaling
 

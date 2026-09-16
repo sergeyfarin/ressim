@@ -86,6 +86,8 @@ run_thermo() {
     run_filter comp_state_      18   # C7 accepted/trial state, cache, checkpoints
     run_filter comp_accumulation_ 12  # C8 cell inventory, residual and Jacobian
     run_filter comp_scaling_      7   # C8 row and primary-variable scaling
+    run_filter comp_flux_        15   # C9 component face flux
+    run_filter comp_assembly_     9   # C9 global residual and Jacobian assembly
 }
 
 run_fixture() {

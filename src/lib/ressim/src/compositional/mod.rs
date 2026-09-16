@@ -15,11 +15,17 @@
 #![allow(dead_code)]
 
 pub mod accumulation;
+pub mod assembly;
+pub mod flux;
 pub mod layout;
 pub mod state;
 
 #[cfg(test)]
 mod accumulation_tests;
+#[cfg(test)]
+mod assembly_tests;
+#[cfg(test)]
+mod flux_tests;
 #[cfg(test)]
 mod layout_tests;
 #[cfg(test)]
