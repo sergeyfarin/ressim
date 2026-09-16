@@ -83,10 +83,17 @@ g++ -std=c++20 -I/usr/include -I/usr/include/dune harness.cpp -o harness
 `-std=c++20` is required — `opm/material/Constants.hpp` and `PolynomialUtils.hpp` use
 `std::numbers`, and `dune/common/std/algorithm.hh` requires three-way comparison. C17 fails.
 
-The **trajectory** oracle remains **BLOCKED**, exactly as
-[#29](https://github.com/sergeyfarin/ressim/issues/29) states: `libopm-simulators-bin` ships
-`/usr/bin/flow` and nothing else, and `flow` 2026.04 is the black-oil simulator. C12 cannot be
-closed from this environment without building the experimental compositional application.
+The **trajectory** oracle was blocked and is **no longer**, as of 2026-09-16. Nothing is
+packaged — `libopm-simulators-bin` ships `/usr/bin/flow` and nothing else — so the compositional
+simulator was built from pinned upstream source on the maintainer's instruction:
+`bash tools/opm_compositional/build-flowexp-comp.sh`, which pins
+`OPM/opm-simulators` at `release/2026.04/final` (`b82f21d`) to match the installed headers.
+
+The executable is **`flowexp_comp`**, not `flow_comp`; this plan guessed the name.
+`OPM/opm-tests`'s `compositional/1D_COMP.DATA` runs on it and is a five-cell CO2 flood in
+CO2/methane/decane — ResSim's own V1 fluid. See
+[`COMPOSITIONAL_VALIDATION.md`](COMPOSITIONAL_VALIDATION.md) §3b for the three places that deck's
+data differs from the pinned specification and must be taken from the deck instead.
 These two oracle capabilities stay separately tracked, as the plan already requires.
 
 ### 6. Pinned conventions read out of the installed source

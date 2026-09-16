@@ -166,17 +166,43 @@ implicit differentiation of the converged equilibrium, which is the pattern C4 i
 follow. The harness seeds the dependent `z_(N-1)` with `dz_(N-1)/dz_k = -1`, so C4's required
 invariant is enforced by the oracle rather than assumed by its consumer.
 
-### 3b. Trajectory oracle — BLOCKED
+### 3b. Trajectory oracle — AVAILABLE since 2026-09-16
 
-There is no compositional flow executable on this machine. `libopm-simulators-bin` installs
-`/usr/bin/flow` and nothing else, and `flow 2026.04` is the black-oil simulator. `flow_comp` lives
-in `opm-simulators/flowexperimental/comp/`, which Debian does not package and which is therefore
-also unreadable as source here.
+**This was BLOCKED and is no longer.** Nothing is packaged — `libopm-simulators-bin` ships only
+the black-oil `/usr/bin/flow` — so the compositional simulator was **built from pinned upstream
+source**, on the maintainer's instruction.
 
-**Consequence:** C12 cannot close, and no compositional trajectory claim may be made, until
-someone builds that application. §3a does not substitute for it — a scalar flash oracle cannot
-referee a flow trajectory. Independent invariants (closed-system inventory, timestep and grid
-refinement, FD Jacobians) remain fully available and are what C8–C11 are gated on.
+```bash
+bash tools/opm_compositional/build-flowexp-comp.sh
+```
+
+| | |
+| --- | --- |
+| Executable | `flowexp_comp` — **not** `flow_comp`, which is what the plan guessed |
+| Source | `OPM/opm-simulators`, tag `release/2026.04/final`, commit `b82f21dba405286c4c4446614dd3bf9cdebf7a2c` |
+| Why that tag | it matches the installed `libopm-common-dev` / `libopm-simulators-dev` 2026.04 packages the headers come from |
+| Configure | `-DCMAKE_BUILD_TYPE=Release -DOPM_COMPILE_COMPONENTS="2;3" -DOPM_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF` |
+| Build-tree patches | three, all recorded in the script, none changing OPM behaviour: two unconditional CMake hooks that assume a full build, and two test targets that link `Boost::unit_test_framework`, which is not installed |
+| Location | outside the repository (`../ressim-opm-build/`), since it is ~1 GB of build tree |
+
+**It runs.** `OPM/opm-tests`'s `compositional/1D_COMP.DATA` — a five-cell 1D CO2 flood in CO2 /
+methane / decane, which is ResSim's own V1 fluid — completes 28 report steps in 0.2 s and writes
+`UNRST`, `SMSPEC`/`UNSMRY` and `ESMRY`.
+
+**Three mismatches between that deck and ResSim's pinned fluid, which C12 must respect rather than
+paper over:**
+
+1. **The EOS data is not identical.** The deck carries more precise values than
+   `ThreeComponentFluidSystem`'s hard-coded ones — e.g. `ACF = [0.22394, 0.01142, 0.4884]` against
+   `[0.224, 0.011, 0.488]`, and `PCRIT = [73.773, 45.992, 21.03]` bar against
+   `[73.8, 46.0, 21.0]`. Critical volumes and the zero interaction matrix do match. C12 must build
+   its fluid from **the deck's** numbers, because the deck is what the oracle ran.
+2. **The deck supplies its own relative permeability.** `SGOF` is a Corey-squared table keyed on
+   gas saturation. This is precisely the "benchmark cases can supply their own curves" the
+   pluggable `RelativePermeabilityModel` exists for; the table is keyed on liquid saturation here,
+   so `S_L = 1 - S_g`.
+3. **The deck supplies its own surface conditions.** `STCOND 15.0 1.0` is 15 °C and 1 bar, not the
+   288.71 K / 1 atm pinned in §6. Another quantity that is data rather than a constant.
 
 ### 3c. Independent invariants
 
@@ -278,7 +304,7 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | Tiny direct linear oracle | ≤ 1e-10 full-system relative residual | Deferred to C10 | Not yet |
 | Local conservative face exchange | Cancellation to roundoff | Deferred to C9 | Not yet |
 | Global closed/source balance | ≤ 1e-8 relative accumulated mole error per component | Deferred to C9/C10 | Not yet |
-| Refined external trajectories | ≤ 1% on cumulative quantities, per-observable tolerances in C12 | **Cannot be set** — no trajectory oracle (§3b) | Blocked |
+| Refined external trajectories | ≤ 1% on cumulative quantities, per-observable tolerances in C12 | Oracle now available (§3b); tolerances to be set by C12 from measured refinement | Not yet |
 | Newton acceptance | Derived and frozen in C8/C11 | Deferred | Not yet |
 
 No existing black-oil benchmark tolerance is changed by any of this.
@@ -351,7 +377,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C9 | Component face flux, gravity and global assembly | **COMPLETE** | `compositional/{flux,assembly}.rs`; 33 `comp_flux_*` / `comp_assembly_*` / `comp_gravity_*` tests |
 | C10 | Linear solve, Newton, timestep lifecycle | **COMPLETE** on the direct path | `compositional/{newton,timestep}.rs`; 20 `comp_newton_*` / `comp_rollback_*` tests. The iterative/CPR adapter is deferred — see the C10 record |
 | C11 | Compositional wells | **COMPLETE** | `compositional/wells.rs`, [design note](COMPOSITIONAL_WELL_DESIGN.md); 29 `comp_well_*` tests, single and multiple completions. **Derived from first principles — C11's OPM reference is unavailable here** (plan correction 3), so no OPM agreement is claimed |
-| C12 | NATIVE-COMPOSITIONAL-READY | **BLOCKED** | No compositional Flow executable (§3b) |
+| C12 | NATIVE-COMPOSITIONAL-READY | **UNBLOCKED, not started** | `flowexp_comp` built and running (§3b); `1D_COMP.DATA` available as a matched fixture |
 | C13–C14 | WASM, product integration, release | NOT STARTED | Gated on C12 |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 

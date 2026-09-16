@@ -112,13 +112,21 @@ has no external oracle and needs an independent invariant instead.
    result — and if a future fixture state ever did clamp, it would have to be excluded rather
    than matched.
 
-## What this is not
+## The other oracle: `flowexp_comp`
 
-It is **not** the compositional trajectory oracle. `libopm-simulators-bin` installs `/usr/bin/flow`
-and nothing else, and `flow 2026.04` is the black-oil simulator; `flow_comp` lives in
-`opm-simulators/flowexperimental/`, which Debian does not package. C12 stays **BLOCKED** until
-someone builds that application. A scalar flash oracle cannot validate a flow trajectory, and this
-tool must never be cited as though it had.
+This harness is the **thermodynamic** oracle. The **trajectory** oracle is a separate executable,
+and it is built rather than installed:
+
+```bash
+bash tools/opm_compositional/build-flowexp-comp.sh
+```
+
+That pins `OPM/opm-simulators` at `release/2026.04/final` (`b82f21d`), matching the installed
+headers, and builds the `flowexp_comp` target — **not** `flow_comp`, which is what the plan
+guessed the name was. The build tree lands outside the repository because it is about a gigabyte.
+
+The two are separate capabilities and must stay separately cited. A scalar flash oracle cannot
+validate a flow trajectory, and this harness must never be quoted as though it had.
 
 It is also not a validation of ResSim. It produces reference numbers. The tests that consume them
 live in the Rust crate and are listed in `COMPOSITIONAL_VALIDATION.md`.
