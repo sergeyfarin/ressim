@@ -1,0 +1,49 @@
+{
+ "schema": "ressim-compositional-reference-convergence/1",
+ "note": "How far each compositional reference moves when its own TSTEP ladder is halved, and then halved again. None of them is converged; this records how far from it each one is, so that no acceptance band is set below a reference's own temporal uncertainty. `growth` is the second movement over the first, both measured against the same coarse run: a converging reference is well under 2, a diverging one is unbounded. See docs/COMPOSITIONAL_C12_FORENSICS.md.",
+ "units": {
+  "pressure": "bar"
+ },
+ "fixtures": {
+  "1d_comp": {
+   "report_steps": 28,
+   "compared": 28,
+   "halved_worst_bar": 2.8212,
+   "halved_final_bar": 0.0022,
+   "quartered_worst_bar": 4.1041,
+   "quartered_final_bar": 0.0026,
+   "growth": 1.455,
+   "trend": "converging"
+  },
+  "1d_comp_skin": {
+   "report_steps": 28,
+   "compared": 28,
+   "halved_worst_bar": 1.5422,
+   "halved_final_bar": 0.9975,
+   "quartered_worst_bar": 2.3732,
+   "quartered_final_bar": 1.5896,
+   "growth": 1.539,
+   "trend": "converging"
+  },
+  "depletion_orat": {
+   "report_steps": 7,
+   "compared": 6,
+   "halved_worst_bar": 0.0107,
+   "halved_final_bar": 0.0042,
+   "quartered_worst_bar": 0.1236,
+   "quartered_final_bar": 0.1236,
+   "growth": 11.608,
+   "trend": "diverging"
+  },
+  "depletion_bhp": {
+   "report_steps": 20,
+   "compared": 20,
+   "halved_worst_bar": 1.603,
+   "halved_final_bar": 0.0023,
+   "quartered_worst_bar": 2.6887,
+   "quartered_final_bar": 0.0028,
+   "growth": 1.677,
+   "trend": "converging"
+  }
+ }
+}

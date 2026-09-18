@@ -2800,3 +2800,158 @@ fn comp_matched_1d_trajectory_agrees_with_opm() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// The oracle convergence census (`comp_oracle_*`)
+// ---------------------------------------------------------------------------------------------
+//
+// C12 compared ResSim's timestep-converged answers against references that take one backward-Euler
+// step per report interval, and read the difference as a model defect. The retraction is in
+// `docs/COMPOSITIONAL_C12_FORENSICS.md`. This is the guard that makes the same mistake fail
+// loudly rather than be reasoned about.
+//
+// `opm/compositional/reference_convergence.json` records, per fixture, how far the **reference**
+// moves when its own `TSTEP` ladder is halved and halved again. Two refinements rather than one,
+// because one is not enough to tell a converging reference from a diverging one: the ORAT
+// depletion moves 0.011 bar on the first halving and 0.124 on the second.
+
+/// The recorded census.
+#[derive(Debug, serde::Deserialize)]
+struct ConvergenceCensus {
+    schema: String,
+    fixtures: std::collections::BTreeMap<String, FixtureConvergence>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct FixtureConvergence {
+    halved_worst_bar: f64,
+    halved_final_bar: f64,
+    quartered_worst_bar: f64,
+    growth: f64,
+    trend: String,
+}
+
+fn convergence_census() -> ConvergenceCensus {
+    let raw = include_str!("../../../../../opm/compositional/reference_convergence.json");
+    let c: ConvergenceCensus = serde_json::from_str(raw).expect("the census must parse");
+    assert_eq!(c.schema, "ressim-compositional-reference-convergence/1");
+    c
+}
+
+/// **None of the references is timestep-converged, and one of them diverges.** Recorded so it
+/// cannot be assumed again.
+#[test]
+fn comp_oracle_convergence_census_is_what_it_was() {
+    let census = convergence_census();
+
+    for (name, expected_trend, growth_range) in [
+        ("1d_comp", "converging", (1.2, 1.8)),
+        ("1d_comp_skin", "converging", (1.2, 1.8)),
+        ("depletion_bhp", "converging", (1.3, 2.1)),
+        // The one that motivated the whole guard. Its *pressure* barely moves on the first
+        // halving — 0.0107 bar — which is exactly why a single refinement is not a convergence
+        // test. On the second it moves 11x further.
+        ("depletion_orat", "diverging", (5.0, 30.0)),
+    ] {
+        let f = census
+            .fixtures
+            .get(name)
+            .unwrap_or_else(|| panic!("the census must carry {name}"));
+        assert_eq!(
+            f.trend, expected_trend,
+            "{name}: the reference's convergence behaviour changed — it is now {}, was \
+             {expected_trend}. If flowexp_comp was rebuilt or upgraded, remeasure the census and \
+             re-read every band that depends on this fixture",
+            f.trend
+        );
+        assert!(
+            (growth_range.0..growth_range.1).contains(&f.growth),
+            "{name}: growth is now {:.3}, outside the recorded {growth_range:?}",
+            f.growth
+        );
+        assert!(
+            f.quartered_worst_bar > f.halved_worst_bar,
+            "{name}: refining twice moved less than refining once, which no monotone \
+             convergence does"
+        );
+    }
+}
+
+/// **An acceptance band may not sit below its reference's own temporal uncertainty.**
+///
+/// This is the rule the retraction produced. A test that compares ResSim's *converged* answer
+/// against a reference measures a resolution gap as well as a model difference, so its band has to
+/// be at least as large as the gap — otherwise it is asserting something about the reference's
+/// timestep and calling it physics.
+///
+/// The table is the bands those tests actually carry, written out so the rule is auditable rather
+/// than assumed. Matched-resolution tests are deliberately absent: they do not inherit the gap,
+/// which is the whole reason they exist.
+#[test]
+fn comp_oracle_converged_comparison_bands_exceed_the_references_own_movement() {
+    let census = convergence_census();
+
+    // (fixture, what the band is called, the band, whether it is a whole-trajectory or final-state
+    //  observable)
+    for (fixture, band_name, band_bar, whole_trajectory) in [
+        (
+            "1d_comp",
+            "comp_reference_transport startup transient",
+            4.5,
+            true,
+        ),
+        ("1d_comp", "comp_reference_transport developed", 4.5, true),
+        (
+            "1d_comp",
+            "comp_reference_transport final state",
+            0.05,
+            false,
+        ),
+        ("1d_comp_skin", "comp_skin_transport worst", 3.5, true),
+        ("1d_comp_skin", "comp_skin_transport developed", 3.5, true),
+        (
+            "1d_comp_skin",
+            "comp_skin_transport final state",
+            2.5,
+            false,
+        ),
+        ("depletion_orat", "comp_depletion_pressure_path", 1.5, true),
+    ] {
+        let f = census
+            .fixtures
+            .get(fixture)
+            .unwrap_or_else(|| panic!("the census must carry {fixture}"));
+        let movement = if whole_trajectory {
+            f.halved_worst_bar
+        } else {
+            f.halved_final_bar
+        };
+        assert!(
+            band_bar >= movement,
+            "{band_name}: its band is {band_bar} bar but {fixture}'s reference moves {movement} \
+             bar when its own timestep is halved. A band below that is measuring the reference's \
+             temporal resolution, not the model. Either widen it, or compare at matched \
+             resolution. See docs/COMPOSITIONAL_C12_FORENSICS.md"
+        );
+    }
+}
+
+/// The skin variant's settled-state "disagreement" is inside its reference's own temporal
+/// uncertainty, and that is worth saying explicitly because it reads like a result otherwise.
+///
+/// `comp_skin_transport_trajectory_tracks_opm` reports 2.09 bar on the final state at ResSim's
+/// converged sub-step. The census says that reference moves **0.998 bar** on one halving of its own
+/// `TSTEP` and 1.59 on two. At matched resolution the same comparison gives 0.002 bar
+/// (`comp_matched_1d_trajectory_agrees_with_opm`). The 2.09 is a resolution gap.
+#[test]
+fn comp_oracle_skin_final_state_gap_is_within_the_references_own_uncertainty() {
+    let census = convergence_census();
+    let f = census.fixtures.get("1d_comp_skin").expect("1d_comp_skin");
+    assert!(
+        f.halved_final_bar > 0.5,
+        "the skin reference's settled state now moves only {:.4} bar on a halving, so the 2.09 \
+         bar converged-comparison figure can no longer be explained by its temporal resolution. \
+         Re-diagnose before treating it as a model difference",
+        f.halved_final_bar
+    );
+}

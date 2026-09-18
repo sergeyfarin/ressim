@@ -9,7 +9,9 @@ set -euo pipefail
 #   fixture  rebuild the C0 thermodynamic fixture and verify it reproduces byte for byte.
 #            Needs the OPM headers and a C++20 compiler. ~15 s.
 #   reference re-run every compositional case through flowexp_comp and verify its fixture: the
-#            1D displacement, its three refinements, and the single-cell depletion.
+#            1D displacement, its three refinements, the skin variant and both single-cell
+#            depletions. Also remeasures the convergence census - how far each reference is from
+#            timestep-converged - because C12 once assumed that and was wrong.
 #            Skips with a note when flowexp_comp has not been built; the committed fixture is
 #            still checked by the comp_reference_* tests either way.
 #   refinement C12's timestep and grid refinement study, in RELEASE. Runs the deck's case at four
@@ -106,6 +108,7 @@ run_thermo() {
     run_filter comp_skin_         3   # C12's well-conditioned 1D variant: the cumulative target
     run_filter comp_depletion_    8   # C12's second fixture: single-cell depletion, rate and BHP
     run_filter comp_matched_      1   # C12 at the reference's own timestep - see the forensics doc
+    run_filter comp_oracle_       3   # the oracle convergence census, and the band rule it enforces
 }
 
 run_fixture() {
@@ -134,7 +137,9 @@ run_reference() {
     bash "$repo_root/tools/opm_compositional/run-1d-comp.sh" --check
     bash "$repo_root/tools/opm_compositional/run-refinement.sh" --check
     bash "$repo_root/tools/opm_compositional/run-depletion.sh" --check
-    echo "gate ok: every compositional reference fixture reproduces from flowexp_comp"
+    bash "$repo_root/tools/opm_compositional/check-reference-convergence.sh" --check
+    echo "gate ok: every compositional reference fixture reproduces from flowexp_comp, and each"
+    echo "         one's distance from timestep-convergence is what the census records"
 }
 
 # The refinement study. Release, because a debug build turns three minutes into forty.

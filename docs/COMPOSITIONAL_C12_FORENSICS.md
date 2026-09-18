@@ -118,6 +118,43 @@ The other C12 findings are **unaffected**, because none of them rests on a traje
 Neither is ResSim's to fix. Neither blocks a model-equivalence claim, because E2 and E3 establish
 that independently of the rate control.
 
+## 5b. The guard: a convergence census
+
+Rules are only worth what enforces them, so the distance of each reference from
+timestep-convergence is now **measured and gated** rather than reasoned about.
+
+`bash tools/opm_compositional/check-reference-convergence.sh` re-runs each fixture's deck with its
+`TSTEP` ladder halved, and halved again, and records how far the reference's own trajectory moves.
+`opm/compositional/reference_convergence.json` holds the result; the `reference` gate verifies it.
+
+```text
+fixture           halved      quartered   growth   trend
+1d_comp           2.8212 bar  4.1041 bar    1.46   converging
+1d_comp_skin      1.5422 bar  2.3732 bar    1.54   converging
+depletion_bhp     1.6030 bar  2.6887 bar    1.68   converging
+depletion_orat    0.0107 bar  0.1236 bar   11.61   diverging
+```
+
+**Two refinements, not one.** A single halving moves the ORAT depletion by 0.0107 bar — reassuring,
+and wrong. What separates a converging reference from a diverging one is whether successive
+movements shrink, and that needs two.
+
+The census also carries the movement at the **final** report step, because settled-state bands are
+compared against that rather than against the trajectory worst. It is what shows that the skin
+variant's 2.09 bar settled-state "disagreement" sits inside its reference's own 0.998 bar temporal
+uncertainty, and is therefore not a disagreement.
+
+Three tests enforce it (`comp_oracle_*`):
+
+* the census is what it was, so an upstream rebuild that changes a reference's behaviour fails
+  rather than silently shifting a number;
+* **no acceptance band that compares ResSim's converged answer against a reference may sit below
+  that reference's own recorded movement.** The band table is written out in the test, so the rule
+  is auditable rather than assumed. Matched-resolution tests are deliberately exempt — they do not
+  inherit the gap, which is why they exist;
+* the skin variant's settled-state gap is explicitly recorded as being within the reference's
+  uncertainty, because it reads like a result otherwise.
+
 ## 6. Rules these errors imply
 
 1. **Never compare a converged solution against an unconverged one.** Either match the
@@ -127,7 +164,8 @@ that independently of the rate control.
 2. **Evaluate a rate where the scheme evaluates it.** Comparing an instantaneous rate against a
    `Δinventory/Δt` from an implicit step compares two different quantities.
 3. **Check the reference's own convergence before concluding the model differs.** It is cheap —
-   re-run it with a subdivided `TSTEP` ladder — and it was the whole answer here.
+   re-run it with a subdivided `TSTEP` ladder — and it was the whole answer here. This is now
+   automated: §5b. Refine **twice**; once cannot distinguish converging from diverging.
 4. **When an inference rests on a difference of nearly equal quantities, test the difference.**
    `Δc_mix` is 0.4% of `c_mix`, so 0.1% agreement on `c` permits 25% on `Δc`.
 5. **A term-by-term agreement plus a product disagreement means the comparison is wrong**, not that
@@ -143,8 +181,11 @@ grep -c 'Time step .* done' <run>.log
 cargo test --manifest-path src/lib/ressim/Cargo.toml --lib -- comp_depletion_bhp_ --nocapture
 
 # E3, E4: force the reference to sub-step, by subdividing the deck's TSTEP ladder
-#   TSTEP 20*1.0  ->  TSTEP 400*0.05
-bash tools/opm_compositional/run-depletion.sh          # regenerates the committed fixtures
+python3 tools/opm_compositional/halve_tstep.py <deck> --out <halved>
+
+# The census that now gates all of this
+bash tools/opm_compositional/check-reference-convergence.sh          # remeasure
+bash tools/opm_compositional/check-reference-convergence.sh --check  # verify (in the gate)
 
 # The opm-common probe that settled the WI, r_w, r_0, skin and kr rows of §2
 bash tools/opm_compositional/deck-probe.sh \
