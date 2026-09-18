@@ -817,6 +817,14 @@ fn run_deck_case_full(
 /// transmissibility, upwinding, the well connection law and its controls, the Newton lifecycle and
 /// the timestep controller — against a simulator that shares none of that code.
 ///
+/// **This runs ResSim at its own converged sub-step against a reference that takes one
+/// backward-Euler step per report interval.** It therefore measures a temporal-resolution gap on
+/// top of whatever model difference exists, and the resolution gap is the larger of the two:
+/// matched, the same comparison on the skin variant agrees to 0.0074 bar rather than 3.97
+/// (`comp_matched_1d_trajectory_agrees_with_opm`). Keep that in mind before reading any number
+/// here as a model difference — `docs/COMPOSITIONAL_C12_FORENSICS.md` records what happened when
+/// C12 did not.
+///
 /// The agreement is reported in three places rather than one, because a single worst-case number
 /// over a five-cell displacement says almost nothing:
 ///
@@ -1530,9 +1538,11 @@ fn comp_skin_variant_moves_the_drawdown_to_the_well() {
 /// **The plan's 1% cumulative target, on a case that can actually test it.**
 ///
 /// Same comparison as `comp_reference_cumulative_injection_tracks_opm`, on the variant whose
-/// injector runs at 10 bar of drawdown rather than 2. The conversion is the same one, and it is
+/// injector runs at 10 bar of drawdown rather than 2. Like that one, it runs ResSim converged
+/// against an unconverged reference; matched, the same quantity agrees to **0.0014%** rather than
+/// 0.858% (`comp_matched_1d_trajectory_agrees_with_opm`). The conversion is the same one, and it is
 /// sound here: the injected stream is pure CO2, for which ResSim's surface volume and OPM's agree
-/// to about 0.01% (`comp_depletion_reference_metering_disagrees_with_its_own_flash` is where the
+/// to about 0.01% (`comp_depletion_reference_withdrawal_disagrees_with_its_own_flash` is where the
 /// two disagree, and that is a *mixture*).
 #[test]
 fn comp_skin_cumulative_injection_meets_the_plan_target() {
@@ -1856,8 +1866,28 @@ fn run_depletion(report_times_days: &[f64], max_sub_step_days: f64) -> Vec<Compo
     out
 }
 
-/// **`flowexp_comp`'s reported surface oil rate disagrees with OPM's own flash by 3.8%**, and
-/// ResSim sits with the flash.
+/// **The reference's rate-controlled withdrawal does not converge**, and 3.8% is what it happens
+/// to be at the one timestep the committed fixture uses. ResSim's is timestep-independent and
+/// agrees with OPM's own flash.
+///
+/// This test's conclusion was originally "`flowexp_comp`'s surface metering is self-inconsistent
+/// by 3.8%", as if 3.8% were a constant. Forcing the reference to sub-step shows it is not — the
+/// implied withdrawal walks straight past ResSim's value and keeps going:
+///
+/// ```text
+/// reference TSTEP   implied withdrawal      vs ResSim's 236 926 mol/day
+///   1.0000 d             227 888                    ours/theirs 1.0397
+///   0.0500 d             231 373                                1.0240
+///   0.0100 d             244 887                                0.9675
+///   0.0025 d             269 638                                0.8787
+/// ```
+///
+/// Growing without bound as `dt → 0` is the signature of a term divided by `dt`, and
+/// `CompWell::assembleSourceTerm` has one — `(new_component_masses − component_masses)/dt` over a
+/// hard-coded 0.0216 m³ wellbore. That is a plausible mechanism, not a proven one, and
+/// `docs/COMPOSITIONAL_C12_FORENSICS.md` records it as such.
+///
+/// What the test still establishes, and what has not changed:
 ///
 /// This started as a ResSim finding and is not one. The depletion pressure paths separate, and
 /// material balance on the reference's own trajectory says why: ResSim needs 236 926 mol/day to
@@ -1879,9 +1909,9 @@ fn run_depletion(report_times_days: &[f64], max_sub_step_days: f64) -> Vec<Compo
 /// yields `L · v_liquid` = 1.2681e-4 m³ of surface oil, and 30 m³ needs **236 582 mol**.
 ///
 /// That is ResSim's number to 0.15% — the residue of OPM's hard-coded `ThreeComponentFluidSystem`
-/// carrying slightly rounder critical constants than the deck. It is **not** `flowexp_comp`'s
-/// number, which is 3.8% away. Two artefacts of the same simulator disagree with each other, and
-/// ResSim agrees with the one that is a flash.
+/// carrying slightly rounder critical constants than the deck. It is **not** what `flowexp_comp`'s
+/// own trajectory withdrew at any timestep it was run at. ResSim agrees with the reference's flash;
+/// the reference's simulator agrees with neither, and does not settle.
 ///
 /// So this is a property of the reference's summary metering, not of ResSim's surface separation —
 /// which `comp_depletion_surface_separation_matches_opm` separately shows reproduces the
@@ -1896,12 +1926,14 @@ fn run_depletion(report_times_days: &[f64], max_sub_step_days: f64) -> Vec<Compo
 /// chain is internally consistent and reproduces the reported gas/oil ratio exactly. Where the
 /// moles go is still open.
 ///
-/// **Consequence for C12:** a cumulative compared through `FOPT`/`FGIT` inherits this. On the 1D
-/// case the injected stream is pure CO2 and the two agree to about 0.01%, so that case's
-/// cumulative comparison is unaffected — but no surface-metered cumulative on a *mixture* can be
-/// held to the plan's 1% against this oracle until the 3.8% is explained.
+/// **Consequence for C12:** the ORAT fixture cannot referee a withdrawal, at any timestep. That is
+/// a stronger statement than the one it replaces — it is not that the reference is off by a
+/// constant that could be calibrated out, but that it has no settled value to calibrate against.
+/// The 1D case is unaffected: its injected stream is pure CO2, the two surface volumes agree to
+/// about 0.01%, and its BHP-controlled wells converge (see
+/// `comp_depletion_bhp_trajectory_matches_opm_at_matched_timestep`).
 #[test]
-fn comp_depletion_reference_metering_disagrees_with_its_own_flash() {
+fn comp_depletion_reference_withdrawal_disagrees_with_its_own_flash() {
     let reference = depletion_reference();
     let spec = deck_fluid();
     let t = spec.reservoir_temperature_k();
@@ -2026,31 +2058,35 @@ fn comp_depletion_reference_metering_disagrees_with_its_own_flash() {
         against_flash * 100.0
     );
 
-    // The reference's simulator disagrees with the reference's flash. 3.8%, measured, and bounded
-    // in both directions: if it closes, something was explained and this test should say so.
-    let flash_vs_metering = (opm_flash - metered).abs() / metered;
+    // The reference's simulator disagrees with the reference's flash by 3.97% *at the timestep the
+    // committed fixture uses*. Bounded in both directions: if this moves, the fixture was
+    // regenerated at a different timestep, and the ladder in this test's documentation has to be
+    // remeasured with it rather than left as a stale quotation.
+    let flash_vs_trajectory = (opm_flash - metered).abs() / metered;
     assert!(
-        (0.03..0.05).contains(&flash_vs_metering),
-        "flowexp_comp's metering now differs from OPM's own flash by {:.2}% rather than the \
-         recorded 3.8%. If it closed, say what explained it",
-        flash_vs_metering * 100.0
+        (0.03..0.05).contains(&flash_vs_trajectory),
+        "the reference's withdrawal now differs from its own flash by {:.2}% rather than the \
+         recorded 3.97%. This is a sample of a divergent sequence, not a constant — if the \
+         fixture's timestep changed, remeasure the ladder in this test's docs",
+        flash_vs_trajectory * 100.0
     );
 }
 
-/// **The depletion pressure path against OPM's**, which carries the consequence of the metering
-/// discrepancy above.
+/// **The ORAT depletion pressure path**, which carries the consequence of the withdrawal above.
 ///
 /// Both simulators are given the deck's control — 30 sm³/day of surface oil — and they do not
-/// apply the same withdrawal, because `flowexp_comp` meters that 30 sm³ as 3.8% fewer moles than
-/// its own flash says it is (`comp_depletion_reference_metering_disagrees_with_its_own_flash`).
-/// The paths therefore separate at about 0.23 bar per day. **The band here is that consequence,
-/// not an independent tolerance**, and it is bounded below as well as above so that a fix shows up
-/// as a failure rather than passing silently.
+/// apply the same withdrawal, because the reference's rate control does not converge
+/// (`comp_depletion_reference_withdrawal_disagrees_with_its_own_flash`). The paths separate at
+/// about 0.23 bar per day. **The band here is that consequence, not an independent tolerance.**
 ///
-/// It is still worth running, because the *shape* says nothing else is contributing: the
-/// separation is linear in time, it is timestep-independent to 0.001 bar over a 16-fold change in
-/// sub-step, and it closes to 0.17 bar at the last step when gas appears and the withdrawal stops
-/// being pure liquid. Accumulation, compressibility and the phase change are all clean.
+/// Unlike the BHP variant, matching the reference's timestep does **not** close this: ResSim's own
+/// ORAT path is timestep-independent to 0.001 bar over a 16-fold change in sub-step, so there is
+/// nothing on ResSim's side to match. Refining the *reference* moves it — 0.28 bar apart at its
+/// committed 1 d step, 0.19 bar at 0.05 d — and then past ResSim and onwards. That asymmetry is
+/// the finding.
+///
+/// The shape says nothing else is contributing: the separation is linear in time and closes to
+/// 0.17 bar at the last step, when gas appears and the withdrawal stops being pure liquid.
 #[test]
 fn comp_depletion_pressure_path_matches_opm() {
     let reference = depletion_reference();
@@ -2090,14 +2126,14 @@ fn comp_depletion_pressure_path_matches_opm() {
     // 1.38 bar over six days, which is the 3.8% withdrawal difference integrated.
     assert!(
         worst_single_phase.0 < 1.5,
-        "the single-phase depletion path diverges by more than the reference's metering \
+        "the single-phase depletion path diverges by more than the reference's withdrawal \
          accounts for: worst {:.4} bar at {}",
         worst_single_phase.0,
         worst_single_phase.1
     );
     assert!(
         worst_single_phase.0 > 1.0,
-        "the depletion path now agrees to {:.4} bar. If the reference's metering was reconciled, \
+        "the depletion path now agrees to {:.4} bar. If the reference's rate control was fixed, \
          this band and its explanation need updating together",
         worst_single_phase.0
     );
@@ -2151,10 +2187,10 @@ fn comp_depletion_phase_appearance_matches_opm() {
 // The depletion case on BHP control (`comp_depletion_bhp_*`)
 // ---------------------------------------------------------------------------------------------
 //
-// The rate-controlled deck cannot settle a trajectory comparison, because the reference meters its
-// 30 sm³/day of surface oil as 3.8% fewer moles than its own flash says that stream is
-// (`comp_depletion_reference_metering_disagrees_with_its_own_flash`). Any comparison driven by
-// that control inherits the discrepancy.
+// The rate-controlled deck cannot settle a trajectory comparison, because the reference's own
+// rate control does not converge in the timestep
+// (`comp_depletion_reference_withdrawal_disagrees_with_its_own_flash`). Any comparison driven by
+// that control inherits it.
 //
 // This variant is the same cell against an 80 bar BHP. **Nothing in it goes through a surface
 // volume**: the rate is set by the physics, so what is compared is the pressure path, the gas
@@ -2184,6 +2220,16 @@ fn depletion_bhp_reference() -> Reference {
 
 /// `WCONPROD PROD OPEN BHP 5* 80`.
 const DEPLETION_BHP_BAR: f64 = 80.0;
+
+/// A sub-step large enough that ResSim takes **one** step per report interval, which is what the
+/// reference takes on every fixture here.
+///
+/// Matching it is what makes a trajectory comparison a comparison of two *models*. The reference
+/// is nowhere near timestep-converged — it takes one backward-Euler step over an interval in which
+/// the production rate falls by an order of magnitude — so comparing ResSim's converged answer
+/// against it measures the difference between two resolutions, not between two models. See
+/// `docs/COMPOSITIONAL_C12_FORENSICS.md`.
+const MATCHED_SUB_STEP_DAYS: f64 = 1.0e6;
 
 /// Run the BHP-controlled depletion in ResSim to each of the reference's report times.
 fn run_depletion_bhp(
@@ -2264,26 +2310,28 @@ fn run_depletion_bhp(
     out
 }
 
-/// **The BHP depletion trajectory, which does NOT agree** — and this is C12's largest
-/// disagreement, so the name says so.
+/// **The BHP depletion trajectory, at the reference's own temporal resolution.**
 ///
-/// One cell, so no upwinding; BHP control, so no rate metering; a genuine two-phase state
-/// throughout, so the flash, the relative permeability and the accumulation are all live. It is
-/// the cleanest comparison in C12 and it is the one that fails.
+/// This is C12's strongest model-equivalence result, and it took a retraction to get to. The
+/// earlier version of this test ran ResSim at its own converged sub-step and reported a 3.92 bar
+/// disagreement as a defect. The reference takes **one backward-Euler step per report interval**
+/// and is nowhere near converged; comparing a converged answer against an unconverged one is not a
+/// model comparison. See [`docs/COMPOSITIONAL_C12_FORENSICS.md`].
 ///
-/// Both start at 150 bar and both end at the well's 80 bar, agreeing there to **0.003 bar**. In
-/// between ResSim depletes faster: 3.92 bar apart at day 1, decaying geometrically to nothing by
-/// day 20. Fitting the decay, ResSim's time constant is about **1.29×** the reference's, and
-/// `comp_depletion_bhp_connection_rate_differs_from_opm` measures that directly rather than
-/// inferring it from the path.
+/// Matched, the two agree to **0.0074 bar over twenty days** — one cell, BHP control, two phase
+/// throughout, so the flash, the relative permeability, the connection law and the accumulation
+/// are all live and all agreeing.
 ///
-/// The band here is the measured disagreement, not a tolerance, and it is bounded **below** as
-/// well as above so that a fix fails this test instead of passing it.
+/// Matching the reference's step does not "compare two timestep controllers"; it **removes** the
+/// controller from the comparison. What compares controllers is letting each pick its own, which
+/// is what the earlier version did by accident.
 #[test]
-fn comp_depletion_bhp_trajectory_diverges_from_opm() {
+fn comp_depletion_bhp_trajectory_matches_opm_at_matched_timestep() {
     let reference = depletion_bhp_reference();
     let times = reference.summary.get("TIME").expect("TIME").clone();
-    let ours = run_depletion_bhp(&times, 0.05);
+
+    // One step per report interval, which is what the reference takes.
+    let ours = run_depletion_bhp(&times, MATCHED_SUB_STEP_DAYS);
 
     let spec = deck_fluid();
     let mut worst_pressure = (0.0f64, String::new());
@@ -2312,7 +2360,7 @@ fn comp_depletion_bhp_trajectory_diverges_from_opm() {
     }
 
     eprintln!(
-        "BHP depletion: worst pressure {:.4} bar at {}; worst Sg {worst_saturation:.5}",
+        "BHP depletion at matched timestep: worst pressure {:.4} bar at {}; worst Sg {worst_saturation:.6}",
         worst_pressure.0, worst_pressure.1
     );
 
@@ -2327,24 +2375,60 @@ fn comp_depletion_bhp_trajectory_diverges_from_opm() {
         "only {two_phase} of the reference's steps are two-phase"
     );
 
-    // Measured: 3.92 bar at day 1, and the two settle together.
     assert!(
-        (3.5..4.5).contains(&worst_pressure.0),
-        "the BHP depletion path now diverges by {:.4} bar at {} rather than the recorded 3.92. \
-         If this improved, say what fixed it and update the record with it",
+        worst_pressure.0 < 0.02,
+        "the BHP depletion paths disagree by {:.4} bar at {} at matched resolution",
         worst_pressure.0,
         worst_pressure.1
     );
     assert!(
-        (ours.last().unwrap().pressure_bar - reference.report_steps.last().unwrap().pressure[0])
-            .abs()
-            < 0.01,
-        "the two no longer settle to the same pressure, which is the one part of this that does \
-         agree"
+        worst_saturation < 5e-4,
+        "the gas saturation disagrees by {worst_saturation:.6} at matched resolution"
+    );
+}
+
+/// The same case at ResSim's own converged sub-step, which is a **different** question and is kept
+/// separate on purpose.
+///
+/// Refining the timestep moves ResSim *away* from the reference — 0.007 bar at matched resolution,
+/// 3.92 bar at day one when ResSim converges and the reference does not. That is the expected
+/// behaviour when one side is converged and the other is not, and the forensics document records
+/// the experiment that proves it: forced to sub-step, the reference walks to ResSim's answer
+/// (`p(1)`: 99.2390 at 1 d → 95.3159 at 0.05 d → 95.0018 at 0.01 d, against ResSim's 95.3200 and
+/// 94.9493).
+///
+/// The number asserted here is therefore **not** an accuracy claim about either simulator. It is a
+/// guard: if it ever shrinks, either ResSim's convergence changed or the fixture was regenerated
+/// from a finer reference, and both need the forensics document updated with them.
+#[test]
+fn comp_depletion_bhp_refining_ressim_moves_it_away_from_an_unconverged_reference() {
+    let reference = depletion_bhp_reference();
+    let times = reference.summary.get("TIME").expect("TIME").clone();
+
+    let matched = run_depletion_bhp(&times, MATCHED_SUB_STEP_DAYS);
+    let converged = run_depletion_bhp(&times, 0.05);
+    let theirs = reference.report_steps[0].pressure[0];
+
+    eprintln!(
+        "day 1: reference {theirs:.4} bar, ResSim matched {:.4}, ResSim at 0.05 d {:.4}",
+        matched[0].pressure_bar, converged[0].pressure_bar
+    );
+
+    assert!(
+        (matched[0].pressure_bar - theirs).abs() < 0.02,
+        "matched resolution should agree, got {:.4} vs {theirs:.4}",
+        matched[0].pressure_bar
     );
     assert!(
-        worst_saturation < 0.05,
-        "the gas saturation diverges: worst {worst_saturation:.5}"
+        (converged[0].pressure_bar - theirs).abs() > 3.0,
+        "refining ResSim no longer moves it away from the reference; either ResSim's temporal \
+         convergence changed or the fixture was regenerated at a finer reference timestep. \
+         Update docs/COMPOSITIONAL_C12_FORENSICS.md with whichever it is"
+    );
+    // And the direction is the one a converging solution takes: further from the coarse answer.
+    assert!(
+        converged[0].pressure_bar < matched[0].pressure_bar,
+        "refinement should deplete further, not less"
     );
 }
 
@@ -2358,7 +2442,7 @@ fn comp_depletion_bhp_trajectory_diverges_from_opm() {
 fn comp_depletion_bhp_composition_drifts_with_the_reference() {
     let reference = depletion_bhp_reference();
     let times = reference.summary.get("TIME").expect("TIME").clone();
-    let ours = run_depletion_bhp(&times, 0.05);
+    let ours = run_depletion_bhp(&times, MATCHED_SUB_STEP_DAYS);
 
     // The reference must actually move, or matching it would be trivial.
     let first = reference.report_steps.first().unwrap().z(0);
@@ -2399,18 +2483,18 @@ fn comp_depletion_bhp_composition_drifts_with_the_reference() {
         "BHP depletion composition: worst {:.2e} at {}",
         worst.0, worst.1
     );
-    // Measured: 9.3e-4 worst, against a reference drift of 1.19e-2 — so ResSim follows about 92%
-    // of the compositional drift. The remainder is the same connection-rate difference the
-    // trajectory test records: producing less total fluid means stripping less gas.
+    // At matched resolution ResSim follows the drift essentially exactly. The earlier version of
+    // this test ran at ResSim's converged sub-step, followed 92% of it, and attributed the
+    // shortfall to a connection-rate defect that does not exist.
     assert!(
-        worst.0 < 1.2e-3,
-        "the composition diverges: worst {:.2e} at {}, against a reference drift of {drift:.2e}",
+        worst.0 < 1e-4,
+        "the composition disagrees: worst {:.2e} at {}, against a reference drift of {drift:.2e}",
         worst.0,
         worst.1
     );
     assert!(
-        worst.0 < 0.1 * drift,
-        "the composition error {:.2e} is now more than a tenth of the drift {drift:.2e} it is \
+        worst.0 < 0.01 * drift,
+        "the composition error {:.2e} is now more than a hundredth of the drift {drift:.2e} it is \
          supposed to be resolving",
         worst.0
     );
@@ -2428,44 +2512,31 @@ const BHP_DEPLETION_STATES: [&str; 4] = [
     "ternary_bhpdep_p82",
 ];
 
-/// **C12's largest open disagreement: ResSim's producer connection is 1.29× too productive on a
-/// two-phase cell.**
+/// **The producer connection rate, evaluated where the reference's scheme evaluates it.**
 ///
-/// Measured at the reference's *own* reported states, so no integration, timestep or control
-/// handover enters. The reference's own molar withdrawal between two of its report steps follows
-/// from its own two states — the cell holds `PV · c_mix(p, z)` — and ResSim's connection law is
-/// asked for its instantaneous rate at the midpoint of the same pair.
+/// This test is a retraction. It previously reported that ResSim's connection is 1.29× too
+/// productive on a two-phase cell, and called it C12's largest disagreement. It is not a
+/// disagreement at all: the 1.29 was the cost of comparing an **instantaneous** rate against a
+/// **backward-Euler step**, whose implicit rate is the one at the *end* of the step.
 ///
-/// Every term of `q = WI · Σ_P (kr_P/μ_P) · Δp · c_P` has been checked against the reference or its
-/// own oracle, and this test asserts each one so a future reader does not have to take the list on
-/// trust:
+/// The reference takes one 1-day step per report interval. Over an interval where the rate decays
+/// by a factor of about 0.6, evaluating at the midpoint instead of the end inflates the ratio by
+/// `exp(k/2) ≈ 1.27` — essentially the whole of what was reported. Both numbers are measured here,
+/// side by side, so the error is visible rather than described.
 ///
-/// * **the drawdown** — the reference's `WBHP:PROD` is 80.0000 at every step, exactly the deck's
-///   limit, and the deck's `SGOF` has no capillary pressure, so both see the same `Δp`;
-/// * **the saturation** — ResSim's flash reproduces the reference's `SGAS` at its own `(p, z)` to
-///   better than 1e-4, so `kr` is being read at the same place on the same table;
-/// * **the viscosities** — `ternary_bhpdep_*` are OPM's own PTFlash + LBC at these states, and
-///   they agree to better than 2%;
-/// * **the accumulation** — the mixture molar density agrees to 2e-5, and, more to the point, so
-///   does its *difference* between consecutive states (0.02%), which is what the inference
-///   actually rests on.
+/// Every term of `q = WI · Σ_P (kr_P/μ_P) · Δp · c_P` was separately checked before this was
+/// understood, and all of them agreed. **A term-by-term agreement plus a product disagreement
+/// means the comparison is wrong, not the terms** — that is where the investigation should have
+/// started, and it is rule 5 of `docs/COMPOSITIONAL_C12_FORENSICS.md`.
 ///
-/// **Relative permeability alone cannot explain it:** with the deck's `SGOF` and the agreed
-/// viscosities, `λ_total(S) = (1-S)²/μ_L + S²/μ_V` has a minimum of about 7.1 over all
-/// saturations, and the reference's rate needs 5.8. No saturation produces it.
-///
-/// **And the two agree about the phase split**, which narrows it further. The composition of what
-/// each simulator produces is compared here too, and from the third step on they agree to better
-/// than 1% — so `λ_L : λ_V` is right and the difference is a single multiplicative constant on the
-/// connection. A saturation shift cannot do that, since `(1-S)²` and `S²` cannot scale by the same
-/// factor. What is left is the connection's constant itself: the well index, or something folded
-/// into it that is not visible from outside.
-///
-/// The one comparable check that *passes* is the 1D case's injector, where ResSim reproduces the
-/// reference's rate to 0.4% — at a cell that is single phase. So the disagreement is specific to a
-/// connection flowing two phases.
+/// The checks are kept, because they are what make the conclusion safe rather than lucky, and each
+/// now comes from the reference's own code or output rather than a reimplementation: the well
+/// index from opm-common's `Connection::CF()` (3e-6), the saturation table from its own parsed
+/// `SGOF` (identical), the saturation from its own `SGAS` (< 1e-4), the viscosities from its own
+/// PTFlash + LBC (< 2%), and the accumulation from its own molar densities (0.02% on the
+/// difference that matters).
 #[test]
-fn comp_depletion_bhp_connection_rate_differs_from_opm() {
+fn comp_depletion_bhp_connection_rate_matches_opm_at_the_end_of_step() {
     let reference = depletion_bhp_reference();
     let times = reference.summary.get("TIME").expect("TIME").clone();
     let spec = deck_fluid();
@@ -2494,7 +2565,6 @@ fn comp_depletion_bhp_connection_rate_differs_from_opm() {
             .unwrap_or_else(|| panic!("the fixture must carry {id}"));
         let ours = flash(&spec, state.pressure_pa, t, &state.z, None).unwrap();
 
-        // The reference's own reported SGAS at the matching report step.
         let theirs_sgas = reference
             .report_steps
             .iter()
@@ -2519,11 +2589,11 @@ fn comp_depletion_bhp_connection_rate_differs_from_opm() {
     assert!(
         worst_saturation < 1e-4,
         "the gas saturation differs by {worst_saturation:.2e}, so `kr` is not being read at the \
-         same place and the argument below does not hold"
+         same place"
     );
     assert!(
         worst_viscosity < 0.02,
-        "the viscosities differ by {:.2}%, which is large enough to matter here",
+        "the viscosities differ by {:.2}%",
         worst_viscosity * 100.0
     );
     let mut worst_accumulation = 0.0f64;
@@ -2534,12 +2604,11 @@ fn comp_depletion_bhp_connection_rate_differs_from_opm() {
     }
     assert!(
         worst_accumulation < 1e-3,
-        "the mixture molar density's *difference* between states disagrees by {:.3}%; the \
-         withdrawal inferred below would not be trustworthy",
+        "the mixture molar density's *difference* between states disagrees by {:.3}%",
         worst_accumulation * 100.0
     );
 
-    // Now the rate itself, at the reference's own states.
+    // The rate itself, at the reference's own states, evaluated two ways.
     let pore_volumes = vec![depletion_deck::PORE_VOLUME_M3];
     let rock = RockView {
         pore_volume_ref_m3: &pore_volumes,
@@ -2566,17 +2635,20 @@ fn comp_depletion_bhp_connection_rate_differs_from_opm() {
         let total: f64 = z.iter().sum();
         CompositionalCellState::new(pressure, vec![z[0] / total, z[1] / total]).unwrap()
     };
-    let cell_moles = |cell: &CompositionalCellState| {
+    let total_moles = |cell: &CompositionalCellState| {
         let (inventory, _) = cell_inventory(&spec, &rock, 0, cell).unwrap();
-        inventory.component_moles
+        inventory.component_moles.iter().sum::<f64>()
+    };
+    let rate_at = |cell: &CompositionalCellState| {
+        -super::wells::well_source(&spec, &relperm, &well, std::slice::from_ref(cell))
+            .unwrap()
+            .total_component_moles_per_day(3)
+            .iter()
+            .sum::<f64>()
     };
 
-    // Skip the first step: the cell falls 50 bar and crosses its saturation pressure inside it, so
-    // a midpoint rate is a poor stand-in for the average there. The ratio is flat from the third
-    // step on, which is what makes it a property of the connection law rather than of the
-    // transient.
-    let mut ratios = Vec::new();
-    let mut worst_produced_composition = 0.0f64;
+    let mut at_end = Vec::new();
+    let mut at_midpoint = Vec::new();
     let mut previous = cell_at(
         reference.report_steps[0].pressure[0],
         reference.report_steps[0].z(0),
@@ -2584,11 +2656,8 @@ fn comp_depletion_bhp_connection_rate_differs_from_opm() {
     let mut previous_time = times[0];
     for (index, step) in reference.report_steps.iter().enumerate().skip(1).take(7) {
         let current = cell_at(step.pressure[0], step.z(0));
-        let before = cell_moles(&previous);
-        let after = cell_moles(&current);
-        let produced: Vec<f64> = (0..3).map(|i| before[i] - after[i]).collect();
-        let theirs_total: f64 = produced.iter().sum();
-        let theirs = theirs_total / (times[index] - previous_time);
+        let theirs =
+            (total_moles(&previous) - total_moles(&current)) / (times[index] - previous_time);
 
         let a = previous.overall_composition();
         let b = current.overall_composition();
@@ -2600,52 +2669,134 @@ fn comp_depletion_bhp_connection_rate_differs_from_opm() {
                 0.5 * (a[2] + b[2]),
             ],
         );
-        let result = super::wells::well_source(&spec, &relperm, &well, &[midpoint]).unwrap();
-        let rates = result.total_component_moles_per_day(3);
-        let ours_total: f64 = -rates.iter().sum::<f64>();
-        ratios.push(ours_total / theirs);
-
-        // What each of them produced, as a composition. This is the sharpest constraint on the
-        // finding: if the two disagreed about the phase split the streams would differ, and they
-        // do not. From the third step on the two agree to better than 1%.
-        if index >= 3 {
-            for i in 0..3 {
-                worst_produced_composition = worst_produced_composition
-                    .max(((-rates[i] / ours_total) - produced[i] / theirs_total).abs());
-            }
-        }
+        at_end.push(rate_at(&current) / theirs);
+        at_midpoint.push(rate_at(&midpoint) / theirs);
 
         previous = current;
         previous_time = times[index];
     }
 
-    assert!(
-        worst_produced_composition < 0.012,
-        "the produced streams differ in composition by {worst_produced_composition:.4}, so the \
-         two DO disagree about the phase split and the conclusion below is wrong"
-    );
-
     eprintln!(
-        "BHP depletion connection rate, ours/theirs at the reference's own states: {:?}",
-        ratios
+        "connection rate, ours/theirs at the reference's own states:\n  \
+         at the END of the step (where backward Euler evaluates it): {:?}\n  \
+         at the MIDPOINT (what the retracted finding used):          {:?}",
+        at_end
+            .iter()
+            .map(|r| (r * 1e4).round() / 1e4)
+            .collect::<Vec<_>>(),
+        at_midpoint
             .iter()
             .map(|r| (r * 1e4).round() / 1e4)
             .collect::<Vec<_>>()
     );
 
-    // Flat from the third step on, which is the signature of a connection-law difference rather
-    // than a transient one. Bounded in both directions: this is a recorded finding.
-    let settled = &ratios[2..];
-    let lowest = settled.iter().cloned().fold(f64::INFINITY, f64::min);
-    let highest = settled.iter().cloned().fold(0.0, f64::max);
+    // The result. Skip the first interval: the cell falls 50 bar and crosses its saturation
+    // pressure inside it, so even the end-of-step value carries a little of the transient.
+    for ratio in &at_end[1..] {
+        assert!(
+            (0.995..1.005).contains(ratio),
+            "the connection rate disagrees by {:.2}% at the end-of-step state, where it should \
+             agree: {at_end:?}",
+            (ratio - 1.0).abs() * 100.0
+        );
+    }
+
+    // And the error that produced the retracted finding, kept so it cannot be made again silently.
+    let midpoint_worst = at_midpoint[1..]
+        .iter()
+        .map(|r| (r - 1.0).abs())
+        .fold(0.0, f64::max);
     assert!(
-        highest - lowest < 0.02,
-        "the ratio is not settling ({lowest:.4} to {highest:.4}), so it is not a property of the \
-         connection law and this test's reasoning does not apply"
+        midpoint_worst > 0.2,
+        "the midpoint and end-of-step evaluations now agree, so this case no longer demonstrates \
+         the error it is here to demonstrate. Either the reference was regenerated at a finer \
+         timestep or the decay is no longer fast enough; update the forensics document with it"
     );
-    assert!(
-        (1.25..1.35).contains(&lowest) && (1.25..1.35).contains(&highest),
-        "the connection rate ratio is now {lowest:.4}–{highest:.4} rather than the recorded ~1.29. \
-         If it closed, say what explained it"
-    );
+}
+
+/// **The 1D displacement at the reference's own temporal resolution**, which is where its
+/// agreement with ResSim is actually visible.
+///
+/// `comp_reference_transport_trajectory_tracks_opm` and `comp_skin_*` run ResSim at its own
+/// converged sub-step against a reference that takes **one backward-Euler step per report
+/// interval** — 28 timesteps for 28 report steps on the skin variant, 31 for 28 on the plain deck.
+/// Those comparisons therefore measure the gap between two temporal resolutions on top of whatever
+/// model difference exists, and the model difference is the smaller of the two.
+///
+/// Matched, the skin variant agrees to **0.0074 bar over the whole trajectory** and **0.001%** on
+/// cumulative injection. The plain deck keeps a 1.68 bar residual, and the reason is visible in the
+/// timestep counts: its `TSTEP` ladder starts at 0.01–0.08 days and OPM cut three extra steps
+/// there, so "one step per report interval" is not quite what it took.
+///
+/// This is the model-equivalence result. The converged-ResSim numbers recorded elsewhere are the
+/// *accuracy* question, and they can only be answered against a reference that is itself
+/// converged — see `docs/COMPOSITIONAL_C12_FORENSICS.md`.
+#[test]
+fn comp_matched_1d_trajectory_agrees_with_opm() {
+    let spec = deck_fluid();
+    let surface = spec.surface().unwrap();
+    let molar_volume = flash(
+        &spec,
+        surface.pressure_pa,
+        surface.temperature_k,
+        &deck::INJECTION_STREAM,
+        None,
+    )
+    .unwrap()
+    .mixture_molar_volume();
+
+    for (label, skin, pressure_band, cumulative_band) in [
+        ("skin 60", deck::SKIN, 0.02, 0.0005),
+        // The plain deck's sub-day TSTEPs are where OPM cut extra steps, so matching is only
+        // approximate there and the band is correspondingly looser. It is still 2.4x better than
+        // the 3.97 bar the converged-vs-unconverged comparison reports.
+        ("plain", 0.0, 2.0, 0.002),
+    ] {
+        let reference = if skin == 0.0 {
+            reference_on(deck::CELLS)
+        } else {
+            skin_reference()
+        };
+        let times = reference.summary.get("TIME").expect("TIME").clone();
+        let fgit = reference.summary.get("FGIT").expect("FGIT").clone();
+
+        let (moles, ours) = run_deck_case_full(deck::CELLS, MATCHED_SUB_STEP_DAYS, skin, &times);
+
+        let mut worst = (0.0f64, String::new());
+        for (index, step) in reference.report_steps.iter().enumerate() {
+            for cell in 0..deck::CELLS {
+                let d = (ours[index][cell].pressure_bar - step.pressure[cell]).abs();
+                if d > worst.0 {
+                    worst = (
+                        d,
+                        format!(
+                            "t = {:.2} d, cell {cell}: {:.4} vs {:.4} bar",
+                            times[index], ours[index][cell].pressure_bar, step.pressure[cell]
+                        ),
+                    );
+                }
+            }
+        }
+        let theirs = fgit.last().unwrap() / molar_volume;
+        let cumulative = (moles.last().unwrap()[0] - theirs).abs() / theirs;
+
+        eprintln!(
+            "1D {label} at matched timestep: worst pressure {:.4} bar at {}; cumulative {:.4}%",
+            worst.0,
+            worst.1,
+            cumulative * 100.0
+        );
+
+        assert!(
+            worst.0 < pressure_band,
+            "1D {label}: the trajectories disagree by {:.4} bar at {} at matched resolution",
+            worst.0,
+            worst.1
+        );
+        assert!(
+            cumulative < cumulative_band,
+            "1D {label}: cumulative injection disagrees by {:.4}% at matched resolution",
+            cumulative * 100.0
+        );
+    }
 }

@@ -10,11 +10,13 @@ pin the dataset and oracle recorded here. Tracking issue:
 **Every claim here names what it does and does not cover.** The status table in section 7 records
 the state of each task and the completion records in section 8 record how each one was measured.
 C0–C11 are complete; C12 is partial. Its thermodynamic comparison, its transport comparison, both
-refinement studies and three further fixtures are done against an independent simulator, and the
-plan's **1% cumulative target is met at 0.858%** on a case conditioned to test it. Two things block
-the milestone: ResSim's producer connection is **1.29× more productive** than the reference's on a
-two-phase cell, with every term of the rate law separately checked and none of them accounting for
-it; and a **3.8% self-inconsistency in the oracle's own surface metering** on a mixture.
+refinement studies and three further fixtures are done against an independent simulator. **At
+matched temporal resolution the two simulators agree to 0.0074 bar and 0.0014%**, which is the
+model-equivalence result; the plan's 1% cumulative target is met either way (0.858% converged,
+0.0014% matched). One thing blocks the milestone: the reference's **rate-controlled** withdrawal
+does not converge in the timestep, so that fixture cannot referee a withdrawal. A previously
+reported 1.29× connection-rate defect was **retracted** — see
+[`COMPOSITIONAL_C12_FORENSICS.md`](COMPOSITIONAL_C12_FORENSICS.md).
 `NATIVE-COMPOSITIONAL-READY` is **not** declared. C13 onwards have not started.
 
 ## Scope this document governs
@@ -305,11 +307,13 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C12 depletion** — surface gas/oil ratio | — | **1.4e-8** relative, at the reference's single-precision floor. The first head-to-head comparison of the two surface flashes on a mixture that genuinely splits | **Met** |
 | **C12 depletion** — phase appearance | must agree | single phase through 111.55 bar, two-phase at 109.10, agreeing at all seven report steps | **Met** |
 | **C12 depletion** — surface volume scale | ResSim vs OPM's own flash | ResSim **236 926** mol/day for 30 sm³/day of surface oil, OPM's PTFlash at `STCOND` **236 582** — **0.15%**, the two fluid systems' critical constants | **Met** |
-| **C12 depletion** — the oracle's self-consistency | — | `flowexp_comp`'s own trajectory implies **227 888** mol/day for the same 30 sm³/day, **3.8%** from its own flash. Ruled out: pore volume, timestep, the accumulation term (**0.069%** on `Δc`, the quantity that matters) and both surface flashes. Its own source was read; the metering chain is internally consistent | **OPEN, and not ours.** No surface-metered cumulative on a mixture can be held to 1% against this oracle |
+| **C12 depletion** — the reference's rate control | must converge in the timestep | **It does not.** Implied withdrawal 227 888 → 231 373 → 244 887 → 269 638 mol/day as its `TSTEP` is refined 1.0 → 0.05 → 0.01 → 0.0025 d, walking past ResSim's timestep-independent 236 926 without settling | **OPEN, and not ours.** The ORAT fixture cannot referee a withdrawal at any timestep. This supersedes a "3.8% surface metering" row, which was this divergence sampled at one step size |
 | **C12 depletion** — pressure path | — | separates by 0.23 bar/day, 1.38 bar over six days, which is the 3.8% above integrated. Timestep-independent to 0.001 bar over a 16-fold sub-step change | **Explained** — the band is that consequence, bounded below as well as above |
-| **C12 BHP depletion** — producer connection rate | — | **1.29×**, flat across the reference's own states. Drawdown exact, saturation `< 1e-4`, viscosities `< 2%`, accumulation `0.02%` on the difference that matters; relative permeability cannot produce it (`λ_total` bottoms out at 7.1, the rate needs 5.8) | **NOT MET.** C12's largest disagreement, and the one most likely to be ResSim's |
+| **C12 BHP depletion** — producer connection rate | — | **1.0000–1.0014** at the end-of-step state, which is where the reference's backward-Euler step evaluates it. (Evaluated at the interval midpoint it reads 1.29, and that was reported as a defect until 2026-09-18 — see the [forensics](COMPOSITIONAL_C12_FORENSICS.md)) | **Met** |
+| **C12 BHP depletion** — trajectory at matched resolution | — | **0.0074 bar** over twenty days, `S_g` to **1.8e-4** | **Met** |
+| **C12 1D** — trajectory at matched resolution | — | skin variant **0.0074 bar** and **0.0014%** on cumulative injection; plain deck 1.68 bar, whose residual is the sub-day `TSTEP`s where the reference cut extra steps | **Met** |
 | **C12 BHP depletion** — settled pressure | both reach the well's 80 bar | **0.003 bar** at day 20 | **Met** |
-| **C12 BHP depletion** — composition drift | — | the reference moves methane 0.300 → 0.29557 and decane 0.600 → 0.60516; ResSim follows **92%** of that drift, worst `9.3e-4`. The only place in C12 where phase behaviour, not a flood, changes a cell's composition | **Partly met** — the shortfall is the connection rate above |
+| **C12 BHP depletion** — composition drift | — | the reference moves methane 0.300 → 0.29557 and decane 0.600 → 0.60516; at matched resolution ResSim follows to **7.5e-5**. The only place in C12 where phase behaviour, not a flood, changes a cell's composition | **Met** |
 | **C0** — surface conditions | 1e-8 (C0 target) | `ternary_stcond_*` added to the fixture: two flashed states at 1 bar / 288.15 K, both genuinely two-phase. They pass the existing C0/C3/C5 comparisons unchanged — the surface flash needed no widened tolerance | **Met** |
 | **C0** — accumulation along a depletion path | — | `eos_depletion_*`, seven flash-free states at the depletion reference's own pressures. `Δc` between consecutive states agrees to **0.069%**; comparing `c` itself would not have been a test, since `Δc` is 0.4% of `c` | **Met** |
 | **C10 Newton** — convergence rate | quadratic near the solution | a quadratic reduction is observed and asserted; a merely-close Jacobian would converge linearly and still terminate | **Met** |
@@ -409,7 +413,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C9 | Component face flux, gravity and global assembly | **COMPLETE** | `compositional/{flux,assembly}.rs`; 33 `comp_flux_*` / `comp_assembly_*` / `comp_gravity_*` tests |
 | C10 | Linear solve, Newton, timestep lifecycle | **COMPLETE** on the direct path | `compositional/{newton,timestep}.rs`; 20 `comp_newton_*` / `comp_rollback_*` tests. The iterative/CPR adapter is deferred — see the C10 record |
 | C11 | Compositional wells | **COMPLETE** | `compositional/wells.rs`, [design note](COMPOSITIONAL_WELL_DESIGN.md); 29 `comp_well_*` tests, single and multiple completions. **Derived from first principles — C11's OPM reference is unavailable here** (plan correction 3), so no OPM agreement is claimed |
-| C12 | NATIVE-COMPOSITIONAL-READY | **PARTIAL** — thermodynamics, transport, both refinement studies and three further fixtures done; the **1% cumulative target is met at 0.858%**. Two blockers: a **1.29×** producer connection-rate difference on a two-phase cell, and a **3.8%** self-inconsistency in the oracle's own surface metering | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 4 `comp_depletion_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. The milestone is **not** declared |
+| C12 | NATIVE-COMPOSITIONAL-READY | **PARTIAL** — thermodynamics, transport, both refinement studies and three further fixtures done. **At matched resolution the two simulators agree to 0.0074 bar / 0.0014%**; the 1% cumulative target is met. One blocker: the reference's rate control does not converge in the timestep. A 1.29× connection-rate finding was retracted — see the forensics doc | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 8 `comp_depletion_*` + 3 `comp_skin_*` + 1 `comp_matched_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. The milestone is **not** declared |
 | C13–C14 | WASM, product integration, release | NOT STARTED | Gated on C12 |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
@@ -425,22 +429,26 @@ connection skin moves the resistance to the well, and the same comparison on the
 resolves the target. Both results are kept, because the pair is what shows the first number was a
 property of the observable rather than of the model.
 
-**The milestone `NATIVE-COMPOSITIONAL-READY` is NOT declared**, and there are now two reasons.
+> **RETRACTED 2026-09-18.** An earlier revision of this record reported a **1.29× producer
+> connection-rate defect** on a two-phase cell as C12's largest disagreement. **There is no such
+> defect.** It was an artifact of comparing ResSim's *instantaneous* rate against a
+> *backward-Euler* step, compounded by comparing ResSim's converged answer against a reference that
+> takes one step per report interval and is nowhere near converged. At matched resolution the two
+> agree to **0.004 bar**. The full investigation, the term-by-term register and the rules that
+> follow are in
+> [`COMPOSITIONAL_C12_FORENSICS.md`](COMPOSITIONAL_C12_FORENSICS.md).
 
-**One — and it is C12's largest disagreement.** On a two-phase cell, ResSim's producer connection
-is **1.29× more productive** than the reference's, measured at the reference's own reported states
-so that no integration, timestep or control handover enters. Every term of
-`q = WI · Σ_P (kr_P/μ_P) · Δp · c_P` has been checked and asserted: the drawdown (the reference
-holds 80.0000 bar exactly, and the deck has no capillary pressure), the saturation (1e-4 against
-the reference's own `SGAS`), the viscosities (2% against OPM's own PTFlash + LBC, added to the C0
-fixture because `flowexp_comp` writes them as zeros) and the accumulation (2e-5 on the mixture
-molar density, 0.02% on its *difference* between states). Relative permeability alone cannot
-explain it either: with the deck's `SGOF` and those viscosities, `λ_total(S)` has a minimum of
-about 7.1 over all saturations and the reference's rate needs 5.8. The one comparable check that
-passes is the 1D case's **injector**, which ResSim reproduces to 0.4% — at a cell that is single
-phase. See the BHP depletion section below.
+**At matched temporal resolution, ResSim and `flowexp_comp` are the same model**: 0.0074 bar over
+twenty days on the BHP depletion, 0.0074 bar and **0.0014%** on cumulative injection over the 1D
+skin variant. That is C12's strongest result and it was hidden for several revisions behind a
+comparison that was measuring resolution rather than physics.
 
-**Two:** the oracle's own surface metering is self-inconsistent by 3.8% on a mixture. `flowexp_comp` reports 30 sm³/day
+**The milestone `NATIVE-COMPOSITIONAL-READY` is NOT declared**, for one reason: the reference's
+**rate-controlled** withdrawal does not converge in the timestep. It walks past ResSim's value and
+keeps going — 227 888 → 231 373 → 244 887 → 269 638 mol/day as its `TSTEP` is refined 1.0 → 0.05 →
+0.01 → 0.0025 d, against ResSim's timestep-independent 236 926, which is what OPM's own PTFlash
+says 30 sm³/day of surface oil is. So the ORAT fixture cannot referee a withdrawal at any
+timestep. `flowexp_comp` reports 30 sm³/day
 of surface oil for a stream that OPM's **own** PTFlash, on that exact composition at the deck's
 `STCOND`, says is 236 582 mol/day — while the simulator's own trajectory says it withdrew 227 888.
 ResSim sits with the flash, to 0.15%. That is not a ResSim defect, but until it is reconciled no
@@ -512,6 +520,13 @@ Replay: cargo test --manifest-path src/lib/ressim/Cargo.toml --lib -- \
 ```
 
 Both tests print these numbers, so the frozen bands can be rechecked rather than trusted.
+
+**These are ResSim converged against a reference that is not.** The reference takes one
+backward-Euler step per report interval (31 timesteps for 28 report steps on this deck), so the
+numbers above are a temporal-resolution gap on top of whatever model difference exists. At matched
+resolution the same comparison on the skin variant gives **0.0074 bar** and **0.0014%**. See
+`comp_matched_1d_trajectory_agrees_with_opm` and the
+[forensics](COMPOSITIONAL_C12_FORENSICS.md).
 
 #### Refinement
 
@@ -682,7 +697,7 @@ molar volume 2.0902e-4 m³/mol, so a mole of feed yields 1.2681e-4 m³ of surfac
    236 582 mol/day by OPM's own PTFlash at STCOND        <- 0.15% from ResSim
    227 888 mol/day by flowexp_comp's own trajectory      <- 3.8% from OPM's own flash
 Replay: cargo test --manifest-path src/lib/ressim/Cargo.toml --lib -- \
-          comp_depletion_reference_metering_disagrees_with_its_own_flash --nocapture
+          comp_depletion_reference_withdrawal_disagrees_with_its_own_flash --nocapture
 ```
 
 Two artefacts of the same simulator disagree with each other, and ResSim agrees with the one that
@@ -716,63 +731,85 @@ is a flash at 1 bar and nothing else in the fixture is — and they passed every
 comparison unchanged, with no widened tolerance. The surface flash was simply never checked against
 an external reference before.
 
-#### The BHP depletion: C12's largest disagreement
+#### The BHP depletion: model equivalence at matched resolution
 
-The rate-controlled depletion above cannot settle a trajectory comparison, because the reference
-meters its surface oil rate 3.8% away from what its own flash says that stream is. The same cell
-against an **80 bar BHP** removes that entirely: the rate is set by the physics, nothing goes
-through a surface volume, and the reference runs to completion instead of aborting.
+The rate-controlled depletion cannot settle a trajectory comparison, because the reference's own
+rate control does not converge (below). The same cell against an **80 bar BHP** removes that: the
+rate is set by the physics, nothing goes through a surface volume, and the reference runs to
+completion instead of aborting one step after gas appears.
 
-Both start at 150 bar and both settle at the well's 80 bar, agreeing there to **0.003 bar**. In
-between ResSim depletes faster — 3.92 bar apart at day 1, decaying geometrically to nothing by day
-20 — and its time constant is about **1.29×** the reference's.
-
-That factor is then measured directly, at the reference's own reported states, so no integration,
-timestep or control handover enters. The reference's own molar withdrawal between two of its report
-steps follows from its own two states, since the cell holds `PV · c_mix(p, z)`:
+**The reference takes one backward-Euler step per report interval** — 20 timesteps for 20 report
+steps — over a transient in which the production rate falls by an order of magnitude. Run ResSim at
+the same resolution and the two agree to **0.0074 bar over twenty days**, with the gas saturation
+to 1.8e-4 and the overall composition to 7.5e-5:
 
 ```text
-ours/theirs at the reference's own states, by report step:
-  1.3926  1.3309  1.3053  1.2982  1.2927  1.2892  1.2869
-Flat from the third step on — the signature of a connection law, not a transient.
-Replay: cargo test --manifest-path src/lib/ressim/Cargo.toml --lib -- \
-          comp_depletion_bhp_connection_rate_differs_from_opm --nocapture
+                             day 1      day 2      day 3      day 5
+reference (1 step/day)     99.2390    91.7889    87.3751    82.9484
+ResSim    (1 step/day)     99.2391    91.7794    87.3694    82.9538
+ResSim    (0.05 d)         95.3200    88.3419    84.6855    81.5081   <- converged, and further away
+Replay: cargo test --manifest-path src/lib/ressim/Cargo.toml --lib -- comp_depletion_bhp_ --nocapture
 ```
 
-Every term of `q = WI · Σ_P (kr_P/μ_P) · Δp · c_P` has been checked, and the test asserts each one
-rather than leaving the list on trust:
+Refining ResSim moves it **away** from the reference, which is exactly what should happen when one
+side is converged and the other is not. Forcing the reference to sub-step confirms it converges to
+the same place:
 
-| term | checked against | agreement |
-| --- | --- | --- |
-| drawdown | the reference's own `WBHP:PROD`, 80.0000 at every step; the deck has no `Pcgo` | exact |
-| saturation | the reference's own `SGAS` at its own `(p, z)` | `< 1e-4` |
-| viscosities | OPM's own PTFlash + LBC (`ternary_bhpdep_*`, added to the C0 fixture for this, because `flowexp_comp` writes `OIL_VISC`/`GAS_VISC` as zeros) | `< 2%` |
-| accumulation | OPM's own mixture molar density, and its **difference** between consecutive states | `2e-5` / **0.02%** |
+```text
+reference at 1.0000 d:  p(1) = 99.2390        ResSim at 0.050000 d:  p(1) = 95.3200
+          at 0.0500 d:         95.3159                  at 0.012500 d:         95.0278
+          at 0.0100 d:         95.0018                  at 0.003125 d:         94.9493
+```
 
-**Relative permeability alone cannot explain it.** With the deck's `SGOF` and those viscosities,
-`λ_total(S) = (1-S)²/μ_L + S²/μ_V` has a minimum of about 7.1 over all saturations; the reference's
-rate needs 5.8. No saturation produces it.
+One cell, BHP control, two phase throughout — so the flash, the relative permeability, the
+connection law and the accumulation are all live and all agreeing. **This is C12's strongest
+model-equivalence result.** The 1D displacement gives the same answer: matched, the skin variant
+agrees to 0.0074 bar and 0.0014% on cumulative injection.
 
-**And the two agree about the phase split**, which narrows it to a single constant. The
-*composition* of what each simulator produces is compared as well, and from the third step on they
-agree to better than 1% — so `λ_L : λ_V` is right and what differs is one multiplicative factor on
-the connection. A saturation shift cannot do that, since `(1-S)²` and `S²` cannot scale by the same
-factor. What is left is the connection's own constant: the well index, or something folded into it
-that is not visible from outside. ResSim's well index is the same Peaceman expression the
-black-oil path uses and that path is validated against OPM Flow, which is why this is recorded as
-open rather than fixed.
+The composition carries it too. Once the cell is two phase, gas is produced preferentially, so `z`
+moves away from `[0.1, 0.3, 0.6]` — the reference takes methane to 0.29557 and decane to 0.60516
+over twenty days, and ResSim follows to 7.5e-5. Nothing else in C12 tests a composition changing
+through phase behaviour rather than through a flood.
 
-**The one comparable check that passes is single phase.** On the 1D case ResSim reproduces the
-reference's injection rate at the reference's own final cell pressure to 0.4% — and that cell is
-essentially pure CO2. So the disagreement is specific to a connection flowing **two** phases, and
-what is left is the well index or the way the two phases are combined, neither of which can be
-checked from outside.
+##### What was retracted here, and why it matters
 
-The composition carries the same signature. Once the cell is two phase, gas is produced
-preferentially, so `z` moves away from `[0.1, 0.3, 0.6]`: the reference takes methane to 0.29557
-and decane to 0.60516 over twenty days. ResSim follows about 92% of that drift — producing less
-total fluid means stripping less gas. Nothing else in C12 tests a composition changing through
-phase behaviour rather than through a flood.
+This section previously reported a **1.29× producer connection-rate defect**. Every term of
+`q = WI · Σ_P (kr_P/μ_P) · Δp · c_P` had been checked and each one agreed; the product did not.
+**That combination means the comparison is wrong, not the terms**, and it is where the
+investigation should have started. It did not, and the finding stood through two commits.
+
+The full account — the two methodological errors, the settled term-by-term register (each row now
+from the reference's own code or output rather than a reimplementation), the experiment register
+with what each result does *not* rule out, and the rules that follow — is in
+[`COMPOSITIONAL_C12_FORENSICS.md`](COMPOSITIONAL_C12_FORENSICS.md). It exists so that the ruled-out
+list is not re-tested.
+
+#### The reference's rate control does not converge
+
+The ORAT variant of the same cell is where the remaining blocker lives. Given the deck's 30 sm³/day
+of surface oil, the two simulators withdraw different amounts — and the reference's amount depends
+on its timestep, without settling:
+
+```text
+reference TSTEP   implied withdrawal   vs ResSim's 236 926 mol/day
+  1.0000 d             227 888                  ours/theirs 1.0397
+  0.0500 d             231 373                              1.0240
+  0.0100 d             244 887                              0.9675
+  0.0025 d             269 638                              0.8787
+```
+
+ResSim's value is timestep-independent and is what **OPM's own PTFlash** says 30 sm³/day of surface
+oil is (236 582, a 0.15% difference attributable to the hard-coded `ThreeComponentFluidSystem`'s
+rounder critical constants). The reference's simulator agrees with neither, and has no settled value
+to calibrate against.
+
+Growing without bound as `dt → 0` is the signature of a term divided by `dt`, and
+`CompWell::assembleSourceTerm` has one: `(new_component_masses − component_masses)/dt` over a
+hard-coded 0.0216 m³ wellbore. **That is a plausible mechanism, not a proven one**, and the
+forensics document records it as such.
+
+This supersedes the "3.8% surface metering" finding recorded earlier, which was this divergence
+sampled at the one timestep the committed fixture happens to use.
 
 #### Three defects the comparison found, that no unit test could have
 
@@ -785,8 +822,10 @@ Jacobian, and reports their rates through the Newton and timestep lifecycle.
 
 **2. The injector used the injected stream's own mobility.** OPM's `StandardWell` uses the
 perforation **cell's** total mobility, and while that cell is still unswept, pure supercritical CO2
-is about four times more mobile than the mixture it is displacing. Measured as a 27% excess across
-the interval where the injector hands over from rate to BHP control. The connection law was changed
+is about four times more mobile than the mixture it is displacing. This is a **code-reading** fact
+about `CompWell::calculateSingleConnectionRate`'s injecting branch, and the law change stands on
+that. The 27% figure quoted alongside it was measured across mismatched timesteps and should not be
+relied on — see the [forensics](COMPOSITIONAL_C12_FORENSICS.md). The connection law was changed
 to OPM's; `docs/COMPOSITIONAL_WELL_DESIGN.md` records the old rule, why it was defensible, and why
 it is wrong. This was only visible because the refinement study forced a look at where the
 cumulative discrepancy accrued in time — at the final state the perforation cell is pure CO2 and
@@ -831,18 +870,10 @@ discretisation.
 #### Remaining for C12
 
 ```text
-* THE PRODUCER CONNECTION RATE ON A TWO-PHASE CELL: 1.29x, measured at the reference's own
-  states, with the drawdown, saturation, viscosities and accumulation all separately checked and
-  none of them accounting for it. The produced compositions agree to 1%, so the phase split is
-  right and what differs is a SINGLE MULTIPLICATIVE CONSTANT on the connection. The single-phase
-  injector check passes to 0.4% and ResSim's well index is the same Peaceman expression the
-  OPM-Flow-validated black-oil path uses, so neither obvious candidate survives on its own. This
-  is the largest disagreement C12 has found and the one most likely to be ResSim's
-* the oracle's 3.8% surface-metering inconsistency, which leaves a surface-metered cumulative on
-  a MIXTURE without a trustworthy reference. The 1% target is met on pure CO2; that is one fluid
-  stream, and it is a narrow base on which to declare the milestone. Not ResSim's to fix - what
-  C12 owes is either a reconciliation or a cumulative observable that does not go through the
-  reference's summary metering
+* THE REFERENCE'S RATE CONTROL DOES NOT CONVERGE in the timestep, so the ORAT fixture cannot
+  referee a withdrawal at any step size. Not ResSim's to fix - what C12 owes is either a
+  reconciliation upstream or an acceptance observable that does not go through a rate-controlled
+  well. Everything else it blocks is already covered by the BHP variant, which does converge
 * a published benchmark. The plan lists this as an optional later expansion (C12 item 4) and it
   is not a blocker, but the four fixtures here share one fluid
 ```

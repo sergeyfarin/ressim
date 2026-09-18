@@ -53,22 +53,23 @@ ResSim runs the same case past that point without difficulty — its stability t
 
 ## What the BHP deck found
 
-**C12's largest disagreement.** Both simulators start at 150 bar and settle at the well's 80 bar,
-agreeing there to 0.003 bar, but ResSim depletes faster in between and its time constant is about
-**1.29×** the reference's. Measured directly at the reference's own reported states, the producer
-connection rate ratio is flat at 1.29 from the third step on.
+**C12's strongest model-equivalence result** — after a retraction.
 
-Every term of `q = WI · Σ_P (kr_P/μ_P) · Δp · c_P` was checked and none accounts for it: the
-drawdown is exact, the saturation agrees to 1e-4, the viscosities to 2% against OPM's own
-PTFlash + LBC, and the accumulation to 0.02% on the difference that matters. Relative permeability
-cannot produce it either — `λ_total` bottoms out at 7.1 over all saturations and the reference's
-rate needs 5.8.
+The reference takes **one backward-Euler step per report interval** (20 timesteps for 20 report
+steps). Run ResSim at the same resolution and the two agree to **0.0074 bar over twenty days**, the
+gas saturation to 1.8e-4 and the overall composition to 7.5e-5. Refining ResSim moves it *away*
+from the reference, which is what should happen when one side is converged and the other is not;
+forcing the reference to sub-step walks it to the same place (`p(1)`: 99.2390 at 1 d → 95.3159 at
+0.05 d → 95.0018 at 0.01 d, against ResSim's 95.3200 and 94.9493).
 
-The **produced compositions agree to 1%**, so the phase split is right and what differs is a single
-multiplicative constant on the connection. The one comparable check that passes is the 1D case's
-injector, at 0.4%, and that cell is single phase.
+An earlier revision reported a **1.29× producer connection-rate defect** here. There is none: the
+1.29 was the cost of comparing an instantaneous rate against a backward-Euler step, whose implicit
+rate is the one at the *end* of the step. Evaluated there, the ratio is 1.0000–1.0014.
 
-See the C12 record in [`docs/COMPOSITIONAL_VALIDATION.md`](../../../docs/COMPOSITIONAL_VALIDATION.md).
+The full account is in
+[`docs/COMPOSITIONAL_C12_FORENSICS.md`](../../../docs/COMPOSITIONAL_C12_FORENSICS.md), including
+the term-by-term register — every row now settled against opm-common's own code or output — so the
+ruled-out list is not re-tested.
 
 ## What the rate deck establishes, and what it opens
 
@@ -77,10 +78,10 @@ See the C12 record in [`docs/COMPOSITIONAL_VALIDATION.md`](../../../docs/COMPOSI
 | Surface gas/oil **ratio** | agrees to **1.4e-8** — the reference's single-precision floor. The first head-to-head comparison of the two surface flashes on a mixture that genuinely splits |
 | Phase appearance | agrees at all seven steps: single phase through 111.55 bar, two-phase at 109.10 |
 | Surface volume **scale** | ResSim 236 926 mol/day for 30 sm³/day of surface oil; OPM's own PTFlash at `STCOND` says 236 582 — **0.15%**, the two fluid systems' critical constants |
-| The oracle's self-consistency | `flowexp_comp`'s own trajectory implies **227 888** mol/day for that same 30 sm³/day — **3.8%** from its own flash. **Open, and not ResSim's** |
-| Pressure path | separates by 0.23 bar/day, which is that 3.8% integrated. Timestep-independent to 0.001 bar over a 16-fold change in sub-step |
+| The reference's rate control | **Does not converge.** Implied withdrawal 227 888 → 231 373 → 244 887 → 269 638 mol/day as its `TSTEP` is refined 1.0 → 0.05 → 0.01 → 0.0025 d, walking past ResSim's timestep-independent value without settling. **Open, and not ResSim's** |
+| Pressure path | separates by 0.23 bar/day. ResSim's is timestep-independent to 0.001 bar over a 16-fold change in sub-step, so there is nothing on ResSim's side to match |
 
-## What the pressure paths actually caught
+## What the ORAT pressure paths actually caught
 
 They separate, and material balance says why — but the answer is not on ResSim's side.
 
@@ -90,11 +91,12 @@ and both implementations agree on `c` to 0.12% along this very path (checked aga
 reported as 30 sm³/day of surface oil. Asking OPM's **own** PTFlash what 30 sm³/day of surface oil
 is — `ternary_stcond_depletion`, added to the C0 fixture for exactly this — gives 236 582 mol/day.
 
-Two artefacts of the same simulator disagree with each other by 3.8%, and ResSim agrees with the one
-that is a flash. The consequence for C12 is that no surface-metered cumulative on a *mixture* can be
-held to the plan's 1% against this oracle. The 1D case is unaffected: its injected stream is pure
-CO2, for which the two agree to about 0.01%.
+Two artefacts of the same simulator disagree, and ResSim agrees with the one that is a flash. **And
+the simulator's value is not a constant:** refine its `TSTEP` and the implied withdrawal walks past
+ResSim's and keeps going, so there is no offset to calibrate out. The 1D case is unaffected — its
+injected stream is pure CO2, for which the two agree to about 0.01%, and its wells are
+BHP-controlled.
 
-`comp_depletion_reference_metering_disagrees_with_its_own_flash` is where all three numbers are
+`comp_depletion_reference_withdrawal_disagrees_with_its_own_flash` is where all three numbers are
 measured side by side, and it is bounded in both directions so that reconciling them fails rather
 than passes silently.
