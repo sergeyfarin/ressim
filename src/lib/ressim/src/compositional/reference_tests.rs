@@ -17,11 +17,16 @@
 //! and flash are a different implementation in a different language, and nothing in ResSim was
 //! tuned against it.
 //!
-//! Reproducing the **transport** — running ResSim's own timestepping and comparing the resulting
-//! trajectory — is the other half of C12 and is not done here. Doing so needs the deck's
-//! transmissibility, well model and timestep control matched as well, and each of those is a
-//! separate place for two simulators to differ; conflating them with a thermodynamic comparison
-//! would make a disagreement uninterpretable.
+//! The **transport** comparison is the second half of this file, and it is kept separate on
+//! purpose: it needs the deck's transmissibility, well model and timestep control matched as well,
+//! and each of those is its own place for two simulators to differ. Conflating them with a
+//! thermodynamic comparison would make a disagreement uninterpretable — and in practice it did.
+//! Three defects were found only once the two were separated, and one of them (the injector's
+//! connection law) was invisible at the settled state and visible only mid-displacement. See
+//! `docs/COMPOSITIONAL_VALIDATION.md`'s C12 record.
+//!
+//! The `comp_refinement_*` tests at the end are the refinement study, `#[ignore]`d and run by
+//! `bash scripts/validate-compositional.sh refinement`.
 //!
 //! # The deck's fluid is not the pinned fluid
 //!
@@ -458,6 +463,7 @@ fn comp_reference_summary_carries_usable_well_observables() {
 // The transport half: ResSim's own trajectory against the reference's
 // ---------------------------------------------------------------------------------------------
 
+use super::accumulation::cell_inventory;
 use super::assembly::Face;
 use super::flux::Gravity;
 use super::relperm::{RelativePermeabilityModel, RelativePermeabilityTable};
@@ -470,16 +476,25 @@ mod deck {
     /// `DARCY_METRIC_FACTOR`, the same constant the black-oil path uses.
     pub const DARCY: f64 = 8.526_988_8e-3;
     pub const CELLS: usize = 5;
-    /// `DXV 5*60`, `DYV 6`, `DZV 6`.
+    /// `DXV 5*60`, `DYV 6`, `DZV 6`. The refinement study keeps `LENGTH_M` and varies the cell
+    /// count, exactly as `tools/opm_compositional/refine_deck.py` does for the reference.
     pub const DX_M: f64 = 60.0;
+    pub const LENGTH_M: f64 = CELLS as f64 * DX_M;
     pub const DY_M: f64 = 6.0;
     pub const DZ_M: f64 = 6.0;
     /// `PERMX/Y/Z 5*100`.
     pub const PERM_MD: f64 = 100.0;
     /// `PORO 5*0.1`.
     pub const PORO: f64 = 0.1;
-    /// `COMPDAT ... 0.0151` — the wellbore radius.
-    pub const WELL_RADIUS_M: f64 = 0.0151;
+    /// `COMPDAT INJ 1 1 1 1 OPEN 2* 0.0151` — the value after the two defaulted items is
+    /// `COMPDAT`'s item 9, which is the wellbore **DIAMETER**, not the radius. (Items 1-8 are
+    /// well, I, J, K1, K2, state, saturation table and connection transmissibility factor; the
+    /// `2*` defaults the last two of those.) Reading it as a radius doubles `r_w`, which shrinks
+    /// `ln(r_eq / r_w)` and so *raises* the well index — by 12% at 10 cells and 15% at 40, since
+    /// the error enters through a logarithm and the cell size does not divide out. It read as a
+    /// well model that was systematically too injective, and it grew under grid refinement.
+    pub const WELL_DIAMETER_M: f64 = 0.0151;
+    pub const WELL_RADIUS_M: f64 = WELL_DIAMETER_M / 2.0;
     /// `ROCK 68.9476 0` — reference pressure, and **zero** compressibility.
     pub const ROCK_REFERENCE_BAR: f64 = 68.9476;
     pub const ROCK_COMPRESSIBILITY: f64 = 0.0;
@@ -499,19 +514,29 @@ mod deck {
     /// `WCONPROD PROD OPEN BHP 5* 50`.
     pub const PRODUCER_BHP_BAR: f64 = 50.0;
 
-    pub fn pore_volume_m3() -> f64 {
-        DX_M * DY_M * DZ_M * PORO
+    /// Cell length on a grid of `cells` cells covering the same `LENGTH_M`.
+    pub fn dx_m(cells: usize) -> f64 {
+        LENGTH_M / cells as f64
+    }
+
+    pub fn pore_volume_m3(cells: usize) -> f64 {
+        dx_m(cells) * DY_M * DZ_M * PORO
     }
 
     /// `DARCY * k * A / L` for a face between two cells of this size.
-    pub fn face_transmissibility() -> f64 {
-        DARCY * PERM_MD * (DY_M * DZ_M) / DX_M
+    pub fn face_transmissibility(cells: usize) -> f64 {
+        DARCY * PERM_MD * (DY_M * DZ_M) / dx_m(cells)
     }
 
     /// Peaceman's equivalent radius for an isotropic rectangular cell, and the geometric well
     /// index that follows. Zero skin, matching `COMPDAT`'s defaults.
-    pub fn well_index() -> f64 {
-        let r_eq = 0.28 * (DX_M * DX_M + DY_M * DY_M).sqrt() / 2.0;
+    ///
+    /// This is where refinement bites hardest on the well: `r_eq` shrinks with the cell, so the
+    /// index and the near-well pressure drop both change. Two simulators need not agree on the
+    /// coarse grid's `r_eq`, and the C12 startup transient is dominated by that disagreement.
+    pub fn well_index(cells: usize) -> f64 {
+        let dx = dx_m(cells);
+        let r_eq = 0.28 * (dx * dx + DY_M * DY_M).sqrt() / 2.0;
         DARCY * 2.0 * std::f64::consts::PI * PERM_MD * DZ_M / (r_eq / WELL_RADIUS_M).ln()
     }
 }
@@ -583,6 +608,19 @@ const MAX_SUB_STEP_DAYS: f64 = 0.05;
 /// displacement ahead before the comparison started.
 const WELLS_OPEN_DAYS: f64 = 0.11;
 
+/// How close to [`WELLS_OPEN_DAYS`] counts as having reached it.
+///
+/// **The reference's `TIME` vector is single precision** — its last entry reads `20.1100006` — so
+/// the report time that should be 0.11 arrives as `0.10999999940395355`, and the driver steps to
+/// exactly that. A tolerance of `1e-12` therefore said the wells were still shut at the moment
+/// they should have opened, and they stayed shut for one whole sub-step. That cost 0.05 of the
+/// first 0.08 days of injection, which is 60% of the first report interval, and it showed up as a
+/// cumulative-injection error that *grew* as the sub-step was refined — the signature of a fixed
+/// amount of missing time being resolved away rather than of a converging discretisation.
+///
+/// 1e-6 days is 0.09 s: far above float32's resolution at 0.11 and far below any timestep here.
+const WELLS_OPEN_TOLERANCE_DAYS: f64 = 1e-6;
+
 /// Build the deck's case in ResSim and advance it to each of the reference's report times.
 ///
 /// Returns the state at each reported time, in the reference's own order.
@@ -590,26 +628,39 @@ fn run_deck_case(report_times_days: &[f64]) -> Vec<Vec<CompositionalCellState>> 
     run_deck_case_with_totals(report_times_days).1
 }
 
-/// As [`run_deck_case`], and also the injector's cumulative component moles at each report time.
+/// As [`run_deck_case`], on the deck's own five-cell grid at the default sub-step.
 fn run_deck_case_with_totals(
+    report_times_days: &[f64],
+) -> (Vec<Vec<f64>>, Vec<Vec<CompositionalCellState>>) {
+    run_deck_case_on_grid(deck::CELLS, MAX_SUB_STEP_DAYS, report_times_days)
+}
+
+/// The same case on `cells` cells with a largest sub-step of `max_sub_step_days`.
+///
+/// Both knobs are what the refinement study varies. The grid matches
+/// `tools/opm_compositional/refine_deck.py`: same length, same rock, same fluid, same wells in the
+/// first and last cell, only the discretisation changes.
+fn run_deck_case_on_grid(
+    cells: usize,
+    max_sub_step_days: f64,
     report_times_days: &[f64],
 ) -> (Vec<Vec<f64>>, Vec<Vec<CompositionalCellState>>) {
     let spec = deck_fluid();
     let relperm = deck_relperm();
-    let layout = CompositionalLayout::new(3, deck::CELLS, 2, 2).unwrap();
+    let layout = CompositionalLayout::new(3, cells, 2, 2).unwrap();
 
-    let pore_volumes = vec![deck::pore_volume_m3(); deck::CELLS];
+    let pore_volumes = vec![deck::pore_volume_m3(cells); cells];
     let rock = RockView {
         pore_volume_ref_m3: &pore_volumes,
         reference_pressure_bar: deck::ROCK_REFERENCE_BAR,
         compressibility_per_bar: deck::ROCK_COMPRESSIBILITY,
     };
 
-    let faces: Vec<Face> = (0..deck::CELLS - 1)
+    let faces: Vec<Face> = (0..cells - 1)
         .map(|i| Face {
             cell_i: i,
             cell_j: i + 1,
-            geom_t: deck::face_transmissibility(),
+            geom_t: deck::face_transmissibility(cells),
             // The deck is a single horizontal layer, so gravity does nothing along the column.
             gravity: Gravity::OFF,
         })
@@ -617,7 +668,7 @@ fn run_deck_case_with_totals(
 
     let initial = CompositionalState::new(
         &layout,
-        (0..deck::CELLS)
+        (0..cells)
             .map(|_| {
                 CompositionalCellState::new(
                     deck::INITIAL_PRESSURE_BAR,
@@ -633,7 +684,7 @@ fn run_deck_case_with_totals(
         id: "INJ".to_string(),
         completions: vec![Completion {
             cell: 0,
-            well_index: deck::well_index(),
+            well_index: deck::well_index(cells),
             head_offset_bar: 0.0,
         }],
         control: WellControl::SurfaceRate {
@@ -656,8 +707,8 @@ fn run_deck_case_with_totals(
     let producer = CompositionalWell {
         id: "PROD".to_string(),
         completions: vec![Completion {
-            cell: deck::CELLS - 1,
-            well_index: deck::well_index(),
+            cell: cells - 1,
+            well_index: deck::well_index(cells),
             head_offset_bar: 0.0,
         }],
         control: WellControl::Bhp {
@@ -701,19 +752,20 @@ fn run_deck_case_with_totals(
             guard += 1;
             assert!(guard < 5000, "sub-stepping did not reach {target} days");
             let remaining = target - run.time_days();
-            let dt = remaining.min(MAX_SUB_STEP_DAYS);
+            let dt = remaining.min(max_sub_step_days);
 
             // The deck declares its wells *after* its first four TSTEPs, so nothing flows for the
             // first 0.11 days. Reproducing that matters: applying the wells from t = 0 would put
             // ResSim a whole displacement ahead of the reference before the comparison began.
-            let wells: &[CompositionalWell] = if run.time_days() >= WELLS_OPEN_DAYS - 1e-12 {
-                &open_wells
-            } else {
-                &[]
-            };
+            let wells: &[CompositionalWell] =
+                if run.time_days() >= WELLS_OPEN_DAYS - WELLS_OPEN_TOLERANCE_DAYS {
+                    &open_wells
+                } else {
+                    &[]
+                };
             // The wells go in as wells, not as a precomputed source. See `assembly`'s module docs:
             // an explicitly evaluated BHP well has no pressure feedback and overshoots its own BHP.
-            let sources = vec![vec![0.0; 3]; deck::CELLS];
+            let sources = vec![vec![0.0; 3]; cells];
 
             let report = run.step(
                 &spec, &layout, &rock, &relperm, &faces, wells, &sources, dt, options,
@@ -828,19 +880,22 @@ fn comp_reference_transport_trajectory_tracks_opm() {
 
     // Measured, not aspirational, and each bound sits just above what this case produces.
     assert!(
-        worst_final < 1.0,
+        worst_final < 0.05,
         "the final states disagree by {worst_final:.3} bar; both simulators have settled by then"
     );
     assert!(
-        worst_pressure_developed.0 < 8.0,
+        worst_pressure_developed.0 < 4.5,
         "the developed displacement diverges: worst {:.3} bar at {}",
         worst_pressure_developed.0,
         worst_pressure_developed.1
     );
-    // The startup transient. Dominated by a different Peaceman equivalent radius — OPM's and this
-    // one need not agree — and by two different timestep ladders across a well opening.
+    // The startup transient, which is no longer the worst part of the trajectory. It was 20 bar
+    // until two driver defects were found by the refinement study: the wells opened one sub-step
+    // late because the reference's report times are single precision, and the wellbore radius was
+    // read from `COMPDAT` item 9, which is a diameter. See `deck::WELL_DIAMETER_M` and
+    // `WELLS_OPEN_TOLERANCE_DAYS`.
     assert!(
-        worst_pressure.0 < 21.0,
+        worst_pressure.0 < 4.5,
         "the startup transient diverges: worst {:.3} bar at {}",
         worst_pressure.0,
         worst_pressure.1
@@ -848,7 +903,7 @@ fn comp_reference_transport_trajectory_tracks_opm() {
     // The CO2 front. On five cells, numerical diffusion is large and a small difference in front
     // arrival time reads as a large composition difference in whichever cell the front is crossing.
     assert!(
-        worst_co2.0 < 0.16,
+        worst_co2.0 < 0.14,
         "the CO2 front diverges: worst {:.4} at {}",
         worst_co2.0,
         worst_co2.1
@@ -899,11 +954,15 @@ fn comp_reference_cumulative_injection_tracks_opm() {
         theirs_moles > 1e6,
         "the reference injected only {theirs_moles} moles; the fixture looks wrong"
     );
-    // 3%, measured. The plan's 1% target is for a refined solution; this is five cells with a
-    // startup transient in which the two well models disagree about the equivalent radius, and
-    // that transient is a fixed fraction of a 20-day cumulative.
+    // 1.10%, measured, and **not** a clean acceptance result even though it is close to the
+    // plan's 1% target. The conversion from the reference's surface volumes is not one the two
+    // simulators are known to share, and under grid refinement this number grows to 5.1% while
+    // the conversion-free comparison of the same flow stays under 0.02%. See
+    // `comp_refinement_surface_cumulative_is_inconclusive_not_a_failure`, which is where that is
+    // measured and where the reason is recorded. The bound here is a regression guard on the
+    // deck's own grid, not a claim that the 1% target is met.
     assert!(
-        relative < 0.03,
+        relative < 0.015,
         "cumulative injection differs by {:.2}%: {ours_total:.4e} vs {theirs_moles:.4e} moles",
         relative * 100.0
     );
@@ -961,4 +1020,359 @@ fn comp_reference_surface_phase_label_is_pressure_blind() {
     assert!(separated.liquid_volume > 0.0);
     // `Total` is unambiguous whatever the label says, which is why the C12 driver uses it.
     assert!(separated.liquid_volume + separated.vapour_volume > 0.0);
+}
+
+// ---------------------------------------------------------------------------------------------
+// C12's refinement study: does the disagreement shrink, and is it spatial or temporal?
+// ---------------------------------------------------------------------------------------------
+//
+// The plan asks for "at least three timestep resolutions, then spatial refinement separately"
+// and for the comparison to be against "a refined external solution, not merely a coarse Flow
+// output". Both halves matter for a different reason:
+//
+// * **Timestep refinement** establishes that the comparison sub-step is already small enough that
+//   the remaining disagreement is not the timestep controller. Without it, a spatial convergence
+//   claim is confounded.
+// * **Grid refinement** is the actual test of the discretisation. `flowexp_comp` is re-run at 10,
+//   20 and 40 cells over the same 300 m by `tools/opm_compositional/run-refinement.sh`, so at each
+//   resolution ResSim is compared against a reference solved on *that* grid.
+//
+// These are `#[ignore]`d and run by `bash scripts/validate-compositional.sh refinement`, which
+// builds in release. The plan allows exactly that: "bounded `comp_reference_*`; longer cases
+// explicitly ignored with a dedicated release runner."
+
+/// The reference solved on `cells` cells. 5 is the deck's own grid; the rest are refined.
+fn reference_on(cells: usize) -> Reference {
+    let raw = match cells {
+        5 => include_str!("../../../../../opm/compositional/1d_comp/reference.json"),
+        10 => include_str!("../../../../../opm/compositional/1d_comp/refined/n010/reference.json"),
+        20 => include_str!("../../../../../opm/compositional/1d_comp/refined/n020/reference.json"),
+        40 => include_str!("../../../../../opm/compositional/1d_comp/refined/n040/reference.json"),
+        other => panic!("no reference fixture for {other} cells; see run-refinement.sh"),
+    };
+    let r: Reference = serde_json::from_str(raw).expect("the reference fixture must parse");
+    assert_eq!(r.schema, "ressim-compositional-reference/1");
+    assert_eq!(r.cells, cells, "fixture is for the wrong grid");
+    assert_eq!(r.report_steps.len(), 28);
+    r
+}
+
+/// Total component moles held by a grid, from each cell's `(p, z)`.
+///
+/// **This is the conversion-free observable.** Comparing cumulative injection needs each
+/// simulator's surface volume, and the two need not mean the same thing by a cubic metre of
+/// surface CO2 — the reference reports `FGIT` through its own surface flash, and ResSim's surface
+/// flash labels the same stream a liquid (see
+/// `comp_reference_surface_phase_label_is_pressure_blind`). The plan calls a state/units mismatch
+/// INCONCLUSIVE rather than a failure, so the primary comparison is of what both simulators
+/// actually conserve: moles in the reservoir.
+///
+/// Both inventories are evaluated with **ResSim's** EOS, from each simulator's own `(p, z)`. That
+/// is legitimate precisely because C12's thermodynamic half already showed the two EOS
+/// implementations agree on this fixture to 1e-7 — the molar density is not the thing under test
+/// here, the transport is.
+fn grid_inventory(
+    spec: &FluidSpecification,
+    rock: &RockView<'_>,
+    cells: &[CompositionalCellState],
+) -> Vec<f64> {
+    let n = cells[0].overall_composition().len();
+    let mut total = vec![0.0; n];
+    for (index, cell) in cells.iter().enumerate() {
+        let (inventory, _) =
+            cell_inventory(spec, rock, index, cell).expect("the inventory must flash");
+        for (i, moles) in inventory.component_moles.iter().enumerate() {
+            total[i] += moles;
+        }
+    }
+    total
+}
+
+/// The reference's own state at `step`, as ResSim cell states, so the same inventory code sees it.
+fn reference_cells(step: &ReferenceStep, cells: usize) -> Vec<CompositionalCellState> {
+    (0..cells)
+        .map(|cell| {
+            let z = step.z(cell);
+            // The fixture is single precision, so its `z` sums to 1 only to about 1e-7.
+            let total: f64 = z.iter().sum();
+            CompositionalCellState::new(step.pressure[cell], vec![z[0] / total, z[1] / total])
+                .expect("the reference's own state must be admissible")
+        })
+        .collect()
+}
+
+/// What one point of the refinement ladder measures.
+///
+/// Pressures are compared at the **final** report time, where both simulators have settled, so the
+/// number is a difference between two steady solutions rather than between two transients. The
+/// cumulative is the plan's own acceptance observable.
+#[derive(Debug, Clone, Copy)]
+struct RefinementPoint {
+    cells: usize,
+    sub_step_days: f64,
+    /// Worst absolute pressure difference over the grid at the last report time, bar.
+    final_pressure_bar: f64,
+    /// Worst absolute pressure difference over the whole trajectory, bar.
+    trajectory_pressure_bar: f64,
+    /// Relative difference in cumulative injected moles at the last report time, through the
+    /// reference's surface volumes. Carries the surface-conversion caveat.
+    cumulative_relative: f64,
+    /// Relative difference in **CO2 moles held by the grid** at the last report time.
+    /// Conversion-free: see [`grid_inventory`].
+    inventory_relative: f64,
+}
+
+/// Run ResSim on `cells` cells at `sub_step_days` and compare against the reference solved on the
+/// same grid.
+fn measure_refinement(cells: usize, sub_step_days: f64) -> RefinementPoint {
+    let reference = reference_on(cells);
+    let times = reference.summary.get("TIME").expect("TIME").clone();
+    let fgit = reference.summary.get("FGIT").expect("FGIT").clone();
+
+    let (ours_moles, ours) = run_deck_case_on_grid(cells, sub_step_days, &times);
+
+    let mut trajectory_pressure_bar = 0.0f64;
+    for (index, step) in reference.report_steps.iter().enumerate() {
+        for cell in 0..cells {
+            trajectory_pressure_bar = trajectory_pressure_bar
+                .max((ours[index][cell].pressure_bar - step.pressure[cell]).abs());
+        }
+    }
+
+    let last = reference.report_steps.last().unwrap();
+    let mut final_pressure_bar = 0.0f64;
+    for cell in 0..cells {
+        final_pressure_bar = final_pressure_bar
+            .max((ours.last().unwrap()[cell].pressure_bar - last.pressure[cell]).abs());
+    }
+
+    // The reference reports cumulative injection as a surface volume; compare in moles, which is
+    // what both simulators actually conserve. See `comp_reference_cumulative_injection_tracks_opm`.
+    let spec = deck_fluid();
+    let surface = spec.surface().unwrap();
+    let molar_volume = flash(
+        &spec,
+        surface.pressure_pa,
+        surface.temperature_k,
+        &deck::INJECTION_STREAM,
+        None,
+    )
+    .unwrap()
+    .mixture_molar_volume();
+    let theirs_moles = fgit.last().unwrap() / molar_volume;
+    let ours_total = ours_moles.last().unwrap()[0];
+
+    // The conversion-free comparison: CO2 held by the grid at the last report time.
+    let pore_volumes = vec![deck::pore_volume_m3(cells); cells];
+    let rock = RockView {
+        pore_volume_ref_m3: &pore_volumes,
+        reference_pressure_bar: deck::ROCK_REFERENCE_BAR,
+        compressibility_per_bar: deck::ROCK_COMPRESSIBILITY,
+    };
+    let theirs_inventory = grid_inventory(
+        &spec,
+        &rock,
+        &reference_cells(reference.report_steps.last().unwrap(), cells),
+    );
+    let ours_inventory = grid_inventory(&spec, &rock, ours.last().unwrap());
+
+    RefinementPoint {
+        cells,
+        sub_step_days,
+        final_pressure_bar,
+        trajectory_pressure_bar,
+        cumulative_relative: (ours_total - theirs_moles).abs() / theirs_moles,
+        inventory_relative: (ours_inventory[0] - theirs_inventory[0]).abs() / theirs_inventory[0],
+    }
+}
+
+fn print_ladder(label: &str, points: &[RefinementPoint]) {
+    eprintln!("{label}");
+    eprintln!("  cells  sub-step/d   final p/bar   worst p/bar   CO2 in place   cumulative");
+    for p in points {
+        eprintln!(
+            "  {:5}  {:10.4}   {:11.3}   {:11.3}   {:11.3}%   {:8.3}%",
+            p.cells,
+            p.sub_step_days,
+            p.final_pressure_bar,
+            p.trajectory_pressure_bar,
+            p.inventory_relative * 100.0,
+            p.cumulative_relative * 100.0
+        );
+    }
+}
+
+/// Successive absolute differences down a ladder, for reading a convergence rate by eye.
+fn differences(values: &[f64]) -> Vec<f64> {
+    values.windows(2).map(|w| (w[1] - w[0]).abs()).collect()
+}
+
+/// **Timestep refinement**, run first because a spatial claim is confounded without it.
+///
+/// Halving the sub-step four times over. What this establishes is that the comparison sub-step is
+/// on the converged part of the curve, so the disagreement reported by
+/// `comp_reference_transport_trajectory_tracks_opm` is not the timestep controller.
+#[test]
+#[ignore = "release runner: bash scripts/validate-compositional.sh refinement"]
+fn comp_refinement_timestep_is_converged_at_the_comparison_step() {
+    let points: Vec<_> = [0.1, 0.05, 0.025, 0.0125]
+        .into_iter()
+        .map(|dt| measure_refinement(10, dt))
+        .collect();
+    print_ladder("C12 timestep refinement, 10 cells:", &points);
+
+    // The settled state does not move at all with the sub-step: the same steady solution is
+    // reached however it is approached.
+    for p in &points {
+        assert!(
+            (p.final_pressure_bar - points[0].final_pressure_bar).abs() < 1e-3,
+            "the final state moved with the sub-step: {:?}",
+            points
+        );
+        assert!(
+            (p.inventory_relative - points[0].inventory_relative).abs() < 1e-4,
+            "CO2 in place moved with the sub-step: {:?}",
+            points
+        );
+    }
+
+    // The transient does move with the sub-step, and it converges. Cumulative injection is an
+    // integral over the whole run, so its ladder is smooth enough to read a rate from: each
+    // halving changes it by about half as much as the previous one, which is the first order a
+    // backward-Euler step gives.
+    let cumulative = differences(
+        &points
+            .iter()
+            .map(|p| p.cumulative_relative)
+            .collect::<Vec<_>>(),
+    );
+    assert!(
+        cumulative[1] < 0.6 * cumulative[0] && cumulative[2] < 0.6 * cumulative[1],
+        "cumulative injection is not converging at first order in the sub-step: {cumulative:?}"
+    );
+
+    // The worst pointwise pressure difference is a maximum over a discrete set of cells and report
+    // times, so which state attains it can change from one resolution to the next. It is required
+    // to settle, not to halve — reading a convergence rate off a max would be reading one off the
+    // grid's own sampling.
+    let transient = differences(
+        &points
+            .iter()
+            .map(|p| p.trajectory_pressure_bar)
+            .collect::<Vec<_>>(),
+    );
+    assert!(
+        transient[1] < transient[0] && transient[2] < transient[1],
+        "the transient is not settling with the sub-step: successive changes {transient:?}"
+    );
+    assert!(
+        transient[2] < 0.5,
+        "the transient is still moving by {:.3} bar per halving; the comparison sub-step is not \
+         on the converged part of the curve",
+        transient[2]
+    );
+}
+
+/// **Grid refinement** against a reference re-solved on each grid.
+///
+/// The state observables — the settled pressure field and the CO2 the grid holds — agree at every
+/// resolution and do not drift with it. That is the load-bearing result: two independent
+/// implementations of compositional transport put the same material in the same places.
+#[test]
+#[ignore = "release runner: bash scripts/validate-compositional.sh refinement"]
+fn comp_refinement_grid_agreement_holds_on_state_observables() {
+    let points: Vec<_> = [5, 10, 20, 40]
+        .into_iter()
+        .map(|cells| measure_refinement(cells, MAX_SUB_STEP_DAYS))
+        .collect();
+    print_ladder("C12 grid refinement, sub-step 0.05 d:", &points);
+
+    for p in &points {
+        assert!(
+            p.final_pressure_bar < 0.05,
+            "{} cells: the settled pressures disagree by {:.4} bar",
+            p.cells,
+            p.final_pressure_bar
+        );
+        assert!(
+            p.inventory_relative < 5e-4,
+            "{} cells: CO2 in place disagrees by {:.4}%",
+            p.cells,
+            p.inventory_relative * 100.0
+        );
+    }
+
+    // The transient is where a five-cell grid and a forty-cell grid genuinely differ, and it does
+    // not shrink: refining resolves a sharper front, and a sharper front makes a small difference
+    // in arrival time read as a larger pointwise difference. Bounded, not converging.
+    for p in &points {
+        assert!(
+            p.trajectory_pressure_bar < 9.0,
+            "{} cells: the trajectory diverges by {:.3} bar",
+            p.cells,
+            p.trajectory_pressure_bar
+        );
+    }
+}
+
+/// **Cumulative injection compared through surface volumes is INCONCLUSIVE**, and this test says
+/// exactly why rather than dressing it up as a pass or a failure.
+///
+/// The plan's own acceptance target is "<= 1% for cumulative quantities", and the reference
+/// reports cumulative injection only as `FGIT`, a **surface volume**. Converting it to moles needs
+/// the reference's own surface molar volume for the injected stream, and the fixture cannot supply
+/// it: `GAS_DEN` and `OIL_DEN` come back identically zero from `flowexp_comp`, so the conversion
+/// has to be done with ResSim's surface flash instead — which is the very thing
+/// `comp_reference_surface_phase_label_is_pressure_blind` shows is unreliable at 1 bar.
+///
+/// The measurement localises the problem rather than leaving it open. Down the grid ladder:
+///
+/// * CO2 **held by the grid**, which needs no conversion, agrees to better than 0.02% at every
+///   resolution and does not drift with it;
+/// * cumulative injection **through `FGIT`** disagrees by 1.1% at five cells and 5.1% at forty,
+///   and the disagreement grows monotonically.
+///
+/// Two observables of the same flow cannot disagree by two orders of magnitude if the flow is what
+/// differs. What is not shared is the accounting: after breakthrough the injected CO2 passes
+/// straight through the grid, so throughput is invisible in the in-place amount, and the only
+/// record of it is each simulator's own surface bookkeeping.
+///
+/// **What would settle it:** a reference that writes its surface densities, or a summary vector in
+/// moles. Until then C12 does not claim the plan's 1% target, and the milestone stays undeclared.
+#[test]
+#[ignore = "release runner: bash scripts/validate-compositional.sh refinement"]
+fn comp_refinement_surface_cumulative_is_inconclusive_not_a_failure() {
+    let points: Vec<_> = [5, 10, 20, 40]
+        .into_iter()
+        .map(|cells| measure_refinement(cells, MAX_SUB_STEP_DAYS))
+        .collect();
+    print_ladder("C12 surface-volume cumulative vs CO2 in place:", &points);
+
+    let conversion_free: f64 = points
+        .iter()
+        .map(|p| p.inventory_relative)
+        .fold(0.0, f64::max);
+    let through_surface: f64 = points
+        .iter()
+        .map(|p| p.cumulative_relative)
+        .fold(0.0, f64::max);
+
+    assert!(
+        conversion_free < 5e-4,
+        "the conversion-free observable is no longer small ({:.4}%); the argument below it \
+         does not hold and this needs re-diagnosing rather than re-bounding",
+        conversion_free * 100.0
+    );
+    assert!(
+        through_surface > 20.0 * conversion_free,
+        "the two observables no longer disagree by an order of magnitude — the surface \
+         conversion may have stopped being the explanation"
+    );
+    // Bounded, so a regression that made it worse would still be caught.
+    assert!(
+        through_surface < 0.07,
+        "cumulative injection through FGIT differs by {:.2}%, beyond what the conversion \
+         alone has been shown to account for",
+        through_surface * 100.0
+    );
 }

@@ -110,24 +110,44 @@ eliminate injectivity" — if the injected stream is a vapour and the cell holds
 vapour relative permeability at the cell's saturation is zero, and a naive rule would make the
 well unable to inject at all.
 
-**The rule adopted here: the injected stream's own total mobility, at connection conditions.**
-Flash the prescribed composition `z_inj` at `p_conn` and the reservoir temperature, then
+**The rule adopted here: the prescribed stream, moving at the perforation cell's total
+mobility.** Flash `z_inj` at `p_conn` for what goes in; flash the cell's own `z` at its own
+pressure for the resistance it goes through.
 
 ```text
-lambda_inj = sum_P (kr_P(S_P^inj) / mu_P^inj)               [1/cP]
-q_total    = WI * lambda_inj * (-dp)                        [m3/day], positive into the cell
-source_i   = q_total * c_mixture^inj * z_(inj,i)            [mol/day]
+lambda_cell = sum_P (kr_P(S_P^cell) / mu_P^cell)            [1/cP]
+q_total     = WI * lambda_cell * (-dp)                      [m3/day], positive into the cell
+source_i    = q_total * c_mixture^inj * z_(inj,i)           [mol/day]
 ```
 
-The injected fluid's own saturations sum to one, so no phase is being evaluated at a saturation
-belonging to a different fluid and the injectivity cannot vanish for the wrong reason. It is a
-**modelling choice**, made explicitly: it says the near-wellbore region is occupied by the
-injected fluid, which is the usual assumption for an injector at steady injection and is wrong
-during the first moments after startup.
+The plan's failure mode is avoided because the mobility is a **sum over the phases the cell
+actually holds**, not the injected phase's relative permeability evaluated at the cell's
+saturation. A vapour injector into a single-phase liquid cell still injects, at the liquid's
+mobility, which is the physically right answer rather than a special case.
 
-The injected composition is prescribed and is what enters the cell exactly — `sum_i source_i`
-distributed in the proportions `z_inj`. No flash of the *cell's* fluid enters the injected stream's
-composition, which is the property that makes injection auditable.
+The injected **composition** is prescribed and is what enters the cell exactly — `sum_i source_i`
+distributed in the proportions `z_inj`. No flash of the cell's fluid enters the injected stream's
+composition. That, and not independence of the rate, is the property that makes injection
+auditable: the mobility is one scalar multiplying every component, so it changes how much enters
+and never what enters.
+
+#### This rule replaced an earlier one, and C12 is why
+
+The first implementation used the **injected stream's own** total mobility, on the reasoning that
+its saturations sum to one and so no phase is evaluated at a saturation belonging to a different
+fluid. That reasoning is sound as far as it goes, and the rule is a defensible modelling choice —
+it says the near-wellbore region is already occupied by the injected fluid. It is also wrong in
+exactly the regime it was meant to cover.
+
+C12's comparison against `flowexp_comp` measured the cost. While the perforation cell is still
+unswept, pure supercritical CO2 is about four times more mobile than the mixture it is displacing,
+so injecting at the stream's own mobility over-injects by roughly that factor until the cell is
+swept. On `1D_COMP` it showed as a 27% excess across the interval where the injector hands over
+from rate control to BHP control, decaying to about 3% once cell 1 had become essentially pure
+CO2. The cell-mobility rule is also what OPM's `StandardWell` does, so this is not ResSim choosing
+between two defensible conventions — it is ResSim agreeing with the reference.
+
+See `docs/COMPOSITIONAL_VALIDATION.md`'s C12 record for the measurement.
 
 ### Wellbore flash
 

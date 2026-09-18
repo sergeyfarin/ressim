@@ -11,10 +11,15 @@ set -euo pipefail
 #   reference re-run the 1D compositional case through flowexp_comp and verify its fixture.
 #            Skips with a note when flowexp_comp has not been built; the committed fixture is
 #            still checked by the comp_reference_* tests either way.
+#   refinement C12's timestep and grid refinement study, in RELEASE. Runs the deck's case at four
+#            sub-steps and on four grids against references re-solved on each grid. ~3 min, which
+#            is why the plan puts it behind an explicit runner rather than in the default gate.
 #   native   thermo + fixture + reference.
 #   wasm     compile-only check for the wasm32 target. Not a substitute for the
 #            execution-based native/WASM parity C13 owes.
-#   all      every mode above.
+#   all      thermo + fixture + reference + wasm. NOT refinement: it is the slow one, and a gate
+#            nobody runs is not a gate. Run it before touching the well model, the flux or the
+#            timestep lifecycle, and before any claim about C12's acceptance bands.
 #
 # Deliberately NOT included: any black-oil gate. Use scripts/validate-solver-coverage.sh for
 # those. Running both is what a shared-code change needs; this script does not decide that for
@@ -123,7 +128,32 @@ run_reference() {
         return 0
     fi
     bash "$repo_root/tools/opm_compositional/run-1d-comp.sh" --check
-    echo "gate ok: the 1D compositional reference reproduces from flowexp_comp"
+    bash "$repo_root/tools/opm_compositional/run-refinement.sh" --check
+    echo "gate ok: the 1D compositional reference and its refinements reproduce from flowexp_comp"
+}
+
+# The refinement study. Release, because a debug build turns three minutes into forty.
+#
+# These tests are `#[ignore]`d, so `run_filter`'s "an ignored test cannot serve as a gate" rule
+# would reject them; they are run with `--ignored` and counted the same way.
+run_refinement() {
+    echo "== refinement: C12's timestep and grid refinement study (release, ~3 min) =="
+    local status=0
+    cargo test --release --manifest-path "$manifest_path" --lib -- comp_refinement_ \
+        --ignored --nocapture --test-threads=1 2>&1 | tee "$log_file" || status=$?
+    if [ "$status" -ne 0 ]; then
+        echo "FAIL: the refinement study exited $status." >&2
+        exit "$status"
+    fi
+    local passed
+    passed="$(awk '/^test result:/ { gsub(/;/, ""); for (i = 2; i <= NF; i++) if ($i == "passed") p += $(i - 1) } END { print (p + 0) }' "$log_file")"
+    if [ "$passed" -lt 3 ]; then
+        echo "FAIL: expected at least 3 comp_refinement_* tests, $passed ran." >&2
+        exit 1
+    fi
+    echo "gate ok: 'comp_refinement_' ran $passed test(s)"
+    echo "note: the measured ladders are printed above. docs/COMPOSITIONAL_VALIDATION.md's C12"
+    echo "      record is what they are compared against; update it deliberately, not silently."
 }
 
 run_wasm() {
@@ -144,9 +174,10 @@ case "$mode" in
     native)  run_thermo; run_fixture; run_reference ;;
     wasm)    run_wasm ;;
     reference) run_reference ;;
+    refinement) run_refinement ;;
     all)     run_thermo; run_fixture; run_reference; run_wasm ;;
     *)
-        echo "usage: $0 {thermo|fixture|reference|native|wasm|all}" >&2
+        echo "usage: $0 {thermo|fixture|reference|refinement|native|wasm|all}" >&2
         exit 2
         ;;
 esac

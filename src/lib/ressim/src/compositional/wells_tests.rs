@@ -443,10 +443,18 @@ fn comp_well_bhp_derivative_has_the_right_sign() {
     }
 }
 
-/// An injector's source does not depend on the cell's composition — the stream is prescribed. That
-/// is a structural zero, and asserting it is what keeps the injected composition auditable.
+/// What an injector takes from the cell, and what it does not.
+///
+/// The **composition** is the prescribed stream's and nothing about the cell changes it. The
+/// **rate** is the cell's business twice over: through the drawdown, and through the cell's total
+/// mobility, which is the resistance the stream has to move through. Separating those two is the
+/// whole content of the connection law, so both halves are asserted here.
+///
+/// ResSim used to take the mobility from the injected stream as well, which made the whole source
+/// independent of the cell's composition. C12 measured that against `flowexp_comp` and it
+/// over-injects while the perforation cell is still unswept — see `wells.rs`.
 #[test]
-fn comp_well_injector_source_is_independent_of_the_cell_composition() {
+fn comp_well_injector_composition_is_prescribed_but_its_rate_is_the_cells() {
     let spec = pinned::ternary().unwrap();
     let inj = injector(250.0, vec![0.7, 0.3, 0.0]);
     let base = well_source_at_bhp(
@@ -458,13 +466,18 @@ fn comp_well_injector_source_is_independent_of_the_cell_composition() {
     )
     .unwrap();
 
+    // The rate depends on the cell's composition, because the mobility does. A component the
+    // stream does not carry still has an exactly zero row: there is nothing of it to inject.
     for i in 0..3 {
-        assert_eq!(
-            only(&base).cell_jacobian[i][1],
-            0.0,
-            "component {i}: the injected stream depends on the cell's z_0"
+        if only(&base).component_moles_per_day[i] == 0.0 {
+            assert_eq!(only(&base).cell_jacobian[i][1], 0.0);
+            assert_eq!(only(&base).cell_jacobian[i][2], 0.0);
+            continue;
+        }
+        assert!(
+            only(&base).cell_jacobian[i][1] != 0.0 || only(&base).cell_jacobian[i][2] != 0.0,
+            "component {i}: the injection rate must move with the cell's mobility"
         );
-        assert_eq!(only(&base).cell_jacobian[i][2], 0.0);
     }
 
     // The *rate* does depend on the cell pressure, through the drawdown — that is not the same
@@ -481,8 +494,8 @@ fn comp_well_injector_source_is_independent_of_the_cell_composition() {
         );
     }
 
-    // And the composition entering the cell is unchanged by the cell pressure: every component's
-    // rate scales by the same factor, so the ratios are constant.
+    // And the composition entering the cell is unchanged by the cell's state: the mobility is one
+    // scalar multiplying every component, so the ratios are constant however the cell differs.
     let nearby = well_source_at_bhp(
         &spec,
         &relperm(),

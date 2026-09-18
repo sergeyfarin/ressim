@@ -7,15 +7,30 @@ five-cell 1D CO2 flood in CO2 / methane / decane — ResSim's own V1 fluid.
 | --- | --- |
 | Deck | `1D_COMP.DATA`, from [`OPM/opm-tests`](https://github.com/OPM/opm-tests) `compositional/`, © 2024 SINTEF Digital / TNO, Open Database License (notice retained in the file) |
 | Simulator | `flowexp_comp`, built by [`tools/opm_compositional/build-flowexp-comp.sh`](../../../tools/opm_compositional/build-flowexp-comp.sh) from `OPM/opm-simulators` `release/2026.04/final` (`b82f21d`) |
-| Regenerate | `bash tools/opm_compositional/run-1d-comp.sh` |
-| Verify unchanged | `bash tools/opm_compositional/run-1d-comp.sh --check` |
-| Consumed by | `comp_reference_*` in `src/lib/ressim/src/compositional/reference_tests.rs` |
+| Regenerate | `bash tools/opm_compositional/run-1d-comp.sh`, and `run-refinement.sh` for `refined/` |
+| Verify unchanged | the same two scripts with `--check` |
+| Consumed by | `comp_reference_*` and `comp_refinement_*` in `src/lib/ressim/src/compositional/reference_tests.rs` |
 
 ## The case
 
 Five cells, 60 m × 6 m × 6 m, 100 mD, 10% porosity, horizontal. Initially 75 bar at 150 °C with
 `z = [0.1, 0.3, 0.6]`. Pure CO2 is injected into cell 1 against a 150 bar BHP limit; cell 5
 produces at 50 bar. 28 report steps over about 20 days, ending with CO2 essentially everywhere.
+
+Two details of the deck are easy to read wrong, and both cost C12 real measurement error before
+they were found. The wells are declared **after** four `TSTEP`s, so nothing flows for the first
+0.11 days and the first four report steps are the initial state unchanged. And `COMPDAT`'s
+`0.0151` sits in item 9, which is the wellbore **diameter** — reading it as a radius makes the
+well index about 12% too large, by an amount that does not divide out with cell size.
+
+## `refined/`
+
+C12 asks for a comparison against *a refined external solution, not merely a coarse Flow output*,
+so the same deck is re-run at 10, 20 and 40 cells over the same 300 m —
+`refined/n010/`, `n020/`, `n040/`. Only the discretisation changes:
+[`refine_deck.py`](../../../tools/opm_compositional/refine_deck.py) rewrites the cell-count-dependent
+keywords and **asserts on every one of them**, so a change to `1D_COMP.DATA` fails there rather
+than silently producing a deck that is no longer the same case.
 
 ## `reference.json`
 

@@ -359,7 +359,23 @@ fn source_ad<const N: usize, const M: usize>(
     let reservoir_rate;
 
     if injecting {
-        // --- Injector: the prescribed stream, at its own total mobility.
+        // --- Injector: the prescribed stream, moving at the **perforation cell's** total
+        // mobility.
+        //
+        // The composition and the molar density are the injected stream's: what enters the cell is
+        // what the well was told to inject, evaluated at the connection pressure, and nothing
+        // about the cell changes that. The *resistance* is the cell's, summed over whatever phases
+        // it holds, because that is the rock the stream has to move through.
+        //
+        // This is the law OPM's `StandardWell` uses and C12 measured it. ResSim originally used
+        // the injected stream's own mobility, on the reasoning that its saturations sum to one and
+        // so the injectivity cannot vanish for the wrong reason. The total mobility of the cell
+        // has that property too — it is a sum over the phases actually present — and it is what an
+        // independent simulator does. The difference is not cosmetic: while the perforation cell
+        // still holds decane, pure supercritical CO2 is about four times more mobile than the
+        // mixture it is displacing, so injecting at the stream's own mobility over-injects by that
+        // factor until the cell is swept. Against `flowexp_comp` on `1D_COMP` it showed up as a
+        // 27% excess across the interval where the injector switches from rate to BHP control.
         let z_inj = well.injection_composition.as_ref().ok_or_else(|| {
             WellError::MissingInjectionComposition {
                 well: well.id.clone(),
@@ -371,13 +387,17 @@ fn source_ad<const N: usize, const M: usize>(
         let inj_derivatives = flash_derivatives(spec, p_conn_pa, t, z_inj, &inj_state)
             .map_err(WellError::CellDerivative)?;
 
-        // The injected fluid's own saturations sum to one, so no phase is evaluated at a
-        // saturation belonging to a different fluid and the injectivity cannot vanish for the
-        // wrong reason. See the design note.
+        let z_cell = cell.overall_composition();
+        let cell_state = flash(spec, bar_to_pa(cell.pressure_bar), t, &z_cell, None)
+            .map_err(WellError::CellFlash)?;
+        let cell_derivatives =
+            flash_derivatives(spec, bar_to_pa(cell.pressure_bar), t, &z_cell, &cell_state)
+                .map_err(WellError::CellDerivative)?;
+
         let mut lambda = Ad::<M>::constant(0.0);
         for liquid in [true, false] {
             let Some(phase) =
-                injected_phase::<N, M>(spec, relperm, &inj_state, &inj_derivatives, liquid)
+                cell_phase::<N, M>(spec, relperm, &cell_state, &cell_derivatives, liquid)
                     .map_err(WellError::Transport)?
             else {
                 continue;
@@ -385,10 +405,9 @@ fn source_ad<const N: usize, const M: usize>(
             lambda = lambda + phase.mobility;
         }
 
-        // Positive into the cell. Every injected-stream property carries a BHP derivative and no
-        // cell-primary derivative: the cell's own fluid plays no part in what is injected, which
-        // is what makes injection auditable. The *rate* still depends on the cell pressure
-        // through the drawdown, which is not the same thing.
+        // Positive into the cell. The composition carries a BHP derivative and no cell-primary
+        // derivative; the mobility carries cell-primary derivatives and none in BHP. Both are
+        // right, and keeping them separate is what makes an injector's Jacobian auditable.
         let q = (-dp) * lambda * completion.well_index;
         reservoir_rate = q.value();
         let c_mixture = mixture_molar_density::<N, M>(&inj_state, &inj_derivatives);
@@ -477,17 +496,6 @@ fn mixture_molar_density<const N: usize, const M: usize>(
     }
 }
 
-/// One phase of the **injected** stream, with derivatives in the BHP slot only.
-fn injected_phase<const N: usize, const M: usize>(
-    spec: &FluidSpecification,
-    relperm: &RelativePermeabilityModel,
-    state: &FlashState,
-    d: &FlashDerivatives,
-    liquid: bool,
-) -> Result<Option<CellPhase<M>>, TransportError> {
-    phase_common::<N, M>(spec, relperm, state, d, liquid, true)
-}
-
 /// The connected cell's phase properties as AD quantities over the well's slot layout.
 struct CellPhase<const M: usize> {
     mobility: Ad<M>,
@@ -508,9 +516,9 @@ fn cell_phase<const N: usize, const M: usize>(
 /// Build one phase's mobility, molar density and composition as AD quantities.
 ///
 /// `into_bhp_slot` chooses where the derivatives land: the cell's primaries for the connected
-/// cell's fluid, or the BHP slot for the injected stream, which is evaluated at `p_conn`. The two
-/// share every formula, which is the point — a separate injected-fluid path would be a second
-/// place for the saturation and mobility expressions to drift apart.
+/// cell's fluid, or the BHP slot for a stream evaluated at `p_conn`. Only the cell path is used
+/// now that an injector takes its mobility from the perforation cell, but the choice stays
+/// explicit rather than implied by the call site.
 fn phase_common<const N: usize, const M: usize>(
     spec: &FluidSpecification,
     relperm: &RelativePermeabilityModel,
