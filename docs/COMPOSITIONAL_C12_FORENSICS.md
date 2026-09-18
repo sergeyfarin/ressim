@@ -131,6 +131,11 @@ The other C12 findings are **unaffected**, because none of them rests on a traje
    joined by the observation that its ORAT run also fails at fine timesteps (`orat400` aborted at
    2163 of 2400 steps).
 
+An unfiled draft issue for `OPM/opm-simulators` is in
+[`UPSTREAM_OPM_RATE_CONTROL_DRAFT.md`](UPSTREAM_OPM_RATE_CONTROL_DRAFT.md) — self-contained, so a
+maintainer needs only `flowexp_comp`, the deck and the `PTFlash` header. **It has not been sent
+anywhere.**
+
 Neither is ResSim's to fix. Neither blocks a model-equivalence claim, because E2 and E3 establish
 that independently of the rate control.
 

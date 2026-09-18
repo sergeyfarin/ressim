@@ -22,6 +22,7 @@ under `.archive/`.
 | [Compositional readiness assessment](COMPOSITIONAL_READINESS_ASSESSMENT_2026-09-14.md) | Rust/OPM reuse map, FIM prerequisites, reproduced well-contract gaps, and staged compositional scope |
 | [Compositional fluid execution plan](COMPOSITIONAL_FLUID_EXECUTION_PLAN_2026-09-14.md) | C0–C15 implementation tasks, EOS/flash contracts, component equations, wells, native/WASM admission and immiscible-water extension |
 | [Compositional validation](COMPOSITIONAL_VALIDATION.md) | Pinned fluid dataset and EOS constants, oracle availability and measured domain limits, numerical acceptance contract, and C0–C15 gate status |
+| [Upstream OPM rate-control issue (draft)](UPSTREAM_OPM_RATE_CONTROL_DRAFT.md) | Unfiled draft for OPM/opm-simulators: rate-controlled compositional wells do not converge under timestep refinement, with the reproducer and the ruled-out list |
 | [Compositional C12 forensics](COMPOSITIONAL_C12_FORENSICS.md) | Why the reported producer connection-rate defect was not one: the two methodological errors, the settled term-by-term register, and the rules for comparing against an unconverged reference |
 | [Compositional well design](COMPOSITIONAL_WELL_DESIGN.md) | C11's pre-implementation design note: unknowns, connection law, injection rule, controls, provenance and gates |
 | `docs/UNIT_SYSTEM.md` | Unit conventions, equations, solver / PVT notes |
