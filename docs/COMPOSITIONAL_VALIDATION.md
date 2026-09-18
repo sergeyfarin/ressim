@@ -7,8 +7,11 @@ oracles and gate results. Created by task **C0** of the
 pin the dataset and oracle recorded here. Tracking issue:
 [#29](https://github.com/sergeyfarin/ressim/issues/29).
 
-**Nothing in this document claims a gate passes.** The gate table at the bottom records the state
-of each one, and every entry is currently `NOT STARTED` or `BLOCKED` except C0 itself.
+**Every claim here names what it does and does not cover.** The status table in section 7 records
+the state of each task and the completion records in section 8 record how each one was measured.
+C0–C11 are complete; C12 is partial — its thermodynamic and transport comparisons against an
+independent simulator are done, its refinement study is not, and the
+`NATIVE-COMPOSITIONAL-READY` milestone is **not** declared. C13 onwards have not started.
 
 ## Scope this document governs
 
@@ -287,6 +290,11 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C12 vs OPM** — vapour saturation | — | worst **1.31e-7** absolute; the reference writes single precision, so this is its own output resolution | **Met** |
 | **C12 vs OPM** — phase compositions | 1e-8 absolute (C0 target) | worst **5.55e-8** absolute, likewise at the reference's float32 floor | **Met** at the oracle's precision |
 | **C12 vs OPM** — initial state | — | `S_g`, `x` and `y` agree to every one of the 8 digits OPM printed | **Met** |
+| **C12 vs OPM** — final pressures | two settled solutions must agree | worst **0.443 bar** over the five cells at 20.11 days | **Met** |
+| **C12 vs OPM** — developed displacement | — | worst **4.485 bar** from 2 days on (cell 3, 14.11 d) | **Met** |
+| **C12 vs OPM** — startup transient | — | worst **20.110 bar** (cell 0, 0.19 d), dominated by two different Peaceman equivalent radii and two different timestep ladders across the well opening | **Met**, and reported separately rather than folded into one number |
+| **C12 vs OPM** — CO2 front | — | worst **0.1535** in `z_CO2` (cell 4, 17.11 d); on five cells a small difference in front arrival reads as a large composition difference in the cell the front is crossing | **Met** |
+| **C12 vs OPM** — cumulative injection | ≤ 1% on cumulative quantities (refined) | **2.44%** on `FGIT` at 20.11 days, compared in moles. Five cells, unrefined | **Not met at the refined target**; the plan's 1% is for a refined solution and this grid is not refined |
 | **C10 Newton** — convergence rate | quadratic near the solution | a quadratic reduction is observed and asserted; a merely-close Jacobian would converge linearly and still terminate | **Met** |
 | **C10 Newton** — domain | `p > 0`, `z` on the simplex including `z_(N-1)` | fraction-to-boundary at 0.99, one global scale factor, no clamping or renormalization after the step | **Met** |
 | **C10 lifecycle** — rejected step | nothing mutates | state, clock and cumulative totals all unchanged, structurally | **Met** |
@@ -308,7 +316,7 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | Tiny direct linear oracle | ≤ 1e-10 full-system relative residual | Deferred to C10 | Not yet |
 | Local conservative face exchange | Cancellation to roundoff | Deferred to C9 | Not yet |
 | Global closed/source balance | ≤ 1e-8 relative accumulated mole error per component | Deferred to C9/C10 | Not yet |
-| Refined external trajectories | ≤ 1% on cumulative quantities, per-observable tolerances in C12 | Oracle now available (§3b); tolerances to be set by C12 from measured refinement | Not yet |
+| Refined external trajectories | ≤ 1% on cumulative quantities, per-observable tolerances in C12 | Measured on the deck's own 5-cell grid: cumulative injection **2.44%**, final pressures **0.443 bar**. Per-observable bands are now frozen from those measurements (rows above). Refinement itself — the same case on a finer grid and a finer timestep ladder — is **not** done | Partial |
 | Newton acceptance | Derived and frozen in C8/C11 | Deferred | Not yet |
 
 No existing black-oil benchmark tolerance is changed by any of this.
@@ -381,7 +389,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C9 | Component face flux, gravity and global assembly | **COMPLETE** | `compositional/{flux,assembly}.rs`; 33 `comp_flux_*` / `comp_assembly_*` / `comp_gravity_*` tests |
 | C10 | Linear solve, Newton, timestep lifecycle | **COMPLETE** on the direct path | `compositional/{newton,timestep}.rs`; 20 `comp_newton_*` / `comp_rollback_*` tests. The iterative/CPR adapter is deferred — see the C10 record |
 | C11 | Compositional wells | **COMPLETE** | `compositional/wells.rs`, [design note](COMPOSITIONAL_WELL_DESIGN.md); 29 `comp_well_*` tests, single and multiple completions. **Derived from first principles — C11's OPM reference is unavailable here** (plan correction 3), so no OPM agreement is claimed |
-| C12 | NATIVE-COMPOSITIONAL-READY | **PARTIAL** — thermodynamics validated against the external oracle; transport not yet | `compositional/reference_tests.rs`, 6 `comp_reference_*` tests over 140 states of a real displacement. The milestone is **not** declared |
+| C12 | NATIVE-COMPOSITIONAL-READY | **PARTIAL** — thermodynamics *and* transport validated against the external oracle; refinement studies not yet | `compositional/reference_tests.rs`, 10 `comp_reference_*` tests: 140 flashed states plus ResSim's own trajectory over the same case. The milestone is **not** declared — see the C12 record for what is still missing |
 | C13–C14 | WASM, product integration, release | NOT STARTED | Gated on C12 |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
@@ -389,11 +397,12 @@ No existing black-oil benchmark tolerance is changed by any of this.
 
 ### C12 — against an independent simulator (PARTIAL)
 
-**The milestone `NATIVE-COMPOSITIONAL-READY` is NOT declared.** What is validated is the
-thermodynamics along an externally produced trajectory; the transport is not.
+**The milestone `NATIVE-COMPOSITIONAL-READY` is NOT declared.** Two comparisons are now recorded
+against the same external simulator: the thermodynamics along *its* trajectory, and ResSim's own
+trajectory against it. What remains is the refinement study the plan asks for.
 
 ```text
-C-task:                C12 (thermodynamic half only)
+C-task:                C12 (thermodynamic and transport halves; refinement outstanding)
 Start / final commit:  f73468d / this commit
 Oracle:                OPM flowexp_comp, built from release/2026.04/final (section 3b), running
                        OPM/opm-tests compositional/1D_COMP.DATA - a five-cell 1D CO2 flood in
@@ -408,15 +417,20 @@ WHAT IS COMPARED:      for every cell at every report step, the reference's own 
                        breakthrough to essentially pure CO2. The fluid data was entered
                        independently in the deck, the EOS and flash are a different
                        implementation in a different language, and nothing here was tuned
-WHAT IS NOT COMPARED:  the trajectory itself. Running ResSim's own transport and comparing the
-                       result needs the deck's transmissibility, well model and timestep control
-                       matched as well, and each is a separate place for two simulators to
-                       differ. Conflating them with a thermodynamic comparison would make a
-                       disagreement uninterpretable
-Results:               phase state agrees on all 140; worst saturation error 1.31e-7; worst
-                       composition error 5.55e-8. Both sit at the reference's single-precision
-                       output resolution, so the two implementations agree to the limit of what
-                       the fixture can express
+                       (comp_reference_flash_*, 6 tests)
+                       Results: phase state agrees on all 140; worst saturation error 1.31e-7;
+                       worst composition error 5.55e-8. Both sit at the reference's
+                       single-precision output resolution, so the two implementations agree to
+                       the limit of what the fixture can express
+                       -----------------------------------------------------------------------
+                       the TRANSPORT half, added separately and deliberately kept separate:
+                       ResSim builds the deck's case itself - transmissibility from DX/DY/DZ and
+                       PERM, a Peaceman well index, the SGOF table, both wells with their deck
+                       controls - and advances to the reference's own 28 report times. This
+                       exercises upwinding, the well connection law and its controls, the Newton
+                       lifecycle and the timestep controller against a simulator sharing none of
+                       that code (comp_reference_transport_*, comp_reference_cumulative_*,
+                       comp_reference_deck_*, 4 tests)
 Deck vs pinned fluid:  the deck's EOS data is more precise than the pinned values, and it carries
                        its own relative permeability table and its own surface conditions. The
                        specification is built from THE DECK'S numbers; a test asserts the two
@@ -425,9 +439,52 @@ Deck vs pinned fluid:  the deck's EOS data is more precise than the pinned value
 Reference output gaps: OIL_DEN, GAS_DEN, OIL_VISC, GAS_VISC, FPR and every block summary vector
                        come back identically zero from this simulator. The extractor prints a
                        note for any such vector, so a column of zeros is never read as agreement
-Remaining for C12:     transport trajectory comparison; timestep and grid refinement; the
-                       per-observable acceptance bands the plan asks C0/C12 to freeze
-Completed gate:        none - C12 is partial
+Transport results:     reported in three regimes, because one worst-case number over a five-cell
+                       displacement says almost nothing about which part disagrees:
+                         final state            0.443 bar  (both simulators settled, 20.11 d)
+                         developed displacement 4.485 bar  (from 2 d on; cell 3 at 14.11 d)
+                         startup transient     20.110 bar  (cell 0 at 0.19 d)
+                         CO2 front             0.1535 in z_CO2 (cell 4 at 17.11 d)
+                         cumulative injection   2.44%     (FGIT at 20.11 d, compared in moles)
+                       Replay: cargo test --manifest-path src/lib/ressim/Cargo.toml --lib -- \
+                         comp_reference_transport_trajectory_tracks_opm \
+                         comp_reference_cumulative_injection_tracks_opm --nocapture
+                       Both tests print these numbers, so the bands below can be rechecked rather
+                       than trusted
+Where they disagree:   the startup transient, and the causes are identifiable rather than
+                       mysterious. OPM's Peaceman equivalent radius need not equal this one; the
+                       two timestep ladders differ across the well opening; and five cells give
+                       enough numerical diffusion that front arrival time differs by a fraction
+                       of a cell. All three shrink under refinement, which is exactly why the
+                       refinement study is the remaining piece rather than an optional extra
+Driver decisions that
+mattered:              * the wells are passed as WELLS, not as a precomputed source. An
+                         explicitly evaluated BHP well has no pressure feedback: cell 0 reached
+                         238 bar against a 150 bar injector and oscillated by +-60 bar. Wells are
+                         now implicit in assemble/newton/timestep - see compositional/assembly.rs
+                       * the deck declares its wells AFTER four TSTEPs, so nothing flows for the
+                         first 0.11 days. Opening them at t = 0 put ResSim a whole displacement
+                         ahead before the comparison started
+                       * the injector is SURFACE-RATE limited, not pure BHP. WBHP:INJ reads
+                         135.29 bar at the first reported time and only later sits at 150. Pure
+                         BHP over-injects early - 22 bar of disagreement
+                       * the surface rate targets SurfacePhase::Total, not Vapour, because Li's
+                         labelling is pressure-blind and calls surface CO2 a liquid. Documented
+                         and asserted by comp_reference_surface_phase_label_is_pressure_blind;
+                         C13's reporting must name what it means by surface gas
+                       * Newton tolerance 1e-7 rather than the default 1e-8. Late in the
+                         displacement methane and decane sit at ~1e-5 of a cell's inventory and
+                         C8's per-component scaling divides their balances by those tiny
+                         inventories; the solve reaches 1.8e-8 and stalls, bounded by the flash's
+                         own 1e-11 equilibrium tolerance. A property of this case, not a default
+                         worth changing
+Remaining for C12:     timestep and grid refinement - the same case on a finer grid and a finer
+                       ladder, to show the startup and front disagreements shrink and to bring
+                       cumulative injection under the plan's 1%. Until that is done the
+                       per-observable bands above are frozen at THIS resolution and the
+                       milestone stays undeclared
+Completed gate:        bash scripts/validate-compositional.sh all (10 comp_reference_* tests)
+                       - C12 is still partial: the gate passes, the milestone does not
 ```
 
 ### C11 — compositional wells

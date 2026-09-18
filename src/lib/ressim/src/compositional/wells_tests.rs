@@ -3,7 +3,6 @@
 //! The gates are internal invariants, because no external well oracle exists — see
 //! `docs/COMPOSITIONAL_WELL_DESIGN.md`, "Provenance". Nothing here claims agreement with OPM.
 
-use super::accumulation::cell_inventory;
 use super::assembly::Face;
 use super::flux::Gravity;
 use super::layout::CompositionalLayout;
@@ -743,6 +742,7 @@ fn comp_well_production_closes_the_grid_inventory_over_several_steps() {
             &rock,
             &relperm(),
             &faces,
+            &[],
             &sources,
             1.0,
             TimestepOptions::default(),
@@ -795,7 +795,6 @@ fn comp_well_injection_adds_the_prescribed_stream_to_the_grid() {
     well.completions[0].cell = 0;
     well.completions[0].well_index = WELL_INDEX * 1e-4;
 
-    let mut injected = vec![0.0; 3];
     for step in 0..3 {
         let source = well_source(&spec, &relperm(), &well, run.state().cells()).unwrap();
         assert!(
@@ -803,23 +802,26 @@ fn comp_well_injection_adds_the_prescribed_stream_to_the_grid() {
             "step {step}: injection stopped at cell pressure {}",
             run.state().cell(0).pressure_bar
         );
-        let sources = vec![only(&source).component_moles_per_day.clone()];
+        let sources = vec![vec![0.0; 3]; 1];
         let report = run.step(
             &spec,
             &layout,
             &rock,
             &relperm(),
             &[],
+            std::slice::from_ref(&well),
             &sources,
             0.05,
             TimestepOptions::default(),
         );
         assert!(report.succeeded(), "{report:?}");
-        let dt = report.accepted_dt_days.unwrap();
-        for i in 0..3 {
-            injected[i] += dt * only(&source).component_moles_per_day[i];
-        }
     }
+
+    // The run's own cumulative, which comes from the rate each accepted solve actually ran at.
+    // Accumulating a rate evaluated before or after a step is off by however much it moved during
+    // the step, and for a BHP injector against a pressurizing cell that is not small — 0.25% over
+    // three steps here, which is far outside the closure this test checks.
+    let injected: Vec<f64> = run.cumulative_well_moles()[0].clone();
 
     // Only CO2 was injected.
     assert!(injected[0] > 0.0);

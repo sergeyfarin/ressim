@@ -580,6 +580,7 @@ fn comp_gravity_hydrostatic_column_assembles_to_zero() {
         &relperm(),
         &state,
         &faces,
+        &[],
         &previous,
         &vec![vec![0.0; 2]; cells],
         1.0,

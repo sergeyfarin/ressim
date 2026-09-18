@@ -245,7 +245,16 @@ fn cubic_roots(b: f64, c: f64, d: f64) -> Option<CubicRoots> {
     if discriminant < 0.0 {
         // Three distinct real roots: the trigonometric solution. `p < 0` is implied by
         // `discriminant < 0`, so `sqrt(-3/p)` and `sqrt(-p/3)` are both real.
-        let theta = (1.0 / 3.0) * (((3.0 * q) / (2.0 * p)) * (-3.0 / p).sqrt()).acos();
+        //
+        // The `acos` argument is mathematically in `[-1, 1]` exactly when the discriminant is
+        // negative, but the two are computed from different expressions, so near a repeated root
+        // roundoff can push it a few ulps outside and `acos` returns NaN. Clamping it is a
+        // **numerical** guard on a quantity that is already in range, not a physics clamp of the
+        // kind this module refuses to port from OPM: it changes no representable answer, and
+        // without it a state a few ulps from a double root panics instead of returning a root.
+        // Found by the C12 transport comparison, which visits far more states than any fixture.
+        let acos_argument = (((3.0 * q) / (2.0 * p)) * (-3.0 / p).sqrt()).clamp(-1.0, 1.0);
+        let theta = (1.0 / 3.0) * acos_argument.acos();
         let r = 2.0 * (-p / 3.0).sqrt();
         let two_pi_3 = 2.0 * core::f64::consts::PI / 3.0;
         let mut z = [
@@ -253,12 +262,20 @@ fn cubic_roots(b: f64, c: f64, d: f64) -> Option<CubicRoots> {
             r * (theta - two_pi_3).cos() + shift,
             r * (theta - 2.0 * two_pi_3).cos() + shift,
         ];
-        z.sort_by(|l, r| l.partial_cmp(r).expect("cubic roots are finite here"));
+        if z.iter().any(|v| !v.is_finite()) {
+            // A typed failure rather than a panic: the caller turns this into
+            // `DegenerateMixtureParameters`, which a Newton step can retry from.
+            return None;
+        }
+        z.sort_by(|l, r| l.partial_cmp(r).expect("checked finite immediately above"));
         Some(CubicRoots::Three(z))
     } else if discriminant > 0.0 {
         // One real root: the hyperbolic solution, branching on the sign of p.
         let t = if p < 0.0 {
-            let theta = (1.0 / 3.0) * (((-3.0 * q.abs()) / (2.0 * p)) * (-3.0 / p).sqrt()).acosh();
+            // `acosh` needs an argument at least 1, which a positive discriminant guarantees
+            // mathematically and roundoff can violate by an ulp. Same guard, same reason.
+            let acosh_argument = (((-3.0 * q.abs()) / (2.0 * p)) * (-3.0 / p).sqrt()).max(1.0);
+            let theta = (1.0 / 3.0) * acosh_argument.acosh();
             ((-2.0 * q.abs()) / q) * (-p / 3.0).sqrt() * theta.cosh()
         } else if p > 0.0 {
             let theta = (1.0 / 3.0) * (((3.0 * q) / (2.0 * p)) * (3.0 / p).sqrt()).asinh();
@@ -267,7 +284,11 @@ fn cubic_roots(b: f64, c: f64, d: f64) -> Option<CubicRoots> {
             // p == 0 with a positive discriminant forces q != 0; the source throws here.
             return None;
         };
-        Some(CubicRoots::One(t + shift))
+        let root = t + shift;
+        if !root.is_finite() {
+            return None;
+        }
+        Some(CubicRoots::One(root))
     } else if p == 0.0 {
         // Triple root.
         Some(CubicRoots::Three([shift, shift, shift]))
@@ -278,7 +299,10 @@ fn cubic_roots(b: f64, c: f64, d: f64) -> Option<CubicRoots> {
             (-3.0 * q) / (2.0 * p) + shift,
             (-3.0 * q) / (2.0 * p) + shift,
         ];
-        z.sort_by(|l, r| l.partial_cmp(r).expect("cubic roots are finite here"));
+        if z.iter().any(|v| !v.is_finite()) {
+            return None;
+        }
+        z.sort_by(|l, r| l.partial_cmp(r).expect("checked finite immediately above"));
         Some(CubicRoots::Three(z))
     }
 }

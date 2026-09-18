@@ -12,6 +12,22 @@
 //! two signs — which is why an internal face cannot create or destroy material regardless of
 //! whether its magnitude is right.
 //!
+//! # Wells are implicit, not a source term
+//!
+//! A well's contribution is **re-evaluated at every Newton iterate** and its derivative with
+//! respect to the connected cell's primaries goes into the Jacobian. It is not a constant
+//! computed before the step.
+//!
+//! That distinction is not academic. A BHP well is a strong negative feedback — as a cell
+//! pressurizes, injection into it must fall — and an explicitly evaluated source has no feedback
+//! at all. Holding the source fixed over a step lets the cell overshoot its injector's BHP
+//! entirely: the C12 transport comparison saw a cell reach 238 bar against a 150 bar injector and
+//! then oscillate by ±60 bar between report times. Nothing in a unit test caught it, because every
+//! unit test imposes a source rather than a well.
+//!
+//! `sources` remains for genuinely imposed material — a test fixture, or a boundary condition that
+//! is not a well — and is constant by definition.
+//!
 //! The Jacobian is dense here because the grids C9 validates on are tiny and a dense comparison
 //! against a numerical Jacobian is the point. The sparse structure the solver needs is C10's, and
 //! it reads its block sizes and tail offsets from the same layout.
@@ -23,6 +39,7 @@ use super::flux::{FluxError, Gravity, face_flux};
 use super::layout::CompositionalLayout;
 use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalCellState, CompositionalState, RockView};
+use super::wells::{CompositionalWell, WellError, well_source};
 
 /// One connection between two cells.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -46,6 +63,11 @@ pub enum AssemblyError {
         face: usize,
         source: FluxError,
     },
+    /// A well could not be evaluated at the current iterate.
+    Well {
+        well: String,
+        source: WellError,
+    },
     /// A face names a cell that is not in the grid, or connects a cell to itself.
     InvalidFace {
         face: usize,
@@ -64,6 +86,7 @@ impl core::fmt::Display for AssemblyError {
         match self {
             Self::Accumulation { cell, source } => write!(f, "cell {cell}: {source}"),
             Self::Flux { face, source } => write!(f, "face {face}: {source}"),
+            Self::Well { well, source } => write!(f, "well {well}: {source}"),
             Self::InvalidFace { face, reason } => write!(f, "face {face}: {reason}"),
             Self::ShapeMismatch {
                 what,
@@ -91,6 +114,11 @@ pub struct AssemblyResult {
     /// Net component moles that crossed every face, summed with sign. Zero for a closed grid, by
     /// construction — reported so a caller can check rather than trust.
     pub net_internal_face_moles: Vec<f64>,
+    /// Each well's component rate at this iterate [mol/day], in the order the wells were given.
+    ///
+    /// Reported because a well's rate is a result of the solve rather than an input to it, and a
+    /// caller accumulating production needs the rate that was actually accepted.
+    pub well_rates: Vec<Vec<f64>>,
 }
 
 impl AssemblyResult {
@@ -118,6 +146,7 @@ pub fn assemble(
     relperm: &RelativePermeabilityModel,
     state: &CompositionalState,
     faces: &[Face],
+    wells: &[CompositionalWell],
     previous_moles: &[Vec<f64>],
     sources: &[Vec<f64>],
     dt_days: f64,
@@ -233,12 +262,37 @@ pub fn assemble(
         }
     }
 
+    // Wells, evaluated at **this** iterate. Their derivative with respect to the connected cell's
+    // primaries is what makes the BHP feedback part of the Newton step rather than a constant.
+    let mut well_rates = Vec::with_capacity(wells.len());
+    for well in wells {
+        let result = well_source(spec, relperm, well, state.cells()).map_err(|source| {
+            AssemblyError::Well {
+                well: well.id.clone(),
+                source,
+            }
+        })?;
+        well_rates.push(result.total_component_moles_per_day(n));
+
+        for connection in &result.completions {
+            let cell = connection.cell;
+            for i in 0..n {
+                residual[cell * n + i] -= dt_days * connection.component_moles_per_day[i];
+                for v in 0..n {
+                    jacobian[cell * n + i][cell * n + v] -=
+                        dt_days * connection.cell_jacobian[i][v];
+                }
+            }
+        }
+    }
+
     Ok(AssemblyResult {
         residual,
         jacobian,
         inventories,
         scaling,
         net_internal_face_moles,
+        well_rates,
     })
 }
 
@@ -258,6 +312,7 @@ pub fn numerical_jacobian(
     relperm: &RelativePermeabilityModel,
     state: &CompositionalState,
     faces: &[Face],
+    wells: &[CompositionalWell],
     previous_moles: &[Vec<f64>],
     sources: &[Vec<f64>],
     dt_days: f64,
@@ -293,6 +348,7 @@ pub fn numerical_jacobian(
                 relperm,
                 &perturbed,
                 faces,
+                wells,
                 previous_moles,
                 sources,
                 dt_days,

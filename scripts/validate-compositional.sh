@@ -96,7 +96,7 @@ run_thermo() {
     run_filter comp_newton_      10   # C10 Newton solve and update policy
     run_filter comp_rollback_    10   # C10 timestep lifecycle, retry and commit
     run_filter comp_well_        29   # C11 wells: sources, derivatives, controls, multi-completion
-    run_filter comp_reference_    6   # C12 against OPM's flowexp_comp on 1D_COMP
+    run_filter comp_reference_   10   # C12 against OPM's flowexp_comp on 1D_COMP
 }
 
 run_fixture() {

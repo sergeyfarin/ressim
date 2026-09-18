@@ -123,6 +123,14 @@ pub struct NewtonReport {
     pub step_scale_history: Vec<f64>,
     /// Smallest linear pivot seen, across iterations.
     pub min_pivot: f64,
+    /// Each well's component rate [mol/day] at the **accepted** state, in the order the wells were
+    /// given.
+    ///
+    /// The rate a well actually ran at is a result of the solve, not an input to it. Accumulating
+    /// production from a rate evaluated before the step — or re-evaluated after it — is off by
+    /// however much the rate moved during the step, which for a BHP well against a pressurizing
+    /// cell is not small.
+    pub accepted_well_rates: Vec<Vec<f64>>,
 }
 
 /// Convergence and iteration settings.
@@ -152,6 +160,9 @@ pub struct NewtonProblem<'a> {
     pub rock: RockView<'a>,
     pub relperm: &'a RelativePermeabilityModel,
     pub faces: &'a [Face],
+    /// Wells, evaluated at every Newton iterate. See `assembly`'s module docs for why they are not
+    /// a source term.
+    pub wells: &'a [super::wells::CompositionalWell],
     /// Previous accepted inventory, one row per cell. Constant for the whole timestep.
     pub previous_moles: &'a [Vec<f64>],
     /// Sources in mol/day, positive for injection.
@@ -307,6 +318,7 @@ pub fn solve_newton(
         residual_history: Vec::new(),
         step_scale_history: Vec::new(),
         min_pivot: f64::INFINITY,
+        accepted_well_rates: Vec::new(),
     };
     let mut current = state.clone();
 
@@ -321,6 +333,7 @@ pub fn solve_newton(
         report.residual_history.push(norm);
 
         if norm <= options.tolerance {
+            report.accepted_well_rates = assembled.well_rates;
             return (Ok(current), report);
         }
 
@@ -391,6 +404,7 @@ fn assemble_at(
         problem.relperm,
         state,
         problem.faces,
+        problem.wells,
         problem.previous_moles,
         problem.sources,
         problem.dt_days,

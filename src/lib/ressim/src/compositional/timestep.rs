@@ -128,9 +128,11 @@ pub struct CompositionalRun {
     state: CompositionalState,
     time_days: f64,
     cache: FlashCache,
-    /// Cumulative moles produced (negative) or injected (positive) per component, over accepted
-    /// steps only.
+    /// Cumulative moles produced (negative) or injected (positive) per component through imposed
+    /// **sources**, over accepted steps only.
     cumulative_source_moles: Vec<f64>,
+    /// The same, per well, from the rates the accepted solve actually ran at.
+    cumulative_well_moles: Vec<Vec<f64>>,
 }
 
 impl CompositionalRun {
@@ -142,6 +144,7 @@ impl CompositionalRun {
             time_days: 0.0,
             cache: FlashCache::with_cells(cells),
             cumulative_source_moles: vec![0.0; n],
+            cumulative_well_moles: Vec::new(),
         }
     }
 
@@ -155,6 +158,13 @@ impl CompositionalRun {
 
     pub fn cumulative_source_moles(&self) -> &[f64] {
         &self.cumulative_source_moles
+    }
+
+    /// Cumulative component moles per well [mol], from the rates the accepted solves ran at.
+    ///
+    /// Positive means into the reservoir. Empty until a step with wells has been accepted.
+    pub fn cumulative_well_moles(&self) -> &[Vec<f64>] {
+        &self.cumulative_well_moles
     }
 
     pub fn cache_mut(&mut self) -> &mut FlashCache {
@@ -187,6 +197,7 @@ impl CompositionalRun {
         rock: &RockView<'_>,
         relperm: &RelativePermeabilityModel,
         faces: &[super::assembly::Face],
+        wells: &[super::wells::CompositionalWell],
         sources: &[Vec<f64>],
         dt_days: f64,
         options: TimestepOptions,
@@ -219,6 +230,7 @@ impl CompositionalRun {
                 rock: *rock,
                 relperm,
                 faces,
+                wells,
                 previous_moles: &previous_moles,
                 sources,
                 dt_days: dt,
@@ -227,6 +239,7 @@ impl CompositionalRun {
 
             match outcome {
                 Ok(accepted) => {
+                    let accepted_well_rates = newton.accepted_well_rates.clone();
                     report.attempts.push(AttemptReport {
                         dt_days: dt,
                         newton,
@@ -237,6 +250,19 @@ impl CompositionalRun {
                     self.time_days += dt;
                     for (i, total) in self.cumulative_source_moles.iter_mut().enumerate() {
                         *total += dt * sources.iter().map(|s| s[i]).sum::<f64>();
+                    }
+                    // Well production from the rate the accepted solve ran at, not from a rate
+                    // evaluated before or after the step.
+                    if self.cumulative_well_moles.len() < accepted_well_rates.len() {
+                        self.cumulative_well_moles.resize(
+                            accepted_well_rates.len(),
+                            vec![0.0; self.cumulative_source_moles.len()],
+                        );
+                    }
+                    for (index, rate) in accepted_well_rates.iter().enumerate() {
+                        for (i, value) in rate.iter().enumerate() {
+                            self.cumulative_well_moles[index][i] += dt * value;
+                        }
                     }
                     // Keyed on the state version, so the old entries are already unreachable;
                     // dropping them is housekeeping, not correctness.
