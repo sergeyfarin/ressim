@@ -601,6 +601,26 @@ int main(int argc, char** argv)
               0.98, "C10-rich ternary near the heavy component's saturation region");
     }
     adde3("eos_ternary_ideal_limit", 0.001, 423.15, 0.2, 0.5, 0.3, "ideal-gas limit");
+    // The single-phase liquid path of C12's depletion fixture, at the reference's own reported
+    // pressures. Flash-free on purpose: the cell is single phase there, so its composition is the
+    // deck's `z` and the accumulation term is `PV * c(p)` with no split to resolve.
+    //
+    // These exist to settle one question. The depletion pressure paths separate, and the only two
+    // explanations are a different withdrawal or a different compressibility. `c` itself is easy
+    // to compare, but what the accumulation actually uses is `dc/dp`, and `dc/dp * dp` is about
+    // 0.4% of `c` over one of these steps — so a comparison of `c` at the 0.1% level says almost
+    // nothing about it. Consecutive states let the *difference* be compared directly.
+    for (const auto& [id, p] : std::vector<std::pair<std::string, Scalar>>{
+             {"eos_depletion_p150", 150.0},
+             {"eos_depletion_p143", 143.0758},
+             {"eos_depletion_p136", 136.3535},
+             {"eos_depletion_p130", 129.8516},
+             {"eos_depletion_p124", 123.5684},
+             {"eos_depletion_p117", 117.4705},
+             {"eos_depletion_p112", 111.5532}}) {
+        adde3(id, p, 423.15, 0.1, 0.3, 0.6,
+              "C12 depletion path, single-phase liquid: the accumulation term's own molar density");
+    }
 
     std::ostream& os = std::cout;
     os << "{\n";

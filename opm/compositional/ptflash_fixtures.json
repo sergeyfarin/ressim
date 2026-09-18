@@ -645,6 +645,90 @@
           "eos_B": 2.154747008385545e-06,
           "smallest_root": {"molar_volume": 35.182380019639311, "molar_density": 0.028423318702196543, "mass_density": 0.0016883451309104745, "z_factor": 0.99999123863536699, "fugacity_coefficient": [1.0000013534942176, 1.0000040945143842, 0.99996306966942039]},
           "largest_root": {"molar_volume": 35.182380019639311, "molar_density": 0.028423318702196543, "mass_density": 0.0016883451309104745, "z_factor": 0.99999123863536699, "fugacity_coefficient": [1.0000013534942176, 1.0000040945143842, 0.99996306966942039]}
+        },
+        {
+          "id": "eos_depletion_p150",
+          "status": "ok",
+          "note": "C12 depletion path, single-phase liquid: the accumulation term's own molar density",
+          "pressure_pa": 15000000,
+          "temperature_k": 423.14999999999998,
+          "x": [0.10000000000000001, 0.29999999999999999, 0.59999999999999998],
+          "eos_A": 4.2709693581682471,
+          "eos_B": 0.53234671818778567,
+          "smallest_root": {"molar_volume": 0.00016975704788264477, "molar_density": 5890.7716202234669, "mass_density": 556.08884094909524, "z_factor": 0.72375245997210502, "fugacity_coefficient": [1.1434330772100132, 2.1125655996750612, 0.0096058819028774483]},
+          "largest_root": {"molar_volume": 0.00016975704788264477, "molar_density": 5890.7716202234669, "mass_density": 556.08884094909524, "z_factor": 0.72375245997210502, "fugacity_coefficient": [1.1434330772100132, 2.1125655996750612, 0.0096058819028774483]}
+        },
+        {
+          "id": "eos_depletion_p143",
+          "status": "ok",
+          "note": "C12 depletion path, single-phase liquid: the accumulation term's own molar density",
+          "pressure_pa": 14307579.999999998,
+          "temperature_k": 423.14999999999998,
+          "x": [0.10000000000000001, 0.29999999999999999, 0.59999999999999998],
+          "eos_A": 4.0738157179693903,
+          "eos_B": 0.50777288388061304,
+          "smallest_root": {"molar_volume": 0.00017041463079612741, "molar_density": 5868.0407622766425, "mass_density": 553.94304795891492, "z_factor": 0.69301724322859992, "fugacity_coefficient": [1.1789022127776483, 2.1740004489602609, 0.0096400831395904839]},
+          "largest_root": {"molar_volume": 0.00017041463079612741, "molar_density": 5868.0407622766425, "mass_density": 553.94304795891492, "z_factor": 0.69301724322859992, "fugacity_coefficient": [1.1789022127776483, 2.1740004489602609, 0.0096400831395904839]}
+        },
+        {
+          "id": "eos_depletion_p136",
+          "status": "ok",
+          "note": "C12 depletion path, single-phase liquid: the accumulation term's own molar density",
+          "pressure_pa": 13635350,
+          "temperature_k": 423.14999999999998,
+          "x": [0.10000000000000001, 0.29999999999999999, 0.59999999999999998],
+          "eos_A": 3.8824108025266266,
+          "eos_B": 0.48391558825612158,
+          "smallest_root": {"molar_volume": 0.00017107920131712289, "molar_density": 5845.2458995663574, "mass_density": 551.79121291906404, "z_factor": 0.66303199173132377, "fugacity_coefficient": [1.2168046993089197, 2.2396626828811246, 0.0096950030258880042]},
+          "largest_root": {"molar_volume": 0.00017107920131712289, "molar_density": 5845.2458995663574, "mass_density": 551.79121291906404, "z_factor": 0.66303199173132377, "fugacity_coefficient": [1.2168046993089197, 2.2396626828811246, 0.0096950030258880042]}
+        },
+        {
+          "id": "eos_depletion_p130",
+          "status": "ok",
+          "note": "C12 depletion path, single-phase liquid: the accumulation term's own molar density",
+          "pressure_pa": 12985159.999999998,
+          "temperature_k": 423.14999999999998,
+          "x": [0.10000000000000001, 0.29999999999999999, 0.59999999999999998],
+          "eos_A": 3.6972813647274658,
+          "eos_B": 0.46084048740955375,
+          "smallest_root": {"molar_volume": 0.00017174833564010791, "molar_density": 5822.4727259975425, "mass_density": 549.64142533416793, "z_factor": 0.63388550671067878, "fugacity_coefficient": [1.2572106778793621, 2.3096716385242337, 0.0097709236450789112]},
+          "largest_root": {"molar_volume": 0.00017174833564010791, "molar_density": 5822.4727259975425, "mass_density": 549.64142533416793, "z_factor": 0.63388550671067878, "fugacity_coefficient": [1.2572106778793621, 2.3096716385242337, 0.0097709236450789112]}
+        },
+        {
+          "id": "eos_depletion_p124",
+          "status": "ok",
+          "note": "C12 depletion path, single-phase liquid: the accumulation term's own molar density",
+          "pressure_pa": 12356840,
+          "temperature_k": 423.14999999999998,
+          "x": [0.10000000000000001, 0.29999999999999999, 0.59999999999999998],
+          "eos_A": 3.5183790002525148,
+          "eos_B": 0.4385415480781038,
+          "smallest_root": {"molar_volume": 0.00017242142627707277, "molar_density": 5799.7432314070356, "mass_density": 547.49576104482412, "z_factor": 0.6055773682920732, "fugacity_coefficient": [1.3003015051946527, 2.3843390872403787, 0.0098683088918333443]},
+          "largest_root": {"molar_volume": 0.00017242142627707277, "molar_density": 5799.7432314070356, "mass_density": 547.49576104482412, "z_factor": 0.6055773682920732, "fugacity_coefficient": [1.3003015051946527, 2.3843390872403787, 0.0098683088918333443]}
+        },
+        {
+          "id": "eos_depletion_p117",
+          "status": "ok",
+          "note": "C12 depletion path, single-phase liquid: the accumulation term's own molar density",
+          "pressure_pa": 11747050,
+          "temperature_k": 423.14999999999998,
+          "x": [0.10000000000000001, 0.29999999999999999, 0.59999999999999998],
+          "eos_A": 3.344752706591354,
+          "eos_B": 0.41690023439252177,
+          "smallest_root": {"molar_volume": 0.0001731014035814997, "molar_density": 5776.9606676191934, "mass_density": 545.34508702325184, "z_factor": 0.57796346528515263, "fugacity_coefficient": [1.3465242184925168, 2.4644369922169704, 0.0099884299409548124]},
+          "largest_root": {"molar_volume": 0.0001731014035814997, "molar_density": 5776.9606676191934, "mass_density": 545.34508702325184, "z_factor": 0.57796346528515263, "fugacity_coefficient": [1.3465242184925168, 2.4644369922169704, 0.0099884299409548124]}
+        },
+        {
+          "id": "eos_depletion_p112",
+          "status": "ok",
+          "note": "C12 depletion path, single-phase liquid: the accumulation term's own molar density",
+          "pressure_pa": 11155320,
+          "temperature_k": 423.14999999999998,
+          "x": [0.10000000000000001, 0.29999999999999999, 0.59999999999999998],
+          "eos_A": 3.1762686600374277,
+          "eos_B": 0.39589986615563799,
+          "smallest_root": {"molar_volume": 0.00017378831552138237, "molar_density": 5754.1267777404928, "mass_density": 543.18956781870236, "z_factor": 0.55102789676969532, "fugacity_coefficient": [1.3961946954077424, 2.5505097982116345, 0.010132516190618826]},
+          "largest_root": {"molar_volume": 0.00017378831552138237, "molar_density": 5754.1267777404928, "mass_density": 543.18956781870236, "z_factor": 0.55102789676969532, "fugacity_coefficient": [1.3961946954077424, 2.5505097982116345, 0.010132516190618826]}
         }
       ],
       "states": [

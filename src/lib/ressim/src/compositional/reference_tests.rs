@@ -42,7 +42,7 @@ use crate::fluid::specification::{
     Component, EosVariant, FluidSpecification, SurfaceConditions, ViscosityModel,
 };
 use crate::fluid::transport::flash_viscosities;
-use crate::fluid::units::bar_to_pa;
+use crate::fluid::units::{PA_PER_BAR, bar_to_pa};
 use serde::Deserialize;
 
 /// The reference fixture, as extracted by `tools/opm_compositional/extract_reference.py`.
@@ -1687,6 +1687,20 @@ fn depletion_reference() -> Reference {
     r
 }
 
+/// The C0 fixture's flash-free states along the depletion path, in the reference's own order.
+///
+/// They carry OPM's own `ParameterCache::molarVolume` at each reported pressure, which is what
+/// makes the accumulation comparison direct rather than inferred.
+const DEPLETION_EOS_STATES: [&str; 7] = [
+    "eos_depletion_p150",
+    "eos_depletion_p143",
+    "eos_depletion_p136",
+    "eos_depletion_p130",
+    "eos_depletion_p124",
+    "eos_depletion_p117",
+    "eos_depletion_p112",
+];
+
 /// `DEPLETION.DATA`'s geometry and controls.
 mod depletion_deck {
     pub const CELLS: usize = 1;
@@ -1851,9 +1865,13 @@ fn run_depletion(report_times_days: &[f64], max_sub_step_days: f64) -> Vec<Compo
 /// mol/day — constant to 0.5% across the run, as a rate-controlled well should be.
 ///
 /// The inference needs nothing about how the reference meters anything. While the cell is single
-/// phase its composition cannot change, so the moles it holds are `PV · c(p)`, and both
-/// implementations agree on `c` to 0.12% (checked against OPM's own `ParameterCache::molarVolume`
-/// along this very path). So the reference really did withdraw about 227 900 mol/day.
+/// phase its composition cannot change, so the moles it holds are `PV · c(p)`. What matters is not
+/// `c` but the **difference** in `c` between consecutive reported pressures — `Δc` is about 0.4%
+/// of `c` here, so agreeing on `c` at the 0.1% level would still permit a 25% difference in `Δc`,
+/// and the whole inference would be worthless. The `eos_depletion_*` states in the C0 fixture are
+/// OPM's own `ParameterCache::molarVolume` at each of the reference's own reported pressures, and
+/// this test compares the differences directly: **0.069%**. So the reference really did withdraw
+/// about 227 900 mol/day, and the accumulation term is not what differs.
 ///
 /// **Then ask OPM what 30 sm³/day of surface oil is.** `ternary_stcond_depletion` in the C0
 /// fixture is OPM's own PTFlash on this exact stream at the deck's `STCOND 15.0 1.0`: it splits
@@ -1868,6 +1886,15 @@ fn run_depletion(report_times_days: &[f64], max_sub_step_days: f64) -> Vec<Compo
 /// So this is a property of the reference's summary metering, not of ResSim's surface separation —
 /// which `comp_depletion_surface_separation_matches_opm` separately shows reproduces the
 /// reference's own gas/oil ratio to 1.4e-8.
+///
+/// **What the mechanism is has not been found**, and `flowexp_comp`'s source was read looking for
+/// it. `CompWell::updateSurfaceCondition_` flashes the stream at the deck's `STCOND` (SSI at 1e-6,
+/// which is not the cause — the split is identical to nine digits at 1e-10), takes the surface
+/// saturations from `L` and the two compressibility factors, and builds the well's component
+/// **mass** rates as `total_rate · density · massFraction`. The connection rates are mass rates
+/// too, and the wellbore storage term is over a hard-coded 0.0216 m³, which is three moles. That
+/// chain is internally consistent and reproduces the reported gas/oil ratio exactly. Where the
+/// moles go is still open.
 ///
 /// **Consequence for C12:** a cumulative compared through `FOPT`/`FGIT` inherits this. On the 1D
 /// case the injected stream is pure CO2 and the two agree to about 0.01%, so that case's
@@ -1941,6 +1968,53 @@ fn comp_depletion_reference_metering_disagrees_with_its_own_flash() {
         "30 sm3/day of surface oil is:\n  {ours:9.1} mol/day by ResSim's surface flash\n  \
          {opm_flash:9.1} mol/day by OPM's own PTFlash at STCOND\n  \
          {metered:9.1} mol/day by flowexp_comp's own trajectory ({lowest:.1} to {highest:.1})"
+    );
+
+    // 2b. Close off the one alternative to a withdrawal difference: a compressibility difference.
+    //
+    // `c` itself is easy to compare and says little — what the accumulation uses is the
+    // *difference* between consecutive states, and `Δc` is about 0.4% of `c` here, so agreement
+    // on `c` at the 0.1% level would still permit a 25% difference in `Δc`. The C0 fixture
+    // carries OPM's own `ParameterCache::molarVolume` at each of the reference's own reported
+    // pressures (`eos_depletion_*`, flash-free because the cell is single phase there), so the
+    // differences can be compared directly.
+    let ternary = crate::fluid::fixture::ternary_system(&fixture);
+    let path: Vec<(f64, f64)> = DEPLETION_EOS_STATES
+        .iter()
+        .map(|id| {
+            let state = ternary
+                .eos_states
+                .iter()
+                .find(|e| &e.id == id)
+                .unwrap_or_else(|| panic!("the fixture must carry {id}"));
+            assert_eq!(state.x, depletion_deck::INITIAL_Z.to_vec());
+            (
+                state.pressure_pa / PA_PER_BAR,
+                state
+                    .smallest_root
+                    .as_ref()
+                    .expect("a liquid root")
+                    .molar_density_si(),
+            )
+        })
+        .collect();
+    let mut worst_compressibility = 0.0f64;
+    for pair in path.windows(2) {
+        let (p_hi, c_hi) = pair[0];
+        let (p_lo, c_lo) = pair[1];
+        let theirs = c_hi - c_lo;
+        let ours_delta = molar_density(p_hi) - molar_density(p_lo);
+        worst_compressibility = worst_compressibility.max((ours_delta - theirs).abs() / theirs);
+    }
+    assert!(
+        worst_compressibility < 5e-3,
+        "the two implementations differ by {:.3}% on dc over a reported step, which is large \
+         enough to explain the withdrawal gap; the conclusion below does not follow",
+        worst_compressibility * 100.0
+    );
+    eprintln!(
+        "  accumulation: worst difference in dc over a reported step {:.4}%",
+        worst_compressibility * 100.0
     );
 
     // ResSim agrees with OPM's flash. 0.15%, which is the two fluid systems' critical constants.

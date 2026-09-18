@@ -21,10 +21,15 @@ surface separation is a flash at 1 bar and nothing else in this fixture is. C5's
 external reference until C12's depletion case needed one; both states passed every existing
 comparison unchanged, with no widened tolerance.
 
-**21 flash-free EOS states**, evaluating the cubic directly with no stability test. Seven are
+**28 flash-free EOS states**, evaluating the cubic directly with no stability test. Seven are
 genuinely multi-root. They exist because *none* of the flashed states has three real roots, so
 without them the root-labelling rule would be untested; they also cover pure components, which
 PTFlash cannot flash but the EOS evaluates fine.
+
+Seven of them — `eos_depletion_*` — are there for a different reason: they carry OPM's own molar
+volume at each pressure the depletion reference reported, so C12 can compare the **difference**
+between consecutive states rather than the states themselves. An accumulation term uses `Δc`, and
+`Δc` is 0.4% of `c` along that path, so agreeing on `c` to 0.1% would say almost nothing about it.
 
 Read `tools/opm_compositional/README.md` before using it — in particular the *Oracle domain
 limits* section, which records the states OPM's PTFlash cannot resolve and therefore cannot

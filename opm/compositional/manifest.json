@@ -11,7 +11,7 @@
     "libopm-simulators-dev": "2026.04-1~noble",
     "libdune-common-dev": "2.11.0-1~noble"
   },
-  "sha256": "6556f4eba60d051aee4f5069789093bde5c7ca568599fcd6d22118870b51d196",
-  "generated_from_commit": "680cd63e0a2260ab5f0965e750d6f4c8a0c34221",
+  "sha256": "a56b1f0052065906978ebef722cda7db62332ff42e12145d9bcedc559e0f33c5",
+  "generated_from_commit": "77631c031b9b094d434aa93785ab3bde0f10df4e",
   "worktree_clean_at_generation": false
 }
