@@ -156,6 +156,15 @@ impl CompositionalRun {
         self.time_days
     }
 
+    /// Place the clock, for restoring a checkpoint.
+    ///
+    /// Deliberately separate from [`Self::step`], which is the only thing that may *advance* it.
+    /// A restore reconstructs a run from a state that was reached elsewhere, so its clock has to
+    /// be set rather than accumulated; nothing else may use this.
+    pub(crate) fn set_time_days(&mut self, time_days: f64) {
+        self.time_days = time_days;
+    }
+
     pub fn cumulative_source_moles(&self) -> &[f64] {
         &self.cumulative_source_moles
     }
