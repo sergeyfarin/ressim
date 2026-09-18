@@ -11,6 +11,11 @@ import {
     type BenchmarkSensitivityAxisKey,
 } from '../catalog/benchmarkCases';
 import { buildBenchmarkRunSpecs } from '../benchmarkRunModel';
+import { CompositionalRunState } from '../compositional/runState';
+import type {
+    CompositionalCaseConfig,
+    CompositionalCheckpoint,
+} from '../compositional/types';
 import {
     buildCreatePayloadForRun,
     buildRunResult,
@@ -75,6 +80,15 @@ interface NavRef {
 class RuntimeStoreImpl {
     readonly #params!: ParameterStore;
     #nav: NavRef | null = null;
+
+    /**
+     * Compositional run state, sharing this store's worker.
+     *
+     * A plain class held in `$state`, which Svelte 5 deep-proxies, so mutations inside it are
+     * reactive without it having to be a runes class — and unlike a runes class it is unit-tested
+     * (`compositional/runState.test.ts`; this project's vitest has no Svelte plugin).
+     */
+    compositional = $state(new CompositionalRunState());
 
     constructor(params: ParameterStore) {
         this.#params = params;
@@ -568,6 +582,13 @@ class RuntimeStoreImpl {
         const message = event.data;
         if (!message) return;
 
+        // Compositional messages are handled by their own state and never touch the black-oil
+        // fields below. `handleMessage` declines anything that is not its own, so this forwards
+        // everything and changes nothing for a black-oil run.
+        if (this.compositional.handleMessage(message)) {
+            return;
+        }
+
         if (message.type === 'ready') {
             this.wasmReady = true;
             this.initSimulator({ silent: true });
@@ -706,6 +727,39 @@ class RuntimeStoreImpl {
      */
     #post(message: Record<string, unknown>): void {
         this.simWorker?.postMessage($state.snapshot(message));
+    }
+
+    // ===== Compositional runs =====
+    //
+    // A separate state object sharing this worker. See `compositional/runState.ts` for why the two
+    // are not merged.
+
+    /** Create a compositional case. Replaces whatever run the worker was holding. */
+    createCompositional(config: CompositionalCaseConfig): void {
+        this.compositional.reset();
+        this.#post({
+            type: 'create',
+            payload: { fluidModel: 'compositional', compositional: config },
+        });
+    }
+
+    /** Advance a compositional case. `snapshotEvery` throttles how often a state is posted. */
+    runCompositional(options: { steps: number; dtDays: number; snapshotEvery?: number }): void {
+        this.compositional.markRunning();
+        this.#post({ type: 'compositionalRun', payload: options });
+    }
+
+    stopCompositional(): void {
+        this.#post({ type: 'compositionalStop' });
+    }
+
+    requestCompositionalCheckpoint(): void {
+        this.#post({ type: 'compositionalCheckpoint' });
+    }
+
+    restoreCompositional(checkpoint: CompositionalCheckpoint): void {
+        this.compositional.reset();
+        this.#post({ type: 'compositionalRestore', payload: { checkpoint } });
     }
 
     setupWorker() {

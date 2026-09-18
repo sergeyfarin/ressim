@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildCreatePayloadFromState } from './buildCreatePayload'
 import type { SimulatorCreatePayload } from './simulator-types'
+import { buildCompositionalCase, isCompositionalCreate } from './compositional/createPayload';
 
 describe('buildCreatePayloadFromState', () => {
   it('produces perms arrays of length nz for uniform permMode', () => {
@@ -272,3 +273,36 @@ describe('buildCreatePayloadFromState', () => {
     })
   })
 })
+
+describe('the fluid-model discriminator', () => {
+  it('is absent when the scenario does not ask for it', () => {
+    const payload = buildCreatePayloadFromState({ nx: 5 });
+    expect('fluidModel' in payload).toBe(false);
+    expect('compositional' in payload).toBe(false);
+  });
+
+  it('passes a compositional case through', () => {
+    // The builder is an allow-list, so this is the test that stops the case being dropped.
+    const compositional = buildCompositionalCase({
+      fluid: 'pinned-ternary',
+      cells: 5,
+      cellDxM: 60,
+      cellDyM: 6,
+      cellDzM: 6,
+      porosity: 0.1,
+      permeabilityMd: 100,
+      initialPressureBar: 75,
+      initialComposition: [0.1, 0.3, 0.6],
+      relperm: { model: 'linear' },
+      wells: [],
+    });
+    const payload = buildCreatePayloadFromState({
+      nx: 5,
+      fluidModel: 'compositional',
+      compositional,
+    });
+    expect(payload.fluidModel).toBe('compositional');
+    expect(payload.compositional).toEqual(compositional);
+    expect(isCompositionalCreate(payload)).toBe(true);
+  });
+});

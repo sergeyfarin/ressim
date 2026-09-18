@@ -297,6 +297,18 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     })
 
   return {
+    // The fluid-model discriminator, passed through only when present.
+    //
+    // This builder is an explicit allow-list, which is why these two lines are needed at all: a
+    // field it does not name is dropped. Spreading `state` instead would let anything reach the
+    // worker, and the reason the list is explicit is that it is the boundary where a stray UI
+    // field stops being a simulator input.
+    //
+    // Absent stays absent — `isCompositionalCreate` reads that as black-oil, which is what every
+    // payload serialized before the compositional model existed looks like.
+    ...(state.fluidModel ? { fluidModel: state.fluidModel } : {}),
+    ...(state.compositional ? { compositional: state.compositional } : {}),
+
     nx,
     ny,
     nz: nz,
