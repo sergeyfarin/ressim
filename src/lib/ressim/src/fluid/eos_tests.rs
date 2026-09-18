@@ -243,7 +243,7 @@ fn comp_eos_fugacity_coefficients_match_the_fixture() {
     }
 
     assert!(
-        checked == 244,
+        checked == 256,
         "expected every branch of every state, compared {checked}"
     );
     assert!(

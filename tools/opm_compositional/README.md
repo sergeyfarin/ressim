@@ -98,7 +98,7 @@ has no external oracle and needs an independent invariant instead.
 2. **`K` must be seeded by the caller.** PTFlash never applies its own `wilsonK_`; passing `K = 0`
    fails every state. The harness seeds Wilson explicitly, reproducing `wilsonK_` from the same
    header. A "cold start" in this fixture therefore means Wilson, not zero.
-3. **The flash tolerance floor is about 1e-9.** At `--tolerance 1e-11` or tighter, 27 of 47 states
+3. **The flash tolerance floor is about 1e-9.** At `--tolerance 1e-11` or tighter, 27 of 49 states
    fail with `Newton composition update did not converge`; at `1e-9`, all resolve. The pinned
    value is `1e-9`. This is a floor on the *reference*, and it is what caps the achievable
    equilibrium residual recorded in `COMPOSITIONAL_VALIDATION.md`.
@@ -107,7 +107,19 @@ has no external oracle and needs an independent invariant instead.
    recorded per state in `method_used`, so no fixture value is anonymous about how it was reached.
 5. **`Z` must be written to the fluid state before asking for viscosity.** LBC reads
    `compressFactor` and nothing in PTFlash sets it; without that write every viscosity is `NaN`.
-6. **OPM clamps fugacity coefficients** into `[1e-10, 1e10]` in `CubicEOS.hpp`. No fixture state
+6. **`flowexp_comp` cannot follow a cell through its own saturation pressure.** On
+   `opm/compositional/depletion/`, it depletes cleanly to 111.55 bar, produces one report step at
+   109.10 bar with gas just appeared, and then throws `Rachford-Rice did not converge`. Every
+   two-phase method it offers — `ssi`, `newton`, `ssi-newton` — fails the same way, and halving
+   the production rate only moves where. **Consequence for C12:** the phase-changing fixture is
+   seven report steps, and its runner checks the step count rather than the exit status so an
+   expected abort is not confused with a real failure.
+7. **`flowexp_comp`'s surface metering disagrees with PTFlash by 3.8% on a mixture.** The same
+   depletion case reports 30 sm³/day of surface oil for a stream this harness flashes at `STCOND`
+   as 1.2681e-4 m³ of oil per mole — 236 582 mol/day — while its own trajectory withdrew 227 888.
+   **Consequence:** a surface-metered cumulative on a mixture has no usable oracle here. Pure CO2
+   is unaffected (the two agree to ~0.01%). See `comp_depletion_*`.
+8. **OPM clamps fugacity coefficients** into `[1e-10, 1e10]` in `CubicEOS.hpp`. No fixture state
    reaches that clamp. The Rust port must not copy it — plan rule 6 forbids clamping an invalid
    result — and if a future fixture state ever did clamp, it would have to be excluded rather
    than matched.
@@ -137,7 +149,7 @@ live in the Rust crate and are listed in `COMPOSITIONAL_VALIDATION.md`.
 
 `eos_states` are **not flashed**. The harness evaluates OPM's cubic EOS directly at a given
 `(p, T, x)` and reports both extreme roots, with no stability test and therefore no claim about
-which phase is present. They were added after the first fixture revealed that **none of the 47
+which phase is present. They were added after the first fixture revealed that **none of the
 flashed states has three real roots** — at 150 °C every one of them is monotonic, so a port could
 get the root-labelling rule completely wrong and still reproduce the entire fixture. The plan's C2
 requires "at least one state where two algebraic roots must not be treated as two coexisting

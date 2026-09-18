@@ -533,6 +533,16 @@ int main(int argc, char** argv)
     for (const Scalar p : {50.0, 150.0, 300.0}) {
         add3("ternary_T333_p" + std::to_string(static_cast<int>(p)), p, 333.15, 0.2, 0.5, 0.3);
     }
+    // Surface conditions: 1 bar and 288.15 K, which is `STCOND 15.0 1.0`. C5's surface separation
+    // had no external reference until C12's depletion fixture needed one, and the states it needs
+    // are two orders of magnitude below anything else here - a separation is a flash at 1 bar, and
+    // nothing else in this fixture is.
+    //
+    // The first is the stream `DEPLETION.DATA` produces while single phase; the second is the 1D
+    // case's initial mixture. Both split at surface, so these are genuine two-phase states rather
+    // than the pressure-blind single-phase labelling that C12 documents separately.
+    add3("ternary_stcond_depletion", 1.0, 288.15, 0.1, 0.3, 0.6);
+    add3("ternary_stcond_1dcomp", 1.0, 288.15, 0.2, 0.5, 0.3);
 
     std::vector<Case<2>> t2;
     auto add2 = [&](const std::string& id, Scalar p_bar, Scalar t_k, Scalar z0, Scalar z1) {

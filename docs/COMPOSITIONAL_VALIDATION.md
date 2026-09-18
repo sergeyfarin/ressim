@@ -11,9 +11,10 @@ pin the dataset and oracle recorded here. Tracking issue:
 the state of each task and the completion records in section 8 record how each one was measured.
 C0–C11 are complete; C12 is partial. Its thermodynamic comparison, its transport comparison, both
 refinement studies and a second fixture are done against an independent simulator, and two things
-block the milestone: a **4.0% disagreement in the absolute surface volume per mole** of a mixture
-(mechanism not isolated), and the plan's **1% cumulative target**, not met for a quantified reason.
-`NATIVE-COMPOSITIONAL-READY` is **not** declared. C13 onwards have not started.
+block the milestone: the plan's **1% cumulative target**, not met for a quantified reason, and a
+**3.8% self-inconsistency in the oracle's own surface metering** that rules out testing a
+surface-metered cumulative on a mixture against it. `NATIVE-COMPOSITIONAL-READY` is **not**
+declared. C13 onwards have not started.
 
 ## Scope this document governs
 
@@ -300,8 +301,10 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C12 vs OPM** — cumulative injection | ≤ 1% on cumulative quantities | **1.10%** on the deck's grid, **5.12%** at 40 cells. The injector runs at ~1 bar of drawdown against a 150 bar limit, so `dq/q = dp/(BHP-p)` amplifies the pressure observable ~100×; the measured discrepancy sits below that bound at every resolution. Ruled out: the surface conversion (`FGIR` reproduced to 0.4% through it) and the transport (CO2 in place ≤ 0.02%) | **NOT MET.** The reason is quantified, not excused; this is why the milestone is undeclared |
 | **C12 depletion** — surface gas/oil ratio | — | **1.4e-8** relative, at the reference's single-precision floor. The first head-to-head comparison of the two surface flashes on a mixture that genuinely splits | **Met** |
 | **C12 depletion** — phase appearance | must agree | single phase through 111.55 bar, two-phase at 109.10, agreeing at all seven report steps | **Met** |
-| **C12 depletion** — surface volume scale | — | ResSim needs **4.0%** more feed per sm³ of surface oil. Measured by material balance on the reference's own pressures. Specific to a mixture: for the 1D case's pure CO2 the two agree to ~0.01% | **OPEN.** Mechanism not isolated — see the C12 record |
-| **C12 depletion** — pressure path | — | separates by 0.23 bar/day, 1.38 bar over six days, which is the 4% above integrated. Timestep-independent to 0.001 bar over a 16-fold sub-step change | **Explained, not met** |
+| **C12 depletion** — surface volume scale | ResSim vs OPM's own flash | ResSim **236 926** mol/day for 30 sm³/day of surface oil, OPM's PTFlash at `STCOND` **236 582** — **0.15%**, the two fluid systems' critical constants | **Met** |
+| **C12 depletion** — the oracle's self-consistency | — | `flowexp_comp`'s own trajectory implies **227 888** mol/day for the same 30 sm³/day, **3.8%** from its own flash. Two artefacts of one simulator disagreeing; ResSim agrees with the one that is a flash | **OPEN, and not ours.** No surface-metered cumulative on a mixture can be held to 1% against this oracle |
+| **C12 depletion** — pressure path | — | separates by 0.23 bar/day, 1.38 bar over six days, which is the 3.8% above integrated. Timestep-independent to 0.001 bar over a 16-fold sub-step change | **Explained** — the band is that consequence, bounded below as well as above |
+| **C0** — surface conditions | 1e-8 (C0 target) | `ternary_stcond_*` added to the fixture: two flashed states at 1 bar / 288.15 K, both genuinely two-phase. They pass the existing C0/C3/C5 comparisons unchanged — the surface flash needed no widened tolerance | **Met** |
 | **C10 Newton** — convergence rate | quadratic near the solution | a quadratic reduction is observed and asserted; a merely-close Jacobian would converge linearly and still terminate | **Met** |
 | **C10 Newton** — domain | `p > 0`, `z` on the simplex including `z_(N-1)` | fraction-to-boundary at 0.99, one global scale factor, no clamping or renormalization after the step | **Met** |
 | **C10 lifecycle** — rejected step | nothing mutates | state, clock and cumulative totals all unchanged, structurally | **Met** |
@@ -396,7 +399,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C9 | Component face flux, gravity and global assembly | **COMPLETE** | `compositional/{flux,assembly}.rs`; 33 `comp_flux_*` / `comp_assembly_*` / `comp_gravity_*` tests |
 | C10 | Linear solve, Newton, timestep lifecycle | **COMPLETE** on the direct path | `compositional/{newton,timestep}.rs`; 20 `comp_newton_*` / `comp_rollback_*` tests. The iterative/CPR adapter is deferred — see the C10 record |
 | C11 | Compositional wells | **COMPLETE** | `compositional/wells.rs`, [design note](COMPOSITIONAL_WELL_DESIGN.md); 29 `comp_well_*` tests, single and multiple completions. **Derived from first principles — C11's OPM reference is unavailable here** (plan correction 3), so no OPM agreement is claimed |
-| C12 | NATIVE-COMPOSITIONAL-READY | **PARTIAL** — thermodynamics, transport, both refinement studies and a second fixture done. Two blockers: a **4.0%** surface-volume scale disagreement on a mixture, and the 1% cumulative target (5.12% at 40 cells, for a measured reason) | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 4 `comp_depletion_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. The milestone is **not** declared |
+| C12 | NATIVE-COMPOSITIONAL-READY | **PARTIAL** — thermodynamics, transport, both refinement studies and a second fixture done. Two blockers: the 1% cumulative target (5.12% at 40 cells, for a measured reason), and a **3.8%** self-inconsistency in the oracle's own surface metering | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 4 `comp_depletion_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. The milestone is **not** declared |
 | C13–C14 | WASM, product integration, release | NOT STARTED | Gated on C12 |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
@@ -406,12 +409,13 @@ No existing black-oil benchmark tolerance is changed by any of this.
 
 **The milestone `NATIVE-COMPOSITIONAL-READY` is NOT declared**, for two reasons, stated up front.
 
-**One:** the absolute surface volume per mole of feed disagrees with the reference by 4.0% on a
-three-component mixture, while the surface gas/oil **ratio** agrees to 1.4e-8. Measured on the
-second fixture by material balance on the reference's own pressures; the mechanism is not isolated.
-This is the sharpest open lead C12 has.
+**One:** the plan's 1% cumulative-quantity target is not met — 5.12% at forty cells.
 
-**Two:** the plan's 1% cumulative-quantity target is not met — 5.12% at forty cells. The cause is measured
+**Two:** the oracle's own surface metering is self-inconsistent by 3.8% on a mixture. `flowexp_comp`
+reports 30 sm³/day of surface oil for a stream that OPM's **own** PTFlash, on that exact
+composition at the deck's `STCOND`, says is 236 582 mol/day — while the simulator's own trajectory
+says it withdrew 227 888. ResSim sits with the flash, to 0.15%. That is not a ResSim defect, but it
+does mean no surface-metered cumulative on a mixture can be held to 1% against this oracle. The cause is measured
 rather than guessed. Late in this case the injector runs at about one bar of drawdown against its
 150 bar limit, so the rate observable amplifies the pressure observable by roughly a hundred; the
 state agreement of 0.03 bar that the comparison achieves maps to several per cent on the rate. The
@@ -584,32 +588,51 @@ What it establishes:
 * **Phase appearance agrees at all seven steps**, including the bracketing pair at 111.55 and
   109.10 bar.
 
-And what it opens:
+And what it opens — which turned out not to be a ResSim finding at all:
 
-* **The absolute surface volume per mole of feed does not agree, by 4.0%.** ResSim needs 236 926
-  mol/day to make the deck's 30 sm³/day of surface oil; the reference withdrew 227 437–228 475
-  mol/day, constant to 0.5% across the run. That is measured by material balance on the reference's
-  **own** pressures — while the cell is single phase its composition cannot change, so its moles are
-  `PV · c(p)` and `c` is the quantity the thermodynamic half already validated to 1e-7. No
-  assumption about how the reference meters anything enters.
+**The oracle's own surface metering is self-inconsistent by 3.8%.** The depletion pressure paths
+separate at 0.23 bar/day, and material balance says why: ResSim needs 236 926 mol/day to make the
+deck's 30 sm³/day of surface oil, while the reference withdrew 227 437–228 475 mol/day, constant to
+0.5% across the run. The inference needs nothing about how the reference meters anything — while
+the cell is single phase its composition cannot change, so its moles are `PV · c(p)`, and both
+implementations agree on `c` to **0.12%** along this very path (checked against OPM's own
+`ParameterCache::molarVolume`, not inferred).
 
-  Ruled out: the pore volume (`PV` cancels between consecutive steps and the implied withdrawal is
-  constant), the timestep (ResSim's path moves 0.001 bar over a 16-fold sub-step change), and the
-  reservoir-condition flash. Not isolated: a different surface **split** would move the gas/oil
-  ratio, which agrees to 1.4e-8; a different surface **condition** would move the gas molar volume
-  about 4% but a liquid does not expand 4% over the 12 K that implies. Both surface volumes being
-  4% larger while their ratio is unchanged needs two differences cancelling to eight digits, which
-  is not credible — so the mechanism is something neither candidate describes, and it is recorded
-  here with the numbers a follow-up needs rather than absorbed into a tolerance.
+So the reference really did withdraw about 227 900 mol/day. **Then ask OPM what 30 sm³/day of
+surface oil is.** `ternary_stcond_depletion`, added to the C0 fixture for this, is OPM's own
+PTFlash on that exact stream at the deck's `STCOND 15.0 1.0`: two-phase, `L = 0.60666`, liquid
+molar volume 2.0902e-4 m³/mol, so a mole of feed yields 1.2681e-4 m³ of surface oil and 30 m³ needs
+**236 582 mol**.
 
-  It is **specific to a mixture**. For the 1D case's pure CO2 stream the two simulators' surface
-  volumes agree to about 0.01%, which is why that case's cumulative-injection comparison is not
-  affected by this and why the conditioning explanation above stands.
-* The pressure paths therefore separate by 0.23 bar/day — 1.38 bar over six days, which is that 4%
-  integrated, and it closes to 0.17 bar at the last step when the withdrawal stops being pure
-  liquid. The band on that test is the consequence, not an independent tolerance, and it is bounded
-  **below** as well as above so that fixing the scale shows up as a failure rather than passing
-  silently.
+```text
+30 sm3/day of surface oil is:
+   236 926 mol/day by ResSim's surface flash
+   236 582 mol/day by OPM's own PTFlash at STCOND        <- 0.15% from ResSim
+   227 888 mol/day by flowexp_comp's own trajectory      <- 3.8% from OPM's own flash
+Replay: cargo test --manifest-path src/lib/ressim/Cargo.toml --lib -- \
+          comp_depletion_reference_metering_disagrees_with_its_own_flash --nocapture
+```
+
+Two artefacts of the same simulator disagree with each other, and ResSim agrees with the one that
+is a flash — to 0.15%, which is the residue of OPM's hard-coded `ThreeComponentFluidSystem`
+carrying rounder critical constants than the deck. Ruled out along the way: the pore volume (`PV`
+cancels between consecutive steps and the implied withdrawal is constant), the timestep (ResSim's
+path moves 0.001 bar over a 16-fold sub-step change), the reservoir-condition molar density
+(0.12%), and both surface flashes (0.15% on the absolute volume, 1.4e-8 on the ratio).
+
+**What it costs C12:** no surface-metered cumulative on a *mixture* can be held to the plan's 1%
+against this oracle. The 1D case is unaffected — its injected stream is pure CO2, for which the two
+agree to about 0.01% — so the conditioning explanation above still stands on its own.
+
+The pressure-path test's band is this consequence rather than an independent tolerance, and it is
+bounded **below** as well as above, so reconciling the metering fails the test instead of passing
+silently.
+
+**Adding the surface states to the C0 fixture cost nothing.** `ternary_stcond_depletion` and
+`ternary_stcond_1dcomp` are two orders of magnitude below any other pressure in it — a separation
+is a flash at 1 bar and nothing else in the fixture is — and they passed every existing C0/C3/C5
+comparison unchanged, with no widened tolerance. The surface flash was simply never checked against
+an external reference before.
 
 #### Three defects the comparison found, that no unit test could have
 
@@ -668,13 +691,13 @@ discretisation.
 #### Remaining for C12
 
 ```text
-* the 4% surface-volume scale difference on a mixture, measured on the depletion fixture and not
-  isolated to a mechanism. This is the sharpest open lead C12 has: it is a single constant, it is
-  measured by material balance on the reference's own states, and it would also explain why a
-  surface-metered cumulative is hard to compare
 * the 1% cumulative target, which needs an external trajectory whose injector is not near
   shut-in. On 1D_COMP the cumulative is a small difference of large numbers and cannot resolve
   1% from a 0.03 bar state agreement
+* the oracle's 3.8% surface-metering inconsistency, which rules out holding a surface-metered
+  cumulative on a mixture to 1% against flowexp_comp at all. This one is not ResSim's to fix;
+  what C12 owes is either a reconciliation or a cumulative observable that does not go through
+  the reference's summary metering
 * a published benchmark. The plan lists this as an optional later expansion (C12 item 4) and it
   is not a blocker, but the two fixtures here share one fluid
 ```

@@ -1627,45 +1627,39 @@ fn run_depletion(report_times_days: &[f64], max_sub_step_days: f64) -> Vec<Compo
     out
 }
 
-/// **The absolute surface volume per mole of feed does NOT agree with OPM's, by 4.0%.**
+/// **`flowexp_comp`'s reported surface oil rate disagrees with OPM's own flash by 3.8%**, and
+/// ResSim sits with the flash.
 ///
-/// The ratio does, to 1.4e-8 (`comp_depletion_surface_separation_matches_opm`). The scale does
-/// not, and this measures it by material balance on the reference's own trajectory, which needs no
-/// assumption about how the reference meters anything.
+/// This started as a ResSim finding and is not one. The depletion pressure paths separate, and
+/// material balance on the reference's own trajectory says why: ResSim needs 236 926 mol/day to
+/// make the deck's 30 sm³/day of surface oil, while the reference withdrew 227 437–228 475
+/// mol/day — constant to 0.5% across the run, as a rate-controlled well should be.
 ///
-/// While the cell is single phase its composition cannot change, so the moles it holds are
-/// `PV · c(p)` with `c` the mixture molar density — and `c` is the quantity C12's thermodynamic
-/// half already showed the two implementations agree on to 1e-7. The moles the reference withdrew
-/// between two of its own report steps therefore follow from its own two pressures. Across all
-/// seven steps that comes out at **227 437 to 229 476 mol/day, varying by 0.5%** — the reference
-/// is holding a constant molar withdrawal, as a rate-controlled well should. ResSim needs
-/// **236 926 mol/day** to make the deck's 30 sm³/day of surface oil. That is 4.0% more, and it is
-/// what makes the pressure paths diverge.
+/// The inference needs nothing about how the reference meters anything. While the cell is single
+/// phase its composition cannot change, so the moles it holds are `PV · c(p)`, and both
+/// implementations agree on `c` to 0.12% (checked against OPM's own `ParameterCache::molarVolume`
+/// along this very path). So the reference really did withdraw about 227 900 mol/day.
 ///
-/// **The mechanism is not isolated, and this test does not pretend otherwise.** Two candidates
-/// survive and neither is clean:
+/// **Then ask OPM what 30 sm³/day of surface oil is.** `ternary_stcond_depletion` in the C0
+/// fixture is OPM's own PTFlash on this exact stream at the deck's `STCOND 15.0 1.0`: it splits
+/// two-phase with `L = 0.60666` and a liquid molar volume of 2.0902e-4 m³/mol, so one mole of feed
+/// yields `L · v_liquid` = 1.2681e-4 m³ of surface oil, and 30 m³ needs **236 582 mol**.
 ///
-/// * A different surface **split**. But then the gas/oil ratio would move too, and it agrees to
-///   1.4e-8. For both surface volumes to be 4% larger while their ratio is unchanged, the split
-///   and the surface liquid molar volume would each have to differ, by 4% and 6.7%, in the one
-///   combination that cancels. Two independent differences conspiring that precisely is not
-///   credible.
-/// * A different surface **condition**. A 4% larger gas molar volume at 1 bar means about 12 K,
-///   but a liquid does not expand 4% over 12 K — it expands about 1%. So this does not account
-///   for both either.
+/// That is ResSim's number to 0.15% — the residue of OPM's hard-coded `ThreeComponentFluidSystem`
+/// carrying slightly rounder critical constants than the deck. It is **not** `flowexp_comp`'s
+/// number, which is 3.8% away. Two artefacts of the same simulator disagree with each other, and
+/// ResSim agrees with the one that is a flash.
 ///
-/// What is ruled out: the pore volume (`PV` cancels out of the ratio between consecutive steps,
-/// and the implied withdrawal is constant), the timestep (ResSim's path moves by 0.001 bar over a
-/// 16-fold change in sub-step), and the flash at reservoir conditions (validated to 1e-7).
+/// So this is a property of the reference's summary metering, not of ResSim's surface separation —
+/// which `comp_depletion_surface_separation_matches_opm` separately shows reproduces the
+/// reference's own gas/oil ratio to 1.4e-8.
 ///
-/// It is also **specific to a mixture**: on `1D_COMP` the injected stream is pure CO2 and the two
-/// simulators' surface volumes for it agree to about 0.01%, which is why that case's cumulative
-/// injection comparison is not affected by this.
-///
-/// This is an open C12 item, recorded with the numbers a follow-up needs rather than absorbed into
-/// a tolerance.
+/// **Consequence for C12:** a cumulative compared through `FOPT`/`FGIT` inherits this. On the 1D
+/// case the injected stream is pure CO2 and the two agree to about 0.01%, so that case's
+/// cumulative comparison is unaffected — but no surface-metered cumulative on a *mixture* can be
+/// held to the plan's 1% against this oracle until the 3.8% is explained.
 #[test]
-fn comp_depletion_surface_volume_scale_differs_from_opm() {
+fn comp_depletion_reference_metering_disagrees_with_its_own_flash() {
     let reference = depletion_reference();
     let spec = deck_fluid();
     let t = spec.reservoir_temperature_k();
@@ -1676,7 +1670,7 @@ fn comp_depletion_surface_volume_scale_differs_from_opm() {
             .mixture_molar_volume()
     };
 
-    // Moles the reference withdrew each day, from its own consecutive pressures.
+    // 1. What the reference actually withdrew, from its own consecutive pressures.
     let mut previous = molar_density(depletion_deck::INITIAL_PRESSURE_BAR);
     let mut withdrawals = Vec::new();
     for step in &reference.report_steps {
@@ -1694,7 +1688,6 @@ fn comp_depletion_surface_volume_scale_differs_from_opm() {
         "only {} single-phase steps; the inference needs several",
         withdrawals.len()
     );
-
     let lowest = withdrawals.iter().cloned().fold(f64::INFINITY, f64::min);
     let highest = withdrawals.iter().cloned().fold(0.0, f64::max);
     assert!(
@@ -1702,7 +1695,22 @@ fn comp_depletion_surface_volume_scale_differs_from_opm() {
         "the implied withdrawal is not constant ({lowest:.1} to {highest:.1} mol/day), so the \
          reference is not holding its rate and this inference does not apply"
     );
+    let metered = withdrawals.iter().sum::<f64>() / withdrawals.len() as f64;
 
+    // 2. What OPM's own flash says 30 sm3/day of surface oil is.
+    let fixture = crate::fluid::fixture::load();
+    let stcond = crate::fluid::fixture::ternary_system(&fixture)
+        .states
+        .iter()
+        .find(|s| s.id == "ternary_stcond_depletion")
+        .expect("the C0 fixture must carry OPM's surface flash of this stream");
+    assert_eq!(stcond.present_phase, "two_phase");
+    assert_eq!(stcond.z, depletion_deck::INITIAL_Z.to_vec());
+    let l = stcond.l_liquid.expect("L");
+    let v_liquid = stcond.liquid.as_ref().expect("liquid").molar_volume_si();
+    let opm_flash = depletion_deck::OIL_RATE_SM3_PER_DAY / (l * v_liquid);
+
+    // 3. And what ResSim says.
     let separated = crate::fluid::transport::surface_separation(
         &spec,
         &[
@@ -1712,40 +1720,48 @@ fn comp_depletion_surface_volume_scale_differs_from_opm() {
         ],
     )
     .unwrap();
-    let ours_per_day = depletion_deck::OIL_RATE_SM3_PER_DAY / (separated.liquid_volume / 100.0);
-    let theirs_per_day = withdrawals.iter().sum::<f64>() / withdrawals.len() as f64;
-    let relative = (ours_per_day - theirs_per_day).abs() / theirs_per_day;
+    let ours = depletion_deck::OIL_RATE_SM3_PER_DAY / (separated.liquid_volume / 100.0);
 
     eprintln!(
-        "depletion molar withdrawal: ours {ours_per_day:.1}, reference {theirs_per_day:.1} \
-         ({:.1} to {:.1}) mol/day, relative {:.3}%",
-        lowest,
-        highest,
-        relative * 100.0
+        "30 sm3/day of surface oil is:\n  {ours:9.1} mol/day by ResSim's surface flash\n  \
+         {opm_flash:9.1} mol/day by OPM's own PTFlash at STCOND\n  \
+         {metered:9.1} mol/day by flowexp_comp's own trajectory ({lowest:.1} to {highest:.1})"
     );
 
-    // 4.0%, measured. Bounded in both directions: this is a recorded open finding, so a change
-    // in either direction is a change worth noticing.
+    // ResSim agrees with OPM's flash. 0.15%, which is the two fluid systems' critical constants.
+    let against_flash = (ours - opm_flash).abs() / opm_flash;
     assert!(
-        (0.03..0.05).contains(&relative),
-        "the surface volume scale now differs by {:.2}% rather than the recorded 4.0%. If it \
-         shrank, say what fixed it; if it grew, something regressed",
-        relative * 100.0
+        against_flash < 3e-3,
+        "ResSim's surface separation differs from OPM's own flash by {:.3}%; the argument that \
+         this is the reference's metering rests on these agreeing",
+        against_flash * 100.0
+    );
+
+    // The reference's simulator disagrees with the reference's flash. 3.8%, measured, and bounded
+    // in both directions: if it closes, something was explained and this test should say so.
+    let flash_vs_metering = (opm_flash - metered).abs() / metered;
+    assert!(
+        (0.03..0.05).contains(&flash_vs_metering),
+        "flowexp_comp's metering now differs from OPM's own flash by {:.2}% rather than the \
+         recorded 3.8%. If it closed, say what explained it",
+        flash_vs_metering * 100.0
     );
 }
 
-/// **The depletion pressure path against OPM's**, which carries the consequence of the 4% above.
+/// **The depletion pressure path against OPM's**, which carries the consequence of the metering
+/// discrepancy above.
 ///
-/// Both simulators are given the deck's control — 30 sm³/day of surface oil — so the withdrawal
-/// they actually apply differs by the 4% that
-/// `comp_depletion_surface_volume_scale_differs_from_opm` measures, and the paths separate at
-/// about 0.23 bar per day. The band here is that consequence, not an independent tolerance.
+/// Both simulators are given the deck's control — 30 sm³/day of surface oil — and they do not
+/// apply the same withdrawal, because `flowexp_comp` meters that 30 sm³ as 3.8% fewer moles than
+/// its own flash says it is (`comp_depletion_reference_metering_disagrees_with_its_own_flash`).
+/// The paths therefore separate at about 0.23 bar per day. **The band here is that consequence,
+/// not an independent tolerance**, and it is bounded below as well as above so that a fix shows up
+/// as a failure rather than passing silently.
 ///
-/// It is still worth running as a comparison, because the *shape* is right: the separation is
-/// linear in time, timestep-independent to 0.001 bar over a 16-fold change in sub-step, and it
-/// closes to 0.17 bar at the last step when gas appears and the withdrawal stops being pure
-/// liquid. Nothing else in the depletion — accumulation, compressibility, the phase change — is
-/// contributing.
+/// It is still worth running, because the *shape* says nothing else is contributing: the
+/// separation is linear in time, it is timestep-independent to 0.001 bar over a 16-fold change in
+/// sub-step, and it closes to 0.17 bar at the last step when gas appears and the withdrawal stops
+/// being pure liquid. Accumulation, compressibility and the phase change are all clean.
 #[test]
 fn comp_depletion_pressure_path_matches_opm() {
     let reference = depletion_reference();
@@ -1782,20 +1798,18 @@ fn comp_depletion_pressure_path_matches_opm() {
         );
     }
 
-    // 1.38 bar over six days, which is the 4% withdrawal difference integrated. Bounded above
-    // so a regression is caught, and below so that a fix to the surface volume scale shows up
-    // here as a failure rather than passing silently.
+    // 1.38 bar over six days, which is the 3.8% withdrawal difference integrated.
     assert!(
         worst_single_phase.0 < 1.5,
-        "the single-phase depletion path diverges by more than the surface volume scale \
+        "the single-phase depletion path diverges by more than the reference's metering \
          accounts for: worst {:.4} bar at {}",
         worst_single_phase.0,
         worst_single_phase.1
     );
     assert!(
         worst_single_phase.0 > 1.0,
-        "the depletion path now agrees to {:.4} bar. If the surface volume scale was fixed, this \
-         band and its explanation need updating together",
+        "the depletion path now agrees to {:.4} bar. If the reference's metering was reconciled, \
+         this band and its explanation need updating together",
         worst_single_phase.0
     );
     assert!(

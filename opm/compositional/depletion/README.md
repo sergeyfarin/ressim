@@ -45,9 +45,25 @@ ResSim runs the same case past that point without difficulty — its stability t
 | --- | --- |
 | Surface gas/oil **ratio** | agrees to **1.4e-8** — the reference's single-precision floor. The first head-to-head comparison of the two surface flashes on a mixture that genuinely splits |
 | Phase appearance | agrees at all seven steps: single phase through 111.55 bar, two-phase at 109.10 |
-| Surface volume **scale** | does **not** agree: ResSim needs 4.0% more feed per sm³ of surface oil. Measured by material balance on the reference's own pressures, which needs no assumption about how it meters anything. **Open** — see the C12 record in [`docs/COMPOSITIONAL_VALIDATION.md`](../../../docs/COMPOSITIONAL_VALIDATION.md) |
-| Pressure path | separates by 0.23 bar/day, which is that 4% integrated. Timestep-independent to 0.001 bar over a 16-fold change in sub-step |
+| Surface volume **scale** | ResSim 236 926 mol/day for 30 sm³/day of surface oil; OPM's own PTFlash at `STCOND` says 236 582 — **0.15%**, the two fluid systems' critical constants |
+| The oracle's self-consistency | `flowexp_comp`'s own trajectory implies **227 888** mol/day for that same 30 sm³/day — **3.8%** from its own flash. **Open, and not ResSim's** |
+| Pressure path | separates by 0.23 bar/day, which is that 3.8% integrated. Timestep-independent to 0.001 bar over a 16-fold change in sub-step |
 
-The scale discrepancy is specific to a **mixture**. For the pure CO2 stream of the 1D case the two
-simulators' surface volumes agree to about 0.01%, which is why that case's cumulative-injection
-comparison is not affected by it.
+## What the pressure paths actually caught
+
+They separate, and material balance says why — but the answer is not on ResSim's side.
+
+While the cell is single phase its composition cannot change, so the moles it holds are `PV · c(p)`,
+and both implementations agree on `c` to 0.12% along this very path (checked against OPM's own
+`ParameterCache::molarVolume`). So the reference really withdrew about 227 900 mol/day for what it
+reported as 30 sm³/day of surface oil. Asking OPM's **own** PTFlash what 30 sm³/day of surface oil
+is — `ternary_stcond_depletion`, added to the C0 fixture for exactly this — gives 236 582 mol/day.
+
+Two artefacts of the same simulator disagree with each other by 3.8%, and ResSim agrees with the one
+that is a flash. The consequence for C12 is that no surface-metered cumulative on a *mixture* can be
+held to the plan's 1% against this oracle. The 1D case is unaffected: its injected stream is pure
+CO2, for which the two agree to about 0.01%.
+
+`comp_depletion_reference_metering_disagrees_with_its_own_flash` is where all three numbers are
+measured side by side, and it is bounded in both directions so that reconciling them fails rather
+than passes silently.

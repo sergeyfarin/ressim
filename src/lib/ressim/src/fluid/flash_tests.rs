@@ -153,7 +153,7 @@ fn comp_flash_matches_the_fixture_on_every_state() {
         }
     }
 
-    assert_eq!(two_phase, 29);
+    assert_eq!(two_phase, 31);
     assert!(
         worst_beta.0 < 1e-8,
         "vapour fraction disagrees: worst absolute error {:e} at {}",
@@ -406,7 +406,7 @@ fn comp_flash_vapour_saturation_is_not_the_vapour_mole_fraction() {
             assert!((v - expected).abs() / expected < 1e-15, "{}", state.id);
         }
     }
-    assert_eq!(checked, 29);
+    assert_eq!(checked, 31);
     assert!(
         worst_gap > 0.1,
         "S_V and beta never differ materially; this test is not exercising its case"
