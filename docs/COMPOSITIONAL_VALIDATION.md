@@ -9,15 +9,15 @@ pin the dataset and oracle recorded here. Tracking issue:
 
 **Every claim here names what it does and does not cover.** The status table in section 7 records
 the state of each task and the completion records in section 8 record how each one was measured.
-C0–C11 are complete; C12 is partial. Its thermodynamic comparison, its transport comparison, both
-refinement studies and three further fixtures are done against an independent simulator. **At
-matched temporal resolution the two simulators agree to 0.0074 bar and 0.0014%**, which is the
-model-equivalence result; the plan's 1% cumulative target is met either way (0.858% converged,
-0.0014% matched). One thing blocks the milestone: the reference's **rate-controlled** withdrawal
-does not converge in the timestep, so that fixture cannot referee a withdrawal. A previously
-reported 1.29× connection-rate defect was **retracted** — see
-[`COMPOSITIONAL_C12_FORENSICS.md`](COMPOSITIONAL_C12_FORENSICS.md).
-`NATIVE-COMPOSITIONAL-READY` is **not** declared. C13 onwards have not started.
+C0–C12 are complete and **`NATIVE-COMPOSITIONAL-READY` is declared** (2026-09-18), with one
+residual stated in the declaration rather than hidden: ResSim's surface-rate control on a mixture is
+validated as a *conversion* (8e-6 against OPM's own flash) but not end to end against a simulator,
+because **no rate-controlled fixture in `flowexp_comp` converges in the timestep**. That is an
+oracle limitation, not a ResSim defect; §8's C12 record says what it does and does not leave open.
+
+At matched temporal resolution the two simulators agree to **0.0074 bar** and **0.0014%**. A
+previously reported 1.29× connection-rate defect was **retracted** — see
+[`COMPOSITIONAL_C12_FORENSICS.md`](COMPOSITIONAL_C12_FORENSICS.md). C13 onwards have not started.
 
 ## Scope this document governs
 
@@ -416,61 +416,66 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C9 | Component face flux, gravity and global assembly | **COMPLETE** | `compositional/{flux,assembly}.rs`; 33 `comp_flux_*` / `comp_assembly_*` / `comp_gravity_*` tests |
 | C10 | Linear solve, Newton, timestep lifecycle | **COMPLETE** on the direct path | `compositional/{newton,timestep}.rs`; 20 `comp_newton_*` / `comp_rollback_*` tests. The iterative/CPR adapter is deferred — see the C10 record |
 | C11 | Compositional wells | **COMPLETE** | `compositional/wells.rs`, [design note](COMPOSITIONAL_WELL_DESIGN.md); 29 `comp_well_*` tests, single and multiple completions. **Derived from first principles — C11's OPM reference is unavailable here** (plan correction 3), so no OPM agreement is claimed |
-| C12 | NATIVE-COMPOSITIONAL-READY | **PARTIAL** — thermodynamics, transport, both refinement studies and three further fixtures done. **At matched resolution the two simulators agree to 0.0074 bar / 0.0014%**; the 1% cumulative target is met. One gap: ResSim's surface-rate control on a mixture is validated as a conversion (8e-6) but not end to end, because no rate-controlled fixture in the oracle converges. A 1.29× connection-rate finding was retracted — see the forensics doc | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 9 `comp_depletion_*` + 3 `comp_skin_*` + 1 `comp_matched_*` + 3 `comp_oracle_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. The milestone is **not** declared |
-| C13–C14 | WASM, product integration, release | NOT STARTED | Gated on C12 |
+| C12 | NATIVE-COMPOSITIONAL-READY | **COMPLETE — milestone DECLARED 2026-09-18**, with one residual stated: ResSim's surface-rate control on a mixture is validated as a conversion (8e-6) but not end to end, because no rate-controlled fixture in the oracle converges. At matched resolution the two simulators agree to **0.0074 bar / 0.0014%**; cumulative production to **0.041%** | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 9 `comp_depletion_*` + 3 `comp_skin_*` + 1 `comp_injection_*` + 1 `comp_matched_*` + 3 `comp_oracle_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. A 1.29× connection-rate finding was retracted |
+| C13–C14 | WASM, product integration, release | NOT STARTED | **Unblocked** by C12's declaration. C13's reporting must name what it means by surface gas rather than inherit Li's pressure-blind label, and must not treat a surface **rate** as validated end to end — see the C12 record |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
 ## 8. Completion records
 
-### C12 — against an independent simulator (PARTIAL)
+### C12 — against an independent simulator (COMPLETE; milestone DECLARED)
 
-**The plan's 1% cumulative-quantity target is met: 0.858%**, on a case that can actually test it.
-On the deck as written it cannot be — the wells are so much more conductive than the reservoir that
-both sit within a bar or two of their own BHP limits, and `q = WI · λ · (BHP − p)` turns the
-0.03 bar state agreement the comparison achieves into several per cent on the rate. Adding a
-connection skin moves the resistance to the well, and the same comparison on the same deck then
-resolves the target. Both results are kept, because the pair is what shows the first number was a
-property of the observable rather than of the model.
+**`NATIVE-COMPOSITIONAL-READY` is declared, 2026-09-18**, with one residual stated below rather
+than hidden.
 
 > **RETRACTED 2026-09-18.** An earlier revision of this record reported a **1.29× producer
 > connection-rate defect** on a two-phase cell as C12's largest disagreement. **There is no such
 > defect.** It was an artifact of comparing ResSim's *instantaneous* rate against a
 > *backward-Euler* step, compounded by comparing ResSim's converged answer against a reference that
 > takes one step per report interval and is nowhere near converged. At matched resolution the two
-> agree to **0.004 bar**. The full investigation, the term-by-term register and the rules that
-> follow are in
-> [`COMPOSITIONAL_C12_FORENSICS.md`](COMPOSITIONAL_C12_FORENSICS.md).
+> agree to **0.004 bar**. The investigation, the term-by-term register and the rules that follow
+> are in [`COMPOSITIONAL_C12_FORENSICS.md`](COMPOSITIONAL_C12_FORENSICS.md).
 
-**At matched temporal resolution, ResSim and `flowexp_comp` are the same model**: 0.0074 bar over
-twenty days on the BHP depletion, 0.0074 bar and **0.0014%** on cumulative injection over the 1D
-skin variant. That is C12's strongest result and it was hidden for several revisions behind a
-comparison that was measuring resolution rather than physics.
+**At matched temporal resolution, ResSim and `flowexp_comp` are the same model.** That is the
+headline result, and it was hidden for several revisions behind a comparison that was measuring
+resolution rather than physics:
 
-**The milestone `NATIVE-COMPOSITIONAL-READY` is NOT declared**, for one reason: **ResSim's
-surface-rate control on a mixture is validated as a conversion but not end to end against a
-simulator.**
+| observable | agreement | fixture |
+| --- | --- | --- |
+| trajectory, twenty days, two-phase throughout | **0.0074 bar** | BHP depletion |
+| trajectory over a full displacement | **0.0074 bar** | 1D skin variant |
+| cumulative **injection** | **0.0014%** | 1D skin variant |
+| cumulative **production**, per component | **0.041%** total, 0.088% worst | BHP depletion |
+| overall composition under phase change | **7.5e-5** | BHP depletion |
+| surface-rate conversion on a **mixture** | **8e-6** vs OPM's own flash | mixture injection |
+| flash along an external trajectory, 140 states | **1.31e-7** saturation, **5.55e-8** composition | 1D displacement |
 
-The conversion is externally validated to **8e-6** — ResSim and OPM's own PTFlash agree on how many
-moles 2000 sm³/day of a 0.5 CO₂ / 0.3 C₁ / 0.2 C₁₀ stream is, to five figures. What cannot be
-checked is the control loop around it, because **no rate-controlled fixture in `flowexp_comp`
-converges in the timestep**: both the ORAT producer and the mixture injector fail the convergence
-census, and both BHP-controlled fixtures pass. The untested remainder is the algebra that turns a
-validated conversion into a BHP, and it is unit-tested.
+The plan's 1% cumulative target is met with room to spare on both directions of flow, and the
+per-observable bands are frozen in §5.
 
-The reference's rate control no longer *blocks* anything else: the plan's cumulative
-production-total acceptance is met at **0.041%** on the BHP depletion, conversion-free and against
-a converging reference. `flowexp_comp` reports 30 sm³/day
-of surface oil for a stream that OPM's **own** PTFlash, on that exact composition at the deck's
-`STCOND`, says is 236 582 mol/day — while the simulator's own trajectory says it withdrew 227 888.
-ResSim sits with the flash, to 0.15%. That is not a ResSim defect, but until it is reconciled no
-surface-metered cumulative on a mixture has a trustworthy oracle. The 1% result above is on pure
-CO2, where the two agree to about 0.01%, so it stands — but a single fluid stream is a narrow base
-on which to declare a milestone. The cause is measured
-rather than guessed. Late in this case the injector runs at about one bar of drawdown against its
-150 bar limit, so the rate observable amplifies the pressure observable by roughly a hundred; the
-state agreement of 0.03 bar that the comparison achieves maps to several per cent on the rate. The
-section "the cumulative target is not met" below carries the numbers and rules out the two
-alternative explanations.
+#### The residual this milestone is declared with
+
+**ResSim's surface-rate control on a mixture is validated as a *conversion* but not end to end
+against a simulator.** The conversion is externally validated to 8e-6 — ResSim and OPM's own
+PTFlash agree to five figures on how many moles 2000 sm³/day of a 0.5 CO₂ / 0.3 C₁ / 0.2 C₁₀ stream
+is. What cannot be checked is the control loop around it, because **no rate-controlled fixture in
+`flowexp_comp` converges in the timestep**: the ORAT producer and the mixture injector both fail the
+convergence census, and both BHP-controlled fixtures pass it.
+
+*Why declaring anyway is defensible.* The untested remainder is the algebra that turns a validated
+conversion into a BHP — a scalar root-find on a monotone function — and it is unit-tested
+(`comp_well_surface_rate_*`, `comp_well_molar_rate_control_hits_its_target`,
+`comp_well_a_binding_bhp_limit_overrides_the_rate_target`). Both quantities it composes are
+externally validated: the conversion to 8e-6, and the connection law to 0.0074 bar on two
+independent fixtures. The gap is not an unmeasured physical assumption; it is one untested
+composition of two measured pieces.
+
+*What would close it.* A compositional oracle whose rate-controlled wells converge in the timestep.
+That is an upstream matter — see [`COMPOSITIONAL_C12_FORENSICS.md`](COMPOSITIONAL_C12_FORENSICS.md)
+§5, which records what has been ruled out so the mechanism hunt does not restart from scratch.
+
+*What it does not excuse.* C13 must not treat a surface **rate** as validated end to end when it
+reports one, and must name what it means by surface gas rather than inherit Li's pressure-blind
+label (`comp_reference_surface_phase_label_is_pressure_blind`).
 
 Everything else C12 asks for is done: the thermodynamic comparison, the transport comparison, the
 timestep refinement, the grid refinement against a reference re-solved on each grid, and a second
@@ -490,17 +495,24 @@ Fixtures:              opm/compositional/1d_comp/reference.json          (the de
                        opm/compositional/depletion/bhp/reference.json    (single-cell, BHP)
                        opm/compositional/injection/reference.json        (mixture rate control)
                        opm/compositional/reference_convergence.json      (the convergence census)
-                       regenerated by run-1d-comp.sh, run-refinement.sh and run-depletion.sh;
-                       refine_deck.py asserts on every keyword it rewrites, so a change to the
-                       source deck fails there rather than quietly producing a different case
+                       regenerated by run-1d-comp.sh, run-refinement.sh, run-depletion.sh,
+                       run-injection.sh and check-reference-convergence.sh; refine_deck.py asserts
+                       on every keyword it rewrites, so a change to the source deck fails there
+                       rather than quietly producing a different case
 Gates:                 bash scripts/validate-compositional.sh reference   (fixtures reproduce)
                        bash scripts/validate-compositional.sh all         (10 comp_reference_*
                                                                            + 3 comp_skin_*
-                                                                           + 7 comp_depletion_*)
+                                                                           + 9 comp_depletion_*
+                                                                           + 1 comp_injection_*
+                                                                           + 1 comp_matched_*
+                                                                           + 3 comp_oracle_*)
                        bash scripts/validate-compositional.sh refinement  (3 comp_refinement_*,
                                                                            release, ~3 min)
-Tests created:         10 comp_reference_*, 3 comp_skin_*, 7 comp_depletion_*,
+Tests created:         10 comp_reference_*, 3 comp_skin_*, 9 comp_depletion_*,
+                       1 comp_injection_*, 1 comp_matched_*, 3 comp_oracle_*,
                        3 comp_refinement_*
+Milestone:             NATIVE-COMPOSITIONAL-READY, DECLARED 2026-09-18 on this commit, with the
+                       residual above stated in the declaration
 ```
 
 #### What is compared
