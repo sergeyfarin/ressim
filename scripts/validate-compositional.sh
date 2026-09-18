@@ -109,6 +109,7 @@ run_thermo() {
     run_filter comp_depletion_    9   # C12's second fixture: single-cell depletion, rate and BHP
     run_filter comp_matched_      1   # C12 at the reference's own timestep - see the forensics doc
     run_filter comp_oracle_       3   # the oracle convergence census, and the band rule it enforces
+    run_filter comp_injection_    1   # surface-rate control on a MIXTURE, against OPM's own flash
 }
 
 run_fixture() {
@@ -137,6 +138,7 @@ run_reference() {
     bash "$repo_root/tools/opm_compositional/run-1d-comp.sh" --check
     bash "$repo_root/tools/opm_compositional/run-refinement.sh" --check
     bash "$repo_root/tools/opm_compositional/run-depletion.sh" --check
+    bash "$repo_root/tools/opm_compositional/run-injection.sh" --check
     bash "$repo_root/tools/opm_compositional/check-reference-convergence.sh" --check
     echo "gate ok: every compositional reference fixture reproduces from flowexp_comp, and each"
     echo "         one's distance from timestep-convergence is what the census records"

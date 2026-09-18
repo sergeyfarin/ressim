@@ -57,7 +57,7 @@ fn comp_stability_verdict_matches_the_fixture_on_every_state() {
         }
     }
 
-    assert_eq!(two_phase, 35, "the fixture's two-phase count changed");
+    assert_eq!(two_phase, 36, "the fixture's two-phase count changed");
     assert_eq!(single_phase, 18, "the fixture's single-phase count changed");
     assert!(
         disagreements.is_empty(),
@@ -256,7 +256,7 @@ fn comp_stability_unstable_verdict_returns_a_usable_k_estimate() {
             checked += 1;
         }
     }
-    assert_eq!(checked, 35);
+    assert_eq!(checked, 36);
 }
 
 #[test]

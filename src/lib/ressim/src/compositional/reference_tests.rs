@@ -2863,11 +2863,16 @@ fn comp_oracle_convergence_census_is_what_it_was() {
     for (name, expected_trend, growth_range) in [
         ("1d_comp", "converging", (1.2, 1.8)),
         ("1d_comp_skin", "converging", (1.2, 1.8)),
-        ("depletion_bhp", "converging", (1.3, 2.1)),
+        ("depletion_bhp", "converging", (1.3, 2.0)),
         // The one that motivated the whole guard. Its *pressure* barely moves on the first
         // halving — 0.0107 bar — which is exactly why a single refinement is not a convergence
         // test. On the second it moves 11x further.
-        ("depletion_orat", "diverging", (5.0, 30.0)),
+        ("depletion_orat", "not-converging", (5.0, 30.0)),
+        // The other rate-controlled fixture, and the reason the threshold is 2.0 rather than 2.5:
+        // at 2.5 this read "converging" at 2.26, and a five-level probe then showed its final
+        // pressure jumping from 185.20 bar at 0.125 d to 191.94 at 0.0625 d. Both fixtures whose
+        // reference fails to converge are rate-controlled; neither BHP-controlled one does.
+        ("injection", "not-converging", (2.0, 3.0)),
     ] {
         let f = census
             .fixtures
@@ -3057,5 +3062,173 @@ fn comp_depletion_bhp_cumulative_production_matches_opm() {
         "component {} differs by {:.4}%, above the plan's 1% target",
         worst_component.1,
         worst_component.0 * 100.0
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Surface-rate control on a mixture (`comp_injection_*`)
+// ---------------------------------------------------------------------------------------------
+//
+// The gap this closes: everywhere else C12 exercises a rate control, the stream is **pure CO2**
+// (the 1D deck's injector, for one report interval) or the reference does not converge (the ORAT
+// depletion). ResSim's `WellControl::SurfaceRate` on a stream that genuinely splits at surface had
+// no external check at all.
+//
+// One cell, closed apart from one injector on `WCONINJE ... RATE 2000`, injecting
+// 0.5 CO2 / 0.3 methane / 0.2 decane. **Closed is what makes it unambiguous:** the change in what
+// the cell holds *is* the injected amount, in moles, with no surface conversion anywhere in the
+// comparison. If the two disagree about how many moles 2000 sm³/day of this mixture is, the cell
+// fills at different rates.
+//
+// The comparison is at **matched** resolution, and that is not a convenience. This reference does
+// not converge either — its final pressure walks 183.60 (1 d) → 184.16 → 185.16 → 185.20 → 191.94
+// (0.0625 d), the same 1/dt signature the ORAT depletion has. So the behaviour is not specific to
+// producers, and refinement cannot be used to establish a converged answer. What *can* be said is
+// that at one step per day, where the spurious term is smallest and both sides take the same
+// steps, the two agree.
+
+fn injection_reference() -> Reference {
+    let raw = include_str!("../../../../../opm/compositional/injection/reference.json");
+    let r: Reference = serde_json::from_str(raw).expect("the injection fixture must parse");
+    assert_eq!(r.schema, "ressim-compositional-reference/1");
+    assert_eq!(r.case, "INJECTION");
+    assert_eq!(r.cells, 1);
+    assert_eq!(r.report_steps.len(), 20);
+    r
+}
+
+/// `WCONINJE INJ GAS OPEN RATE 2000 1* 400` and `WELLSTRE ISTR 0.5 0.3 0.2`.
+const INJECTION_RATE_SM3_PER_DAY: f64 = 2000.0;
+const INJECTION_BHP_LIMIT_BAR: f64 = 400.0;
+const INJECTION_STREAM: [f64; 3] = [0.5, 0.3, 0.2];
+
+/// **ResSim's surface-rate conversion for a mixture agrees with OPM's own flash to 8e-6 — and
+/// `flowexp_comp` agrees with neither.**
+///
+/// This is the check C12 was missing. Everywhere else a rate control is exercised, the stream is
+/// pure CO2 (the 1D deck's injector, for one report interval) or the reference does not converge
+/// (the ORAT depletion). Here the stream is 0.5 CO2 / 0.3 methane / 0.2 decane, which genuinely
+/// splits at the deck's `STCOND`, so how many moles "2000 sm³/day" means depends on the surface
+/// flash.
+///
+/// The cell is **closed apart from the injector**, which is what makes the reference's own answer
+/// readable: the change in what it holds is the injected amount, in moles, with no surface
+/// conversion anywhere in the inference.
+///
+/// ```text
+/// 2000 sm3/day of 0.5 CO2 / 0.3 C1 / 0.2 C10 is:
+///   105 025.5 mol/day  by ResSim's surface separation
+///   105 024.7 mol/day  by OPM's own PTFlash at STCOND   <- 8e-6 from ResSim
+///    76 583   mol/day  by flowexp_comp's own trajectory <- 0.73x its own flash
+/// ```
+///
+/// **This generalises the ORAT depletion finding from producers to injectors.** There the
+/// reference's rate-controlled withdrawal was 3.97% off its own flash at its committed timestep and
+/// diverged under refinement; here the same structure appears on an injector, at 27%. Refining this
+/// reference moves it *toward* ResSim (final pressure 183.60 at 1 d → 191.94 at 0.0625 d) without
+/// settling, so it cannot be used to referee a rate at any step size either.
+///
+/// **What this does and does not establish.** ResSim's conversion is validated — against OPM's own
+/// flash, to 8e-6, which is the tightest such agreement in C12. ResSim's rate *control* end to end
+/// on a mixture is still not validated against a simulator, because no rate-controlled fixture in
+/// `flowexp_comp` converges. That residual is narrow: what is untested is the algebra that turns a
+/// validated conversion into a BHP, and it is unit-tested (`comp_well_surface_rate_*`).
+#[test]
+fn comp_injection_mixture_surface_conversion_matches_opms_flash() {
+    let reference = injection_reference();
+    let times = reference.summary.get("TIME").expect("TIME").clone();
+    let spec = deck_fluid();
+
+    // Premise 1: the reference held its rate target exactly and never approached its BHP limit, so
+    // it really was rate-controlled throughout.
+    let fgit = reference.summary.get("FGIT").expect("FGIT");
+    for (index, &time) in times.iter().enumerate() {
+        let expected = INJECTION_RATE_SM3_PER_DAY * time;
+        assert!(
+            (fgit[index] - expected).abs() < 1e-6 * expected.max(1.0),
+            "the reference is not holding its rate target at t = {time}: {} vs {expected}",
+            fgit[index]
+        );
+    }
+    for bhp in reference.summary.get("WBHP:INJ").expect("WBHP:INJ") {
+        assert!(
+            *bhp < INJECTION_BHP_LIMIT_BAR - 50.0,
+            "the reference's injector approached its BHP limit ({bhp} bar), so it is not purely \
+             rate-controlled and this is not the test it claims to be"
+        );
+    }
+
+    // Premise 2: the stream genuinely splits at surface. Without this it is not a mixture test.
+    let separated =
+        crate::fluid::transport::surface_separation(&spec, &[50.0, 30.0, 20.0]).unwrap();
+    assert!(
+        separated.liquid_volume > 0.0 && separated.vapour_volume > 0.0,
+        "the injected stream does not split at surface; this is not a mixture rate test"
+    );
+    let ours_per_mole = (separated.liquid_volume + separated.vapour_volume) / 100.0;
+    let ours = INJECTION_RATE_SM3_PER_DAY / ours_per_mole;
+
+    // OPM's own flash of the same stream at the same conditions.
+    let fixture = crate::fluid::fixture::load();
+    let stcond = crate::fluid::fixture::ternary_system(&fixture)
+        .states
+        .iter()
+        .find(|s| s.id == "ternary_stcond_injection")
+        .expect("the C0 fixture must carry OPM's surface flash of the injected stream");
+    assert_eq!(stcond.z, INJECTION_STREAM.to_vec());
+    let l = stcond.l_liquid.expect("L");
+    let opm_per_mole = l * stcond.liquid.as_ref().expect("liquid").molar_volume_si()
+        + (1.0 - l) * stcond.vapour.as_ref().expect("vapour").molar_volume_si();
+    let opm_flash = INJECTION_RATE_SM3_PER_DAY / opm_per_mole;
+
+    // What the reference's own trajectory injected, by material balance on the closed cell.
+    let pore_volumes = vec![depletion_deck::PORE_VOLUME_M3];
+    let rock = RockView {
+        pore_volume_ref_m3: &pore_volumes,
+        reference_pressure_bar: depletion_deck::ROCK_REFERENCE_BAR,
+        compressibility_per_bar: depletion_deck::ROCK_COMPRESSIBILITY,
+    };
+    let moles_at = |pressure: f64, z: [f64; 3]| {
+        let total: f64 = z.iter().sum();
+        let cell = CompositionalCellState::new(pressure, vec![z[0] / total, z[1] / total]).unwrap();
+        cell_inventory(&spec, &rock, 0, &cell)
+            .unwrap()
+            .0
+            .component_moles
+            .iter()
+            .sum::<f64>()
+    };
+    let initial = moles_at(
+        depletion_deck::INITIAL_PRESSURE_BAR,
+        depletion_deck::INITIAL_Z,
+    );
+    let last = reference.report_steps.last().unwrap();
+    let trajectory = (moles_at(last.pressure[0], last.z(0)) - initial) / times.last().unwrap();
+
+    eprintln!(
+        "{} sm3/day of {:?} is:\n  {ours:10.1} mol/day by ResSim's surface separation\n  \
+         {opm_flash:10.1} mol/day by OPM's own PTFlash at STCOND\n  \
+         {trajectory:10.1} mol/day by flowexp_comp's own trajectory",
+        INJECTION_RATE_SM3_PER_DAY, INJECTION_STREAM
+    );
+
+    // ResSim against OPM's flash. This is the result.
+    let against_flash = (ours - opm_flash).abs() / opm_flash;
+    assert!(
+        against_flash < 1e-4,
+        "ResSim's surface conversion for this mixture differs from OPM's own flash by {:.2e}",
+        against_flash
+    );
+
+    // And the reference's simulator against the reference's flash, recorded so the generalisation
+    // from producers to injectors is not lost. Bounded both ways: if it closes, something upstream
+    // changed and the forensics document needs it.
+    let flash_vs_trajectory = (opm_flash - trajectory).abs() / trajectory;
+    assert!(
+        (0.2..0.45).contains(&flash_vs_trajectory),
+        "flowexp_comp's injected moles now differ from its own flash by {:.1}% rather than the \
+         recorded 37%. This is a sample of a non-settling sequence, not a constant — if the \
+         fixture's timestep changed, remeasure",
+        flash_vs_trajectory * 100.0
     );
 }

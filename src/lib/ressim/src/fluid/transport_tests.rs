@@ -176,7 +176,7 @@ fn comp_transport_liquid_is_more_viscous_than_vapour() {
             }
         }
     }
-    assert_eq!(checked, 35);
+    assert_eq!(checked, 36);
 }
 
 /// An absent phase has no viscosity. Zero would be worse than nothing: a mobility calculation
@@ -277,7 +277,7 @@ fn comp_transport_saturations_reconstruct_from_moles_and_molar_volumes() {
         }
     }
 
-    assert_eq!(checked, 35);
+    assert_eq!(checked, 36);
     assert!(
         worst_gap > 0.3,
         "saturation and beta never differ by much ({worst_gap}); the distinction this test exists \

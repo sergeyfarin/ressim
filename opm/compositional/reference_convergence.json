@@ -1,6 +1,6 @@
 {
  "schema": "ressim-compositional-reference-convergence/1",
- "note": "How far each compositional reference moves when its own TSTEP ladder is halved, and then halved again. None of them is converged; this records how far from it each one is, so that no acceptance band is set below a reference's own temporal uncertainty. `growth` is the second movement over the first, both measured against the same coarse run: a converging reference is well under 2, a diverging one is unbounded. See docs/COMPOSITIONAL_C12_FORENSICS.md.",
+ "note": "How far each compositional reference moves when its own TSTEP ladder is halved, and then halved again. None of them is converged; this records how far from it each one is, so that no acceptance band is set below a reference's own temporal uncertainty. `growth` is the second movement over the first, both measured against the same coarse run. For a monotone sequence converging at first order it is 1 + r <= 2; above 2 the second halving moved the answer further than the first did, which no monotone converging sequence does. See docs/COMPOSITIONAL_C12_FORENSICS.md.",
  "units": {
   "pressure": "bar"
  },
@@ -33,7 +33,7 @@
    "quartered_worst_bar": 0.1236,
    "quartered_final_bar": 0.1236,
    "growth": 11.608,
-   "trend": "diverging"
+   "trend": "not-converging"
   },
   "depletion_bhp": {
    "report_steps": 20,
@@ -44,6 +44,16 @@
    "quartered_final_bar": 0.0028,
    "growth": 1.677,
    "trend": "converging"
+  },
+  "injection": {
+   "report_steps": 20,
+   "compared": 20,
+   "halved_worst_bar": 0.6891,
+   "halved_final_bar": 0.5621,
+   "quartered_worst_bar": 1.5583,
+   "quartered_final_bar": 1.5583,
+   "growth": 2.261,
+   "trend": "not-converging"
   }
  }
 }

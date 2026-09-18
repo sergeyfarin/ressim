@@ -543,6 +543,10 @@ int main(int argc, char** argv)
     // than the pressure-blind single-phase labelling that C12 documents separately.
     add3("ternary_stcond_depletion", 1.0, 288.15, 0.1, 0.3, 0.6);
     add3("ternary_stcond_1dcomp", 1.0, 288.15, 0.2, 0.5, 0.3);
+    // The stream `opm/compositional/injection/INJECTION.DATA` injects, at the same surface
+    // conditions. C12 needs OPM's own answer for how many moles a surface volume of this mixture
+    // is, because ResSim and `flowexp_comp` disagree about it by a third.
+    add3("ternary_stcond_injection", 1.0, 288.15, 0.5, 0.3, 0.2);
     // Four states from C12's BHP-controlled depletion, at the reference's own reported `(p, z)`.
     //
     // They are here for the **viscosity**. `flowexp_comp` writes `OIL_VISC` and `GAS_VISC` as

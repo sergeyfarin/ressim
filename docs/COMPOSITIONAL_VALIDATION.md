@@ -311,10 +311,13 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C12 depletion** — pressure path | — | separates by 0.23 bar/day, 1.38 bar over six days, which is the 3.8% above integrated. Timestep-independent to 0.001 bar over a 16-fold sub-step change | **Explained** — the band is that consequence, bounded below as well as above |
 | **C12 BHP depletion** — producer connection rate | — | **1.0000–1.0014** at the end-of-step state, which is where the reference's backward-Euler step evaluates it. (Evaluated at the interval midpoint it reads 1.29, and that was reported as a defect until 2026-09-18 — see the [forensics](COMPOSITIONAL_C12_FORENSICS.md)) | **Met** |
 | **C12 BHP depletion** — trajectory at matched resolution | — | **0.0074 bar** over twenty days, `S_g` to **1.8e-4** | **Met** |
+| **C12 BHP depletion** — cumulative production | ≤ 1% on cumulative quantities | **0.041%** in total and **0.088%** worst component, over twenty days. Conversion-free: the cell is closed apart from one well, so the reference's own inventory change *is* its production. ResSim's side is its well's own accounting, not its inventory change | **Met** — this is the production-total acceptance the ORAT fixture could not provide |
 | **C12 1D** — trajectory at matched resolution | — | skin variant **0.0074 bar** and **0.0014%** on cumulative injection; plain deck 1.68 bar, whose residual is the sub-day `TSTEP`s where the reference cut extra steps | **Met** |
 | **C12 BHP depletion** — settled pressure | both reach the well's 80 bar | **0.003 bar** at day 20 | **Met** |
 | **C12 BHP depletion** — composition drift | — | the reference moves methane 0.300 → 0.29557 and decane 0.600 → 0.60516; at matched resolution ResSim follows to **7.5e-5**. The only place in C12 where phase behaviour, not a flood, changes a cell's composition | **Met** |
 | **C0** — surface conditions | 1e-8 (C0 target) | `ternary_stcond_*` added to the fixture: two flashed states at 1 bar / 288.15 K, both genuinely two-phase. They pass the existing C0/C3/C5 comparisons unchanged — the surface flash needed no widened tolerance | **Met** |
+| **C12 injection** — surface-rate conversion on a **mixture** | 1e-8 (C0 target) | **8e-6**: ResSim 105 025.5 mol/day for 2000 sm³/day of 0.5 CO₂ / 0.3 C₁ / 0.2 C₁₀, OPM's own PTFlash 105 024.7. The tightest such agreement in C12, and the gap it was built to close | **Met** |
+| **C12 injection** — the reference's rate control | must converge in the timestep | **It does not**, on an injector either: its own trajectory injects **76 583** mol/day, 0.73× its own flash, and refining moves it toward ResSim without settling. Both fixtures failing the convergence census are rate-controlled; both BHP-controlled ones pass | **OPEN, and not ours** |
 | **C0** — accumulation along a depletion path | — | `eos_depletion_*`, seven flash-free states at the depletion reference's own pressures. `Δc` between consecutive states agrees to **0.069%**; comparing `c` itself would not have been a test, since `Δc` is 0.4% of `c` | **Met** |
 | **C10 Newton** — convergence rate | quadratic near the solution | a quadratic reduction is observed and asserted; a merely-close Jacobian would converge linearly and still terminate | **Met** |
 | **C10 Newton** — domain | `p > 0`, `z` on the simplex including `z_(N-1)` | fraction-to-boundary at 0.99, one global scale factor, no clamping or renormalization after the step | **Met** |
@@ -413,7 +416,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C9 | Component face flux, gravity and global assembly | **COMPLETE** | `compositional/{flux,assembly}.rs`; 33 `comp_flux_*` / `comp_assembly_*` / `comp_gravity_*` tests |
 | C10 | Linear solve, Newton, timestep lifecycle | **COMPLETE** on the direct path | `compositional/{newton,timestep}.rs`; 20 `comp_newton_*` / `comp_rollback_*` tests. The iterative/CPR adapter is deferred — see the C10 record |
 | C11 | Compositional wells | **COMPLETE** | `compositional/wells.rs`, [design note](COMPOSITIONAL_WELL_DESIGN.md); 29 `comp_well_*` tests, single and multiple completions. **Derived from first principles — C11's OPM reference is unavailable here** (plan correction 3), so no OPM agreement is claimed |
-| C12 | NATIVE-COMPOSITIONAL-READY | **PARTIAL** — thermodynamics, transport, both refinement studies and three further fixtures done. **At matched resolution the two simulators agree to 0.0074 bar / 0.0014%**; the 1% cumulative target is met. One gap: ResSim's surface-rate control on a mixture has no external check. A 1.29× connection-rate finding was retracted — see the forensics doc | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 9 `comp_depletion_*` + 3 `comp_skin_*` + 1 `comp_matched_*` + 3 `comp_oracle_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. The milestone is **not** declared |
+| C12 | NATIVE-COMPOSITIONAL-READY | **PARTIAL** — thermodynamics, transport, both refinement studies and three further fixtures done. **At matched resolution the two simulators agree to 0.0074 bar / 0.0014%**; the 1% cumulative target is met. One gap: ResSim's surface-rate control on a mixture is validated as a conversion (8e-6) but not end to end, because no rate-controlled fixture in the oracle converges. A 1.29× connection-rate finding was retracted — see the forensics doc | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 9 `comp_depletion_*` + 3 `comp_skin_*` + 1 `comp_matched_*` + 3 `comp_oracle_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. The milestone is **not** declared |
 | C13–C14 | WASM, product integration, release | NOT STARTED | Gated on C12 |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
@@ -443,12 +446,20 @@ twenty days on the BHP depletion, 0.0074 bar and **0.0014%** on cumulative injec
 skin variant. That is C12's strongest result and it was hidden for several revisions behind a
 comparison that was measuring resolution rather than physics.
 
-**The milestone `NATIVE-COMPOSITIONAL-READY` is NOT declared**, for one reason: the reference's
-**rate-controlled** withdrawal does not converge in the timestep. It walks past ResSim's value and
-keeps going — 227 888 → 231 373 → 244 887 → 269 638 mol/day as its `TSTEP` is refined 1.0 → 0.05 →
-0.01 → 0.0025 d, against ResSim's timestep-independent 236 926, which is what OPM's own PTFlash
-says 30 sm³/day of surface oil is. So the ORAT fixture cannot referee a withdrawal at any
-timestep. `flowexp_comp` reports 30 sm³/day
+**The milestone `NATIVE-COMPOSITIONAL-READY` is NOT declared**, for one reason: **ResSim's
+surface-rate control on a mixture is validated as a conversion but not end to end against a
+simulator.**
+
+The conversion is externally validated to **8e-6** — ResSim and OPM's own PTFlash agree on how many
+moles 2000 sm³/day of a 0.5 CO₂ / 0.3 C₁ / 0.2 C₁₀ stream is, to five figures. What cannot be
+checked is the control loop around it, because **no rate-controlled fixture in `flowexp_comp`
+converges in the timestep**: both the ORAT producer and the mixture injector fail the convergence
+census, and both BHP-controlled fixtures pass. The untested remainder is the algebra that turns a
+validated conversion into a BHP, and it is unit-tested.
+
+The reference's rate control no longer *blocks* anything else: the plan's cumulative
+production-total acceptance is met at **0.041%** on the BHP depletion, conversion-free and against
+a converging reference. `flowexp_comp` reports 30 sm³/day
 of surface oil for a stream that OPM's **own** PTFlash, on that exact composition at the deck's
 `STCOND`, says is 236 582 mol/day — while the simulator's own trajectory says it withdrew 227 888.
 ResSim sits with the flash, to 0.15%. That is not a ResSim defect, but until it is reconciled no
@@ -477,6 +488,8 @@ Fixtures:              opm/compositional/1d_comp/reference.json          (the de
                        opm/compositional/1d_comp/skin/reference.json     (skin 60, well-conditioned)
                        opm/compositional/depletion/reference.json        (single-cell, ORAT)
                        opm/compositional/depletion/bhp/reference.json    (single-cell, BHP)
+                       opm/compositional/injection/reference.json        (mixture rate control)
+                       opm/compositional/reference_convergence.json      (the convergence census)
                        regenerated by run-1d-comp.sh, run-refinement.sh and run-depletion.sh;
                        refine_deck.py asserts on every keyword it rewrites, so a change to the
                        source deck fails there rather than quietly producing a different case
@@ -870,13 +883,20 @@ discretisation.
 #### Remaining for C12
 
 ```text
-* THE REFERENCE'S RATE CONTROL DOES NOT CONVERGE in the timestep, so the ORAT fixture cannot
-  referee a withdrawal at any step size. Not ResSim's to fix - what C12 owes is either a
-  reconciliation upstream or an acceptance observable that does not go through a rate-controlled
-  well. Everything else it blocks is already covered by the BHP variant, which does converge
+* ResSim's SURFACE-RATE CONTROL ON A MIXTURE is validated as a CONVERSION (8e-6 against OPM's own
+  flash, on opm/compositional/injection/) but not END TO END against a simulator, because no
+  rate-controlled fixture in flowexp_comp converges in the timestep - the ORAT producer and the
+  mixture injector both fail the convergence census, and both BHP-controlled fixtures pass. The
+  untested remainder is the algebra that turns a validated conversion into a BHP, and it is
+  unit-tested. Closing it needs a rate-controlled oracle that converges
 * a published benchmark. The plan lists this as an optional later expansion (C12 item 4) and it
-  is not a blocker, but the four fixtures here share one fluid
+  is not a blocker, but the five fixtures here share one fluid
 ```
+
+**No longer blocking:** the plan's cumulative production-total acceptance is met on the **BHP**
+depletion at 0.041%, conversion-free and against a converging reference, so the ORAT fixture is a
+recorded oracle limitation rather than an acceptance oracle. It keeps its place for what it does
+referee: the surface separation, to 1.4e-8, and the phase appearance.
 
 The per-observable bands frozen above are for **this** case at **this** resolution, and the tests
 that carry them print their measurements so they can be rechecked rather than trusted.

@@ -88,6 +88,7 @@ the result does **not** establish.
 | **E3** | Does the reference converge toward ResSim when forced to sub-step? | BHP depletion `p(1)`: **99.2390** (1 d) → **95.3159** (0.05 d) → **95.0018** (0.01 d). ResSim: 95.3200 (0.05 d) → 95.0278 (0.0125 d) → 94.9493 (0.003125 d). Same limit, ~94.95 | — |
 | **E4** | Is the reference's **rate-controlled** withdrawal timestep-independent? | **No, and it does not converge.** Implied withdrawal: **227 888** (1 d) → **231 373** (0.05 d) → **244 887** (0.01 d) → **269 638** (0.0025 d) mol/day. ResSim: **236 926**, timestep-independent | The mechanism. The signature — growing without bound as `dt → 0` — is that of a term divided by `dt`, and `CompWell::assembleSourceTerm` has one: `(new_component_masses − component_masses)/dt` over a hard-coded 0.0216 m³ wellbore. Not proven |
 | **E5** | Can the reference's own summary give `PV`, `PI` or a reservoir-volume rate? | **No.** `FVPR`, `FVPT`, `WPI:PROD`, `FOIP`, `FGIP`, `FPR` are all written as identically zero | — |
+| **E6** | Is the rate-control behaviour specific to producers? | **No.** A closed cell with one rate-controlled **injector** of a 0.5/0.3/0.2 mixture shows the same structure: ResSim's conversion matches OPM's own flash to **8e-6** (105 025.5 vs 105 024.7 mol/day) while `flowexp_comp`'s own trajectory injects **76 583**, and refining moves it toward ResSim without settling (183.60 → 191.94 bar over five levels) | The mechanism, still. But it now holds for both well directions, which rules out anything producer-specific |
 
 ## 4. What this leaves standing
 
@@ -107,10 +108,16 @@ The other C12 findings are **unaffected**, because none of them rests on a traje
 
 ## 5. What is now open
 
-1. **The reference's rate control does not converge** (E4). ResSim's value is the one consistent
-   with OPM's *own* flash, so the ORAT fixture cannot referee a withdrawal at any timestep. This
-   supersedes the "3.8% surface metering" finding, which was that divergence sampled at one step
-   size.
+1. **The reference's rate control does not converge** (E4, E6), on producers and injectors alike.
+   ResSim's value is the one consistent with OPM's *own* flash — to 3.8% on the ORAT producer and
+   to **8e-6** on the mixture injector — so no rate-controlled fixture can referee a rate at any
+   timestep. This supersedes the "3.8% surface metering" finding, which was that behaviour sampled
+   at one step size.
+
+   What it leaves is narrow and is recorded rather than papered over: ResSim's surface-rate
+   *conversion* is externally validated, but its rate *control* end to end on a mixture is not
+   validated against a simulator. The untested part is the algebra that turns a validated
+   conversion into a BHP, and it is unit-tested.
 2. **`flowexp_comp` cannot cross a saturation pressure** on the ORAT deck — unchanged, and now
    joined by the observation that its ORAT run also fails at fine timesteps (`orat400` aborted at
    2163 of 2400 steps).
@@ -143,6 +150,18 @@ The census also carries the movement at the **final** report step, because settl
 compared against that rather than against the trajectory worst. It is what shows that the skin
 variant's 2.09 bar settled-state "disagreement" sits inside its reference's own 0.998 bar temporal
 uncertainty, and is therefore not a disagreement.
+
+**The threshold is principled, not tuned.** Both movements are measured against the same coarse
+run, so for a monotone sequence converging at first order with ratio `r ≤ 1` the growth is
+`1 + r ≤ 2`. Above 2, the second halving moved the answer further than the first did, which no
+monotone converging sequence does. The value matters: at 2.5 the census called the mixture
+injection "converging" at 2.26, and a five-level probe then showed its final pressure jumping from
+185.20 bar at 0.125 d to 191.94 at 0.0625 d.
+
+**The pattern the census exposes** is worth stating on its own: the two fixtures whose reference
+fails it are exactly the two **rate-controlled** ones, and both **BHP-controlled** ones pass. In
+this build of `flowexp_comp`, a rate-controlled well does not converge in the timestep and a
+BHP-controlled one does — on producers *and* injectors.
 
 Three tests enforce it (`comp_oracle_*`):
 

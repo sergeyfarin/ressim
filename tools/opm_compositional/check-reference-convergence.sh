@@ -38,6 +38,7 @@ cases=(
     "1d_comp_skin:SKIN:5"
     "depletion_orat:${repo_root}/opm/compositional/depletion/DEPLETION.DATA:1"
     "depletion_bhp:${repo_root}/opm/compositional/depletion/bhp/DEPLETION.DATA:1"
+    "injection:${repo_root}/opm/compositional/injection/INJECTION.DATA:1"
 )
 
 work="$(mktemp -d)"
@@ -129,11 +130,17 @@ for entry in cases:
     first_worst, first_final, shared = movement(runs[0], runs[1], 2)
     second_worst, second_final, _ = movement(runs[0], runs[2], 4)
 
-    # The trend is the point. A converging reference moves less the second time; a diverging one
-    # moves more. `second` is measured against the SAME coarse run as `first`, so if the reference
-    # converges it must be the larger of the two only by the amount still left to converge.
+    # The trend is the point, and the threshold is principled rather than tuned. Both movements
+    # are measured against the SAME coarse run, so for a monotone sequence converging at first
+    # order with ratio r <= 1, second/first = 1 + r <= 2. A growth above 2 means the second
+    # halving moved the answer FURTHER than the first did, which no monotone converging sequence
+    # does.
+    #
+    # The value matters: at 2.5 this called the mixture injection "converging" at 2.26, and a
+    # five-level probe then showed its final pressure jumping from 185.20 at 0.125 d to 191.94 at
+    # 0.0625 d. Two refinements catch it only with the right threshold.
     growth = (second_worst / first_worst) if first_worst > 0 else float("inf")
-    trend = "diverging" if growth > 2.5 else "converging"
+    trend = "not-converging" if growth > 2.0 else "converging"
 
     measured[name] = {
         "report_steps": len(runs[0]),
@@ -152,9 +159,10 @@ document = {
         "How far each compositional reference moves when its own TSTEP ladder is halved, and then "
         "halved again. None of them is converged; this records how far from it each one is, so "
         "that no acceptance band is set below a reference's own temporal uncertainty. `growth` is "
-        "the second movement over the first, both measured against the same coarse run: a "
-        "converging reference is well under 2, a diverging one is unbounded. See "
-        "docs/COMPOSITIONAL_C12_FORENSICS.md."
+        "the second movement over the first, both measured against the same coarse run. For a "
+        "monotone sequence converging at first order it is 1 + r <= 2; above 2 the second halving "
+        "moved the answer further than the first did, which no monotone converging sequence does. "
+        "See docs/COMPOSITIONAL_C12_FORENSICS.md."
     ),
     "units": {"pressure": "bar"},
     "fixtures": measured,

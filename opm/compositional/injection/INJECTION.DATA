@@ -1,0 +1,258 @@
+-- Derived from OPM/opm-tests compositional/1D_COMP.DATA, which is made available under the
+-- Open Database License: http://opendatacommons.org/licenses/odbl/1.0/. Any rights in individual
+-- contents of the database are licensed under the Database Contents License:
+-- http://opendatacommons.org/licenses/dbcl/1.0/
+-- Copyright (C) 2024, SINTEF Digital, TNO
+
+-- A single cell with ONE RATE-CONTROLLED INJECTOR and nothing else. The PROPS section is
+-- 1D_COMP.DATA's verbatim: same three components, same Peng-Robinson data, same SGOF, same
+-- surface conditions.
+--
+-- This is the only fixture in C12 that tests a SURFACE-RATE CONTROL ON A MIXTURE. Everywhere else
+-- a rate control is exercised, the stream is pure CO2 (the 1D deck's injector) or the reference
+-- does not converge (the ORAT depletion). The injected stream here is 0.5 CO2 / 0.3 methane /
+-- 0.2 decane, which genuinely splits at the deck's STCOND, so how many moles "2000 sm3/day"
+-- means depends on the surface flash.
+--
+-- THE CELL IS CLOSED APART FROM THE WELL, which is what makes the comparison unambiguous: the
+-- change in what the cell holds IS the injected amount, in moles, with no surface conversion
+-- anywhere in the comparison. If the two simulators disagree about how many moles 2000 sm3/day
+-- of this mixture is, the cell fills at different rates and the pressure paths separate.
+--
+-- The BHP limit is 400 bar and is never approached, so the well stays on rate control throughout.
+
+------------------------------------------------------------------------
+RUNSPEC
+------------------------------------------------------------------------
+TITLE
+   SINGLE CELL MIXTURE INJECTION
+
+METRIC
+
+TABDIMS
+/
+OIL
+GAS
+DIMENS
+1 1 1
+/
+
+COMPS
+3 /
+
+WELLDIMS
+1 1 1* 1/
+
+START
+  1 'JAN' 2016  /
+
+REGDIMS
+1 1 0 0 /
+
+UNIFIN
+UNIFOUT
+------------------------------------------------------------------------
+GRID
+------------------------------------------------------------------------
+INIT
+
+DXV
+100
+/
+DYV
+100
+/
+DZV
+10
+/
+
+TOPS
+1*0
+/
+
+PERMX
+1*100
+/
+
+PERMY
+1*100
+/
+
+PERMZ
+1*100
+/
+
+PORO
+1*0.1
+/
+------------------------------------------------------------------------
+EDIT
+------------------------------------------------------------------------
+
+
+------------------------------------------------------------------------
+PROPS
+------------------------------------------------------------------------
+
+CNAMES
+CO2
+METHANE
+DECANE
+/
+
+ROCK
+68.9476
+0
+/
+
+
+--RTEMP
+--150
+--/
+
+EOS
+PR /
+
+BIC
+0
+0
+0
+/
+
+ACF
+0.22394
+0.01142
+0.4884
+/
+PCRIT
+73.773
+45.992
+21.03
+/
+TCRIT
+304.128
+190.564
+617.7
+/
+MW
+44.00
+16.04
+142.28
+/
+
+VCRIT
+0.09412
+0.09863
+0.60980
+/
+
+SGOF
+-- Sg    Krg    Kro    Pcgo
+0.0000 0.0000 1.0000 0.0000
+0.0500 0.0025 0.9025 0.0000
+0.1000 0.0100 0.8100 0.0000
+0.1500 0.0225 0.7225 0.0000
+0.2000 0.0400 0.6400 0.0000
+0.2500 0.0625 0.5625 0.0000
+0.3000 0.0900 0.4900 0.0000
+0.3500 0.1225 0.4225 0.0000
+0.4000 0.1600 0.3600 0.0000
+0.4500 0.2025 0.3025 0.0000
+0.5000 0.2500 0.2500 0.0000
+0.5500 0.3025 0.2025 0.0000
+0.6000 0.3600 0.1600 0.0000
+0.6500 0.4225 0.1225 0.0000
+0.7000 0.4900 0.0900 0.0000
+0.7500 0.5625 0.0625 0.0000
+0.8000 0.6400 0.0400 0.0000
+0.8500 0.7225 0.0225 0.0000
+0.9000 0.8100 0.0100 0.0000
+0.9500 0.9025 0.0025 0.0000
+1.0000 1.0000 0.0000 0.0000
+/
+
+
+STCOND
+15.0 1.0 /
+
+
+------------------------------------------------------------------------
+SOLUTION
+------------------------------------------------------------------------
+
+
+PRESSURE
+1*150.
+/
+SGAS
+1*0.
+/
+TEMPI
+1*150
+/
+ZMF
+1*0.1
+1*0.3
+1*0.6
+/
+RPTRST
+BASIC=2
+PRESSURE
+SGAS
+SOIL
+PSAT
+XMF
+YMF
+ZMF
+DENO
+DENG
+VGAS
+VOIL
+/
+
+------------------------------------------------------------------------
+SUMMARY
+------------------------------------------------------------------------
+ALL
+
+------------------------------------------------------------------------
+SCHEDULE
+------------------------------------------------------------------------
+
+RPTRST
+BASIC = 2
+PRESSURE
+SGAS
+SOIL
+PSAT
+XMF
+YMF
+ZMF
+DENO
+DENG
+VGAS
+VOIL
+/
+
+WELSPECS
+INJ FIELD 1 1 1* GAS /
+/
+COMPDAT
+INJ 1 1 1 1 OPEN 2* 0.0151 /
+/
+WCONINJE
+INJ GAS OPEN RATE 2000 1* 400 /
+/
+
+WELLSTRE
+ISTR 0.5 0.3 0.2 /
+/
+
+WINJGAS
+INJ STREAM ISTR /
+/
+
+TSTEP
+    20*1.0
+/
+END
