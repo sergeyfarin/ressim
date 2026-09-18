@@ -106,7 +106,7 @@ run_thermo() {
     run_filter comp_well_        29   # C11 wells: sources, derivatives, controls, multi-completion
     run_filter comp_reference_   10   # C12 against OPM's flowexp_comp on 1D_COMP
     run_filter comp_skin_         3   # C12's well-conditioned 1D variant: the cumulative target
-    run_filter comp_depletion_    8   # C12's second fixture: single-cell depletion, rate and BHP
+    run_filter comp_depletion_    9   # C12's second fixture: single-cell depletion, rate and BHP
     run_filter comp_matched_      1   # C12 at the reference's own timestep - see the forensics doc
     run_filter comp_oracle_       3   # the oracle convergence census, and the band rule it enforces
 }

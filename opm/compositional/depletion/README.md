@@ -78,7 +78,8 @@ ruled-out list is not re-tested.
 | Surface gas/oil **ratio** | agrees to **1.4e-8** — the reference's single-precision floor. The first head-to-head comparison of the two surface flashes on a mixture that genuinely splits |
 | Phase appearance | agrees at all seven steps: single phase through 111.55 bar, two-phase at 109.10 |
 | Surface volume **scale** | ResSim 236 926 mol/day for 30 sm³/day of surface oil; OPM's own PTFlash at `STCOND` says 236 582 — **0.15%**, the two fluid systems' critical constants |
-| The reference's rate control | **Does not converge.** Implied withdrawal 227 888 → 231 373 → 244 887 → 269 638 mol/day as its `TSTEP` is refined 1.0 → 0.05 → 0.01 → 0.0025 d, walking past ResSim's timestep-independent value without settling. **Open, and not ResSim's** |
+| Cumulative production (BHP deck) | **0.041%** total, **0.088%** worst component over twenty days — conversion-free, since the cell is closed apart from one well. This is C12's production-total acceptance |
+| The reference's rate control (ORAT deck) | **Does not converge.** Implied withdrawal 227 888 → 231 373 → 244 887 → 269 638 mol/day as its `TSTEP` is refined 1.0 → 0.05 → 0.01 → 0.0025 d, walking past ResSim's timestep-independent value without settling. **Open, and not ResSim's** |
 | Pressure path | separates by 0.23 bar/day. ResSim's is timestep-independent to 0.001 bar over a 16-fold change in sub-step, so there is nothing on ResSim's side to match |
 
 ## What the ORAT pressure paths actually caught

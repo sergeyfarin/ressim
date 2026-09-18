@@ -2236,6 +2236,15 @@ fn run_depletion_bhp(
     report_times_days: &[f64],
     max_sub_step_days: f64,
 ) -> Vec<CompositionalCellState> {
+    run_depletion_bhp_with_totals(report_times_days, max_sub_step_days).1
+}
+
+/// As [`run_depletion_bhp`], and also the producer's cumulative component moles at each report
+/// time, from the rates the accepted solves actually ran at.
+fn run_depletion_bhp_with_totals(
+    report_times_days: &[f64],
+    max_sub_step_days: f64,
+) -> (Vec<Vec<f64>>, Vec<CompositionalCellState>) {
     let spec = deck_fluid();
     let relperm = deck_relperm();
     let layout = CompositionalLayout::new(3, depletion_deck::CELLS, 2, 2).unwrap();
@@ -2281,6 +2290,7 @@ fn run_depletion_bhp(
     let options = TimestepOptions::default();
 
     let mut out = Vec::with_capacity(report_times_days.len());
+    let mut cumulative = Vec::with_capacity(report_times_days.len());
     for &target in report_times_days {
         let mut guard = 0;
         while target - run.time_days() > options.min_dt_days {
@@ -2306,8 +2316,14 @@ fn run_depletion_bhp(
             );
         }
         out.push(run.state().cell(0).clone());
+        cumulative.push(
+            run.cumulative_well_moles()
+                .first()
+                .cloned()
+                .unwrap_or_else(|| vec![0.0; 3]),
+        );
     }
-    out
+    (cumulative, out)
 }
 
 /// **The BHP depletion trajectory, at the reference's own temporal resolution.**
@@ -2953,5 +2969,93 @@ fn comp_oracle_skin_final_state_gap_is_within_the_references_own_uncertainty() {
          bar converged-comparison figure can no longer be explained by its temporal resolution. \
          Re-diagnose before treating it as a model difference",
         f.halved_final_bar
+    );
+}
+
+/// **The plan's cumulative production-total acceptance, on a fixture whose reference converges.**
+///
+/// C12 originally tried to meet this on the ORAT depletion, and could not: that reference's
+/// rate-controlled withdrawal does not converge in the timestep, so there is no value to compare
+/// against. The BHP variant has no such problem, and needs no surface conversion either — the cell
+/// is closed apart from one well, so **the reference's own inventory change is its cumulative
+/// production**, component by component.
+///
+/// ResSim's side is its well's own accounting (`cumulative_well_moles`), not its inventory change,
+/// so this exercises the well rather than restating the state comparison. The two are equal for
+/// ResSim by conservation, which `comp_well_production_closes_the_grid_inventory_over_several_steps`
+/// checks independently.
+///
+/// The plan's target is 1% on cumulative quantities. Measured: well inside it, per component and
+/// in total.
+#[test]
+fn comp_depletion_bhp_cumulative_production_matches_opm() {
+    let reference = depletion_bhp_reference();
+    let times = reference.summary.get("TIME").expect("TIME").clone();
+    let (ours_cumulative, _) = run_depletion_bhp_with_totals(&times, MATCHED_SUB_STEP_DAYS);
+
+    let spec = deck_fluid();
+    let pore_volumes = vec![depletion_deck::PORE_VOLUME_M3];
+    let rock = RockView {
+        pore_volume_ref_m3: &pore_volumes,
+        reference_pressure_bar: depletion_deck::ROCK_REFERENCE_BAR,
+        compressibility_per_bar: depletion_deck::ROCK_COMPRESSIBILITY,
+    };
+    let inventory_of = |pressure: f64, z: [f64; 3]| {
+        let total: f64 = z.iter().sum();
+        let cell = CompositionalCellState::new(pressure, vec![z[0] / total, z[1] / total]).unwrap();
+        cell_inventory(&spec, &rock, 0, &cell)
+            .unwrap()
+            .0
+            .component_moles
+    };
+
+    let initial = inventory_of(
+        depletion_deck::INITIAL_PRESSURE_BAR,
+        depletion_deck::INITIAL_Z,
+    );
+
+    let last = reference.report_steps.last().unwrap();
+    let final_inventory = inventory_of(last.pressure[0], last.z(0));
+    let theirs: Vec<f64> = (0..3).map(|i| initial[i] - final_inventory[i]).collect();
+    // ResSim's well totals are negative for production; compare magnitudes.
+    let ours: Vec<f64> = ours_cumulative.last().unwrap().iter().map(|v| -v).collect();
+
+    let theirs_total: f64 = theirs.iter().sum();
+    let ours_total: f64 = ours.iter().sum();
+    let total_relative = (ours_total - theirs_total).abs() / theirs_total;
+
+    let mut worst_component = (0.0f64, 0usize);
+    for i in 0..3 {
+        let d = (ours[i] - theirs[i]).abs() / theirs[i];
+        if d > worst_component.0 {
+            worst_component = (d, i);
+        }
+    }
+
+    eprintln!(
+        "BHP depletion cumulative production over {:.0} days:\n  \
+         total     ours {ours_total:.6e} vs theirs {theirs_total:.6e}  ({:.4}%)\n  \
+         worst component: {} at {:.4}%",
+        times.last().unwrap(),
+        total_relative * 100.0,
+        worst_component.1,
+        worst_component.0 * 100.0
+    );
+
+    assert!(
+        theirs_total > 1e6,
+        "the reference produced only {theirs_total} moles; the fixture looks wrong"
+    );
+    // The plan's target is 1%. This is the acceptance the ORAT fixture could not provide.
+    assert!(
+        total_relative < 0.01,
+        "cumulative production differs by {:.4}%, above the plan's 1% target",
+        total_relative * 100.0
+    );
+    assert!(
+        worst_component.0 < 0.01,
+        "component {} differs by {:.4}%, above the plan's 1% target",
+        worst_component.1,
+        worst_component.0 * 100.0
     );
 }
