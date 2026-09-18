@@ -8,7 +8,8 @@ set -euo pipefail
 #            derivatives, transport, surface separation, and the domain sweep. ~20 s.
 #   fixture  rebuild the C0 thermodynamic fixture and verify it reproduces byte for byte.
 #            Needs the OPM headers and a C++20 compiler. ~15 s.
-#   reference re-run the 1D compositional case through flowexp_comp and verify its fixture.
+#   reference re-run every compositional case through flowexp_comp and verify its fixture: the
+#            1D displacement, its three refinements, and the single-cell depletion.
 #            Skips with a note when flowexp_comp has not been built; the committed fixture is
 #            still checked by the comp_reference_* tests either way.
 #   refinement C12's timestep and grid refinement study, in RELEASE. Runs the deck's case at four
@@ -102,6 +103,7 @@ run_thermo() {
     run_filter comp_rollback_    10   # C10 timestep lifecycle, retry and commit
     run_filter comp_well_        29   # C11 wells: sources, derivatives, controls, multi-completion
     run_filter comp_reference_   10   # C12 against OPM's flowexp_comp on 1D_COMP
+    run_filter comp_depletion_    4   # C12's second fixture: single-cell phase-changing depletion
 }
 
 run_fixture() {
@@ -129,7 +131,8 @@ run_reference() {
     fi
     bash "$repo_root/tools/opm_compositional/run-1d-comp.sh" --check
     bash "$repo_root/tools/opm_compositional/run-refinement.sh" --check
-    echo "gate ok: the 1D compositional reference and its refinements reproduce from flowexp_comp"
+    bash "$repo_root/tools/opm_compositional/run-depletion.sh" --check
+    echo "gate ok: every compositional reference fixture reproduces from flowexp_comp"
 }
 
 # The refinement study. Release, because a debug build turns three minutes into forty.

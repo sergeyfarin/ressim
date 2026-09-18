@@ -9,11 +9,11 @@ pin the dataset and oracle recorded here. Tracking issue:
 
 **Every claim here names what it does and does not cover.** The status table in section 7 records
 the state of each task and the completion records in section 8 record how each one was measured.
-C0–C11 are complete; C12 is partial — its thermodynamic comparison, its transport comparison and
-both refinement studies against an independent simulator are done, but the plan's 1% cumulative
-acceptance target is **not met** on the only external trajectory available (5.1% at forty cells,
-for a quantified reason), and the `NATIVE-COMPOSITIONAL-READY` milestone is **not** declared.
-C13 onwards have not started.
+C0–C11 are complete; C12 is partial. Its thermodynamic comparison, its transport comparison, both
+refinement studies and a second fixture are done against an independent simulator, and two things
+block the milestone: a **4.0% disagreement in the absolute surface volume per mole** of a mixture
+(mechanism not isolated), and the plan's **1% cumulative target**, not met for a quantified reason.
+`NATIVE-COMPOSITIONAL-READY` is **not** declared. C13 onwards have not started.
 
 ## Scope this document governs
 
@@ -298,6 +298,10 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C12 vs OPM** — CO2 front | — | worst **0.1327** in `z_CO2` (cell 4, 17.11 d); on five cells a small difference in front arrival reads as a large composition difference in the cell the front is crossing | **Met** |
 | **C12 vs OPM** — CO2 held by the grid | — | **≤ 0.02%** at every resolution from 5 to 40 cells. Conversion-free, so this is the load-bearing transport result | **Met** |
 | **C12 vs OPM** — cumulative injection | ≤ 1% on cumulative quantities | **1.10%** on the deck's grid, **5.12%** at 40 cells. The injector runs at ~1 bar of drawdown against a 150 bar limit, so `dq/q = dp/(BHP-p)` amplifies the pressure observable ~100×; the measured discrepancy sits below that bound at every resolution. Ruled out: the surface conversion (`FGIR` reproduced to 0.4% through it) and the transport (CO2 in place ≤ 0.02%) | **NOT MET.** The reason is quantified, not excused; this is why the milestone is undeclared |
+| **C12 depletion** — surface gas/oil ratio | — | **1.4e-8** relative, at the reference's single-precision floor. The first head-to-head comparison of the two surface flashes on a mixture that genuinely splits | **Met** |
+| **C12 depletion** — phase appearance | must agree | single phase through 111.55 bar, two-phase at 109.10, agreeing at all seven report steps | **Met** |
+| **C12 depletion** — surface volume scale | — | ResSim needs **4.0%** more feed per sm³ of surface oil. Measured by material balance on the reference's own pressures. Specific to a mixture: for the 1D case's pure CO2 the two agree to ~0.01% | **OPEN.** Mechanism not isolated — see the C12 record |
+| **C12 depletion** — pressure path | — | separates by 0.23 bar/day, 1.38 bar over six days, which is the 4% above integrated. Timestep-independent to 0.001 bar over a 16-fold sub-step change | **Explained, not met** |
 | **C10 Newton** — convergence rate | quadratic near the solution | a quadratic reduction is observed and asserted; a merely-close Jacobian would converge linearly and still terminate | **Met** |
 | **C10 Newton** — domain | `p > 0`, `z` on the simplex including `z_(N-1)` | fraction-to-boundary at 0.99, one global scale factor, no clamping or renormalization after the step | **Met** |
 | **C10 lifecycle** — rejected step | nothing mutates | state, clock and cumulative totals all unchanged, structurally | **Met** |
@@ -392,7 +396,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C9 | Component face flux, gravity and global assembly | **COMPLETE** | `compositional/{flux,assembly}.rs`; 33 `comp_flux_*` / `comp_assembly_*` / `comp_gravity_*` tests |
 | C10 | Linear solve, Newton, timestep lifecycle | **COMPLETE** on the direct path | `compositional/{newton,timestep}.rs`; 20 `comp_newton_*` / `comp_rollback_*` tests. The iterative/CPR adapter is deferred — see the C10 record |
 | C11 | Compositional wells | **COMPLETE** | `compositional/wells.rs`, [design note](COMPOSITIONAL_WELL_DESIGN.md); 29 `comp_well_*` tests, single and multiple completions. **Derived from first principles — C11's OPM reference is unavailable here** (plan correction 3), so no OPM agreement is claimed |
-| C12 | NATIVE-COMPOSITIONAL-READY | **PARTIAL** — thermodynamics, transport and both refinement studies done; the 1% cumulative acceptance target is **not met** (5.12% at 40 cells, for a measured reason) | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. The milestone is **not** declared |
+| C12 | NATIVE-COMPOSITIONAL-READY | **PARTIAL** — thermodynamics, transport, both refinement studies and a second fixture done. Two blockers: a **4.0%** surface-volume scale disagreement on a mixture, and the 1% cumulative target (5.12% at 40 cells, for a measured reason) | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 4 `comp_depletion_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. The milestone is **not** declared |
 | C13–C14 | WASM, product integration, release | NOT STARTED | Gated on C12 |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
@@ -400,8 +404,14 @@ No existing black-oil benchmark tolerance is changed by any of this.
 
 ### C12 — against an independent simulator (PARTIAL)
 
-**The milestone `NATIVE-COMPOSITIONAL-READY` is NOT declared**, for one reason, stated up front:
-the plan's 1% cumulative-quantity target is not met — 5.12% at forty cells. The cause is measured
+**The milestone `NATIVE-COMPOSITIONAL-READY` is NOT declared**, for two reasons, stated up front.
+
+**One:** the absolute surface volume per mole of feed disagrees with the reference by 4.0% on a
+three-component mixture, while the surface gas/oil **ratio** agrees to 1.4e-8. Measured on the
+second fixture by material balance on the reference's own pressures; the mechanism is not isolated.
+This is the sharpest open lead C12 has.
+
+**Two:** the plan's 1% cumulative-quantity target is not met — 5.12% at forty cells. The cause is measured
 rather than guessed. Late in this case the injector runs at about one bar of drawdown against its
 150 bar limit, so the rate observable amplifies the pressure observable by roughly a hundred; the
 state agreement of 0.03 bar that the comparison achieves maps to several per cent on the rate. The
@@ -409,7 +419,8 @@ section "the cumulative target is not met" below carries the numbers and rules o
 alternative explanations.
 
 Everything else C12 asks for is done: the thermodynamic comparison, the transport comparison, the
-timestep refinement and the grid refinement against a reference re-solved on each grid.
+timestep refinement, the grid refinement against a reference re-solved on each grid, and a second
+fixture covering phase appearance and the surface separation.
 
 ```text
 C-task:                C12
@@ -420,14 +431,16 @@ Oracle:                OPM flowexp_comp, built from release/2026.04/final (secti
                        refined to 10, 20 and 40 cells over the same 300 m
 Fixtures:              opm/compositional/1d_comp/reference.json          (the deck's own grid)
                        opm/compositional/1d_comp/refined/n0{10,20,40}/   (the refinement ladder)
-                       regenerated by run-1d-comp.sh and run-refinement.sh; refine_deck.py
-                       asserts on every keyword it rewrites, so a change to the source deck fails
-                       there rather than quietly producing a different case
+                       opm/compositional/depletion/reference.json        (single-cell depletion)
+                       regenerated by run-1d-comp.sh, run-refinement.sh and run-depletion.sh;
+                       refine_deck.py asserts on every keyword it rewrites, so a change to the
+                       source deck fails there rather than quietly producing a different case
 Gates:                 bash scripts/validate-compositional.sh reference   (fixtures reproduce)
-                       bash scripts/validate-compositional.sh all         (10 comp_reference_*)
+                       bash scripts/validate-compositional.sh all         (10 comp_reference_*
+                                                                           + 4 comp_depletion_*)
                        bash scripts/validate-compositional.sh refinement  (3 comp_refinement_*,
                                                                            release, ~3 min)
-Tests created:         10 comp_reference_*, 3 comp_refinement_*
+Tests created:         10 comp_reference_*, 4 comp_depletion_*, 3 comp_refinement_*
 ```
 
 #### What is compared
@@ -543,6 +556,61 @@ the cumulative is not a small difference of large numbers. `1D_COMP` is not that
 case is run, the plan's cumulative acceptance target is unmet on the only external trajectory
 available here, and `NATIVE-COMPOSITIONAL-READY` is not declared.
 
+#### The second fixture: a phase-changing single-cell depletion
+
+The plan asks C12 to freeze several matched fixtures, not one. `1D_COMP` is a displacement; nothing
+in it takes a cell down through its own saturation pressure, and nothing in it compares a **surface**
+quantity against the reference at all. `opm/compositional/depletion/` fills both gaps: one cell,
+single-phase liquid at 150 bar, produced at a fixed surface **oil** rate until gas appears. Rate
+control is deliberate — with the withdrawal imposed identically on both sides the comparison is of
+the pressure path and the phase-appearance point, and it does not inherit the conditioning problem
+above.
+
+**The reference run aborts, and that is a finding.** `flowexp_comp` depletes the cell cleanly to
+111.55 bar single phase, produces one report step at 109.10 bar with gas just appeared
+(`Sg = 0.0036`), and then its own Rachford–Rice stops converging. Every two-phase flash method it
+offers — `ssi`, `newton`, `ssi-newton` — fails the same way, and halving the rate only moves where.
+ResSim runs the same case past that point without difficulty; its stability test and extended
+(negative) Rachford–Rice window exist precisely for near-boundary states. The fixture is therefore
+seven report steps, and `run-depletion.sh` checks the step **count** rather than the exit status, so
+an expected abort cannot be mistaken for a real failure.
+
+What it establishes:
+
+* **The surface gas/oil ratio agrees to 1.4e-8.** While the cell is single phase its produced stream
+  has the deck's exact `z = [0.1, 0.3, 0.6]`, and the reference reports it as `FOPR = 30` sm³/day
+  and `FGPR = 2225.39185` sm³/day — a ratio ResSim can be asked for directly. This is the head-to-head
+  surface-flash comparison the 1D case could not make.
+* **Phase appearance agrees at all seven steps**, including the bracketing pair at 111.55 and
+  109.10 bar.
+
+And what it opens:
+
+* **The absolute surface volume per mole of feed does not agree, by 4.0%.** ResSim needs 236 926
+  mol/day to make the deck's 30 sm³/day of surface oil; the reference withdrew 227 437–228 475
+  mol/day, constant to 0.5% across the run. That is measured by material balance on the reference's
+  **own** pressures — while the cell is single phase its composition cannot change, so its moles are
+  `PV · c(p)` and `c` is the quantity the thermodynamic half already validated to 1e-7. No
+  assumption about how the reference meters anything enters.
+
+  Ruled out: the pore volume (`PV` cancels between consecutive steps and the implied withdrawal is
+  constant), the timestep (ResSim's path moves 0.001 bar over a 16-fold sub-step change), and the
+  reservoir-condition flash. Not isolated: a different surface **split** would move the gas/oil
+  ratio, which agrees to 1.4e-8; a different surface **condition** would move the gas molar volume
+  about 4% but a liquid does not expand 4% over the 12 K that implies. Both surface volumes being
+  4% larger while their ratio is unchanged needs two differences cancelling to eight digits, which
+  is not credible — so the mechanism is something neither candidate describes, and it is recorded
+  here with the numbers a follow-up needs rather than absorbed into a tolerance.
+
+  It is **specific to a mixture**. For the 1D case's pure CO2 stream the two simulators' surface
+  volumes agree to about 0.01%, which is why that case's cumulative-injection comparison is not
+  affected by this and why the conditioning explanation above stands.
+* The pressure paths therefore separate by 0.23 bar/day — 1.38 bar over six days, which is that 4%
+  integrated, and it closes to 0.17 bar at the last step when the withdrawal stops being pure
+  liquid. The band on that test is the consequence, not an independent tolerance, and it is bounded
+  **below** as well as above so that fixing the scale shows up as a failure rather than passing
+  silently.
+
 #### Three defects the comparison found, that no unit test could have
 
 **1. Wells were applied as an explicitly evaluated source.** A BHP well is strong negative feedback
@@ -600,12 +668,18 @@ discretisation.
 #### Remaining for C12
 
 ```text
+* the 4% surface-volume scale difference on a mixture, measured on the depletion fixture and not
+  isolated to a mechanism. This is the sharpest open lead C12 has: it is a single constant, it is
+  measured by material balance on the reference's own states, and it would also explain why a
+  surface-metered cumulative is hard to compare
 * the 1% cumulative target, which needs an external trajectory whose injector is not near
   shut-in. On 1D_COMP the cumulative is a small difference of large numbers and cannot resolve
-  1% from a 0.03 bar state agreement. This is the one thing blocking the milestone
+  1% from a 0.03 bar state agreement
 * a published benchmark. The plan lists this as an optional later expansion (C12 item 4) and it
-  is not a blocker, but 1D_COMP is one case on one fluid
+  is not a blocker, but the two fixtures here share one fluid
 ```
+
+Either of the first two blocks the milestone on its own.
 
 The per-observable bands frozen above are for **this** case at **this** resolution, and the tests
 that carry them print their measurements so they can be rechecked rather than trusted.

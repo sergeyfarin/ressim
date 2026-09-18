@@ -1435,3 +1435,411 @@ fn comp_refinement_cumulative_injection_is_bounded_by_its_own_conditioning() {
         worst * 100.0
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// The second C12 fixture: a phase-changing single-cell depletion (`comp_depletion_*`)
+// ---------------------------------------------------------------------------------------------
+//
+// The plan asks C12 to freeze several matched fixtures, not one, and names "phase-changing
+// single-cell depletion" among them. `1D_COMP` is a displacement; nothing in it depletes a cell
+// through its own saturation pressure, and nothing in it compares a **surface** quantity against
+// the reference at all.
+//
+// This case is one cell, initially single-phase liquid at 150 bar, produced at a fixed surface
+// **oil rate** until gas appears. Rate control rather than BHP control is the point: with the
+// withdrawal imposed identically on both simulators, the comparison is of the pressure path and
+// the phase-appearance point, and it does not inherit the conditioning that makes a near-shut-in
+// well's cumulative a small difference of large numbers — the defect that keeps the 1D case from
+// meeting the plan's 1% cumulative target.
+//
+// **The reference run aborts**, and that is recorded rather than worked around. `flowexp_comp`
+// depletes the cell cleanly to 111.55 bar, produces one report step at 109.10 bar with gas just
+// appeared, and then its own Rachford-Rice stops converging. Every two-phase flash method it
+// offers fails the same way. See `opm/compositional/depletion/DEPLETION.DATA`'s header.
+
+/// The depletion reference. Seven report steps, which is as far as the oracle gets.
+fn depletion_reference() -> Reference {
+    let raw = include_str!("../../../../../opm/compositional/depletion/reference.json");
+    let r: Reference = serde_json::from_str(raw).expect("the depletion fixture must parse");
+    assert_eq!(r.schema, "ressim-compositional-reference/1");
+    assert_eq!(r.case, "DEPLETION");
+    assert_eq!(r.cells, 1);
+    assert_eq!(
+        r.report_steps.len(),
+        7,
+        "the oracle's reach on this case has changed; see run-depletion.sh"
+    );
+    r
+}
+
+/// `DEPLETION.DATA`'s geometry and controls.
+mod depletion_deck {
+    pub const CELLS: usize = 1;
+    /// `DXV 100`, `DYV 100`, `DZV 10`, `PORO 0.1`.
+    pub const PORE_VOLUME_M3: f64 = 100.0 * 100.0 * 10.0 * 0.1;
+    /// `PRESSURE 1*150.`
+    pub const INITIAL_PRESSURE_BAR: f64 = 150.0;
+    /// `ZMF` — the same mixture as `1D_COMP`.
+    pub const INITIAL_Z: [f64; 3] = [0.1, 0.3, 0.6];
+    /// `WCONPROD PROD OPEN ORAT 30 4* 20` — 30 sm³/day of surface **oil**, 20 bar BHP floor.
+    pub const OIL_RATE_SM3_PER_DAY: f64 = 30.0;
+    pub const BHP_FLOOR_BAR: f64 = 20.0;
+    /// The deck's `ROCK 68.9476 0` is `1D_COMP`'s, carried over verbatim.
+    pub const ROCK_REFERENCE_BAR: f64 = 68.9476;
+    pub const ROCK_COMPRESSIBILITY: f64 = 0.0;
+    /// `COMPDAT PROD 1 1 1 1 OPEN 2* 0.0151` — item 9, a **diameter**.
+    pub const WELL_DIAMETER_M: f64 = 0.0151;
+}
+
+/// **The surface separation against OPM's, at a composition the reference states exactly.**
+///
+/// While the cell is single phase its produced stream has the cell's own `z` — the deck's
+/// `[0.1, 0.3, 0.6]`, unchanged, which the fixture confirms to every printed digit. The reference
+/// reports that stream as `FOPR = 30` sm³/day of oil and `FGPR = 2225.39185` sm³/day of gas, so
+/// its surface gas/oil ratio for that exact composition is a number ResSim can be asked for
+/// directly.
+///
+/// This is the check the 1D case could not make. There, cumulative injection had to be converted
+/// from a surface volume and the conversion was the first suspect for the disagreement; it was
+/// cleared only indirectly, by reproducing `FGIR` to 0.4%. Here the two surface flashes are
+/// compared head on, on a three-component mixture that genuinely splits.
+#[test]
+fn comp_depletion_surface_separation_matches_opm() {
+    let reference = depletion_reference();
+    let oil = reference.summary.get("FOPR").expect("FOPR")[0];
+    let gas = reference.summary.get("FGPR").expect("FGPR")[0];
+    assert_eq!(
+        oil,
+        depletion_deck::OIL_RATE_SM3_PER_DAY,
+        "the reference is not holding the deck's oil rate; the premise of this test is gone"
+    );
+    let theirs = gas / oil;
+
+    let spec = deck_fluid();
+    // Any amount of the mixture: the ratio is what is being compared.
+    let separated = crate::fluid::transport::surface_separation(
+        &spec,
+        &[
+            100.0 * depletion_deck::INITIAL_Z[0],
+            100.0 * depletion_deck::INITIAL_Z[1],
+            100.0 * depletion_deck::INITIAL_Z[2],
+        ],
+    )
+    .unwrap();
+    let ours = separated.vapour_volume / separated.liquid_volume;
+
+    let relative = (ours - theirs).abs() / theirs;
+    eprintln!("surface GOR: ours {ours:.8}, OPM {theirs:.8}, relative {relative:.2e}");
+    // 1.4e-8, which is the reference's single-precision resolution. Two independent surface
+    // flashes of the same mixture agree to the limit of what the fixture can express.
+    assert!(
+        relative < 5e-8,
+        "surface GOR differs by {relative:.3e}: {ours} vs {theirs}"
+    );
+}
+
+/// Run the deck's depletion in ResSim and return the pressure and vapour saturation at each of the
+/// reference's report times.
+fn run_depletion(report_times_days: &[f64], max_sub_step_days: f64) -> Vec<CompositionalCellState> {
+    let spec = deck_fluid();
+    let relperm = deck_relperm();
+    let layout = CompositionalLayout::new(3, depletion_deck::CELLS, 2, 2).unwrap();
+    let pore_volumes = vec![depletion_deck::PORE_VOLUME_M3; depletion_deck::CELLS];
+    let rock = RockView {
+        pore_volume_ref_m3: &pore_volumes,
+        reference_pressure_bar: depletion_deck::ROCK_REFERENCE_BAR,
+        compressibility_per_bar: depletion_deck::ROCK_COMPRESSIBILITY,
+    };
+
+    // Peaceman for this cell. 100 x 100 m is isotropic, so `r_eq = 0.14 * sqrt(dx^2 + dy^2)`.
+    let r_w = depletion_deck::WELL_DIAMETER_M / 2.0;
+    let r_eq = 0.28 * (100.0f64 * 100.0 + 100.0 * 100.0).sqrt() / 2.0;
+    let well_index = deck::DARCY * 2.0 * std::f64::consts::PI * 100.0 * 10.0 / (r_eq / r_w).ln();
+
+    let producer = CompositionalWell {
+        id: "PROD".to_string(),
+        completions: vec![Completion {
+            cell: 0,
+            well_index,
+            head_offset_bar: 0.0,
+        }],
+        control: WellControl::SurfaceRate {
+            // The deck's control is ORAT: surface **oil**, which for this stream is the surface
+            // liquid. `comp_depletion_surface_separation_matches_opm` is what makes taking the
+            // reference's oil rate at face value legitimate.
+            target_m3_per_day: -depletion_deck::OIL_RATE_SM3_PER_DAY,
+            phase: SurfacePhase::Liquid,
+            bhp_limit_bar: depletion_deck::BHP_FLOOR_BAR,
+        },
+        injection_composition: None,
+    };
+
+    let initial = CompositionalState::new(
+        &layout,
+        vec![
+            CompositionalCellState::new(
+                depletion_deck::INITIAL_PRESSURE_BAR,
+                vec![depletion_deck::INITIAL_Z[0], depletion_deck::INITIAL_Z[1]],
+            )
+            .unwrap(),
+        ],
+    )
+    .unwrap();
+
+    let wells = vec![producer];
+    let sources = vec![vec![0.0; 3]; depletion_deck::CELLS];
+    let mut run = CompositionalRun::new(initial);
+    let options = TimestepOptions {
+        newton: super::newton::NewtonOptions {
+            tolerance: 1e-8,
+            max_iterations: 30,
+        },
+        ..TimestepOptions::default()
+    };
+
+    let mut out = Vec::with_capacity(report_times_days.len());
+    for &target in report_times_days {
+        let mut guard = 0;
+        while target - run.time_days() > options.min_dt_days {
+            guard += 1;
+            assert!(guard < 5000, "sub-stepping did not reach {target} days");
+            let dt = (target - run.time_days()).min(max_sub_step_days);
+            let report = run.step(
+                &spec,
+                &layout,
+                &rock,
+                &relperm,
+                &[],
+                &wells,
+                &sources,
+                dt,
+                options,
+            );
+            assert!(
+                report.succeeded(),
+                "depletion step at {} days failed: {:?}",
+                run.time_days(),
+                report.failure
+            );
+        }
+        out.push(run.state().cell(0).clone());
+    }
+    out
+}
+
+/// **The absolute surface volume per mole of feed does NOT agree with OPM's, by 4.0%.**
+///
+/// The ratio does, to 1.4e-8 (`comp_depletion_surface_separation_matches_opm`). The scale does
+/// not, and this measures it by material balance on the reference's own trajectory, which needs no
+/// assumption about how the reference meters anything.
+///
+/// While the cell is single phase its composition cannot change, so the moles it holds are
+/// `PV · c(p)` with `c` the mixture molar density — and `c` is the quantity C12's thermodynamic
+/// half already showed the two implementations agree on to 1e-7. The moles the reference withdrew
+/// between two of its own report steps therefore follow from its own two pressures. Across all
+/// seven steps that comes out at **227 437 to 229 476 mol/day, varying by 0.5%** — the reference
+/// is holding a constant molar withdrawal, as a rate-controlled well should. ResSim needs
+/// **236 926 mol/day** to make the deck's 30 sm³/day of surface oil. That is 4.0% more, and it is
+/// what makes the pressure paths diverge.
+///
+/// **The mechanism is not isolated, and this test does not pretend otherwise.** Two candidates
+/// survive and neither is clean:
+///
+/// * A different surface **split**. But then the gas/oil ratio would move too, and it agrees to
+///   1.4e-8. For both surface volumes to be 4% larger while their ratio is unchanged, the split
+///   and the surface liquid molar volume would each have to differ, by 4% and 6.7%, in the one
+///   combination that cancels. Two independent differences conspiring that precisely is not
+///   credible.
+/// * A different surface **condition**. A 4% larger gas molar volume at 1 bar means about 12 K,
+///   but a liquid does not expand 4% over 12 K — it expands about 1%. So this does not account
+///   for both either.
+///
+/// What is ruled out: the pore volume (`PV` cancels out of the ratio between consecutive steps,
+/// and the implied withdrawal is constant), the timestep (ResSim's path moves by 0.001 bar over a
+/// 16-fold change in sub-step), and the flash at reservoir conditions (validated to 1e-7).
+///
+/// It is also **specific to a mixture**: on `1D_COMP` the injected stream is pure CO2 and the two
+/// simulators' surface volumes for it agree to about 0.01%, which is why that case's cumulative
+/// injection comparison is not affected by this.
+///
+/// This is an open C12 item, recorded with the numbers a follow-up needs rather than absorbed into
+/// a tolerance.
+#[test]
+fn comp_depletion_surface_volume_scale_differs_from_opm() {
+    let reference = depletion_reference();
+    let spec = deck_fluid();
+    let t = spec.reservoir_temperature_k();
+
+    let molar_density = |bar: f64| {
+        1.0 / flash(&spec, bar_to_pa(bar), t, &depletion_deck::INITIAL_Z, None)
+            .expect("the single-phase mixture must flash")
+            .mixture_molar_volume()
+    };
+
+    // Moles the reference withdrew each day, from its own consecutive pressures.
+    let mut previous = molar_density(depletion_deck::INITIAL_PRESSURE_BAR);
+    let mut withdrawals = Vec::new();
+    for step in &reference.report_steps {
+        if step.sgas[0] > 0.0 {
+            // Once gas appears the composition starts to change and this inference stops being
+            // exact. The single-phase steps are enough.
+            break;
+        }
+        let c = molar_density(step.pressure[0]);
+        withdrawals.push(depletion_deck::PORE_VOLUME_M3 * (previous - c));
+        previous = c;
+    }
+    assert!(
+        withdrawals.len() >= 6,
+        "only {} single-phase steps; the inference needs several",
+        withdrawals.len()
+    );
+
+    let lowest = withdrawals.iter().cloned().fold(f64::INFINITY, f64::min);
+    let highest = withdrawals.iter().cloned().fold(0.0, f64::max);
+    assert!(
+        (highest - lowest) / lowest < 0.02,
+        "the implied withdrawal is not constant ({lowest:.1} to {highest:.1} mol/day), so the \
+         reference is not holding its rate and this inference does not apply"
+    );
+
+    let separated = crate::fluid::transport::surface_separation(
+        &spec,
+        &[
+            100.0 * depletion_deck::INITIAL_Z[0],
+            100.0 * depletion_deck::INITIAL_Z[1],
+            100.0 * depletion_deck::INITIAL_Z[2],
+        ],
+    )
+    .unwrap();
+    let ours_per_day = depletion_deck::OIL_RATE_SM3_PER_DAY / (separated.liquid_volume / 100.0);
+    let theirs_per_day = withdrawals.iter().sum::<f64>() / withdrawals.len() as f64;
+    let relative = (ours_per_day - theirs_per_day).abs() / theirs_per_day;
+
+    eprintln!(
+        "depletion molar withdrawal: ours {ours_per_day:.1}, reference {theirs_per_day:.1} \
+         ({:.1} to {:.1}) mol/day, relative {:.3}%",
+        lowest,
+        highest,
+        relative * 100.0
+    );
+
+    // 4.0%, measured. Bounded in both directions: this is a recorded open finding, so a change
+    // in either direction is a change worth noticing.
+    assert!(
+        (0.03..0.05).contains(&relative),
+        "the surface volume scale now differs by {:.2}% rather than the recorded 4.0%. If it \
+         shrank, say what fixed it; if it grew, something regressed",
+        relative * 100.0
+    );
+}
+
+/// **The depletion pressure path against OPM's**, which carries the consequence of the 4% above.
+///
+/// Both simulators are given the deck's control — 30 sm³/day of surface oil — so the withdrawal
+/// they actually apply differs by the 4% that
+/// `comp_depletion_surface_volume_scale_differs_from_opm` measures, and the paths separate at
+/// about 0.23 bar per day. The band here is that consequence, not an independent tolerance.
+///
+/// It is still worth running as a comparison, because the *shape* is right: the separation is
+/// linear in time, timestep-independent to 0.001 bar over a 16-fold change in sub-step, and it
+/// closes to 0.17 bar at the last step when gas appears and the withdrawal stops being pure
+/// liquid. Nothing else in the depletion — accumulation, compressibility, the phase change — is
+/// contributing.
+#[test]
+fn comp_depletion_pressure_path_matches_opm() {
+    let reference = depletion_reference();
+    let times = reference.summary.get("TIME").expect("TIME").clone();
+    let ours = run_depletion(&times, 0.05);
+
+    let mut worst_single_phase = (0.0f64, String::new());
+    let mut worst_overall = 0.0f64;
+    for (index, step) in reference.report_steps.iter().enumerate() {
+        let theirs = step.pressure[0];
+        let d = (ours[index].pressure_bar - theirs).abs();
+        worst_overall = worst_overall.max(d);
+        if step.sgas[0] == 0.0 && d > worst_single_phase.0 {
+            worst_single_phase = (
+                d,
+                format!(
+                    "t = {:.1} d: {:.4} vs {theirs:.4} bar",
+                    times[index], ours[index].pressure_bar
+                ),
+            );
+        }
+    }
+    eprintln!(
+        "depletion pressure path: single phase worst {:.4} bar at {}; overall worst {worst_overall:.4} bar",
+        worst_single_phase.0, worst_single_phase.1
+    );
+    for (index, step) in reference.report_steps.iter().enumerate() {
+        eprintln!(
+            "  t={:.1} ours={:.4} theirs={:.4} d={:+.4}",
+            times[index],
+            ours[index].pressure_bar,
+            step.pressure[0],
+            ours[index].pressure_bar - step.pressure[0]
+        );
+    }
+
+    // 1.38 bar over six days, which is the 4% withdrawal difference integrated. Bounded above
+    // so a regression is caught, and below so that a fix to the surface volume scale shows up
+    // here as a failure rather than passing silently.
+    assert!(
+        worst_single_phase.0 < 1.5,
+        "the single-phase depletion path diverges by more than the surface volume scale \
+         accounts for: worst {:.4} bar at {}",
+        worst_single_phase.0,
+        worst_single_phase.1
+    );
+    assert!(
+        worst_single_phase.0 > 1.0,
+        "the depletion path now agrees to {:.4} bar. If the surface volume scale was fixed, this \
+         band and its explanation need updating together",
+        worst_single_phase.0
+    );
+    assert!(
+        worst_overall < 1.5,
+        "the depletion path diverges: worst {worst_overall:.4} bar"
+    );
+}
+
+/// **Where gas appears.**
+///
+/// The reference brackets it: single phase at 111.55 bar, `Sg = 0.0036` at 109.10 bar. Both
+/// simulators must put the boundary in the same place, and ResSim must not have gas before the
+/// reference does or still be single phase after it.
+#[test]
+fn comp_depletion_phase_appearance_matches_opm() {
+    let reference = depletion_reference();
+    let times = reference.summary.get("TIME").expect("TIME").clone();
+    let ours = run_depletion(&times, 0.05);
+
+    let spec = deck_fluid();
+    for (index, step) in reference.report_steps.iter().enumerate() {
+        let z = ours[index].overall_composition();
+        let state = flash(
+            &spec,
+            bar_to_pa(ours[index].pressure_bar),
+            spec.reservoir_temperature_k(),
+            &z,
+            None,
+        )
+        .unwrap();
+        let ours_two_phase = state.phase_state == PhaseState::TwoPhase;
+        let theirs_two_phase = step.sgas[0] > 0.0;
+        assert_eq!(
+            ours_two_phase, theirs_two_phase,
+            "t = {:.1} d: ResSim says two-phase = {ours_two_phase} at {:.4} bar, the reference \
+             says {theirs_two_phase} at {:.4} bar",
+            times[index], ours[index].pressure_bar, step.pressure[0]
+        );
+    }
+
+    // And the appearance is genuinely inside the run, not at one end of it — otherwise this test
+    // would pass on a case that never changes phase.
+    let first = reference.report_steps.first().unwrap().sgas[0];
+    let last = reference.report_steps.last().unwrap().sgas[0];
+    assert_eq!(first, 0.0, "the reference starts two-phase");
+    assert!(last > 0.0, "the reference never develops a gas phase");
+}
