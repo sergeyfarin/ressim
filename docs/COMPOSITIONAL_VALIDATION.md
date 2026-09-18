@@ -372,10 +372,13 @@ No existing black-oil benchmark tolerance is changed by any of this.
    *What it is still not.* A real displacement front will be less sharp under straight lines than
    under a Corey curve. A sourced table remains preferable for any case that claims to represent a
    reservoir.
-3. **The first flow fixture is specified but not built.** 1D uniform column, no gravity or
-   capillarity, fixed temperature, one injection and one production boundary, composition chosen
-   to force a phase change inside the declared domain. It cannot be given an external reference
-   (§3b), so its acceptance rests on invariants.
+3. ~~**The first flow fixture is specified but not built.**~~ **CLOSED by C12**, and better than
+   specified. The note said such a fixture "cannot be given an external reference (§3b), so its
+   acceptance rests on invariants"; §3b is no longer blocked, and there are now **four** externally
+   referenced flow fixtures rather than one on invariants: the 1D displacement, its three-point
+   grid refinement, a skin variant conditioned to test a cumulative, and a single-cell depletion on
+   two different controls. A phase change inside the declared domain is forced by the depletion
+   pair, not by a chosen composition.
 4. **The iterative linear adapter is deferred.** C10 delivers the direct dense solve the plan
    asks it to start with. A component-aware block-ILU or CPR path is not implemented, and it is
    not needed until C14's performance work gives it a budget to meet: its entire value is being
