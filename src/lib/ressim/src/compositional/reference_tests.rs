@@ -954,13 +954,13 @@ fn comp_reference_cumulative_injection_tracks_opm() {
         theirs_moles > 1e6,
         "the reference injected only {theirs_moles} moles; the fixture looks wrong"
     );
-    // 1.10%, measured, and **not** a clean acceptance result even though it is close to the
-    // plan's 1% target. The conversion from the reference's surface volumes is not one the two
-    // simulators are known to share, and under grid refinement this number grows to 5.1% while
-    // the conversion-free comparison of the same flow stays under 0.02%. See
-    // `comp_refinement_surface_cumulative_is_inconclusive_not_a_failure`, which is where that is
-    // measured and where the reason is recorded. The bound here is a regression guard on the
-    // deck's own grid, not a claim that the 1% target is met.
+    // 1.10%, measured, and **not** a clean acceptance result even though it is under the plan's
+    // 1%... on this grid alone. Under refinement it grows to 5.1%, because the injector ends up
+    // running at about one bar of drawdown against its 150 bar limit and the rate observable
+    // therefore amplifies the pressure observable by roughly a hundred. See
+    // `comp_refinement_cumulative_injection_is_bounded_by_its_own_conditioning`, which measures
+    // that. The bound here is a regression guard on the deck's own grid, not a claim that the
+    // target is met.
     assert!(
         relative < 0.015,
         "cumulative injection differs by {:.2}%: {ours_total:.4e} vs {theirs_moles:.4e} moles",
@@ -1063,9 +1063,8 @@ fn reference_on(cells: usize) -> Reference {
 /// simulator's surface volume, and the two need not mean the same thing by a cubic metre of
 /// surface CO2 — the reference reports `FGIT` through its own surface flash, and ResSim's surface
 /// flash labels the same stream a liquid (see
-/// `comp_reference_surface_phase_label_is_pressure_blind`). The plan calls a state/units mismatch
-/// INCONCLUSIVE rather than a failure, so the primary comparison is of what both simulators
-/// actually conserve: moles in the reservoir.
+/// `comp_reference_surface_phase_label_is_pressure_blind`). This observable sidesteps that
+/// entirely: it compares what both simulators actually conserve, moles in the reservoir.
 ///
 /// Both inventories are evaluated with **ResSim's** EOS, from each simulator's own `(p, z)`. That
 /// is legitimate precisely because C12's thermodynamic half already showed the two EOS
@@ -1120,6 +1119,16 @@ struct RefinementPoint {
     /// Relative difference in **CO2 moles held by the grid** at the last report time.
     /// Conversion-free: see [`grid_inventory`].
     inventory_relative: f64,
+    /// The reference's own injector drawdown at the last report time, `BHP - p_cell` [bar].
+    ///
+    /// This is what conditions the rate comparison. An injector on its BHP limit has
+    /// `q = WI * lambda * (BHP - p)`, so a pressure disagreement of `dp` is a *relative* rate
+    /// disagreement of `dp / (BHP - p)`. Late in this case that denominator is about one bar, so
+    /// the rate observable amplifies the pressure observable by roughly a hundred.
+    injector_drawdown_bar: f64,
+    /// Worst absolute pressure difference in the injection cell over the second half of the run,
+    /// where most of the injection happens [bar].
+    late_injection_cell_bar: f64,
 }
 
 /// Run ResSim on `cells` cells at `sub_step_days` and compare against the reference solved on the
@@ -1136,6 +1145,15 @@ fn measure_refinement(cells: usize, sub_step_days: f64) -> RefinementPoint {
         for cell in 0..cells {
             trajectory_pressure_bar = trajectory_pressure_bar
                 .max((ours[index][cell].pressure_bar - step.pressure[cell]).abs());
+        }
+    }
+
+    // The injection cell over the second half, which is where most of the cumulative accrues.
+    let mut late_injection_cell_bar = 0.0f64;
+    for (index, step) in reference.report_steps.iter().enumerate() {
+        if times[index] >= 10.0 {
+            late_injection_cell_bar =
+                late_injection_cell_bar.max((ours[index][0].pressure_bar - step.pressure[0]).abs());
         }
     }
 
@@ -1183,21 +1201,30 @@ fn measure_refinement(cells: usize, sub_step_days: f64) -> RefinementPoint {
         trajectory_pressure_bar,
         cumulative_relative: (ours_total - theirs_moles).abs() / theirs_moles,
         inventory_relative: (ours_inventory[0] - theirs_inventory[0]).abs() / theirs_inventory[0],
+        injector_drawdown_bar: deck::INJECTOR_BHP_LIMIT_BAR - last.pressure[0],
+        late_injection_cell_bar,
     }
 }
 
 fn print_ladder(label: &str, points: &[RefinementPoint]) {
     eprintln!("{label}");
-    eprintln!("  cells  sub-step/d   final p/bar   worst p/bar   CO2 in place   cumulative");
+    eprintln!(
+        "  cells  sub-step/d   final p/bar   worst p/bar   CO2 in place   cumulative   \
+         drawdown/bar   late p0/bar   amplified"
+    );
     for p in points {
         eprintln!(
-            "  {:5}  {:10.4}   {:11.3}   {:11.3}   {:11.3}%   {:8.3}%",
+            "  {:5}  {:10.4}   {:11.3}   {:11.3}   {:11.3}%   {:8.3}%   {:12.3}   {:11.3}   \
+             {:8.3}%",
             p.cells,
             p.sub_step_days,
             p.final_pressure_bar,
             p.trajectory_pressure_bar,
             p.inventory_relative * 100.0,
-            p.cumulative_relative * 100.0
+            p.cumulative_relative * 100.0,
+            p.injector_drawdown_bar,
+            p.late_injection_cell_bar,
+            100.0 * p.late_injection_cell_bar / p.injector_drawdown_bar
         );
     }
 }
@@ -1315,64 +1342,96 @@ fn comp_refinement_grid_agreement_holds_on_state_observables() {
     }
 }
 
-/// **Cumulative injection compared through surface volumes is INCONCLUSIVE**, and this test says
-/// exactly why rather than dressing it up as a pass or a failure.
+/// **Cumulative injection does not meet the plan's 1% target, and this measures why.**
 ///
-/// The plan's own acceptance target is "<= 1% for cumulative quantities", and the reference
-/// reports cumulative injection only as `FGIT`, a **surface volume**. Converting it to moles needs
-/// the reference's own surface molar volume for the injected stream, and the fixture cannot supply
-/// it: `GAS_DEN` and `OIL_DEN` come back identically zero from `flowexp_comp`, so the conversion
-/// has to be done with ResSim's surface flash instead — which is the very thing
-/// `comp_reference_surface_phase_label_is_pressure_blind` shows is unreliable at 1 bar.
+/// The plan asks for <= 1% on cumulative quantities. Measured here: 1.10% on the deck's own grid,
+/// rising to 5.12% at forty cells. It is not met, and the reason is not a mystery — it is the
+/// conditioning of the observable.
 ///
-/// The measurement localises the problem rather than leaving it open. Down the grid ladder:
+/// Late in this case the injector sits on its 150 bar limit against a cell at about 149 bar, so
+/// the drawdown driving it is around one bar and falls as the grid is refined (2.03 bar at five
+/// cells, 1.15 at forty — a smaller injection cell fills closer to the BHP). An injector on its
+/// limit has `q = WI * lambda * (BHP - p)`, so a pressure disagreement of `dp` is a *relative*
+/// rate disagreement of `dp / (BHP - p)`. **The rate observable amplifies the pressure observable
+/// by about a hundred, and the amplification grows under refinement.**
 ///
-/// * CO2 **held by the grid**, which needs no conversion, agrees to better than 0.02% at every
-///   resolution and does not drift with it;
-/// * cumulative injection **through `FGIT`** disagrees by 1.1% at five cells and 5.1% at forty,
-///   and the disagreement grows monotonically.
+/// That is exactly what the ladder shows. The injection cell's pressure agrees to about 0.1 bar
+/// over the second half of the run, where most of the cumulative accrues; divided by the drawdown
+/// that is 6.1% at five cells and 8.6% at forty, and the measured cumulative disagreement sits
+/// below that bound at every resolution while growing in step with it.
 ///
-/// Two observables of the same flow cannot disagree by two orders of magnitude if the flow is what
-/// differs. What is not shared is the accounting: after breakthrough the injected CO2 passes
-/// straight through the grid, so throughput is invisible in the in-place amount, and the only
-/// record of it is each simulator's own surface bookkeeping.
+/// So the two observables are consistent: a state agreement any tighter than 0.01 bar would be
+/// needed to bring the cumulative under 1% here, and the state agreement is already at 0.03 bar on
+/// the settled field and 0.02% on the CO2 the grid holds. **The target is not met, the reason is
+/// quantified, and the milestone stays undeclared.**
 ///
-/// **What would settle it:** a reference that writes its surface densities, or a summary vector in
-/// moles. Until then C12 does not claim the plan's 1% target, and the milestone stays undeclared.
+/// Two things this is *not*:
+///
+/// * It is not the surface-volume conversion. `FGIT` is a surface volume and ResSim's surface
+///   flash has a known limitation at 1 bar (`comp_reference_surface_phase_label_is_pressure_blind`),
+///   so that was the first suspect. It was checked directly: ResSim's connection law applied to the
+///   reference's *own* final cell pressure reproduces the reference's `FGIR` to 0.4%, through that
+///   same conversion. A fixed conversion error also cannot produce a grid-dependent relative error.
+/// * It is not the transport. CO2 held by the grid agrees to better than 0.02% at every resolution,
+///   conversion-free. After breakthrough the injected CO2 passes straight through, so throughput is
+///   invisible in the in-place amount — which is why both observables are needed and neither
+///   substitutes for the other.
+///
+/// **What would make this a meaningful discriminator:** a case whose injector is not near shut-in,
+/// so the cumulative is not a small difference of large numbers. `1D_COMP` is not that case.
 #[test]
 #[ignore = "release runner: bash scripts/validate-compositional.sh refinement"]
-fn comp_refinement_surface_cumulative_is_inconclusive_not_a_failure() {
+fn comp_refinement_cumulative_injection_is_bounded_by_its_own_conditioning() {
     let points: Vec<_> = [5, 10, 20, 40]
         .into_iter()
         .map(|cells| measure_refinement(cells, MAX_SUB_STEP_DAYS))
         .collect();
-    print_ladder("C12 surface-volume cumulative vs CO2 in place:", &points);
+    print_ladder(
+        "C12 cumulative injection against its conditioning:",
+        &points,
+    );
 
-    let conversion_free: f64 = points
-        .iter()
-        .map(|p| p.inventory_relative)
-        .fold(0.0, f64::max);
-    let through_surface: f64 = points
+    for p in &points {
+        // The amplification is measured, not assumed, so the argument above is evidence.
+        let amplification = 1.0 / p.injector_drawdown_bar;
+        assert!(
+            amplification > 0.4,
+            "{} cells: the injector drawdown is {:.3} bar, so the rate observable is no longer \
+             ill-conditioned and this test's reasoning no longer applies",
+            p.cells,
+            p.injector_drawdown_bar
+        );
+
+        let bound = p.late_injection_cell_bar * amplification;
+        assert!(
+            p.cumulative_relative < bound,
+            "{} cells: cumulative injection differs by {:.3}%, more than the {:.3}% that the \
+             injection cell's own pressure agreement ({:.3} bar over a {:.3} bar drawdown) \
+             accounts for. Something other than the conditioning is contributing",
+            p.cells,
+            p.cumulative_relative * 100.0,
+            bound * 100.0,
+            p.late_injection_cell_bar,
+            p.injector_drawdown_bar
+        );
+
+        // The conversion-free observable is what carries the transport claim, and it is small.
+        assert!(
+            p.inventory_relative < 5e-4,
+            "{} cells: CO2 in place disagrees by {:.4}%",
+            p.cells,
+            p.inventory_relative * 100.0
+        );
+    }
+
+    // Bounded overall, so a regression that made it worse is still caught.
+    let worst = points
         .iter()
         .map(|p| p.cumulative_relative)
         .fold(0.0, f64::max);
-
     assert!(
-        conversion_free < 5e-4,
-        "the conversion-free observable is no longer small ({:.4}%); the argument below it \
-         does not hold and this needs re-diagnosing rather than re-bounding",
-        conversion_free * 100.0
-    );
-    assert!(
-        through_surface > 20.0 * conversion_free,
-        "the two observables no longer disagree by an order of magnitude — the surface \
-         conversion may have stopped being the explanation"
-    );
-    // Bounded, so a regression that made it worse would still be caught.
-    assert!(
-        through_surface < 0.07,
-        "cumulative injection through FGIT differs by {:.2}%, beyond what the conversion \
-         alone has been shown to account for",
-        through_surface * 100.0
+        worst < 0.06,
+        "cumulative injection differs by {:.2}%, beyond what the conditioning accounts for",
+        worst * 100.0
     );
 }

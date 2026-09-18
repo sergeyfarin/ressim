@@ -10,9 +10,10 @@ pin the dataset and oracle recorded here. Tracking issue:
 **Every claim here names what it does and does not cover.** The status table in section 7 records
 the state of each task and the completion records in section 8 record how each one was measured.
 C0–C11 are complete; C12 is partial — its thermodynamic comparison, its transport comparison and
-both refinement studies against an independent simulator are done, but the plan's cumulative
-acceptance target is **INCONCLUSIVE** on this reference and the `NATIVE-COMPOSITIONAL-READY`
-milestone is **not** declared. C13 onwards have not started.
+both refinement studies against an independent simulator are done, but the plan's 1% cumulative
+acceptance target is **not met** on the only external trajectory available (5.1% at forty cells,
+for a quantified reason), and the `NATIVE-COMPOSITIONAL-READY` milestone is **not** declared.
+C13 onwards have not started.
 
 ## Scope this document governs
 
@@ -296,7 +297,7 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C12 vs OPM** — startup transient | — | worst **3.970 bar** (cell 0, 0.35 d). It was 20 bar until the refinement study exposed two driver defects — a well-opening tolerance too tight for a single-precision report time, and `COMPDAT` item 9 read as a radius when it is a diameter | **Met**, and reported separately rather than folded into one number |
 | **C12 vs OPM** — CO2 front | — | worst **0.1327** in `z_CO2` (cell 4, 17.11 d); on five cells a small difference in front arrival reads as a large composition difference in the cell the front is crossing | **Met** |
 | **C12 vs OPM** — CO2 held by the grid | — | **≤ 0.02%** at every resolution from 5 to 40 cells. Conversion-free, so this is the load-bearing transport result | **Met** |
-| **C12 vs OPM** — cumulative injection | ≤ 1% on cumulative quantities | **1.10%** on `FGIT` on the deck's grid, rising to **5.12%** at 40 cells. `FGIT` is a surface volume and the conversion is not shared; `GAS_DEN` comes back identically zero so the reference's own surface density cannot be read | **INCONCLUSIVE** per the plan's own rule for state/units mismatches — neither met nor failed, but *unevaluated*. See the C12 record |
+| **C12 vs OPM** — cumulative injection | ≤ 1% on cumulative quantities | **1.10%** on the deck's grid, **5.12%** at 40 cells. The injector runs at ~1 bar of drawdown against a 150 bar limit, so `dq/q = dp/(BHP-p)` amplifies the pressure observable ~100×; the measured discrepancy sits below that bound at every resolution. Ruled out: the surface conversion (`FGIR` reproduced to 0.4% through it) and the transport (CO2 in place ≤ 0.02%) | **NOT MET.** The reason is quantified, not excused; this is why the milestone is undeclared |
 | **C10 Newton** — convergence rate | quadratic near the solution | a quadratic reduction is observed and asserted; a merely-close Jacobian would converge linearly and still terminate | **Met** |
 | **C10 Newton** — domain | `p > 0`, `z` on the simplex including `z_(N-1)` | fraction-to-boundary at 0.99, one global scale factor, no clamping or renormalization after the step | **Met** |
 | **C10 lifecycle** — rejected step | nothing mutates | state, clock and cumulative totals all unchanged, structurally | **Met** |
@@ -318,7 +319,7 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | Tiny direct linear oracle | ≤ 1e-10 full-system relative residual | Deferred to C10 | Not yet |
 | Local conservative face exchange | Cancellation to roundoff | Deferred to C9 | Not yet |
 | Global closed/source balance | ≤ 1e-8 relative accumulated mole error per component | Deferred to C9/C10 | Not yet |
-| Refined external trajectories | ≤ 1% on cumulative quantities, per-observable tolerances in C12 | **Done.** Sub-step halved four times (first-order convergence confirmed; the comparison step is on the converged part of the curve) and the grid refined 5 → 10 → 20 → 40 with the reference re-solved on each. Per-observable bands frozen from those measurements (rows above). The cumulative target itself is unevaluable on this reference | Partial — the study is complete, the cumulative target is INCONCLUSIVE |
+| Refined external trajectories | ≤ 1% on cumulative quantities, per-observable tolerances in C12 | **Study done.** Sub-step halved four times (first-order convergence confirmed; the comparison step is on the converged part of the curve) and the grid refined 5 → 10 → 20 → 40 with the reference re-solved on each. Per-observable bands frozen from those measurements (rows above). The cumulative target is **not met** — see the C12 record | Partial — the study is complete, the cumulative target is not |
 | Newton acceptance | Derived and frozen in C8/C11 | Deferred | Not yet |
 
 No existing black-oil benchmark tolerance is changed by any of this.
@@ -391,7 +392,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C9 | Component face flux, gravity and global assembly | **COMPLETE** | `compositional/{flux,assembly}.rs`; 33 `comp_flux_*` / `comp_assembly_*` / `comp_gravity_*` tests |
 | C10 | Linear solve, Newton, timestep lifecycle | **COMPLETE** on the direct path | `compositional/{newton,timestep}.rs`; 20 `comp_newton_*` / `comp_rollback_*` tests. The iterative/CPR adapter is deferred — see the C10 record |
 | C11 | Compositional wells | **COMPLETE** | `compositional/wells.rs`, [design note](COMPOSITIONAL_WELL_DESIGN.md); 29 `comp_well_*` tests, single and multiple completions. **Derived from first principles — C11's OPM reference is unavailable here** (plan correction 3), so no OPM agreement is claimed |
-| C12 | NATIVE-COMPOSITIONAL-READY | **PARTIAL** — thermodynamics, transport and both refinement studies done; the cumulative acceptance target is **INCONCLUSIVE** on this reference | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. The milestone is **not** declared |
+| C12 | NATIVE-COMPOSITIONAL-READY | **PARTIAL** — thermodynamics, transport and both refinement studies done; the 1% cumulative acceptance target is **not met** (5.12% at 40 cells, for a measured reason) | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. The milestone is **not** declared |
 | C13–C14 | WASM, product integration, release | NOT STARTED | Gated on C12 |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
@@ -400,10 +401,12 @@ No existing black-oil benchmark tolerance is changed by any of this.
 ### C12 — against an independent simulator (PARTIAL)
 
 **The milestone `NATIVE-COMPOSITIONAL-READY` is NOT declared**, for one reason, stated up front:
-the plan's cumulative-quantity acceptance target cannot be evaluated on this reference, because the
-only cumulative it reports is a surface volume and the conversion is not one the two simulators are
-known to share. That is an INCONCLUSIVE observable in the plan's own terms, not a failure, and
-section "the observable that is inconclusive" below says what would settle it.
+the plan's 1% cumulative-quantity target is not met — 5.12% at forty cells. The cause is measured
+rather than guessed. Late in this case the injector runs at about one bar of drawdown against its
+150 bar limit, so the rate observable amplifies the pressure observable by roughly a hundred; the
+state agreement of 0.03 bar that the comparison achieves maps to several per cent on the rate. The
+section "the cumulative target is not met" below carries the numbers and rules out the two
+alternative explanations.
 
 Everything else C12 asks for is done: the thermodynamic comparison, the transport comparison, the
 timestep refinement and the grid refinement against a reference re-solved on each grid.
@@ -450,7 +453,7 @@ final state             0.003 bar   both simulators settled, 20.11 d
 developed displacement  3.708 bar   from 2 d on; cell 3 at 14.11 d
 startup transient       3.970 bar   cell 0 at 0.35 d
 CO2 front               0.1327      in z_CO2, cell 4 at 17.11 d
-cumulative injection    1.10%       FGIT at 20.11 d - see "inconclusive" below
+cumulative injection    1.10%       FGIT at 20.11 d - see "not met" below
 Replay: cargo test --manifest-path src/lib/ressim/Cargo.toml --lib -- \
           comp_reference_transport_trajectory_tracks_opm \
           comp_reference_cumulative_injection_tracks_opm --nocapture
@@ -494,29 +497,51 @@ same material in the same places. The worst pointwise pressure difference grows 
 refinement, which is expected: a finer grid resolves a sharper front, and a sharper front turns a
 small difference in arrival time into a larger pointwise difference.
 
-#### The observable that is inconclusive
+#### The cumulative target is not met, and this is why
 
-Cumulative injection compared through `FGIT` disagrees by 1.1% at five cells and 5.1% at forty, and
-**grows monotonically with refinement**. The plan's acceptance target for cumulative quantities is
-1%, so this matters.
+Cumulative injection compared through `FGIT` disagrees by 1.10% on the deck's own grid and 5.12% at
+forty cells, growing monotonically with refinement. The plan's target is 1%. **It is not met.**
 
-It is not the flow. Two observables of the same flow cannot disagree by two orders of magnitude —
-CO2 in place stays under 0.02% across the same ladder. What is not shared is the accounting.
-`FGIT` is a **surface volume**, and converting it to moles needs the reference's own surface molar
-volume for the injected stream. The fixture cannot supply it: `GAS_DEN` and `OIL_DEN` come back
-identically zero from `flowexp_comp`. The conversion therefore has to use ResSim's surface flash,
-which is exactly what `comp_reference_surface_phase_label_is_pressure_blind` shows is unreliable at
-1 bar. After breakthrough the injected CO2 passes straight through the grid, so throughput is
-invisible in the in-place amount and the only record of it is each simulator's own bookkeeping.
+The reason is the conditioning of the observable, and it is measured rather than asserted:
 
-The plan says a state/units mismatch is **INCONCLUSIVE, not a candidate failure**, and that is the
-verdict recorded. `comp_refinement_surface_cumulative_is_inconclusive_not_a_failure` asserts the
-argument rather than the conclusion: it fails if the conversion-free observable stops being small,
-or if the two stop disagreeing by an order of magnitude, because either would mean this explanation
-no longer holds.
+```text
+cells   drawdown/bar   late p0 agreement/bar   amplified   measured cumulative
+    5          2.027                   0.123       6.08%                1.098%
+   10          1.563                   0.105       6.71%                2.581%
+   20          1.309                   0.099       7.58%                4.223%
+   40          1.150                   0.099       8.57%                5.122%
+```
 
-**What would settle it:** a reference that writes its surface densities, or a summary vector in
-moles.
+Late in this case the injector sits on its 150 bar limit against a cell at about 149 bar, so the
+drawdown driving it is around one bar — and it *falls* as the grid is refined, because a smaller
+injection cell fills closer to the BHP. An injector on its limit has `q = WI · λ · (BHP − p)`, so a
+pressure disagreement of `dp` is a **relative** rate disagreement of `dp / (BHP − p)`. The rate
+observable amplifies the pressure observable by about a hundred, and the amplification grows under
+refinement.
+
+The injection cell's pressure agrees to about 0.1 bar over the second half of the run, where most
+of the cumulative accrues. Divided by the drawdown, that is 6.1% at five cells and 8.6% at forty —
+and the measured cumulative disagreement sits below that bound at every resolution while growing in
+step with it. The two observables are consistent. Bringing the cumulative under 1% on this case
+would need the state to agree to better than 0.01 bar; it already agrees to 0.03 bar on the settled
+field and 0.02% on the CO2 the grid holds.
+
+**Two things this is not**, both checked rather than assumed:
+
+* **Not the surface-volume conversion.** `FGIT` is a surface volume, and ResSim's surface flash has
+  a known limitation at 1 bar (`comp_reference_surface_phase_label_is_pressure_blind`), so that was
+  the first suspect. Checked directly: ResSim's connection law applied to the reference's *own*
+  final cell pressure reproduces the reference's `FGIR` to **0.4%**, through that same conversion.
+  A fixed conversion error also cannot produce a grid-dependent relative error, which this is.
+* **Not the transport.** CO2 held by the grid agrees to better than 0.02% at every resolution,
+  conversion-free. After breakthrough the injected CO2 passes straight through, so throughput is
+  invisible in the in-place amount — which is why both observables are needed and neither
+  substitutes for the other.
+
+**What would make this a meaningful discriminator:** a case whose injector is not near shut-in, so
+the cumulative is not a small difference of large numbers. `1D_COMP` is not that case. Until such a
+case is run, the plan's cumulative acceptance target is unmet on the only external trajectory
+available here, and `NATIVE-COMPOSITIONAL-READY` is not declared.
 
 #### Three defects the comparison found, that no unit test could have
 
@@ -575,8 +600,9 @@ discretisation.
 #### Remaining for C12
 
 ```text
-* the cumulative acceptance target, which needs a reference that reports it in moles or reports
-  its surface densities. Until then the plan's 1% is neither met nor failed - it is unevaluated
+* the 1% cumulative target, which needs an external trajectory whose injector is not near
+  shut-in. On 1D_COMP the cumulative is a small difference of large numbers and cannot resolve
+  1% from a 0.03 bar state agreement. This is the one thing blocking the milestone
 * a published benchmark. The plan lists this as an optional later expansion (C12 item 4) and it
   is not a blocker, but 1D_COMP is one case on one fluid
 ```
