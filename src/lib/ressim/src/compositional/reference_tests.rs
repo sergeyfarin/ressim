@@ -528,16 +528,28 @@ mod deck {
         DARCY * PERM_MD * (DY_M * DZ_M) / dx_m(cells)
     }
 
+    /// `COMPDAT` item 11 in the skin variant; the base deck defaults it to zero.
+    ///
+    /// The base deck's reservoir carries about ten times more flow resistance than either well, so
+    /// both wells sit within a bar or two of their own BHP limits and `q = WI · λ · (BHP − p)`
+    /// turns a 0.03 bar state agreement into several per cent on the rate. A skin moves the
+    /// resistance to the well and makes a cumulative a discriminating observable.
+    pub const SKIN: f64 = 60.0;
+
     /// Peaceman's equivalent radius for an isotropic rectangular cell, and the geometric well
-    /// index that follows. Zero skin, matching `COMPDAT`'s defaults.
+    /// index that follows.
     ///
     /// This is where refinement bites hardest on the well: `r_eq` shrinks with the cell, so the
-    /// index and the near-well pressure drop both change. Two simulators need not agree on the
-    /// coarse grid's `r_eq`, and the C12 startup transient is dominated by that disagreement.
-    pub fn well_index(cells: usize) -> f64 {
+    /// index and the near-well pressure drop both change.
+    pub fn well_index_with_skin(cells: usize, skin: f64) -> f64 {
         let dx = dx_m(cells);
         let r_eq = 0.28 * (dx * dx + DY_M * DY_M).sqrt() / 2.0;
-        DARCY * 2.0 * std::f64::consts::PI * PERM_MD * DZ_M / (r_eq / WELL_RADIUS_M).ln()
+        DARCY * 2.0 * std::f64::consts::PI * PERM_MD * DZ_M / ((r_eq / WELL_RADIUS_M).ln() + skin)
+    }
+
+    /// The base deck's well index: zero skin, matching `COMPDAT`'s defaults.
+    pub fn well_index(cells: usize) -> f64 {
+        well_index_with_skin(cells, 0.0)
     }
 }
 
@@ -645,6 +657,16 @@ fn run_deck_case_on_grid(
     max_sub_step_days: f64,
     report_times_days: &[f64],
 ) -> (Vec<Vec<f64>>, Vec<Vec<CompositionalCellState>>) {
+    run_deck_case_full(cells, max_sub_step_days, 0.0, report_times_days)
+}
+
+/// As [`run_deck_case_on_grid`], with a connection `skin` on both wells.
+fn run_deck_case_full(
+    cells: usize,
+    max_sub_step_days: f64,
+    skin: f64,
+    report_times_days: &[f64],
+) -> (Vec<Vec<f64>>, Vec<Vec<CompositionalCellState>>) {
     let spec = deck_fluid();
     let relperm = deck_relperm();
     let layout = CompositionalLayout::new(3, cells, 2, 2).unwrap();
@@ -684,7 +706,7 @@ fn run_deck_case_on_grid(
         id: "INJ".to_string(),
         completions: vec![Completion {
             cell: 0,
-            well_index: deck::well_index(cells),
+            well_index: deck::well_index_with_skin(cells, skin),
             head_offset_bar: 0.0,
         }],
         control: WellControl::SurfaceRate {
@@ -708,7 +730,7 @@ fn run_deck_case_on_grid(
         id: "PROD".to_string(),
         completions: vec![Completion {
             cell: cells - 1,
-            well_index: deck::well_index(cells),
+            well_index: deck::well_index_with_skin(cells, skin),
             head_offset_bar: 0.0,
         }],
         control: WellControl::Bhp {
@@ -1434,6 +1456,199 @@ fn comp_refinement_cumulative_injection_is_bounded_by_its_own_conditioning() {
         "cumulative injection differs by {:.2}%, beyond what the conditioning accounts for",
         worst * 100.0
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The well-conditioned variant of the 1D case (`comp_skin_*`)
+// ---------------------------------------------------------------------------------------------
+//
+// `comp_refinement_cumulative_injection_is_bounded_by_its_own_conditioning` establishes that the
+// plain deck cannot test the plan's 1% cumulative target: the reservoir carries about ten times
+// more flow resistance than either well, so both wells sit within a bar or two of their own BHP
+// limits, and `q = WI · λ · (BHP − p)` turns the 0.03 bar state agreement the comparison achieves
+// into several per cent on the rate. The observable is ill-conditioned, not the model.
+//
+// The fix is a case where the resistance is at the well. `COMPDAT` item 11 is the skin, and at 60
+// the drawdowns become 10 bar on the injector and 34 on the producer instead of 2 and 4. Nothing
+// else about the deck changes — same grid, same fluid, same controls, same report times — so the
+// two cases differ in exactly one number, and the difference in what they can measure is the
+// point.
+//
+// Both wells are BHP-controlled from the first step here, so there is no rate/BHP handover to
+// confound the early comparison either.
+
+/// The skin variant's reference.
+fn skin_reference() -> Reference {
+    let raw = include_str!("../../../../../opm/compositional/1d_comp/skin/reference.json");
+    let r: Reference = serde_json::from_str(raw).expect("the skin fixture must parse");
+    assert_eq!(r.schema, "ressim-compositional-reference/1");
+    assert_eq!(r.cells, 5);
+    assert_eq!(r.report_steps.len(), 28);
+    r
+}
+
+/// The two cases must actually differ, or `comp_skin_*` would be testing the plain deck twice.
+#[test]
+fn comp_skin_variant_moves_the_drawdown_to_the_well() {
+    let plain = reference_on(5);
+    let skin = skin_reference();
+
+    let plain_injector =
+        deck::INJECTOR_BHP_LIMIT_BAR - plain.report_steps.last().unwrap().pressure[0];
+    let skin_injector =
+        deck::INJECTOR_BHP_LIMIT_BAR - skin.report_steps.last().unwrap().pressure[0];
+    let plain_producer = plain.report_steps.last().unwrap().pressure[4] - deck::PRODUCER_BHP_BAR;
+    let skin_producer = skin.report_steps.last().unwrap().pressure[4] - deck::PRODUCER_BHP_BAR;
+
+    eprintln!(
+        "final drawdown [bar]: injector {plain_injector:.3} -> {skin_injector:.3}, \
+         producer {plain_producer:.3} -> {skin_producer:.3}"
+    );
+    assert!(
+        skin_injector > 4.0 * plain_injector,
+        "the skin variant's injector drawdown is {skin_injector:.3} bar against the plain deck's \
+         {plain_injector:.3}; it is not the better-conditioned case this section assumes"
+    );
+    assert!(
+        skin_producer > 4.0 * plain_producer,
+        "the skin variant's producer drawdown is {skin_producer:.3} bar against the plain deck's \
+         {plain_producer:.3}"
+    );
+    // And the wells are on their limits throughout, so nothing here depends on a control handover.
+    let bhp = skin.summary.get("WBHP:INJ").expect("WBHP:INJ");
+    for (index, value) in bhp.iter().enumerate() {
+        if skin.summary["TIME"][index] < WELLS_OPEN_DAYS {
+            continue;
+        }
+        assert!(
+            (value - deck::INJECTOR_BHP_LIMIT_BAR).abs() < 1e-3,
+            "the skin variant's injector is not on its BHP limit at step {index}: {value}"
+        );
+    }
+}
+
+/// **The plan's 1% cumulative target, on a case that can actually test it.**
+///
+/// Same comparison as `comp_reference_cumulative_injection_tracks_opm`, on the variant whose
+/// injector runs at 10 bar of drawdown rather than 2. The conversion is the same one, and it is
+/// sound here: the injected stream is pure CO2, for which ResSim's surface volume and OPM's agree
+/// to about 0.01% (`comp_depletion_reference_metering_disagrees_with_its_own_flash` is where the
+/// two disagree, and that is a *mixture*).
+#[test]
+fn comp_skin_cumulative_injection_meets_the_plan_target() {
+    let reference = skin_reference();
+    let times = reference.summary.get("TIME").expect("TIME").clone();
+    let fgit = reference.summary.get("FGIT").expect("FGIT").clone();
+
+    let spec = deck_fluid();
+    let surface = spec.surface().unwrap();
+    let molar_volume = flash(
+        &spec,
+        surface.pressure_pa,
+        surface.temperature_k,
+        &deck::INJECTION_STREAM,
+        None,
+    )
+    .unwrap()
+    .mixture_molar_volume();
+
+    let (ours_moles, _) = run_deck_case_full(5, MAX_SUB_STEP_DAYS, deck::SKIN, &times);
+
+    let theirs = fgit.last().unwrap() / molar_volume;
+    let ours = ours_moles.last().unwrap()[0];
+    let relative = (ours - theirs).abs() / theirs;
+    eprintln!(
+        "skin variant cumulative injection: {ours:.6e} vs {theirs:.6e} moles, {:.3}%",
+        relative * 100.0
+    );
+
+    assert!(
+        theirs > 1e5,
+        "the reference injected only {theirs} moles; the fixture looks wrong"
+    );
+    assert!(
+        relative < 0.01,
+        "cumulative injection differs by {:.3}%, above the plan's 1% target for cumulative \
+         quantities",
+        relative * 100.0
+    );
+}
+
+/// The skin variant's trajectory — and the other half of the conditioning story.
+///
+/// The two cases trade one error for the other, which is what a conditioning argument predicts.
+/// On the plain deck the wells are so much more conductive than the reservoir that the cell
+/// pressures are effectively pinned to the BHPs: the settled field agrees to **0.003 bar** while
+/// the cumulative is out by 1.10%. Here the resistance is at the well, so the rate is what the
+/// well pins and the pressure field is free to differ: the cumulative agrees to **0.858%** while
+/// the settled field is out by 2.09 bar.
+///
+/// Neither case is "more accurate". They measure different things, and running only the first is
+/// what made the cumulative look like a model failure.
+#[test]
+fn comp_skin_transport_trajectory_tracks_opm() {
+    let reference = skin_reference();
+    let times = reference.summary.get("TIME").expect("TIME").clone();
+    let (_, ours) = run_deck_case_full(5, MAX_SUB_STEP_DAYS, deck::SKIN, &times);
+
+    let mut worst = (0.0f64, String::new());
+    let mut worst_developed = 0.0f64;
+    let mut worst_co2 = 0.0f64;
+    for (index, step) in reference.report_steps.iter().enumerate() {
+        for cell in 0..deck::CELLS {
+            let d = (ours[index][cell].pressure_bar - step.pressure[cell]).abs();
+            if d > worst.0 {
+                worst = (
+                    d,
+                    format!(
+                        "t = {:.2} d, cell {cell}: {:.3} vs {:.3} bar",
+                        times[index], ours[index][cell].pressure_bar, step.pressure[cell]
+                    ),
+                );
+            }
+            if times[index] >= 2.0 {
+                worst_developed = worst_developed.max(d);
+            }
+            let theirs_z = step.z(cell);
+            let total: f64 = theirs_z.iter().sum();
+            if (total - 1.0).abs() > 1e-4 {
+                continue;
+            }
+            worst_co2 = worst_co2
+                .max((ours[index][cell].overall_composition()[0] - theirs_z[0] / total).abs());
+        }
+    }
+
+    let last = reference.report_steps.last().unwrap();
+    let mut worst_final = 0.0f64;
+    for cell in 0..deck::CELLS {
+        worst_final = worst_final.max((ours[27][cell].pressure_bar - last.pressure[cell]).abs());
+    }
+
+    eprintln!(
+        "skin variant transport:\n  final state: {worst_final:.3} bar\n  \
+         developed:   {worst_developed:.3} bar\n  worst:       {:.3} bar at {}\n  \
+         CO2 front:   {worst_co2:.4}",
+        worst.0, worst.1
+    );
+
+    assert!(
+        worst_final < 2.5,
+        "the final states disagree by {worst_final:.3} bar"
+    );
+    assert!(
+        worst_developed < 3.5,
+        "the developed displacement diverges by {worst_developed:.3} bar"
+    );
+    assert!(
+        worst.0 < 3.5,
+        "the trajectory diverges: {:.3} bar at {}",
+        worst.0,
+        worst.1
+    );
+    // The front is much sharper here than on the plain deck — 0.037 against 0.133 — because the
+    // wells no longer dominate the near-well pressure field.
+    assert!(worst_co2 < 0.05, "the CO2 front diverges: {worst_co2:.4}");
 }
 
 // ---------------------------------------------------------------------------------------------

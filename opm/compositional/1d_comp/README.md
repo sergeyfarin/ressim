@@ -32,6 +32,22 @@ so the same deck is re-run at 10, 20 and 40 cells over the same 300 m —
 keywords and **asserts on every one of them**, so a change to `1D_COMP.DATA` fails there rather
 than silently producing a deck that is no longer the same case.
 
+## `skin/`
+
+The same deck with `COMPDAT` item 11 — the connection skin — set to 60 on both wells, and nothing
+else changed.
+
+It exists because the deck as written cannot test the plan's 1% cumulative target. The reservoir
+carries about ten times more flow resistance than either well, so both wells sit within a bar or two
+of their own BHP limits; `q = WI · λ · (BHP − p)` then turns a 0.03 bar state agreement into several
+per cent on the rate. With skin the drawdowns become 10 bar on the injector and 34 on the producer,
+and the same comparison resolves **0.858%** against the plan's 1%.
+
+The two cases trade one error for the other — 0.003 bar on the settled field and 1.10% on the
+cumulative without skin, 2.09 bar and 0.858% with — which is the conditioning argument seen from
+both sides. Both are kept for that reason. Written by `refine_deck.py --skin`, which asserts on
+every keyword it rewrites.
+
 ## `reference.json`
 
 Per cell per report step: pressure, `SGAS`, `SOIL`, and the liquid, vapour and overall mole
