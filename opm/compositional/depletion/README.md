@@ -12,6 +12,18 @@ it takes a cell down through its own saturation pressure.
 | Verify unchanged | `bash tools/opm_compositional/run-depletion.sh --check` |
 | Consumed by | `comp_depletion_*` in `src/lib/ressim/src/compositional/reference_tests.rs` |
 
+## Two decks
+
+`DEPLETION.DATA` is on a surface **oil rate**; `bhp/DEPLETION.DATA` is the same cell against an
+**80 bar BHP**. The second exists because the first turned out to be unusable as a trajectory
+oracle — `flowexp_comp` meters 30 sm³/day of surface oil as 3.8% fewer moles than its own flash
+says that stream is, so a rate-controlled comparison inherits a discrepancy that is the reference's
+and not the model's. Nothing in the BHP deck goes through a surface volume.
+
+They also cover different things. The rate-controlled deck brackets the **phase appearance** (and
+then the reference aborts); the BHP deck runs the full twenty days two-phase and is where the
+**composition drift** and the **connection rate** are compared.
+
 ## The case
 
 One cell, 100 m × 100 m × 10 m, 100 mD, 10% porosity — a 10 000 m³ pore volume. Initially
@@ -39,7 +51,23 @@ itself, which is what this fixture is for.
 ResSim runs the same case past that point without difficulty — its stability test and extended
 (negative) Rachford–Rice window exist precisely for near-boundary states.
 
-## What it establishes, and what it opens
+## What the BHP deck found
+
+**C12's largest disagreement.** Both simulators start at 150 bar and settle at the well's 80 bar,
+agreeing there to 0.003 bar, but ResSim depletes faster in between and its time constant is about
+**1.29×** the reference's. Measured directly at the reference's own reported states, the producer
+connection rate ratio is flat at 1.29 from the third step on.
+
+Every term of `q = WI · Σ_P (kr_P/μ_P) · Δp · c_P` was checked and none accounts for it: the
+drawdown is exact, the saturation agrees to 1e-4, the viscosities to 2% against OPM's own
+PTFlash + LBC, and the accumulation to 0.02% on the difference that matters. Relative permeability
+cannot produce it either — `λ_total` bottoms out at 7.1 over all saturations and the reference's
+rate needs 5.8. The one comparable check that passes is the 1D case's injector, at 0.4%, and that
+cell is single phase.
+
+See the C12 record in [`docs/COMPOSITIONAL_VALIDATION.md`](../../../docs/COMPOSITIONAL_VALIDATION.md).
+
+## What the rate deck establishes, and what it opens
 
 | | |
 | --- | --- |

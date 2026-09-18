@@ -2146,3 +2146,478 @@ fn comp_depletion_phase_appearance_matches_opm() {
     assert_eq!(first, 0.0, "the reference starts two-phase");
     assert!(last > 0.0, "the reference never develops a gas phase");
 }
+
+// ---------------------------------------------------------------------------------------------
+// The depletion case on BHP control (`comp_depletion_bhp_*`)
+// ---------------------------------------------------------------------------------------------
+//
+// The rate-controlled deck cannot settle a trajectory comparison, because the reference meters its
+// 30 sm³/day of surface oil as 3.8% fewer moles than its own flash says that stream is
+// (`comp_depletion_reference_metering_disagrees_with_its_own_flash`). Any comparison driven by
+// that control inherits the discrepancy.
+//
+// This variant is the same cell against an 80 bar BHP. **Nothing in it goes through a surface
+// volume**: the rate is set by the physics, so what is compared is the pressure path, the gas
+// saturation and the overall composition — and the reference runs to completion rather than
+// aborting.
+//
+// The composition is the distinctive part. Once the cell is two phase, gas is produced
+// preferentially, so `z` moves away from the deck's `[0.1, 0.3, 0.6]`: methane falls from 0.300 to
+// 0.2956 and decane rises from 0.600 to 0.6052. Nothing else in C12 tests that. In the 1D
+// displacement the cells are simply flooded with CO2 and the interesting composition change is
+// the flood's, not the phase behaviour's.
+
+/// The BHP-controlled depletion reference. Twenty report steps, no abort.
+fn depletion_bhp_reference() -> Reference {
+    let raw = include_str!("../../../../../opm/compositional/depletion/bhp/reference.json");
+    let r: Reference = serde_json::from_str(raw).expect("the BHP depletion fixture must parse");
+    assert_eq!(r.schema, "ressim-compositional-reference/1");
+    assert_eq!(r.case, "DEPLETION");
+    assert_eq!(r.cells, 1);
+    assert_eq!(
+        r.report_steps.len(),
+        20,
+        "the oracle's reach on this case has changed; see run-depletion.sh"
+    );
+    r
+}
+
+/// `WCONPROD PROD OPEN BHP 5* 80`.
+const DEPLETION_BHP_BAR: f64 = 80.0;
+
+/// Run the BHP-controlled depletion in ResSim to each of the reference's report times.
+fn run_depletion_bhp(
+    report_times_days: &[f64],
+    max_sub_step_days: f64,
+) -> Vec<CompositionalCellState> {
+    let spec = deck_fluid();
+    let relperm = deck_relperm();
+    let layout = CompositionalLayout::new(3, depletion_deck::CELLS, 2, 2).unwrap();
+    let pore_volumes = vec![depletion_deck::PORE_VOLUME_M3; depletion_deck::CELLS];
+    let rock = RockView {
+        pore_volume_ref_m3: &pore_volumes,
+        reference_pressure_bar: depletion_deck::ROCK_REFERENCE_BAR,
+        compressibility_per_bar: depletion_deck::ROCK_COMPRESSIBILITY,
+    };
+
+    let r_w = depletion_deck::WELL_DIAMETER_M / 2.0;
+    let r_eq = 0.28 * (100.0f64 * 100.0 + 100.0 * 100.0).sqrt() / 2.0;
+    let well_index = deck::DARCY * 2.0 * std::f64::consts::PI * 100.0 * 10.0 / (r_eq / r_w).ln();
+
+    let producer = CompositionalWell {
+        id: "PROD".to_string(),
+        completions: vec![Completion {
+            cell: 0,
+            well_index,
+            head_offset_bar: 0.0,
+        }],
+        control: WellControl::Bhp {
+            target_bar: DEPLETION_BHP_BAR,
+        },
+        injection_composition: None,
+    };
+
+    let initial = CompositionalState::new(
+        &layout,
+        vec![
+            CompositionalCellState::new(
+                depletion_deck::INITIAL_PRESSURE_BAR,
+                vec![depletion_deck::INITIAL_Z[0], depletion_deck::INITIAL_Z[1]],
+            )
+            .unwrap(),
+        ],
+    )
+    .unwrap();
+
+    let wells = vec![producer];
+    let sources = vec![vec![0.0; 3]; depletion_deck::CELLS];
+    let mut run = CompositionalRun::new(initial);
+    let options = TimestepOptions::default();
+
+    let mut out = Vec::with_capacity(report_times_days.len());
+    for &target in report_times_days {
+        let mut guard = 0;
+        while target - run.time_days() > options.min_dt_days {
+            guard += 1;
+            assert!(guard < 5000, "sub-stepping did not reach {target} days");
+            let dt = (target - run.time_days()).min(max_sub_step_days);
+            let report = run.step(
+                &spec,
+                &layout,
+                &rock,
+                &relperm,
+                &[],
+                &wells,
+                &sources,
+                dt,
+                options,
+            );
+            assert!(
+                report.succeeded(),
+                "BHP depletion step at {} days failed: {:?}",
+                run.time_days(),
+                report.failure
+            );
+        }
+        out.push(run.state().cell(0).clone());
+    }
+    out
+}
+
+/// **The BHP depletion trajectory, which does NOT agree** — and this is C12's largest
+/// disagreement, so the name says so.
+///
+/// One cell, so no upwinding; BHP control, so no rate metering; a genuine two-phase state
+/// throughout, so the flash, the relative permeability and the accumulation are all live. It is
+/// the cleanest comparison in C12 and it is the one that fails.
+///
+/// Both start at 150 bar and both end at the well's 80 bar, agreeing there to **0.003 bar**. In
+/// between ResSim depletes faster: 3.92 bar apart at day 1, decaying geometrically to nothing by
+/// day 20. Fitting the decay, ResSim's time constant is about **1.29×** the reference's, and
+/// `comp_depletion_bhp_connection_rate_differs_from_opm` measures that directly rather than
+/// inferring it from the path.
+///
+/// The band here is the measured disagreement, not a tolerance, and it is bounded **below** as
+/// well as above so that a fix fails this test instead of passing it.
+#[test]
+fn comp_depletion_bhp_trajectory_diverges_from_opm() {
+    let reference = depletion_bhp_reference();
+    let times = reference.summary.get("TIME").expect("TIME").clone();
+    let ours = run_depletion_bhp(&times, 0.05);
+
+    let spec = deck_fluid();
+    let mut worst_pressure = (0.0f64, String::new());
+    let mut worst_saturation = 0.0f64;
+    for (index, step) in reference.report_steps.iter().enumerate() {
+        let d = (ours[index].pressure_bar - step.pressure[0]).abs();
+        if d > worst_pressure.0 {
+            worst_pressure = (
+                d,
+                format!(
+                    "t = {:.1} d: {:.4} vs {:.4} bar",
+                    times[index], ours[index].pressure_bar, step.pressure[0]
+                ),
+            );
+        }
+        let z = ours[index].overall_composition();
+        let state = flash(
+            &spec,
+            bar_to_pa(ours[index].pressure_bar),
+            spec.reservoir_temperature_k(),
+            &z,
+            None,
+        )
+        .unwrap();
+        worst_saturation = worst_saturation.max((state.vapour_saturation() - step.sgas[0]).abs());
+    }
+
+    eprintln!(
+        "BHP depletion: worst pressure {:.4} bar at {}; worst Sg {worst_saturation:.5}",
+        worst_pressure.0, worst_pressure.1
+    );
+
+    // The reference must actually be two-phase for most of this, or the test is about nothing.
+    let two_phase = reference
+        .report_steps
+        .iter()
+        .filter(|s| s.sgas[0] > 0.01)
+        .count();
+    assert!(
+        two_phase >= 19,
+        "only {two_phase} of the reference's steps are two-phase"
+    );
+
+    // Measured: 3.92 bar at day 1, and the two settle together.
+    assert!(
+        (3.5..4.5).contains(&worst_pressure.0),
+        "the BHP depletion path now diverges by {:.4} bar at {} rather than the recorded 3.92. \
+         If this improved, say what fixed it and update the record with it",
+        worst_pressure.0,
+        worst_pressure.1
+    );
+    assert!(
+        (ours.last().unwrap().pressure_bar - reference.report_steps.last().unwrap().pressure[0])
+            .abs()
+            < 0.01,
+        "the two no longer settle to the same pressure, which is the one part of this that does \
+         agree"
+    );
+    assert!(
+        worst_saturation < 0.05,
+        "the gas saturation diverges: worst {worst_saturation:.5}"
+    );
+}
+
+/// **The overall composition as gas is produced preferentially.**
+///
+/// The one place in C12 where the *phase behaviour* changes a cell's composition rather than a
+/// flood doing it. The reference moves methane from 0.30000 to 0.29557 and decane from 0.60000 to
+/// 0.60516 over twenty days; ResSim has to follow both, and the drift is small enough that getting
+/// the direction right is not enough on its own.
+#[test]
+fn comp_depletion_bhp_composition_drifts_with_the_reference() {
+    let reference = depletion_bhp_reference();
+    let times = reference.summary.get("TIME").expect("TIME").clone();
+    let ours = run_depletion_bhp(&times, 0.05);
+
+    // The reference must actually move, or matching it would be trivial.
+    let first = reference.report_steps.first().unwrap().z(0);
+    let last = reference.report_steps.last().unwrap().z(0);
+    let drift: f64 = (0..3).map(|i| (last[i] - first[i]).abs()).sum();
+    assert!(
+        drift > 1e-3,
+        "the reference's composition barely moves ({drift:.2e}); this test would pass on a \
+         constant"
+    );
+    assert!(
+        last[1] < depletion_deck::INITIAL_Z[1] && last[2] > depletion_deck::INITIAL_Z[2],
+        "the reference does not show preferential gas production: z = {last:?}"
+    );
+
+    let mut worst = (0.0f64, String::new());
+    for (index, step) in reference.report_steps.iter().enumerate() {
+        let theirs = step.z(0);
+        let total: f64 = theirs.iter().sum();
+        let mine = ours[index].overall_composition();
+        for i in 0..3 {
+            let d = (mine[i] - theirs[i] / total).abs();
+            if d > worst.0 {
+                worst = (
+                    d,
+                    format!(
+                        "t = {:.1} d, component {i}: {:.6} vs {:.6}",
+                        times[index],
+                        mine[i],
+                        theirs[i] / total
+                    ),
+                );
+            }
+        }
+    }
+
+    eprintln!(
+        "BHP depletion composition: worst {:.2e} at {}",
+        worst.0, worst.1
+    );
+    // Measured: 9.3e-4 worst, against a reference drift of 1.19e-2 — so ResSim follows about 92%
+    // of the compositional drift. The remainder is the same connection-rate difference the
+    // trajectory test records: producing less total fluid means stripping less gas.
+    assert!(
+        worst.0 < 1.2e-3,
+        "the composition diverges: worst {:.2e} at {}, against a reference drift of {drift:.2e}",
+        worst.0,
+        worst.1
+    );
+    assert!(
+        worst.0 < 0.1 * drift,
+        "the composition error {:.2e} is now more than a tenth of the drift {drift:.2e} it is \
+         supposed to be resolving",
+        worst.0
+    );
+}
+
+/// The four C0 fixture states at the BHP depletion reference's own `(p, z)`.
+///
+/// They carry OPM's own **viscosities** at those states, which is why they exist: `flowexp_comp`
+/// writes `OIL_VISC` and `GAS_VISC` as identically zero, so a trajectory comparison cannot see
+/// them, and a producer's rate is `WI · (kr/μ) · Δp`.
+const BHP_DEPLETION_STATES: [&str; 4] = [
+    "ternary_bhpdep_p87",
+    "ternary_bhpdep_p85",
+    "ternary_bhpdep_p83",
+    "ternary_bhpdep_p82",
+];
+
+/// **C12's largest open disagreement: ResSim's producer connection is 1.29× too productive on a
+/// two-phase cell.**
+///
+/// Measured at the reference's *own* reported states, so no integration, timestep or control
+/// handover enters. The reference's own molar withdrawal between two of its report steps follows
+/// from its own two states — the cell holds `PV · c_mix(p, z)` — and ResSim's connection law is
+/// asked for its instantaneous rate at the midpoint of the same pair.
+///
+/// Every term of `q = WI · Σ_P (kr_P/μ_P) · Δp · c_P` has been checked against the reference or its
+/// own oracle, and this test asserts each one so a future reader does not have to take the list on
+/// trust:
+///
+/// * **the drawdown** — the reference's `WBHP:PROD` is 80.0000 at every step, exactly the deck's
+///   limit, and the deck's `SGOF` has no capillary pressure, so both see the same `Δp`;
+/// * **the saturation** — ResSim's flash reproduces the reference's `SGAS` at its own `(p, z)` to
+///   better than 1e-4, so `kr` is being read at the same place on the same table;
+/// * **the viscosities** — `ternary_bhpdep_*` are OPM's own PTFlash + LBC at these states, and
+///   they agree to better than 2%;
+/// * **the accumulation** — the mixture molar density agrees to 2e-5, and, more to the point, so
+///   does its *difference* between consecutive states (0.02%), which is what the inference
+///   actually rests on.
+///
+/// What is left is the well index or the way the two phases are combined, and neither can be
+/// checked from outside. **Relative permeability alone cannot explain it:** with the deck's `SGOF`
+/// and the agreed viscosities, `λ_total(S) = (1-S)²/μ_L + S²/μ_V` has a minimum of about 7.1 over
+/// all saturations, and the reference's rate needs 5.8. No saturation produces it.
+///
+/// The one comparable check that *passes* is the 1D case's injector, where ResSim reproduces the
+/// reference's rate to 0.4% — at a cell that is single phase. So the disagreement is specific to a
+/// connection flowing two phases.
+#[test]
+fn comp_depletion_bhp_connection_rate_differs_from_opm() {
+    let reference = depletion_bhp_reference();
+    let times = reference.summary.get("TIME").expect("TIME").clone();
+    let spec = deck_fluid();
+    let relperm = deck_relperm();
+    let t = spec.reservoir_temperature_k();
+
+    // The drawdown is exactly the deck's limit at every step.
+    for bhp in reference.summary.get("WBHP:PROD").expect("WBHP:PROD") {
+        assert!(
+            (bhp - DEPLETION_BHP_BAR).abs() < 1e-3,
+            "the reference's producer is not on its BHP limit: {bhp}"
+        );
+    }
+
+    // The saturation and the viscosities, against OPM's own flash at OPM's own states.
+    let fixture = crate::fluid::fixture::load();
+    let ternary = crate::fluid::fixture::ternary_system(&fixture);
+    let mut worst_saturation = 0.0f64;
+    let mut worst_viscosity = 0.0f64;
+    let mut c_mix_difference = Vec::new();
+    for id in BHP_DEPLETION_STATES {
+        let state = ternary
+            .states
+            .iter()
+            .find(|e| e.id == id)
+            .unwrap_or_else(|| panic!("the fixture must carry {id}"));
+        let ours = flash(&spec, state.pressure_pa, t, &state.z, None).unwrap();
+
+        // The reference's own reported SGAS at the matching report step.
+        let theirs_sgas = reference
+            .report_steps
+            .iter()
+            .find(|s| (s.pressure[0] - state.pressure_pa / PA_PER_BAR).abs() < 1e-3)
+            .expect("the fixture state must come from a report step")
+            .sgas[0];
+        worst_saturation = worst_saturation.max((ours.vapour_saturation() - theirs_sgas).abs());
+
+        let (mu_l, mu_v) = crate::fluid::transport::flash_viscosities(&spec, t, &ours).unwrap();
+        for (ours_mu, theirs) in [(mu_l, state.liquid.as_ref()), (mu_v, state.vapour.as_ref())] {
+            if let (Some(a), Some(b)) = (ours_mu, theirs) {
+                worst_viscosity = worst_viscosity.max((a - b.viscosity).abs() / b.viscosity);
+            }
+        }
+
+        let l = state.l_liquid.expect("L");
+        let theirs_c = 1.0
+            / (l * state.liquid.as_ref().expect("liquid").molar_volume_si()
+                + (1.0 - l) * state.vapour.as_ref().expect("vapour").molar_volume_si());
+        c_mix_difference.push((theirs_c, 1.0 / ours.mixture_molar_volume()));
+    }
+    assert!(
+        worst_saturation < 1e-4,
+        "the gas saturation differs by {worst_saturation:.2e}, so `kr` is not being read at the \
+         same place and the argument below does not hold"
+    );
+    assert!(
+        worst_viscosity < 0.02,
+        "the viscosities differ by {:.2}%, which is large enough to matter here",
+        worst_viscosity * 100.0
+    );
+    let mut worst_accumulation = 0.0f64;
+    for pair in c_mix_difference.windows(2) {
+        let theirs = pair[0].0 - pair[1].0;
+        let ours = pair[0].1 - pair[1].1;
+        worst_accumulation = worst_accumulation.max((ours - theirs).abs() / theirs);
+    }
+    assert!(
+        worst_accumulation < 1e-3,
+        "the mixture molar density's *difference* between states disagrees by {:.3}%; the \
+         withdrawal inferred below would not be trustworthy",
+        worst_accumulation * 100.0
+    );
+
+    // Now the rate itself, at the reference's own states.
+    let pore_volumes = vec![depletion_deck::PORE_VOLUME_M3];
+    let rock = RockView {
+        pore_volume_ref_m3: &pore_volumes,
+        reference_pressure_bar: depletion_deck::ROCK_REFERENCE_BAR,
+        compressibility_per_bar: depletion_deck::ROCK_COMPRESSIBILITY,
+    };
+    let r_w = depletion_deck::WELL_DIAMETER_M / 2.0;
+    let r_eq = 0.28 * (100.0f64 * 100.0 + 100.0 * 100.0).sqrt() / 2.0;
+    let well_index = deck::DARCY * 2.0 * std::f64::consts::PI * 100.0 * 10.0 / (r_eq / r_w).ln();
+    let well = CompositionalWell {
+        id: "PROD".to_string(),
+        completions: vec![Completion {
+            cell: 0,
+            well_index,
+            head_offset_bar: 0.0,
+        }],
+        control: WellControl::Bhp {
+            target_bar: DEPLETION_BHP_BAR,
+        },
+        injection_composition: None,
+    };
+
+    let cell_at = |pressure: f64, z: [f64; 3]| {
+        let total: f64 = z.iter().sum();
+        CompositionalCellState::new(pressure, vec![z[0] / total, z[1] / total]).unwrap()
+    };
+    let moles_in = |cell: &CompositionalCellState| {
+        let (inventory, _) = cell_inventory(&spec, &rock, 0, cell).unwrap();
+        inventory.component_moles.iter().sum::<f64>()
+    };
+
+    // Skip the first step: the cell falls 50 bar and crosses its saturation pressure inside it, so
+    // a midpoint rate is a poor stand-in for the average there. The ratio is flat from the third
+    // step on, which is what makes it a property of the connection law rather than of the
+    // transient.
+    let mut ratios = Vec::new();
+    let mut previous = cell_at(
+        reference.report_steps[0].pressure[0],
+        reference.report_steps[0].z(0),
+    );
+    let mut previous_time = times[0];
+    for (index, step) in reference.report_steps.iter().enumerate().skip(1).take(7) {
+        let current = cell_at(step.pressure[0], step.z(0));
+        let theirs = (moles_in(&previous) - moles_in(&current)) / (times[index] - previous_time);
+
+        let a = previous.overall_composition();
+        let b = current.overall_composition();
+        let midpoint = cell_at(
+            0.5 * (previous.pressure_bar + current.pressure_bar),
+            [
+                0.5 * (a[0] + b[0]),
+                0.5 * (a[1] + b[1]),
+                0.5 * (a[2] + b[2]),
+            ],
+        );
+        let result = super::wells::well_source(&spec, &relperm, &well, &[midpoint]).unwrap();
+        let ours = -result.total_component_moles_per_day(3).iter().sum::<f64>();
+        ratios.push(ours / theirs);
+
+        previous = current;
+        previous_time = times[index];
+    }
+
+    eprintln!(
+        "BHP depletion connection rate, ours/theirs at the reference's own states: {:?}",
+        ratios
+            .iter()
+            .map(|r| (r * 1e4).round() / 1e4)
+            .collect::<Vec<_>>()
+    );
+
+    // Flat from the third step on, which is the signature of a connection-law difference rather
+    // than a transient one. Bounded in both directions: this is a recorded finding.
+    let settled = &ratios[2..];
+    let lowest = settled.iter().cloned().fold(f64::INFINITY, f64::min);
+    let highest = settled.iter().cloned().fold(0.0, f64::max);
+    assert!(
+        highest - lowest < 0.02,
+        "the ratio is not settling ({lowest:.4} to {highest:.4}), so it is not a property of the \
+         connection law and this test's reasoning does not apply"
+    );
+    assert!(
+        (1.25..1.35).contains(&lowest) && (1.25..1.35).contains(&highest),
+        "the connection rate ratio is now {lowest:.4}–{highest:.4} rather than the recorded ~1.29. \
+         If it closed, say what explained it"
+    );
+}

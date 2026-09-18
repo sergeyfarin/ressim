@@ -11,12 +11,15 @@ C2–C5 tasks. It is **generated**, never hand-edited.
 | Environment, checksum, source commit | `manifest.json` |
 | Admission targets and results | [`docs/COMPOSITIONAL_VALIDATION.md`](../../docs/COMPOSITIONAL_VALIDATION.md) |
 
-**49 flashed states** across two fluid systems (C1/C10 binary, CO2/C1/C10 ternary): 31 two-phase,
+**53 flashed states** across two fluid systems (C1/C10 binary, CO2/C1/C10 ternary): 35 two-phase,
 15 single-liquid, 3 single-vapour, over three isotherms, with bubble and dew crossings, trace
 components and analytic derivatives with respect to `[p, z_0 .. z_(N-2)]`.
 
 Two of those are **surface** states — `ternary_stcond_*`, at 1 bar and 288.15 K, which is the
-decks' `STCOND 15.0 1.0`. They are two orders of magnitude below any other pressure here, because a
+decks' `STCOND 15.0 1.0`, and four are `ternary_bhpdep_*`, two-phase decane-rich states at 82–87
+bar taken from C12's BHP depletion. The latter are there for the **viscosity**: `flowexp_comp`
+writes `OIL_VISC` and `GAS_VISC` as identically zero, so a trajectory comparison cannot see them at
+all, and a producer's rate is `WI · (kr/μ) · Δp`. They are two orders of magnitude below any other pressure here, because a
 surface separation is a flash at 1 bar and nothing else in this fixture is. C5's separation had no
 external reference until C12's depletion case needed one; both states passed every existing
 comparison unchanged, with no widened tolerance.

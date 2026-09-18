@@ -543,6 +543,17 @@ int main(int argc, char** argv)
     // than the pressure-blind single-phase labelling that C12 documents separately.
     add3("ternary_stcond_depletion", 1.0, 288.15, 0.1, 0.3, 0.6);
     add3("ternary_stcond_1dcomp", 1.0, 288.15, 0.2, 0.5, 0.3);
+    // Four states from C12's BHP-controlled depletion, at the reference's own reported `(p, z)`.
+    //
+    // They are here for the **viscosity**. `flowexp_comp` writes `OIL_VISC` and `GAS_VISC` as
+    // identically zero, so a trajectory comparison cannot see them at all - and a producer's rate
+    // is `WI * (kr/mu) * dp`, so an unverified viscosity is an unverified rate. These are
+    // two-phase, decane-rich and low-pressure, which is where LBC's sixteenth-power dependence on
+    // reduced density is least forgiving; nothing else in this fixture sits there.
+    add3("ternary_bhpdep_p87", 87.375084, 423.15, 0.09984598, 0.29907236, 0.60108166);
+    add3("ternary_bhpdep_p85", 84.660286, 423.15, 0.09968493, 0.29807763, 0.60223744);
+    add3("ternary_bhpdep_p83", 82.948433, 423.15, 0.09954691, 0.29723940, 0.60321369);
+    add3("ternary_bhpdep_p82", 81.872063, 423.15, 0.09945133, 0.29666445, 0.60388422);
 
     std::vector<Case<2>> t2;
     auto add2 = [&](const std::string& id, Scalar p_bar, Scalar t_k, Scalar z0, Scalar z1) {

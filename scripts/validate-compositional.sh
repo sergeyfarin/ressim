@@ -104,7 +104,7 @@ run_thermo() {
     run_filter comp_well_        29   # C11 wells: sources, derivatives, controls, multi-completion
     run_filter comp_reference_   10   # C12 against OPM's flowexp_comp on 1D_COMP
     run_filter comp_skin_         3   # C12's well-conditioned 1D variant: the cumulative target
-    run_filter comp_depletion_    4   # C12's second fixture: single-cell phase-changing depletion
+    run_filter comp_depletion_    7   # C12's second fixture: single-cell depletion, rate and BHP
 }
 
 run_fixture() {

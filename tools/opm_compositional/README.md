@@ -98,7 +98,7 @@ has no external oracle and needs an independent invariant instead.
 2. **`K` must be seeded by the caller.** PTFlash never applies its own `wilsonK_`; passing `K = 0`
    fails every state. The harness seeds Wilson explicitly, reproducing `wilsonK_` from the same
    header. A "cold start" in this fixture therefore means Wilson, not zero.
-3. **The flash tolerance floor is about 1e-9.** At `--tolerance 1e-11` or tighter, 27 of 49 states
+3. **The flash tolerance floor is about 1e-9.** At `--tolerance 1e-11` or tighter, 27 of 53 states
    fail with `Newton composition update did not converge`; at `1e-9`, all resolve. The pinned
    value is `1e-9`. This is a floor on the *reference*, and it is what caps the achievable
    equilibrium residual recorded in `COMPOSITIONAL_VALIDATION.md`.
@@ -114,12 +114,16 @@ has no external oracle and needs an independent invariant instead.
    the production rate only moves where. **Consequence for C12:** the phase-changing fixture is
    seven report steps, and its runner checks the step count rather than the exit status so an
    expected abort is not confused with a real failure.
-7. **`flowexp_comp`'s surface metering disagrees with PTFlash by 3.8% on a mixture.** The same
+7. **`flowexp_comp` writes `OIL_VISC` and `GAS_VISC` as identically zero**, so no trajectory
+   comparison can see a viscosity. This harness is the only reference for them, which is why
+   `ternary_bhpdep_*` exists: a producer's rate is `WI * (kr/mu) * dp`, and an unverified
+   viscosity is an unverified rate.
+8. **`flowexp_comp`'s surface metering disagrees with PTFlash by 3.8% on a mixture.** The same
    depletion case reports 30 sm³/day of surface oil for a stream this harness flashes at `STCOND`
    as 1.2681e-4 m³ of oil per mole — 236 582 mol/day — while its own trajectory withdrew 227 888.
    **Consequence:** a surface-metered cumulative on a mixture has no usable oracle here. Pure CO2
    is unaffected (the two agree to ~0.01%). See `comp_depletion_*`.
-8. **OPM clamps fugacity coefficients** into `[1e-10, 1e10]` in `CubicEOS.hpp`. No fixture state
+9. **OPM clamps fugacity coefficients** into `[1e-10, 1e10]` in `CubicEOS.hpp`. No fixture state
    reaches that clamp. The Rust port must not copy it — plan rule 6 forbids clamping an invalid
    result — and if a future fixture state ever did clamp, it would have to be excluded rather
    than matched.
