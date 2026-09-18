@@ -74,6 +74,18 @@ export type PermMode = 'uniform' | 'random' | 'perLayer' | 'field' | string;
 
 /** Minimal shape for the simulator creation payload (returned by buildCreatePayload). */
 export interface SimulatorCreatePayload {
+  /**
+   * Which engine this payload is for.
+   *
+   * **Absent means black-oil**, and that is load-bearing rather than a convenience: every payload
+   * serialized before the compositional model existed lacks the field, and reading those as
+   * compositional would silently reinterpret every stored scenario. See
+   * `src/lib/compositional/createPayload.ts`.
+   */
+  fluidModel?: 'black-oil' | 'compositional';
+  /** The compositional case, when `fluidModel` is `'compositional'`. Ignored otherwise. */
+  compositional?: import('./compositional/types').CompositionalCaseConfig;
+
   nx: number;
   ny: number;
   nz: number;
@@ -338,6 +350,31 @@ export interface WorkerBatchCompleteMessage {
   completedSteps?: number;
   terminationSummary?: string;
 }
+/**
+ * A compositional snapshot. Separate from `WorkerStateMessage` on purpose — a compositional state
+ * has components and phase labels where a black-oil one has water and oil saturations, and a union
+ * that tried to be both would make every consumer check which it had.
+ */
+export interface WorkerCompositionalStateMessage {
+  type: 'compositionalState';
+  data: import('./compositional/types').CompositionalSnapshot;
+  /** Present on the message that follows a create or restore. */
+  config?: import('./compositional/types').CompositionalCaseConfig;
+  stepIndex?: number;
+}
+export interface WorkerCompositionalStoppedMessage {
+  type: 'compositionalStopped';
+  reason: 'completed' | 'user' | 'failed';
+  completedSteps: number;
+  /** Ready to show: no solver vocabulary. See `describeCompositionalStop`. */
+  message: string;
+  failure?: { kind: string; message: string; timeDays: number };
+  profile: RunProfile;
+}
+export interface WorkerCompositionalCheckpointMessage {
+  type: 'compositionalCheckpoint';
+  checkpoint: import('./compositional/types').CompositionalCheckpoint;
+}
 export interface WorkerErrorMessage { type: 'error'; message: string }
 export interface WorkerWarningMessage { type: 'warning'; message: string }
 
@@ -348,5 +385,8 @@ export type WorkerMessage =
   | WorkerStoppedMessage
   | WorkerHydratedMessage
   | WorkerBatchCompleteMessage
+  | WorkerCompositionalStateMessage
+  | WorkerCompositionalStoppedMessage
+  | WorkerCompositionalCheckpointMessage
   | WorkerErrorMessage
   | WorkerWarningMessage;

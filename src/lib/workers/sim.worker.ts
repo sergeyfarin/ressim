@@ -1,5 +1,16 @@
-import initWasm, { ReservoirSimulator, set_panic_hook } from '../ressim/pkg/simulator.js';
+import initWasm, { CompositionalSimulator, ReservoirSimulator, set_panic_hook } from '../ressim/pkg/simulator.js';
 import type { SimulatorCreatePayload, SimulatorWellDefinition, SimulatorWellSchedule, WorkerRunPayload } from '../simulator-types';
+import type {
+  CompositionalCaseConfig,
+  CompositionalCheckpoint,
+} from '../compositional/types';
+import { isCompositionalCreate } from '../compositional/createPayload';
+import {
+  CompositionalSession,
+  describeCompositionalStop,
+  type CompositionalEngine,
+  type CompositionalEngineFactory,
+} from './compositionalSession';
 import { evaluateTerminationPolicy } from './terminationPolicy';
 
 let wasmReady = false;
@@ -9,6 +20,30 @@ let stopRequested = false;
 let lastRateHistoryLen = 0;
 let wasmInitPromise: Promise<void> | null = null;
 let activeCreatePayload: SimulatorCreatePayload | null = null;
+
+/**
+ * The compositional run, when there is one.
+ *
+ * Deliberately a separate handle from `simulator`, not a union: the black-oil `run` loop owns rate
+ * history, the termination policy and `loadState`, none of which mean the same thing for a
+ * compositional case, and C13's exit criterion is that black-oil scenarios are unchanged. The two
+ * never both exist — `create` disposes whichever was there.
+ */
+let compositional: CompositionalSession | null = null;
+
+/** The generated bindings type every payload as `any`; this is where those types come back. */
+const compositionalFactory: CompositionalEngineFactory = {
+  create: (config: CompositionalCaseConfig) =>
+    new CompositionalSimulator(config) as unknown as CompositionalEngine,
+  restore: (checkpoint: CompositionalCheckpoint) =>
+    CompositionalSimulator.restore(checkpoint) as unknown as CompositionalEngine,
+};
+
+function disposeRuns(): void {
+  compositional?.dispose();
+  compositional = null;
+  simulator = null;
+}
 
 async function ensureWasmReady(): Promise<void> {
   if (wasmReady) {
@@ -459,6 +494,24 @@ self.onmessage = async (event) => {
     if (type === 'create') {
       await ensureWasmReady();
 
+      // The fluid-model discriminator. An absent one is black-oil, which is what every payload
+      // serialized before the compositional model existed looks like.
+      if (isCompositionalCreate(payload)) {
+        disposeRuns();
+        try {
+          compositional = CompositionalSession.create(compositionalFactory, payload.compositional);
+        } catch (error) {
+          compositional = null;
+          throw error;
+        }
+        post('compositionalState', {
+          data: compositional.snapshot(),
+          config: compositional.config,
+        });
+        return;
+      }
+
+      disposeRuns();
       try {
         configureSimulator(payload);
       } catch (error) {
@@ -466,6 +519,56 @@ self.onmessage = async (event) => {
         throw error;
       }
       post('state', getStatePayload(false, -1, { batchMs: 0, avgStepMs: 0, snapshotsSent: 0 }));
+      return;
+    }
+
+    if (type === 'compositionalRun') {
+      if (!compositional) {
+        throw new Error('No compositional case has been created');
+      }
+      const { steps = 1, dtDays = 1, snapshotEvery } = payload ?? {};
+      const batchStart = performance.now();
+      let snapshotsSent = 0;
+      const stop = compositional.run({ steps, dtDays, snapshotEvery }, (data, stepIndex) => {
+        snapshotsSent += 1;
+        post('compositionalState', { data, stepIndex });
+      });
+      post('compositionalStopped', {
+        reason: stop.reason,
+        completedSteps: stop.completedSteps,
+        message: describeCompositionalStop(stop),
+        failure: stop.reason === 'failed' ? stop.failure : undefined,
+        profile: buildRunProfile(batchStart, 0, stop.completedSteps, snapshotsSent),
+      });
+      return;
+    }
+
+    if (type === 'compositionalStop') {
+      compositional?.requestStop();
+      return;
+    }
+
+    if (type === 'compositionalCheckpoint') {
+      if (!compositional) {
+        throw new Error('No compositional case has been created');
+      }
+      post('compositionalCheckpoint', { checkpoint: compositional.checkpoint() });
+      return;
+    }
+
+    if (type === 'compositionalRestore') {
+      await ensureWasmReady();
+      disposeRuns();
+      try {
+        compositional = CompositionalSession.restore(compositionalFactory, payload?.checkpoint);
+      } catch (error) {
+        compositional = null;
+        throw error;
+      }
+      post('compositionalState', {
+        data: compositional.snapshot(),
+        config: compositional.config,
+      });
       return;
     }
 
