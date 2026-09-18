@@ -816,10 +816,12 @@ oil is (236 582, a 0.15% difference attributable to the hard-coded `ThreeCompone
 rounder critical constants). The reference's simulator agrees with neither, and has no settled value
 to calibrate against.
 
-Growing without bound as `dt → 0` is the signature of a term divided by `dt`, and
-`CompWell::assembleSourceTerm` has one: `(new_component_masses − component_masses)/dt` over a
-hard-coded 0.0216 m³ wellbore. **That is a plausible mechanism, not a proven one**, and the
-forensics document records it as such.
+**That mechanism has since been refuted.** Reducing `wellbore_volume_` a millionfold in a local
+build changes the trajectory by hundredths of a bar and leaves the divergence intact. Tightening
+the wellbore flash from 1e-6 to 1e-9 does not fix it either — the reference aborts partway. The
+failure is a **threshold** rather than smooth `1/dt` growth, and it affects rate-controlled wells
+in **both** directions while leaving BHP-controlled ones converging. See
+[`COMPOSITIONAL_C12_FORENSICS.md`](COMPOSITIONAL_C12_FORENSICS.md) E7 and E8.
 
 This supersedes the "3.8% surface metering" finding recorded earlier, which was this divergence
 sampled at the one timestep the committed fixture happens to use.

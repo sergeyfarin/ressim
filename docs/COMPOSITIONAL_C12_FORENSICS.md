@@ -88,6 +88,8 @@ the result does **not** establish.
 | **E3** | Does the reference converge toward ResSim when forced to sub-step? | BHP depletion `p(1)`: **99.2390** (1 d) → **95.3159** (0.05 d) → **95.0018** (0.01 d). ResSim: 95.3200 (0.05 d) → 95.0278 (0.0125 d) → 94.9493 (0.003125 d). Same limit, ~94.95 | — |
 | **E4** | Is the reference's **rate-controlled** withdrawal timestep-independent? | **No, and it does not converge.** Implied withdrawal: **227 888** (1 d) → **231 373** (0.05 d) → **244 887** (0.01 d) → **269 638** (0.0025 d) mol/day. ResSim: **236 926**, timestep-independent | The mechanism. The signature — growing without bound as `dt → 0` — is that of a term divided by `dt`, and `CompWell::assembleSourceTerm` has one: `(new_component_masses − component_masses)/dt` over a hard-coded 0.0216 m³ wellbore. Not proven |
 | **E5** | Can the reference's own summary give `PV`, `PI` or a reservoir-volume rate? | **No.** `FVPR`, `FVPT`, `WPI:PROD`, `FOIP`, `FGIP`, `FPR` are all written as identically zero | — |
+| **E7** | Is the rate-control divergence the wellbore **storage** term? | **No — refuted.** `CompWell`'s `wellbore_volume_` was reduced by 1e-6 in a local build. The injection ladder barely moved: `p(20 d)` 183.574 / 184.111 / 184.998 / 184.993 / **191.460** against the unpatched 183.598 / 184.160 / 185.156 / 185.196 / **191.935**. The jump at 0.0625 d survives | — |
+| **E8** | Is it the wellbore **flash tolerance**? | **Inconclusive, and it cannot be tightened.** `flashFluidState_` uses `ssi` at 1e-6. At 1e-11 the run aborts after 3 report steps; at 1e-9 — the floor the C0 harness measured for PTFlash — it aborts after 8 of 20, and earlier still under refinement. Tightening destabilises `flowexp_comp` rather than fixing it | The mechanism. What it does establish is that the wellbore flash is fragile |
 | **E6** | Is the rate-control behaviour specific to producers? | **No.** A closed cell with one rate-controlled **injector** of a 0.5/0.3/0.2 mixture shows the same structure: ResSim's conversion matches OPM's own flash to **8e-6** (105 025.5 vs 105 024.7 mol/day) while `flowexp_comp`'s own trajectory injects **76 583**, and refining moves it toward ResSim without settling (183.60 → 191.94 bar over five levels) | The mechanism, still. But it now holds for both well directions, which rules out anything producer-specific |
 
 ## 4. What this leaves standing
@@ -118,6 +120,13 @@ The other C12 findings are **unaffected**, because none of them rests on a traje
    *conversion* is externally validated, but its rate *control* end to end on a mixture is not
    validated against a simulator. The untested part is the algebra that turns a validated
    conversion into a BHP, and it is unit-tested.
+
+   **The mechanism has not been found, and two hypotheses are now dead** (E7, E8). The wellbore
+   storage term is refuted outright — a millionfold smaller wellbore changes nothing. The wellbore
+   flash tolerance cannot be tightened at all: at 1e-9 the reference aborts partway. Anyone
+   picking this up should start from the fact that the failure is a **threshold** between 0.125
+   and 0.0625 days rather than smooth `1/dt` growth, and that it affects **rate-controlled wells
+   in both directions** while leaving BHP-controlled ones converging.
 2. **`flowexp_comp` cannot cross a saturation pressure** on the ORAT deck — unchanged, and now
    joined by the observation that its ORAT run also fails at fine timesteps (`orat400` aborted at
    2163 of 2400 steps).
@@ -201,6 +210,13 @@ cargo test --manifest-path src/lib/ressim/Cargo.toml --lib -- comp_depletion_bhp
 
 # E3, E4: force the reference to sub-step, by subdividing the deck's TSTEP ladder
 python3 tools/opm_compositional/halve_tstep.py <deck> --out <halved>
+
+# E7, E8: the two refuted mechanism hypotheses. Both are local patches to the OPM build tree at
+# ../ressim-opm-build/opm-simulators, NOT to anything committed here, and both must be reverted
+# and the binary rebuilt afterwards — the committed fixtures are verified against the unpatched
+# build, and `validate-compositional.sh reference` will catch it if they are not.
+#   E7: flowexperimental/comp/wells/CompWell.hpp     wellbore_volume_ {21.6*0.001} -> *1e-6
+#   E8: flowexperimental/comp/wells/CompWell_impl.hpp  flashFluidState_'s "ssi", 1.e-6 -> 1.e-9
 
 # The census that now gates all of this
 bash tools/opm_compositional/check-reference-convergence.sh          # remeasure
