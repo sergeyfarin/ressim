@@ -2450,10 +2450,16 @@ const BHP_DEPLETION_STATES: [&str; 4] = [
 ///   does its *difference* between consecutive states (0.02%), which is what the inference
 ///   actually rests on.
 ///
-/// What is left is the well index or the way the two phases are combined, and neither can be
-/// checked from outside. **Relative permeability alone cannot explain it:** with the deck's `SGOF`
-/// and the agreed viscosities, `λ_total(S) = (1-S)²/μ_L + S²/μ_V` has a minimum of about 7.1 over
-/// all saturations, and the reference's rate needs 5.8. No saturation produces it.
+/// **Relative permeability alone cannot explain it:** with the deck's `SGOF` and the agreed
+/// viscosities, `λ_total(S) = (1-S)²/μ_L + S²/μ_V` has a minimum of about 7.1 over all
+/// saturations, and the reference's rate needs 5.8. No saturation produces it.
+///
+/// **And the two agree about the phase split**, which narrows it further. The composition of what
+/// each simulator produces is compared here too, and from the third step on they agree to better
+/// than 1% — so `λ_L : λ_V` is right and the difference is a single multiplicative constant on the
+/// connection. A saturation shift cannot do that, since `(1-S)²` and `S²` cannot scale by the same
+/// factor. What is left is the connection's constant itself: the well index, or something folded
+/// into it that is not visible from outside.
 ///
 /// The one comparable check that *passes* is the 1D case's injector, where ResSim reproduces the
 /// reference's rate to 0.4% — at a cell that is single phase. So the disagreement is specific to a
@@ -2560,9 +2566,9 @@ fn comp_depletion_bhp_connection_rate_differs_from_opm() {
         let total: f64 = z.iter().sum();
         CompositionalCellState::new(pressure, vec![z[0] / total, z[1] / total]).unwrap()
     };
-    let moles_in = |cell: &CompositionalCellState| {
+    let cell_moles = |cell: &CompositionalCellState| {
         let (inventory, _) = cell_inventory(&spec, &rock, 0, cell).unwrap();
-        inventory.component_moles.iter().sum::<f64>()
+        inventory.component_moles
     };
 
     // Skip the first step: the cell falls 50 bar and crosses its saturation pressure inside it, so
@@ -2570,6 +2576,7 @@ fn comp_depletion_bhp_connection_rate_differs_from_opm() {
     // step on, which is what makes it a property of the connection law rather than of the
     // transient.
     let mut ratios = Vec::new();
+    let mut worst_produced_composition = 0.0f64;
     let mut previous = cell_at(
         reference.report_steps[0].pressure[0],
         reference.report_steps[0].z(0),
@@ -2577,7 +2584,11 @@ fn comp_depletion_bhp_connection_rate_differs_from_opm() {
     let mut previous_time = times[0];
     for (index, step) in reference.report_steps.iter().enumerate().skip(1).take(7) {
         let current = cell_at(step.pressure[0], step.z(0));
-        let theirs = (moles_in(&previous) - moles_in(&current)) / (times[index] - previous_time);
+        let before = cell_moles(&previous);
+        let after = cell_moles(&current);
+        let produced: Vec<f64> = (0..3).map(|i| before[i] - after[i]).collect();
+        let theirs_total: f64 = produced.iter().sum();
+        let theirs = theirs_total / (times[index] - previous_time);
 
         let a = previous.overall_composition();
         let b = current.overall_composition();
@@ -2590,12 +2601,29 @@ fn comp_depletion_bhp_connection_rate_differs_from_opm() {
             ],
         );
         let result = super::wells::well_source(&spec, &relperm, &well, &[midpoint]).unwrap();
-        let ours = -result.total_component_moles_per_day(3).iter().sum::<f64>();
-        ratios.push(ours / theirs);
+        let rates = result.total_component_moles_per_day(3);
+        let ours_total: f64 = -rates.iter().sum::<f64>();
+        ratios.push(ours_total / theirs);
+
+        // What each of them produced, as a composition. This is the sharpest constraint on the
+        // finding: if the two disagreed about the phase split the streams would differ, and they
+        // do not. From the third step on the two agree to better than 1%.
+        if index >= 3 {
+            for i in 0..3 {
+                worst_produced_composition = worst_produced_composition
+                    .max(((-rates[i] / ours_total) - produced[i] / theirs_total).abs());
+            }
+        }
 
         previous = current;
         previous_time = times[index];
     }
+
+    assert!(
+        worst_produced_composition < 0.012,
+        "the produced streams differ in composition by {worst_produced_composition:.4}, so the \
+         two DO disagree about the phase split and the conclusion below is wrong"
+    );
 
     eprintln!(
         "BHP depletion connection rate, ours/theirs at the reference's own states: {:?}",

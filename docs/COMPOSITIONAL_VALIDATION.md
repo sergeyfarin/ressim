@@ -750,6 +750,15 @@ rather than leaving the list on trust:
 `λ_total(S) = (1-S)²/μ_L + S²/μ_V` has a minimum of about 7.1 over all saturations; the reference's
 rate needs 5.8. No saturation produces it.
 
+**And the two agree about the phase split**, which narrows it to a single constant. The
+*composition* of what each simulator produces is compared as well, and from the third step on they
+agree to better than 1% — so `λ_L : λ_V` is right and what differs is one multiplicative factor on
+the connection. A saturation shift cannot do that, since `(1-S)²` and `S²` cannot scale by the same
+factor. What is left is the connection's own constant: the well index, or something folded into it
+that is not visible from outside. ResSim's well index is the same Peaceman expression the
+black-oil path uses and that path is validated against OPM Flow, which is why this is recorded as
+open rather than fixed.
+
 **The one comparable check that passes is single phase.** On the 1D case ResSim reproduces the
 reference's injection rate at the reference's own final cell pressure to 0.4% — and that cell is
 essentially pure CO2. So the disagreement is specific to a connection flowing **two** phases, and
@@ -821,10 +830,11 @@ discretisation.
 ```text
 * THE PRODUCER CONNECTION RATE ON A TWO-PHASE CELL: 1.29x, measured at the reference's own
   states, with the drawdown, saturation, viscosities and accumulation all separately checked and
-  none of them accounting for it. This is the largest disagreement C12 has found and the one
-  most likely to be ResSim's. What is left is the well index or the two-phase combination; the
-  single-phase injector check passes to 0.4%, so a comparison at a two-phase connection with an
-  independently known rate is what would separate them
+  none of them accounting for it. The produced compositions agree to 1%, so the phase split is
+  right and what differs is a SINGLE MULTIPLICATIVE CONSTANT on the connection. The single-phase
+  injector check passes to 0.4% and ResSim's well index is the same Peaceman expression the
+  OPM-Flow-validated black-oil path uses, so neither obvious candidate survives on its own. This
+  is the largest disagreement C12 has found and the one most likely to be ResSim's
 * the oracle's 3.8% surface-metering inconsistency, which leaves a surface-metered cumulative on
   a MIXTURE without a trustworthy reference. The 1% target is met on pure CO2; that is one fluid
   stream, and it is a narrow base on which to declare the milestone. Not ResSim's to fix - what

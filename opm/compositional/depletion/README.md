@@ -62,8 +62,11 @@ Every term of `q = WI · Σ_P (kr_P/μ_P) · Δp · c_P` was checked and none ac
 drawdown is exact, the saturation agrees to 1e-4, the viscosities to 2% against OPM's own
 PTFlash + LBC, and the accumulation to 0.02% on the difference that matters. Relative permeability
 cannot produce it either — `λ_total` bottoms out at 7.1 over all saturations and the reference's
-rate needs 5.8. The one comparable check that passes is the 1D case's injector, at 0.4%, and that
-cell is single phase.
+rate needs 5.8.
+
+The **produced compositions agree to 1%**, so the phase split is right and what differs is a single
+multiplicative constant on the connection. The one comparable check that passes is the 1D case's
+injector, at 0.4%, and that cell is single phase.
 
 See the C12 record in [`docs/COMPOSITIONAL_VALIDATION.md`](../../../docs/COMPOSITIONAL_VALIDATION.md).
 
