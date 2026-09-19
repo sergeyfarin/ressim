@@ -958,7 +958,7 @@ fn hydrocarbon_state_label(regime: HydrocarbonState) -> &'static str {
     }
 }
 
-mod convergence;
+pub(crate) mod convergence;
 mod damping;
 mod diagnostics;
 

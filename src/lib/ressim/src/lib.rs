@@ -156,6 +156,11 @@ pub struct ReservoirSimulator {
     /// (linear-precision floor). Native diagnostic driver only, set via
     /// `set_fim_force_direct_linear`; no wasm surface. Default false = unchanged behavior.
     pub(crate) fim_force_direct_linear: bool,
+    /// Test-only outer-controller fault injection. Each positive count makes the next Newton
+    /// attempt use a one-iteration budget, exercising the production retry path without relying
+    /// on a fixture remaining naturally difficult as solver behavior evolves.
+    #[cfg(test)]
+    pub(crate) fim_test_forced_rejections_remaining: usize,
     /// WATER-003 native-only replay of OPM's endpoint-extended saturation-function contract.
     /// At an exact Corey endpoint the property value is unchanged, but its AD derivative is
     /// frozen, matching both OPM's tabulated law and ResSim's scalar derivative API. Default

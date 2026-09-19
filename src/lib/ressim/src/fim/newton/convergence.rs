@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn scaled_residual_inf_norm(
+pub(crate) fn scaled_residual_inf_norm(
     residual: &DVector<f64>,
     scaling: &crate::fim::scaling::EquationScaling,
 ) -> f64 {

@@ -6,8 +6,31 @@
 //! steps.
 
 use crate::ReservoirSimulator;
-use crate::fim::newton::{FimNewtonOptions, run_fim_timestep};
+use crate::fim::assembly::FimAssemblyOptions;
+use crate::fim::assembly_ad::assemble_fim_system_ad;
+use crate::fim::newton::convergence::scaled_residual_inf_norm;
+use crate::fim::newton::{FimNewtonOptions, FimNonlinearFlavor, run_fim_timestep};
 use crate::fim::state::FimState;
+use crate::fim::wells::build_well_topology;
+use crate::pvt::{PvtRow, PvtTable};
+
+#[derive(Clone, PartialEq, Debug)]
+struct RatePointSnapshot {
+    time: f64,
+    oil_rate: f64,
+    liquid_rate: f64,
+    liquid_rate_reservoir: f64,
+    injection_rate: f64,
+    injection_rate_reservoir: f64,
+    water_mb_error: f64,
+    oil_mb_error: f64,
+    gas_rate: f64,
+    gas_mb_error: f64,
+    avg_pressure: f64,
+    avg_sw: f64,
+    avg_sg: f64,
+    producing_gor: f64,
+}
 
 /// Full physical snapshot of everything a rejected attempt must not touch.
 #[derive(Clone, PartialEq, Debug)]
@@ -19,14 +42,17 @@ struct SimSnapshot {
     sat_gas: Vec<f64>,
     rs: Vec<f64>,
     well_bhp: Vec<f64>,
-    rate_history_len: usize,
-    material_balance_error_m3: f64,
-    material_balance_error_oil_m3: f64,
+    well_flowing_bhp: Vec<Option<f64>>,
+    rate_history: Vec<RatePointSnapshot>,
+    cumulative_injection_m3: f64,
+    cumulative_production_m3: f64,
+    cumulative_mb_error_m3: f64,
+    cumulative_mb_oil_error_m3: f64,
+    cumulative_mb_gas_error_m3: f64,
 }
 
 impl SimSnapshot {
     fn capture(sim: &ReservoirSimulator) -> Self {
-        let latest = sim.rate_history.last();
         Self {
             time_days: sim.time_days,
             pressure: sim.pressure.clone(),
@@ -35,13 +61,32 @@ impl SimSnapshot {
             sat_gas: sim.sat_gas.clone(),
             rs: sim.rs.clone(),
             well_bhp: sim.wells.iter().map(|well| well.bhp).collect(),
-            rate_history_len: sim.rate_history.len(),
-            material_balance_error_m3: latest
-                .map(|point| point.material_balance_error_m3)
-                .unwrap_or(0.0),
-            material_balance_error_oil_m3: latest
-                .map(|point| point.material_balance_error_oil_m3)
-                .unwrap_or(0.0),
+            well_flowing_bhp: sim.wells.iter().map(|well| well.flowing_bhp).collect(),
+            rate_history: sim
+                .rate_history
+                .iter()
+                .map(|point| RatePointSnapshot {
+                    time: point.time,
+                    oil_rate: point.total_production_oil,
+                    liquid_rate: point.total_production_liquid,
+                    liquid_rate_reservoir: point.total_production_liquid_reservoir,
+                    injection_rate: point.total_injection,
+                    injection_rate_reservoir: point.total_injection_reservoir,
+                    water_mb_error: point.material_balance_error_m3,
+                    oil_mb_error: point.material_balance_error_oil_m3,
+                    gas_rate: point.total_production_gas,
+                    gas_mb_error: point.material_balance_error_gas_m3,
+                    avg_pressure: point.avg_reservoir_pressure,
+                    avg_sw: point.avg_water_saturation,
+                    avg_sg: point.avg_gas_saturation,
+                    producing_gor: point.producing_gor,
+                })
+                .collect(),
+            cumulative_injection_m3: sim.cumulative_injection_m3,
+            cumulative_production_m3: sim.cumulative_production_m3,
+            cumulative_mb_error_m3: sim.cumulative_mb_error_m3,
+            cumulative_mb_oil_error_m3: sim.cumulative_mb_oil_error_m3,
+            cumulative_mb_gas_error_m3: sim.cumulative_mb_gas_error_m3,
         }
     }
 }
@@ -58,7 +103,7 @@ fn rollback_fixture() -> ReservoirSimulator {
     sim
 }
 
-/// `FIM-REPAIR-F5`, plan step 4: **a rejected Newton attempt must advance nothing.**
+/// `FIM-REPAIR-F5`, inner-Newton guard: a rejected Newton solve must advance nothing.
 ///
 /// Rollback here is structural rather than an undo: `run_fim_timestep` computes on a `FimState`
 /// cloned from the simulator, and only the *accepted* state is written back
@@ -80,8 +125,8 @@ fn fim_repair_rejected_attempt_leaves_simulator_state_untouched() {
     let previous_state = FimState::from_simulator(&sim);
     let initial_iterate = previous_state.clone();
     let options = FimNewtonOptions {
-        // One iteration cannot satisfy the tolerance on this step, and `OpmAligned` additionally
-        // requires `iteration >= OPM_NEWTON_MIN_ITERATION_INDEX` before it may accept at all.
+        // One iteration cannot satisfy the Legacy tolerances on this fixture. The outer retry
+        // contract below covers both Legacy and OpmAligned through the real controller.
         max_newton_iterations: 1,
         ..FimNewtonOptions::default()
     };
@@ -99,56 +144,246 @@ fn fim_repair_rejected_attempt_leaves_simulator_state_untouched() {
     );
 }
 
-/// `FIM-REPAIR-F5`, plan step 4 (second half): a retried step must land on the same physical
-/// state as a clean run that started at the accepted smaller `dt`, with no double-counting of
-/// time or history from the discarded attempt.
+fn three_phase_lifecycle_fixture() -> ReservoirSimulator {
+    let mut sim = ReservoirSimulator::new(3, 1, 1, 0.2);
+    sim.set_fim_enabled(true);
+    sim.set_three_phase_mode_enabled(true);
+    sim.set_three_phase_rel_perm_props(
+        0.12, 0.12, 0.04, 0.04, 0.18, 2.0, 2.5, 1.5, 1e-5, 1.0, 0.984,
+    )
+    .unwrap();
+    sim.pvt_table = Some(PvtTable::new(
+        vec![
+            PvtRow {
+                p_bar: 100.0,
+                rs_m3m3: 20.0,
+                bo_m3m3: 1.10,
+                mu_o_cp: 1.20,
+                bg_m3m3: 0.0120,
+                mu_g_cp: 0.0180,
+            },
+            PvtRow {
+                p_bar: 200.0,
+                rs_m3m3: 60.0,
+                bo_m3m3: 1.22,
+                mu_o_cp: 1.05,
+                bg_m3m3: 0.0055,
+                mu_g_cp: 0.0200,
+            },
+            PvtRow {
+                p_bar: 300.0,
+                rs_m3m3: 95.0,
+                bo_m3m3: 1.32,
+                mu_o_cp: 0.95,
+                bg_m3m3: 0.0034,
+                mu_g_cp: 0.0225,
+            },
+        ],
+        sim.pvt.c_o,
+    ));
+    sim.set_initial_pressure(250.0);
+    sim.set_initial_saturation(0.20);
+    sim.set_initial_gas_saturation(0.0);
+    sim.set_initial_rs(60.0);
+    sim.set_gravity_enabled(false);
+    sim.add_well(2, 0, 0, 90.0, 0.1, 0.0, false).unwrap();
+    sim
+}
+
+fn assert_close(label: &str, actual: f64, expected: f64, scale: f64) {
+    let tolerance = 2e-9 * scale.abs().max(expected.abs()).max(1.0);
+    assert!(
+        (actual - expected).abs() <= tolerance,
+        "{label}: actual {actual:.16e}, expected {expected:.16e}, tolerance {tolerance:.3e}"
+    );
+}
+
+/// `FIM-REPAIR-F5`, plan step 3: exercise the actual outer accept/commit/report path and compare
+/// its simulator fields with an independently solved accepted state. This is deliberately
+/// three-phase: corrupting the `Rs` write-back must fail here even if the inner Newton report is
+/// internally consistent.
 #[test]
-fn fim_repair_retried_step_matches_a_clean_run_at_the_same_dt() {
-    let mut retried = rollback_fixture();
-    let previous_state = FimState::from_simulator(&retried);
-    let initial_iterate = previous_state.clone();
+fn fim_repair_outer_commit_matches_accepted_three_phase_state() {
+    const DT_DAYS: f64 = 0.05;
+    for flavor in [FimNonlinearFlavor::OpmAligned, FimNonlinearFlavor::Legacy] {
+        let mut expected_sim = three_phase_lifecycle_fixture();
+        let previous_state = FimState::from_simulator(&expected_sim);
+        let options = FimNewtonOptions {
+            nonlinear_flavor: flavor,
+            max_saturation_change: 0.2,
+            max_pressure_change_bar: 200.0,
+            ..FimNewtonOptions::default()
+        };
+        let expected = run_fim_timestep(
+            &mut expected_sim,
+            &previous_state,
+            &previous_state,
+            DT_DAYS,
+            &options,
+        );
+        assert!(expected.converged, "{flavor:?}: reference Newton solve");
 
-    // A capped attempt that is rejected, followed by a normal attempt at the same `dt`, must
-    // leave exactly what the normal attempt alone would.
-    let capped = FimNewtonOptions {
-        max_newton_iterations: 1,
-        ..FimNewtonOptions::default()
-    };
-    let rejected = run_fim_timestep(
-        &mut retried,
-        &previous_state,
-        &initial_iterate,
-        5.0,
-        &capped,
-    );
-    assert!(!rejected.converged);
+        let mut committed = three_phase_lifecycle_fixture();
+        committed.set_fim_opm_aligned_nonlinear(flavor == FimNonlinearFlavor::OpmAligned);
+        committed.step(DT_DAYS);
+        assert!(committed.last_solver_warning.is_empty());
+        let stats = committed
+            .last_fim_step_stats_ref()
+            .expect("outer step must publish stats");
+        let accepted = stats.accepted_rungs.as_deref().unwrap_or(&[]);
+        assert_eq!(accepted.len(), 1, "{flavor:?}: expected one real accept");
+        assert_close("accepted dt", accepted[0].dt_days, DT_DAYS, DT_DAYS);
 
-    let options = FimNewtonOptions::default();
-    let after_retry = run_fim_timestep(
-        &mut retried,
-        &previous_state,
-        &initial_iterate,
-        1.0,
-        &options,
-    );
-    assert!(after_retry.converged);
+        for idx in 0..expected.accepted_state.cells.len() {
+            let derived = expected.accepted_state.derive_cell(&expected_sim, idx);
+            assert_close(
+                "pressure",
+                committed.pressure[idx],
+                expected.accepted_state.cells[idx].pressure_bar,
+                300.0,
+            );
+            assert_close(
+                "Sw",
+                committed.sat_water[idx],
+                expected.accepted_state.cells[idx].sw,
+                1.0,
+            );
+            assert_close("So", committed.sat_oil[idx], derived.so, 1.0);
+            assert_close("Sg", committed.sat_gas[idx], derived.sg, 1.0);
+            assert_close("Rs", committed.rs[idx], derived.rs, 100.0);
+        }
+        for (idx, expected_bhp) in expected.accepted_state.well_bhp.iter().enumerate() {
+            assert_close("well BHP", committed.wells[idx].bhp, *expected_bhp, 500.0);
+        }
 
-    let mut clean = rollback_fixture();
-    let clean_previous = FimState::from_simulator(&clean);
-    let clean_initial = clean_previous.clone();
-    let clean_report = run_fim_timestep(&mut clean, &clean_previous, &clean_initial, 1.0, &options);
-    assert!(clean_report.converged);
+        let committed_state = FimState::from_simulator(&committed);
+        let topology = build_well_topology(&committed);
+        let assembly = assemble_fim_system_ad(
+            &committed,
+            &previous_state,
+            &committed_state,
+            &FimAssemblyOptions {
+                dt_days: DT_DAYS,
+                include_wells: true,
+                assemble_residual_only: true,
+                topology: Some(&topology),
+                flow_resv_context: None,
+            },
+        );
+        let norm = scaled_residual_inf_norm(&assembly.residual, &assembly.equation_scaling);
+        assert!(norm < 1e-5, "{flavor:?}: committed residual {norm:e}");
+    }
+}
 
-    assert_eq!(
-        after_retry.newton_iterations, clean_report.newton_iterations,
-        "the discarded attempt changed how the retry converged"
-    );
-    for idx in 0..after_retry.accepted_state.cells.len() {
-        let retried_cell = after_retry.accepted_state.cells[idx];
-        let clean_cell = clean_report.accepted_state.cells[idx];
+/// `FIM-REPAIR-F5`, plan steps 4–5: inject one real outer-controller rejection, then compare the
+/// retried result with a clean run over the exact accepted-dt sequence. The comparison includes
+/// every physical field, full rate-history values, well publication and cumulative ledgers.
+/// Gas and oil source integration are checked independently from the material-balance fields.
+#[test]
+fn fim_repair_outer_retry_has_no_physical_or_ledger_trace() {
+    const TARGET_DT_DAYS: f64 = 0.15;
+    for flavor in [FimNonlinearFlavor::OpmAligned, FimNonlinearFlavor::Legacy] {
+        let mut retried = three_phase_lifecycle_fixture();
+        retried.set_fim_opm_aligned_nonlinear(flavor == FimNonlinearFlavor::OpmAligned);
+        let initial_inventory = component_inventories(&retried);
+        retried.force_next_fim_outer_attempts_to_reject(1);
+        retried.step(TARGET_DT_DAYS);
+        assert!(retried.last_solver_warning.is_empty(), "{flavor:?}");
+
+        let stats = retried
+            .last_fim_step_stats_ref()
+            .expect("retried outer step must publish stats");
+        let accepted_dt: Vec<f64> = stats
+            .accepted_rungs
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .map(|rung| rung.dt_days)
+            .collect();
+        let retry_count = stats.retry_rungs.as_deref().unwrap_or(&[]).len();
         assert_eq!(
-            retried_cell, clean_cell,
-            "cell {idx} differs between a retried step and a clean run at the same dt"
+            retry_count, 1,
+            "{flavor:?}: injected attempt was not rejected"
+        );
+        assert!(
+            !accepted_dt.is_empty(),
+            "{flavor:?}: no accepted retry rungs"
+        );
+        assert_close(
+            "accepted dt total",
+            accepted_dt.iter().sum(),
+            TARGET_DT_DAYS,
+            TARGET_DT_DAYS,
+        );
+
+        let mut clean = three_phase_lifecycle_fixture();
+        clean.set_fim_opm_aligned_nonlinear(flavor == FimNonlinearFlavor::OpmAligned);
+        for dt_days in &accepted_dt {
+            clean.step(*dt_days);
+            assert!(
+                clean.last_solver_warning.is_empty(),
+                "{flavor:?}: clean replay"
+            );
+        }
+        assert_eq!(
+            SimSnapshot::capture(&retried),
+            SimSnapshot::capture(&clean),
+            "{flavor:?}: rejected attempt leaked into committed state or reporting"
+        );
+
+        let final_inventory = component_inventories(&retried);
+        let mut integrated_water_production = 0.0;
+        let mut integrated_oil_production = 0.0;
+        let mut integrated_gas_production = 0.0;
+        let mut integrated_gas_injection = 0.0;
+        for (point, dt_days) in retried.rate_history.iter().zip(&accepted_dt) {
+            integrated_water_production +=
+                (point.total_production_liquid - point.total_production_oil) * dt_days;
+            integrated_oil_production += point.total_production_oil * dt_days;
+            integrated_gas_production += point.total_production_gas * dt_days;
+            integrated_gas_injection += point.total_injection * dt_days;
+        }
+        let water_error = (final_inventory.0 - initial_inventory.0) + integrated_water_production;
+        let oil_error = (final_inventory.1 - initial_inventory.1) + integrated_oil_production;
+        let gas_error = (final_inventory.2 - initial_inventory.2) - integrated_gas_injection
+            + integrated_gas_production;
+        let final_rates = retried
+            .rate_history
+            .last()
+            .expect("accepted retries must publish rates");
+        assert!(
+            (water_error.abs() - final_rates.material_balance_error_m3).abs()
+                < initial_inventory.0 * 1e-10,
+            "{flavor:?}: independently reconstructed water error {water_error:e} does not match \
+             the once-committed ledger {:e}",
+            final_rates.material_balance_error_m3
+        );
+        assert!(
+            (oil_error.abs() - final_rates.material_balance_error_oil_m3).abs()
+                < initial_inventory.1 * 1e-10,
+            "{flavor:?}: independently reconstructed oil error {oil_error:e} does not match \
+             the once-committed ledger {:e}",
+            final_rates.material_balance_error_oil_m3
+        );
+        assert!(
+            (gas_error.abs() - final_rates.material_balance_error_gas_m3).abs()
+                < initial_inventory.2 * 1e-10,
+            "{flavor:?}: independently reconstructed gas error {gas_error:e} does not match \
+             the once-committed ledger {:e}",
+            final_rates.material_balance_error_gas_m3
+        );
+        assert!(
+            water_error.abs() / initial_inventory.0 < 1e-2
+                && oil_error.abs() / initial_inventory.1 < 1e-2
+                && gas_error.abs() / initial_inventory.2 < 1e-2,
+            "{flavor:?}: fixture source/inventory error is too large: water {water_error:e}, \
+             oil {oil_error:e}, gas {gas_error:e}"
+        );
+        assert!(
+            integrated_water_production > 0.0
+                && integrated_oil_production > 0.0
+                && integrated_gas_production > 0.0,
+            "{flavor:?}: fixture did not exercise nonzero water, oil and gas sources"
         );
     }
 }
@@ -279,15 +514,14 @@ fn fim_repair_closed_system_conserves_component_inventory() {
 /// design, so no test covered the multi-completion geometry at all — on either solver.
 ///
 /// This is a reconstruction of that geometry, not a replay of the scenario's exact deck; a
-/// negative result here does not prove the shipped case is clean. What it does establish is a
-/// backend-neutral comparison: well geometry, the Peaceman productivity index and
-/// `refresh_well_head_offsets` are *shared* code, so a well-geometry defect would show on both
-/// solvers, while an IMPES-only pressure-recovery failure would not.
+/// negative result here does not prove the shipped case is clean. It establishes only that both
+/// backends remain physical and mutually consistent on the reconstruction. Because they share
+/// the geometry, Peaceman PI and head-offset code, their agreement cannot exclude a common error.
 fn gravity_section(fim: bool, fully_perforated: bool) -> ReservoirSimulator {
     let nz = 20;
     let mut sim = ReservoirSimulator::new(30, 1, nz, 0.2);
     sim.set_fim_enabled(fim);
-    sim.set_cell_dimensions(10.0, 100.0, 2.0);
+    sim.set_cell_dimensions(10.0, 100.0, 2.0).unwrap();
     sim.set_fluid_properties(5.0, 0.5).unwrap();
     sim.set_fluid_densities(700.0, 1000.0).unwrap();
     sim.set_rel_perm_props(0.2, 0.2, 2.0, 2.0, 0.4, 1.0)
@@ -319,9 +553,9 @@ fn gravity_section(fim: bool, fully_perforated: bool) -> ReservoirSimulator {
 ///
 /// Measured at `5ebdc78` over 12 days: no solver warning on either backend for either completion
 /// strategy, saturations inside `[s_wc, 1]`, and pressures bounded. Fully perforated, IMPES and
-/// FIM agree to about 1 % on the pressure envelope and to 5e-3 on peak water saturation — so this
-/// reconstruction finds no shared well-geometry error. Issue #10 remains scoped to IMPES on its
-/// own deck.
+/// FIM agree to about 1 % on the pressure envelope and to 5e-3 on peak water saturation. This
+/// reconstruction does not reproduce #10; its cause remains inconclusive without an independent
+/// geometry oracle or an exact replay.
 #[test]
 fn fim_repair_multi_completion_gravity_stays_physical_on_both_solvers() {
     for fully_perforated in [false, true] {
@@ -374,8 +608,7 @@ fn fim_repair_multi_completion_gravity_stays_physical_on_both_solvers() {
             results.push((pressure_min, pressure_max, sw_max));
         }
 
-        // Well geometry, the Peaceman PI and the wellbore-datum head offset are shared code. A
-        // defect there would move both solvers together; a solver-specific failure would not.
+        // This is a cross-backend consistency assertion, not an independent geometry oracle.
         let (impes, fim) = (results[0], results[1]);
         assert!(
             (impes.0 - fim.0).abs() / impes.0 < 0.02 && (impes.1 - fim.1).abs() / impes.1 < 0.02,

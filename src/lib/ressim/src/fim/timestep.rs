@@ -986,6 +986,11 @@ impl ReservoirSimulator {
         self.step_internal_fim_impl(target_dt_days, false);
     }
 
+    #[cfg(test)]
+    pub(crate) fn force_next_fim_outer_attempts_to_reject(&mut self, count: usize) {
+        self.fim_test_forced_rejections_remaining = count;
+    }
+
     fn step_internal_fim_impl(&mut self, target_dt_days: f64, verbose: bool) {
         let mut time_stepped = 0.0;
         const MAX_SUBSTEPS: u32 = 100_000;
@@ -1184,12 +1189,23 @@ impl ReservoirSimulator {
                     }
                 );
 
+                #[cfg(not(test))]
+                let attempt_options = newton_options;
+                #[cfg(test)]
+                let attempt_options = {
+                    let mut options = newton_options;
+                    if self.fim_test_forced_rejections_remaining > 0 {
+                        options.max_newton_iterations = 1;
+                        self.fim_test_forced_rejections_remaining -= 1;
+                    }
+                    options
+                };
                 let report = run_fim_timestep(
                     self,
                     &previous_state,
                     &previous_state,
                     trial_dt,
-                    &newton_options,
+                    &attempt_options,
                 );
                 solver_ms += report.total_time_ms;
                 if report.converged {
