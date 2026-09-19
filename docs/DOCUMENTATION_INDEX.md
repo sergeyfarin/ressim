@@ -44,8 +44,9 @@ the registry **by mechanism name** before proposing any convergence change.
 |----------|------------|
 | `docs/FIM_STATUS.md` | Consolidated FIM state, blockers, validation entry points, canonical source map. Its **2026-09-15 banner** carries the current measured convergence baseline; the "Known Open Gaps" list below it is 2026-07-05 provenance |
 | [FIM repair execution plan](FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md) | F0–F8 repair order, issue mapping, exact gates and handoff to compositional integration |
-| [FIM repair handoff](FIM_REPAIR_HANDOFF_2026-09-15.md) | What F0–F8 repaired, the validated envelope, reusable interfaces, final G0–G5 replay and the release-equivalence measurement |
+| [FIM repair handoff](FIM_REPAIR_HANDOFF_2026-09-15.md) | What F0–F8 repaired, the validated envelope, reusable layout surface, final regression replay and release-equivalence measurement; see its 2026-09-18 qualification |
 | [FIM repair audit](FIM_REPAIR_AUDIT_2026-09-18.md) | Independent review of `f5838eb`: passing repair gates, commit/retry coverage gaps, and qualifications to F0–F8 completion claims |
+| [FIM model/solver boundary](FIM_MODEL_SOLVER_BOUNDARY_2026-09-18.md) | Minimal assembly/update/accept/commit/rollback adapter contract requested by F7; current reuse map and extraction admission tests |
 | `docs/FIM_EXPERIMENT_REGISTRY.md` | Searchable anti-repeat ledger of levers, verdicts, retry conditions |
 | `docs/FIM_CONVERGENCE_WORKLOG.md` | Active investigation log: current-head traces, temporary hypotheses |
 | `docs/SOLVER_COMPARISON_SUMMARY.md` | Current OPM/FIM/IMPES timing + convergence re-baseline (clean tree `663e380`, 2026-07-24) |

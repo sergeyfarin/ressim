@@ -9,9 +9,11 @@ rely on. It is deliberately explicit about what it does **not** establish.
 
 ## Milestones
 
-- **FIM-REPAIR-READY** — declared at `57ecb8e` (F6). Evidence: `BLACK_OIL_VALIDATION.md` §5.
-- **FIM-COMPOSITIONAL-SEAM-READY** — declared here. F7 delivered the layout seam C7 consumes and
-  proved black-oil behaviour unchanged; F8 replayed G0–G5 on the final tree.
+- **FIM regression repairs verified** — declared at `57ecb8e` (F6), qualified by the 2026-09-18
+  audit and follow-up below. Evidence: `BLACK_OIL_VALIDATION.md` §5.
+- **FIM layout seam verified** — F7 delivered the named layout surface C7 consumes and preserved
+  black-oil behavior. The complete model/solver boundary is a contract, not an extracted generic
+  runtime; see `FIM_MODEL_SOLVER_BOUNDARY_2026-09-18.md`.
 
 ## Repaired contracts
 
@@ -92,7 +94,7 @@ residual on the original full system. That safety net is load-bearing and is now
 
 | Issue | Status after this series |
 |---|---|
-| [#10](https://github.com/sergeyfarin/ressim/issues/10) | Did not reproduce in reconstruction; IMPES-scoped. Shared well geometry ruled out by cross-solver agreement. Shipped deck not replayed. |
+| [#10](https://github.com/sergeyfarin/ressim/issues/10) | Did not reproduce in reconstruction. Cause/applicability inconclusive: cross-solver agreement cannot exclude an error in code shared by both. Shipped deck not replayed. |
 | [#11](https://github.com/sergeyfarin/ressim/issues/11) | **Reproduces** at 9.0 % (`Sg(nx=40)` FIM `0.030179` vs IMPES `0.033171`). Independent of the seam; measured, not explained. |
 | [#12](https://github.com/sergeyfarin/ressim/issues/12) | Scenario/frontend scope. Both SPE1 release replays pass. |
 | [#21](https://github.com/sergeyfarin/ressim/issues/21) | Not attempted. Needs source-pinned OPM Flow artifacts. |
@@ -177,7 +179,7 @@ Final replay, run on the committed tree at `9e3fff1` with a clean worktree:
 | G1 | 3 locked FIM contracts | 3/3 ok |
 | G3 | `scripts/build-wasm.sh` + 6 `fim-wasm-diagnostic.mjs` controls | 6/6 exit 0 |
 | G4 | `cargo fmt --check`, `build-wasm.sh`, `pnpm run validate:full`, `benchmark_buckley`, `git diff --check` | all exit 0; `validate:full` 42 gate lines |
-| G5 | 3 `--release --ignored` replays | 3/3 exit 0 |
+| G5 (partial) | 3 `--release --ignored` replays | 3/3 exit 0; OPM gas comparison not replayed |
 
 **Release-equivalence measurement.** The WASM was built from `origin/master` (`ffaf18f`) in a
 detached worktree and the same six G3 controls were replayed against the `9e3fff1` build. Every

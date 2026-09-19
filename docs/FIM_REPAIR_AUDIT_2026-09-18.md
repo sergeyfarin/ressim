@@ -166,7 +166,8 @@ reviewed, not independently re-established.
 
 ## Handoff
 
-Address A1 first, then correct the applicability/completion claims and resolve their declared
-gates. No production fixes, tolerance changes, GitHub issue edits or compositional review are
-part of this audit. Pause here for the user's review before proceeding to the compositional
-branch.
+Follow-up implementation on this branch addresses A1 with outer commit/retry tests, A2 by
+correcting the shared-code inference, A3 with an explicit boundary contract and qualified gate
+claims, and A4 with a stable-adjacent-region FD assertion. #21 and the independent #10 oracle
+remain open scientific work; they are now described as such. No compositional review is part of
+this follow-up.
