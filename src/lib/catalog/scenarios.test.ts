@@ -6,6 +6,7 @@ import { calculateDepletionAnalyticalProduction } from '../analytical/depletionA
 import { computeCombinedSweep } from '../analytical/sweepEfficiency';
 import { computeWellTestOnTimeAxis } from '../charts/analyticalParamAdapters';
 import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
+import type { CompositionalCaseConfig } from '../compositional/types';
 import {
     getScenario,
     getScenarioAnalyticalOptions,
@@ -44,8 +45,8 @@ describe('scenario sensitivities', () => {
     });
 
     it('provides analytical method metadata for every canonical scenario', () => {
-        // 17 offered; `dep_pvt` is defined but withheld from the catalog — see
-        // WITHHELD_SCENARIOS in scenarios.ts.
+        // 17 offered; `dep_pvt` and `comp_co2_1d` are defined but withheld from the catalog —
+        // see WITHHELD_SCENARIOS in scenarios.ts.
         expect(listScenarios()).toHaveLength(17);
         for (const scenario of listScenarios()) {
             expect(scenario.analyticalMethodSummary.length, scenario.key).toBeGreaterThan(10);
@@ -460,9 +461,22 @@ describe('scenario catalog taxonomy', () => {
         ]);
         for (const scenario of listScenarios()) {
             if (scenario.catalog.group !== 'published-benchmark-decks') continue;
+            const baseCompositional = scenario.params.compositional as CompositionalCaseConfig | undefined;
             for (const dimension of scenario.sensitivities) {
                 for (const variant of dimension.variants) {
                     for (const key of Object.keys(variant.paramPatch)) {
+                        // A compositional case is one opaque object, so the key allow-list cannot
+                        // see inside it. It is checked structurally instead, which is a stronger
+                        // rule rather than an exemption: the patched case must differ from the
+                        // base in discretization ALONE, and must describe the same reservoir.
+                        if (key === 'compositional') {
+                            expectSameReservoirRefined(
+                                baseCompositional,
+                                variant.paramPatch.compositional as CompositionalCaseConfig,
+                                `${scenario.key} / ${dimension.key} / ${variant.key}`,
+                            );
+                            continue;
+                        }
                         expect(
                             numericsOnly.has(key),
                             `${scenario.key} / ${dimension.key} / ${variant.key} patches "${key}", ` +
@@ -951,3 +965,44 @@ describe('depletion scenario fidelity guards', () => {
         expect(contrast(variants[2])).toBeCloseTo(100, 0);
     });
 });
+
+/**
+ * A compositional sensitivity patch may refine a published deck's grid and nothing else.
+ *
+ * `numericsOnly` is a list of parameter *names*, and a compositional case is one object, so the
+ * key check cannot see inside it. This looks: everything must match the base except the cell count,
+ * the cell length and the two consequences of refinement — which cell each well sits in, and its
+ * Peaceman index, which depends on the cell. And `cells × dx` must be unchanged, which is what
+ * makes it the same reservoir rather than a similar one.
+ */
+function expectSameReservoirRefined(
+    base: CompositionalCaseConfig | undefined,
+    patched: CompositionalCaseConfig,
+    where: string,
+): void {
+    expect(base, `${where}: the scenario has no base compositional case to compare against`).toBeDefined();
+    if (!base) return;
+
+    expect(
+        patched.grid.cells * patched.grid.dx_m,
+        `${where}: refinement changed the reservoir length, so it is a different reservoir`,
+    ).toBeCloseTo(base.grid.cells * base.grid.dx_m, 9);
+
+    // Everything except the grid's discretization and the wells' completions.
+    const strip = (config: CompositionalCaseConfig) => ({
+        ...config,
+        grid: { ...config.grid, cells: 0, dx_m: 0 },
+        wells: config.wells.map((well) => ({ ...well, completions: [] })),
+    });
+    expect(strip(patched), `${where}: the patch changes the published case, not its discretization`)
+        .toEqual(strip(base));
+
+    // Each well keeps its identity and its one completion; only where it sits and its index move.
+    expect(patched.wells.map((w) => w.id), `${where}: refinement changed the well set`)
+        .toEqual(base.wells.map((w) => w.id));
+    for (const well of patched.wells) {
+        expect(well.completions.length, `${where}: ${well.id} gained or lost completions`).toBe(1);
+        expect(well.completions[0].cell, `${where}: ${well.id} is outside the refined grid`)
+            .toBeLessThan(patched.grid.cells);
+    }
+}

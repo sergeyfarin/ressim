@@ -42,6 +42,7 @@ import { dep_gas_pz } from './scenarios/dep_gas_pz';
 import { gas_injection } from './scenarios/gas_injection';
 import { gas_drive } from './scenarios/gas_drive';
 import { spe1_gas_injection } from './scenarios/spe1_gas_injection';
+import { comp_co2_1d } from './scenarios/comp_co2_1d';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -775,6 +776,19 @@ const SOURCE_SCENARIOS: Scenario[] = [
  */
 const WITHHELD_SCENARIOS: Scenario[] = [
     dep_pvt,
+    // `comp_co2_1d` is withheld pending compositional curve sourcing in the chart stack.
+    //
+    // The scenario itself is complete and its engine path works end to end: the worker builds a
+    // `CompositionalSimulator`, steps it and posts snapshots, and `CompositionalRunState` derives
+    // the series and quantities. What is missing is the last link — `buildChartData` sources every
+    // curve from `DerivedRunSeries`, which is black-oil, so any layout this scenario is given today
+    // renders empty panels.
+    //
+    // Offering it anyway would put black-oil curve keys (`oil-rate-sim`, `gor-sim`, `p-over-z-sim`)
+    // on a compositional run, which is the thing the execution plan forbids by name. C13 item 6
+    // says to keep unsupported cases out of the picker; this is that. Move it into
+    // `SOURCE_SCENARIOS` once the chart stack can read `compositional/runQuantities.ts`.
+    comp_co2_1d,
 ];
 
 export const SCENARIOS: CatalogScenario[] = SOURCE_SCENARIOS;
