@@ -3,6 +3,17 @@
 Date: 2026-09-14. Planning base: `f9dd22e`, whose Rust implementation is unchanged from
 `ffaf18f30f6d1cea5c7b097a26dc10d4d496303e`. **This is a plan, not a record of completed fixes.**
 
+> **Documentation boundary (2026-09-19).** This plan is a completed historical record and its
+> instructions are preserved as issued, including the milestone name
+> `FIM-COMPOSITIONAL-SEAM-READY`, which was declared at `6be6d08` and is referenced by name as a
+> satisfied prerequisite elsewhere. It is not renamed.
+>
+> Going forward the FIM documentation set describes the black-oil solver and the interfaces it
+> publishes, in terms of "a second fluid model". It does not name, sequence, gate or review any
+> particular downstream model: that work, its backlog and its validation evidence are owned by
+> the model's own documents and branch. New FIM docs should not reintroduce the coupling this
+> record contains.
+
 ## Purpose, authority and completion boundary
 
 Make the existing black-oil FIM path a trustworthy foundation for new fluid models. Start with

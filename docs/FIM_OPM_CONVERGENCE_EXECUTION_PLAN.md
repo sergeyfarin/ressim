@@ -1,9 +1,9 @@
 # FIM–OPM Convergence Execution Plan
 
 Execution entry point (2026-09-14): use the
-[FIM repair plan](FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md) for the current contract-repair and
-compositional-readiness sequence. The status and research sequence below are historical to their
-named experiments; later registry/worklog entries supersede several statements. Do not restart
+[FIM repair plan](FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md) for the current contract-repair
+sequence. The status and research sequence below are historical to their named experiments;
+later registry/worklog entries supersede several statements. Do not restart
 parked WATER/G4/G5 experiments from this opening status alone.
 
 Status: **WATER-008 establishes a Flow-vs-ResSim stopping-norm mismatch: Flow's `.005` is raw
@@ -1051,7 +1051,7 @@ two well columns come from the exact `[p,Sw,hc,bhp,u]` AD evaluation. The agreem
 bit-identical and Jacobian entries agree within `1e-12`. From a perturbed state the local solve
 restores both raw rows below `1e-7`, using Bundle W's 50-iteration/`1e-4` tolerance and BHP chop.
 
-The route is compositional: with nested solve enabled, non-selected wells still use their
+The route is composite: with nested solve enabled, non-selected wells still use their
 historical `(bhp,q...)` systems and the OPM-aligned well-acceptance check dispatches each well by
 route. With nested solve disabled, non-selected wells retain historical relaxation while the
 selected u slot remains excluded. This fixes a G4b2 branch-level omission that had bypassed the

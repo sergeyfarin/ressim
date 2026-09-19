@@ -4,7 +4,7 @@ Date: 2026-09-15. Series: `de4f23d`..`9e3fff1` on `master`, plus this record.
 Execution plan: [`FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md`](FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md).
 Applicability evidence: [`BLACK_OIL_VALIDATION.md`](BLACK_OIL_VALIDATION.md) section 5.
 
-This is the record of what was repaired, what is validated, and what a compositional executor may
+This is the record of what was repaired, what is validated, and what a second fluid model may
 rely on. It is deliberately explicit about what it does **not** establish.
 
 ## Milestones
@@ -39,17 +39,18 @@ rely on. It is deliberately explicit about what it does **not** establish.
   a well tail, finite/non-finite corrections, and singular/rejected solves.
 - Multi-completion gravity on both solvers (reconstruction, not the shipped `wf_gravity` deck).
 
-## Reusable interfaces for the compositional executor
+## Reusable solver interfaces
 
-Consume these; do not re-derive them.
+These are the black-oil FIM path's published surface. Any model built on this solver consumes
+them rather than re-deriving them; this document does not track who does.
 
 - **`fim/layout.rs`** — `CELL_BLOCK_SIZE`, `CellPrimary { Pressure, WaterSaturation, Hydrocarbon }`
   (matrix **column** order), `CellEquation { Water, OilComponent, GasComponent }` (matrix **row**
   order). Discriminants are load-bearing: CPR restricts its coarse system onto local column 0.
 - **`FimLinearBlockLayout`** (`fim/linear/mod.rs`) — `cell_unknown`, `cell_equation`,
   `split_cell_unknown`, `split_cell_equation`, `is_cell_pressure_column`, computed from the
-  layout's own `cell_block_size` so a reduced system stays self-describing. This is C7's
-  `EquationLayout`.
+  layout's own `cell_block_size` so a reduced system stays self-describing. This is the
+  equation-layout interface a second model binds to.
 - **`FimLinearSolveReport`** (`fim/linear/mod.rs`) — `rhs_norm`, `final_residual_norm`,
   `reduction()`, `backend_used`, `used_fallback`, `failure_diagnostics`. F4 verified and tested
   that these always describe **the original full system and the correction actually returned**,
@@ -57,7 +58,7 @@ Consume these; do not re-derive them.
 - **`EquationScaling` / `EquationFamilyPeaks`** (`fim/scaling.rs`) — row-space family partition;
   `family_peaks` now indexes via `CellEquation` rather than `+1`/`+2`.
 
-### Conventions a compositional model must preserve
+### Conventions a second fluid model must preserve
 
 - Row order per cell: `Water, OilComponent, GasComponent`. Column order: `Pressure,
   WaterSaturation, Hydrocarbon`. Cell blocks first, then well-BHP rows, then perforation-rate rows.
@@ -217,11 +218,3 @@ Both engines completed six 0.25-day steps without a cut or warning. Flow applied
 `7,5,4,3,4,3`; ResSim applied `8,5,4,4,3,3` (`9,6,5,5,4,4` residual evaluations). This completes
 the gate and confirms convergence-class behavior, not iteration-count or trajectory parity.
 #21's waterflood timestep/accuracy study and an independent #10 geometry oracle remain open.
-
-## First unblocked task in the fluid plan
-
-**C0** — pin the fluid, consuming case and independent oracle
-([`COMPOSITIONAL_FLUID_EXECUTION_PLAN_2026-09-14.md`](COMPOSITIONAL_FLUID_EXECUTION_PLAN_2026-09-14.md)).
-C0–C6 are standalone thermodynamics and were never blocked by this series. **C7** (component
-layout and geometry boundary) is the first task that consumes F7's interfaces, and it is now
-unblocked.

@@ -3,7 +3,7 @@
 Date: 2026-09-18. This closes the design-only part of F7 in
 `FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md`. It describes the smallest boundary that a second
 fluid model may consume. It does not claim that the black-oil Newton loop already implements
-these interfaces or that compositional behavior has been reviewed.
+these interfaces, and it reviews no model built on them.
 
 ## Current reusable surface
 
@@ -72,8 +72,8 @@ an undo log. The snapshot contract includes all model state that can affect a la
 - time and accepted-step counters.
 
 Controller-only retry memory is separate and must be named in the attempt report. This prevents
-a compositional flash cache or stability result from leaking merely because it is not one of the
-black-oil arrays checked by an older rollback test.
+a second model's cached phase state from leaking merely because it is not one of the black-oil
+arrays checked by an older rollback test.
 
 ## Black-oil adapter mapping
 
@@ -103,6 +103,6 @@ Before moving orchestration behind this contract:
    including time, full history, wells, inventories and cumulative sources;
 5. retain AD/legacy assembly parity, curated FIM/shared gates and the WASM control matrix.
 
-The compositional implementation may introduce its own adapter after its state, flash,
-component equations and well unknowns exist. This document does not accept that adapter or
-resolve C12; those require review on the compositional branch.
+A second fluid model may introduce its own adapter once its state, properties, equations and
+well unknowns exist. This document neither accepts nor reviews any such adapter: that review is
+owned by the model that introduces it, together with its own validation evidence.
