@@ -96,6 +96,8 @@ impl ReservoirSimulator {
             fim_flow_lifecycle: false,
             fim_flow_resv_injector: false,
             fim_force_direct_linear: false,
+            #[cfg(test)]
+            fim_test_forced_rejections_remaining: 0,
             fim_opm_endpoint_relperm: false,
             fim_corey_table_points: crate::DEFAULT_FIM_COREY_TABLE_POINTS,
             fim_opm_water_heavy_swof: false,

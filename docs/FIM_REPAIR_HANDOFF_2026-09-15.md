@@ -9,9 +9,11 @@ rely on. It is deliberately explicit about what it does **not** establish.
 
 ## Milestones
 
-- **FIM-REPAIR-READY** — declared at `57ecb8e` (F6). Evidence: `BLACK_OIL_VALIDATION.md` §5.
-- **FIM-COMPOSITIONAL-SEAM-READY** — declared here. F7 delivered the layout seam C7 consumes and
-  proved black-oil behaviour unchanged; F8 replayed G0–G5 on the final tree.
+- **FIM regression repairs verified** — declared at `57ecb8e` (F6), qualified by the 2026-09-18
+  audit and follow-up below. Evidence: `BLACK_OIL_VALIDATION.md` §5.
+- **FIM layout seam verified** — F7 delivered the named layout surface C7 consumes and preserved
+  black-oil behavior. The complete model/solver boundary is a contract, not an extracted generic
+  runtime; see `FIM_MODEL_SOLVER_BOUNDARY_2026-09-18.md`.
 
 ## Repaired contracts
 
@@ -92,7 +94,7 @@ residual on the original full system. That safety net is load-bearing and is now
 
 | Issue | Status after this series |
 |---|---|
-| [#10](https://github.com/sergeyfarin/ressim/issues/10) | Did not reproduce in reconstruction; IMPES-scoped. Shared well geometry ruled out by cross-solver agreement. Shipped deck not replayed. |
+| [#10](https://github.com/sergeyfarin/ressim/issues/10) | Did not reproduce in reconstruction. Cause/applicability inconclusive: cross-solver agreement cannot exclude an error in code shared by both. Shipped deck not replayed. |
 | [#11](https://github.com/sergeyfarin/ressim/issues/11) | **Reproduces** at 9.0 % (`Sg(nx=40)` FIM `0.030179` vs IMPES `0.033171`). Independent of the seam; measured, not explained. |
 | [#12](https://github.com/sergeyfarin/ressim/issues/12) | Scenario/frontend scope. Both SPE1 release replays pass. |
 | [#21](https://github.com/sergeyfarin/ressim/issues/21) | Not attempted. Needs source-pinned OPM Flow artifacts. |
@@ -177,7 +179,7 @@ Final replay, run on the committed tree at `9e3fff1` with a clean worktree:
 | G1 | 3 locked FIM contracts | 3/3 ok |
 | G3 | `scripts/build-wasm.sh` + 6 `fim-wasm-diagnostic.mjs` controls | 6/6 exit 0 |
 | G4 | `cargo fmt --check`, `build-wasm.sh`, `pnpm run validate:full`, `benchmark_buckley`, `git diff --check` | all exit 0; `validate:full` 42 gate lines |
-| G5 | 3 `--release --ignored` replays | 3/3 exit 0 |
+| G5 (partial) | 3 `--release --ignored` replays | 3/3 exit 0; OPM gas comparison not replayed |
 
 **Release-equivalence measurement.** The WASM was built from `origin/master` (`ffaf18f`) in a
 detached worktree and the same six G3 controls were replayed against the `9e3fff1` build. Every
@@ -189,6 +191,32 @@ That is the whole behavioural delta of this series: the only shipped change that
 outcome is `925658c`, and it alters only a path that previously aborted the process. The
 `CELL_BLOCK_SIZE` / `CellPrimary` / `CellEquation` substitutions in `assembly.rs`, `scaling.rs`
 and `newton.rs` are literal-for-named-constant with identical values.
+
+## Audit follow-up (2026-09-19)
+
+Commits `a8e553b` and `8d7bfec` close the test/documentation findings from
+`FIM_REPAIR_AUDIT_2026-09-18.md`:
+
+- outer-controller tests now read back the committed three-phase simulator state and exercise a
+  deterministically rejected attempt, real retry, reporting and cumulative ledgers under both
+  nonlinear flavors;
+- the exact audit mutation (`Rs + 1` during three-phase write-back) fails the new commit test;
+- gas/water injector derivative tests require a stable adjacent region in the FD sweep;
+- the #10 shared-code inference is corrected and the missing F7 design contract is recorded in
+  `FIM_MODEL_SOLVER_BOUNDARY_2026-09-18.md`.
+
+The previously omitted G5 OPM gas comparison was replayed on clean commit `8d7bfec`:
+
+```sh
+bash scripts/opm-ressim-compare.sh \
+  --case gas-rate-10x10x3 \
+  --out-dir /tmp/ressim-fim-p2-opm-clean-8d7bfec
+```
+
+Both engines completed six 0.25-day steps without a cut or warning. Flow applied Newton updates
+`7,5,4,3,4,3`; ResSim applied `8,5,4,4,3,3` (`9,6,5,5,4,4` residual evaluations). This completes
+the gate and confirms convergence-class behavior, not iteration-count or trajectory parity.
+#21's waterflood timestep/accuracy study and an independent #10 geometry oracle remain open.
 
 ## First unblocked task in the fluid plan
 

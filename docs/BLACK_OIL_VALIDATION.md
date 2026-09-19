@@ -238,7 +238,7 @@ was reproduced on commit `5ebdc78` with a clean tree; the replay command is next
 | Closed depletion | — | yes | water/oil inventory drift `+8.9e-10` / `-1.2e-9` relative over 8 steps | accumulation, accepted-source integration | self-consistency (no sources) | **pass** |
 | Gas reporting / `dep_gas_pz` | [#25](https://github.com/sergeyfarin/ressim/issues/25) | **no** | closure `+0.0109` (issue claimed `+0.0885`); recovery `0.9280` vs documented `0.928` | `record_fim_step_report` gas conversion | scenario's own volumetric GIIP | **not reproduced — close** |
 | Black-oil depletion FIM vs IMPES | [#11](https://github.com/sergeyfarin/ressim/issues/11) | yes | `Sg(nx=40)` FIM `0.030179` vs IMPES `0.033171` → **9.0 %** | shared PVT/flash, FIM timestep ladder | neither backend is truth; both self-consistent under refinement | **independent** |
-| Multi-completion gravity | [#10](https://github.com/sergeyfarin/ressim/issues/10) | **no** (reconstruction) | no warning on either solver; IMPES/FIM agree to 1 % on pressure, 5e-3 on peak `Sw` | shared well geometry, Peaceman PI, `refresh_well_head_offsets` | cross-solver agreement | **IMPES-scoped, independent** |
+| Multi-completion gravity | [#10](https://github.com/sergeyfarin/ressim/issues/10) | **no** (reconstruction) | no warning on either solver; IMPES/FIM agree to 1 % on pressure, 5e-3 on peak `Sw` | shared well geometry, Peaceman PI, `refresh_well_head_offsets` | no independent geometry oracle | **not reproduced; cause/applicability inconclusive** |
 | SPE1 / gas injection & appearance | [#12](https://github.com/sergeyfarin/ressim/issues/12) | n/a | `spe1_full_horizon_matches_published_reference` and `spe1_areal_refinement_reference_error_replay` both pass (release) | FIM Newton/assembly | published SPE1 reference | **scenario/frontend scope — independent** |
 | Waterflood report-step sensitivity + Flow oil bias | [#21](https://github.com/sergeyfarin/ressim/issues/21) | not attempted | — | FIM timestep controller | OPM Flow artifacts | **deferred — needs the OPM pipeline, out of F6 scope** |
 
@@ -270,17 +270,17 @@ This supersedes nothing: it confirms the existing section 2 FIM baseline rather 
 
 ### Verdict
 
-**FIM-REPAIR-READY.** No reproduced failure affects the foundation F7 extracts. #11 is real and
-reproduces at 9 %, but it is an accuracy question about the model, not about the interfaces being
-extracted, and F7 is required to preserve black-oil behaviour exactly — so it cannot be resolved
-by, or made worse by, a behaviour-preserving extraction. #10 is IMPES-scoped on the evidence
-available. #25 did not reproduce. #12 and #21 are scenario/frontend and OPM-pipeline scope.
+**Scoped FIM regression repair is ready.** No reproduced failure blocks the layout extraction F7
+actually delivered. #11 is real and reproduces at 9 %; preserving behavior preserves this
+unexplained accuracy limitation rather than validating it. #10 did not reproduce in the
+reconstruction, but its cause and applicability remain inconclusive. #25 did not reproduce.
+#12 is scenario/frontend scope. #21 remains an unexecuted OPM-pipeline accuracy gate.
 
 ### What this record does **not** establish
 
 - #10 was tested through a **reconstruction** of the `wf_gravity` geometry, not a replay of its
-  shipped deck. A negative result here does not prove the shipped scenario is clean; it shows the
-  *shared* well geometry is not the cause.
+  shipped deck. A negative result here does not prove the shipped scenario is clean. Agreement
+  between two solvers that reuse the same geometry cannot exclude an error in that shared code.
 - #21 was not attempted at all. It needs source-pinned OPM Flow artifacts and the reference
   pipeline, which F6 deliberately does not pull in.
 - #11's 9 % gap is measured, not explained. Nothing here identifies a mechanism.

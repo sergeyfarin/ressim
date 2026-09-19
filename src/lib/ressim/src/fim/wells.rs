@@ -2250,10 +2250,9 @@ mod tests {
     /// hydrocarbon regime or move another primary, in which case the difference quotient is not
     /// the partial derivative the assembler claims to compute.
     ///
-    /// Sweeps relative steps `1e-4 .. 1e-7` and returns the quotient whose error against
-    /// `exact` is smallest, together with that relative error. A single step size cannot
-    /// distinguish truncation error from roundoff or from a crossed PVT table knot; requiring a
-    /// stable region across the sweep can.
+    /// Sweeps relative steps `1e-4 .. 1e-7`, requires two adjacent quotients to agree with the
+    /// exact derivative and with one another, then returns the best sample. A single lucky step
+    /// cannot distinguish truncation error from roundoff or a crossed PVT table knot.
     #[cfg(test)]
     fn pressure_central_difference<F>(
         state: &FimState,
@@ -2266,7 +2265,7 @@ mod tests {
     {
         let p0 = state.cell(cell_idx).pressure_bar;
         let scale = p0.abs().max(1.0);
-        let mut best = (f64::NAN, f64::INFINITY);
+        let mut samples = Vec::new();
         for exponent in 4..=7 {
             let h = scale * 10f64.powi(-exponent);
             let mut up = state.clone();
@@ -2275,11 +2274,25 @@ mod tests {
             down.cell_mut(cell_idx).pressure_bar = p0 - h;
             let fd = (f(&up) - f(&down)) / (2.0 * h);
             let error = (exact - fd).abs() / exact.abs().max(fd.abs()).max(1e-12);
-            if error < best.1 {
-                best = (fd, error);
-            }
+            samples.push((exponent, fd, error));
         }
-        best
+        let stable = samples.windows(2).any(|pair| {
+            let fd_scale = exact
+                .abs()
+                .max(pair[0].1.abs())
+                .max(pair[1].1.abs())
+                .max(1e-12);
+            pair[0].2 < 1e-3 && pair[1].2 < 1e-3 && (pair[0].1 - pair[1].1).abs() / fd_scale < 1e-4
+        });
+        assert!(
+            stable,
+            "pressure FD sweep has no stable adjacent region: exact={exact:e}, samples={samples:?}"
+        );
+        samples
+            .into_iter()
+            .map(|(_, fd, error)| (fd, error))
+            .min_by(|lhs, rhs| lhs.1.total_cmp(&rhs.1))
+            .expect("pressure FD sweep must contain samples")
     }
 
     /// `FIM-REPAIR-F2` (#27). This test previously failed, and for a reason unrelated to its
