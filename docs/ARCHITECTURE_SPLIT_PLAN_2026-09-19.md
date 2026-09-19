@@ -410,7 +410,7 @@ with no `packages:` key — S2's precondition is unchanged by `adac71b`.
 
 **Exit satisfied:** every §2 number has a committed revision and an exact replay command.
 
-### S1 — leaf extractions (PARTIAL: 4 of 5 pairs resolved, `catalog ↔ charts` open)
+### S1 — leaf extractions (COMPLETE: 5 → 0 mutual pairs)
 
 | Step | Commit | Mutual pairs | Resolved |
 |---|---|---|---|
@@ -419,38 +419,41 @@ with no `packages:` key — S2's precondition is unchanged by `adac71b`.
 | S1.2 series/volume helpers → `quantities/` | `465f971` | **3 → 2** | `charts ↔ lib-root` |
 | S1.3 (prep) dead layout lookup removed | `52d5f99` | 2 | — (one of three symbols) |
 | S1.4 preset contract → `presets/` | `0d67d68` | **2 → 1** | `catalog ↔ stores` |
+| S1.3 scenario adapter → `scenario/` | `1507c81` | **1 → 0** | `catalog ↔ charts` |
 
 Every step: `pnpm run validate:product` exit 0, 926 passed / 15 skipped, "No runtime import cycles
 across 193 files" — identical to the S0 baseline at each commit. No behaviour change.
 
-Value edges rose 83 → 89 across the sequence while mutual pairs fell 5 → 1. That is the intended
+Value edges rose 83 → 90 across the sequence while mutual pairs fell 5 → 0. That is the intended
 shape: same-area imports became edges *into leaves*, which cost nothing at packaging time, and the
 edges that blocked packaging went away. Edge count is not the metric; mutual pairs are.
 
-**S1.4 was executed before the rest of S1.3.** The pairs are independent, and S1.3 turned out to be
-materially larger than the other three — see below.
+**S1.4 was executed before the rest of S1.3.** The pairs are independent, and S1.3 looked
+materially larger at the time. Pausing to re-scope it is what surfaced the cheaper route — it
+ended up the smallest change of the four. See below.
+#### How `catalog ↔ charts` was actually resolved
 
-#### Re-plan: what `catalog ↔ charts` still needs
+The re-plan written at `6131628` proposed threading `resolveCapabilities` and
+`resolveScenarioReferenceSeries` through `App.svelte` into `ScenarioChart`, and priced the task
+above the other three because of it. **A cheaper and safer route was found and taken instead**
+(§9b, decided with the maintainer): move `scenarioChartModel.ts` out of `charts/` into
+`scenario/`, where the `BenchmarkFamily` it produces is already defined.
 
-`charts → catalog` is now exactly two symbols, both in `charts/scenarioChartModel.ts`:
-`resolveCapabilities` and `resolveScenarioReferenceSeries`. The other direction
-(`catalog → charts`, three edges) is the **correct** direction and stays, for the reason recorded
-in S1.2.
+Two facts, neither visible until the file was read closely, made it clean:
 
-`buildScenarioComparisonFamily` must stop fetching those two and receive them. Its callers are
-`stores/navigationStore` (which already imports the catalog, so it is free) and
-`charts/ScenarioChart.svelte` (which must not). `ScenarioChart` is rendered in exactly one place,
-`App.svelte`, so the values have to be threaded: store → `App.svelte` → `ScenarioChart` →
-`buildScenarioComparisonFamily`.
+- Its three exported chart-model types — `ChartCurveModel`, `ChartPanelModel`, `ChartModel` — were
+  **imported by nothing**. Deleting them removed the file's only two imports from `charts/`, so
+  after the move it imports nothing from `charts/` at all.
+- `charts → scenario` was already entirely `import type`, so the new value edge from
+  `ScenarioChart` into `scenario/` forms no pair.
 
-**One shortcut is ruled out, and this is why the task is not a five-minute move.** It looks as
-though `App.svelte` could simply pass the store's existing `activeScenarioAsFamily` and delete the
-component's own call. It cannot: that derivation returns `null` when `isCustomMode` is set, while
-`ScenarioChart`'s own build returns a family whenever `scenario` is non-null. Substituting one for
-the other changes what renders in custom mode, which S1 forbids. The two resolved values must be
-injected individually so the component's null semantics are untouched.
+No component signature changed, `App.svelte` was not touched, and `ScenarioChart` still builds its
+own family — so the `isCustomMode` null-semantics hazard that ruled out passing the store's
+`activeScenarioAsFamily` never arises. The threading cost the earlier re-plan priced was avoided.
 
-**Cost:** two new props on a public component, a changed helper signature, and an edit to the
-application's render path — against no browser-level check in this environment (UI verification is
-Playwright e2e, per repo practice). That is why it is its own pass rather than the tail of a
-batch, and why it should be validated by more than the unit suite.
+Final state: value edges 90, type-only 79, **mutual pairs 0** — *"every area could be lifted into
+its own package."*
+
+**FRONTEND-MODULAR-READY is NOT declared.** That milestone also requires S2 (packages declared in
+the workspace) and S3 (a second page built from them without editing the first). S1 is one of its
+three preconditions, and the §9c Tailwind question is unanswered until S2 is attempted.
