@@ -44,7 +44,7 @@ import {
     type ScenarioNavigationState,
     type ReferenceProvenance,
     type ComparisonSelection,
-} from './phase2PresetContract';
+} from '../presets/phase2PresetContract';
 import type { ParameterStore } from './parameterStore.svelte';
 import type { RuntimeStore } from './runtimeStore.svelte';
 import { getReferenceChartLayoutConfig } from '../charts/referenceChartConfig';

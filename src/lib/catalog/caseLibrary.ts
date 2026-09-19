@@ -5,7 +5,7 @@ import {
     type ProductFamily,
     type ScenarioEditabilityPolicy,
     type ScenarioSource,
-} from '../stores/phase2PresetContract';
+} from '../presets/phase2PresetContract';
 import {
     benchmarkFamilies,
     getBenchmarkSensitivityAxisLabel,

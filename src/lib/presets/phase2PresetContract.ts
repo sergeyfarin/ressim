@@ -1,3 +1,13 @@
+/**
+ * The preset/scenario editability contract: what a case may change, where it came from, and
+ * which product family it belongs to.
+ *
+ * **Why `presets/` and not `stores/`.** Three areas import this — `stores`, `ui` and `catalog` —
+ * so it was never the store's to own, and `catalog -> stores` was the single edge that made
+ * `catalog <-> stores` mutually dependent. Its own imports are type-only, so it carries no
+ * runtime dependency anywhere and can sit below all three. Keep it that way: value imports out
+ * of this file would put the cycle back.
+ */
 import type { CaseMode, ToggleState } from '../catalog/caseCatalog';
 import type { AnalyticalMethod } from '../catalog/scenarios';
 
