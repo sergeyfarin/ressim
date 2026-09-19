@@ -1,32 +1,20 @@
-import type { BenchmarkFamily } from '../scenario/referenceTypes';
+/**
+ * Scenario -> BenchmarkFamily adapter.
+ *
+ * **Why `scenario/` and not `charts/`.** Its input is a catalog `Scenario` and its output is the
+ * `BenchmarkFamily` that `scenario/referenceTypes` defines; neither is a chart concept, and it
+ * renders nothing. Sitting in `charts/` made `charts` import the catalog, which was the last
+ * thing stopping `charts` from being a package that knows nothing about this application's
+ * scenarios. It imports nothing from `charts/` — keep it that way.
+ */
+
+import type { BenchmarkFamily } from './referenceTypes';
 import {
     resolveCapabilities,
     type Scenario,
     type ScenarioAnalyticalOption,
 } from '../catalog/scenarios';
 import { resolveScenarioReferenceSeries } from '../catalog/opmFlowArtifacts';
-import type { CurveConfig } from './chartTypes';
-import type { ChartPanelId, ChartXAxisMode } from './chartLayoutConfig';
-
-export type ChartCurveModel = CurveConfig & {
-    sourceType: 'simulation' | 'analytical' | 'published-reference' | 'opm-flow-precomputed';
-    sourceId: string;
-};
-
-export type ChartPanelModel = {
-    key: ChartPanelId;
-    title: string;
-    visible: boolean;
-    expanded: boolean;
-    curves: ChartCurveModel[];
-    series: Array<{ x: number; y: number | null }[]>;
-};
-
-export type ChartModel = {
-    xAxisMode: ChartXAxisMode;
-    panels: ChartPanelModel[];
-    warnings: string[];
-};
 
 export function buildScenarioComparisonFamily(input: {
     scenario: Scenario | null | undefined;

@@ -1,6 +1,6 @@
 <script lang="ts">
     import ReferenceComparisonChart from './ReferenceComparisonChart.svelte';
-    import { buildScenarioComparisonFamily } from './scenarioChartModel';
+    import { buildScenarioComparisonFamily } from '../scenario/scenarioChartModel';
     import type { Scenario, ScenarioAnalyticalOption } from '../catalog/scenarios';
     import type { RunResult } from '../scenario/runModel';
     import type { ChartLayoutConfig } from './chartLayoutConfig';

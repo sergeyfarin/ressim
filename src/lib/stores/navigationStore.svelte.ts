@@ -48,7 +48,7 @@ import {
 import type { ParameterStore } from './parameterStore.svelte';
 import type { RuntimeStore } from './runtimeStore.svelte';
 import { getReferenceChartLayoutConfig } from '../charts/referenceChartConfig';
-import { buildScenarioComparisonFamily } from '../charts/scenarioChartModel';
+import { buildScenarioComparisonFamily } from '../scenario/scenarioChartModel';
 import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
 import {
     computeSweepRecoveryFactor,
