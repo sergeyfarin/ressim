@@ -4,7 +4,7 @@ import type {
     ThreePhaseScalTables,
 } from '../simulator-types';
 import { generateBlackOilTable } from '../physics/pvt';
-import { getStockTankOilInPlace, getGasInPlace } from '../reservoirVolumes';
+import { getStockTankOilInPlace, getGasInPlace } from '../quantities/reservoirVolumes';
 import { buildCreatePayloadFromState } from '../buildCreatePayload';
 import {
     validateInputs as validateSimulationInputs,

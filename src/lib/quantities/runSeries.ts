@@ -14,10 +14,17 @@
  * the rectangle rule closes the Havlena-Odeh balance to N_mbe/N_volumetric =
  * 1.0000, while a trapezoid gives 1.124 (final cumulative oil 2841.9 vs
  * 3224.6 Sm³, +13.5 %). Do not "improve" this loop.
+*
+ * **Why `quantities/` and not the `lib/` root.** `charts` needed this and reached up for it,
+ * while the root reached down into `charts` for an analytical descriptor — that pair was
+ * mutually dependent, so neither could be packaged. These helpers are the half that belongs
+ * lower: they derive numbers from a run and from rock, and know nothing about rendering, the
+ * scenario catalog or any store. `physics/` (a type-only consumer of the root) is the only
+ * value dependency this directory may take.
  */
 
 import { toFiniteNumber } from './reservoirVolumes';
-import type { RateHistoryPoint } from './simulator-types';
+import type { RateHistoryPoint } from '../simulator-types';
 
 export type CumulativeRunSeries = {
     /** Report times [days], one per rate-history point. */

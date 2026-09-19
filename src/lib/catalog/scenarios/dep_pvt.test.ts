@@ -3,8 +3,8 @@ import { readFile } from 'node:fs/promises';
 import initWasm, { ReservoirSimulator } from '../../ressim/pkg/simulator.js';
 import { getScenarioWithVariantParams } from '../scenarios';
 import { calculateMaterialBalance } from '../../analytical/materialBalance';
-import { integrateRunSeries } from '../../runSeries';
-import { getInitialSaturations, getPoreVolume } from '../../reservoirVolumes';
+import { integrateRunSeries } from '../../quantities/runSeries';
+import { getInitialSaturations, getPoreVolume } from '../../quantities/reservoirVolumes';
 
 let wasmReady: Promise<unknown> | null = null;
 

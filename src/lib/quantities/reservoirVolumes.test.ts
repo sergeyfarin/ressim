@@ -7,7 +7,7 @@ import {
     getGasInPlace,
     getDisplacementOilInPlace,
 } from './reservoirVolumes';
-import { generateBlackOilTable } from './physics/pvt';
+import { generateBlackOilTable } from '../physics/pvt';
 
 const GRID = {
     nx: 10, ny: 1, nz: 2,

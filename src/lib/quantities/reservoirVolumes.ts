@@ -19,10 +19,17 @@
  *    recover and a black-oil case has both, so callers ask for the one they mean
  *    and get `null` where it does not exist — never a fraction of a denominator
  *    that isn't there.
+*
+ * **Why `quantities/` and not the `lib/` root.** `charts` needed this and reached up for it,
+ * while the root reached down into `charts` for an analytical descriptor — that pair was
+ * mutually dependent, so neither could be packaged. These helpers are the half that belongs
+ * lower: they derive numbers from a run and from rock, and know nothing about rendering, the
+ * scenario catalog or any store. `physics/` (a type-only consumer of the root) is the only
+ * value dependency this directory may take.
  */
 
-import { interpolatePvtAtPressure, DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR } from './physics/pvt';
-import type { PvtRow } from './simulator-types';
+import { interpolatePvtAtPressure, DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR } from '../physics/pvt';
+import type { PvtRow } from '../simulator-types';
 
 /** Coerces `value` to a finite number, returning `fallback` for NaN/Infinity/null/undefined. */
 export function toFiniteNumber(value: unknown, fallback: number): number {

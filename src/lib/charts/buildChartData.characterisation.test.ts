@@ -24,7 +24,7 @@ import { resolveScenarioReferenceSeries } from '../catalog/opmFlowArtifacts';
 import { buildBenchmarkRunResult } from '../benchmarkRunModel';
 import type { BenchmarkRunSpec } from '../benchmarkRunModel';
 import { buildReferenceComparisonModel } from './buildChartData';
-import { getPoreVolume } from '../reservoirVolumes';
+import { getPoreVolume } from '../quantities/reservoirVolumes';
 
 /** A deterministic, physics-free rate history with every field the builder reads. */
 function syntheticRateHistory(params: Record<string, any>) {

@@ -10,8 +10,8 @@ import {
     getStockTankOilInPlace,
     getGasInPlace,
     getDisplacementOilInPlace,
-} from './reservoirVolumes';
-import { integrateRunSeries } from './runSeries';
+} from './quantities/reservoirVolumes';
+import { integrateRunSeries } from './quantities/runSeries';
 import type {
     BenchmarkBreakthroughCriterion,
     BenchmarkComparisonMetric,

@@ -141,9 +141,17 @@ to have reduced coupling rather than moved it.
 Each is a separate commit, each independently revertible, in this order:
 
 1. `ToggleGroup` → a UI primitives leaf. Resolves `charts ↔ ui` and `ui ↔ visualization`.
-2. Shared series/volume helpers (`runSeries`, `reservoirVolumes` consumers) → a leaf; move
-   `analyticalMethodRegistry`'s descriptor lookup off `benchmarkDisclosure`'s path. Resolves
+2. Shared series/volume helpers (`runSeries`, `reservoirVolumes`) → a leaf. Resolves
    `charts ↔ lib-root`.
+
+   **Corrected 2026-09-19 while executing.** This task originally also called for moving
+   `analyticalMethodRegistry`'s descriptor lookup off `benchmarkDisclosure`'s path, to remove the
+   `lib-root → charts` edge. That would have been wrong. Breaking a mutual pair needs only one
+   direction removed, and the two directions are not interchangeable: `charts → lib-root` must go,
+   because a package cannot import the application that consumes it, while `lib-root → charts` is
+   the *correct* direction and is what "the app depends on the charts package" looks like. Removing
+   it would have cost an edit and moved the codebase away from the target shape. Only the helper
+   move was performed.
 3. Chart-layout contract (`chartLayoutConfig`, `curvePropertyRegistry` surface consumed by
    `catalog/scenarios.ts`) → a leaf both `catalog` and `charts` depend on. Resolves
    `catalog ↔ charts`.

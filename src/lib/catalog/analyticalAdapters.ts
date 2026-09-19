@@ -6,7 +6,7 @@
  * logic across multiple scenarios that share the same physics.
  */
 
-import { integrateRunSeries } from '../runSeries';
+import { integrateRunSeries } from '../quantities/runSeries';
 import {
     calculateAnalyticalProduction,
     calculateGasOilAnalyticalProduction,

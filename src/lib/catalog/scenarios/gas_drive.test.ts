@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import initWasm, { ReservoirSimulator } from '../../ressim/pkg/simulator.js';
 import { getScenarioWithVariantParams } from '../scenarios';
-import { integrateRunSeries } from '../../runSeries';
-import { getStockTankOilInPlace } from '../../reservoirVolumes';
+import { integrateRunSeries } from '../../quantities/runSeries';
+import { getStockTankOilInPlace } from '../../quantities/reservoirVolumes';
 
 let wasmReady: Promise<unknown> | null = null;
 

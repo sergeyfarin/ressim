@@ -20,7 +20,7 @@ import {
 } from '../analytical/depletionAnalytical';
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import { DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR } from '../physics/pvt';
-import { integrateRunSeries } from '../runSeries';
+import { integrateRunSeries } from '../quantities/runSeries';
 import {
     computeGasMaterialBalance,
     gasFormationVolumeFactor,
@@ -54,7 +54,7 @@ export {
     getStockTankOilInPlace,
     getGasInPlace,
     getDisplacementOilInPlace,
-} from '../reservoirVolumes';
+} from '../quantities/reservoirVolumes';
 
 import {
     toFiniteNumber,
@@ -66,7 +66,7 @@ import {
     getStockTankOilInPlace,
     getGasInPlace,
     getDisplacementOilInPlace,
-} from '../reservoirVolumes';
+} from '../quantities/reservoirVolumes';
 
 /**
  * Returns permeability values per layer (mD). Uses `layerPermsX` in perLayer

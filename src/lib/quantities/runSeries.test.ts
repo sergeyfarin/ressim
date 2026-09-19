@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { integrateRunSeries } from './runSeries';
-import type { RateHistoryPoint } from './simulator-types';
+import type { RateHistoryPoint } from '../simulator-types';
 
 const history = [
     { time: 10, total_production_oil: 40, total_production_liquid: 50, total_production_gas: 400, total_injection: 60 },
