@@ -271,3 +271,28 @@ No issue covers this work at the time of writing. Before S1, open one issue per 
 (FRONTEND-MODULAR-READY, ENGINE-MULTI-TARGET-READY) and link S1's extraction 3 to #29, since C13
 consumes it. Per repo working style, `TODO.md` gets at most a dashboard line — not a second
 checkbox tracker.
+
+## 9. Completion records
+
+### S0 — baseline recorded (COMPLETE)
+
+Measured on `adac71b`, clean tree. The plan's §2 numbers were first taken at `93c8c5c`; `adac71b`
+is the dependency update that landed on top of it (including `three` 0.185.1 → 0.186.0), and the
+metric is **unchanged across it**, which is itself the first useful datum: dependency movement does
+not move module coupling.
+
+| Quantity | Value | Replay |
+|---|---|---|
+| Mutual value-level pairs | **5** | `node scripts/measure-module-coupling.mjs` |
+| Value edges between areas | 83 across 39 ordered pairs | same |
+| Type-only edges between areas | 78 across 31 ordered pairs | same |
+| Shipped `simulator_bg.wasm` | **1 399 032 bytes** | `RESSIM_FORCE_WASM_BUILD=1 bash scripts/build-wasm.sh` |
+| Gate state at baseline | `pnpm run validate:product` exit 0, 926 passed / 15 skipped | `pnpm run validate:product` |
+
+The five mutual pairs and the symbol responsible for each are tabulated in §2e. The WASM size is
+recorded because S4 changes how the artifact is built and must be shown not to grow it.
+
+`pnpm-workspace.yaml` exists at this revision but still declares only `minimumReleaseAgeExclude`,
+with no `packages:` key — S2's precondition is unchanged by `adac71b`.
+
+**Exit satisfied:** every §2 number has a committed revision and an exact replay command.
