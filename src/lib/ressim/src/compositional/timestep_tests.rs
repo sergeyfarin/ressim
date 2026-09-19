@@ -7,6 +7,7 @@ use super::newton::NewtonOptions;
 use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalCellState, CompositionalState, FlashCacheKey, RockView};
 use super::timestep::{CompositionalRun, FailureKind, TimestepOptions};
+use super::wells::{CompositionalWell, WellControl};
 use crate::fluid::flash::flash;
 use crate::fluid::pinned;
 use crate::fluid::specification::FluidSpecification;
@@ -16,6 +17,8 @@ fn relperm() -> RelativePermeabilityModel {
     RelativePermeabilityModel::Linear
 }
 const GEOM_T: f64 = 8.526_988_8e-3 * 100.0 * (100.0 * 10.0) / 100.0;
+/// Peaceman geometry without mobility: 100 mD, 10 m of pay, 200 m spacing, 0.1 m radius.
+const WELL_INDEX: f64 = 8.526_988_8e-3 * 2.0 * std::f64::consts::PI * 100.0 * 10.0 / 5.3;
 const PORE_VOLUMES: [f64; 3] = [1000.0, 1000.0, 1000.0];
 
 fn rock() -> RockView<'static> {
@@ -111,6 +114,7 @@ fn comp_rollback_a_rejected_step_changes_nothing() {
     let state_before = run.state().clone();
     let time_before = run.time_days();
     let cumulative_before = run.cumulative_source_moles().to_vec();
+    let wells_before = run.cumulative_well_moles().to_vec();
 
     let options = TimestepOptions {
         max_attempts: 3,
@@ -144,6 +148,101 @@ fn comp_rollback_a_rejected_step_changes_nothing() {
         cumulative_before,
         "cumulatives moved"
     );
+    assert_eq!(
+        run.cumulative_well_moles(),
+        wells_before,
+        "the well ledger moved"
+    );
+}
+
+/// The same rollback property, but with a well present and a ledger that already holds something.
+///
+/// The well-less case above cannot distinguish "the ledger was not written" from "there was
+/// nothing to write": an empty ledger stays empty either way. Here a first step is accepted so the
+/// ledger carries a real, non-zero entry, and the rejected step that follows must leave it exactly
+/// as it was — not re-accumulated at the failed attempt's rate, and not resized by it.
+#[test]
+fn comp_rollback_a_rejected_step_leaves_a_non_empty_well_ledger_alone() {
+    let (spec, layout, faces, mut run) = setup(2, 200.0);
+    let rock = rock();
+    let previous = run.accepted_inventory(&spec, &rock).unwrap();
+    let total: f64 = previous[0].iter().sum();
+
+    // A producer small enough that the first step is comfortably accepted.
+    let well = CompositionalWell::single(
+        "P1",
+        0,
+        WELL_INDEX * 1e-3,
+        WellControl::Bhp { target_bar: 150.0 },
+    );
+    let wells = std::slice::from_ref(&well);
+
+    let report = run.step(
+        &spec,
+        &layout,
+        &rock,
+        &relperm(),
+        &faces,
+        wells,
+        &zero_sources(2),
+        0.05,
+        TimestepOptions::default(),
+    );
+    assert!(
+        report.succeeded(),
+        "the seeding step must be accepted: {report:?}"
+    );
+
+    let wells_before = run.cumulative_well_moles().to_vec();
+    assert_eq!(
+        wells_before.len(),
+        1,
+        "the accepted step must have opened a ledger row"
+    );
+    let produced: f64 = wells_before[0].iter().sum();
+    assert!(
+        produced < 0.0,
+        "the seeding step must have produced something to hold onto: {wells_before:?}"
+    );
+
+    let state_before = run.state().clone();
+    let time_before = run.time_days();
+
+    // Now a step no cut in the ladder can take, with the same well still connected.
+    let mut sources = zero_sources(2);
+    sources[0] = vec![-total * 1e6, 0.0, 0.0];
+
+    let options = TimestepOptions {
+        max_attempts: 3,
+        newton: NewtonOptions {
+            tolerance: 1e-8,
+            max_iterations: 4,
+        },
+        ..TimestepOptions::default()
+    };
+    let report = run.step(
+        &spec,
+        &layout,
+        &rock,
+        &relperm(),
+        &faces,
+        wells,
+        &sources,
+        1.0,
+        options,
+    );
+
+    assert!(
+        !report.succeeded(),
+        "an impossible step must not be accepted"
+    );
+    assert_eq!(
+        run.cumulative_well_moles(),
+        wells_before,
+        "the well ledger moved on a rejected step"
+    );
+    assert_eq!(run.state(), &state_before, "the accepted state moved");
+    assert_eq!(run.time_days(), time_before, "the clock moved");
 }
 
 /// The retry ladder halves `dt` and records every attempt, so what was tried is inspectable
