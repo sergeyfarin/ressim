@@ -392,6 +392,20 @@ No existing black-oil benchmark tolerance is changed by any of this.
    compared against a correction known to be right, which is what the direct solve now provides.
    When it lands, the plan's warning applies — do not copy black-oil quasi-IMPES weights because
    the matrix sizes happen to match.
+
+   **A report-contract precondition applies to that landing.** `NewtonReport` today carries
+   `residual_history`, `step_scale_history` and `min_pivot` — coherent for a direct solve, where
+   reduction and backend identity are not defined and the smallest pivot is the conditioning
+   signal. An iterative path makes them defined, and this repository's own rule is that a
+   cross-backend result is not a valid pass/fail gate until both reports carry comparable
+   initial/RHS norm, final **full-system** residual norm, reduction, and finite-solution status
+   (`.claude/skills/ressim-validation/SKILL.md`, hard rule 5; the black-oil equivalent is
+   `FimLinearSolveReport`, whose F4 repair exists precisely because a wrapper/reduced-system norm
+   mismatch made earlier FIM experiments `INCONCLUSIVE`). So the iterative adapter must extend
+   `NewtonReport` with those observables **in the same change that introduces it**, before any
+   direct-vs-iterative comparison is used as evidence. Measuring the new path against the direct
+   solve is the entire point of keeping the direct solve; that comparison is not admissible
+   through a report that cannot express it.
 5. ~~**The near-critical domain is unclassified.**~~ **CLOSED by C6, and declared supported** for
    the pinned fluids over 10–500 bar at 423.15 K. The C1/C10 binary's two-phase envelope closes
    between 200 and 250 bar at `z = [0.6, 0.4]`; a 0.1 bar traverse across it finds the phase
@@ -421,6 +435,53 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 
 ## 8. Completion records
+
+### Adapter acceptance against the FIM model/solver boundary (2026-09-19)
+
+[`FIM_MODEL_SOLVER_BOUNDARY_2026-09-18.md`](FIM_MODEL_SOLVER_BOUNDARY_2026-09-18.md) publishes a
+contract a second fluid model may consume, and explicitly declines to review any adapter built on
+it: "that review is owned by the model that introduces it, together with its own validation
+evidence." This is that review. **Accepted**, against `ea14fe9`.
+
+**The contract's seven operations are all present and in the required order** in
+`compositional::timestep::CompositionalRun::step`: snapshot/initial iterate (the accepted state,
+passed by shared reference), assemble (`assemble_at`), apply and validate the trial update
+(`apply_step` with `fraction_to_boundary` for domain admissibility), evaluate the accepted
+candidate, return an accepted evaluation or a rejected-attempt report, commit, then advance time
+and controller memory.
+
+**Rollback is structural, and enforced by the type system rather than by a test.** `solve_newton`
+takes the accepted state by *shared* reference and returns an owned candidate, so a failed attempt
+cannot mutate accepted state — it never holds a mutable reference to it. This is stronger than the
+contract requires, and stronger than the black-oil path, which the boundary document describes as
+still constructing `FimState` and writing back directly. Every ledger advance — clock,
+`cumulative_source_moles`, `cumulative_well_moles`, cache clear — is inside the single `Ok` arm.
+
+**The two rules the boundary document singles out are tested.** Cached phase state cannot leak
+across a commit (`FlashCache` is keyed on state version;
+`comp_rollback_cache_entries_cannot_outlive_their_state_version`), and a corrupted commit is
+refused (`comp_state_commit_rejects_an_inadmissible_state`).
+
+**One gap was found and closed.** The rejected-attempt no-trace property was asserted for accepted
+state, clock and `cumulative_source_moles` but not for `cumulative_well_moles`, and both tests
+exercising a non-succeeding step passed an empty well slice — so no rejected attempt was tested
+with a well connected. The contract names well state and per-connection unknowns in its snapshot
+list. Closed by `ea14fe9`, which adds the assertion and a second test seeding a non-zero ledger
+first (a well-less fixture cannot distinguish "not written" from "nothing to write"). Verified by
+mutation: a well-ledger bump injected into the `Err` arm fails the new test and passes the old one.
+
+**Reuse is one seam, deliberately.** The adapter consumes exactly one published interface —
+`FimLinearBlockLayout`, via `CompositionalLayout::to_linear_block_layout` — and re-derives the
+rest, including a dense direct linear solve in place of `solve_linearized_system`. That is the
+documented C10 decision, not an oversight, and §6 item 4 carries the deferral together with the
+report-contract precondition its landing must satisfy.
+
+**What this acceptance does not cover.** The boundary document's five *admission tests* govern
+extracting **black-oil** orchestration behind the contract. That extraction has not happened —
+orchestration still constructs `FimState` and invokes black-oil Newton directly — and remains open
+as issue #22. A compositional adapter existing does not discharge it, and this record makes no
+claim about it.
+
 
 ### C12 — against an independent simulator (COMPLETE; milestone DECLARED)
 
