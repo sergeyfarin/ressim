@@ -11,8 +11,8 @@ built for targets other than browser WASM, (b) the frontend can be composed into
 page, and (c) neither change requires rewriting the other.
 
 This document owns the split sequence. GitHub Issues owns task status.
-`COMPOSITIONAL_FLUID_EXECUTION_PLAN_2026-09-14.md` owns C13 and the compositional backlog;
-where the two touch (S1, below) this plan states the dependency and does not restate C13's scope.
+`COMPOSITIONAL_FLUID_EXECUTION_PLAN_2026-09-14.md` owns C13 and the compositional backlog. The
+two plans were initially believed to touch at S1; they do not (§9a), and neither gates the other.
 `FIM_MODEL_SOLVER_BOUNDARY_2026-09-18.md` owns the in-crate model/solver contract, which is a
 different boundary from this one and is not affected by any task here.
 
@@ -157,15 +157,15 @@ Each is a separate commit, each independently revertible, in this order:
    `catalog ↔ charts`.
 4. `stores/phase2PresetContract` → a leaf outside `stores`. Resolves `catalog ↔ stores`.
 
-**This task is on C13's critical path, not a detour from it.** C13's remaining work is chart curve
-sourcing: `buildChartData` reads `DerivedRunSeries`, which is black-oil, which is why
-`comp_co2_1d` sits in `WITHHELD_SCENARIOS`. Extraction 3 is the same coupling. Sequence C13's
-curve sourcing immediately after it rather than before.
+~~**This task is on C13's critical path, not a detour from it.**~~ **WITHDRAWN 2026-09-19 —
+see §9a.** C13's blocker is a closed black-oil type *inside* `charts/`, not the `catalog ↔ charts`
+coupling. Finishing S1 does not unblock C13, and C13 needs no S-task. The two tracks are
+independent.
 
 **Validation:** `pnpm run validate:product` after each of the four; `check:cycles` green;
 mutual-pair count 5 → 0 across the task.
-**Exit:** `measure-module-coupling.mjs` reports zero mutual pairs. Update #29 with extraction 3's
-effect on C13.
+**Exit:** `measure-module-coupling.mjs` reports zero mutual pairs. (An earlier exit criterion
+required recording extraction 3's effect on C13; there is none — §9a.)
 
 ### S2 — Declare the packages
 
@@ -275,12 +275,117 @@ bash scripts/validate-compositional.sh thermo
 
 ## 8. Issue mapping
 
-No issue covers this work at the time of writing. Before S1, open one issue per milestone
-(FRONTEND-MODULAR-READY, ENGINE-MULTI-TARGET-READY) and link S1's extraction 3 to #29, since C13
-consumes it. Per repo working style, `TODO.md` gets at most a dashboard line — not a second
-checkbox tracker.
+No issue covers this work at the time of writing. Open one issue per milestone
+(FRONTEND-MODULAR-READY, ENGINE-MULTI-TARGET-READY). An earlier revision also said to link
+extraction 3 to #29; §9a withdraws that — C13 consumes nothing from S1. Per repo working style,
+`TODO.md` gets at most a dashboard line, not a second checkbox tracker.
 
-## 9. Completion records
+## 9. Risks, alternatives and open decisions
+
+Added 2026-09-19 after executing S0–S1.4. Everything here came from doing the work, not from
+planning it.
+
+### 9a. Correction: S1 is **not** on C13's critical path
+
+§4 S1 claimed that extraction 3 unblocks C13's compositional curve sourcing. **That is wrong, and
+the claim is withdrawn.** Checked at `6131628`:
+
+- The `catalog ↔ charts` mutual pair lives entirely in `charts/scenarioChartModel.ts` (→ catalog)
+  and `catalog/scenarios.ts` + `catalog/analyticalAdapters.ts` (→ charts).
+- C13's blocker is that `charts/simulationCurves.ts` and `buildChartData` are typed against
+  `DerivedRunSeries`, a **closed struct of black-oil named fields** defined in
+  `charts/axisAdapters.ts`. `buildChartData` imports only a *type* from the catalog.
+
+The blocker is therefore **inside `charts/`**, and is a type-design problem, not a cross-area
+coupling problem. Finishing S1 does not unblock C13, and C13 does not need any S-task. The two
+tracks are independent and may be sequenced by preference rather than by dependency.
+
+This also revises the answer given when the split was first proposed: "add the compositional
+scenario, or split first?" is a genuine either/or, not a sequencing consequence.
+
+### 9b. S1.3 has a second design, possibly better than the planned one
+
+The plan's remaining S1.3 threads `resolveCapabilities` and `resolveScenarioReferenceSeries`
+through `App.svelte` into `ScenarioChart`. There is an alternative worth weighing before starting:
+
+**Relocate the scenario adapter instead of injecting into it.** `scenarioChartModel.ts` maps a
+catalog `Scenario` onto a `BenchmarkFamily` — both non-chart concepts — and `ScenarioChart.svelte`
+is a 58-line adapter that does nothing but call it and render `ReferenceComparisonChart`. Neither
+is a reusable chart primitive. Moving *both* out of `charts/` would leave `charts/` holding only
+genuinely reusable rendering, and the scenario-aware pair would sit together where their catalog
+dependency is legitimate. Their imports *from* `charts/` are already type-only.
+
+Trade-off: it changes which area owns two files (a larger diff, a clearer boundary) versus adding
+two props to a public component and editing the app's render path (a smaller diff, a boundary that
+stays slightly wrong). Both are behaviour-preserving if done carefully. **Undecided — see §9f.**
+
+### 9c. S2's real cost is Svelte and Tailwind packaging, not the workspace file
+
+`tailwind.config.ts` scans `content: ['./index.html', './src/**/*.{svelte,js,ts,jsx,tsx}']`.
+As long as packages are declared **in place under `src/lib/`**, which is what S2 proposes, this is
+fine. The moment any package moves outside `src/`, Tailwind stops seeing its classes and **emits no
+error** — the components render unstyled. A daisyUI plugin in the same config means a consumer
+needs the identical Tailwind setup, not merely the package.
+
+Consequences for S2, which the task text does not currently carry:
+
+- Keep packages under `src/lib/` until someone has deliberately solved the Tailwind content
+  question. Do not move directories to a top-level `packages/` as a tidiness step.
+- Svelte components shipped as a package are consumed as source with a `svelte` export condition,
+  compiled by the consumer. A second frontend therefore inherits this Tailwind setup rather than
+  being free of it. S3's "second page" should be treated as a test of exactly that, and its
+  acceptance should include *visual* confirmation, not only that it builds.
+
+### 9d. Two different ceilings are being conflated
+
+§2d records the browser heap ceiling. There are actually two limits, and they are lifted by
+different things:
+
+| Ceiling | Value | Lifted by |
+|---|---|---|
+| Browser tab heap | a few hundred MB in practice; the `≤ 1200`-cell policy | **running the same WASM under Node — already works today** (§2c) |
+| `wasm32` address space | 4 GiB, host-independent | only a native target (S5), or `wasm64`, which is immature |
+
+So there is a cheaper intermediate step than S5 that the plan never named: **a Node-hosted batch
+runner using the existing bundle**, which lifts the first ceiling with no new binding layer at all.
+`scripts/fim-wasm-diagnostic.mjs` is already most of it. If the motivation for S5 is "cases larger
+than the browser allows", that motivation is partly satisfied for free; if it is "field-scale",
+only native suffices. Worth deciding which is actually wanted before building a PyO3 layer.
+
+### 9e. S5 is probably a separate crate, not a third shim
+
+S5 as written adds a PyO3 shim beside `frontend.rs` behind features. Stacking `wasm_bindgen` and
+`pyo3` attribute macros on one struct in one crate invites feature-combination breakage and makes
+`cargo test` matrices grow.
+
+Alternative: a thin `ressim-py` crate depending on `simulator` as an **rlib**, which `crate-type`
+already supports. The physics crate then needs no PyO3 at all, S4's feature gate stays a two-state
+switch rather than a matrix, and the Python binding can version independently. This is likely the
+better shape; recorded here rather than silently rewritten into S5.
+
+### 9f. Reversibility, and what it costs to be wrong
+
+| Task | Blast radius | Cost to revert |
+|---|---|---|
+| S1.1, S1.2, S1.4 (done) | file moves + import paths | trivial — `git revert`, no API changed |
+| S1.3 remainder | a public component's props, the app render path | moderate; needs visual check, no browser gate here |
+| S2 | build/packaging config | low while packages stay under `src/lib/`; **high** if files move out (§9c) |
+| S3 | new entry point only | trivial — delete it |
+| S4 | crate feature gating | moderate; the 14 WASM-driving scenario tests are the net |
+| S5 | new crate or shim | low if a separate crate; moderate if in-crate features |
+
+The pattern: everything up to S3 is cheap to undo, and the two genuinely expensive mistakes
+available are moving packages out of `src/` (silent styling loss) and putting PyO3 in the physics
+crate (feature-matrix debt).
+
+### 9g. Adjacent risk, not part of this plan
+
+`three` moved 0.185.1 → 0.186.0 in `adac71b`. Repo constraint calls Three.js pinned and
+visualization "version-sensitive", and the only evidence the upgrade is safe is a unit suite that
+does not render. `visualization/` is also the area this plan designates least portable. Not a
+task here, but if a 3D rendering regression appears later, that bump is the first place to look.
+
+## 10. Completion records
 
 ### S0 — baseline recorded (COMPLETE)
 
