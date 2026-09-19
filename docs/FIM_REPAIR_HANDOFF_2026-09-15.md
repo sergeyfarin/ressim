@@ -192,6 +192,32 @@ outcome is `925658c`, and it alters only a path that previously aborted the proc
 `CELL_BLOCK_SIZE` / `CellPrimary` / `CellEquation` substitutions in `assembly.rs`, `scaling.rs`
 and `newton.rs` are literal-for-named-constant with identical values.
 
+## Audit follow-up (2026-09-19)
+
+Commits `a8e553b` and `8d7bfec` close the test/documentation findings from
+`FIM_REPAIR_AUDIT_2026-09-18.md`:
+
+- outer-controller tests now read back the committed three-phase simulator state and exercise a
+  deterministically rejected attempt, real retry, reporting and cumulative ledgers under both
+  nonlinear flavors;
+- the exact audit mutation (`Rs + 1` during three-phase write-back) fails the new commit test;
+- gas/water injector derivative tests require a stable adjacent region in the FD sweep;
+- the #10 shared-code inference is corrected and the missing F7 design contract is recorded in
+  `FIM_MODEL_SOLVER_BOUNDARY_2026-09-18.md`.
+
+The previously omitted G5 OPM gas comparison was replayed on clean commit `8d7bfec`:
+
+```sh
+bash scripts/opm-ressim-compare.sh \
+  --case gas-rate-10x10x3 \
+  --out-dir /tmp/ressim-fim-p2-opm-clean-8d7bfec
+```
+
+Both engines completed six 0.25-day steps without a cut or warning. Flow applied Newton updates
+`7,5,4,3,4,3`; ResSim applied `8,5,4,4,3,3` (`9,6,5,5,4,4` residual evaluations). This completes
+the gate and confirms convergence-class behavior, not iteration-count or trajectory parity.
+#21's waterflood timestep/accuracy study and an independent #10 geometry oracle remain open.
+
 ## First unblocked task in the fluid plan
 
 **C0** — pin the fluid, consuming case and independent oracle

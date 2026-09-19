@@ -13,6 +13,11 @@ conclusion is unsupported, and some planned accuracy/interface work was deferred
 handoff still declares completion. These are validation and readiness findings, not evidence
 that the current solver necessarily commits incorrect states.
 
+**Follow-up status (2026-09-19):** A1–A4 are addressed by `a8e553b` and `8d7bfec`. The new
+outer-commit test rejects the audit's deliberate write-back mutation. The independent #10 oracle
+and #21 waterflood accuracy study remain open work; the documentation no longer presents them as
+completed or causally resolved.
+
 ## Findings
 
 ### A1 — P1: F5 does not test the commit/retry boundary it claims to protect
