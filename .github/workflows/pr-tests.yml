@@ -60,6 +60,18 @@ jobs:
       - name: Run Buckley-Leverett physics benchmarks
         run: cargo test --manifest-path src/lib/ressim/Cargo.toml benchmark_buckley -- --nocapture
 
+      # The compositional engine and the EOS/flash stack match no filter in
+      # `validate-solver-coverage.sh`, which is black-oil only, so without this step
+      # they would sit in the tree with nothing running them on a PR.
+      #
+      # `thermo` and not `native`/`all`: the `fixture` mode hard-fails when the OPM
+      # headers and g++ are absent, which they are on this runner, and `reference`
+      # needs a built `flowexp_comp`. Both are local/offline gates. `thermo` is pure
+      # Rust and self-contained. The wasm32 compile of the same code is already
+      # covered by the "Build WASM bindings" step above.
+      - name: Run compositional thermodynamics gates
+        run: bash scripts/validate-compositional.sh thermo
+
       # `test:coverage` is the full vitest suite (`vitest run --coverage`), so it is
       # the pass/fail gate as well as the coverage producer. Running `pnpm run test`
       # first would execute the same ~8 minutes of scenario simulations twice.
