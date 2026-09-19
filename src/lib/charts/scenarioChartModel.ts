@@ -1,13 +1,12 @@
 import type { BenchmarkFamily } from '../scenario/referenceTypes';
 import {
-    getScenarioChartLayout,
     resolveCapabilities,
     type Scenario,
     type ScenarioAnalyticalOption,
 } from '../catalog/scenarios';
 import { resolveScenarioReferenceSeries } from '../catalog/opmFlowArtifacts';
 import type { CurveConfig } from './chartTypes';
-import type { ChartLayoutConfig, ChartPanelId, ChartXAxisMode } from './chartLayoutConfig';
+import type { ChartPanelId, ChartXAxisMode } from './chartLayoutConfig';
 
 export type ChartCurveModel = CurveConfig & {
     sourceType: 'simulation' | 'analytical' | 'published-reference' | 'opm-flow-precomputed';
@@ -33,14 +32,12 @@ export function buildScenarioComparisonFamily(input: {
     scenario: Scenario | null | undefined;
     activeDimensionKey?: string | null;
     analyticalOption?: ScenarioAnalyticalOption | null;
-    layoutConfig?: ChartLayoutConfig;
 }): BenchmarkFamily | null {
     const scenario = input.scenario ?? null;
     if (!scenario) return null;
 
     const resolved = resolveCapabilities(scenario.capabilities);
     const activeDimension = scenario.sensitivities.find((dimension) => dimension.key === input.activeDimensionKey) ?? null;
-    const chartLayout = input.layoutConfig ?? getScenarioChartLayout(scenario, input.activeDimensionKey);
     const xAxis = resolved.analyticalNativeXAxis as BenchmarkFamily['displayDefaults']['xAxis'];
     const panels = (resolved.primaryRateCurve === 'oil-rate'
         ? ['oil-rate', 'cumulative-oil', 'decline-diagnostics']

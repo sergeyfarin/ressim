@@ -37,7 +37,6 @@
         scenario,
         activeDimensionKey,
         analyticalOption,
-        layoutConfig,
     }));
     const shouldRenderComparison = $derived(Boolean(scenario && comparisonFamily));
 </script>

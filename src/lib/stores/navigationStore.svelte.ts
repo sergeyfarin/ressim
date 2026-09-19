@@ -282,12 +282,10 @@ class NavigationStoreImpl {
     activeScenarioAsFamily = $derived.by((): BenchmarkFamily | null => {
         const sc = this.activeScenarioObject;
         if (!sc || this.isCustomMode) return null;
-        const chartLayout = getScenarioChartLayout(sc, this.activeSensitivityDimensionKey);
         return buildScenarioComparisonFamily({
             scenario: sc,
             activeDimensionKey: this.activeSensitivityDimensionKey,
             analyticalOption: this.activeAnalyticalOption,
-            layoutConfig: chartLayout,
         });
     });
 
