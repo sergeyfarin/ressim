@@ -1,3 +1,13 @@
+<!--
+    A presentational segmented control: options in, selected value out. No store, no scenario,
+    no chart and no simulator concept.
+
+    It lives in `primitives/` rather than under `ui/` because it is not `ui`'s. `charts` and
+    `visualization` both reached across for it, and those two edges were the whole reason
+    `charts <-> ui` and `ui <-> visualization` were mutually dependent -- a component with no
+    imports of its own was the only thing keeping three areas from being separable. Anything
+    added here must stay importable by every area, which means no imports out of this directory.
+-->
 <script lang="ts">
     type OptionValue = string | number;
 

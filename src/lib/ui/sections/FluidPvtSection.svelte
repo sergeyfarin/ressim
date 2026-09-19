@@ -1,7 +1,7 @@
 <script lang="ts">
   import Collapsible from "../controls/Collapsible.svelte";
   import Input from "../controls/Input.svelte";
-  import ToggleGroup from "../controls/ToggleGroup.svelte";
+  import ToggleGroup from "../../primitives/ToggleGroup.svelte";
   import ValidatedInput from "../controls/ValidatedInput.svelte";
   import { FLUID_PRESETS } from "../../catalog/reservoirPresets";
   import type { ModePanelParameterBindings } from "../modePanelTypes";

@@ -1,7 +1,7 @@
 <script lang="ts">
     import { untrack } from 'svelte';
     import ChartSubPanel from './ChartSubPanel.svelte';
-    import ToggleGroup from '../ui/controls/ToggleGroup.svelte';
+    import ToggleGroup from '../primitives/ToggleGroup.svelte';
     import type { BenchmarkFamily } from '../scenario/referenceTypes';
     import type { BenchmarkRunResult } from '../benchmarkRunModel';
     import {

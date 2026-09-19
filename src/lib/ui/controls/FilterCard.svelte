@@ -17,7 +17,7 @@
         onchange: (v: string) => void;
     }>();
 
-    import ToggleGroup from "./ToggleGroup.svelte";
+    import ToggleGroup from "../../primitives/ToggleGroup.svelte";
 
     const formattedOptions = $derived(
         options.map((opt: string) => ({

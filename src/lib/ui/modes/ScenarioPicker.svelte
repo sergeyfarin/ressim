@@ -1,7 +1,7 @@
 <script lang="ts">
   import Button from "../controls/Button.svelte";
   import Card from "../controls/Card.svelte";
-  import ToggleGroup from "../controls/ToggleGroup.svelte";
+  import ToggleGroup from "../../primitives/ToggleGroup.svelte";
   import WarningPolicyPanel from "../feedback/WarningPolicyPanel.svelte";
   import { SCENARIOS, SCENARIO_GROUPS, getScenario, getScenarioAnalyticalOptions, getScenarioGroup, solverLabel, type Scenario } from "../../catalog/scenarios";
   import type { WarningPolicy } from "../../warningPolicy";
