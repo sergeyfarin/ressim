@@ -19,6 +19,7 @@ under `.archive/`.
 | Document | Use it for |
 |----------|------------|
 | `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
+| [Engine payload boundary design](ENGINE_PAYLOAD_BOUNDARY_DESIGN_2026-09-21.md) | Pre-implementation note: how the engine's 12 remaining `JsValue`-bound functions become target-agnostic, by generalising the `compositional/api.rs` pattern to black-oil; phases, alternatives rejected, and the gates that keep it true |
 | [Architecture split plan](ARCHITECTURE_SPLIT_PLAN_2026-09-19.md) | S0–S6 engine/frontend separation: measured WASM and module coupling at `93c8c5c`, the four leaf extractions that zero it, workspace packaging, a non-WASM engine target, and why one repository rather than several |
 | [Compositional readiness assessment](COMPOSITIONAL_READINESS_ASSESSMENT_2026-09-14.md) | Rust/OPM reuse map, FIM prerequisites, reproduced well-contract gaps, and staged compositional scope |
 | [Compositional fluid execution plan](COMPOSITIONAL_FLUID_EXECUTION_PLAN_2026-09-14.md) | C0–C15 implementation tasks, EOS/flash contracts, component equations, wells, native/WASM admission and immiscible-water extension |
