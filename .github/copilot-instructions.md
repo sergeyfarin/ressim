@@ -13,6 +13,8 @@ See `README.md` for full feature list and `docs/` for technical deep-dives.
 | Layer | Location | Role |
 |-------|----------|------|
 | Rust/WASM core | `src/lib/ressim/src/` | Physics: pressure solver (PCG), saturation transport, wells, relperm, capillary |
+| Engine payload boundary | `src/lib/ressim/src/api.rs` | The Rust types a consumer reads and supplies. **No target types here** — no `JsValue`, no `PyObject` |
+| Python bindings | `crates/ressim-py/` | A second consumer: the engine as an `rlib` with its browser bindings off |
 | Analytical | `src/lib/analytical/` | Reference solutions for BL, depletion, sweep efficiency |
 | Catalog | `src/lib/catalog/` | Scenario definitions, preset runtime, benchmark cases |
 | Charts | `src/lib/charts/` | Rate/comparison charts (Chart.js), chart panel model |
@@ -31,6 +33,10 @@ See `README.md` for full feature list and `docs/` for technical deep-dives.
 - **WASM bindings** via `wasm-bindgen`; worker communication uses structured cloning only (no functions or class instances).
 - **Python tooling** uses `uv` for commands, scripts, environments, and dependency management.
 - **Package manager is pnpm** (`pnpm install`, `pnpm run dev`, `pnpm test`) — never npm/yarn.
+- **Five directories under `src/lib/` are workspace packages** (`@ressim/analytical`, `charts`,
+  `primitives`, `quantities`, `presets`). Import them **by name**, never by relative path from
+  outside; `src/lib/packageBoundaries.test.ts` fails otherwise. Inside a package, relative imports
+  are correct.
 
 ## Coding Conventions
 
@@ -50,6 +56,22 @@ See `README.md` for full feature list and `docs/` for technical deep-dives.
 **Simulation loop**: user configures scenario → worker creates Rust simulator → `step()` solves pressure, advances saturation, updates wells → worker posts state snapshots to UI.
 
 **Benchmarking**: physics validated against analytical solutions via Rust `#[test]` functions in `src/lib/ressim/src/lib.rs`. Don't change benchmark tolerances without justification.
+
+**The engine never names a target type.** `api.rs` holds the payload boundary in plain Rust over
+serde; `frontend.rs` converts to `JsValue` and `crates/ressim-py` to Python objects, and neither
+shim holds a decision. Adding a `JsValue` to the engine, or a `PyObject`, is what this boundary
+exists to prevent — see `docs/ENGINE_PAYLOAD_BOUNDARY_DESIGN_2026-09-21.md`.
+
+**Cross-target caution**: the FIM solver substeps differently on wasm32 than on x86-64 (4 vs 18 on
+the first step of Buckley case A); IMPES agrees to 1e-12. The convergence baselines in
+`docs/FIM_STATUS.md` are **wasm** measurements while `cargo test` runs **native**, so do not treat
+a native substep count and a figure from that page as the same measurement.
+`docs/OPEN_ITEMS_2026-09-21.md` §1 lists the causes already ruled out.
+
+**Two gates sit outside `validate:*`** and both run in PR CI:
+`bash scripts/validate-native-binding.sh` (native vs browser bindings on a case matrix) and
+`pnpm run test:deployed` (Playwright against `pnpm run preview`, the only check that catches an
+unstyled page — a Tailwind content-glob miss raises no error anywhere).
 
 **Testing caution**: full `cargo test` is NOT a valid gate — FIM/SPE1 tests can hang or dominate runtime. Use `bash scripts/validate-solver-coverage.sh {shared|fim|impes|all}` and the targeted commands in `.claude/skills/ressim-validation/SKILL.md`.
 
@@ -87,6 +109,10 @@ See `README.md` for full feature list and `docs/` for technical deep-dives.
   `import type` or moving the shared value into a leaf module — not by reordering declarations.
 
 ## Working Style
+
+**Open items**: `docs/OPEN_ITEMS_2026-09-21.md` records deliberate deferrals — what was not done
+and why — so a considered decision is not later mistaken for an oversight. Add to it when you
+choose not to do something.
 
 **Issue discipline**: GitHub Issues is the source of truth for actionable work. While working on a
 task, update its issue with material discoveries that remain in scope; open a new issue for a

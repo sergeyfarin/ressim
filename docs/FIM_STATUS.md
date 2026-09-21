@@ -2,6 +2,27 @@
 
 This is the consolidated current-state summary for the Rust FIM solver.
 
+> ## 2026-09-21: these baselines are **wasm** baselines, and the native target differs
+>
+> Every convergence number below was measured through `scripts/fim-wasm-diagnostic.mjs`, which
+> runs the **wasm32** build. A native/wasm parity gate added on 2026-09-21
+> (`scripts/validate-native-binding.sh`) shows the two targets do not agree on FIM:
+>
+> | Target | Substeps for the **first** 1-day step, Buckley case A | Max pressure difference |
+> |---|---|---|
+> | wasm32 | **4** | — |
+> | x86-64 native | **18** | **8.28 bar** |
+>
+> IMPES agrees to **1e-12** on the same fixture and targets, so this is specific to the implicit
+> path. It is present on the first step, so it is not accumulated round-off. Build profile and the
+> `wasm` cargo feature were both ruled out by experiment.
+>
+> **What this means for anything below:** the Rust test suite, including every FIM gate, runs
+> *natively*. These baselines do not. Do not treat a native substep count and a number from this
+> page as the same measurement until the cause is understood.
+>
+> Investigation and what would close it: `OPEN_ITEMS_2026-09-21.md` §1.
+
 > ## 2026-09-15 measured baseline (clean tree `6be6d08`) — read this before any convergence work
 >
 > **There is no FIM convergence stall left on any measured case.** Long-horizon runs (20-24 report

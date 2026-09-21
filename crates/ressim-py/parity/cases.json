@@ -1,0 +1,64 @@
+{
+  "$comment": "Cross-client parity matrix. Both runners read this file verbatim and configure through the same ordered calls, so neither can drift from the other. Base parameters are buckley_case_a from src/lib/ressim/src/tests/buckley.rs. `strict` cases must agree to 1e-9; non-strict ones are known to diverge across targets and report the gap instead of failing -- see the FIM note in docs/ARCHITECTURE_SPLIT_PLAN_2026-09-19.md.",
+  "base": {
+    "ny": 1,
+    "nz": 1,
+    "porosity": 0.2,
+    "permeability_md": 2000.0,
+    "injector_bhp": 500.0,
+    "producer_bhp": 100.0,
+    "s_wc": 0.1,
+    "s_or": 0.1,
+    "n_w": 2.0,
+    "n_o": 2.0,
+    "mu_w": 0.5,
+    "mu_o": 1.0,
+    "seed": 42,
+    "dt_days": 1.0
+  },
+  "cases": [
+    {
+      "id": "buckley-impes",
+      "why": "The original fixture. Three steps leaves the front mid-grid; a fully swept or static field would agree without proving much.",
+      "nx": 50,
+      "steps": 3,
+      "fim": false,
+      "strict": true
+    },
+    {
+      "id": "buckley-fim",
+      "why": "The same case on the implicit solver. NOT strict: wasm32 and x86-64 substep it differently -- 4 substeps against 18 on the very first day -- so their trajectories are not comparable at 1e-9. Kept, and reported on every run, so the divergence stays measured rather than forgotten.",
+      "nx": 50,
+      "steps": 1,
+      "fim": true,
+      "strict": false
+    },
+    {
+      "id": "favorable-mobility",
+      "why": "Mobility ratio is the axis the catalog's sensitivities vary most. A favourable displacement moves the front differently and exercises the relperm path at different saturations.",
+      "nx": 50,
+      "steps": 1,
+      "fim": false,
+      "mu_o": 0.2,
+      "strict": true
+    },
+    {
+      "id": "adverse-mobility-fim",
+      "why": "Adverse mobility on the implicit solver; same cross-target substepping difference. Non-strict for the same reason as buckley-fim.",
+      "nx": 50,
+      "steps": 3,
+      "fim": true,
+      "mu_o": 20.0,
+      "strict": false
+    },
+    {
+      "id": "coarse-grid",
+      "why": "A different cell count changes array sizes across the boundary, and grid refinement is a numerics sensitivity in its own right. Short step because 12 highly permeable cells sweep in well under a day, and parity measured on a uniform field proves nothing (front lands at 5 of 12).",
+      "nx": 12,
+      "steps": 1,
+      "fim": false,
+      "strict": true,
+      "dt_days": 0.05
+    }
+  ]
+}

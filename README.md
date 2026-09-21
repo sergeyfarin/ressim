@@ -138,6 +138,19 @@ Pull-request CI runs the same ground as `validate:full` plus the Buckley-Leveret
 The `#[ignore]`d release replays and the wasm control matrix stay out of PR CI and are run
 explicitly; `.claude/skills/ressim-validation/SKILL.md` lists them and says when each applies.
 
+Two gates sit outside `validate:*` because they need more than a Rust toolchain and Node:
+
+```bash
+bash scripts/validate-native-binding.sh   # native (PyO3) vs browser bindings on a case matrix
+pnpm run test:deployed                    # Playwright, against `pnpm run preview`
+```
+
+Both run in PR CI. The first builds `crates/ressim-py` against the engine with its browser
+bindings switched off and compares the two clients; it is also what revealed that the FIM solver
+substeps differently on wasm32 than on x86-64 (`docs/OPEN_ITEMS_2026-09-21.md` §1). The second is
+the only check that would catch an unstyled page — a Tailwind content-glob miss raises no error
+anywhere.
+
 Note: full `cargo test` is not used as a gate — FIM diagnostic tests can dominate runtime (see `docs/FIM_DEFERRED_BACKLOG.md` and `.claude/skills/ressim-validation/SKILL.md`).
 
 ## Implemented Capabilities
@@ -219,19 +232,31 @@ That ordering aligns with the literature already used in the project: Buckley an
 
 ```text
 src/
-  App.svelte
+  App.svelte          # the application's page
   app.css
   main.ts
+  pages/              # additional entry points, built from the packages below
+    fractionalFlow/
   lib/
-    analytical/
-    catalog/
-    charts/
+    analytical/       # @ressim/analytical  - reference solutions
+    charts/           # @ressim/charts      - Chart.js panels and chart models
+    primitives/       # @ressim/primitives  - presentational controls, no domain vocabulary
+    quantities/       # @ressim/quantities  - derived run series and in-place volumes
+    presets/          # @ressim/presets     - the preset/scenario editability contract
+    catalog/          # scenario definitions and benchmark cases
     physics/
-    ressim/
+    ressim/           # the Rust/WASM engine
+    scenario/
     stores/
     ui/
     visualization/
     workers/
+crates/
+  ressim-py/          # PyO3 bindings: the engine without its browser bindings
+    parity/           # native/wasm cross-client gate
+    ressim_quantities/# run quantities for notebooks, from the shared contract
+contracts/
+  run-quantities.json # GENERATED from the TypeScript registry; the shared data contract
 docs/                 # authoritative + active working docs (see DOCUMENTATION_INDEX.md)
   ARCHITECTURE_NOTES.md
   BENCHMARK_MODE_GUIDE.md
@@ -247,6 +272,15 @@ docs/                 # authoritative + active working docs (see DOCUMENTATION_I
 ROADMAP.md
 TODO.md
 ```
+
+The five `@ressim/*` directories are pnpm workspace packages, imported by name rather than by
+relative path. `src/lib/packageBoundaries.test.ts` enforces that: a relative import reaching into
+a package from outside fails, because a package name without an enforced boundary is a naming
+convention that decays the first time someone types a path out of habit.
+
+`fractional-flow.html` is a second page built only from those packages — no store, no scenario
+catalog, no worker, no WASM. It exists so that "the frontend can be composed into more than one
+page" is demonstrated rather than asserted; see `docs/ARCHITECTURE_SPLIT_PLAN_2026-09-19.md`.
 
 ## Documentation Map
 

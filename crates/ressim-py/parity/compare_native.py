@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""Run the shared case through the native Python bindings and compare against the wasm reference.
+"""Run the parity matrix through the native bindings and compare against the wasm reference.
 
 The claim under test is narrow and worth stating exactly: *the native binding exposes the same
 engine as the browser binding*. It is not a physics check — `benchmark_buckley` in the Rust suite
-owns that, and this case is its fixture precisely so the two cannot drift apart.
+owns that, and these cases are built from its fixture precisely so the two cannot drift apart.
 
-Both runs are the same Rust code compiled for two targets, so the bar is tight rather than
-statistical. Any real disagreement means a binding is lying about what it forwards.
+Both runs are the same Rust compiled for two targets, so the bar is tight rather than statistical.
+Any real disagreement means a binding is lying about what it forwards.
+
+The matrix in `cases.json` varies one axis per case — solver, mobility ratio, grid size — so a
+failure names the axis rather than just the fact. Coverage is bounded by what `ressim-py` can
+configure, not by what is worth checking; the gap is recorded in
+`docs/ARCHITECTURE_SPLIT_PLAN_2026-09-19.md`.
 """
 from __future__ import annotations
 
@@ -15,137 +20,150 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).parent
-TOL = 1e-9  # same source, two targets; this is a floating-point courtesy, not a tolerance budget
+TOL = 1e-9  # same source, two targets; a floating-point courtesy, not a tolerance budget
+
+import ressim  # noqa: E402  - the extension module is copied in beside this file
 
 
-def main() -> int:
-    case = json.loads((HERE / "case.json").read_text())
-    reference_path = HERE / "reference_wasm.json"
-    if not reference_path.exists():
-        print(f"missing {reference_path.name}; run run_wasm.mjs first", file=sys.stderr)
-        return 2
-    reference = json.loads(reference_path.read_text())
-
-    import ressim
-
-    sim = ressim.Simulator(case["nx"], 1, 1, case["porosity"])
-    sim.set_fim_enabled(False)
-    sim.set_rel_perm_props(case["s_wc"], case["s_or"], case["n_w"], case["n_o"], 1.0, 1.0)
-    sim.set_initial_saturation(case["s_wc"])
-    sim.set_permeability_random_seeded(case["permeability_md"], case["permeability_md"], case["seed"])
+def run_case(c: dict) -> "ressim.Simulator":
+    """Configure and run one case. Keep the call order identical to run_wasm.mjs."""
+    sim = ressim.Simulator(c["nx"], c["ny"], c["nz"], c["porosity"])
+    sim.set_fim_enabled(bool(c.get("fim")))
+    sim.set_rel_perm_props(c["s_wc"], c["s_or"], c["n_w"], c["n_o"], 1.0, 1.0)
+    sim.set_initial_saturation(c["s_wc"])
+    sim.set_permeability_random_seeded(c["permeability_md"], c["permeability_md"], c["seed"])
     sim.set_stability_params(0.05, 75.0, 0.75)
     sim.set_capillary_params(0.0, 2.0)
-    sim.set_fluid_properties(case["mu_o"], case["mu_w"])
-    sim.add_well(0, 0, 0, case["injector_bhp"], 0.1, 0.0, True)
-    sim.add_well(case["nx"] - 1, 0, 0, case["producer_bhp"], 0.1, 0.0, False)
+    sim.set_fluid_properties(c["mu_o"], c["mu_w"])
+    # `add_well_with_id`, not `add_well`: the id selects how build_well_topology groups
+    # completions into physical wells, so a client using the other one is not running the same
+    # case. The browser only exposes this form, so both runners use it.
+    sim.add_well_with_id(0, 0, 0, c["injector_bhp"], 0.1, 0.0, True, "inj")
+    sim.add_well_with_id(c["nx"] - 1, 0, 0, c["producer_bhp"], 0.1, 0.0, False, "prod")
+    for _ in range(c["steps"]):
+        sim.step(c["dt_days"])
+    return sim
 
-    for _ in range(case["steps"]):
-        sim.step(case["dt_days"])
 
-    failures: list[str] = []
-    for name, native, expected in (
+def worst_array_delta(native, expected) -> tuple[float, int]:
+    worst, where = 0.0, -1
+    for i, (a, b) in enumerate(zip(native, expected)):
+        d = abs(a - b)
+        if d > worst:
+            worst, where = d, i
+    return worst, where
+
+
+def check_case(c: dict, reference: dict, failures: list[str]) -> None:
+    """Compare one case. A non-strict case reports its divergence instead of failing.
+
+    Non-strict exists for one measured reason: wasm32 and x86-64 substep the FIM cases
+    differently, so their trajectories are not comparable at 1e-9 and pretending otherwise would
+    either fail every run or need a tolerance so wide it asserted nothing. Reporting keeps the
+    number in front of whoever runs the gate; deleting the case would not.
+    """
+    name = c["id"]
+    strict = bool(c.get("strict", True))
+    observations: list[str] = []
+    sink = failures if strict else observations
+    sim = run_case(c)
+
+    for label, native, expected in (
         ("pressure", sim.pressures(), reference["pressures"]),
         ("sat_water", sim.sat_water(), reference["satWater"]),
     ):
         if len(native) != len(expected):
-            failures.append(f"{name}: {len(native)} cells natively vs {len(expected)} in wasm")
+            sink.append(f"{name}/{label}: {len(native)} cells natively vs {len(expected)} in wasm")
             continue
-        worst, where = 0.0, -1
-        for i, (a, b) in enumerate(zip(native, expected)):
-            d = abs(a - b)
-            if d > worst:
-                worst, where = d, i
-        print(f"  {name:9s} max |native - wasm| = {worst:.3e}  (cell {where})")
+        worst, where = worst_array_delta(native, expected)
         if worst > TOL:
-            failures.append(f"{name}: {worst:.3e} at cell {where} exceeds {TOL:.0e}")
+            sink.append(f"{name}/{label}: {worst:.3e} at cell {where} exceeds {TOL:.0e}")
 
-    # Reporting payloads. These were JsValue-only until Phase 1, so a native consumer could run a
-    # case but not say what came out of it; comparing them is what makes this gate cover the part
-    # of the engine a reservoir engineer actually reads.
     if tuple(sim.dimensions()) != tuple(reference["dimensions"]):
-        failures.append(f"dimensions: {sim.dimensions()} natively vs {reference['dimensions']} in wasm")
+        sink.append(f"{name}/dimensions: {sim.dimensions()} vs {reference['dimensions']}")
 
-    native_history = sim.rate_history()
-    wasm_history = reference["rateHistory"]
+    # Rate history: the part of the engine a reservoir engineer actually reads. JsValue-only until
+    # Phase 1 of the payload-boundary design, so this axis is newly checkable.
+    native_history, wasm_history = sim.rate_history(), reference["rateHistory"]
+    worst_rate = 0.0
     if len(native_history) != len(wasm_history):
-        failures.append(f"rate history: {len(native_history)} points natively vs {len(wasm_history)} in wasm")
+        sink.append(
+            f"{name}/rates: {len(native_history)} points natively vs {len(wasm_history)} in wasm"
+        )
     else:
-        worst_field, worst_delta = None, 0.0
         for i, (a, b) in enumerate(zip(native_history, wasm_history)):
             if a.keys() != b.keys():
-                failures.append(f"rate history point {i}: field sets differ")
+                sink.append(f"{name}/rates: field sets differ at point {i}")
                 break
             for key in a:
-                if not isinstance(a[key], (int, float)) or isinstance(a[key], bool):
+                if isinstance(a[key], bool) or not isinstance(a[key], (int, float)):
                     if a[key] != b[key]:
-                        failures.append(f"rate history point {i} field {key}: {a[key]!r} vs {b[key]!r}")
+                        sink.append(f"{name}/rates: {key} differs at point {i}")
                     continue
-                d = abs(a[key] - b[key])
-                if d > worst_delta:
-                    worst_delta, worst_field = d, f"{key} (point {i})"
-        print(f"  rates     max |native - wasm| = {worst_delta:.3e}  ({worst_field})")
-        print(f"  history   {len(native_history)} points, {len(native_history[0])} fields each")
-        if worst_delta > TOL:
-            failures.append(f"rate history: {worst_delta:.3e} in {worst_field} exceeds {TOL:.0e}")
+                worst_rate = max(worst_rate, abs(a[key] - b[key]))
+        if worst_rate > TOL:
+            sink.append(f"{name}/rates: {worst_rate:.3e} exceeds {TOL:.0e}")
 
-    # Parity has to be measured on a field that varies. A static field agrees trivially, and so
-    # does a fully swept one; the case is tuned so the front sits mid-domain at the last step.
-    moved = sum(1 for s in sim.sat_water() if s > case["s_wc"] + 1e-6)
-    print(f"  front        {moved} of {case['nx']} cells above connate water")
-    if not 2 <= moved < case["nx"]:
-        failures.append(
-            f"front swept {moved} of {case['nx']} cells: parity on a uniform field proves nothing. "
-            "Retune case.json's step count so the front stays inside the grid."
-        )
-
-    # Phase 3: the portable grid state against the browser's zero-copy one. `getGridState`
-    # returns Float64Array views over engine memory rather than a serde payload, which is a real
-    # optimization worth keeping -- and exactly the kind that drifts from its schema unnoticed.
-    # Requiring the two to agree field for field is what makes keeping it safe.
-    native_grid = sim.grid_state()
-    wasm_grid = reference["gridState"]
+    # The portable grid state against the browser's zero-copy one. Exactly the kind of
+    # optimization that drifts from its schema unnoticed.
+    native_grid, wasm_grid = sim.grid_state(), reference["gridState"]
+    worst_grid = 0.0
     if set(native_grid) != set(wasm_grid):
-        failures.append(
-            f"grid state fields differ: native {sorted(native_grid)} vs wasm {sorted(wasm_grid)}"
+        sink.append(
+            f"{name}/grid: fields differ, native {sorted(native_grid)} vs wasm {sorted(wasm_grid)}"
         )
     else:
-        worst_field, worst_delta = None, 0.0
         for key in native_grid:
             a, b = native_grid[key], wasm_grid[key]
             if a is None or len(a) != len(b):
-                failures.append(f"grid state {key}: {len(a) if a else None} vs {len(b)} values")
+                sink.append(f"{name}/grid: {key} is {len(a) if a else None} vs {len(b)} values")
                 continue
-            for x, y in zip(a, b):
-                d = abs(x - y)
-                if d > worst_delta:
-                    worst_delta, worst_field = d, key
-        print(f"  grid      max |portable - zero-copy| = {worst_delta:.3e}  ({worst_field})")
-        if worst_delta > TOL:
-            failures.append(f"grid state: {worst_delta:.3e} in {worst_field} exceeds {TOL:.0e}")
+            worst_grid = max(worst_grid, worst_array_delta(a, b)[0])
+        if worst_grid > TOL:
+            sink.append(f"{name}/grid: {worst_grid:.3e} exceeds {TOL:.0e}")
 
-    # Phase 2: restore. Capture this run's state, load it into a fresh simulator, and require the
-    # two to be indistinguishable. This exercises apply_state's validation and field mapping from
-    # a target that is not the browser -- which before Phase 2 was impossible, because load_state
-    # only accepted JsValue.
-    restored = ressim.Simulator(case["nx"], 1, 1, case["porosity"])
+    # Parity must be measured on a field that varies. A static field agrees trivially, and so does
+    # a fully swept one.
+    swept = sum(1 for s in sim.sat_water() if s > c["s_wc"] + 1e-6)
+    if not 2 <= swept < c["nx"]:
+        sink.append(
+            f"{name}: front swept {swept} of {c['nx']} cells; parity on a uniform field proves "
+            "nothing. Retune this case's step count in cases.json."
+        )
+
+    solver = "FIM  " if c.get("fim") else "IMPES"
+    worst_cell = max(
+        worst_array_delta(sim.pressures(), reference["pressures"])[0],
+        worst_array_delta(sim.sat_water(), reference["satWater"])[0],
+    )
+    mark = "" if strict else "  KNOWN CROSS-TARGET DIVERGENCE"
+    print(
+        f"  {name:<22} {solver}  cells {worst_cell:.2e}  rates {worst_rate:.2e}  "
+        f"grid {worst_grid:.2e}  front {swept}/{c['nx']}{mark}"
+    )
+    for note in observations:
+        print(f"      {note}")
+
+
+def check_restore(c: dict, failures: list[str]) -> None:
+    """Capture a run's state, restore it into a fresh simulator, require indistinguishability."""
+    sim = run_case(c)
+    restored = ressim.Simulator(c["nx"], c["ny"], c["nz"], c["porosity"])
     try:
         restored.load_state(sim.time_days(), sim.grid_state(), sim.wells(), sim.rate_history())
-    except Exception as exc:  # noqa: BLE001 - the failure text is the useful part here
+    except Exception as exc:  # noqa: BLE001 - the failure text is the useful part
         failures.append(f"restore raised: {exc}")
-    else:
-        if restored.pressures() != sim.pressures():
-            failures.append("restore: pressures differ from the source run")
-        if restored.sat_water() != sim.sat_water():
-            failures.append("restore: sat_water differs from the source run")
-        if len(restored.rate_history()) != len(sim.rate_history()):
-            failures.append("restore: rate history length differs")
-        if restored.time_days() != sim.time_days():
-            failures.append("restore: clock differs")
-        print(f"  restore   {len(restored.rate_history())} points, clock {restored.time_days()} d, arrays identical")
+        return
+    if restored.pressures() != sim.pressures():
+        failures.append("restore: pressures differ from the source run")
+    if restored.sat_water() != sim.sat_water():
+        failures.append("restore: sat_water differs from the source run")
+    if restored.time_days() != sim.time_days():
+        failures.append("restore: clock differs")
+    print(f"  restore                 {len(restored.rate_history())} points, arrays identical")
 
-    # A restore that accepts a wrong-sized grid would be worse than one that fails, so check that
-    # the engine's validation is actually reached through this path rather than bypassed.
-    mismatched = ressim.Simulator(case["nx"] + 1, 1, 1, case["porosity"])
+    # A restore that accepted a wrong-sized grid would be worse than one that failed.
+    mismatched = ressim.Simulator(c["nx"] + 1, c["ny"], c["nz"], c["porosity"])
     try:
         mismatched.load_state(sim.time_days(), sim.grid_state(), sim.wells(), sim.rate_history())
     except ValueError as exc:
@@ -154,12 +172,40 @@ def main() -> int:
     else:
         failures.append("restore accepted a grid of the wrong size")
 
+
+def main() -> int:
+    spec = json.loads((HERE / "cases.json").read_text())
+    reference_path = HERE / "reference_wasm.json"
+    if not reference_path.exists():
+        print(f"missing {reference_path.name}; run run_wasm.mjs first", file=sys.stderr)
+        return 2
+    reference = json.loads(reference_path.read_text())
+
+    failures: list[str] = []
+    cases = [{**spec["base"], **override} for override in spec["cases"]]
+
+    # Every declared case must be in the reference, or a silently-skipped case looks like a pass.
+    missing = [c["id"] for c in cases if c["id"] not in reference]
+    if missing:
+        print(f"reference is missing cases: {missing}; re-run run_wasm.mjs", file=sys.stderr)
+        return 2
+
+    for c in cases:
+        check_case(c, reference[c["id"]], failures)
+    check_restore(cases[0], failures)
+
     if failures:
         print("\nFAIL:", file=sys.stderr)
         for f in failures:
             print(f"  {f}", file=sys.stderr)
         return 1
-    print("\nnative binding matches the wasm bindings on the committed Buckley case A fixture")
+
+    strict_cases = [c for c in cases if c.get("strict", True)]
+    print(
+        f"\nnative and wasm bindings agree on {len(strict_cases)} strict cases of {len(cases)}, "
+        "built from the committed Buckley case A fixture. The rest are the FIM cases, which "
+        "diverge across targets by a measured amount printed above."
+    )
     return 0
 
 

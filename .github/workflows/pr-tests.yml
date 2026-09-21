@@ -77,6 +77,16 @@ jobs:
       # `test:coverage` is the full vitest suite (`vitest run --coverage`), so it is
       # the pass/fail gate as well as the coverage producer. Running `pnpm run test`
       # first would execute the same ~8 minutes of scenario simulations twice.
+      # The engine is consumed by more than the browser. This builds crates/ressim-py against the
+      # engine with its wasm bindings switched off and compares the two bindings on a committed
+      # fixture, so a change that re-entangles the engine, or that makes one binding disagree with
+      # the other, fails here rather than in whichever consumer notices first.
+      #
+      # python3 is preinstalled on ubuntu-latest; the wasm bundle it compares against was built by
+      # the "Build WASM bindings" step above.
+      - name: Run native binding parity gate
+        run: bash scripts/validate-native-binding.sh
+
       - name: Run unit tests (Vitest) and upload coverage
         run: pnpm run test:coverage
 
@@ -88,3 +98,36 @@ jobs:
 
       - name: Build production bundle
         run: pnpm run build
+
+      # Everything above this point can pass while the application is broken in a browser: the
+      # unit suite does not render, and a Tailwind content-glob miss produces an unstyled page
+      # with no error anywhere. `test:deployed` already guards the *deployed* site in
+      # publish-dist.yml, which is too late to stop a regression entering the branch.
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Smoke-test the built bundle in a browser
+        run: |
+          # Redirect the server's output: a background process that inherits stdout keeps the
+          # step's pipe open, so the step never finishes even after the tests pass. And capture
+          # $! rather than using `kill %1` -- job control is off in a non-interactive shell, so
+          # the job spec would silently fail to match.
+          pnpm run preview > /tmp/preview.log 2>&1 &
+          preview_pid=$!
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:4173/ressim/ > /dev/null && break
+            sleep 1
+          done
+          if pnpm run test:deployed; then status=0; else status=$?; fi
+          kill "$preview_pid" 2> /dev/null || true
+          exit $status
+
+      - name: Upload browser smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-browser-smoke-diagnostics
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore

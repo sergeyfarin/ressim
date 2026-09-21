@@ -120,6 +120,31 @@ impl PySimulator {
         to_py(self.inner.add_well(i, j, k, bhp, well_radius, skin, injector).map(|_| ()))
     }
 
+    /// Add a well belonging to a named physical well.
+    ///
+    /// Not a convenience over `add_well`: the id chooses how `build_well_topology` groups
+    /// completions into physical wells — `ExplicitId` when present, a fingerprint of
+    /// injector/i/j/bhp/radius/skin when absent. Two clients that configure the same case through
+    /// different ones are not running the same case, which is why the parity matrix uses this.
+    #[pyo3(signature = (i, j, k, bhp, well_radius, skin, injector, physical_well_id))]
+    #[allow(clippy::too_many_arguments)]
+    fn add_well_with_id(
+        &mut self,
+        i: usize,
+        j: usize,
+        k: usize,
+        bhp: f64,
+        well_radius: f64,
+        skin: f64,
+        injector: bool,
+        physical_well_id: String,
+    ) -> PyResult<()> {
+        to_py(
+            self.inner
+                .add_well_with_id(i, j, k, bhp, well_radius, skin, injector, physical_well_id),
+        )
+    }
+
     // ---- running -------------------------------------------------------------------------
 
     fn step(&mut self, target_dt_days: f64) {
