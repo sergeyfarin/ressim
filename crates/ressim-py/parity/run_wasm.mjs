@@ -29,6 +29,18 @@ for (let i = 0; i < c.steps; i += 1) sim.step(c.dt_days)
 
 await writeFile(
   new URL('reference_wasm.json', here),
-  `${JSON.stringify({ pressures: [...sim.getPressures()], satWater: [...sim.getSatWater()] }, null, 2)}\n`,
+  `${JSON.stringify(
+    {
+      pressures: [...sim.getPressures()],
+      satWater: [...sim.getSatWater()],
+      // Reporting payloads, reachable natively since Phase 1 of the payload-boundary design.
+      // Comparing these is what makes the parity check cover rate-based work rather than only
+      // the cell arrays that were already portable.
+      dimensions: sim.getDimensions(),
+      rateHistory: sim.getRateHistory(),
+    },
+    null,
+    2,
+  )}\n`,
 )
 console.log(`wrote reference_wasm.json: ${c.nx} cells, ${c.steps} steps`)

@@ -21,6 +21,7 @@ use std::f64;
 use wasm_bindgen::prelude::*;
 
 mod ad;
+mod api;
 mod capillary;
 mod compositional;
 mod fim;

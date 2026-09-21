@@ -12,16 +12,19 @@
 //! exists, and turns S4's feature gate into something the compiler checks on every build:
 //! `wasm-bindgen` is not in this binary's dependency graph, and cannot be without an edit here.
 //!
-//! **Scope is set by what the engine exposes natively, not by what would be nice.** S4 left 12 of
-//! the engine's 69 API functions behind the `wasm` feature because they speak `JsValue` — among
-//! them the rate history and the packed grid state. So this module can configure a case, run it,
-//! and read pressures and saturations, and it deliberately stops there. Anything rate-based needs
-//! a serde-native counterpart in the engine first; binding around the gap by reaching into
-//! private state would put physics in the binding layer, which is the one thing this crate must
-//! not do.
+//! **Scope is set by what the engine exposes natively, not by what would be nice.** Phase 1 of
+//! `docs/ENGINE_PAYLOAD_BOUNDARY_DESIGN_2026-09-21.md` moved the reporting accessors into
+//! `simulator::api`, so rates, wells, dimensions and FIM step statistics are now reachable here
+//! and this module can say what came out of a run rather than only that one happened.
+//!
+//! Still `JsValue`-only, pending Phase 2 and 3: `set_pvt_table`, `set_three_phase_scal_tables`,
+//! `set_sweep_config`, `load_state` (configuration and restore) and the packed `get_grid_state`.
+//! Binding around a gap by reaching into private engine state would put physics in the binding
+//! layer, which is the one thing this crate must not do — so the gaps stay visible instead.
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pythonize::pythonize;
 use simulator::ReservoirSimulator;
 
 /// Engine errors are plain `String`s; surface them as `ValueError` rather than panicking.
@@ -124,9 +127,6 @@ impl PySimulator {
     }
 
     // ---- reading -------------------------------------------------------------------------
-    //
-    // Pressures and saturations only. See the module docs: rates and packed grid state are
-    // behind the engine's `wasm` feature and have no native form yet.
 
     fn pressures(&self) -> Vec<f64> {
         self.inner.get_pressures()
@@ -142,6 +142,48 @@ impl PySimulator {
 
     fn cell_count(&self) -> usize {
         self.inner.get_pressures().len()
+    }
+
+    fn dimensions(&self) -> (usize, usize, usize) {
+        let [nx, ny, nz] = self.inner.dimensions();
+        (nx, ny, nz)
+    }
+
+    // ---- reporting -----------------------------------------------------------------------
+    //
+    // These reach the engine through `simulator::api`, the same accessors the browser shim
+    // serializes. Until Phase 1 of the payload-boundary design they were `JsValue`-only, which
+    // is why this module could previously run a case but not say what came out of it.
+
+    fn rate_history<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        pythonize(py, self.inner.rate_history()).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn rate_history_since<'py>(&self, py: Python<'py>, start_index: usize) -> PyResult<Bound<'py, PyAny>> {
+        pythonize(py, self.inner.rate_history_since(start_index))
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn latest_rate_point<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
+        match self.inner.latest_rate_point() {
+            Some(point) => Ok(Some(
+                pythonize(py, point).map_err(|e| PyValueError::new_err(e.to_string()))?,
+            )),
+            None => Ok(None),
+        }
+    }
+
+    fn wells<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        pythonize(py, self.inner.wells()).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn last_fim_step_stats<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
+        match self.inner.last_fim_step_stats() {
+            Some(stats) => Ok(Some(
+                pythonize(py, stats).map_err(|e| PyValueError::new_err(e.to_string()))?,
+            )),
+            None => Ok(None),
+        }
     }
 }
 

@@ -15,3 +15,6 @@ crate-type = ["cdylib"]
 # `cargo tree -p ressim-py | grep wasm` says so.
 simulator = { path = "../../src/lib/ressim", default-features = false }
 pyo3 = { version = "0.29", features = ["extension-module"] }
+# serde -> Python objects. The engine hands out Rust types (src/lib/ressim/src/api.rs);
+# choosing how they become Python is this shim's business, not the engine's.
+pythonize = "0.29"

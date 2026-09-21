@@ -59,6 +59,35 @@ def main() -> int:
         if worst > TOL:
             failures.append(f"{name}: {worst:.3e} at cell {where} exceeds {TOL:.0e}")
 
+    # Reporting payloads. These were JsValue-only until Phase 1, so a native consumer could run a
+    # case but not say what came out of it; comparing them is what makes this gate cover the part
+    # of the engine a reservoir engineer actually reads.
+    if tuple(sim.dimensions()) != tuple(reference["dimensions"]):
+        failures.append(f"dimensions: {sim.dimensions()} natively vs {reference['dimensions']} in wasm")
+
+    native_history = sim.rate_history()
+    wasm_history = reference["rateHistory"]
+    if len(native_history) != len(wasm_history):
+        failures.append(f"rate history: {len(native_history)} points natively vs {len(wasm_history)} in wasm")
+    else:
+        worst_field, worst_delta = None, 0.0
+        for i, (a, b) in enumerate(zip(native_history, wasm_history)):
+            if a.keys() != b.keys():
+                failures.append(f"rate history point {i}: field sets differ")
+                break
+            for key in a:
+                if not isinstance(a[key], (int, float)) or isinstance(a[key], bool):
+                    if a[key] != b[key]:
+                        failures.append(f"rate history point {i} field {key}: {a[key]!r} vs {b[key]!r}")
+                    continue
+                d = abs(a[key] - b[key])
+                if d > worst_delta:
+                    worst_delta, worst_field = d, f"{key} (point {i})"
+        print(f"  rates     max |native - wasm| = {worst_delta:.3e}  ({worst_field})")
+        print(f"  history   {len(native_history)} points, {len(native_history[0])} fields each")
+        if worst_delta > TOL:
+            failures.append(f"rate history: {worst_delta:.3e} in {worst_field} exceeds {TOL:.0e}")
+
     # Parity has to be measured on a field that varies. A static field agrees trivially, and so
     # does a fully swept one; the case is tuned so the front sits mid-domain at the last step.
     moved = sum(1 for s in sim.sat_water() if s > case["s_wc"] + 1e-6)

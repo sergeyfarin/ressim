@@ -24,12 +24,19 @@ clearest case — its entire body is `to_value(&[self.nx, self.ny, self.nz])`.
 Only **C** is genuinely target-shaped, and even there the target-specific part is an
 *optimization* (avoiding a copy), not the data.
 
-### Two of the twelve are dead
+### One of the twelve looks unused
 
-`getLastFimStepStats` and `getFimStepStatsHistory` have **zero call sites** in the frontend, which
-is their only consumer. Whatever else happens, these should be deleted or demoted to native
-diagnostics rather than ported. Porting unused API is how a boundary grows without anyone
-choosing to grow it.
+> **Corrected 2026-09-21, before Phase 1.** An earlier revision of this note claimed *two* were
+> dead, on a call-site count taken over `src/` alone. That was wrong for one of them:
+> `getLastFimStepStats` is called by `scripts/fim-wasm-diagnostic.mjs`, the runner that produced
+> the FIM convergence baselines in `docs/FIM_STATUS.md`. Counting consumers without counting the
+> diagnostic tooling is how live API gets deleted.
+
+`getFimStepStatsHistory` has no call site in live code — only in `.archive/` prose. It is a
+candidate for deletion rather than porting, since porting unused API is how a boundary grows
+without anyone choosing to grow it. Phase 1 nonetheless **ports it rather than deleting it**: the
+evidence that produced this list was shown to be unreliable once, and a removal is better made
+deliberately, on its own, than folded into a refactor.
 
 ## 2. The invariant worth committing to
 

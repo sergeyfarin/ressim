@@ -31,6 +31,17 @@ struct GridStatePayload {
     rs: Option<Vec<f64>>,
 }
 
+/// Serialize an engine payload for the browser.
+///
+/// The seven call sites used to `.unwrap()` here. A serialization failure is not recoverable by
+/// the caller, but it is worth saying *which* payload failed: an abort across the FFI boundary
+/// with no message is the hardest possible thing to diagnose from a browser console.
+#[cfg(feature = "wasm")]
+fn to_js<T: serde::Serialize + ?Sized>(value: &T, what: &str) -> JsValue {
+    serde_wasm_bindgen::to_value(value)
+        .unwrap_or_else(|e| panic!("serializing {what} for the browser failed: {e}"))
+}
+
 #[cfg(feature = "wasm")]
 fn set_object_property(target: &Object, key: &str, value: &JsValue) {
     Reflect::set(target, &JsValue::from_str(key), value)
@@ -571,20 +582,19 @@ impl ReservoirSimulator {
     #[cfg(feature = "wasm")]
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getWellState))]
     pub fn get_well_state(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.wells).unwrap()
+        to_js(&self.wells(), "well state")
     }
 
     #[cfg(feature = "wasm")]
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getRateHistory))]
     pub fn get_rate_history(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.rate_history).unwrap()
+        to_js(&self.rate_history(), "rate history")
     }
 
     #[cfg(feature = "wasm")]
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getRateHistorySince))]
     pub fn get_rate_history_since(&self, start_index: usize) -> JsValue {
-        let start = start_index.min(self.rate_history.len());
-        serde_wasm_bindgen::to_value(&self.rate_history[start..]).unwrap()
+        to_js(&self.rate_history_since(start_index), "rate history tail")
     }
 
     #[cfg(feature = "wasm")]
@@ -595,8 +605,8 @@ impl ReservoirSimulator {
     /// one entry instead of the whole undelivered tail.
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getLatestRatePoint))]
     pub fn get_latest_rate_point(&self) -> JsValue {
-        match self.rate_history.last() {
-            Some(point) => serde_wasm_bindgen::to_value(point).unwrap(),
+        match self.latest_rate_point() {
+            Some(point) => to_js(point, "latest rate point"),
             None => JsValue::NULL,
         }
     }
@@ -609,13 +619,13 @@ impl ReservoirSimulator {
     #[cfg(feature = "wasm")]
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getLastFimStepStats))]
     pub fn get_last_fim_step_stats(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.last_fim_step_stats).unwrap()
+        to_js(&self.last_fim_step_stats(), "last FIM step stats")
     }
 
     #[cfg(feature = "wasm")]
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getFimStepStatsHistory))]
     pub fn get_fim_step_stats_history(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.fim_step_stats_history).unwrap()
+        to_js(&self.fim_step_stats_history(), "FIM step stats history")
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getFimTrace))]
@@ -626,7 +636,7 @@ impl ReservoirSimulator {
     #[cfg(feature = "wasm")]
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getDimensions))]
     pub fn get_dimensions(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&[self.nx, self.ny, self.nz]).unwrap()
+        to_js(&self.dimensions(), "dimensions")
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setInitialPressure))]
