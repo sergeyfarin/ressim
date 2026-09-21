@@ -7,11 +7,23 @@ license = "AGPL-3.0-only"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# The browser binding layer. On by default, so `cargo build`, `cargo test` and wasm-pack are
+# unchanged and no existing command needs a flag.
+#
+# `--no-default-features` drops `frontend.rs`, `compositional/frontend.rs` and the three binding
+# crates, leaving the physics. The point is not a smaller build: it is that a second consumer
+# (a native runner, a Python module) links the simulator without wasm-bindgen in its dependency
+# graph, and that the boundary is enforced by the compiler rather than by convention. If a
+# physics module ever fails to build without this feature, that is the feature earning its keep.
+default = ["wasm"]
+wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde-wasm-bindgen"]
+
 [dependencies]
-wasm-bindgen = "0.2.128"
-js-sys = "0.3.105"
+wasm-bindgen = { version = "0.2.128", optional = true }
+js-sys = { version = "0.3.105", optional = true }
 serde = { version = "1.0.229", features = ["derive"] }
-serde-wasm-bindgen = "0.6.5"
+serde-wasm-bindgen = { version = "0.6.5", optional = true }
 console_error_panic_hook = { version = "0.1.7", optional = true }
 faer = { version = "0.24.4", default-features = false, features = ["std", "sparse-linalg"] }
 
@@ -19,9 +31,14 @@ faer = { version = "0.24.4", default-features = false, features = ["std", "spars
 nalgebra = "0.35.0"
 # For sparse matrices (the 'A' in Ax=b)
 sprs = "0.11.5"
-rand = "0.10.2"
+rand = "0.10.3"
 
 [dependencies.getrandom]
+version = "0.4.3"
+
+# wasm_js is getrandom's browser backend. Scoped to wasm32 so a native build does not ask for a
+# backend that only exists there.
+[target.'cfg(target_arch = "wasm32")'.dependencies.getrandom]
 version = "0.4.3"
 features = ["wasm_js"]
 

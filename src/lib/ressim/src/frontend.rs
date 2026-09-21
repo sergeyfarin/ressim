@@ -1,17 +1,22 @@
+#[cfg(feature = "wasm")]
 use js_sys::{Float64Array, Object, Reflect};
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use serde::Deserialize;
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
 
+#[cfg(feature = "wasm")]
 use crate::pvt;
 use crate::well::WellSchedule;
 use crate::{
     CapillaryPressure, FluidProperties, GasOilCapillaryPressure, InjectedFluid, ReservoirSimulator,
-    RockFluidProps, RockFluidPropsThreePhase, SweepConfig, ThreePhaseScalTables, TimePointRates,
-    Well,
+    RockFluidProps, RockFluidPropsThreePhase, Well,
 };
+// Named only by the JS-payload setters below, which are themselves behind the feature.
+#[cfg(feature = "wasm")]
+use crate::{SweepConfig, ThreePhaseScalTables, TimePointRates};
 
 #[derive(Deserialize)]
 struct GridStatePayload {
@@ -22,17 +27,18 @@ struct GridStatePayload {
     rs: Option<Vec<f64>>,
 }
 
+#[cfg(feature = "wasm")]
 fn set_object_property(target: &Object, key: &str, value: &JsValue) {
     Reflect::set(target, &JsValue::from_str(key), value)
         .expect("setting JS object property should succeed");
 }
 
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 impl ReservoirSimulator {
     /// Create a new reservoir simulator with oil-field units
     /// Grid dimensions: nx, ny, nz (number of cells in each direction)
     /// All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
-    #[wasm_bindgen(constructor)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(constructor))]
     pub fn new(nx: usize, ny: usize, nz: usize, porosity_val: f64) -> Self {
         let n = nx * ny * nz;
         let porosity = vec![porosity_val; n];
@@ -202,7 +208,7 @@ impl ReservoirSimulator {
         self.add_well_internal(i, j, k, bhp, well_radius, skin, injector, None)
     }
 
-    #[wasm_bindgen(js_name = addWellWithId)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = addWellWithId))]
     pub fn add_well_with_id(
         &mut self,
         i: usize,
@@ -226,7 +232,7 @@ impl ReservoirSimulator {
         )
     }
 
-    #[wasm_bindgen(js_name = setWellSchedule)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setWellSchedule))]
     pub fn set_well_schedule(
         &mut self,
         physical_well_id: String,
@@ -298,7 +304,7 @@ impl ReservoirSimulator {
     /// negative `wellbore_density_kg_m3` to let the engine derive the column
     /// density from the completion fluids each step. Both are ignored while
     /// gravity is disabled.
-    #[wasm_bindgen(js_name = setWellDatum)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setWellDatum))]
     pub fn set_well_datum(
         &mut self,
         physical_well_id: String,
@@ -332,7 +338,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setStabilityParams)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setStabilityParams))]
     pub fn set_stability_params(
         &mut self,
         max_sat_change_per_step: f64,
@@ -350,7 +356,7 @@ impl ReservoirSimulator {
         self.step_internal(target_dt_days);
     }
 
-    #[wasm_bindgen(js_name = stepWithDiagnostics)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = stepWithDiagnostics))]
     pub fn step_with_diagnostics(&mut self, target_dt_days: f64) -> String {
         self.capture_fim_trace = true;
         self.last_fim_trace.clear();
@@ -359,14 +365,14 @@ impl ReservoirSimulator {
         self.last_fim_trace.clone()
     }
 
-    #[wasm_bindgen(js_name = setFimEnabled)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setFimEnabled))]
     pub fn set_fim_enabled(&mut self, enabled: bool) {
         self.fim_enabled = enabled;
     }
 
     /// Bundle N dev flag (`.archive/docs/FIM_BUNDLE_N_DESIGN.md`): switch the FIM Newton loop to the
     /// OPM-aligned nonlinear layer (per-cell update chopping). Default false = legacy.
-    #[wasm_bindgen(js_name = setFimOpmAlignedNonlinear)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setFimOpmAlignedNonlinear))]
     pub fn set_fim_opm_aligned_nonlinear(&mut self, enabled: bool) {
         self.fim_opm_aligned_nonlinear = enabled;
     }
@@ -374,7 +380,7 @@ impl ReservoirSimulator {
     /// Bundle W dev flag (`.archive/docs/FIM_BUNDLE_W_PLAN.md`): replace
     /// `relax_well_state_toward_local_consistency` with the converged per-well inner Newton
     /// solve. Independent of `setFimOpmAlignedNonlinear`. Default false = legacy.
-    #[wasm_bindgen(js_name = setFimNestedWellSolve)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setFimNestedWellSolve))]
     pub fn set_fim_nested_well_solve(&mut self, enabled: bool) {
         self.fim_nested_well_solve = enabled;
     }
@@ -382,7 +388,7 @@ impl ReservoirSimulator {
     /// Y2d5 diagnostic switch: use the corrected right-preconditioned flexible-GMRES recurrence
     /// without changing the CPR or nonlinear configuration. This is enabled by default because
     /// CPR is input-dependent; disabling it retains the historical fixed-left recurrence for A/B.
-    #[wasm_bindgen(js_name = setFimTrueFgmres)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setFimTrueFgmres))]
     pub fn set_fim_true_fgmres(&mut self, enabled: bool) {
         self.fim_true_fgmres = enabled;
     }
@@ -411,7 +417,7 @@ impl ReservoirSimulator {
     /// Evaluate relative permeability from a piecewise-linear table with `points` knots sampled
     /// from ResSim's own Corey curves, the way OPM evaluates SWOF. Zero selects the historical
     /// analytic Corey evaluation; the default is [`DEFAULT_FIM_COREY_TABLE_POINTS`].
-    #[wasm_bindgen(js_name = setFimCoreyTablePoints)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setFimCoreyTablePoints))]
     pub fn set_fim_corey_table_points(&mut self, points: usize) {
         self.fim_corey_table_points = points;
     }
@@ -423,20 +429,20 @@ impl ReservoirSimulator {
         self.fim_opm_water_heavy_swof = enabled;
     }
 
-    #[wasm_bindgen(js_name = setGravityEnabled)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setGravityEnabled))]
     pub fn set_gravity_enabled(&mut self, enabled: bool) {
         self.gravity_enabled = enabled;
         self.refresh_well_head_offsets();
     }
 
-    #[wasm_bindgen(js_name = setRateControlledWells)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setRateControlledWells))]
     pub fn set_rate_controlled_wells(&mut self, enabled: bool) {
         self.rate_controlled_wells = enabled;
         self.injector_rate_controlled = enabled;
         self.producer_rate_controlled = enabled;
     }
 
-    #[wasm_bindgen(js_name = setWellControlModes)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setWellControlModes))]
     pub fn set_well_control_modes(&mut self, injector_mode: String, producer_mode: String) {
         let inj_mode = injector_mode.to_ascii_lowercase();
         let prod_mode = producer_mode.to_ascii_lowercase();
@@ -446,12 +452,12 @@ impl ReservoirSimulator {
         self.rate_controlled_wells = self.injector_rate_controlled && self.producer_rate_controlled;
     }
 
-    #[wasm_bindgen(js_name = setInjectorEnabled)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setInjectorEnabled))]
     pub fn set_injector_enabled(&mut self, enabled: bool) {
         self.injector_enabled = enabled;
     }
 
-    #[wasm_bindgen(js_name = setTargetWellRates)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setTargetWellRates))]
     pub fn set_target_well_rates(
         &mut self,
         injector_rate_m3_day: f64,
@@ -472,7 +478,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setTargetWellSurfaceRates)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setTargetWellSurfaceRates))]
     pub fn set_target_well_surface_rates(
         &mut self,
         injector_rate_m3_day: f64,
@@ -501,7 +507,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setWellBhpLimits)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setWellBhpLimits))]
     pub fn set_well_bhp_limits(&mut self, bhp_min: f64, bhp_max: f64) -> Result<(), String> {
         if !bhp_min.is_finite() || !bhp_max.is_finite() {
             return Err("Well BHP limits must be finite numbers".to_string());
@@ -521,12 +527,13 @@ impl ReservoirSimulator {
         self.time_days
     }
 
-    #[wasm_bindgen(js_name = getPressures)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getPressures))]
     pub fn get_pressures(&self) -> Vec<f64> {
         self.pressure.clone()
     }
 
-    #[wasm_bindgen(js_name = getGridState)]
+    #[cfg(feature = "wasm")]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getGridState))]
     pub fn get_grid_state(&self) -> JsValue {
         let payload = Object::new();
 
@@ -547,38 +554,42 @@ impl ReservoirSimulator {
         payload.into()
     }
 
-    #[wasm_bindgen(js_name = getSatWater)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getSatWater))]
     pub fn get_sat_water(&self) -> Vec<f64> {
         self.sat_water.clone()
     }
 
-    #[wasm_bindgen(js_name = getSatOil)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getSatOil))]
     pub fn get_sat_oil(&self) -> Vec<f64> {
         self.sat_oil.clone()
     }
 
-    #[wasm_bindgen(js_name = getWellState)]
+    #[cfg(feature = "wasm")]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getWellState))]
     pub fn get_well_state(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&self.wells).unwrap()
     }
 
-    #[wasm_bindgen(js_name = getRateHistory)]
+    #[cfg(feature = "wasm")]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getRateHistory))]
     pub fn get_rate_history(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&self.rate_history).unwrap()
     }
 
-    #[wasm_bindgen(js_name = getRateHistorySince)]
+    #[cfg(feature = "wasm")]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getRateHistorySince))]
     pub fn get_rate_history_since(&self, start_index: usize) -> JsValue {
         let start = start_index.min(self.rate_history.len());
         serde_wasm_bindgen::to_value(&self.rate_history[start..]).unwrap()
     }
 
+    #[cfg(feature = "wasm")]
     /// Most recent rate-history point, or `null` when no rates have been recorded yet.
     ///
     /// Cheap alternative to `getRateHistorySince` for callers that only need the
     /// latest point (e.g. the worker's per-step termination check): it serializes
     /// one entry instead of the whole undelivered tail.
-    #[wasm_bindgen(js_name = getLatestRatePoint)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getLatestRatePoint))]
     pub fn get_latest_rate_point(&self) -> JsValue {
         match self.rate_history.last() {
             Some(point) => serde_wasm_bindgen::to_value(point).unwrap(),
@@ -586,32 +597,35 @@ impl ReservoirSimulator {
         }
     }
 
-    #[wasm_bindgen(js_name = getLastSolverWarning)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getLastSolverWarning))]
     pub fn get_last_solver_warning(&self) -> String {
         self.last_solver_warning.clone()
     }
 
-    #[wasm_bindgen(js_name = getLastFimStepStats)]
+    #[cfg(feature = "wasm")]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getLastFimStepStats))]
     pub fn get_last_fim_step_stats(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&self.last_fim_step_stats).unwrap()
     }
 
-    #[wasm_bindgen(js_name = getFimStepStatsHistory)]
+    #[cfg(feature = "wasm")]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getFimStepStatsHistory))]
     pub fn get_fim_step_stats_history(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&self.fim_step_stats_history).unwrap()
     }
 
-    #[wasm_bindgen(js_name = getFimTrace)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getFimTrace))]
     pub fn get_fim_trace(&self) -> String {
         self.last_fim_trace.clone()
     }
 
-    #[wasm_bindgen(js_name = getDimensions)]
+    #[cfg(feature = "wasm")]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getDimensions))]
     pub fn get_dimensions(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&[self.nx, self.ny, self.nz]).unwrap()
     }
 
-    #[wasm_bindgen(js_name = setInitialPressure)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setInitialPressure))]
     pub fn set_initial_pressure(&mut self, pressure: f64) {
         for i in 0..self.nx * self.ny * self.nz {
             self.pressure[i] = pressure;
@@ -620,7 +634,7 @@ impl ReservoirSimulator {
         self.rock_reference_pressure_bar = pressure;
     }
 
-    #[wasm_bindgen(js_name = setCellDimensions)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setCellDimensions))]
     pub fn set_cell_dimensions(&mut self, dx: f64, dy: f64, dz: f64) -> Result<(), String> {
         if !dx.is_finite() || !dy.is_finite() || !dz.is_finite() {
             return Err("Cell dimensions must be finite numbers".to_string());
@@ -637,7 +651,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setCellDimensionsPerLayer)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setCellDimensionsPerLayer))]
     pub fn set_cell_dimensions_per_layer(
         &mut self,
         dx: f64,
@@ -674,7 +688,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setInitialSaturation)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setInitialSaturation))]
     pub fn set_initial_saturation(&mut self, sat_water: f64) {
         for i in 0..self.nx * self.ny * self.nz {
             self.sat_water[i] = sat_water.clamp(0.0, 1.0);
@@ -682,7 +696,7 @@ impl ReservoirSimulator {
         }
     }
 
-    #[wasm_bindgen(js_name = setInitialSaturationPerLayer)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setInitialSaturationPerLayer))]
     pub fn set_initial_saturation_per_layer(&mut self, sw: Vec<f64>) -> Result<(), String> {
         if sw.len() != self.nz {
             return Err(format!(
@@ -716,7 +730,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setRelPermProps)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setRelPermProps))]
     pub fn set_rel_perm_props(
         &mut self,
         s_wc: f64,
@@ -770,7 +784,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setFluidDensities)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setFluidDensities))]
     pub fn set_fluid_densities(&mut self, rho_o: f64, rho_w: f64) -> Result<(), String> {
         if !rho_o.is_finite() || !rho_w.is_finite() {
             return Err("Fluid densities must be finite numbers".to_string());
@@ -786,7 +800,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setFluidProperties)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setFluidProperties))]
     pub fn set_fluid_properties(&mut self, mu_o: f64, mu_w: f64) -> Result<(), String> {
         if !mu_o.is_finite() || !mu_w.is_finite() {
             return Err("Fluid viscosities must be finite numbers".to_string());
@@ -802,7 +816,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setFluidCompressibilities)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setFluidCompressibilities))]
     pub fn set_fluid_compressibilities(&mut self, c_o: f64, c_w: f64) -> Result<(), String> {
         if !c_o.is_finite() || !c_w.is_finite() {
             return Err("Fluid compressibilities must be finite numbers".to_string());
@@ -818,7 +832,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setRockProperties)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setRockProperties))]
     pub fn set_rock_properties(
         &mut self,
         c_r: f64,
@@ -852,7 +866,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setCapillaryParams)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setCapillaryParams))]
     pub fn set_capillary_params(&mut self, p_entry: f64, lambda: f64) -> Result<(), String> {
         if !p_entry.is_finite() || !lambda.is_finite() {
             return Err("Capillary parameters must be finite numbers".to_string());
@@ -871,7 +885,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setPermeabilityRandom)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setPermeabilityRandom))]
     pub fn set_permeability_random(&mut self, min_perm: f64, max_perm: f64) -> Result<(), String> {
         if !min_perm.is_finite() || !max_perm.is_finite() {
             return Err("Permeability bounds must be finite numbers".to_string());
@@ -898,7 +912,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setPermeabilityRandomSeeded)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setPermeabilityRandomSeeded))]
     pub fn set_permeability_random_seeded(
         &mut self,
         min_perm: f64,
@@ -930,7 +944,8 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = loadState)]
+    #[cfg(feature = "wasm")]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = loadState))]
     pub fn load_state(
         &mut self,
         time_days: f64,
@@ -1009,7 +1024,8 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setPvtTable)]
+    #[cfg(feature = "wasm")]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setPvtTable))]
     pub fn set_pvt_table(&mut self, table_js: JsValue) -> Result<(), JsValue> {
         let rows: Vec<pvt::PvtRow> = serde_wasm_bindgen::from_value(table_js)?;
         let table = pvt::PvtTable::new(rows, self.pvt.c_o);
@@ -1021,7 +1037,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setInitialRs)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setInitialRs))]
     pub fn set_initial_rs(&mut self, rs: f64) {
         let n = self.nx * self.ny * self.nz;
         for i in 0..n {
@@ -1029,7 +1045,7 @@ impl ReservoirSimulator {
         }
     }
 
-    #[wasm_bindgen(js_name = setInitialGasSaturation)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setInitialGasSaturation))]
     pub fn set_initial_gas_saturation(&mut self, sat_gas: f64) {
         let n = self.nx * self.ny * self.nz;
         let sg = sat_gas.clamp(0.0, 1.0);
@@ -1041,7 +1057,7 @@ impl ReservoirSimulator {
         }
     }
 
-    #[wasm_bindgen(js_name = setInitialGasSaturationPerLayer)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setInitialGasSaturationPerLayer))]
     pub fn set_initial_gas_saturation_per_layer(&mut self, sg: Vec<f64>) -> Result<(), String> {
         if sg.len() != self.nz {
             return Err(format!(
@@ -1078,22 +1094,22 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = getSatGas)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getSatGas))]
     pub fn get_sat_gas(&self) -> Vec<f64> {
         self.sat_gas.clone()
     }
 
-    #[wasm_bindgen(js_name = getRs)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getRs))]
     pub fn get_rs(&self) -> Vec<f64> {
         self.rs.clone()
     }
 
-    #[wasm_bindgen(js_name = setThreePhaseModeEnabled)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setThreePhaseModeEnabled))]
     pub fn set_three_phase_mode_enabled(&mut self, enabled: bool) {
         self.three_phase_mode = enabled;
     }
 
-    #[wasm_bindgen(js_name = setThreePhaseRelPermProps)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setThreePhaseRelPermProps))]
     pub fn set_three_phase_rel_perm_props(
         &mut self,
         s_wc: f64,
@@ -1143,7 +1159,8 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setThreePhaseScalTables)]
+    #[cfg(feature = "wasm")]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setThreePhaseScalTables))]
     pub fn set_three_phase_scal_tables(&mut self, table_js: JsValue) -> Result<(), JsValue> {
         let tables: ThreePhaseScalTables = serde_wasm_bindgen::from_value(table_js)?;
         tables
@@ -1159,7 +1176,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setGasOilCapillaryParams)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setGasOilCapillaryParams))]
     pub fn set_gas_oil_capillary_params(
         &mut self,
         p_entry: f64,
@@ -1181,7 +1198,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setGasFluidProperties)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setGasFluidProperties))]
     pub fn set_gas_fluid_properties(
         &mut self,
         mu_g: f64,
@@ -1206,16 +1223,17 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setGasRedissolutionEnabled)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setGasRedissolutionEnabled))]
     pub fn set_gas_redissolution_enabled(&mut self, enabled: bool) {
         self.gas_redissolution_enabled = enabled;
     }
 
+    #[cfg(feature = "wasm")]
     /// Configure sweep efficiency diagnostics to be computed every step.
     /// Accepts a JSON object matching `SweepConfig`: `{ geometry, swept_threshold,
     /// initial_oil_saturation, residual_oil_saturation }`.
     /// Pass `null`/`undefined` to disable sweep computation.
-    #[wasm_bindgen(js_name = setSweepConfig)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setSweepConfig))]
     pub fn set_sweep_config(&mut self, config_js: JsValue) -> Result<(), JsValue> {
         if config_js.is_null() || config_js.is_undefined() {
             self.sweep_config = None;
@@ -1226,7 +1244,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setInjectedFluid)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setInjectedFluid))]
     pub fn set_injected_fluid(&mut self, fluid: &str) -> Result<(), String> {
         self.injected_fluid = match fluid.to_ascii_lowercase().as_str() {
             "water" => InjectedFluid::Water,
@@ -1241,7 +1259,7 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = setPermeabilityPerLayer)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setPermeabilityPerLayer))]
     pub fn set_permeability_per_layer(
         &mut self,
         perms_x: Vec<f64>,
@@ -1289,7 +1307,7 @@ impl ReservoirSimulator {
     /// counterpart to [`set_permeability_per_layer`](Self::set_permeability_per_layer);
     /// it enables fully heterogeneous per-cell permeability maps
     /// (e.g. Tavassoli/SPE10/Egg-style fields) via `permMode: 'field'`.
-    #[wasm_bindgen(js_name = setPermeabilityField)]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setPermeabilityField))]
     pub fn set_permeability_field(
         &mut self,
         perms_x: Vec<f64>,

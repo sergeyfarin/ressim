@@ -17,6 +17,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::f64;
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
 
 mod ad;
@@ -51,7 +52,7 @@ pub enum InjectedFluid {
     Gas,
 }
 
-#[wasm_bindgen(start)]
+#[cfg_attr(feature = "wasm", wasm_bindgen(start))]
 pub fn set_panic_hook() {
     #[cfg(feature = "console_error_panic_hook")]
     console_error_panic_hook::set_once();
@@ -92,7 +93,7 @@ impl FluidProperties {
 /// `FIM-DAMP-004`, so this value must be re-derived from a fresh sweep rather than nudged.
 pub const DEFAULT_FIM_COREY_TABLE_POINTS: usize = 21;
 
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 pub struct ReservoirSimulator {
     nx: usize,
     ny: usize,

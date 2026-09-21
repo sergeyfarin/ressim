@@ -10,7 +10,11 @@ use crate::fim::flow_resv::{
     FimWellRoute, FlowResvInjectorResidual, fim_well_route, flow_resv_context_for_perforation,
     flow_resv_injector_residual,
 };
-use crate::fim::layout::{CELL_BLOCK_SIZE, CellPrimary};
+use crate::fim::layout::CELL_BLOCK_SIZE;
+// Only `finite_difference_step` names the primaries, and that is test-only, so importing
+// `CellPrimary` unconditionally made every non-test build warn.
+#[cfg(test)]
+use crate::fim::layout::CellPrimary;
 use crate::fim::scaling::{EquationScaling, VariableScaling};
 #[cfg(test)]
 use crate::fim::scaling::{

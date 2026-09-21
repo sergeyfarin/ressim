@@ -53,6 +53,12 @@ of the symbols involved, not from having done them.
 | Of those, occurrences inside the two `frontend.rs` shims | **92 of 98** |
 | Real binding occurrences outside those shims | **3**, all in `lib.rs` |
 
+> **Qualified 2026-09-21 by S4 (§10).** The counts below are correct, and the conclusion drawn
+> from them — that the *physics modules* are native-first — holds. What they do **not** show is
+> that `frontend.rs` is a shim. It is 1 327 lines and 69 functions, of which only **12** touch
+> `JsValue`; the rest is the model's own constructor and setters wearing a `#[wasm_bindgen]`
+> attribute. Counting attribute occurrences measured decoration, not coupling.
+
 The mentions in `fluid/units.rs`, `compositional/mod.rs` and `compositional/api.rs` are **doc
 comments describing the boundary**, not code. `compositional/api.rs` already implements the
 target shape deliberately — plain Rust over `serde`, natively testable, with
@@ -589,3 +595,57 @@ without editing the first, verified in a browser (S3).
 Remaining in this plan: S4 (feature-gate the WASM shim) and S5 (a non-WASM consumer), which
 together are ENGINE-MULTI-TARGET-READY, and S6, which §9d/§S6 say should not start before someone
 chooses between sharing the data contract and sharing the renderer.
+
+### S4 — the WASM shim behind a feature (COMPLETE)
+
+`wasm`, default-on, gating `wasm-bindgen`, `js-sys` and `serde-wasm-bindgen`. `getrandom`'s
+`wasm_js` backend is now scoped to `cfg(target_arch = "wasm32")` rather than requested on every
+target. No physics edited.
+
+| Check | Result |
+|---|---|
+| Shipped `simulator_bg.wasm` | **1 399 032 bytes — byte-identical to the S0 baseline** |
+| Generated `simulator.d.ts` | **identical** |
+| `validate-solver-coverage.sh all` | 38 gates, exit 0 |
+| `validate-compositional.sh thermo` | 28 gates, exit 0 |
+| `validate:product` | exit 0, 932 passed / 15 skipped |
+| `cargo build --no-default-features` | exit 0, **0 warnings** (default build also 0) |
+| `cargo tree` binding crates | **10 with default features, 0 without** |
+| Representative gates, both ways | `benchmark_buckley` 3/3, `comp_flash_` 13/13, `fim::tests::repair_lifecycle` 5/5, `impes::tests::transport::` 4/4 — identical |
+
+#### The task's premise was wrong, and the feature is what proved it
+
+S4 as written said to put "the two `frontend.rs` shims" behind the feature. Doing exactly that
+produced a library that compiled without the feature and **could not be used**: every
+`ReservoirSimulator::new` call failed to resolve, because the constructor lives in `frontend.rs`.
+The crate built; nothing could construct it. Had the task stopped at its stated instruction, S4
+would have been green and worthless, and S5 would have discovered it instead.
+
+The cause is §2a's measurement. "92 of 98 `wasm_bindgen` occurrences are inside the two
+`frontend.rs` shims" counted **attributes**, and an attribute is decoration. Of 69 functions in
+`frontend.rs`, only **12** actually touch `JsValue`, `js_sys` or `serde_wasm_bindgen`. The other
+57 — the constructor, every setter, the stepping API — are plain Rust that happened to live in a
+file named `frontend`.
+
+So the gate moved from the module to the attributes: `mod frontend` stays unconditional, its 62
+`#[wasm_bindgen…]` attributes became `#[cfg_attr(feature = "wasm", …)]`, and the 12 binding-bound
+functions plus the imports only they use are `#[cfg(feature = "wasm")]`. `compositional/frontend.rs`
+**is** a genuine shim — `compositional/api.rs` is its native counterpart by design — so it stays
+gated as a whole, which is the contrast that makes the black-oil case legible.
+
+#### What this hands S5
+
+57 of 69 API functions are now reachable natively, with `wasm-bindgen` absent from the dependency
+graph. That is the surface a `ressim-py` crate (§9e) would bind. The 12 that are not reachable are
+the JS-payload boundary — `get_grid_state`, `set_pvt_table`, `load_state` and similar — and each
+would need a serde-native counterpart rather than a binding. That is a concrete, enumerated list
+rather than an unknown, which is the useful output of this task.
+
+#### Also fixed
+
+`fim/assembly.rs` imported `CellPrimary` unconditionally while only a `#[cfg(test)]` helper names
+it, so every non-test `cargo build` warned. Pre-existing on master, unrelated to S4, found because
+the no-default-features build made warnings worth reading. Both configurations now build clean.
+
+**ENGINE-MULTI-TARGET-READY is not declared:** it also requires S5, a non-WASM consumer that is
+built and tested.

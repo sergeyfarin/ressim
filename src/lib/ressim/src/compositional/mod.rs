@@ -25,6 +25,7 @@ pub mod accumulation;
 pub mod api;
 pub mod assembly;
 pub mod flux;
+#[cfg(feature = "wasm")]
 pub mod frontend;
 pub mod layout;
 pub mod newton;
