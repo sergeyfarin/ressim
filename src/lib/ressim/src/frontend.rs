@@ -3,9 +3,6 @@ use js_sys::{Float64Array, Object, Reflect};
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-// Only `GridStatePayload` derives it, and that is behind the feature.
-#[cfg(feature = "wasm")]
-use serde::Deserialize;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
 
@@ -19,17 +16,6 @@ use crate::{
 // Named only by the JS-payload setters below, which are themselves behind the feature.
 #[cfg(feature = "wasm")]
 use crate::{SweepConfig, ThreePhaseScalTables, TimePointRates};
-
-// Deserialize target for `load_state`, which is itself behind the feature.
-#[cfg(feature = "wasm")]
-#[derive(Deserialize)]
-struct GridStatePayload {
-    pressure: Vec<f64>,
-    sat_water: Vec<f64>,
-    sat_oil: Vec<f64>,
-    sat_gas: Option<Vec<f64>>,
-    rs: Option<Vec<f64>>,
-}
 
 /// Serialize an engine payload for the browser.
 ///
@@ -967,88 +953,18 @@ impl ReservoirSimulator {
         well_state: JsValue,
         rate_history: JsValue,
     ) -> Result<(), JsValue> {
+        let grid: crate::api::GridState = serde_wasm_bindgen::from_value(grid_state)?;
         let wells: Vec<Well> = serde_wasm_bindgen::from_value(well_state)?;
-        let rate_history_vec: Vec<TimePointRates> = serde_wasm_bindgen::from_value(rate_history)?;
-        let grid_data: GridStatePayload = serde_wasm_bindgen::from_value(grid_state)?;
-
-        let expected_cells = self.nx * self.ny * self.nz;
-        if grid_data.pressure.len() != expected_cells
-            || grid_data.sat_water.len() != expected_cells
-            || grid_data.sat_oil.len() != expected_cells
-        {
-            return Err(JsValue::from_str(&format!(
-                "Mismatch grid size. Expected {}, got pressure len: {}, sat_water len: {}, sat_oil len: {}",
-                expected_cells,
-                grid_data.pressure.len(),
-                grid_data.sat_water.len(),
-                grid_data.sat_oil.len()
-            )));
-        }
-
-        if grid_data
-            .sat_gas
-            .as_ref()
-            .is_some_and(|sat_gas| sat_gas.len() != expected_cells)
-        {
-            return Err(JsValue::from_str(&format!(
-                "Mismatch grid size. Expected {}, got sat_gas len: {}",
-                expected_cells,
-                grid_data
-                    .sat_gas
-                    .as_ref()
-                    .map(|sat_gas| sat_gas.len())
-                    .unwrap_or(0)
-            )));
-        }
-
-        if grid_data
-            .rs
-            .as_ref()
-            .is_some_and(|rs| rs.len() != expected_cells)
-        {
-            return Err(JsValue::from_str(&format!(
-                "Mismatch grid size. Expected {}, got rs len: {}",
-                expected_cells,
-                grid_data.rs.as_ref().map(|rs| rs.len()).unwrap_or(0)
-            )));
-        }
-
-        self.time_days = time_days;
-        self.pressure = grid_data.pressure;
-        self.sat_water = grid_data.sat_water;
-        self.sat_oil = grid_data.sat_oil;
-        self.sat_gas = grid_data
-            .sat_gas
-            .unwrap_or_else(|| vec![0.0; expected_cells]);
-        self.rs = grid_data.rs.unwrap_or_else(|| vec![0.0; expected_cells]);
-        self.wells = wells;
-        self.refresh_well_head_offsets();
-        self.rate_history = rate_history_vec;
-        self.last_solver_warning.clear();
-        self.last_fim_trace.clear();
-        self.capture_fim_trace = false;
-        self.last_fim_step_stats = None;
-        self.fim_step_stats_history.clear();
-
-        if let Some(last) = self.rate_history.last() {
-            self.cumulative_injection_m3 = last.total_injection_reservoir;
-            self.cumulative_production_m3 = last.total_production_liquid_reservoir;
-        }
-
-        Ok(())
+        let history: Vec<TimePointRates> = serde_wasm_bindgen::from_value(rate_history)?;
+        self.apply_state(time_days, grid, wells, history)
+            .map_err(|e| JsValue::from_str(&e))
     }
 
     #[cfg(feature = "wasm")]
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setPvtTable))]
     pub fn set_pvt_table(&mut self, table_js: JsValue) -> Result<(), JsValue> {
         let rows: Vec<pvt::PvtRow> = serde_wasm_bindgen::from_value(table_js)?;
-        let table = pvt::PvtTable::new(rows, self.pvt.c_o);
-        let n = self.nx * self.ny * self.nz;
-        for i in 0..n {
-            self.rs[i] = table.interpolate(self.pressure[i]).rs_m3m3;
-        }
-        self.pvt_table = Some(table);
-        Ok(())
+        self.apply_pvt_table(rows).map_err(|e| JsValue::from_str(&e))
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setInitialRs))]
@@ -1177,17 +1093,8 @@ impl ReservoirSimulator {
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setThreePhaseScalTables))]
     pub fn set_three_phase_scal_tables(&mut self, table_js: JsValue) -> Result<(), JsValue> {
         let tables: ThreePhaseScalTables = serde_wasm_bindgen::from_value(table_js)?;
-        tables
-            .validate()
-            .map_err(|message| JsValue::from_str(&message))?;
-
-        let scal = self.scal_3p.as_mut().ok_or_else(|| {
-            JsValue::from_str(
-                "Three-phase relperm props must be configured before SWOF/SGOF tables",
-            )
-        })?;
-        scal.tables = Some(tables);
-        Ok(())
+        self.apply_three_phase_scal_tables(tables)
+            .map_err(|e| JsValue::from_str(&e))
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setGasOilCapillaryParams))]
@@ -1249,13 +1156,14 @@ impl ReservoirSimulator {
     /// Pass `null`/`undefined` to disable sweep computation.
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setSweepConfig))]
     pub fn set_sweep_config(&mut self, config_js: JsValue) -> Result<(), JsValue> {
-        if config_js.is_null() || config_js.is_undefined() {
-            self.sweep_config = None;
-            return Ok(());
-        }
-        let config: SweepConfig = serde_wasm_bindgen::from_value(config_js)?;
-        self.sweep_config = Some(config);
-        Ok(())
+        // `null`/`undefined` clears it; the engine takes an Option and says what that means.
+        let config: Option<SweepConfig> = if config_js.is_null() || config_js.is_undefined() {
+            None
+        } else {
+            Some(serde_wasm_bindgen::from_value(config_js)?)
+        };
+        self.apply_sweep_config(config)
+            .map_err(|e| JsValue::from_str(&e))
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setInjectedFluid))]

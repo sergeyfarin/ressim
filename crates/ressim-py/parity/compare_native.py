@@ -98,6 +98,37 @@ def main() -> int:
             "Retune case.json's step count so the front stays inside the grid."
         )
 
+    # Phase 2: restore. Capture this run's state, load it into a fresh simulator, and require the
+    # two to be indistinguishable. This exercises apply_state's validation and field mapping from
+    # a target that is not the browser -- which before Phase 2 was impossible, because load_state
+    # only accepted JsValue.
+    restored = ressim.Simulator(case["nx"], 1, 1, case["porosity"])
+    try:
+        restored.load_state(sim.time_days(), sim.grid_state(), sim.wells(), sim.rate_history())
+    except Exception as exc:  # noqa: BLE001 - the failure text is the useful part here
+        failures.append(f"restore raised: {exc}")
+    else:
+        if restored.pressures() != sim.pressures():
+            failures.append("restore: pressures differ from the source run")
+        if restored.sat_water() != sim.sat_water():
+            failures.append("restore: sat_water differs from the source run")
+        if len(restored.rate_history()) != len(sim.rate_history()):
+            failures.append("restore: rate history length differs")
+        if restored.time_days() != sim.time_days():
+            failures.append("restore: clock differs")
+        print(f"  restore   {len(restored.rate_history())} points, clock {restored.time_days()} d, arrays identical")
+
+    # A restore that accepts a wrong-sized grid would be worse than one that fails, so check that
+    # the engine's validation is actually reached through this path rather than bypassed.
+    mismatched = ressim.Simulator(case["nx"] + 1, 1, 1, case["porosity"])
+    try:
+        mismatched.load_state(sim.time_days(), sim.grid_state(), sim.wells(), sim.rate_history())
+    except ValueError as exc:
+        if "Mismatch grid size" not in str(exc):
+            failures.append(f"restore rejected a bad grid with an unexpected message: {exc}")
+    else:
+        failures.append("restore accepted a grid of the wrong size")
+
     if failures:
         print("\nFAIL:", file=sys.stderr)
         for f in failures:

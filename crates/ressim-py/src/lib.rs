@@ -24,7 +24,7 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pythonize::pythonize;
+use pythonize::{depythonize, pythonize};
 use simulator::ReservoirSimulator;
 
 /// Engine errors are plain `String`s; surface them as `ValueError` rather than panicking.
@@ -175,6 +175,63 @@ impl PySimulator {
 
     fn wells<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         pythonize(py, self.inner.wells()).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    // ---- configuration payloads ------------------------------------------------------------
+    //
+    // Phase 2 of the payload-boundary design moved these rules into `simulator::api`, so the
+    // validation a caller hits here is the same validation the browser hits -- one implementation,
+    // not two that must be kept in agreement.
+
+    fn set_pvt_table(&mut self, rows: &Bound<'_, PyAny>) -> PyResult<()> {
+        let rows = depythonize(rows).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        to_py(self.inner.apply_pvt_table(rows))
+    }
+
+    fn set_three_phase_scal_tables(&mut self, tables: &Bound<'_, PyAny>) -> PyResult<()> {
+        let tables = depythonize(tables).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        to_py(self.inner.apply_three_phase_scal_tables(tables))
+    }
+
+    #[pyo3(signature = (config=None))]
+    fn set_sweep_config(&mut self, config: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        let config = match config {
+            Some(c) if !c.is_none() => {
+                Some(depythonize(c).map_err(|e| PyValueError::new_err(e.to_string()))?)
+            }
+            _ => None,
+        };
+        to_py(self.inner.apply_sweep_config(config))
+    }
+
+    /// Restore a captured run state: grid, wells and rate history at a given time.
+    fn load_state(
+        &mut self,
+        time_days: f64,
+        grid: &Bound<'_, PyAny>,
+        wells: &Bound<'_, PyAny>,
+        rate_history: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let grid = depythonize(grid).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let wells = depythonize(wells).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let history = depythonize(rate_history).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        to_py(self.inner.apply_state(time_days, grid, wells, history))
+    }
+
+    /// The grid state, in the same shape `load_state` accepts.
+    fn grid_state<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let grid = simulator::api::GridState {
+            pressure: self.inner.get_pressures(),
+            sat_water: self.inner.get_sat_water(),
+            sat_oil: self.inner.get_sat_oil(),
+            sat_gas: Some(self.inner.get_sat_gas()),
+            rs: Some(self.inner.get_rs()),
+        };
+        pythonize(py, &grid).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn time_days(&self) -> f64 {
+        self.inner.get_time()
     }
 
     fn last_fim_step_stats<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {

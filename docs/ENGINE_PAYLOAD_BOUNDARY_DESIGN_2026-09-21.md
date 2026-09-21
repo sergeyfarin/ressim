@@ -191,3 +191,50 @@ It does not choose a Python object mapping (`pythonize` vs manual vs `numpy`), b
 shim's business and the shim is the cheap part. It does not propose changing any physics,
 tolerance or solver behaviour. And it does not commit to phase 4, which is a dependency decision
 rather than an architectural one.
+
+## 11. Execution record
+
+### Phase 1 — the seven serializers (COMPLETE, `566231a`)
+
+`src/lib/ressim/src/api.rs` gains `dimensions`, `wells`, `rate_history`, `rate_history_since`,
+`latest_rate_point`, `last_fim_step_stats`, `fim_step_stats_history`, returning slices and
+references. The seven wasm functions became one-line conversions, and their seven `.unwrap()`s
+became one helper that names the failing payload.
+
+`.d.ts` identical; wasm **1 024 bytes smaller** (the collapsed panic paths). `ressim-py` gained the
+same accessors through `pythonize`, so the native consumer can say what came out of a run.
+
+The parity gate grew teeth: it now compares **181 rate-history points of 16 fields each** to
+2.603e-11, which is the first time it covered the part of the engine a reservoir engineer reads.
+
+### Phase 2 — the four deserializers (COMPLETE, this commit)
+
+`apply_pvt_table`, `apply_three_phase_scal_tables`, `apply_sweep_config` and `apply_state` move to
+`api.rs`, taking Rust types. The private `GridStatePayload` becomes the public
+`api::GridState` — it was always the schema, and having it inside `frontend.rs` meant the browser
+owned the definition of what a saved grid is.
+
+What moved is not just decoding. The **validation moved too**: grid-size checks, the SWOF/SGOF
+ordering rule, and the diagnostics-cleared-on-restore decision were all living on the browser's
+side of the boundary. There is now one implementation of those rules rather than one per target.
+
+`frontend.rs` is **1 267 lines, down from 1 349**, and `.d.ts` is still identical to the pre-S4
+baseline — twelve functions rewritten with no change to the browser's API surface.
+
+The gate now also round-trips: capture a run's state, restore it into a fresh simulator through
+`load_state`, and require the arrays, clock and history to be indistinguishable — then require a
+wrong-sized grid to be **rejected** through that same native path. Before Phase 2 neither was
+possible, because `load_state` only accepted `JsValue`.
+
+### What is left
+
+**Phase 3** — `get_grid_state`, the one genuinely target-shaped function, per §5. Note that
+`ressim-py` already exposes a `grid_state()` assembled from the individual accessors, so the
+schema is reachable; what Phase 3 owes is the engine-side portable accessor plus the equality test
+against the zero-copy browser path.
+
+**Phase 4** — generating `simulator-types.ts` from the Rust schema. Unchanged in status: a
+dependency decision, not an architectural one.
+
+**Still open, unchanged by these phases:** `getFimStepStatsHistory` has no live call site (§1) and
+remains a deletion candidate, and `api::GridState` still carries no schema version (§6.2).

@@ -21,7 +21,9 @@ use std::f64;
 use wasm_bindgen::prelude::*;
 
 mod ad;
-mod api;
+// Public: this is the engine's payload boundary, and a consumer in another crate
+// (crates/ressim-py) needs the payload types by name.
+pub mod api;
 mod capillary;
 mod compositional;
 mod fim;
