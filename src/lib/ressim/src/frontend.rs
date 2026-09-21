@@ -3,6 +3,8 @@ use js_sys::{Float64Array, Object, Reflect};
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
+// Only `GridStatePayload` derives it, and that is behind the feature.
+#[cfg(feature = "wasm")]
 use serde::Deserialize;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
@@ -18,6 +20,8 @@ use crate::{
 #[cfg(feature = "wasm")]
 use crate::{SweepConfig, ThreePhaseScalTables, TimePointRates};
 
+// Deserialize target for `load_state`, which is itself behind the feature.
+#[cfg(feature = "wasm")]
 #[derive(Deserialize)]
 struct GridStatePayload {
     pressure: Vec<f64>,

@@ -649,3 +649,70 @@ the no-default-features build made warnings worth reading. Both configurations n
 
 **ENGINE-MULTI-TARGET-READY is not declared:** it also requires S5, a non-WASM consumer that is
 built and tested.
+
+### S5 — a non-WASM consumer (COMPLETE) — **ENGINE-MULTI-TARGET-READY declared**
+
+`crates/ressim-py` is a PyO3 extension module that consumes the engine as a plain `rlib` with
+`default-features = false`. Built as a **separate crate**, per §9e, rather than as a third shim
+inside `simulator`: the engine would otherwise carry two proc-macro attribute systems on the same
+types and every feature combination would become a build matrix.
+
+| Check | Result |
+|---|---|
+| wasm crates in `cargo tree -p ressim-py` | **0** |
+| Extension builds and imports | yes (`import ressim; ressim.Simulator(...)`) |
+| Native vs **browser** bindings, committed Buckley case A | pressure **2.842e-12**, saturation **2.920e-14** |
+| Front position during parity | 39 of 50 cells — partial, so the comparison is on a varying field |
+| Above-ceiling run | **3 600 cells** (60×60×1), 5 × 1 day, **4.62 s** release, saturations 0.1000–0.8962, 664 cells swept |
+| `validate-solver-coverage all` / `compositional thermo` / `validate:product` | 38 / 28 gates, 932 tests — all unchanged |
+| Shipped wasm + `.d.ts` | byte-identical / identical to baseline |
+| Build warnings | 4 in both configurations — all pre-existing; S4+S5 add none |
+
+#### S4's feature gate is now enforced by the compiler
+
+Before S5, "the engine builds without wasm-bindgen" was a claim checked by running a command
+nobody runs. `ressim-py` links the engine that way on every build, and
+`scripts/validate-native-binding.sh` fails if a binding crate reappears in its graph. A regression
+that re-entangles the engine now breaks a build rather than going unnoticed.
+
+#### Parity is the right claim, and it is narrow on purpose
+
+The gate compares the **native** bindings against the **browser** bindings on the fixture
+`benchmark_buckley` already owns. Both are the same Rust compiled for two targets, so the bar is
+`1e-9` — a floating-point courtesy, not a tolerance budget — and agreement means *a binding
+forwards faithfully*, not that the physics is right. The Rust suite owns the physics, and sharing
+its fixture is what stops the two drifting apart. The case is tuned to three steps so the front
+stops mid-grid: on a fully swept or static field the two would agree without proving anything,
+and the script fails if the front ever reaches either bound.
+
+#### The honest limit of this consumer
+
+S4 left 12 of the engine's 69 API functions behind the `wasm` feature because they speak
+`JsValue` — including `get_rate_history`, `get_latest_rate_point` and `get_grid_state`. So the
+Python module can configure a case, run it, and read **pressures and saturations, and nothing
+else**. Rate-based work — which is most of reservoir engineering, and the whole of the
+Buckley-Leverett breakthrough metric the Rust fixture actually asserts — is not reachable
+natively yet.
+
+That is a deliberate stop, not an oversight. Binding around it would mean reaching into engine
+internals from the binding layer, which would put physics in exactly the place this crate must
+keep clear. The fix belongs in the engine: serde-native counterparts for those 12, after which
+they bind for free. S4 enumerated the list; S5 is the demonstration that the list is what blocks
+a real native workflow.
+
+#### Not done
+
+No wheel and no `maturin` packaging — the gate builds the `cdylib` and copies it, which is enough
+to prove the consumer works and stops short of choosing a distribution story. The gate is not in
+CI either: like `test:deployed`, it needs an interpreter and the generated wasm bundle, so it runs
+when someone runs it.
+
+---
+
+**ENGINE-MULTI-TARGET-READY is declared.** The crate builds with and without the WASM shim, a
+non-WASM consumer exists and is tested against the browser path on a committed fixture, and a case
+three times the browser policy's cell limit has actually been run — 3 600 cells, recorded above,
+not asserted as theoretically possible.
+
+Remaining in this plan: **S6 only**, which §S6 and §9d say should not begin until someone chooses
+between sharing the data contract and sharing the renderer.

@@ -1,4 +1,4 @@
 # ressim/Cargo.toml
 [workspace]
-members = ["src/lib/ressim"]
+members = ["src/lib/ressim", "crates/ressim-py"]
 resolver = "2"

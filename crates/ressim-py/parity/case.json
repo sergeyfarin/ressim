@@ -1,0 +1,18 @@
+{
+  "_comment": "Buckley-Leverett case A, as committed in src/lib/ressim/src/tests/buckley.rs (buckley_case_a). Shared verbatim by both runners so neither can drift from the other or from the Rust suite's fixture.",
+  "nx": 50,
+  "porosity": 0.2,
+  "permeability_md": 2000.0,
+  "injector_bhp": 500.0,
+  "producer_bhp": 100.0,
+  "s_wc": 0.1,
+  "s_or": 0.1,
+  "n_w": 2.0,
+  "n_o": 2.0,
+  "mu_w": 0.5,
+  "mu_o": 1.0,
+  "seed": 42,
+  "dt_days": 1.0,
+  "steps": 3,
+  "_steps_comment": "Three steps leaves the front mid-domain (39 of 50 cells swept). More steps sweep the whole grid, and comparing two near-uniform fields would agree without proving much."
+}

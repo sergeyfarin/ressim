@@ -1,0 +1,17 @@
+[package]
+name = "ressim-py"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+
+[lib]
+# `ressim` is the module name Python imports; the file is renamed to `ressim.so` on install.
+name = "ressim"
+crate-type = ["cdylib"]
+
+[dependencies]
+# The whole point of S4: the physics crate is consumed with its browser bindings switched off,
+# so this binary has no wasm-bindgen in its dependency graph. If that ever stops being true,
+# `cargo tree -p ressim-py | grep wasm` says so.
+simulator = { path = "../../src/lib/ressim", default-features = false }
+pyo3 = { version = "0.29", features = ["extension-module"] }

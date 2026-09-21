@@ -83,6 +83,12 @@ impl PvtTable {
         (inv_bo.recip(), inv_bo / inv_bo_mu)
     }
 
+    // Builds a table from deserialized rows. Today the only caller is `set_pvt_table`, which is
+    // behind the engine's `wasm` feature, so a native build sees it as dead. It is not dead in
+    // principle -- a native consumer setting a PVT table is exactly what it is for -- so this
+    // silences the warning only where the caller is absent rather than deleting the API or
+    // gating a physics type on a binding feature.
+    #[cfg_attr(not(feature = "wasm"), allow(dead_code))]
     pub fn new(rows: Vec<PvtRow>, c_o: f64) -> Self {
         let mut oil_branches = Self::build_oil_branches(&rows);
         oil_branches.sort_by(|a, b| a.rs_m3m3.partial_cmp(&b.rs_m3m3).unwrap());
@@ -101,6 +107,7 @@ impl PvtTable {
         }
     }
 
+    #[cfg_attr(not(feature = "wasm"), allow(dead_code))]
     fn build_oil_branches(rows: &[PvtRow]) -> Vec<PvtOilBranch> {
         let mut branches: Vec<PvtOilBranch> = Vec::new();
 

@@ -42,3 +42,7 @@ __pycache__/
 #OPM
 /OPM
 tools/opm_flow/tmp/
+
+# Native binding build outputs (scripts/validate-native-binding.sh regenerates both).
+crates/ressim-py/parity/ressim.so
+crates/ressim-py/parity/reference_wasm.json
