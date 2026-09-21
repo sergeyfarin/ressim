@@ -48,9 +48,24 @@ function stripComments(source) {
         .replace(/(^|[^:\\])\/\/[^\n]*/g, (match, lead) => lead + ' '.repeat(match.length - lead.length));
 }
 
+/**
+ * Workspace packages under `src/lib/` are imported by name (`@ressim/charts/foo`), not by
+ * relative path. Resolving those back to their files is not cosmetic: without it every
+ * cross-package edge becomes invisible here, and an import cycle that crosses a package boundary
+ * would pass this check silently. A package boundary must not be a blind spot.
+ */
+const WORKSPACE_SCOPE = '@ressim/';
+const WORKSPACE_ROOT = path.join('src', 'lib');
+
 function resolveSpecifier(fromFile, specifier) {
-    if (!specifier.startsWith('.')) return null;
-    const base = path.normalize(path.join(path.dirname(fromFile), specifier));
+    let base;
+    if (specifier.startsWith('.')) {
+        base = path.normalize(path.join(path.dirname(fromFile), specifier));
+    } else if (specifier.startsWith(WORKSPACE_SCOPE)) {
+        base = path.normalize(path.join(WORKSPACE_ROOT, specifier.slice(WORKSPACE_SCOPE.length)));
+    } else {
+        return null;
+    }
     const candidates = [
         base,
         `${base}.ts`,
