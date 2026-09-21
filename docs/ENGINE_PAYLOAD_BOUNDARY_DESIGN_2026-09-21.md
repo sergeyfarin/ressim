@@ -226,12 +226,25 @@ The gate now also round-trips: capture a run's state, restore it into a fresh si
 wrong-sized grid to be **rejected** through that same native path. Before Phase 2 neither was
 possible, because `load_state` only accepted `JsValue`.
 
-### What is left
+### Phase 3 — the zero-copy bundle (COMPLETE, this commit)
 
-**Phase 3** — `get_grid_state`, the one genuinely target-shaped function, per §5. Note that
-`ressim-py` already exposes a `grid_state()` assembled from the individual accessors, so the
-schema is reachable; what Phase 3 owes is the engine-side portable accessor plus the equality test
-against the zero-copy browser path.
+`api.rs` gains five borrowed slice accessors and a portable `grid_state() -> GridState`. The
+browser keeps its zero-copy path, now built from those same slices rather than reaching into the
+fields directly, so both paths read one set of accessors.
+
+`ressim-py` stops assembling the struct field by field and delegates to the engine — previously
+the *shim* decided what a grid state contains, and a sixth field would have had to be remembered
+there.
+
+**§5's promise is now a gate, not a comment.** The parity harness compares the portable
+`grid_state()` against the browser's `getGridState()` field for field: they agree to **2.842e-12**
+across all five arrays. Verified load-bearing by mutation — making the portable path drop `rs`
+fails with `grid state rs: None vs 50 values`, which is exactly the silent drift the check exists
+to catch.
+
+`.d.ts` still identical to the pre-S4 baseline.
+
+### What is left
 
 **Phase 4** — generating `simulator-types.ts` from the Rust schema. Unchanged in status: a
 dependency decision, not an architectural one.

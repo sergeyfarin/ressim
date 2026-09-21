@@ -540,11 +540,15 @@ impl ReservoirSimulator {
 
         // These typed arrays are lightweight views over stable simulator buffers.
         // The worker immediately structured-clones them into UI-owned memory.
-        let pressure = unsafe { Float64Array::view(&self.pressure) };
-        let sat_water = unsafe { Float64Array::view(&self.sat_water) };
-        let sat_oil = unsafe { Float64Array::view(&self.sat_oil) };
-        let sat_gas = unsafe { Float64Array::view(&self.sat_gas) };
-        let rs = unsafe { Float64Array::view(&self.rs) };
+        //
+        // Built from `api`'s borrowed slices, not from the fields directly, so this path and the
+        // portable `grid_state()` read the same accessors. They carry the same field names in the
+        // same order as `api::GridState`; the parity gate asserts the values agree.
+        let pressure = unsafe { Float64Array::view(self.pressure_slice()) };
+        let sat_water = unsafe { Float64Array::view(self.sat_water_slice()) };
+        let sat_oil = unsafe { Float64Array::view(self.sat_oil_slice()) };
+        let sat_gas = unsafe { Float64Array::view(self.sat_gas_slice()) };
+        let rs = unsafe { Float64Array::view(self.rs_slice()) };
 
         set_object_property(&payload, "pressure", &pressure.into());
         set_object_property(&payload, "sat_water", &sat_water.into());

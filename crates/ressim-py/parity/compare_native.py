@@ -98,6 +98,31 @@ def main() -> int:
             "Retune case.json's step count so the front stays inside the grid."
         )
 
+    # Phase 3: the portable grid state against the browser's zero-copy one. `getGridState`
+    # returns Float64Array views over engine memory rather than a serde payload, which is a real
+    # optimization worth keeping -- and exactly the kind that drifts from its schema unnoticed.
+    # Requiring the two to agree field for field is what makes keeping it safe.
+    native_grid = sim.grid_state()
+    wasm_grid = reference["gridState"]
+    if set(native_grid) != set(wasm_grid):
+        failures.append(
+            f"grid state fields differ: native {sorted(native_grid)} vs wasm {sorted(wasm_grid)}"
+        )
+    else:
+        worst_field, worst_delta = None, 0.0
+        for key in native_grid:
+            a, b = native_grid[key], wasm_grid[key]
+            if a is None or len(a) != len(b):
+                failures.append(f"grid state {key}: {len(a) if a else None} vs {len(b)} values")
+                continue
+            for x, y in zip(a, b):
+                d = abs(x - y)
+                if d > worst_delta:
+                    worst_delta, worst_field = d, key
+        print(f"  grid      max |portable - zero-copy| = {worst_delta:.3e}  ({worst_field})")
+        if worst_delta > TOL:
+            failures.append(f"grid state: {worst_delta:.3e} in {worst_field} exceeds {TOL:.0e}")
+
     # Phase 2: restore. Capture this run's state, load it into a fresh simulator, and require the
     # two to be indistinguishable. This exercises apply_state's validation and field mapping from
     # a target that is not the browser -- which before Phase 2 was impossible, because load_state

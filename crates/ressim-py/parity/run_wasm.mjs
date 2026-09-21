@@ -38,6 +38,11 @@ await writeFile(
       // the cell arrays that were already portable.
       dimensions: sim.getDimensions(),
       rateHistory: sim.getRateHistory(),
+      // The zero-copy path: Float64Array views over engine buffers, not a serde payload. The
+      // comparison against the native `grid_state()` is what keeps this optimization honest.
+      gridState: Object.fromEntries(
+        Object.entries(sim.getGridState()).map(([k, v]) => [k, Array.from(v)]),
+      ),
     },
     null,
     2,

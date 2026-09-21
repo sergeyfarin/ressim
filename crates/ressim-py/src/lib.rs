@@ -219,15 +219,12 @@ impl PySimulator {
     }
 
     /// The grid state, in the same shape `load_state` accepts.
+    ///
+    /// Phase 3 moved the assembly into `simulator::api::grid_state`. This shim used to build the
+    /// struct field by field, which meant it -- not the engine -- decided what a grid state
+    /// contains, and a sixth field would have had to be remembered here.
     fn grid_state<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let grid = simulator::api::GridState {
-            pressure: self.inner.get_pressures(),
-            sat_water: self.inner.get_sat_water(),
-            sat_oil: self.inner.get_sat_oil(),
-            sat_gas: Some(self.inner.get_sat_gas()),
-            rs: Some(self.inner.get_rs()),
-        };
-        pythonize(py, &grid).map_err(|e| PyValueError::new_err(e.to_string()))
+        pythonize(py, &self.inner.grid_state()).map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     fn time_days(&self) -> f64 {

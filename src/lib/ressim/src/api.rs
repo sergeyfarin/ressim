@@ -92,6 +92,55 @@ impl ReservoirSimulator {
         &self.fim_step_stats_history
     }
 
+    // ---- grid state ----------------------------------------------------------------------
+
+    /// Borrowed cell arrays. No copy, no schema, no encoding — the cheapest thing the engine can
+    /// hand out, and what every target's zero-copy path is built from.
+    pub fn pressure_slice(&self) -> &[f64] {
+        &self.pressure
+    }
+
+    /// See [`Self::pressure_slice`].
+    pub fn sat_water_slice(&self) -> &[f64] {
+        &self.sat_water
+    }
+
+    /// See [`Self::pressure_slice`].
+    pub fn sat_oil_slice(&self) -> &[f64] {
+        &self.sat_oil
+    }
+
+    /// See [`Self::pressure_slice`].
+    pub fn sat_gas_slice(&self) -> &[f64] {
+        &self.sat_gas
+    }
+
+    /// See [`Self::pressure_slice`].
+    pub fn rs_slice(&self) -> &[f64] {
+        &self.rs
+    }
+
+    /// The grid state as a portable payload, in the shape [`Self::apply_state`] accepts.
+    ///
+    /// **This copies, and the browser deliberately does not use it.** `frontend.rs` keeps a
+    /// zero-copy path that wraps the slices above in `Float64Array` views, because the worker
+    /// posts grid state every step and five array copies per step is a real cost. Both read the
+    /// same fields, so what is shared between targets is the *schema*, not the representation —
+    /// and the native/wasm parity gate asserts the two carry identical values, so the
+    /// optimization cannot silently drift from the contract it is optimizing.
+    ///
+    /// `sat_gas` and `rs` are always `Some` here: the optionality in [`GridState`] exists for
+    /// two-phase payloads arriving from outside, not for states the engine produces.
+    pub fn grid_state(&self) -> GridState {
+        GridState {
+            pressure: self.pressure.clone(),
+            sat_water: self.sat_water.clone(),
+            sat_oil: self.sat_oil.clone(),
+            sat_gas: Some(self.sat_gas.clone()),
+            rs: Some(self.rs.clone()),
+        }
+    }
+
     // ---- configuration payloads ---------------------------------------------------------
     //
     // Each of these was a `JsValue`-taking function in `frontend.rs`, and each carried its own
