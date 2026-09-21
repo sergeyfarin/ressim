@@ -84,7 +84,11 @@ describe('spatial profile wiring', () => {
     });
 
     it('uses the shared chart helpers instead of touching datasets directly', () => {
-        expect(/from\s+['"]\.\.\/charts\/chart-helpers['"]/.test(chartSrc)).toBe(true);
+        // Which module, not how the path is spelled: `charts` is a workspace package, so this
+        // import is written `@ressim/charts/chart-helpers`, and was `../charts/chart-helpers`
+        // before that. Pinning one spelling made this fail on a rename that changed nothing it
+        // is checking.
+        expect(/from\s+['"](?:\.\.\/charts|@ressim\/charts)\/chart-helpers['"]/.test(chartSrc)).toBe(true);
         expect(/applyThemeToChart/.test(chartSrc)).toBe(true);
     });
 });

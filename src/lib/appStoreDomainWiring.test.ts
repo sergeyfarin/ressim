@@ -85,6 +85,11 @@ describe('App store domain wiring', () => {
   it('avoids transitional App-side contract assembly logic', () => {
     expect(appSource).not.toMatch(/buildReferenceCloneProvenance/);
     expect(appSource).not.toMatch(/buildOverrideResetPlan/);
-    expect(appSource).not.toMatch(/import\s*\{\s*catalog\s*\}\s*from\s*"\.\/lib\/catalog\/caseCatalog"/);
+    // Both spellings, because this is a negative assertion: if `catalog` becomes a workspace
+    // package and someone writes `@ressim/catalog/caseCatalog`, a pattern pinned to the relative
+    // form would keep passing while the violation it guards against is present.
+    expect(appSource).not.toMatch(
+        /import\s*\{\s*catalog\s*\}\s*from\s*["'](?:\.\/lib\/catalog|@ressim\/catalog)\/caseCatalog["']/,
+    );
   });
 });
