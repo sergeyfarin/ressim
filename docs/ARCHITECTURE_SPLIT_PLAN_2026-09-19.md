@@ -519,3 +519,73 @@ mean choosing each package's public surface before S3 has shown what a second pa
 
 **FRONTEND-MODULAR-READY still needs S3**: a second page built from these packages without editing
 the first.
+
+### S3 — a second page (COMPLETE) — **FRONTEND-MODULAR-READY declared**
+
+`fractional-flow.html` + `src/pages/fractionalFlow/` render Buckley–Leverett fractional flow with
+the Welge tangent, composed from three packages and **nothing else**:
+
+| Package | Used for |
+|---|---|
+| `@ressim/analytical/fractionalFlow` | `fractionalFlow`, `computeWelgeMetrics` |
+| `@ressim/charts/ChartSubPanel.svelte` | the plot |
+| `@ressim/primitives/ToggleGroup.svelte` | the viscosity-ratio control |
+
+No store, no scenario catalog, no worker, no WASM, no `App.svelte`. `index.html` and `App.svelte`
+were not edited; the only shared file touched is `vite.config.ts`, which gains a two-entry
+`rollupOptions.input` — build configuration, not the page.
+
+**Verified in a real browser**, not merely built (`tests/deployed/second-page.spec.ts`): the
+analytical package computes a shock front inside its physical bounds, the chart package draws a
+sized canvas when handed data by something other than the application, the toggle recomputes
+through to the chart, and there are no runtime errors or failed requests.
+
+That spec also carries §9c's visual check, which a byte count cannot do: it asserts the computed
+`font-family` of a `font-mono` element actually resolves to a monospace stack. A Tailwind
+content-glob miss produces an unstyled page and **no error anywhere**, so it has to be asserted
+against rendered style.
+
+#### The existing page's chunking changed — checked, not assumed
+
+Adding a second entry made Vite re-split shared code. This is worth recording because the numbers
+look alarming in isolation:
+
+| Asset | Before S3 | After S3 |
+|---|---|---|
+| `index-*.css` | 43 591 B | 1 010 B |
+| `chart-helpers-*.css` (new, shared) | — | 43 050 B |
+| Total CSS | ~44 081 B | 44 559 B (+478 B — the new page's own utilities) |
+
+The bulk of the stylesheet moved into a chunk shared by both entries, and **both pages link it
+directly from `<head>`**, so the application still gets its full CSS on first paint rather than
+behind a lazy import. Confirmed by running the existing `public-site.spec.ts` against the
+two-entry build: green. The plan's "no change to the existing page's rendered output" holds; its
+*chunking* did change, which is expected for a multi-page build and is not the same claim.
+
+#### What S3 tells S2's deferred decision
+
+S2 left `exports` as `./*` wildcards because nothing had yet shown what a second page needs. It
+now has. The entry points actually consumed are `analytical/fractionalFlow`,
+`charts/ChartSubPanel.svelte` and `primitives/ToggleGroup.svelte` — three modules out of 36 across
+the five packages. `ChartSubPanel`'s surface (`curves`, `seriesData`, `scaleConfigs`, `theme`)
+needed no scenario, store or catalog, and it registers Chart.js itself, so the reusable core of
+`charts` is genuinely reusable. Tightening `exports` to declared entry points is now a decision
+with evidence behind it rather than a guess.
+
+#### Gap logged, not closed
+
+`pnpm run test:deployed` is **not in CI** (`.github/workflows/pr-tests.yml` ends at `pnpm run
+build`). Both Playwright specs — the pre-existing one and the new one — therefore run only when
+someone runs them. The new spec is the only check that would catch a Tailwind content-glob
+regression, so it is the one most worth having in CI; that needs a preview server in the workflow
+and is its own change.
+
+---
+
+**FRONTEND-MODULAR-READY is declared**, at this commit. All three preconditions hold: zero mutual
+value-level pairs (S1), packages declared in the workspace (S2), and a second page built from them
+without editing the first, verified in a browser (S3).
+
+Remaining in this plan: S4 (feature-gate the WASM shim) and S5 (a non-WASM consumer), which
+together are ENGINE-MULTI-TARGET-READY, and S6, which §9d/§S6 say should not start before someone
+chooses between sharing the data contract and sharing the renderer.

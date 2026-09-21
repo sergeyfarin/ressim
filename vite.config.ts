@@ -51,6 +51,13 @@ export default defineConfig({
     outDir: 'dist/ressim',
     emptyOutDir: true,
     rollupOptions: {
+      // Multi-page. `index.html` is the application; `fractional-flow.html` is a second entry
+      // point built only from workspace packages, which is what makes "the frontend can be
+      // composed into more than one page" checkable rather than asserted.
+      input: {
+        index: path.resolve(__dirname, 'index.html'),
+        'fractional-flow': path.resolve(__dirname, 'fractional-flow.html'),
+      },
       output: {
         manualChunks(id: string) {
           if (id.includes('node_modules/three')) {
