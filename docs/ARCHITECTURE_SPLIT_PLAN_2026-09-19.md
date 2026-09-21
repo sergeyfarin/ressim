@@ -716,3 +716,61 @@ not asserted as theoretically possible.
 
 Remaining in this plan: **S6 only**, which §S6 and §9d say should not begin until someone chooses
 between sharing the data contract and sharing the renderer.
+
+### S6 — share the data contract (COMPLETE)
+
+Route chosen by the maintainer, and the one §S6 and §9d recommended: **share the contract, not the
+renderer.** A notebook plots with Python-native tools; what it borrows from the application is
+what a quantity is *called*, what it is *measured in*, and what its *values* are.
+
+**The contract is generated, not written.** `contracts/run-quantities.json` is derived from
+`RUN_QUANTITIES` by `runQuantities.contract.test.ts`, which discovers each quantity's derived
+series key by invoking its `source` against a recording Proxy rather than being told. Adding a
+quantity, renaming a series field or changing a unit fails that test with the regeneration
+command. Verified load-bearing: tampering with one label fails with "contracts/run-quantities.json
+is stale".
+
+**Names alone are not enough, so the numbers are checked too.** Two implementations of a
+cumulative integral can agree on what a curve is called and still disagree about its values —
+the worse failure, because the chart still renders. `runQuantities.conformance.test.ts` runs the
+Python module and the TypeScript on one rate history and compares. The fixture is built from the
+cases the formulas differ on: an uneven time step (the rectangle rule is exact for a step-average
+rate; a trapezoid is not), a step with no oil production (GOR null, not zero), a non-finite
+saturation (null, not a substitute) and a negative reported rate (taken as a magnitude). Verified
+load-bearing: a 1e-7 relative drift in the Python cumulative fails it.
+
+**What is computed, and what is refused.** 9 of the 16 contract quantities come from a rate
+history alone and are computed. The other 7 need inputs it does not carry — oil and gas in place,
+a gas PVT table and reservoir temperature, per-well BHP history — and `missing_inputs()` names
+each one and what it would need. A recovery factor computed against an assumed STOIIP would be
+worse than no curve. The conformance test asserts that computed ∪ refused is the *whole* contract,
+so a quantity nobody decided about fails rather than disappears.
+
+`crates/ressim-py/example_quantities.py` is the shape a notebook takes: run a case through
+`ressim-py`, call `rq.quantities(sim.rate_history())`, and print or plot series whose axis labels
+came from the same file the application reads.
+
+| Check | Result |
+|---|---|
+| `validate:product` | exit 0, **937 passed** / 15 skipped (was 932), 198 files |
+| Contract drift gate | load-bearing (mutation) |
+| TS/Python conformance | load-bearing (mutation) |
+| Contract coverage | 9 computed + 7 refused = 16, asserted |
+
+#### What this deliberately does not do
+
+No `anywidget`, no shared renderer, no chart bundle in Python. That was §S6's other route and it
+remains unchosen rather than unbuilt — the trade is recorded there, and this route is what makes
+a notebook's numbers comparable to the app's, which is the part that carries scientific weight.
+
+---
+
+**The plan is complete.** S0–S3 delivered FRONTEND-MODULAR-READY, S4–S5 ENGINE-MULTI-TARGET-READY,
+and S6 the data contract. The payload-boundary work that S5 exposed as blocking ran as Phases 1–3
+of `ENGINE_PAYLOAD_BOUNDARY_DESIGN_2026-09-21.md`; all twelve `JsValue` functions are now reachable
+from any target, which is what made this task's Python side possible at all.
+
+Still open, and each recorded where it belongs rather than here: `getFimStepStatsHistory`'s
+deletion and `api::GridState`'s schema version (payload design §11), `exports` tightening to
+declared entry points (S2), and `test:deployed` plus the native-binding gate being absent from CI
+(S3, S5).
