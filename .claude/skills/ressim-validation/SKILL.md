@@ -87,13 +87,22 @@ Rust buckets (grouped, curated, safe to run — no hanging tests):
 ```bash
 bash scripts/validate-solver-coverage.sh shared   # both-solver parity contracts   17 gates,  ~11 s
 bash scripts/validate-solver-coverage.sh impes    # IMPES-owned tests               4 gates,   ~3 s
-bash scripts/validate-solver-coverage.sh fim      # FIM-owned fast tests           14 gates,  ~26 s
-bash scripts/validate-solver-coverage.sh all      #                                35 gates,  ~40 s
+bash scripts/validate-solver-coverage.sh fim      # FIM-owned fast tests           17 gates,  ~58 s
+bash scripts/validate-solver-coverage.sh all      #                                38 gates,  ~72 s
 ```
 
 Times are warm-cache wall clock on a single-core box, excluding the initial `cargo test --no-run`
-compile. They are small enough that there is no reason to run a narrower bucket than the decision
-table calls for.
+compile. They are still small enough that there is no reason to run a narrower bucket than the
+decision table calls for.
+
+The FIM bucket roughly doubled during the F0–F8 repair series, from 14 gates / ~26 s to 17 / ~58 s.
+Three filters were added because their modules were in no bucket at all (`fim::linear::`,
+`fim::flow_resv::`, and the `fim_repair_` lifecycle group), and one of them dominates the cost:
+`fim_repair_` runs ~31 s, almost entirely
+`fim_repair_multi_completion_gravity_stays_physical_on_both_solvers`, which steps a 30x1x20
+gravity section for 12 days across four solver/completion configurations. That is the price of
+covering the multi-completion geometry on both backends (#10); if the bucket ever needs to get
+back under ~30 s, that test is the thing to shorten, not the filters to drop.
 
 The script builds the test target first (a compile break fails as a build error before
 any bucket runs) and prints a `gate ok: '<filter>' ran N test(s)` line per filter. A
