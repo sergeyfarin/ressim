@@ -172,6 +172,21 @@ importers:
       '@fontsource/ibm-plex-sans':
         specifier: 5.3.0
         version: 5.3.0
+      '@ressim/analytical':
+        specifier: workspace:*
+        version: link:src/lib/analytical
+      '@ressim/charts':
+        specifier: workspace:*
+        version: link:src/lib/charts
+      '@ressim/presets':
+        specifier: workspace:*
+        version: link:src/lib/presets
+      '@ressim/primitives':
+        specifier: workspace:*
+        version: link:src/lib/primitives
+      '@ressim/quantities':
+        specifier: workspace:*
+        version: link:src/lib/quantities
       chart.js:
         specifier: 4.5.1
         version: 4.5.1
@@ -227,6 +242,16 @@ importers:
       vitest:
         specifier: 5.0.1
         version: 5.0.1(@types/node@26.6.2)(@vitest/coverage-v8@5.0.1)(vite@8.3.0(@types/node@26.6.2)(jiti@2.7.0))
+
+  src/lib/analytical: {}
+
+  src/lib/charts: {}
+
+  src/lib/presets: {}
+
+  src/lib/primitives: {}
+
+  src/lib/quantities: {}
 
 packages:
 

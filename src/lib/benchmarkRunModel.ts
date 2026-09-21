@@ -1,5 +1,5 @@
-import { calculateDepletionAnalyticalProduction } from './analytical/depletionAnalytical';
-import { calculateAnalyticalProduction, computeWelgeMetrics } from './analytical/fractionalFlow';
+import { calculateDepletionAnalyticalProduction } from '@ressim/analytical/depletionAnalytical';
+import { calculateAnalyticalProduction, computeWelgeMetrics } from '@ressim/analytical/fractionalFlow';
 import { buildCreatePayloadFromState } from './buildCreatePayload';
 import {
     toFiniteNumber,
@@ -10,8 +10,8 @@ import {
     getStockTankOilInPlace,
     getGasInPlace,
     getDisplacementOilInPlace,
-} from './quantities/reservoirVolumes';
-import { integrateRunSeries } from './quantities/runSeries';
+} from '@ressim/quantities/reservoirVolumes';
+import { integrateRunSeries } from '@ressim/quantities/runSeries';
 import type {
     BenchmarkBreakthroughCriterion,
     BenchmarkComparisonMetric,

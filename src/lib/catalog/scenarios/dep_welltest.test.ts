@@ -7,8 +7,8 @@ import {
     permeabilityFromSemilogSlope,
     radiusOfInvestigation,
     skinFromSemilogIntercept,
-} from '../../analytical/wellTest';
-import { extractWellTestProps, getWellTestRate } from '../../charts/analyticalParamAdapters';
+} from '@ressim/analytical/wellTest';
+import { extractWellTestProps, getWellTestRate } from '@ressim/charts/analyticalParamAdapters';
 
 let wasmReady: Promise<unknown> | null = null;
 

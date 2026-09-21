@@ -60,7 +60,7 @@ import {
 } from './referenceChartTypes';
 import { buildPreviewSweepPanels, buildSweepPanels } from './sweepPanelBuilder';
 import { simulationCurvesForSet, resolveSimulationCurve } from './simulationCurves';
-import { DEFAULT_SWEEP_METHOD } from '../analytical/sweepMethods';
+import { DEFAULT_SWEEP_METHOD } from '@ressim/analytical/sweepMethods';
 import type { AnalyticalMethod } from '../catalog/scenarios';
 
 // Axis changes only remap x values. Keep the expensive, axis-independent run

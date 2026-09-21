@@ -9,7 +9,7 @@ import type {
   ScenarioEditabilityPolicy,
   ScenarioNavigationState,
   ScenarioSource,
-} from "../presets/phase2PresetContract";
+} from "@ressim/presets/phase2PresetContract";
 import type { WarningPolicy } from "../warningPolicy";
 
 export type {

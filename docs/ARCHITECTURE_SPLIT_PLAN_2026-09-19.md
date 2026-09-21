@@ -457,3 +457,65 @@ its own package."*
 **FRONTEND-MODULAR-READY is NOT declared.** That milestone also requires S2 (packages declared in
 the workspace) and S3 (a second page built from them without editing the first). S1 is one of its
 three preconditions, and the §9c Tailwind question is unanswered until S2 is attempted.
+
+### S2 — packages declared (COMPLETE)
+
+Five directories under `src/lib/` are now workspace packages — `@ressim/analytical`,
+`@ressim/charts`, `@ressim/presets`, `@ressim/primitives`, `@ressim/quantities` — declared via a
+`packages: ['src/lib/*']` glob added to the existing `pnpm-workspace.yaml`, each with a
+`package.json`, each linked from the root. 48 files changed; every cross-package import is now
+written `@ressim/<pkg>/<module>`. No file moved.
+
+| Check | Result |
+|---|---|
+| `pnpm install` | exit 0, "Scope: all 6 workspace projects", five `link:` entries |
+| Coupling metric | **90 value / 79 type-only / 0 mutual — identical to before packaging** |
+| `pnpm run validate:product` | exit 0, 930 passed / 15 skipped (926 + 4 new gate tests) |
+| `index-*.css` | **43 591 bytes, content hash `BV2-zFJz` — byte-identical to `4b30109`** |
+| `index-*.js` | 547 052 bytes — identical size (hash differs; module ids changed) |
+
+The metric being *unchanged* is the result worth reading twice. Declaring a package must not move
+real coupling, and it did not — but that only became checkable after the gates were taught to
+resolve package specifiers (below).
+
+#### §9c answered: Tailwind is fine, while packages stay under `src/`
+
+The predicted hazard was that Tailwind's `content: ['./src/**/*']` glob would stop seeing a
+packaged component and silently emit no classes for it. It does not, and the evidence is stronger
+than a size comparison: the built CSS has the **same content hash** before and after, and
+`ToggleGroup`'s arbitrary utility `text-\[11px\]` is present in the output. Packages remain under
+`src/lib/`, so the glob still covers them. §9c's warning stands for any future move *out* of
+`src/`; it is not a live problem now.
+
+**The plan's own S2 criterion was wrong and is corrected here.** It required that "the production
+bundle byte size does not grow". For the Tailwind hazard, growth is not the failure mode —
+**shrinkage is**: classes silently dropped make the CSS smaller, and a "did not grow" check passes
+happily while the page renders unstyled. The right check is byte-identity of the stylesheet, or an
+assertion that specific utilities survived. Both were done.
+
+#### Two gaps found while executing, both fixed
+
+1. **The import gates were blind to package specifiers** (`4b30109`). `check-import-cycles.mjs` is
+   a CI gate and resolved only relative paths, so converting the first module dropped measured
+   coupling from 90/79 to 88/78 with nothing decoupled — and, far worse, a value-level cycle
+   spanning two packages would have passed the gate in silence. Both scripts now resolve
+   `@ressim/<pkg>/<path>`, and `scripts/import-gates.test.ts` pins it: four tests, run against the
+   real scripts as subprocesses, asserting the *bad* case is detected and that external packages
+   are still ignored. Verified by mutation.
+2. **Two architecture tests asserted import spelling rather than which module** (`bf80666`). One
+   broke on the rename; the other — a *negative* assertion that App must not import the catalog
+   directly — did not break, and that is the point: pinned to one spelling, it would have stopped
+   guarding the moment `catalog` became a package, with nothing failing.
+
+#### Limitation this task does **not** remove
+
+A package name is not encapsulation. The `exports` maps are `./*` wildcards over source, so any
+internal module is reachable, and nothing in the toolchain prevents a file from writing
+`../charts/buildChartData` and tunnelling straight past the boundary. `src/lib/packageBoundaries.test.ts`
+now enforces the entry rule — it discovers packages by walking for `package.json`, so packages
+added later are covered without editing it — but that is a test, not a build-level guarantee.
+Tightening `exports` to explicit entry points is a later, separate decision; doing it now would
+mean choosing each package's public surface before S3 has shown what a second page actually needs.
+
+**FRONTEND-MODULAR-READY still needs S3**: a second page built from these packages without editing
+the first.

@@ -10,30 +10,30 @@
  * and sweepPanelBuilder.ts.
  */
 
-import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
-import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
+import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '@ressim/analytical/fractionalFlow';
+import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '@ressim/analytical/fractionalFlow';
 import {
     calculateDepletionAnalyticalProduction,
     computeShapeFactor,
     dietzProductivityIndex,
     dietzShapeFactorFromProductivityIndex,
-} from '../analytical/depletionAnalytical';
-import { calculateMaterialBalance } from '../analytical/materialBalance';
+} from '@ressim/analytical/depletionAnalytical';
+import { calculateMaterialBalance } from '@ressim/analytical/materialBalance';
 import { DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR } from '../physics/pvt';
-import { integrateRunSeries } from '../quantities/runSeries';
+import { integrateRunSeries } from '@ressim/quantities/runSeries';
 import {
     computeGasMaterialBalance,
     gasFormationVolumeFactor,
     pressureForPOverZ,
     pressureOverZ,
     type GasPvtRow,
-} from '../analytical/gasMaterialBalance';
+} from '@ressim/analytical/gasMaterialBalance';
 import {
     lineSourcePressure,
     semilogSlope,
     semilogValidFromTime,
     type ReservoirTestProps,
-} from '../analytical/wellTest';
+} from '@ressim/analytical/wellTest';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { AnalyticalOverlayMode } from '../catalog/scenarios';
 import type { DerivedRunSeries } from './axisAdapters';
@@ -54,7 +54,7 @@ export {
     getStockTankOilInPlace,
     getGasInPlace,
     getDisplacementOilInPlace,
-} from '../quantities/reservoirVolumes';
+} from '@ressim/quantities/reservoirVolumes';
 
 import {
     toFiniteNumber,
@@ -66,7 +66,7 @@ import {
     getStockTankOilInPlace,
     getGasInPlace,
     getDisplacementOilInPlace,
-} from '../quantities/reservoirVolumes';
+} from '@ressim/quantities/reservoirVolumes';
 
 /**
  * Returns permeability values per layer (mD). Uses `layerPermsX` in perLayer

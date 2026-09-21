@@ -26,7 +26,7 @@ import {
     getSweepComponentVisibility,
     type SweepAnalyticalMethod,
     type SweepGeometry,
-} from '../analytical/sweepEfficiency';
+} from '@ressim/analytical/sweepEfficiency';
 import {
     ANALYTICAL_BORDER,
     ANALYTICAL_BORDER_MULTI,

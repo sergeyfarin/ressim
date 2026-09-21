@@ -1,7 +1,7 @@
 import type {
     ChartConfig,
     ChartLayoutConfig,
-} from '../charts/chartLayoutConfig';
+} from '@ressim/charts/chartLayoutConfig';
 
 export const CHART_LAYOUTS: Record<string, ChartLayoutConfig> = {
     waterflood: {

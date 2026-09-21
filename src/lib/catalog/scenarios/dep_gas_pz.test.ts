@@ -7,7 +7,7 @@ import {
     gasFormationVolumeFactor,
     pressureOverZ,
     type GasPvtRow,
-} from '../../analytical/gasMaterialBalance';
+} from '@ressim/analytical/gasMaterialBalance';
 import { getScenario, getScenarioWithVariantParams } from '../scenarios';
 import { listOpmFlowArtifacts } from '../opmFlowArtifacts';
 

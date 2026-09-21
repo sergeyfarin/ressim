@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import initWasm, { ReservoirSimulator } from '../../ressim/pkg/simulator.js';
-import { computeBLRecoveryVsPVI, computeWelgeMetrics } from '../../analytical/fractionalFlow';
+import { computeBLRecoveryVsPVI, computeWelgeMetrics } from '@ressim/analytical/fractionalFlow';
 import { getScenario, getScenarioWithVariantParams } from '../scenarios';
 import { listOpmFlowArtifacts } from '../opmFlowArtifacts';
 

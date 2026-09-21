@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { getAnalyticalMethodDescriptor } from '../charts/analyticalMethodRegistry';
+import { getAnalyticalMethodDescriptor } from '@ressim/charts/analyticalMethodRegistry';
 import { listDeclaredOpmFlowArtifactKeys } from './opmFlowArtifacts';
-import { calculateAnalyticalProduction } from '../analytical/fractionalFlow';
-import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
-import { computeCombinedSweep } from '../analytical/sweepEfficiency';
-import { computeWellTestOnTimeAxis } from '../charts/analyticalParamAdapters';
-import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
+import { calculateAnalyticalProduction } from '@ressim/analytical/fractionalFlow';
+import { calculateDepletionAnalyticalProduction } from '@ressim/analytical/depletionAnalytical';
+import { computeCombinedSweep } from '@ressim/analytical/sweepEfficiency';
+import { computeWellTestOnTimeAxis } from '@ressim/charts/analyticalParamAdapters';
+import type { RockProps, FluidProps } from '@ressim/analytical/fractionalFlow';
 import type { CompositionalCaseConfig } from '../compositional/types';
 import {
     getScenario,

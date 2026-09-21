@@ -18,13 +18,13 @@ import {
     dfw_dSw,
     type FluidProps,
     type RockProps,
-} from '../analytical/fractionalFlow';
+} from '@ressim/analytical/fractionalFlow';
 import {
     arealSweepAtBreakthrough,
     arealSweepAtPvi,
     mobilityRatio,
     type SweepGeometry,
-} from '../analytical/sweepEfficiency';
+} from '@ressim/analytical/sweepEfficiency';
 
 /** Which grid direction the profile runs along. */
 export type SpatialProfileAxis = 'i' | 'j' | 'k' | 'well-path';

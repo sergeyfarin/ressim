@@ -5,9 +5,9 @@ import type {
     BenchmarkRunPolicy,
 } from './catalog/benchmarkCases';
 import type { AnalyticalMethod } from './catalog/scenarios';
-import { getAnalyticalMethodDescriptor } from './charts/analyticalMethodRegistry';
-import { SWEEP_METHODS } from './analytical/sweepMethods';
-import type { SweepAnalyticalMethod } from './analytical/sweepEfficiency';
+import { getAnalyticalMethodDescriptor } from '@ressim/charts/analyticalMethodRegistry';
+import { SWEEP_METHODS } from '@ressim/analytical/sweepMethods';
+import type { SweepAnalyticalMethod } from '@ressim/analytical/sweepEfficiency';
 
 export type BenchmarkCaseSnapshot = {
     grid: string;

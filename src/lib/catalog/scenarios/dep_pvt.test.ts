@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import initWasm, { ReservoirSimulator } from '../../ressim/pkg/simulator.js';
 import { getScenarioWithVariantParams } from '../scenarios';
-import { calculateMaterialBalance } from '../../analytical/materialBalance';
-import { integrateRunSeries } from '../../quantities/runSeries';
-import { getInitialSaturations, getPoreVolume } from '../../quantities/reservoirVolumes';
+import { calculateMaterialBalance } from '@ressim/analytical/materialBalance';
+import { integrateRunSeries } from '@ressim/quantities/runSeries';
+import { getInitialSaturations, getPoreVolume } from '@ressim/quantities/reservoirVolumes';
 
 let wasmReady: Promise<unknown> | null = null;
 

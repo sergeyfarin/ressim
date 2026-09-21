@@ -1,6 +1,6 @@
-import type { ReferenceXAxisMap } from '../charts/axisAdapters';
+import type { ReferenceXAxisMap } from '@ressim/charts/axisAdapters';
 import type { PublishedReferenceSeries, ScenarioReferenceSourceDef } from './scenarios';
-import { pressureOverZ, type GasPvtRow } from '../analytical/gasMaterialBalance';
+import { pressureOverZ, type GasPvtRow } from '@ressim/analytical/gasMaterialBalance';
 import wfBl1dArtifact from './opm-flow-results/wf_bl1d.json';
 import spe1Artifact from './opm-flow-results/spe1_gas_injection.json';
 import gasDriveArtifact from './opm-flow-results/gas_drive.json';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { calculateDepletionAnalyticalProduction } from './analytical/depletionAnalytical';
-import { computeWelgeMetrics } from './analytical/fractionalFlow';
+import { calculateDepletionAnalyticalProduction } from '@ressim/analytical/depletionAnalytical';
+import { computeWelgeMetrics } from '@ressim/analytical/fractionalFlow';
 import { getBenchmarkFamily, getBenchmarkVariantsForFamily } from './catalog/benchmarkCases';
 import {
     buildBenchmarkCreatePayload,

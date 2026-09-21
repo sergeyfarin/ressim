@@ -44,22 +44,22 @@ import {
     type ScenarioNavigationState,
     type ReferenceProvenance,
     type ComparisonSelection,
-} from '../presets/phase2PresetContract';
+} from '@ressim/presets/phase2PresetContract';
 import type { ParameterStore } from './parameterStore.svelte';
 import type { RuntimeStore } from './runtimeStore.svelte';
-import { getReferenceChartLayoutConfig } from '../charts/referenceChartConfig';
+import { getReferenceChartLayoutConfig } from '@ressim/charts/referenceChartConfig';
 import { buildScenarioComparisonFamily } from '../scenario/scenarioChartModel';
-import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
+import type { RockProps, FluidProps } from '@ressim/analytical/fractionalFlow';
 import {
     computeSweepRecoveryFactor,
     type SweepAnalyticalMethod,
     type SweepGeometry,
     type SweepRFResult,
-} from '../analytical/sweepEfficiency';
+} from '@ressim/analytical/sweepEfficiency';
 import type { GridState, WellState, SimulatorSnapshot, RateHistoryPoint } from '../simulator-types';
 import { resolvePressureDisplayRange, type PressureDisplayRange } from '../visualization/spatialViewModel';
 import type { SpatialProfileReference } from '../visualization/spatialProfileModel';
-import { getLayerPermeabilities } from '../charts/analyticalParamAdapters';
+import { getLayerPermeabilities } from '@ressim/charts/analyticalParamAdapters';
 
 // ---------- Presentation-layer types (live in nav store; used by App.svelte) ----------
 

@@ -5,7 +5,7 @@ import {
     type ProductFamily,
     type ScenarioEditabilityPolicy,
     type ScenarioSource,
-} from '../presets/phase2PresetContract';
+} from '@ressim/presets/phase2PresetContract';
 import {
     benchmarkFamilies,
     getBenchmarkSensitivityAxisLabel,

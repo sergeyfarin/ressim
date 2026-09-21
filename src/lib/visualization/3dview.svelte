@@ -29,7 +29,7 @@
         WellState,
         WellStateEntry,
     } from "../simulator-types";
-    import ToggleGroup from "../primitives/ToggleGroup.svelte";
+    import ToggleGroup from "@ressim/primitives/ToggleGroup.svelte";
     import { fitPerspectiveCameraToBox } from "./cameraFit";
     import type { PressureDisplayRange } from "./spatialViewModel";
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import initWasm, { ReservoirSimulator } from '../../ressim/pkg/simulator.js';
-import { calculateDepletionAnalyticalProduction } from '../../analytical/depletionAnalytical';
+import { calculateDepletionAnalyticalProduction } from '@ressim/analytical/depletionAnalytical';
 import { getScenarioWithVariantParams } from '../scenarios';
 
 let wasmReady: Promise<unknown> | null = null;

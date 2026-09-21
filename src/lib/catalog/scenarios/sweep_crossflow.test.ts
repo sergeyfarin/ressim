@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import initWasm, { ReservoirSimulator } from '../../ressim/pkg/simulator.js';
-import { computeVerticalSweep } from '../../analytical/sweepEfficiency';
+import { computeVerticalSweep } from '@ressim/analytical/sweepEfficiency';
 import { getScenario, getScenarioWithVariantParams } from '../scenarios';
 
 let wasmReady: Promise<unknown> | null = null;

@@ -5,8 +5,8 @@
     import type { RunResult } from '../scenario/runModel';
     import type { ChartLayoutConfig } from './chartLayoutConfig';
     import type { RateHistoryPoint, AnalyticalProductionPoint } from '../simulator-types';
-    import type { SweepAnalyticalMethod, SweepGeometry, SweepRFResult } from '../analytical/sweepEfficiency';
-    import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
+    import type { SweepAnalyticalMethod, SweepGeometry, SweepRFResult } from '@ressim/analytical/sweepEfficiency';
+    import type { RockProps, FluidProps } from '@ressim/analytical/fractionalFlow';
     import type { AnalyticalPreviewVariant } from './buildChartData';
 
     let {

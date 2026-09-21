@@ -13,10 +13,10 @@
  * Sensitivity variant keys:   {dim_abbrev}_{value_tag} (e.g. mob_favorable, sor_low)
  */
 
-import { DEFAULT_CHART_PANEL_ORDER, type ChartLayoutConfig } from '../charts/chartLayoutConfig';
-import { validateSinglePropertyPanel } from '../charts/curvePropertyRegistry';
-import type { SweepAnalyticalMethod, SweepGeometry } from '../analytical/sweepEfficiency';
-import { DEFAULT_SWEEP_METHOD, describeSweepMethod } from '../analytical/sweepMethods';
+import { DEFAULT_CHART_PANEL_ORDER, type ChartLayoutConfig } from '@ressim/charts/chartLayoutConfig';
+import { validateSinglePropertyPanel } from '@ressim/charts/curvePropertyRegistry';
+import type { SweepAnalyticalMethod, SweepGeometry } from '@ressim/analytical/sweepEfficiency';
+import { DEFAULT_SWEEP_METHOD, describeSweepMethod } from '@ressim/analytical/sweepMethods';
 import type { RateHistoryPoint } from '../simulator-types';
 import { getChartLayout, mergeChartLayoutConfig } from './chartLayouts';
 

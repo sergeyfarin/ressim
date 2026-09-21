@@ -9,7 +9,7 @@
  * All three builders are pure functions: no side effects, no Chart.js, no DOM.
  */
 
-import { calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
+import { calculateGasOilAnalyticalProduction } from '@ressim/analytical/fractionalFlow';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import {
     computeBLAnalyticalFromParams,

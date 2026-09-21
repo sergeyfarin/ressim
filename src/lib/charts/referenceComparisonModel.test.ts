@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
-import { calculateAnalyticalProduction, computeWelgeMetrics } from '../analytical/fractionalFlow';
+import { calculateDepletionAnalyticalProduction } from '@ressim/analytical/depletionAnalytical';
+import { calculateAnalyticalProduction, computeWelgeMetrics } from '@ressim/analytical/fractionalFlow';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import { getScenario, getScenarioChartLayout } from '../catalog/scenarios';
 import { resolveScenarioReferenceSeries } from '../catalog/opmFlowArtifacts';

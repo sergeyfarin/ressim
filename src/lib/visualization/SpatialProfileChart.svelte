@@ -15,11 +15,11 @@
      */
     import { onMount, onDestroy, untrack } from "svelte";
     import { Chart, registerables } from "chart.js";
-    import { ANALYTICAL_DASH } from "../charts/curveStylePolicy";
+    import { ANALYTICAL_DASH } from "@ressim/charts/curveStylePolicy";
     import {
         applyThemeToChart,
         externalTooltipHandler,
-    } from "../charts/chart-helpers";
+    } from "@ressim/charts/chart-helpers";
     import {
         axisLength,
         buildFloodFrontOverlay,
@@ -34,7 +34,7 @@
         type SpatialProfileReference,
     } from "./spatialProfileModel";
     import type { GridState, RateHistoryPoint } from "../simulator-types";
-    import type { FluidProps, RockProps } from "../analytical/fractionalFlow";
+    import type { FluidProps, RockProps } from "@ressim/analytical/fractionalFlow";
     import type { PressureDisplayRange } from "./spatialViewModel";
 
     let {

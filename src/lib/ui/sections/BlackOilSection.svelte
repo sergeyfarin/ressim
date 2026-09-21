@@ -1,8 +1,8 @@
 <script lang="ts">
   import Collapsible from "../controls/Collapsible.svelte";
   import Input from "../controls/Input.svelte";
-  import ChartSubPanel from "../../charts/ChartSubPanel.svelte";
-  import type { CurveConfig } from "../../charts/chartTypes";
+  import ChartSubPanel from "@ressim/charts/ChartSubPanel.svelte";
+  import type { CurveConfig } from "@ressim/charts/chartTypes";
   import type { ModePanelParameterBindings } from "../modePanelTypes";
 
   let {

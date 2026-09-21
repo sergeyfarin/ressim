@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import initWasm, { ReservoirSimulator } from '../ressim/pkg/simulator.js';
-import { computeWelgeMetrics } from '../analytical/fractionalFlow';
+import { computeWelgeMetrics } from '@ressim/analytical/fractionalFlow';
 import { buildBenchmarkCreatePayload, buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRunModel';
-import { buildReferenceComparisonModel } from '../charts/buildChartData';
+import { buildReferenceComparisonModel } from '@ressim/charts/buildChartData';
 import { getBenchmarkEntry, getBenchmarkFamily, getBenchmarkVariantsForFamily } from './benchmarkCases';
 import { getScenario, getScenarioWithVariantParams } from './scenarios';
 import type { SimulatorCreatePayload, SimulatorWellDefinition, SimulatorWellSchedule } from '../simulator-types';

@@ -6,7 +6,7 @@
  * logic across multiple scenarios that share the same physics.
  */
 
-import { integrateRunSeries } from '../quantities/runSeries';
+import { integrateRunSeries } from '@ressim/quantities/runSeries';
 import {
     calculateAnalyticalProduction,
     calculateGasOilAnalyticalProduction,
@@ -14,12 +14,12 @@ import {
     type FluidProps,
     type GasOilRockProps,
     type GasOilFluidProps,
-} from '../analytical/fractionalFlow';
+} from '@ressim/analytical/fractionalFlow';
 import {
     calculateDepletionAnalyticalProduction,
     type DepletionAnalyticalParams,
-} from '../analytical/depletionAnalytical';
-import { computeGasMaterialBalanceCurves } from '../charts/analyticalParamAdapters';
+} from '@ressim/analytical/depletionAnalytical';
+import { computeGasMaterialBalanceCurves } from '@ressim/charts/analyticalParamAdapters';
 import type { RateHistoryPoint } from '../simulator-types';
 import type { ScenarioAnalyticalDef, ScenarioAnalyticalOutput } from './scenarios';
 

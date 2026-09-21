@@ -11,7 +11,7 @@ import {
     type SpatialProfileGrid,
 } from './spatialProfileModel';
 import type { GridState } from '../simulator-types';
-import { computeWelgeMetrics } from '../analytical/fractionalFlow';
+import { computeWelgeMetrics } from '@ressim/analytical/fractionalFlow';
 
 const GRID: SpatialProfileGrid = { nx: 4, ny: 3, nz: 2, cellDx: 10, cellDy: 20, cellDz: 5 };
 

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import initWasm, { ReservoirSimulator } from '../../ressim/pkg/simulator.js';
-import { computeWellTestOnTimeAxis } from '../../charts/analyticalParamAdapters';
+import { computeWellTestOnTimeAxis } from '@ressim/charts/analyticalParamAdapters';
 import {
     computeShapeFactor,
     dietzProductivityIndex,
     dietzShapeFactorFromProductivityIndex,
-} from '../../analytical/depletionAnalytical';
+} from '@ressim/analytical/depletionAnalytical';
 import { getScenarioWithVariantParams } from '../scenarios';
 
 let ready: Promise<unknown> | null = null;
