@@ -6039,3 +6039,39 @@ INCONCLUSIVE**. Production and all tolerances are unchanged. The earlier sparse 
 is superseded without promoting dense. Next task: S0 faithful first-divergence capture; then
 identical-system correction/rank checks, coherent lifecycle diagnosis, fixed-horizon time/grid
 refinement and baseline/A/B/A+B interaction tests. Remote issue publication was not performed.
+
+### FIM-DIRECT-001 — root cause: inactive unknown lost its slope at negative roundoff (2026-09-22)
+
+Base `916a124`, native release. Supersedes the "INCONCLUSIVE" verdict of the entry above for the
+small-system and cross-target incident.
+
+A temporary same-matrix probe in `solve_linearized_system_with_routing` ran both LUs, plus an
+equilibrated SVD, on every forced-direct system of the parity case `buckley-fim`. Iteration 0:
+non-singular, and the corrections agree to 5e-12 on ‖dx‖ 7e3. Every later solve in the step:
+**exactly singular** (dense U has an exact 0 pivot, and faer refuses to factor), with the null
+vector on local variable 2 of the producer cell. The first correction left
+`hydrocarbon_var = −1.1e-14` there. In the two-phase branch of `cell_props_generic`,
+`max_floor(0.0)` then took the constant branch, emptying that row and column, and nothing could
+move `hc` back. Projecting `hc` to 0 as a check gave 18 → 4 substeps and 0/26 failed solves.
+
+Fix: keep the clamped value and give `sg` a unit slope in `hc` for any sign, matching the legacy
+`#[cfg(test)]` assembler that the adjacent comment already cited. Tests
+`two_phase_inactive_unknown_keeps_its_slope_at_negative_roundoff` and
+`fim_two_phase_parity_step_does_not_fragment` both fail on the old line.
+
+Results (single observations; the dense runs used a temporary top-level routing override):
+1d-160 4,697 → 5 substeps, 59 s → 15 ms; 12×12 9,021 → 6, 153 s → 62 ms. On 12×12 the two
+backends' fine-dt limits agree to 3e-5 bar, and their dt=1 difference (0.66 bar) is ~5% of the
+time error (12 bar). `validate-native-binding.sh`: `buckley-fim` 8.28 bar → 5.68e-14, and
+`adverse-mobility-fim` 1.73 bar → 5.68e-14, which refutes the libm/SIMD secondary-cause
+hypothesis. Both cases are now strict. `validate-solver-coverage.sh all` exit 0.
+
+Separate defect found: the depletion grid test is not a backend oracle. There are zero singular
+solves, yet ~200–280k solves per grid on both backends. Its bubble-point step takes 21,797
+substeps at nx = 10, in a sawtooth of 20-iteration relaxed accepts. 89% of hotspot iterations are
+Saturated cells holding a negative raw Sg. `FIM_Y2B_RAW_SATURATION=1` gives 27,959 substeps and
+`FIM_W025_DISABLE_RAW_SW=1` gives 36,562. Verdict for that defect: **OPEN**, coupled lifecycle.
+
+Also fixed: `scripts/validate-native-binding.sh` copied the extension from a hard-coded
+`target/debug`, ignoring `CARGO_TARGET_DIR`, and trusted any existing wasm bundle. Either could
+silently compare stale builds. It now honours the variable and rebuilds wasm via `build-wasm.sh`.

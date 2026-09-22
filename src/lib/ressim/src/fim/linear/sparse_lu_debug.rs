@@ -17,8 +17,9 @@ const MIN_REFINEMENT_IMPROVEMENT_RATIO: f64 = 0.95;
 
 /// The two stages which can reject the debug Sparse-LU input before a correction exists.
 ///
-/// This is intentionally diagnostic-only. The production FIM route does not select this
-/// backend, and this status must not be used as a nonlinear-convergence verdict.
+/// This is intentionally diagnostic-only, and must not be used as a nonlinear-convergence
+/// verdict. Note that the backend itself *is* production on native: small systems solve here
+/// (`solve_linearized_system_with_routing`), while wasm uses dense LU.
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SparseLuPreparation {

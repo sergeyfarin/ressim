@@ -1,13 +1,12 @@
 # FIM cross-target divergence — root cause
 
-> **2026-09-22 review: backend recommendation superseded.** The target-dependent routing
-> below explains cross-target divergence, but does not identify which correction is accurate.
-> The subsequent dense/sparse timings and grid-test results do not establish an accuracy
-> winner. Follow the [dense/sparse review and repair plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md):
-> repair replay fidelity, isolate the first divergent correction, separate time/grid error,
-> then test coupled fixes. The sparse recommendation in §8 is historical, not the current
-> decision. Reduced-system dispatch can also cross the 512-row threshold; the large-case
-> observations below are case-specific, not a universal exclusion of direct solving.
+> **Superseded by §9 (FIM-DIRECT-001, 2026-09-22).** The backend split in §§1–3 is real, but
+> it was the *trigger*, not the defect. Both LU backends are correct. The defect was in shared
+> property evaluation: roundoff of one sign in the inactive two-phase gas unknown made every later
+> Jacobian in the step **exactly singular**, so both backends had to reject it. Which backend's
+> roundoff came out negative decided which target fragmented. §7's "second cause" was the same
+> defect, and §8's backend trade no longer exists. After the fix, native (sparse) and wasm (dense)
+> agree to 5.7e-14 on every parity case, with the routing unchanged.
 
 Date: 2026-09-22. Base: `a708280`, clean tree. Investigation of the wasm32/x86-64 FIM difference
 recorded in `OPEN_ITEMS_2026-09-21.md` §1.
@@ -173,7 +172,7 @@ improved convergence on the fixture, 18 substeps to 4, and broke only assertions
 Unifying **onto sparse** would make the browser behave like native — 4 substeps to 18 — which is a
 user-facing regression in the one place the simulator actually runs for people.
 
-## 7. There is a second, smaller cause still unidentified
+## 7. There is a second, smaller cause still unidentified — *superseded: same defect, see §9*
 
 Unifying the backend did **not** reduce every case to noise. On `adverse-mobility-fim` the
 difference fell from 1.733e+00 to **1.24e-05** — four orders of magnitude better, and still far
@@ -185,7 +184,7 @@ the Corey relperm, or SIMD summation order in the iterative stack) amplified by 
 still branches on tolerances — the mechanism originally guessed at, now demoted from primary cause
 to plausible secondary. It has not been confirmed.
 
-## 8. Recommendation — **revised 2026-09-22 after attempting it**
+## 8. Recommendation — **revised 2026-09-22 after attempting it** — *superseded by §9*
 
 > **The recommendation first written here was wrong, and the attempt is what showed it.** It said
 > to unify on dense because that direction "improved convergence, 18 substeps to 4". Substep count
@@ -260,3 +259,149 @@ gate covering those sizes endorses. Both remove the divergence; neither is free.
    hypothesis becomes measurable on its own instead of assumed.
 6. Keep `adverse-mobility-fim` non-strict until that residual is closed; `buckley-fim` becomes
    strict the moment the routing is unified, whichever backend wins.
+
+## 9. The actual root cause: an inactive unknown whose slope depended on the sign of roundoff
+
+*FIM-DIRECT-001, 2026-09-22. Base `916a124`, native release. This supersedes §§7–8 and the
+backend recommendation in the
+[dense/sparse review plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md), whose S0/S1 this answers.*
+
+### 9.1 The experiment that decided it
+
+Both LU backends were run on **the same matrix** at every forced-direct solve of the parity case
+`buckley-fim` (50 cells, one 1-day step, 18 native substeps), with an equilibrated SVD of each
+matrix. This used a temporary, uncommitted probe in `solve_linearized_system_with_routing`.
+
+| Solves | Matrix | Sparse LU | Dense LU | ‖dx_sparse − dx_dense‖∞ |
+|---|---|---|---|---|
+| Newton iter 0 | non-singular, σmin/σmax 4.6e-4 | converged, res 7e-13 | converged, res 1e-12 | 5.5e-12 on ‖dx‖ 7e3 |
+| every later solve in the step | **exactly singular**: one σ = 0, dense U has an exact 0 pivot | factorization refused | `lu().solve()` → `None` | both rejected |
+| non-singular solves later in the run | σmin/σmax ~4e-4 | converged | converged | ≤ 4e-14 |
+
+**Neither LU is wrong.** Whenever the matrix is non-singular they agree to roundoff; whenever it
+is singular both refuse it. Every null vector was supported on local variable 2, the third cell
+unknown. In a two-phase run that unknown (`hydrocarbon_var`) is **inactive**: no gas is present,
+and it is meant to stay at 0.
+
+### 9.2 Mechanism
+
+`fim/properties.rs::cell_props_generic`, two-phase / no-PVT branch:
+
+```rust
+let sg = hydrocarbon_var.max_floor(0.0).min_of(total_hc);
+```
+
+`max_floor` is branch-selecting: at `hc >= 0` it keeps the variable's slope, below 0 it returns a
+constant. The first direct solve does not return `dhc = 0` exactly. It returns roundoff: here
+**−1.1e-14** in the producer cell. From then on that cell's gas row and column are identically
+zero, the Jacobian is exactly singular, and the Newton correction can never move `hc` back, since
+the column is empty. So the whole step runs on the fallback ladder. Dense LU on wasm happened to
+produce roundoff of the other sign on this case; on other cases it does not, which is why dense
+also failed gates.
+
+The comment directly above the line already stated the intent: "the third unknown must keep LIVE
+derivatives… The legacy assembler regularizes the same way". The legacy assembler (now
+`#[cfg(test)]`) uses `d_sg/d_hc = 1` **for any sign**. The AD port kept the value and lost that
+property. The existing gate `two_phase_singularity_check` evaluates at exactly `hc = 0`, where
+`>=` keeps the slope, so it could not see this.
+
+### 9.3 Fix
+
+The value stays clamped (residuals unchanged); the slope is the legacy chain rule's,
+`d_sg/d_hc = 1`, whatever the sign:
+
+```rust
+let sg_value = hydrocarbon_var.max_floor(0.0).min_of(total_hc).value();
+let sg = hydrocarbon_var + S::from_f64(sg_value - hydrocarbon_var.value());
+```
+
+Two tests pin it, and both were checked against the old line (each fails there):
+
+- `fim::properties::tests::two_phase_inactive_unknown_keeps_its_slope_at_negative_roundoff`: the unit contract
+  at `hc ∈ {−1.1e-14, 0, +1.1e-14}`;
+- `tests::buckley::fim_two_phase_parity_step_does_not_fragment`: the parity case takes ≤ 4
+  substeps (old code: 18).
+
+No path with a PVT table changes: those branches already keep the tagged primary raw, with no clamp. The edited branch also serves three-phase runs *without* a PVT table, where `hc` is a real Sg. There, below zero, it now keeps the same unit slope the PVT Saturated arm keeps, while the value stays clamped.
+
+### 9.4 Results
+
+Same case definitions as the earlier sparse/dense table (Buckley-style, 2 days, dt = 1 day,
+native release). "Dense" = the temporary probe routing the top-level forced-direct solve to dense
+LU. Timings are single observations on this machine, not baselines.
+
+| Case | Rows | Substeps, sparse before → after | Substeps, dense after | Time, sparse after | Time, dense after |
+|---|---|---|---|---|---|
+| 1d-50, 1 day (parity) | 154 | 18 → **4** | 4 | 7.5 ms | 20 ms |
+| 1d-50, 2 days | 154 | 19 → **5** | 5 | 9.4 ms | 26 ms |
+| 1d-160, 2 days | 484 | 4,697 → **5** | 5 | 15 ms | 278 ms |
+| 2d-12×12, 2 days | 436 | 9,021 → **6** | 7 | 62 ms | 627 ms |
+
+Accuracy on 2d-12×12, scored against a dt = 0.02-day run (the fine limit):
+
+| | Sparse | Dense |
+|---|---|---|
+| Fine limit, sparse vs dense | 3.1e-5 bar, 2.2e-7 Sw | — |
+| dt = 1 error vs fine, max \|Δp\| / \|ΔSw\| | 12.15 bar / 0.081 | 12.73 bar / 0.082 |
+| dt = 0.1 error vs fine | 3.09 bar / 0.018 | 3.09 bar / 0.018 (identical) |
+| dt = 1, sparse vs dense | 0.66 bar / 0.006 | |
+
+Per-solve corrections on 12×12 agree to ≤ 2.5e-10 on ‖dx‖ ~ 1e3. The 6-vs-7 split is roundoff
+crossing an adaptive-controller threshold, and the resulting difference is ~5% of either
+backend's time-discretization error. **There is no accuracy winner; sparse is 4–18× faster.**
+
+Cross-target, via `bash scripts/validate-native-binding.sh` on this tree, with the
+`cfg(target_arch)` routing **still in place**:
+
+| Case | Before | After |
+|---|---|---|
+| `buckley-fim` | 8.28 bar, 18 vs 4 substeps | **5.68e-14**, rates 1.1e-13 |
+| `adverse-mobility-fim` | 1.73 bar (1.24e-05 with dense unified) | **5.68e-14**, rates 2.1e-13 |
+
+Both cases are now `strict` in `cases.json`. The libm/SIMD hypothesis of §7 is **refuted** for
+this matrix: nothing else remained once the singular Jacobians were gone.
+
+Gates on the fixed tree: `bash scripts/validate-solver-coverage.sh all` exit 0; `tests::buckley`,
+`assembly_ad` 13, `fim::properties` 8, `fim_repair_` 6, `report_contract` 7, `fim::flux` 7,
+`fim::state` 13 all pass.
+
+### 9.5 What this does *not* fix: bubble-point fragmentation (a separate defect)
+
+`physics_depletion_grid_convergence_fim` (three-phase, PVT table) is untouched by the fix, and
+still passes on sparse and fails on dense exactly as §8 recorded. Neither result means anything
+about the backends, because **the run itself is pathological on both**:
+
+- A per-solve census found **zero** singular or rejected solves at every grid on either
+  backend, yet 218,000–280,000 linear solves per grid on sparse and 195,000–283,000 on dense, for
+  a 1-D, 100-day depletion.
+- At nx = 10 the first 5-day report step, which crosses the bubble point, takes **21,797
+  substeps**; every later step takes 1.
+- The substeps form a sawtooth: dt ≈ 3e-5 to 1.5e-4 day, alternating between a 20-iteration
+  accept via the final-iteration relaxed tier (growth ×0.4) and a 3–5 iteration accept (×2.6).
+  Inside the capped ones, one cell's pressure ping-pongs (149.695 ↔ 149.723 bar) with the oil
+  mass-balance residual bouncing between 2e-7 and 3e-6.
+- 89% of hotspot iterations are in a cell tagged **Saturated holding a negative raw Sg**
+  (typically −3e-4). Default `OpmAligned` keeps saturations raw (`opm_raw_saturation`, WATER-025),
+  but the OPM Sg↔Rs primary-variable switch that goes with it (`FIM_Y2B_RAW_SATURATION`, Y2b3)
+  is off by default, so redissolved gas never switches the cell to Rs.
+- Neither flag alone repairs it. With the full Y2b3 lifecycle: 27,959 substeps. With the hard
+  clamp restored (`FIM_W025_DISABLE_RAW_SW`): 36,562. Both also leave the pressure stuck near the
+  bubble point after step 0: pmin 141.5 and 150.0 bar, against 124.5 on the default.
+
+So the grid-convergence gate currently measures the outcome of a chaotic ~20k-substep bubble-point
+crossing. Roundoff-level differences, such as the backend, move its coarse-grid values enough to
+flip a 0.8 contraction check. That is why it could not arbitrate §8, and why the dt=1.0 variant
+failed on both. This is the coupled-semantics case the review plan's S2/S4 are written for:
+raw primaries, primary-variable adaptation and accept tiers interact, and each flag alone makes it
+worse. It is recorded as an open item rather than patched here.
+
+### 9.6 What follows
+
+1. **Backend routing can now be unified on its merits, with no accuracy trade.** Sparse is the
+   faster backend at every size measured. The remaining target split is cleanup plus the
+   different recovery ladders when a direct solve is refused. Worth doing, no longer urgent.
+2. **Bubble-point fragmentation (§9.5)** is the real remaining FIM defect on small cases. It needs
+   the coupled investigation, not a flag flip.
+3. `FIM_STATUS.md` wasm baselines: the two-phase ones may now move natively. Re-measure before
+   citing any of them as cross-target.
+

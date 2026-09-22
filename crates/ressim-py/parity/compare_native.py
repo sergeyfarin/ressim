@@ -57,10 +57,10 @@ def worst_array_delta(native, expected) -> tuple[float, int]:
 def check_case(c: dict, reference: dict, failures: list[str]) -> None:
     """Compare one case. A non-strict case reports its divergence instead of failing.
 
-    Non-strict exists for one measured reason: wasm32 and x86-64 substep the FIM cases
-    differently, so their trajectories are not comparable at 1e-9 and pretending otherwise would
-    either fail every run or need a tolerance so wide it asserted nothing. Reporting keeps the
-    number in front of whoever runs the gate; deleting the case would not.
+    Non-strict existed because wasm32 and x86-64 substepped the FIM cases differently. That was
+    FIM-DIRECT-001, now fixed, and every committed case is strict. The mode stays for the next
+    measured divergence: reporting keeps its size in front of whoever runs the gate, where
+    deleting the case would not.
     """
     name = c["id"]
     strict = bool(c.get("strict", True))
@@ -203,8 +203,7 @@ def main() -> int:
     strict_cases = [c for c in cases if c.get("strict", True)]
     print(
         f"\nnative and wasm bindings agree on {len(strict_cases)} strict cases of {len(cases)}, "
-        "built from the committed Buckley case A fixture. The rest are the FIM cases, which "
-        "diverge across targets by a measured amount printed above."
+        "built from the committed Buckley case A fixture."
     )
     return 0
 

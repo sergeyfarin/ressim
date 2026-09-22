@@ -7,67 +7,41 @@ Each item says what it is, why it was not done, and what would close it. Items o
 document link there rather than being restated; this file is an index of debt, not a second copy
 of the reasoning.
 
-## 1. FIM substeps differently on wasm32 than on x86-64 — **new, and the most important**
+## 1. FIM substeps differently on wasm32 than on x86-64 — **root cause fixed 2026-09-22; one follow-up open**
 
-**Measured 2026-09-21**, `crates/ressim-py/parity/cases.json` case `buckley-fim`, on the committed
-Buckley case A fixture:
+Was: the committed Buckley case A fixture took 4 substeps on wasm32 and 18 natively for its first
+1-day step, with 8.28 bar between them. A first analysis traced it to a `cfg(target_arch)` backend
+split (sparse LU native, dense LU wasm), but that was the trigger rather than the defect.
 
-| Target | Substeps recorded for the **first** 1-day step | Max pressure difference |
-|---|---|---|
-| wasm32 (browser bindings, under Node) | **4** | — |
-| x86-64 (native bindings) | **18** | **8.28 bar** |
+**Root cause (FIM-DIRECT-001):** the inactive two-phase gas unknown lost its Jacobian slope
+whenever a direct solve left it at negative roundoff (`max_floor(0.0)` in
+`fim/properties.rs::cell_props_generic`). Every later Jacobian in the step was then exactly
+singular, and both LUs correctly refused it. Which backend's roundoff came out negative decided
+which target fragmented. Fixed and pinned by two tests; native and wasm now agree to **5.7e-14**
+on every parity case, all of which are strict. Full record:
+[`FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md` §9](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md).
 
-This is not floating-point noise amplified over a long run: it is present on the very first step,
-and the trajectories then differ by whole bars. IMPES, on the same fixture and the same two
-targets, agrees to **1e-12**.
+**Still open:**
 
-**What was ruled out**, each by experiment rather than by argument:
+- *Routing cleanup.* The `cfg(target_arch)` split in `fim/linear/mod.rs` and `fim/newton.rs` is
+  now harmless to accuracy but still means two recovery ladders when a direct solve is refused.
+  Unify on sparse, which was 4–18× faster than dense at every measured size, with no accuracy
+  difference. The prepared unification on `fim/unify-linear-routing` (`f5a9577`) targets dense
+  and predates the fix; rebase it onto sparse rather than merging it.
+- *Re-baseline `FIM_STATUS.md`.* Its wasm figures for two-phase cases may now reproduce natively;
+  measure before citing any of them as cross-target.
 
-- *Build profile* — a `--release` native build gives the same 18 substeps as debug.
-- *The `wasm` feature added in S4* — a native build **with** the feature also gives 18. S4 did not
-  cause this.
-- *Configuration drift between the two runners* — the runners used `add_well` and
-  `addWellWithId`, which select different `WellGroupingKey` variants. Binding `add_well_with_id`
-  for Python so both configure identically changed nothing.
+## 1a. Bubble-point fragmentation in three-phase FIM — **new, open**
 
-> **Root cause found 2026-09-22 — and the mechanism guessed here was wrong.** It is not SIMD
-> dispatch. `fim/linear/mod.rs` and `fim/newton.rs` contain an explicit `cfg(target_arch)` split
-> that runs **different linear solver backends** in production: `sparse_lu_debug` on native,
-> `dense_lu_debug` on wasm. Patching native onto the wasm path collapses the difference from
-> 8.282e+00 bar to 5.684e-14 and the substeps from 18 to 4. Full analysis, scope, and the
-> "would fixing it degrade anything" testing:
-> [`FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md`](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md).
->
-> This item stays open because the fix is a production solver change that deserves its own
-> commit, and because a **second, smaller cause remains**: unifying the backend leaves 1.24e-05
-> on the harder case, not noise. The SIMD/libm hypothesis is demoted from primary cause to
-> plausible secondary, still unconfirmed.
-
-**Why it matters beyond curiosity.** The FIM convergence baselines in `docs/FIM_STATUS.md` were
-measured through `scripts/fim-wasm-diagnostic.mjs`, i.e. **wasm**. The Rust suite, including every
-FIM gate, runs **natively**. Those two have been measuring materially different solver behaviour,
-and nothing in the repository would have revealed it — the native/wasm parity gate did not exist
-until this session, and its first fixture ran IMPES.
-
-**Attempted 2026-09-22, not landed.** Unifying on dense fixes the divergence (8.282e+00 bar →
-5.68e-14) and passes 38 solver gates, the locked FIM baselines, SPE1 and the OPM comparison — but
-breaks `physics_depletion_grid_convergence_fim`, whose refinement contraction goes to 0.941 against
-a required 0.8. The attempt is on branch `fim/unify-linear-routing` (`f5a9577`), master is
-unchanged, and no tolerance was moved to accommodate it.
-
-The existing OPM case and SPE1 did not arbitrate: their ~900-row systems returned identical
-results in the comparison. This is case-specific; Schur reduction can move other systems across
-the 512-row threshold.
-
-**Review 2026-09-22:** the subsequent reported fragmentation does not justify choosing dense on
-speed or sparse on one refinement pass. The old generic solver lab does not use today's live
-linear options, and the grid test has not separated temporal from spatial error. The
-[dense/sparse review and repair plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md) supersedes the
-earlier sparse recommendation and defines a first-divergence replay, matched-time accuracy
-study and coupled-fix matrix.
-
-**To close:** execute that plan's S0–S5 gates, select and unify a validated policy, re-baseline
-`FIM_STATUS.md` on both targets, and explain or bound the remaining cross-target difference.
+`physics_depletion_grid_convergence_fim`'s first 5-day step, which crosses the bubble point,
+takes **21,797 substeps** at nx = 10. There are no singular solves, but ~250,000 linear solves
+per grid. Its pass/fail therefore depends on roundoff, such as the backend, and says nothing about
+spatial convergence until this is fixed. Hotspots are mostly Saturated cells holding a negative raw
+Sg: raw saturations are on by default, and the OPM Sg↔Rs switch is off by default.
+Neither flag alone repairs it; both make it worse. Owned by
+[the review plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md) S2–S4 as a coupled-lifecycle
+investigation. Evidence:
+[§9.5](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md).
 
 ## 2. Cross-client coverage is bounded by the Python shim, not by test effort
 

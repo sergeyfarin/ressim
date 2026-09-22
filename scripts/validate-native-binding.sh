@@ -34,15 +34,15 @@ echo "gate ok: ressim-py's dependency graph contains no wasm binding crates"
 echo "== 2. build and install the extension module"
 cargo build --manifest-path "$repo_root/Cargo.toml" -p ressim-py --quiet
 # The cdylib is libressim.so; Python imports a module named ressim.
-cp "$repo_root/target/debug/libressim.so" "$parity/ressim.so"
+# Honour CARGO_TARGET_DIR: copying from a hard-coded target/ silently tests a stale build.
+cp "${CARGO_TARGET_DIR:-$repo_root/target}/debug/libressim.so" "$parity/ressim.so"
 python3 -c "import sys; sys.path.insert(0, '$parity'); import ressim; ressim.Simulator(1,1,1,0.2)"
 echo "gate ok: the extension module builds and imports"
 
 echo "== 3. native/wasm parity on the committed fixture"
-if [ ! -f "$repo_root/src/lib/ressim/pkg/simulator_bg.wasm" ]; then
-    echo "FAIL: no wasm bundle; run scripts/build-wasm.sh first." >&2
-    exit 1
-fi
+# Rebuild rather than trust an existing bundle: a stale one compares the native engine against
+# an older wasm engine. build-wasm.sh no-ops when the bundle is newer than its sources.
+bash "$repo_root/scripts/build-wasm.sh"
 node "$parity/run_wasm.mjs"
 ( cd "$parity" && python3 compare_native.py )
 

@@ -2,13 +2,14 @@
 
 This is the consolidated current-state summary for the Rust FIM solver.
 
-> **2026-09-22: small-system dense/sparse investigation is open.** The reported native
-> fragmentation and confirmed target-dependent routing qualify the older statement that no
-> convergence work is justified. The [review and staged repair plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md)
-> records code findings, focused checks on `e121aea`, and the next task: a faithful
-> first-divergence replay. Neither backend is promoted by this review. The pasted large
-> substep counts have not been reproduced here; historical WASM baselines remain scoped to
-> their recorded fixtures and target. No physics or convergence tolerance changed.
+> **2026-09-22: small-system fragmentation root-caused and fixed (FIM-DIRECT-001).** Not a
+> backend defect: the inactive two-phase gas unknown lost its Jacobian slope at negative roundoff,
+> making the Jacobian exactly singular (see
+> [cross-target doc §9](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md)). Native and wasm now agree to
+> ~1e-13 on the parity matrix. The wasm-measured two-phase baselines below may shift natively;
+> re-measure before citing them cross-target. **Still open:** bubble-point fragmentation in
+> three-phase depletion (~21.8k substeps for one step at nx=10), which is why
+> `physics_depletion_grid_convergence_fim` cannot arbitrate backends.
 
 > ## 2026-09-21: these baselines are **wasm** baselines, and the native target differs
 >

@@ -53,11 +53,22 @@ pub(crate) fn cell_props_generic<S: Scalar>(
     // legacy assembler regularizes the same way: its accumulation block
     // applies the saturated-regime chain rule (d_sg/d_hc = 1 -> gas-row
     // diagonal pv/bg) even though its residual pins sg = 0. Along the actual
-    // trajectory hc = 0, so the residual value is unchanged and Newton yields
-    // delta_hc = 0 exactly; only the Jacobian structure differs.
+    // trajectory hc = 0, so the residual value is unchanged; only the Jacobian
+    // structure differs.
+    //
+    // The derivative must not depend on which side of zero hc sits. A direct solve
+    // does not return delta_hc = 0 exactly -- it returns roundoff, of either sign.
+    // With a branch-selecting clamp, hc = -1e-14 takes the constant branch, the
+    // column vanishes, and every later Jacobian in the step is exactly singular:
+    // both LU backends then reject it and the step fragments. Which backend's
+    // roundoff happened to be negative is what made native (sparse LU) and wasm
+    // (dense LU) substep differently (docs/FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md
+    // §9). So the value stays clamped and the slope is the legacy chain rule's,
+    // d_sg/d_hc = 1, whatever the sign.
     if !sim.three_phase_mode || sim.pvt_table.is_none() {
         let total_hc = raw_total_hc.max_floor(0.0);
-        let sg = hydrocarbon_var.max_floor(0.0).min_of(total_hc);
+        let sg_value = hydrocarbon_var.max_floor(0.0).min_of(total_hc).value();
+        let sg = hydrocarbon_var + S::from_f64(sg_value - hydrocarbon_var.value());
         let so = (one - sw - sg).max_floor(0.0);
         let bo = base_oil_fvf_generic(sim, p);
         return CellProps {
@@ -561,6 +572,29 @@ mod tests {
     /// `assembly_ad::two_phase_singularity_check`, which pins the row/column
     /// structure against the legacy Jacobian instead of against a numerical
     /// difference.
+    /// The inactive two-phase unknown keeps its slope when a solve leaves it at
+    /// negative roundoff. It used to lose it: `max_floor(0.0)` took the constant
+    /// branch, the column vanished, and the Jacobian went exactly singular for the
+    /// rest of the step. The value must stay clamped, so the residual is unchanged.
+    #[test]
+    fn two_phase_inactive_unknown_keeps_its_slope_at_negative_roundoff() {
+        let sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        assert!(!sim.three_phase_mode);
+        for hc in [-1.1e-14, 0.0, 1.1e-14] {
+            let props = cell_props_generic(
+                &sim,
+                HydrocarbonState::Saturated,
+                Ad::<3>::constant(300.0),
+                Ad::<3>::constant(0.2),
+                Ad::<3>::variable(hc, 2),
+                None,
+            );
+            assert_eq!(props.sg.deriv()[2], 1.0, "d_sg/d_hc at hc={hc}");
+            assert_eq!(props.so.deriv()[2], -1.0, "d_so/d_hc at hc={hc}");
+            assert_eq!(props.sg.value(), hc.max(0.0), "sg value at hc={hc}");
+        }
+    }
+
     #[test]
     fn ad_accumulation_matches_numerical_two_phase() {
         let sim = ReservoirSimulator::new(1, 1, 1, 0.2);

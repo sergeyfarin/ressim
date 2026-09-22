@@ -1,5 +1,21 @@
 # FIM dense/sparse review and interaction-aware repair plan
 
+> **Status 2026-09-22 (later the same day): S0/S1 answered, first defect fixed.** A same-matrix
+> probe, both LUs on every forced-direct system plus an equilibrated SVD, located the first
+> divergence without the full capture sidecar. The LU backends agree to roundoff on every
+> non-singular system and both refuse the singular ones. The singularity came from shared
+> property evaluation: the inactive two-phase gas unknown lost its slope at negative roundoff.
+> Fixed; native/wasm FIM parity is now 5.7e-14 and the 4,697/9,021-substep cases take 5/6.
+> Evidence and gates:
+> [cross-target doc §9](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md#9-the-actual-root-cause-an-inactive-unknown-whose-slope-depended-on-the-sign-of-roundoff).
+>
+> What of this plan still applies: **S2–S4 now target a second, independent defect**, bubble-point
+> fragmentation in the three-phase depletion case (§9.5 there: 21,797 substeps for one 5-day step
+> at nx=10, no singular solves, Saturated cells holding negative raw Sg). That is the
+> coupled-lifecycle problem this plan's interaction matrix was designed for. Each of the two
+> relevant flags alone makes it worse. S5's routing unification no longer carries an accuracy
+> trade and can proceed as cleanup.
+
 Review date: 2026-09-22. Code reviewed and tested: clean
 `e121aeaac618cb3d59a0a335a7758745792479e7`, native release, rustc 1.98.1.
 **Deliverable: code review and executable investigation plan; no solver change or backend

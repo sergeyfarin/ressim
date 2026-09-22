@@ -1,5 +1,5 @@
 {
-  "$comment": "Cross-client parity matrix. Both runners read this file verbatim and configure through the same ordered calls, so neither can drift from the other. Base parameters are buckley_case_a from src/lib/ressim/src/tests/buckley.rs. `strict` cases must agree to 1e-9; non-strict ones are known to diverge across targets and report the gap instead of failing -- see the FIM note in docs/ARCHITECTURE_SPLIT_PLAN_2026-09-19.md.",
+  "$comment": "Cross-client parity matrix. Both runners read this file verbatim and configure through the same ordered calls, so neither can drift from the other. Base parameters are buckley_case_a from src/lib/ressim/src/tests/buckley.rs. `strict` cases must agree to 1e-9; a non-strict case would report its gap instead of failing. Every case is strict since FIM-DIRECT-001 (docs/FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md section 9).",
   "base": {
     "ny": 1,
     "nz": 1,
@@ -27,11 +27,11 @@
     },
     {
       "id": "buckley-fim",
-      "why": "The same case on the implicit solver. NOT strict: wasm32 and x86-64 substep it differently -- 4 substeps against 18 on the very first day -- so their trajectories are not comparable at 1e-9. Kept, and reported on every run, so the divergence stays measured rather than forgotten.",
+      "why": "The same case on the implicit solver. Strict since FIM-DIRECT-001: it used to take 18 substeps natively against 4 in wasm, because roundoff of one sign in the inactive two-phase gas unknown made every later Jacobian singular. Both targets now take 4 and agree to ~1e-13.",
       "nx": 50,
       "steps": 1,
       "fim": true,
-      "strict": false
+      "strict": true
     },
     {
       "id": "favorable-mobility",
@@ -44,12 +44,12 @@
     },
     {
       "id": "adverse-mobility-fim",
-      "why": "Adverse mobility on the implicit solver; same cross-target substepping difference. Non-strict for the same reason as buckley-fim.",
+      "why": "Adverse mobility on the implicit solver. Strict since FIM-DIRECT-001, for the same reason as buckley-fim; its former 1.24e-05 residual after backend unification was the same defect, not libm or SIMD.",
       "nx": 50,
       "steps": 3,
       "fim": true,
       "mu_o": 20.0,
-      "strict": false
+      "strict": true
     },
     {
       "id": "coarse-grid",

@@ -356,3 +356,46 @@ fn benchmark_buckley_leverett_smaller_dt_improves_coarse_alignment() {
         rel_err_b_dt_025
     );
 }
+
+/// The parity fixture's FIM case (`crates/ressim-py/parity/cases.json`, `buckley-fim`) takes one
+/// 1-day step in 4 substeps. Natively it used to take 18: the first sparse-LU correction left the
+/// inactive two-phase gas unknown at -1.1e-14 in the producer cell, its Jacobian column vanished,
+/// and every later solve in the step hit an exactly singular matrix (FIM-DIRECT-001). The unit
+/// contract is `two_phase_inactive_unknown_keeps_its_slope_at_negative_roundoff`; this pins the
+/// system-level consequence so a regression shows up as a count rather than a slow suite.
+#[test]
+fn fim_two_phase_parity_step_does_not_fragment() {
+    let nx = 50;
+    let mut sim = ReservoirSimulator::new(nx, 1, 1, 0.2);
+    sim.set_fim_enabled(true);
+    sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0, 1.0, 1.0)
+        .unwrap();
+    sim.set_initial_saturation(0.1);
+    sim.set_permeability_random_seeded(2000.0, 2000.0, 42)
+        .unwrap();
+    sim.set_stability_params(0.05, 75.0, 0.75);
+    sim.set_capillary_params(0.0, 2.0).unwrap();
+    sim.set_fluid_properties(1.0, 0.5).unwrap();
+    sim.add_well_with_id(0, 0, 0, 500.0, 0.1, 0.0, true, "inj".to_string())
+        .unwrap();
+    sim.add_well_with_id(nx - 1, 0, 0, 100.0, 0.1, 0.0, false, "prod".to_string())
+        .unwrap();
+
+    sim.step(1.0);
+
+    assert!(
+        sim.last_solver_warning.is_empty(),
+        "{}",
+        sim.last_solver_warning
+    );
+    assert!(
+        (sim.time_days - 1.0).abs() < 1e-12,
+        "horizon not completed: t={}",
+        sim.time_days
+    );
+    assert!(
+        sim.rate_history.len() <= 4,
+        "one 1-day step took {} substeps; 4 is the non-singular trajectory",
+        sim.rate_history.len()
+    );
+}

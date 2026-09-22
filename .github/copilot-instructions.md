@@ -62,11 +62,14 @@ serde; `frontend.rs` converts to `JsValue` and `crates/ressim-py` to Python obje
 shim holds a decision. Adding a `JsValue` to the engine, or a `PyObject`, is what this boundary
 exists to prevent — see `docs/ENGINE_PAYLOAD_BOUNDARY_DESIGN_2026-09-21.md`.
 
-**Cross-target caution**: the FIM solver substeps differently on wasm32 than on x86-64 (4 vs 18 on
-the first step of Buckley case A); IMPES agrees to 1e-12. The convergence baselines in
-`docs/FIM_STATUS.md` are **wasm** measurements while `cargo test` runs **native**, so do not treat
-a native substep count and a figure from that page as the same measurement.
-`docs/OPEN_ITEMS_2026-09-21.md` §1 lists the causes already ruled out.
+**Cross-target caution**: native and wasm FIM agree to ~1e-13 on the parity matrix since
+FIM-DIRECT-001. Before that fix they substepped differently (18 vs 4), because roundoff of one
+sign in an inactive unknown made the Jacobian singular. The linear backends still differ by target
+(sparse LU native, dense LU wasm), and the older convergence baselines in `docs/FIM_STATUS.md` are
+**wasm** measurements, so re-measure before treating a native count and a figure from that page as
+the same measurement. A direct solve never returns exactly 0 for an unknown that should not move:
+never give a primary a slope that depends on which side of a clamp its roundoff lands
+(`docs/FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md` §9).
 
 **Two gates sit outside `validate:*`** and both run in PR CI:
 `bash scripts/validate-native-binding.sh` (native vs browser bindings on a case matrix) and
