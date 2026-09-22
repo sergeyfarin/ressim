@@ -139,7 +139,27 @@ monotone, consistent across the pressure, PVT and liberated-gas variables.
 cargo test --manifest-path src/lib/ressim/Cargo.toml physics_depletion_grid_convergence_impes -- --nocapture
 ```
 
-### FIM baseline (explicit replay, ~3.5 min release)
+### FIM baseline — superseded 2026-09-22 by FIM-BUBBLE-001 (see below)
+
+> The table below and the "non-monotone Sg" observation were measured on a run that took ~20,000
+> substeps to cross the bubble point: gas-free cells were carried on an Sg primary pinned to
+> the Sg = 0 relperm kink. After the fix the replay takes 20 s rather than ~3.5 min, contracts
+> monotonically in every quantity, and matches OPM Flow on the same column
+> ([`small-direct`](../opm/reference-decks/small-direct/README.md) `bo-1d-10`/`bo-1d-40`).
+>
+> | nx | pressure [bar] | Rs [Sm³/Sm³] | Bo [m³/Sm³] | Sg | OPM Flow p / Rs / Sg |
+> |---|---|---|---|---|---|
+> | 5 | 122.0752 | 9.41504 | 1.079797 | 0.034681 | |
+> | 10 | 122.2670 | 9.45340 | 1.080063 | 0.034384 | 122.2669 / 9.45338 / 0.034385 |
+> | 20 | 122.3742 | 9.47484 | 1.080212 | 0.034214 | |
+> | 40 | 122.4318 | 9.48635 | 1.080292 | 0.034124 | 122.4301 / 9.48602 / 0.034127 |
+>
+> Successive pressure differences 0.192 / 0.107 / 0.058 bar: contraction 0.56, 0.54. Measured on
+> branch `fim/bubble-point-lifecycle`, same replay command. The FIM half of #11 is resolved: FIM
+> agrees with Flow to 0.002 bar and 3e-6 Sg. What remains is IMPES against Flow, about 0.5 bar
+> and 3% Sg.
+
+#### Historical FIM baseline (pre-FIM-BUBBLE-001)
 
 | nx | pressure [bar] | Rs [Sm³/Sm³] | Bo [m³/Sm³] | Sg |
 |---|---|---|---|---|

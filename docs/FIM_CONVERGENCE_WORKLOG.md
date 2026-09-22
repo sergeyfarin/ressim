@@ -6094,3 +6094,51 @@ report step; cumulatives 0.05–0.81%; substeps equal to Flow's (120/121, 12/13,
 19–22k substeps and 210–240k Newton on either LU, final state within 0.7 bar and 0.006 Sg.
 Verdict: routing **PROMOTED**; bubble-point fragmentation remains **OPEN**, now with an OPM
 convergence oracle on the exact column.
+
+### FIM-BUBBLE-001 — bubble-point fragmentation: Sg primary pinned on the Sg = 0 kink (2026-09-22)
+
+Oracle: OPM Flow on `opm/reference-decks/small-direct/bo-1d-10`, 23 substeps and 63 Newton
+iterations for 100 days, no cuts. ResSim at `efce35d`: 21,816 substeps and 237,018 Newton.
+
+Diagnosis, in order:
+
+1. Removing the DRSDT0 cap halves the substeps (21,797 → 9,627); the iterates straddled
+   `min(Rs_sat, base_rs)`. That is a contributor, not the root.
+2. With the cap removed, a capped substep begins **already converged** (`would_accept=strict`,
+   3.6e-11). The first update then two-cycles the perforation row between ~1e-6 and ~3e-5.
+3. A full finite-difference Jacobian audit at that state (temporary probe, all 32 columns)
+   found 20 mismatches, all in Sg columns, each with `ad = forward difference` and
+   `backward difference = 0`. Every cell was Saturated with Sg = ±1e-18: relperm and well
+   mobility are flat for Sg < 0 and sloped for Sg > 0, and roundoff picks the branch. That is the
+   FIM-DIRECT-001 family again.
+4. Entry point: `classify_cell_regime` classified a gas-free cell with Rs ≥ Rs_sat − 1e-6 as
+   Saturated. Every substep rebuilds from `FimState::from_simulator`, so the cell was re-pinned
+   on the kink every time. The column's Rs_sat stays 15 above 150 bar, so every cell qualified.
+
+Fix, a coherent two-part bundle (baseline / A / B / A+B, step-0 substeps):
+
+| | nx=10 | nx=40 |
+|---|---|---|
+| baseline | 21,797 | 19,008 |
+| A: gas-free starts on Rs | 58,874 | 4 |
+| B: Y2b3 lifecycle default-on | 27,959 | 4 |
+| **A+B** | **4** | 6 |
+
+Promoted A+B through `fim::flash::opm_primary_variable_lifecycle` (OpmAligned and not
+`FIM_Y2B3_DISABLE`; Legacy untouched). Tests:
+`gas_free_cell_at_saturation_starts_on_rs_under_the_opm_lifecycle` and
+`fim_bubble_point_crossing_does_not_fragment`; the latter fails at 21,797 with the lifecycle
+disabled.
+
+Validation on `3fdefa4`: `validate:full` exit 0 (vitest 937 passed); the locked baseline;
+Buckley; SPE1 full horizon (worst oil 3.149%, GOR 4.295%; was 3.158% / 4.314%); SPE1 areal;
+depletion FIM, now contraction 0.56/0.54 in 20 s; native binding 5/5 strict; test:deployed.
+Control matrix: water cases byte-identical. Gas-rate cases have identical substeps and answers
+(3e-7), but Newton rises: 20×20×3 8 → 10; 10×10×3 over 24 steps 118 → 129 (step 1 9 → 12, Flow 7).
+
+Flow comparison: `bo-1d-10` 23 substeps / 111 Newton (Flow 23 / 63), max |Δp| 0.005 bar, Sg 1e-5,
+FOPT/FGPT 0.01%. `bo-1d-40` 25 / 109 (Flow 24 / 57). Field averages at t=100 match Flow to 0.002
+bar and 3e-6 Sg. That resolves the FIM half of #11.
+
+Verdict: **ROOT CAUSE FOUND, FIX VALIDATED**; merge pending a decision on the gas-injection
+Newton trade.

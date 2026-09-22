@@ -34,22 +34,27 @@ with the same answers. Checked against OPM Flow on five new decks under 512 rows
 - *Re-baseline `FIM_STATUS.md`.* Its wasm figures for two-phase cases may now reproduce natively;
   measure before citing any of them as cross-target.
 
-## 1a. Bubble-point fragmentation in three-phase FIM — **new, open**
+## 1a. Bubble-point fragmentation in three-phase FIM — **fixed on branch `fim/bubble-point-lifecycle` (FIM-BUBBLE-001), awaiting merge decision**
 
-`physics_depletion_grid_convergence_fim`'s first 5-day step, which crosses the bubble point,
-takes **21,797 substeps** at nx = 10. There are no singular solves, but ~250,000 linear solves
-per grid. Its pass/fail therefore depends on roundoff, such as the backend, and says nothing about
-spatial convergence until this is fixed. Hotspots are mostly Saturated cells holding a negative raw
-Sg: raw saturations are on by default, and the OPM Sg↔Rs switch is off by default.
-Neither flag alone repairs it; both make it worse. Owned by
-[the review plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md) S2–S4 as a coupled-lifecycle
-investigation. Evidence:
-[§9.5](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md).
+The first 5-day step of the depletion column crossed the bubble point in ~21,800 substeps;
+Flow takes 4. A finite-difference Jacobian audit at the stuck state found every mismatch in an
+Sg column, with AD equal to the forward difference and the backward difference zero. Every
+cell was tagged Saturated with Sg = ±1e-18, on the Sg = 0 relperm kink.
 
-**OPM Flow on the same column** ([`small-direct`](../opm/reference-decks/small-direct/README.md)
-`bo-1d-10`/`bo-1d-40`): **23–24 substeps and 57–63 Newton iterations for the whole 100 days, with
-no cuts.** ResSim takes 19–22k substeps and 210–240k Newton iterations, yet lands within 0.7 bar and
-0.006 Sg of Flow. The answer is right; the nonlinear work is ~1,000× too much.
+The fix has two halves that only work together:
+
+- **A.** Gas-free cells start on Rs, as OPM's `assignNaive` does.
+- **B.** The validated Y2b3 per-update Sg↔Rs lifecycle is now on by default on every target.
+
+Each alone is worse (58,874 and 27,959 substeps).
+
+Result against Flow: 23 substeps for the 100 days (Flow 23). Worst pressure 0.005 bar, Sg 1e-5,
+cumulatives 0.01%. SPE1 unchanged.
+
+**The trade:** the wasm gas-injection control `gas-rate 10x10x3` keeps its substeps and answers
+(3e-7) but takes 118 → 129 Newton iterations over 24 steps, mostly in step 1 (9 → 12; Flow 7).
+That cost belongs to B's OPM-faithful in-Newton switching, and the registry already recorded it
+for Y2b3. Evidence: worklog "FIM-BUBBLE-001".
 
 ## 2. Cross-client coverage is bounded by the Python shim, not by test effort
 

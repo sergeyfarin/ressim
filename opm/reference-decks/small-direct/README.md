@@ -69,5 +69,22 @@ Reading it:
   (`docs/OPEN_ITEMS_2026-09-21.md` §1a). Flow's first 1-day step there takes 19 Newton
   iterations and **does not cut**.
 
+### After FIM-BUBBLE-001 (branch `fim/bubble-point-lifecycle`)
+
+The bubble-point rows above are the fragmentation defect. With the OPM primary-variable
+lifecycle (gas-free cells start on Rs, and Sg↔Rs adapts every Newton update) the oil–water rows
+are unchanged and the black-oil rows become:
+
+| Case | Simulator | Substeps | Newton | Retries | Wall ms | max \|Δp\| bar | max \|ΔSg\| | Cumulatives vs Flow |
+|---|---|---|---|---|---|---|---|---|
+| bo-1d-10 | Flow | 23 | 63 | 0 | 553 | | | |
+| | ResSim sparse | **23** | 111 | 0 | 12 | **0.0048** | **1e-5** | FOPT 0.01%, FGPT 0.01% |
+| | ResSim dense | 23 | 101 | 0 | 9 | 0.0137 | 2e-5 | FOPT 0.01%, FGPT 0.01% |
+| bo-1d-40 | Flow | 24 | 57 | 0 | 557 | | | |
+| | ResSim sparse | **25** | 109 | 1 | 40 | **0.063** | **9e-5** | FOPT 0.05%, FGPT 0.04% |
+| | ResSim dense | 25 | 105 | 1 | 55 | 0.067 | 1e-4 | FOPT 0.05%, FGPT 0.04% |
+
+ResSim still takes ~1.8× Flow's Newton iterations here. Substeps and answers now match.
+
 Wall times are single observations and include Flow's process start (~0.5 s). Flow's own
 timings are in each run's `CASE.INFOSTEP`.
