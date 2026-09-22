@@ -49,10 +49,20 @@ FIM gate, runs **natively**. Those two have been measuring materially different 
 and nothing in the repository would have revealed it — the native/wasm parity gate did not exist
 until this session, and its first fixture ran IMPES.
 
-**To close:** unify the linear routing (recommendation and evidence in the analysis doc §8), then
-re-baseline `FIM_STATUS.md`, then investigate the residual 1.24e-05 on its own. Until then the two
-FIM cases in the parity matrix stay non-strict and report their divergence on every run; making
-them strict is the acceptance criterion for the unification.
+**Attempted 2026-09-22, not landed.** Unifying on dense fixes the divergence (8.282e+00 bar →
+5.68e-14) and passes 38 solver gates, the locked FIM baselines, SPE1 and the OPM comparison — but
+breaks `physics_depletion_grid_convergence_fim`, whose refinement contraction goes to 0.941 against
+a required 0.8. The attempt is on branch `fim/unify-linear-routing` (`f5a9577`), master is
+unchanged, and no tolerance was moved to accommodate it.
+
+OPM cannot arbitrate: the divergent path fires only at ≤512 rows, and the OPM case and SPE1 are
+~900 rows, so both backends return identical results there. The choice is between dense (faster on
+the small cases the browser runs, fails the refinement gate) and sparse (every gate green, 18
+substeps instead of 4 on those cases). §8 of the analysis doc has the full trade and now recommends
+**sparse**, reversing what it said before the attempt.
+
+**To close:** make that backend decision, land the routing cleanup either way, re-baseline
+`FIM_STATUS.md`, then investigate the residual 1.24e-05 separately.
 
 ## 2. Cross-client coverage is bounded by the Python shim, not by test effort
 

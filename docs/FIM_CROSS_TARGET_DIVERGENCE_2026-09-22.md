@@ -145,13 +145,21 @@ Tested directly, with native patched onto the wasm path:
 | `physics_depletion_grid_convergence_impes` | 1 passed |
 | `fim::linear::tests` | **2 failed**, both routing assertions |
 
-**No physics gate failed.** The only failures were the two tests that assert the routing itself:
+> **Incomplete, and corrected in §8.** This table lists the gates run at the time. It does not
+> include the `#[ignore]`d release replays, which are not part of `validate:full` and had to be
+> run explicitly. One of them, `physics_depletion_grid_convergence_fim`, **does** fail under the
+> change. "No physics gate failed" was true of what had been run and false of the change, which is
+> the difference between a gate set and a claim.
+
+Of the gates above, no physics gate failed. The only failures were the two tests that assert the
+routing itself:
 `default_fim_solver_uses_iterative_fallback_before_sparse_lu` and
 `gmsres_ilu0_backend_solves_simple_system_iteratively` (the latter fails because wasm's
 `should_force_direct_solve` forces a direct solve for a `GmresIlu0` request, which native's does
 not — a third behavioural difference, currently invisible because tests never run on wasm).
 
-That asymmetry is the practical argument for a direction. Unifying **onto dense** (the wasm path)
+That asymmetry looked like the practical argument for a direction, and §8 records why it was not.
+Unifying **onto dense** (the wasm path)
 improved convergence on the fixture, 18 substeps to 4, and broke only assertions about routing.
 Unifying **onto sparse** would make the browser behave like native — 4 substeps to 18 — which is a
 user-facing regression in the one place the simulator actually runs for people.
@@ -168,20 +176,78 @@ the Corey relperm, or SIMD summation order in the iterative stack) amplified by 
 still branches on tolerances — the mechanism originally guessed at, now demoted from primary cause
 to plausible secondary. It has not been confirmed.
 
-## 8. Recommendation
+## 8. Recommendation — **revised 2026-09-22 after attempting it**
 
-1. **Do not change the routing as part of an unrelated commit.** It is a production solver change
-   and belongs in its own, with the validation shortlist rerun on the final tree per the repo's
-   promotion discipline.
-2. **Unify on the dense/wasm path**, on the evidence above: it is the direction that improves
-   convergence rather than degrading the shipped product, and the tests it breaks assert routing
-   rather than physics. Update those two tests to state the unified expectation, and delete the
-   `is_wasm` parameter threading once nothing varies by target.
-3. **Fix `sparse_lu_debug.rs`'s module documentation regardless** of what is decided — it
-   currently tells the reader the opposite of what the code does.
-4. **Re-baseline `FIM_STATUS.md` after unification**, since its figures were measured on the wasm
-   path and would then apply to both.
-5. **Then re-open item 7**: with the dominant cause removed, the residual 1.24e-05 becomes
-   measurable on its own and the libm/SIMD hypothesis can finally be tested rather than assumed.
-6. Keep the two FIM cases in the parity matrix non-strict until 2 lands; make them strict as the
-   change's acceptance criterion.
+> **The recommendation first written here was wrong, and the attempt is what showed it.** It said
+> to unify on dense because that direction "improved convergence, 18 substeps to 4". Substep count
+> is **speed**, not accuracy. The only gate that measures accuracy on the systems this path
+> actually touches prefers the other backend. The attempt is preserved on branch
+> `fim/unify-linear-routing` (`f5a9577`); it is not on master.
+
+### What the attempt established
+
+Unifying on dense does fix the divergence: `buckley-fim` falls from 8.282e+00 bar to **5.68e-14**,
+`adverse-mobility-fim` from 1.733e+00 to **1.24e-05**, and the parity matrix gains a strict FIM
+case. 38 solver gates, the three locked FIM baselines, `benchmark_buckley`, SPE1 full horizon and
+SPE1 areal refinement all pass, and the wasm `.d.ts` is unchanged.
+
+**But it breaks `physics_depletion_grid_convergence_fim`**: average pressure stops contracting
+under refinement, 0.941 of the previous difference against a required 0.8 (it was 0.631). The
+converged nx=40 answer barely moves — 122.2069 against 122.2055 — so the final answer is not lost;
+the coarse-grid path shifts enough to fail the criterion. Isolated to the backend swap itself:
+reverting only the retry-fallback kind reproduces the failure identically.
+
+No tolerance was touched. `CONTRACTION_RATIO` is a benchmark tolerance, and "my change would
+otherwise fail" is not the written justification the repo requires.
+
+### Why OPM cannot arbitrate this
+
+The forced-direct path fires only at **≤ 512 rows**. Measured:
+
+| Case | Cells | Rows | Exercises the path? |
+|---|---|---|---|
+| OPM `gas-rate-10x10x3` | 300 | ~900 | **No** |
+| SPE1 | 300 | ~900 | **No** |
+| `physics_depletion_grid_convergence_fim`, nx=5…40 | 5–40 | 15–120 | Yes |
+| Parity `buckley` | 50 | 154 | Yes |
+
+So the OPM comparison was run on both backends and returned **identical** results — 1 accepted
+substep, 0 retries, matching OPM Flow's 1 substep per 0.25-day report step — because the case never
+reaches the divergent code. SPE1 full horizon was likewise **bit-identical** before and after
+(worst case pressure 1.597%, oil rate 3.158%, GOR 4.314%). That is reassuring about blast radius
+and is *not* evidence for either backend.
+
+### The actual trade
+
+| | Dense everywhere | Sparse everywhere |
+|---|---|---|
+| Cross-target parity | Achieved (5.7e-14) | Achieved |
+| `physics_depletion_grid_convergence_fim` | **Fails** (0.941 vs 0.8) | Passes |
+| Small-case browser cost | 4 substeps | **18 substeps** on the same case |
+| Native behaviour | Changes | **Unchanged** |
+| OPM / SPE1 | Unaffected either way | Unaffected either way |
+
+Dense is faster on the small cases the browser runs. Sparse is what the one refinement-accuracy
+gate covering those sizes endorses. Both remove the divergence; neither is free.
+
+### What to do
+
+1. **Decide the backend deliberately — this is a physics-accuracy call, not a cleanup**, and it is
+   the reason nothing landed on master. The repo's own rule that benchmark tolerances are not moved
+   to accommodate a change is what makes this a decision rather than a patch.
+2. **On the evidence, sparse is the defensible default**: it is the only option that leaves every
+   committed gate green, it requires no change to native behaviour, and the cost is browser speed
+   on small cases rather than accuracy. Dense is defensible only if someone first shows the
+   refinement failure is an artifact of the criterion rather than of the backend — which would mean
+   investigating `physics_depletion_grid_convergence_fim` on its merits, not around it.
+3. **Either way, take the rest of `f5a9577`**: one code path, one threshold, no `is_wasm`
+   threading, and an explicitly requested iterative backend honoured rather than overridden — which
+   removes the re-entry hazard the old wasm arm needed a guard for. Landing it on sparse is a
+   one-line change to that branch.
+4. **Re-baseline `FIM_STATUS.md` afterwards**, since its figures were measured on the dense/wasm
+   path and would then apply to both targets.
+5. **Then re-open the residual**: 1.24e-05 remains on `adverse-mobility-fim` even with the backend
+   unified, so this was always at least two effects. With the dominant one settled, the libm/SIMD
+   hypothesis becomes measurable on its own instead of assumed.
+6. Keep `adverse-mobility-fim` non-strict until that residual is closed; `buckley-fim` becomes
+   strict the moment the routing is unified, whichever backend wins.
