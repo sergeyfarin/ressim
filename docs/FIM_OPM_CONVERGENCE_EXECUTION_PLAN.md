@@ -1,5 +1,10 @@
 # FIM–OPM Convergence Execution Plan
 
+Current small-system entry point (2026-09-22): the
+[dense/sparse review and repair plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md) owns the newly
+reported routing/fragmentation investigation. Start at S0; do not restart the historical
+WATER/G4/G5 sequence below or promote a backend from timing alone.
+
 Execution entry point (2026-09-14): use the
 [FIM repair plan](FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md) for the current contract-repair
 sequence. The status and research sequence below are historical to their named experiments;

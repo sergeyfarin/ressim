@@ -50,7 +50,8 @@ the registry **by mechanism name** before proposing any convergence change.
 
 | Document | Use it for |
 |----------|------------|
-| `docs/FIM_STATUS.md` | Consolidated FIM state, blockers, validation entry points, canonical source map. Its **2026-09-15 banner** carries the current measured convergence baseline; the "Known Open Gaps" list below it is 2026-07-05 provenance |
+| `docs/FIM_STATUS.md` | Consolidated FIM state, blockers, validation entry points and source map. Read the **2026-09-22 small-system review** and target qualification before using the 2026-09-15 WASM baseline; older gaps are provenance |
+| [FIM dense/sparse review and repair plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md) | Current small-system investigation: replay-option defects, full/reduced routing, separate time/grid convergence, paired correction oracles and interaction-aware repair gates. Next task: S0; no backend promotion |
 | [FIM repair execution plan](FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md) | F0–F8 repair order, issue mapping, exact gates and the solver-interface handoff. Completed record, preserved as issued — read its documentation-boundary note before citing it |
 | [FIM repair handoff](FIM_REPAIR_HANDOFF_2026-09-15.md) | What F0–F8 repaired, the validated envelope, reusable layout surface, final regression replay and release-equivalence measurement; see its 2026-09-18 qualification |
 | [FIM repair audit](FIM_REPAIR_AUDIT_2026-09-18.md) | Independent review of `f5838eb` and 2026-09-19 follow-up: repaired commit/retry coverage, corrected evidence claims, and named open scientific gates |

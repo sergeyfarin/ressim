@@ -1,5 +1,14 @@
 # FIM cross-target divergence — root cause
 
+> **2026-09-22 review: backend recommendation superseded.** The target-dependent routing
+> below explains cross-target divergence, but does not identify which correction is accurate.
+> The subsequent dense/sparse timings and grid-test results do not establish an accuracy
+> winner. Follow the [dense/sparse review and repair plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md):
+> repair replay fidelity, isolate the first divergent correction, separate time/grid error,
+> then test coupled fixes. The sparse recommendation in §8 is historical, not the current
+> decision. Reduced-system dispatch can also cross the 512-row threshold; the large-case
+> observations below are case-specific, not a universal exclusion of direct solving.
+
 Date: 2026-09-22. Base: `a708280`, clean tree. Investigation of the wasm32/x86-64 FIM difference
 recorded in `OPEN_ITEMS_2026-09-21.md` §1.
 

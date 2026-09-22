@@ -55,14 +55,19 @@ breaks `physics_depletion_grid_convergence_fim`, whose refinement contraction go
 a required 0.8. The attempt is on branch `fim/unify-linear-routing` (`f5a9577`), master is
 unchanged, and no tolerance was moved to accommodate it.
 
-OPM cannot arbitrate: the divergent path fires only at ≤512 rows, and the OPM case and SPE1 are
-~900 rows, so both backends return identical results there. The choice is between dense (faster on
-the small cases the browser runs, fails the refinement gate) and sparse (every gate green, 18
-substeps instead of 4 on those cases). §8 of the analysis doc has the full trade and now recommends
-**sparse**, reversing what it said before the attempt.
+The existing OPM case and SPE1 did not arbitrate: their ~900-row systems returned identical
+results in the comparison. This is case-specific; Schur reduction can move other systems across
+the 512-row threshold.
 
-**To close:** make that backend decision, land the routing cleanup either way, re-baseline
-`FIM_STATUS.md`, then investigate the residual 1.24e-05 separately.
+**Review 2026-09-22:** the subsequent reported fragmentation does not justify choosing dense on
+speed or sparse on one refinement pass. The old generic solver lab does not use today's live
+linear options, and the grid test has not separated temporal from spatial error. The
+[dense/sparse review and repair plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md) supersedes the
+earlier sparse recommendation and defines a first-divergence replay, matched-time accuracy
+study and coupled-fix matrix.
+
+**To close:** execute that plan's S0–S5 gates, select and unify a validated policy, re-baseline
+`FIM_STATUS.md` on both targets, and explain or bound the remaining cross-target difference.
 
 ## 2. Cross-client coverage is bounded by the Python shim, not by test effort
 

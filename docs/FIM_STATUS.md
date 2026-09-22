@@ -2,6 +2,14 @@
 
 This is the consolidated current-state summary for the Rust FIM solver.
 
+> **2026-09-22: small-system dense/sparse investigation is open.** The reported native
+> fragmentation and confirmed target-dependent routing qualify the older statement that no
+> convergence work is justified. The [review and staged repair plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md)
+> records code findings, focused checks on `e121aea`, and the next task: a faithful
+> first-divergence replay. Neither backend is promoted by this review. The pasted large
+> substep counts have not been reproduced here; historical WASM baselines remain scoped to
+> their recorded fixtures and target. No physics or convergence tolerance changed.
+
 > ## 2026-09-21: these baselines are **wasm** baselines, and the native target differs
 >
 > Every convergence number below was measured through `scripts/fim-wasm-diagnostic.mjs`, which

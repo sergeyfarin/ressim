@@ -6011,3 +6011,31 @@ correction and backend-neutral report. Exact first-step replay becomes `1` subst
 500 days without warnings and the final step remains one 0.25-day substep. Final FIM and IMPES
 results remain close (`avg_p 301.30/301.28`, oil `0.33/0.32`, injection `11.22/11.21`). SWOF,
 Newton acceptance, timestep control, and wells were held unchanged. Verdict: **PROMOTED**.
+
+### FIM-DIRECT-001 — dense/sparse review and coupled-defect plan (2026-09-22)
+
+Reviewed clean `e121aeaac618cb3d59a0a335a7758745792479e7` after the user reported
+4,697/9,021 native small-grid substeps versus 5/7 on the dense route. Those numbers were not
+reproduced in this review. The recovered Python harness records history length and a single
+backend-specific fine-dt comparison; it does not establish completed horizons or common limits.
+
+Code findings: the target split is confirmed; Schur reduction re-enters forced-direct routing;
+the generic backend lab uses `use_true_fgmres=false` and equation-family checks whereas the
+default live simulator uses true FGMRES and passes no family scaling to the linear solve.
+The spatial test uses fixed report dt with adaptive internal steps and cannot isolate time error.
+Changing its dt constant alone would also change its final time. No new LU arithmetic or shared
+physics defect was demonstrated. Existing singular-tail recovery has a full-system rejection
+guard, but its approximate inverse is a named conditional mechanism to inspect in the trace.
+
+Focused clean-tree release checks passed: `report_contract` 7, `fim_repair_` 6, `assembly_ad` 13.
+The ignored `native_single_step_fim_probe_case_a_24_cells` completed at t=0.25 without warning,
+one history entry; this only verifies capture plumbing. No full WASM/control/promotion matrix
+was run for this documentation-only review. Exact commands, log paths, artifact hashes, review
+locations and the S0–S5 sequence are in
+[the review and repair plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md).
+
+Verdict: **DIAGNOSTIC; backend superiority and the coupled-defect hypothesis remain
+INCONCLUSIVE**. Production and all tolerances are unchanged. The earlier sparse recommendation
+is superseded without promoting dense. Next task: S0 faithful first-divergence capture; then
+identical-system correction/rank checks, coherent lifecycle diagnosis, fixed-horizon time/grid
+refinement and baseline/A/B/A+B interaction tests. Remote issue publication was not performed.
