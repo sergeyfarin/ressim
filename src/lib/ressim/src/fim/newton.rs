@@ -317,20 +317,15 @@ fn linear_failure_trace_suffix(report: &FimLinearSolveReport) -> String {
     parts.join("")
 }
 
+/// Direct backend for a retry fallback, by system size.
+///
+/// One rule for every target since 2026-09-22. Dense factorizes the small systems this fires on;
+/// sparse stays for anything above the threshold, where dense would be wasteful.
 fn direct_fallback_kind_for_rows(row_count: usize) -> FimLinearSolverKind {
-    #[cfg(target_arch = "wasm32")]
-    {
-        if row_count > active_direct_solve_row_threshold() {
-            FimLinearSolverKind::SparseLuDebug
-        } else {
-            FimLinearSolverKind::DenseLuDebug
-        }
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let _ = row_count;
+    if row_count > active_direct_solve_row_threshold() {
         FimLinearSolverKind::SparseLuDebug
+    } else {
+        FimLinearSolverKind::DenseLuDebug
     }
 }
 

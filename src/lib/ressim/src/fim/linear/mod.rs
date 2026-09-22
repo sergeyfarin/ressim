@@ -13,7 +13,6 @@ mod sparse_lu_debug;
 mod well_schur;
 
 const DIRECT_SOLVE_ROW_THRESHOLD: usize = 512;
-const WASM_DIRECT_SOLVE_ROW_THRESHOLD: usize = DIRECT_SOLVE_ROW_THRESHOLD;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimLinearSolverKind {
@@ -35,37 +34,17 @@ impl FimLinearSolverKind {
 }
 
 pub(crate) const fn active_direct_solve_row_threshold() -> usize {
-    #[cfg(target_arch = "wasm32")]
-    {
-        WASM_DIRECT_SOLVE_ROW_THRESHOLD
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        DIRECT_SOLVE_ROW_THRESHOLD
-    }
+    DIRECT_SOLVE_ROW_THRESHOLD
 }
 
-const fn direct_solve_row_threshold_for_target(is_wasm: bool) -> usize {
-    if is_wasm {
-        WASM_DIRECT_SOLVE_ROW_THRESHOLD
-    } else {
-        DIRECT_SOLVE_ROW_THRESHOLD
-    }
-}
-
-fn should_force_direct_solve(
-    requested_kind: FimLinearSolverKind,
-    row_count: usize,
-    is_wasm: bool,
-) -> bool {
-    if is_wasm {
-        requested_kind != FimLinearSolverKind::SparseLuDebug
-            && row_count <= direct_solve_row_threshold_for_target(true)
-    } else {
-        requested_kind == FimLinearSolverKind::FgmresCpr
-            && row_count <= direct_solve_row_threshold_for_target(false)
-    }
+/// Whether a small system short-circuits to a direct factorization.
+///
+/// Only an `FgmresCpr` request is redirected. An explicitly requested iterative backend is
+/// honoured: overriding it was surprising, and it is what created the re-entry hazard the old
+/// wasm arm needed a guard against — a forced direct solve falling back to an iterative kind that
+/// was itself forced direct again.
+fn should_force_direct_solve(requested_kind: FimLinearSolverKind, row_count: usize) -> bool {
+    requested_kind == FimLinearSolverKind::FgmresCpr && row_count <= DIRECT_SOLVE_ROW_THRESHOLD
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -326,33 +305,13 @@ fn solve_linearized_system_with_routing(
     // well-dominated cases. Do not remove it without first landing the root-cause relperm-endpoint
     // regularization tracked in TODO.md ("ROOT-CAUSE FIX (deferred): relperm-endpoint singularity
     // under raw saturations").
-    #[cfg(not(target_arch = "wasm32"))]
-    if allow_forced_direct && should_force_direct_solve(options.kind, jacobian.rows(), false) {
-        let direct = sparse_lu_debug::solve(jacobian, rhs, options, false);
-        if direct.converged {
-            return direct;
-        }
-        let mut iterative_options = *options;
-        iterative_options.kind = match options.kind {
-            FimLinearSolverKind::FgmresCpr => FimLinearSolverKind::FgmresCpr,
-            _ => FimLinearSolverKind::GmresIlu0,
-        };
-        let mut iterative = solve_linearized_system_with_routing(
-            jacobian,
-            rhs,
-            &iterative_options,
-            layout,
-            equation_scaling,
-            false,
-        );
-        iterative.used_fallback = true;
-        iterative.total_time_ms += direct.total_time_ms;
-        iterative.preconditioner_build_time_ms += direct.preconditioner_build_time_ms;
-        return iterative;
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    if allow_forced_direct && should_force_direct_solve(options.kind, jacobian.rows(), true) {
+    // **One backend for every target.** Until 2026-09-22 this was `cfg(target_arch)`-split:
+    // sparse LU natively, dense LU on wasm. The two disagreed about whether a given Jacobian was
+    // singular, so the same case took 4 substeps in a browser and 18 natively and their
+    // trajectories differed by whole bars. Dense is the unified choice because it is the path the
+    // shipped product and the OPM comparison baselines were measured on. See
+    // `docs/FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md`.
+    if allow_forced_direct && should_force_direct_solve(options.kind, jacobian.rows()) {
         let direct = dense_lu_debug::solve(jacobian, rhs, options, false);
         if direct.converged {
             return direct;
@@ -456,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    fn default_fim_solver_uses_iterative_fallback_before_sparse_lu() {
+    fn default_fim_solver_short_circuits_a_small_system_to_dense_lu() {
         let mut tri = TriMatI::<f64, usize>::new((2, 2));
         tri.add_triplet(0, 0, 2.0);
         tri.add_triplet(1, 1, 3.0);
@@ -473,7 +432,9 @@ mod tests {
 
         assert!(report.converged);
         assert!(!report.used_fallback);
-        assert_eq!(report.backend_used, FimLinearSolverKind::SparseLuDebug);
+        // Dense on every target since 2026-09-22; this was `SparseLuDebug` natively and
+        // `DenseLuDebug` in the browser, which is the divergence that unification removed.
+        assert_eq!(report.backend_used, FimLinearSolverKind::DenseLuDebug);
     }
 
     #[test]
@@ -524,37 +485,44 @@ mod tests {
     }
 
     #[test]
-    fn wasm_target_hands_off_direct_backend_above_512_rows() {
-        assert_eq!(direct_solve_row_threshold_for_target(true), 512);
-        assert!(should_force_direct_solve(
-            FimLinearSolverKind::FgmresCpr,
-            512,
-            true,
-        ));
+    fn forced_direct_routing_hands_off_above_512_rows() {
+        assert_eq!(active_direct_solve_row_threshold(), 512);
+        assert!(should_force_direct_solve(FimLinearSolverKind::FgmresCpr, 512));
         assert!(!should_force_direct_solve(
             FimLinearSolverKind::FgmresCpr,
-            513,
-            true,
+            513
         ));
     }
 
+    /// The routing no longer varies by target.
+    ///
+    /// It did until 2026-09-22, and the cost was not theoretical: the same case took 4 substeps
+    /// in a browser and 18 natively because the two arms chose different direct backends and
+    /// disagreed about whether a Jacobian was singular. This test exists so that a future
+    /// `cfg(target_arch)` in the routing has to argue with a named expectation rather than
+    /// slipping in. See `docs/FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md`.
     #[test]
-    fn wasm_target_still_respects_explicit_sparse_lu_choice() {
+    fn forced_direct_routing_is_the_same_on_every_target() {
+        // Only CPR is redirected; an explicitly requested backend is honoured.
+        assert!(should_force_direct_solve(FimLinearSolverKind::FgmresCpr, 32));
         assert!(!should_force_direct_solve(
             FimLinearSolverKind::SparseLuDebug,
-            32,
-            true,
+            32
+        ));
+        assert!(!should_force_direct_solve(
+            FimLinearSolverKind::GmresIlu0,
+            32
         ));
     }
 
+    /// An explicitly requested iterative backend is not silently replaced by a direct solve.
+    ///
+    /// The old wasm arm forced any non-`SparseLuDebug` kind direct on a small system, which is
+    /// what made a re-entry guard necessary: the fallback picked an iterative kind that was
+    /// itself forced direct again. Honouring the request removes the hazard rather than guarding
+    /// it.
     #[test]
-    fn iterative_fallback_bypasses_wasm_forced_direct_routing() {
-        assert!(should_force_direct_solve(
-            FimLinearSolverKind::GmresIlu0,
-            2,
-            true,
-        ));
-
+    fn an_explicitly_requested_iterative_backend_is_honoured() {
         let mut tri = TriMatI::<f64, usize>::new((2, 2));
         tri.add_triplet(0, 0, 2.0);
         let jacobian = tri.to_csr();
@@ -565,7 +533,7 @@ mod tests {
         };
 
         let report =
-            solve_linearized_system_with_routing(&jacobian, &rhs, &options, None, None, false);
+            solve_linearized_system_with_routing(&jacobian, &rhs, &options, None, None, true);
 
         assert_eq!(report.backend_used, FimLinearSolverKind::GmresIlu0);
     }

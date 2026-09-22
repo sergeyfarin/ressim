@@ -17,8 +17,15 @@ const MIN_REFINEMENT_IMPROVEMENT_RATIO: f64 = 0.95;
 
 /// The two stages which can reject the debug Sparse-LU input before a correction exists.
 ///
-/// This is intentionally diagnostic-only. The production FIM route does not select this
-/// backend, and this status must not be used as a nonlinear-convergence verdict.
+/// This status is diagnostic-only and must not be used as a nonlinear-convergence verdict.
+///
+/// The claim that once stood here — that the production FIM route never selects this backend —
+/// was **false**, and expensively so. Until 2026-09-22 the native build routed every small-system
+/// forced direct solve through it while the browser used dense LU, so the two targets disagreed
+/// about whether a Jacobian was singular and the same case took 4 substeps in a browser and 18
+/// natively. Forced direct solves are dense on every target now, but this backend is still
+/// production-reachable: `newton::direct_fallback_kind_for_rows` selects it for retry fallbacks
+/// above the row threshold. `docs/FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md` has the analysis.
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SparseLuPreparation {
