@@ -50,6 +50,11 @@ impl PySimulator {
         self.inner.set_fim_enabled(enabled);
     }
 
+    /// Primary LU for small FIM systems, `"sparse"` (default) or `"dense"`; the other is the backup.
+    fn set_fim_direct_backend(&mut self, backend: String) -> PyResult<()> {
+        to_py(self.inner.set_fim_direct_backend(backend))
+    }
+
     fn set_cell_dimensions(&mut self, dx: f64, dy: f64, dz: f64) -> PyResult<()> {
         to_py(self.inner.set_cell_dimensions(dx, dy, dz))
     }

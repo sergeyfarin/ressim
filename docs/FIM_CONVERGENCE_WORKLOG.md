@@ -6075,3 +6075,22 @@ Saturated cells holding a negative raw Sg. `FIM_Y2B_RAW_SATURATION=1` gives 27,9
 Also fixed: `scripts/validate-native-binding.sh` copied the extension from a hard-coded
 `target/debug`, ignoring `CARGO_TARGET_DIR`, and trusted any existing wasm bundle. Either could
 silently compare stale builds. It now honours the variable and rebuilds wasm via `build-wasm.sh`.
+
+### FIM-DIRECT-001 follow-up — one routing, dense as backup, OPM small-deck cross-check (2026-09-22)
+
+The `cfg(target_arch)` split is gone. `should_force_direct_solve` takes no target flag and only
+redirects `FgmresCpr`. Small systems run `solve_small_direct`: the primary LU
+(`FimLinearSolveOptions::small_direct_backend`, default sparse), then the other LU if the
+primary refuses, then CPR. The Newton retry fallback uses the same primary. A runtime switch,
+`setFimDirectBackend` / `set_fim_direct_backend`, swaps the order.
+
+Timings, sparse vs dense, identical substeps: native 5–6× on the small decks; wasm (Node, best
+of 5) 50×1 15.7 vs 36.0 ms, 160×1 18.4 vs 485 ms, 12×12 115 vs 1063 ms.
+
+OPM cross-check on five new generated decks under 512 rows (`opm/reference-decks/small-direct/`,
+full table in its README). Oil–water: worst |Δp| 0.38–0.94 bar and |ΔSw| 0.004–0.032 over every
+report step; cumulatives 0.05–0.81%; substeps equal to Flow's (120/121, 12/13, 40/40); Newton
+1.2–1.5× Flow's. Bubble-point columns: Flow 23–24 substeps and 57–63 Newton, no cuts; ResSim
+19–22k substeps and 210–240k Newton on either LU, final state within 0.7 bar and 0.006 Sg.
+Verdict: routing **PROMOTED**; bubble-point fragmentation remains **OPEN**, now with an OPM
+convergence oracle on the exact column.

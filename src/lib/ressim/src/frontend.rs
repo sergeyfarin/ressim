@@ -100,6 +100,7 @@ impl ReservoirSimulator {
             fim_opm_aligned_nonlinear: true,
             fim_nested_well_solve: false,
             fim_true_fgmres: true,
+            fim_direct_backend: crate::fim::linear::FimDirectBackend::Sparse,
             fim_flow_lifecycle: false,
             fim_flow_resv_injector: false,
             fim_force_direct_linear: false,
@@ -392,6 +393,21 @@ impl ReservoirSimulator {
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setFimTrueFgmres))]
     pub fn set_fim_true_fgmres(&mut self, enabled: bool) {
         self.fim_true_fgmres = enabled;
+    }
+
+    /// Primary LU for small FIM systems (at most 512 rows): `"sparse"` (default) or `"dense"`.
+    ///
+    /// Whichever is not primary still runs as a backup when the primary refuses a system, so this
+    /// only decides the order. Both agree to roundoff on every system both can factorize
+    /// (FIM-DIRECT-001); the switch exists so that a future defect specific to one
+    /// factorization can be worked around at runtime.
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setFimDirectBackend))]
+    pub fn set_fim_direct_backend(&mut self, backend: String) -> Result<(), String> {
+        self.fim_direct_backend = crate::fim::linear::FimDirectBackend::parse(&backend)
+            .ok_or_else(|| {
+                format!("Unknown FIM direct backend '{backend}': use 'sparse' or 'dense'")
+            })?;
+        Ok(())
     }
 
     /// Y2d6d native diagnostic flag. The implementation is intentionally not exposed to wasm:

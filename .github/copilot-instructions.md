@@ -64,10 +64,11 @@ exists to prevent — see `docs/ENGINE_PAYLOAD_BOUNDARY_DESIGN_2026-09-21.md`.
 
 **Cross-target caution**: native and wasm FIM agree to ~1e-13 on the parity matrix since
 FIM-DIRECT-001. Before that fix they substepped differently (18 vs 4), because roundoff of one
-sign in an inactive unknown made the Jacobian singular. The linear backends still differ by target
-(sparse LU native, dense LU wasm), and the older convergence baselines in `docs/FIM_STATUS.md` are
-**wasm** measurements, so re-measure before treating a native count and a figure from that page as
-the same measurement. A direct solve never returns exactly 0 for an unknown that should not move:
+sign in an inactive unknown made the Jacobian singular. The linear routing is now the same on every
+target: small systems (≤ 512 rows) try sparse LU, then dense LU as a backup, then iterative CPR,
+and `setFimDirectBackend` swaps the order. Do not reintroduce a `cfg(target_arch)` into solver
+routing. The older convergence baselines in `docs/FIM_STATUS.md` are **wasm** measurements taken
+on the former dense route, so re-measure before citing one against a native count. A direct solve never returns exactly 0 for an unknown that should not move:
 never give a primary a slope that depends on which side of a clamp its roundoff lands
 (`docs/FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md` §9).
 

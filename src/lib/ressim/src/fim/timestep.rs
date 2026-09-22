@@ -1060,6 +1060,7 @@ impl ReservoirSimulator {
         }
         newton_options.nested_well_solve = self.fim_nested_well_solve;
         newton_options.linear.use_true_fgmres = self.fim_true_fgmres;
+        newton_options.linear.small_direct_backend = self.fim_direct_backend;
         newton_options.linear.use_flow_lifecycle = self.fim_flow_lifecycle;
         // G4b2b routes this context atomically through state construction, both assemblers and
         // the Newton update. Unsupported requests still stop before Newton.
@@ -3352,6 +3353,7 @@ mod phase5_repro {
                 options.max_newton_iterations = 1;
             }
             options.linear.use_true_fgmres = sim.fim_true_fgmres;
+            options.linear.small_direct_backend = sim.fim_direct_backend;
             options.linear.use_flow_lifecycle = sim.fim_flow_lifecycle;
             if force_direct_linear {
                 options.linear.kind = crate::fim::linear::FimLinearSolverKind::SparseLuDebug;

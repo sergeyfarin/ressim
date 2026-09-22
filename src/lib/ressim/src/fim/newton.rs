@@ -20,8 +20,9 @@ use crate::fim::flow_resv::FlowResvReportStepContext;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::fim::flow_resv::flow_resv_injector_residual;
 use crate::fim::linear::{
-    FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport,
-    FimLinearSolverKind, active_direct_solve_row_threshold, solve_linearized_system,
+    FimDirectBackend, FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions,
+    FimLinearSolveReport, FimLinearSolverKind, active_direct_solve_row_threshold,
+    solve_linearized_system,
 };
 use crate::fim::state::{FimState, HydrocarbonState};
 use crate::fim::wells::{build_well_topology, perforation_local_block, physical_well_control};
@@ -317,20 +318,16 @@ fn linear_failure_trace_suffix(report: &FimLinearSolveReport) -> String {
     parts.join("")
 }
 
-fn direct_fallback_kind_for_rows(row_count: usize) -> FimLinearSolverKind {
-    #[cfg(target_arch = "wasm32")]
-    {
-        if row_count > active_direct_solve_row_threshold() {
-            FimLinearSolverKind::SparseLuDebug
-        } else {
-            FimLinearSolverKind::DenseLuDebug
-        }
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let _ = row_count;
+/// Direct backend for a retry fallback: the configured small-system LU below the forced-direct
+/// threshold, sparse above it. One rule for every target since FIM-DIRECT-001.
+fn direct_fallback_kind_for_rows(
+    row_count: usize,
+    small_direct_backend: FimDirectBackend,
+) -> FimLinearSolverKind {
+    if row_count > active_direct_solve_row_threshold() {
         FimLinearSolverKind::SparseLuDebug
+    } else {
+        small_direct_backend.kind()
     }
 }
 
@@ -1879,7 +1876,10 @@ pub(crate) fn run_fim_timestep(
                 || zero_move_fallback_direct_bypass
                 || repeated_zero_move_direct_bypass);
         if any_preexisting_bypass {
-            linear_options.kind = direct_fallback_kind_for_rows(assembly.jacobian.rows());
+            linear_options.kind = direct_fallback_kind_for_rows(
+                assembly.jacobian.rows(),
+                linear_options.small_direct_backend,
+            );
             fim_trace!(
                 sim,
                 options.verbose,
@@ -1897,7 +1897,10 @@ pub(crate) fn run_fim_timestep(
                 linear_options.kind.label(),
             );
         } else if iterative_failed_last_iter {
-            linear_options.kind = direct_fallback_kind_for_rows(assembly.jacobian.rows());
+            linear_options.kind = direct_fallback_kind_for_rows(
+                assembly.jacobian.rows(),
+                linear_options.small_direct_backend,
+            );
             fim_trace!(
                 sim,
                 options.verbose,
@@ -2124,7 +2127,10 @@ pub(crate) fn run_fim_timestep(
                     restart_stagnation_direct_bypass = true;
                 }
                 let mut fallback_options = options.linear;
-                fallback_options.kind = direct_fallback_kind_for_rows(assembly.jacobian.rows());
+                fallback_options.kind = direct_fallback_kind_for_rows(
+                    assembly.jacobian.rows(),
+                    fallback_options.small_direct_backend,
+                );
                 linear_report = solve_linearized_system(
                     &assembly.jacobian,
                     &rhs,

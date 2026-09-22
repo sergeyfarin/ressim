@@ -152,6 +152,8 @@ pub struct ReservoirSimulator {
     /// existing CPR and nonlinear configuration. Enabled by default; `false` retains the
     /// historical fixed-left recurrence for diagnostic A/B only.
     pub(crate) fim_true_fgmres: bool,
+    /// FIM-DIRECT-001: primary LU for small FIM systems; the other LU is the backup.
+    pub(crate) fim_direct_backend: crate::fim::linear::FimDirectBackend,
     /// Y2d6d native-only diagnostic routing for the complete Flow linear lifecycle.
     pub(crate) fim_flow_lifecycle: bool,
     /// G4b0 native-only context capture for the narrowly-scoped Flow gas-RESV injector probe.
@@ -234,6 +236,7 @@ pub(crate) mod tests {
     use crate::well_control::WellControlDecision;
     mod buckley;
     mod geometry_api;
+    mod opm_small_direct;
     pub(crate) mod physics;
     mod pvt_properties;
     mod runtime_api;

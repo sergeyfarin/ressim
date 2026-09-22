@@ -21,13 +21,16 @@ which target fragmented. Fixed and pinned by two tests; native and wasm now agre
 on every parity case, all of which are strict. Full record:
 [`FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md` §9](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md).
 
+**Routing unified (2026-09-22).** The routing no longer depends on the target. Small systems try
+sparse LU, then dense LU as a backup when sparse refuses, then iterative CPR. `setFimDirectBackend("dense")`
+(`set_fim_direct_backend` natively and in Python) swaps the order at runtime if a
+factorization-specific problem ever appears. Sparse was 5–6× faster natively and 2.3–26× in wasm,
+with the same answers. Checked against OPM Flow on five new decks under 512 rows:
+[`opm/reference-decks/small-direct/`](../opm/reference-decks/small-direct/README.md).
+`fim/unify-linear-routing` (`f5a9577`) is superseded.
+
 **Still open:**
 
-- *Routing cleanup.* The `cfg(target_arch)` split in `fim/linear/mod.rs` and `fim/newton.rs` is
-  now harmless to accuracy but still means two recovery ladders when a direct solve is refused.
-  Unify on sparse, which was 4–18× faster than dense at every measured size, with no accuracy
-  difference. The prepared unification on `fim/unify-linear-routing` (`f5a9577`) targets dense
-  and predates the fix; rebase it onto sparse rather than merging it.
 - *Re-baseline `FIM_STATUS.md`.* Its wasm figures for two-phase cases may now reproduce natively;
   measure before citing any of them as cross-target.
 
@@ -42,6 +45,11 @@ Neither flag alone repairs it; both make it worse. Owned by
 [the review plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md) S2–S4 as a coupled-lifecycle
 investigation. Evidence:
 [§9.5](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md).
+
+**OPM Flow on the same column** ([`small-direct`](../opm/reference-decks/small-direct/README.md)
+`bo-1d-10`/`bo-1d-40`): **23–24 substeps and 57–63 Newton iterations for the whole 100 days, with
+no cuts.** ResSim takes 19–22k substeps and 210–240k Newton iterations, yet lands within 0.7 bar and
+0.006 Sg of Flow. The answer is right; the nonlinear work is ~1,000× too much.
 
 ## 2. Cross-client coverage is bounded by the Python shim, not by test effort
 

@@ -3185,6 +3185,7 @@ mod tests {
             use_flow_lifecycle: false,
             eliminate_wells: false,
             require_raw_full_residual_acceptance: false,
+            small_direct_backend: crate::fim::linear::FimDirectBackend::Sparse,
         };
         let layout = Some(FimLinearBlockLayout {
             cell_block_count: 3,
@@ -3420,6 +3421,7 @@ mod tests {
                 use_flow_lifecycle: false,
                 eliminate_wells: false,
                 require_raw_full_residual_acceptance: false,
+                small_direct_backend: crate::fim::linear::FimDirectBackend::Sparse,
             },
             Some(FimLinearBlockLayout {
                 cell_block_count: 6,

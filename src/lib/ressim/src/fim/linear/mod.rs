@@ -13,7 +13,6 @@ mod sparse_lu_debug;
 mod well_schur;
 
 const DIRECT_SOLVE_ROW_THRESHOLD: usize = 512;
-const WASM_DIRECT_SOLVE_ROW_THRESHOLD: usize = DIRECT_SOLVE_ROW_THRESHOLD;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimLinearSolverKind {
@@ -34,38 +33,99 @@ impl FimLinearSolverKind {
     }
 }
 
+/// Which LU factorization solves a small system first. The other one is the backup.
+///
+/// Sparse is the default: on every system both can factorize they agree to roundoff, and sparse
+/// was 4-18x faster at every size measured (FIM-DIRECT-001,
+/// `docs/FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md` §9). Dense stays selectable, and runs anyway
+/// whenever the primary refuses a system, so a later defect that one factorization handles and
+/// the other does not is survivable without a code change.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum FimDirectBackend {
+    #[default]
+    Sparse,
+    Dense,
+}
+
+impl FimDirectBackend {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Sparse => "sparse",
+            Self::Dense => "dense",
+        }
+    }
+
+    pub(crate) fn parse(name: &str) -> Option<Self> {
+        match name {
+            "sparse" => Some(Self::Sparse),
+            "dense" => Some(Self::Dense),
+            _ => None,
+        }
+    }
+
+    pub(crate) const fn kind(self) -> FimLinearSolverKind {
+        match self {
+            Self::Sparse => FimLinearSolverKind::SparseLuDebug,
+            Self::Dense => FimLinearSolverKind::DenseLuDebug,
+        }
+    }
+
+    const fn other(self) -> Self {
+        match self {
+            Self::Sparse => Self::Dense,
+            Self::Dense => Self::Sparse,
+        }
+    }
+}
+
 pub(crate) const fn active_direct_solve_row_threshold() -> usize {
-    #[cfg(target_arch = "wasm32")]
-    {
-        WASM_DIRECT_SOLVE_ROW_THRESHOLD
-    }
+    DIRECT_SOLVE_ROW_THRESHOLD
+}
 
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        DIRECT_SOLVE_ROW_THRESHOLD
+/// Whether a small system short-circuits to a direct factorization. The same on every target.
+///
+/// Until FIM-DIRECT-001 this took an `is_wasm` flag, and wasm also forced an explicitly requested
+/// iterative backend direct, which is what needed a re-entry guard. Only a `FgmresCpr` request is
+/// redirected now; an explicit request is honoured.
+fn should_force_direct_solve(requested_kind: FimLinearSolverKind, row_count: usize) -> bool {
+    requested_kind == FimLinearSolverKind::FgmresCpr && row_count <= DIRECT_SOLVE_ROW_THRESHOLD
+}
+
+fn solve_direct(
+    backend: FimDirectBackend,
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+) -> FimLinearSolveReport {
+    match backend {
+        FimDirectBackend::Sparse => sparse_lu_debug::solve(jacobian, rhs, options, false),
+        FimDirectBackend::Dense => dense_lu_debug::solve(jacobian, rhs, options, false),
     }
 }
 
-const fn direct_solve_row_threshold_for_target(is_wasm: bool) -> usize {
-    if is_wasm {
-        WASM_DIRECT_SOLVE_ROW_THRESHOLD
-    } else {
-        DIRECT_SOLVE_ROW_THRESHOLD
+/// Primary LU, then the other LU if the primary refuses the system.
+///
+/// On an exactly singular Jacobian both refuse, and the caller's iterative fallback runs as it
+/// always has; the backup costs one extra factorization of a system at most 512 rows. It exists
+/// for the case where the two genuinely differ, near-singular pivoting for instance.
+fn solve_small_direct(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+) -> FimLinearSolveReport {
+    let primary = solve_direct(options.small_direct_backend, jacobian, rhs, options);
+    if primary.converged {
+        return primary;
     }
-}
-
-fn should_force_direct_solve(
-    requested_kind: FimLinearSolverKind,
-    row_count: usize,
-    is_wasm: bool,
-) -> bool {
-    if is_wasm {
-        requested_kind != FimLinearSolverKind::SparseLuDebug
-            && row_count <= direct_solve_row_threshold_for_target(true)
-    } else {
-        requested_kind == FimLinearSolverKind::FgmresCpr
-            && row_count <= direct_solve_row_threshold_for_target(false)
+    let mut backup = solve_direct(options.small_direct_backend.other(), jacobian, rhs, options);
+    backup.total_time_ms += primary.total_time_ms;
+    if backup.converged {
+        backup.used_fallback = true;
+        return backup;
     }
+    let mut refused = primary;
+    refused.total_time_ms = backup.total_time_ms;
+    refused
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -143,6 +203,8 @@ pub(crate) struct FimLinearSolveOptions {
     /// numeric tolerance. Default false preserves the historical preconditioned-residual route;
     /// this is an offline/default-off OPM-alignment probe, not a live Newton-policy change.
     pub(crate) require_raw_full_residual_acceptance: bool,
+    /// Primary LU for small systems; the other one is the backup. See [`FimDirectBackend`].
+    pub(crate) small_direct_backend: FimDirectBackend,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -247,6 +309,7 @@ impl Default for FimLinearSolveOptions {
             // — promoted to default pending the live control-matrix gate.
             eliminate_wells: true,
             require_raw_full_residual_acceptance: false,
+            small_direct_backend: FimDirectBackend::Sparse,
         }
     }
 }
@@ -317,51 +380,23 @@ fn solve_linearized_system_with_routing(
     // on the iterative dispatch below instead of re-selecting the forced direct path. Preserve
     // CPR when it was requested: downgrading a singular direct solve to plain GMRES/ILU0 discards
     // the pressure coarse correction and causes avoidable retry storms in capillary waterfloods.
-    // On wasm,
-    // `should_force_direct_solve` is true for any non-`SparseLuDebug` kind on a small system, so
-    // without that guard the iterative re-entry would recurse into dense LU until stack overflow.
     //
     // This fallback is load-bearing, not generic defensive code: it is what keeps the OpmAligned
     // default (WATER-026, which rests on WATER-025 raw saturations) converging on small
     // well-dominated cases. Do not remove it without first landing the root-cause relperm-endpoint
     // regularization tracked in TODO.md ("ROOT-CAUSE FIX (deferred): relperm-endpoint singularity
     // under raw saturations").
-    #[cfg(not(target_arch = "wasm32"))]
-    if allow_forced_direct && should_force_direct_solve(options.kind, jacobian.rows(), false) {
-        let direct = sparse_lu_debug::solve(jacobian, rhs, options, false);
+    //
+    // One routing for every target. Until FIM-DIRECT-001 this was `cfg(target_arch)`-split,
+    // sparse LU natively and dense LU on wasm, and the split is what turned a sign-of-roundoff
+    // singularity into an 18-vs-4-substep cross-target difference.
+    if allow_forced_direct && should_force_direct_solve(options.kind, jacobian.rows()) {
+        let direct = solve_small_direct(jacobian, rhs, options);
         if direct.converged {
             return direct;
         }
         let mut iterative_options = *options;
-        iterative_options.kind = match options.kind {
-            FimLinearSolverKind::FgmresCpr => FimLinearSolverKind::FgmresCpr,
-            _ => FimLinearSolverKind::GmresIlu0,
-        };
-        let mut iterative = solve_linearized_system_with_routing(
-            jacobian,
-            rhs,
-            &iterative_options,
-            layout,
-            equation_scaling,
-            false,
-        );
-        iterative.used_fallback = true;
-        iterative.total_time_ms += direct.total_time_ms;
-        iterative.preconditioner_build_time_ms += direct.preconditioner_build_time_ms;
-        return iterative;
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    if allow_forced_direct && should_force_direct_solve(options.kind, jacobian.rows(), true) {
-        let direct = dense_lu_debug::solve(jacobian, rhs, options, false);
-        if direct.converged {
-            return direct;
-        }
-        let mut iterative_options = *options;
-        iterative_options.kind = match options.kind {
-            FimLinearSolverKind::FgmresCpr => FimLinearSolverKind::FgmresCpr,
-            _ => FimLinearSolverKind::GmresIlu0,
-        };
+        iterative_options.kind = FimLinearSolverKind::FgmresCpr;
         let mut iterative = solve_linearized_system_with_routing(
             jacobian,
             rhs,
@@ -524,35 +559,37 @@ mod tests {
     }
 
     #[test]
-    fn wasm_target_hands_off_direct_backend_above_512_rows() {
-        assert_eq!(direct_solve_row_threshold_for_target(true), 512);
+    fn forced_direct_routing_hands_off_above_512_rows() {
+        assert_eq!(active_direct_solve_row_threshold(), 512);
         assert!(should_force_direct_solve(
             FimLinearSolverKind::FgmresCpr,
-            512,
-            true,
+            512
         ));
         assert!(!should_force_direct_solve(
             FimLinearSolverKind::FgmresCpr,
-            513,
-            true,
+            513
         ));
     }
 
+    /// The routing takes no target argument. It did until FIM-DIRECT-001, and a future
+    /// `cfg(target_arch)` here should have to argue with a named expectation.
     #[test]
-    fn wasm_target_still_respects_explicit_sparse_lu_choice() {
+    fn forced_direct_routing_honours_explicit_requests() {
+        assert!(should_force_direct_solve(
+            FimLinearSolverKind::FgmresCpr,
+            32
+        ));
         assert!(!should_force_direct_solve(
             FimLinearSolverKind::SparseLuDebug,
-            32,
-            true,
+            32
         ));
-    }
-
-    #[test]
-    fn iterative_fallback_bypasses_wasm_forced_direct_routing() {
-        assert!(should_force_direct_solve(
+        assert!(!should_force_direct_solve(
+            FimLinearSolverKind::DenseLuDebug,
+            32
+        ));
+        assert!(!should_force_direct_solve(
             FimLinearSolverKind::GmresIlu0,
-            2,
-            true,
+            32
         ));
 
         let mut tri = TriMatI::<f64, usize>::new((2, 2));
@@ -565,9 +602,69 @@ mod tests {
         };
 
         let report =
-            solve_linearized_system_with_routing(&jacobian, &rhs, &options, None, None, false);
+            solve_linearized_system_with_routing(&jacobian, &rhs, &options, None, None, true);
 
         assert_eq!(report.backend_used, FimLinearSolverKind::GmresIlu0);
+    }
+
+    fn small_nonsingular_system() -> (CsMat<f64>, DVector<f64>) {
+        let mut tri = TriMatI::<f64, usize>::new((3, 3));
+        tri.add_triplet(0, 0, 4.0);
+        tri.add_triplet(0, 1, 1.0);
+        tri.add_triplet(1, 0, 1.0);
+        tri.add_triplet(1, 1, 3.0);
+        tri.add_triplet(2, 2, 2.0);
+        (tri.to_csr(), DVector::from_vec(vec![1.0, 2.0, 3.0]))
+    }
+
+    #[test]
+    fn small_system_uses_the_selected_primary_direct_backend() {
+        let (jacobian, rhs) = small_nonsingular_system();
+        for (backend, expected) in [
+            (FimDirectBackend::Sparse, FimLinearSolverKind::SparseLuDebug),
+            (FimDirectBackend::Dense, FimLinearSolverKind::DenseLuDebug),
+        ] {
+            let options = FimLinearSolveOptions {
+                small_direct_backend: backend,
+                ..FimLinearSolveOptions::default()
+            };
+            let report = solve_linearized_system(&jacobian, &rhs, &options, None, None);
+            assert!(report.converged, "{}", backend.label());
+            assert!(!report.used_fallback, "{}", backend.label());
+            assert_eq!(report.backend_used, expected);
+        }
+    }
+
+    /// A system both LUs refuse (exactly singular) reports the primary's refusal, so the caller's
+    /// iterative fallback runs exactly as it did before the backup existed.
+    #[test]
+    fn a_refused_small_system_tries_the_backup_before_giving_up() {
+        let mut tri = TriMatI::<f64, usize>::new((2, 2));
+        tri.add_triplet(0, 0, 1.0);
+        let singular = tri.to_csr();
+        let rhs = DVector::from_vec(vec![1.0, 1.0]);
+        for backend in [FimDirectBackend::Sparse, FimDirectBackend::Dense] {
+            let options = FimLinearSolveOptions {
+                small_direct_backend: backend,
+                ..FimLinearSolveOptions::default()
+            };
+            let report = solve_small_direct(&singular, &rhs, &options);
+            assert!(!report.converged, "{}", backend.label());
+            assert_eq!(
+                report.backend_used,
+                backend.kind(),
+                "primary's report is returned"
+            );
+        }
+    }
+
+    #[test]
+    fn direct_backend_names_round_trip() {
+        for backend in [FimDirectBackend::Sparse, FimDirectBackend::Dense] {
+            assert_eq!(FimDirectBackend::parse(backend.label()), Some(backend));
+        }
+        assert_eq!(FimDirectBackend::parse("lu"), None);
+        assert_eq!(FimDirectBackend::default(), FimDirectBackend::Sparse);
     }
 
     #[test]

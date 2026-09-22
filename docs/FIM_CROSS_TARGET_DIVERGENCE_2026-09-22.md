@@ -397,9 +397,10 @@ worse. It is recorded as an open item rather than patched here.
 
 ### 9.6 What follows
 
-1. **Backend routing can now be unified on its merits, with no accuracy trade.** Sparse is the
-   faster backend at every size measured. The remaining target split is cleanup plus the
-   different recovery ladders when a direct solve is refused. Worth doing, no longer urgent.
+1. **Done (2026-09-22): routing unified.** Every target tries sparse LU, then dense LU as a backup,
+   then CPR. `setFimDirectBackend` swaps the order at runtime. Cross-checked against OPM Flow on
+   five decks under 512 rows ([`small-direct`](../opm/reference-decks/small-direct/README.md)):
+   oil–water within 1 bar, 0.03 Sw and 0.8% on cumulatives, with Flow's substep counts.
 2. **Bubble-point fragmentation (§9.5)** is the real remaining FIM defect on small cases. It needs
    the coupled investigation, not a flag flip.
 3. `FIM_STATUS.md` wasm baselines: the two-phase ones may now move natively. Re-measure before
