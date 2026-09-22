@@ -30,12 +30,18 @@ targets, agrees to **1e-12**.
   `addWellWithId`, which select different `WellGroupingKey` variants. Binding `add_well_with_id`
   for Python so both configure identically changed nothing.
 
-That leaves the target itself. The plausible mechanism is that the linear stack
-(`faer`/`nalgebra`/`sprs`) dispatches different SIMD paths on x86-64 than on wasm32, changing
-summation order and therefore rounding, and FIM's adaptive controller branches on convergence
-tolerances — so a difference far below any physical tolerance flips a cut/accept decision and the
-substep counts diverge. **This has not been confirmed**, and confirming it is the first step
-toward closing this item.
+> **Root cause found 2026-09-22 — and the mechanism guessed here was wrong.** It is not SIMD
+> dispatch. `fim/linear/mod.rs` and `fim/newton.rs` contain an explicit `cfg(target_arch)` split
+> that runs **different linear solver backends** in production: `sparse_lu_debug` on native,
+> `dense_lu_debug` on wasm. Patching native onto the wasm path collapses the difference from
+> 8.282e+00 bar to 5.684e-14 and the substeps from 18 to 4. Full analysis, scope, and the
+> "would fixing it degrade anything" testing:
+> [`FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md`](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md).
+>
+> This item stays open because the fix is a production solver change that deserves its own
+> commit, and because a **second, smaller cause remains**: unifying the backend leaves 1.24e-05
+> on the harder case, not noise. The SIMD/libm hypothesis is demoted from primary cause to
+> plausible secondary, still unconfirmed.
 
 **Why it matters beyond curiosity.** The FIM convergence baselines in `docs/FIM_STATUS.md` were
 measured through `scripts/fim-wasm-diagnostic.mjs`, i.e. **wasm**. The Rust suite, including every
@@ -43,10 +49,10 @@ FIM gate, runs **natively**. Those two have been measuring materially different 
 and nothing in the repository would have revealed it — the native/wasm parity gate did not exist
 until this session, and its first fixture ran IMPES.
 
-**To close:** confirm or refute the SIMD-dispatch mechanism; then decide whether the baselines are
-per-target (and label them so) or whether the controller should be made target-stable. Until then
-the two FIM cases in the parity matrix are marked non-strict and report their divergence on every
-run rather than failing.
+**To close:** unify the linear routing (recommendation and evidence in the analysis doc §8), then
+re-baseline `FIM_STATUS.md`, then investigate the residual 1.24e-05 on its own. Until then the two
+FIM cases in the parity matrix stay non-strict and report their divergence on every run; making
+them strict is the acceptance criterion for the unification.
 
 ## 2. Cross-client coverage is bounded by the Python shim, not by test effort
 

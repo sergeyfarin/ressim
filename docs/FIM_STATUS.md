@@ -21,7 +21,11 @@ This is the consolidated current-state summary for the Rust FIM solver.
 > *natively*. These baselines do not. Do not treat a native substep count and a number from this
 > page as the same measurement until the cause is understood.
 >
-> Investigation and what would close it: `OPEN_ITEMS_2026-09-21.md` §1.
+> **Cause identified 2026-09-22:** an explicit `cfg(target_arch)` split runs different linear
+> solver backends in production — `sparse_lu_debug` natively, `dense_lu_debug` on wasm. These
+> baselines were measured on the dense/wasm path. See
+> [`FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md`](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md); the
+> routing is not yet unified, so re-baselining is still owed.
 
 > ## 2026-09-15 measured baseline (clean tree `6be6d08`) — read this before any convergence work
 >

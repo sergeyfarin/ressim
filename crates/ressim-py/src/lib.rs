@@ -151,6 +151,19 @@ impl PySimulator {
         self.inner.step(target_dt_days);
     }
 
+    /// Step with the FIM iteration trace captured, and return it.
+    ///
+    /// The browser has had this as `stepWithDiagnostics` all along. Binding it here is what makes
+    /// a cross-target comparison possible at all: the two clients can now be asked not just
+    /// whether they agree but *at which iteration they stop agreeing*.
+    fn step_with_diagnostics(&mut self, target_dt_days: f64) -> String {
+        self.inner.step_with_diagnostics(target_dt_days)
+    }
+
+    fn fim_trace(&self) -> String {
+        self.inner.get_fim_trace()
+    }
+
     // ---- reading -------------------------------------------------------------------------
 
     fn pressures(&self) -> Vec<f64> {

@@ -19,6 +19,7 @@ under `.archive/`.
 | Document | Use it for |
 |----------|------------|
 | `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
+| [FIM cross-target divergence](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md) | Why wasm32 and x86-64 disagree on FIM: the `cfg(target_arch)` linear-backend split, proof by experiment, which solvers are affected, and what unifying would cost |
 | [Open items](OPEN_ITEMS_2026-09-21.md) | Deliberate deferrals and known gaps in one place, each with why it was not done and what would close it. Starts with the wasm32/x86-64 FIM substepping divergence |
 | [Engine payload boundary design](ENGINE_PAYLOAD_BOUNDARY_DESIGN_2026-09-21.md) | Pre-implementation note: how the engine's 12 remaining `JsValue`-bound functions become target-agnostic, by generalising the `compositional/api.rs` pattern to black-oil; phases, alternatives rejected, and the gates that keep it true |
 | [Architecture split plan](ARCHITECTURE_SPLIT_PLAN_2026-09-19.md) | S0–S6 engine/frontend separation: measured WASM and module coupling at `93c8c5c`, the four leaf extractions that zero it, workspace packaging, a non-WASM engine target, and why one repository rather than several |
