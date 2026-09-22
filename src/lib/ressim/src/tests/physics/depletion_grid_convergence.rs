@@ -273,3 +273,33 @@ fn physics_depletion_grid_convergence_fim() {
         );
     }
 }
+
+/// FIM-BUBBLE-001: the first report step crosses the bubble point. It used to take 21,797
+/// substeps at nx=10 (19,008 at nx=40), because gas-free cells were carried on an Sg primary
+/// pinned to the Sg = 0 relperm kink and never switched to Rs. OPM Flow takes 4 on the same
+/// column (`opm/reference-decks/small-direct/bo-1d-10`).
+#[test]
+fn fim_bubble_point_crossing_does_not_fragment() {
+    for nx in [10, 40] {
+        let mut sim = make_black_oil_depletion_column_sim(nx, true);
+        sim.step(DT_DAYS);
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "nx={nx}: {}",
+            sim.last_solver_warning
+        );
+        assert!(
+            (sim.time_days - DT_DAYS).abs() < 1e-9,
+            "nx={nx}: horizon not completed"
+        );
+        assert!(
+            sim.rate_history.len() <= 12,
+            "nx={nx}: the bubble-point step took {} substeps; Flow takes 4",
+            sim.rate_history.len()
+        );
+        assert!(
+            sim.sat_gas.iter().any(|&sg| sg > 1e-3),
+            "nx={nx}: no gas was liberated"
+        );
+    }
+}

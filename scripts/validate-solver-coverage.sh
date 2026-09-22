@@ -120,6 +120,12 @@ run_fim() {
     run_test dep_pss_fim_closed_system_depletion_invariants_hold
     run_test dep_pss_fim_single_cell_local_newton_leaves_small_absolute_oil_residual
     run_test dep_pss_fim_single_cell_depletion_is_timestep_stable
+    # FIM-DIRECT-001 / FIM-BUBBLE-001 regressions. Their unit contracts live in `fim::properties`
+    # and `fim::flash`, which, like the modules above, were in no bucket; the system tests share a
+    # `does_not_fragment` suffix so a new one joins this gate by name.
+    run_test fim::properties::
+    run_test fim::flash::
+    run_test does_not_fragment
 }
 
 run_impes() {

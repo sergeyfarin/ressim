@@ -10,6 +10,17 @@ pub(crate) struct FimFlashResult {
     pub(crate) bubble_point_bar: f64,
 }
 
+/// Whether the OPM primary-variable lifecycle (FIM-Y2B3 plus its initial assignment) is active.
+///
+/// Two halves that only work together (FIM-BUBBLE-001): cells without free gas start on Rs, and
+/// every Newton update may switch Sg <-> Rs with OPM's hysteresis. Either half alone makes the
+/// bubble-point depletion column worse (58,874 or 27,959 substeps for one 5-day step, against
+/// 21,797 before); together it takes 4, as Flow does. `FIM_Y2B3_DISABLE` turns both off for A/B
+/// comparison, and Legacy never uses either.
+pub(crate) fn opm_primary_variable_lifecycle(sim: &ReservoirSimulator) -> bool {
+    sim.fim_opm_aligned_nonlinear && std::env::var_os("FIM_Y2B3_DISABLE").is_none()
+}
+
 pub(crate) fn classify_cell_regime(
     sim: &ReservoirSimulator,
     pressure_bar: f64,
@@ -27,6 +38,12 @@ pub(crate) fn classify_cell_regime(
 
     if gas_saturation > 1e-9 {
         HydrocarbonState::Saturated
+    } else if opm_primary_variable_lifecycle(sim) {
+        // OPM `assignNaive`: no free gas means Rs is the primary, even when Rs equals Rs_sat.
+        // Carrying such a cell as Saturated puts its Sg primary exactly on the Sg = 0 kink of
+        // relperm and well mobility, where the sign of Newton roundoff picks the branch and the
+        // iteration two-cycles. The Newton lifecycle switches it to Sg once Rs exceeds Rs_sat.
+        HydrocarbonState::Undersaturated
     } else {
         let mut rs_sat = table.interpolate(pressure_bar).rs_m3m3;
         if let Some(base_rs) = drsdt0_base_rs {
@@ -184,5 +201,51 @@ mod tests {
 
         let regime = classify_cell_regime(&sim, 150.0, 0.0, 12.0, None);
         assert_eq!(regime, HydrocarbonState::Undersaturated);
+    }
+
+    /// FIM-BUBBLE-001: a gas-free cell whose Rs sits exactly at Rs_sat starts on Rs, as OPM's
+    /// `assignNaive` does. As Saturated it would carry Sg = 0 on the relperm kink. Legacy keeps
+    /// the historical classification.
+    #[test]
+    fn gas_free_cell_at_saturation_starts_on_rs_under_the_opm_lifecycle() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_mode_enabled(true);
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 5.0,
+                    bo_m3m3: 1.05,
+                    mu_o_cp: 1.5,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.02,
+                },
+                PvtRow {
+                    p_bar: 150.0,
+                    rs_m3m3: 15.0,
+                    bo_m3m3: 1.12,
+                    mu_o_cp: 1.2,
+                    bg_m3m3: 0.006,
+                    mu_g_cp: 0.025,
+                },
+            ],
+            sim.pvt.c_o,
+        ));
+        // Above the last saturated row Rs_sat stays 15, so Rs = 15 at 175 bar is on the boundary.
+        assert!(sim.fim_opm_aligned_nonlinear);
+        assert_eq!(
+            classify_cell_regime(&sim, 175.0, 0.0, 15.0, None),
+            HydrocarbonState::Undersaturated
+        );
+        assert_eq!(
+            classify_cell_regime(&sim, 175.0, 0.01, 15.0, None),
+            HydrocarbonState::Saturated,
+            "free gas still means Sg"
+        );
+        sim.fim_opm_aligned_nonlinear = false;
+        assert_eq!(
+            classify_cell_regime(&sim, 175.0, 0.0, 15.0, None),
+            HydrocarbonState::Saturated
+        );
     }
 }

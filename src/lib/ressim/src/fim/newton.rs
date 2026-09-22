@@ -1035,14 +1035,11 @@ pub(crate) fn run_fim_timestep(
     );
 
     let opm_aligned = options.nonlinear_flavor == FimNonlinearFlavor::OpmAligned;
-    // Y2b3a: the existing native/default-off raw-state flag now selects the coupled,
-    // deck-scoped OPM Sg/Rs primary-variable lifecycle. It remains unavailable in wasm and
-    // does not alter Legacy behavior.
-    #[cfg(not(target_arch = "wasm32"))]
+    // Y2b3: OPM's per-iteration Sg/Rs primary-variable adaptation. Default on every target since
+    // FIM-BUBBLE-001, together with the matching initial assignment in `classify_cell_regime`;
+    // see `opm_primary_variable_lifecycle`. Legacy is unaffected.
     let y2b3_primary_variable_lifecycle =
-        opm_aligned && std::env::var_os("FIM_Y2B_RAW_SATURATION").is_some();
-    #[cfg(target_arch = "wasm32")]
-    let y2b3_primary_variable_lifecycle = false;
+        opm_aligned && crate::fim::flash::opm_primary_variable_lifecycle(sim);
     // WATER-025: OPM keeps the raw Newton saturation (project-saturations defaults false),
     // clamping only in the material-law evaluation, while ResSim historically hard-clamped stored
     // Sw to Swc after every update. That hard clamp pins ahead-of-front cells sitting on Swc and
@@ -1056,7 +1053,7 @@ pub(crate) fn run_fim_timestep(
         fim_trace!(
             sim,
             options.verbose,
-            "  Y2B3 OPM primary-variable lifecycle active (native/default-off; raw saturation plus per-iteration Sg/Rs adaptation)"
+            "  Y2B3 OPM primary-variable lifecycle active (raw saturation plus per-iteration Sg/Rs adaptation)"
         );
     }
 
