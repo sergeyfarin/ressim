@@ -154,7 +154,7 @@ fn black_oil_depletion(nx: usize) -> ReservoirSimulator {
     sim.set_gas_redissolution_enabled(false);
     sim.set_gravity_enabled(false);
     sim.set_capillary_params(0.0, 2.0).unwrap();
-    sim.set_stability_params(0.05, 75.0, 0.75);
+    sim.set_stability_params(0.05, 2.0, 0.75);
     sim.set_initial_pressure(175.0);
     sim.set_initial_saturation(0.10);
     sim.set_initial_gas_saturation(0.0);
@@ -169,7 +169,7 @@ fn black_oil_depletion(nx: usize) -> ReservoirSimulator {
     };
     sim.pvt_table = Some(PvtTable::new(
         vec![
-            row(100.0, 5.0, 1.05, 1.5, 0.01, 0.02),
+            row(100.0, 5.0, 1.08, 1.5, 0.01, 0.02),
             row(150.0, 15.0, 1.12, 1.2, 0.006, 0.025),
             row(200.0, 15.0, 1.119, 1.3, 0.0045, 0.03),
         ],
