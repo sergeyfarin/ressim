@@ -159,7 +159,11 @@ describe('layered composite depletion scenario', () => {
                 });
             expect(finalNumerical).toBeGreaterThan(0);
             expect(finalReference).toBeGreaterThan(0);
-            expect(Math.max(...earlyRelativeErrors)).toBeGreaterThan(0.08);
+            // Was 0.08 while the engine's 0-bar oil-FVF convention (#36) added a 0.7-1.9%
+            // surface-rate offset to every sample. Removing it cut the late-time error ~3x and
+            // the smallest early error to 0.079. The claim is the next line's: the transient
+            // clearly exceeds the matched late-time error.
+            expect(Math.max(...earlyRelativeErrors)).toBeGreaterThan(0.07);
             expect(Math.max(...earlyRelativeErrors)).toBeGreaterThan(Math.max(...relativeErrors) * 4);
             expect(Math.max(...relativeErrors)).toBeLessThan(0.03);
             expect(Math.max(...pressureErrors)).toBeLessThan(5);

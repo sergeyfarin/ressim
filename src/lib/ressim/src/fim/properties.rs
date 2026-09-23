@@ -144,8 +144,7 @@ pub(crate) fn cell_props_generic<S: Scalar>(
 }
 
 fn base_oil_fvf_generic<S: Scalar>(sim: &ReservoirSimulator, p: S) -> S {
-    // (b_o * exp(-c_o * p)).max(1e-9)
-    (S::from_f64(sim.b_o) * (p * (-sim.pvt.c_o)).exp()).max_floor(1e-9)
+    sim.base_oil_fvf_generic(p)
 }
 
 /// Pore volume at pressure `p` with rock compressibility, generic over `S`.

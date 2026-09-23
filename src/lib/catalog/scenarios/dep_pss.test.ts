@@ -16,7 +16,14 @@ async function ensureReady() {
     await ready;
 }
 
-type Sample = { time: number; bhp: number; avgPressure: number; oilRate: number };
+type Sample = {
+    time: number;
+    bhp: number;
+    avgPressure: number;
+    oilRate: number;
+    /** Reservoir-volume rate: what Dietz's productivity relation is written in. */
+    reservoirRate: number;
+};
 
 function run(params: Record<string, any>): Sample[] {
     const sim = new ReservoirSimulator(params.nx, params.ny, params.nz, params.reservoirPorosity);
@@ -48,6 +55,7 @@ function run(params: Record<string, any>): Sample[] {
             bhp: Number(producer?.flowing_bhp),
             avgPressure: pressures.reduce((sum: number, pressure: number) => sum + pressure, 0) / pressures.length,
             oilRate: Math.abs(Number(latest?.total_production_oil ?? 0)),
+            reservoirRate: Math.abs(Number(latest?.total_production_liquid_reservoir ?? 0)),
         });
     }
     sim.free();
@@ -72,7 +80,11 @@ function tabulatedShapeFactor(params: Record<string, any>): number | null {
 
 function inferShapeFactor(params: Record<string, any>, sample: Sample): number | null {
     return dietzShapeFactorFromProductivityIndex({
-        productivityIndex: sample.oilRate / (sample.avgPressure - sample.bhp),
+        // Dietz's relation is in reservoir volumes. Using the surface rate silently assumed Bo = 1,
+        // and C_A amplifies a productivity error about 16x: a 0.3% surface-conversion offset
+        // (#36) moved the square geometry's inferred C_A by 4%. With reservoir volumes the
+        // inferred C_A no longer depends on the FVF convention at all.
+        productivityIndex: sample.reservoirRate / (sample.avgPressure - sample.bhp),
         permeabilityMd: Math.sqrt(Number(params.uniformPermX) * Number(params.uniformPermY)),
         thicknessM: Number(params.nz) * Number(params.cellDz),
         mobilityPerCp: 1 / Number(params.mu_o),
@@ -153,7 +165,7 @@ describe('Dietz PSS productivity scenario', () => {
                 skin: Number(params.well_skin),
             });
             const final = window.at(-1)!;
-            const numericalPi = final.oilRate / (final.avgPressure - final.bhp);
+            const numericalPi = final.reservoirRate / (final.avgPressure - final.bhp);
             expect(Math.abs(numericalPi - analyticalPi) / analyticalPi, key).toBeLessThan(0.01);
         }
     }, 300_000);
@@ -167,7 +179,7 @@ describe('Dietz PSS productivity scenario', () => {
             const samples = run(params);
             expectFlowingBhpMatchesReference(params, samples, key);
             const final = pssWindow(params, samples).at(-1)!;
-            productivity.push(final.oilRate / (final.avgPressure - final.bhp));
+            productivity.push(final.reservoirRate / (final.avgPressure - final.bhp));
             shapeFactors.push(Number(inferShapeFactor(params, final)));
         }
         // Stimulated > clean > damaged in productivity …

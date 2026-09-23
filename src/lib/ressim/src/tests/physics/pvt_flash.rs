@@ -13,7 +13,9 @@ fn physics_pvt_flash_no_table_oil_compressibility_consistent() {
     assert!(oil_hi.bo_m3m3 < oil_lo.bo_m3m3);
     assert!(oil_hi.rho_o_kg_m3 > oil_lo.rho_o_kg_m3);
 
-    let expected_bo_hi = f64::exp(-sim.pvt.c_o * 300.0);
+    // `b_o` is the FVF at the oil PVT reference pressure, not at 0 bar (#36).
+    let reference = sim.oil_pvt_reference_pressure_bar;
+    let expected_bo_hi = f64::exp(-sim.pvt.c_o * (300.0 - reference));
     assert!((oil_hi.bo_m3m3 - expected_bo_hi).abs() < 1e-12);
 
     let derivative = sim.get_d_bo_d_p_for_state(300.0, 0.0, false);

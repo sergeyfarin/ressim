@@ -226,11 +226,15 @@ describe('wf_numerics measured behaviour', () => {
 
         // The steep-curve run is converged against its *own* analytical
         // solution; the coarse run is in error against the shared one.
+        // Recovery is surface oil over oil in place at Bo = b_o, which holds only if the engine's
+        // Bo equals b_o at the initial pressure. Until #36 it was 0.3% lower, and every recovery
+        // here read 0.3% high. The unbiased gaps are 0.0053 (steep) and 0.0057 (fine), against
+        // the >0.02 separation that is the actual claim, so 0.0075 keeps a factor of three.
         const steepBl = analyticalFor(3.5);
-        expect(steep.recoveryAtOnePvi).toBeCloseTo(steepBl.recoveryAtOnePvi, 2);
+        expect(Math.abs(steep.recoveryAtOnePvi - steepBl.recoveryAtOnePvi)).toBeLessThan(0.0075);
         const baseBl = analyticalFor(2);
         expect(baseBl.recoveryAtOnePvi - coarse.recoveryAtOnePvi).toBeGreaterThan(0.02);
-        expect(baseBl.recoveryAtOnePvi - fine.recoveryAtOnePvi).toBeLessThan(0.005);
+        expect(baseBl.recoveryAtOnePvi - fine.recoveryAtOnePvi).toBeLessThan(0.0075);
     }, 300_000);
 
     it('records that the two solver paths disagree on breakthrough and agree on recovery', async () => {

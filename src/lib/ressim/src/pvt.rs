@@ -625,7 +625,18 @@ impl ReservoirSimulator {
     }
 
     fn base_oil_fvf(&self, p: f64) -> f64 {
-        (self.b_o * f64::exp(-self.pvt.c_o * p)).max(1e-9)
+        self.base_oil_fvf_generic(p)
+    }
+
+    /// Oil FVF without a PVT table: `b_o` at `oil_pvt_reference_pressure_bar`, shrinking with
+    /// `c_o` above it, the Eclipse `PVCDO` convention that water (`PVTW`) and rock (`ROCK`) already
+    /// follow here. It used to be referenced to 0 bar, so `b_o` was the FVF at vacuum and every
+    /// dead-oil run reported about `c_o * p` more surface oil than its stated Bo implied: 0.3% at
+    /// 300 bar (#36).
+    pub(crate) fn base_oil_fvf_generic<S: Scalar>(&self, p: S) -> S {
+        (S::from_f64(self.b_o)
+            * ((p - self.oil_pvt_reference_pressure_bar) * (-self.pvt.c_o)).exp())
+        .max_floor(1e-9)
     }
 
     fn base_oil_density(&self, p: f64) -> f64 {
@@ -997,8 +1008,7 @@ impl ReservoirSimulator {
             let (bo, _mu) = table.interpolate_oil_generic(p, rs);
             (S::from_f64(self.pvt.rho_o) + rs * self.rho_g) / bo.max_floor(1e-9)
         } else {
-            let bo = (S::from_f64(self.b_o) * (p * (-self.pvt.c_o)).exp()).max_floor(1e-9);
-            S::from_f64(self.pvt.rho_o) / bo
+            S::from_f64(self.pvt.rho_o) / self.base_oil_fvf_generic(p)
         }
     }
 
@@ -1030,8 +1040,11 @@ mod tests {
         assert!(oil_hi.bo_m3m3 < oil_lo.bo_m3m3);
         assert!(oil_hi.rho_o_kg_m3 > oil_lo.rho_o_kg_m3);
 
-        let expected_bo_hi = f64::exp(-sim.pvt.c_o * 300.0);
+        // `b_o` holds at the reference pressure, and compressibility acts from there (#36).
+        let reference = sim.oil_pvt_reference_pressure_bar;
+        let expected_bo_hi = f64::exp(-sim.pvt.c_o * (300.0 - reference));
         assert!((oil_hi.bo_m3m3 - expected_bo_hi).abs() < 1e-12);
+        assert!((sim.oil_props_for_state(reference, 0.0).bo_m3m3 - sim.b_o).abs() < 1e-15);
 
         let derivative = sim.get_d_bo_d_p_for_state(300.0, 0.0, false);
         assert!((derivative + sim.pvt.c_o * oil_hi.bo_m3m3).abs() < 1e-12);

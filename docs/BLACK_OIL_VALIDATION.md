@@ -332,7 +332,8 @@ At 2 days with matched 0.05-day steps the differences are −0.28%, −0.28% and
   - The decks' `PVCDO 300 1.0 1e-5` sets Bo = 1 **at 300 bar**, while ResSim's no-table oil FVF is
     `b_o·exp(−c_o·p)`, i.e. Bo = 1 **at 0 bar**, which is 0.30% more surface oil at 300 bar.
     Setting the deck's reference Bo to `exp(−0.003)` makes the 23×23×1, 5 × 0.05 rung agree to
-    **+0.002%** (348.791 against 348.783).
+    **+0.002%** (348.791 against 348.783). **Fixed engine-side by #36** (next section): with
+    the unmodified decks, every matched rung now agrees to ≤ 0.005%.
 
 **Report-step sensitivity** (`wf_bl1d` geometry, `small-direct/ow-1d-96`, 30 days):
 
@@ -362,4 +363,40 @@ python3 tools/opm_flow/compare_small_direct.py --deck-dir <decks> --ressim-dir <
 The oil-FVF reference-pressure convention (0 bar for oil, 300 bar for water and rock) is a
 separate modelling decision and is tracked in [#36](https://github.com/sergeyfarin/ressim/issues/36). It moves reported surface oil by
 0.3% at 300 bar in every dead-oil scenario.
+
+## #36 — oil FVF is referenced to the initial pressure, like water and rock (2026-09-23)
+
+Without a PVT table, oil FVF was `b_o·exp(−c_o·p)`, so `b_o` held at 0 bar, while water's `b_w`
+and the rock reference held at the initial pressure (`set_initial_pressure`). It is now
+`b_o·exp(−c_o·(p − p_ref))` with `p_ref` set together with the other two. That is the Eclipse
+`PVCDO` convention, and it matches the UI's label for `volume_expansion_o`, "Oil formation
+volume factor". Every dead-oil scenario, FIM and IMPES, reports about `c_o·p_init` less surface
+oil than before: 0.30% at 300 bar. Nothing with a PVT table changes.
+
+Against Flow, the tracked water-pressure decks, unmodified, with `--corey-table-points 9`:
+
+| rung | ResSim vs Flow FOPT | injection |
+|---|---|---|
+| 23×23×1, 5 × 0.05 to 0.25 d | +0.002% (was +0.30%) | +0.003% |
+| 23×23×1, 25 × 0.01 to 0.25 d | +0.002% | +0.004% |
+| 22×22×1, 5 × 0.05 to 0.25 d | +0.002% | +0.003% |
+| 20×20×3, 5 × 0.05 to 0.25 d | −0.005% | −0.003% |
+| 23×23×1, 40 × 0.05 to 2 d | +0.002% | +0.002% |
+| 20×20×3, 40 × 0.05 to 2 d | −0.004% | −0.004% |
+
+Three scenario tests moved. Each change is justified in the test itself.
+
+- **`dep_arps`: late-time error against the layer-superposition decline fell about 3×.** It went
+  from 1.9/1.5/2.0% to 0.5/0.7/0.8%, and the final-rate ratio from 1.019/1.008/1.007 to
+  1.004/0.993/0.992. The minimum early-transient error it demands was lowered from 0.08 to
+  0.07, because the smallest early error fell to 0.079 once the offset was gone. Its real
+  claim, early error at least 4× the late error, is unchanged and holds.
+- **`dep_pss` now infers the Dietz shape factor from the reservoir-volume rate.** The surface rate
+  had assumed Bo = 1, and C_A amplifies a productivity error about 16×. With reservoir volumes,
+  master and this change infer identical C_A to 1e-12, all within 0.02–2.4% of Dietz. The 3%
+  tolerance is unchanged.
+- **`wf_numerics`: recovery is surface oil over oil in place at `b_o`.** It is now unbiased, where
+  before it read 0.3% high. The steep and fine runs sit 0.0053 and 0.0057 from their Buckley–
+  Leverett values. The bound was 0.005, which passed only on the bias, and is now 0.0075, a
+  factor of three inside the ≥ 0.02 separation the test exists to show.
 

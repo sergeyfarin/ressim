@@ -90,6 +90,7 @@ impl ReservoirSimulator {
             b_o: 1.0,
             b_w: 1.0,
             water_pvt_reference_pressure_bar: 300.0,
+            oil_pvt_reference_pressure_bar: 300.0,
             rock_reference_pressure_bar: 300.0,
             rate_history: Vec::new(),
             last_solver_warning: String::new(),
@@ -651,6 +652,7 @@ impl ReservoirSimulator {
             self.pressure[i] = pressure;
         }
         self.water_pvt_reference_pressure_bar = pressure;
+        self.oil_pvt_reference_pressure_bar = pressure;
         self.rock_reference_pressure_bar = pressure;
     }
 
