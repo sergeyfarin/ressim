@@ -22,27 +22,17 @@ pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
         };
         let mut retry_count = 0;
         let actual_dt;
-        let final_p;
-        let final_delta_water_m3;
-        let final_delta_free_gas_sc;
-        let final_delta_dg_sc;
-        let final_well_controls;
+        let accepted;
 
         loop {
             sim.update_dynamic_well_productivity_indices();
 
-            let (
-                p_new,
-                delta_water_m3,
-                delta_free_gas_sc,
-                delta_dg_sc,
-                well_controls,
-                stable_dt_factor,
-                solver_converged,
-                solver_iterations,
-            ) = sim.calculate_fluxes(trial_dt);
+            let step = sim.calculate_fluxes(trial_dt);
+            let stable_dt_factor = step.stable_dt_factor;
+            let solver_converged = step.converged;
+            let solver_iterations = step.linear_iterations;
 
-            let pressure_physical = sim.pressure_state_is_physical(p_new.as_slice());
+            let pressure_physical = sim.pressure_state_is_physical(step.p_new.as_slice());
             let solver_retry_factor = if solver_converged { 1.0 } else { 0.5 };
             let physics_retry_factor = if pressure_physical { 1.0 } else { 0.5 };
             let retry_factor = stable_dt_factor
@@ -51,11 +41,7 @@ pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
 
             if retry_factor >= 1.0 {
                 actual_dt = trial_dt;
-                final_p = p_new;
-                final_delta_water_m3 = delta_water_m3;
-                final_delta_free_gas_sc = delta_free_gas_sc;
-                final_delta_dg_sc = delta_dg_sc;
-                final_well_controls = well_controls;
+                accepted = step;
                 break;
             }
 
@@ -65,7 +51,7 @@ pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
             if !next_dt.is_finite() || next_dt <= 1e-12 {
                 sim.last_solver_warning = if !solver_converged {
                     format!(
-                        "Linear solver did not converge after {} iterations and timestep collapsed at t={:.6} days",
+                        "Pressure solve did not converge after {} linear iterations and timestep collapsed at t={:.6} days",
                         solver_iterations,
                         sim.time_days + time_stepped
                     )
@@ -82,7 +68,7 @@ pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
             if retry_count >= MAX_PRESSURE_RETRIES_PER_SUBSTEP {
                 sim.last_solver_warning = if !solver_converged {
                     format!(
-                        "Linear solver did not converge after {} iterations even after {} retries at t={:.6} days",
+                        "Pressure solve did not converge after {} linear iterations even after {} retries at t={:.6} days",
                         solver_iterations,
                         retry_count,
                         sim.time_days + time_stepped
@@ -100,11 +86,9 @@ pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
         }
 
         sim.update_saturations_and_pressure(
-            &final_p,
-            &final_delta_water_m3,
-            &final_delta_free_gas_sc,
-            &final_delta_dg_sc,
-            &final_well_controls,
+            &accepted.p_new,
+            &accepted.deltas,
+            &accepted.well_controls,
             actual_dt,
         );
 

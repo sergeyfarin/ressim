@@ -385,6 +385,8 @@ impl ReservoirSimulator {
         let mut total_injection_reservoir = 0.0;
         let mut total_water_injection_reservoir = 0.0;
         let mut total_prod_water_reservoir = 0.0;
+        let mut total_water_injection_sc = 0.0;
+        let mut total_prod_water_sc = 0.0;
         let mut total_prod_gas = 0.0;
         let mut total_prod_dissolved_gas = 0.0;
         let mut total_gas_injection_sc = 0.0;
@@ -424,8 +426,10 @@ impl ReservoirSimulator {
                     if self.three_phase_mode {
                         match self.injected_fluid {
                             InjectedFluid::Water => {
-                                total_injection +=
+                                let water_sc =
                                     -q_m3_day * self.water_inverse_fvf(self.pressure[id]);
+                                total_injection += water_sc;
+                                total_water_injection_sc += water_sc;
                                 total_water_injection_reservoir += -q_m3_day;
                             }
                             InjectedFluid::Gas => {
@@ -460,6 +464,7 @@ impl ReservoirSimulator {
                     let water_rate_sc = q_m3_day * fw * inv_bw;
                     total_prod_oil += oil_rate_sc;
                     total_prod_liquid += oil_rate_sc + water_rate_sc;
+                    total_prod_water_sc += water_rate_sc;
 
                     let bg = producer_state.gas_fvf.max(1e-9);
                     total_prod_gas += q_m3_day * fg / bg;
@@ -473,8 +478,13 @@ impl ReservoirSimulator {
         self.cumulative_injection_m3 += total_water_injection_reservoir * dt_days;
         self.cumulative_production_m3 += total_prod_water_reservoir * dt_days;
 
-        let net_water_added_m3 =
-            (total_water_injection_reservoir - total_prod_water_reservoir) * dt_days;
+        // Three-phase IMPES conserves surface water (#37), like FIM; two-phase still moves
+        // water by reservoir volume. `actual_change_m3` is in the matching unit.
+        let net_water_added_m3 = if self.three_phase_mode {
+            (total_water_injection_sc - total_prod_water_sc) * dt_days
+        } else {
+            (total_water_injection_reservoir - total_prod_water_reservoir) * dt_days
+        };
         self.cumulative_mb_error_m3 += net_water_added_m3 - actual_change_m3;
 
         let produced_oil_sc = total_prod_oil * dt_days;

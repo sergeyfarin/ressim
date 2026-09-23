@@ -154,7 +154,7 @@ fn black_oil_depletion(nx: usize) -> ReservoirSimulator {
     sim.set_gas_redissolution_enabled(false);
     sim.set_gravity_enabled(false);
     sim.set_capillary_params(0.0, 2.0).unwrap();
-    sim.set_stability_params(0.05, 2.0, 0.75);
+    sim.set_stability_params(0.05, 75.0, 0.75);
     sim.set_initial_pressure(175.0);
     sim.set_initial_saturation(0.10);
     sim.set_initial_gas_saturation(0.0);

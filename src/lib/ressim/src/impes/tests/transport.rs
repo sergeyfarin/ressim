@@ -1,6 +1,7 @@
 use nalgebra::DVector;
 
 use crate::ReservoirSimulator;
+use crate::impes::pressure::TransportDeltas;
 use crate::well_control::{ProducerControlState, ResolvedWellControl, WellControlDecision};
 
 #[test]
@@ -36,9 +37,7 @@ fn transport_reporting_reuses_rate_control_decision() {
 
     sim.update_saturations_and_pressure(
         &DVector::from_vec(vec![300.0]),
-        &vec![0.0],
-        &vec![0.0],
-        &vec![0.0],
+        &TransportDeltas::zeros(1),
         &controls,
         1.0,
     );
@@ -102,9 +101,7 @@ fn producing_gor_is_reported_when_oil_rate_is_small_but_nonzero() {
 
     sim.update_saturations_and_pressure(
         &DVector::from_vec(vec![300.0]),
-        &vec![0.0],
-        &vec![0.0],
-        &vec![0.0],
+        &TransportDeltas::zeros(1),
         &controls,
         1.0,
     );
@@ -179,9 +176,7 @@ fn producing_gor_is_zero_when_there_is_no_oil_production() {
 
     sim.update_saturations_and_pressure(
         &DVector::from_vec(vec![300.0]),
-        &vec![0.0],
-        &vec![0.0],
-        &vec![0.0],
+        &TransportDeltas::zeros(1),
         &controls,
         1.0,
     );
@@ -243,9 +238,7 @@ fn producer_reporting_uses_same_sampled_near_well_mixture() {
 
     sim.update_saturations_and_pressure(
         &DVector::from_vec(vec![150.0, 150.0, 150.0, 150.0]),
-        &vec![0.0, 0.0, 0.0, 0.0],
-        &vec![0.0, 0.0, 0.0, 0.0],
-        &vec![0.0, 0.0, 0.0, 0.0],
+        &TransportDeltas::zeros(4),
         &controls,
         1.0,
     );

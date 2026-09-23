@@ -133,6 +133,8 @@ run_fim() {
 
 run_impes() {
     run_test physics_depletion_grid_convergence_impes
+    # #37: conservative three-phase IMPES closes oil, water and gas with compressible rock/water.
+    run_test physics_depletion_impes_closes_balances_with_rock_and_water_compressibility
     run_test impes::tests::reporting::
     run_test impes::tests::transport::
     run_test impes::tests::timestep::

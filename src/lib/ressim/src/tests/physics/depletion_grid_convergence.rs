@@ -52,11 +52,7 @@ fn make_black_oil_depletion_column_sim(nx: usize, fim_enabled: bool) -> Reservoi
     sim.set_gas_redissolution_enabled(false);
     sim.set_gravity_enabled(false);
     sim.set_capillary_params(0.0, 2.0).unwrap();
-    // IMPES only (FIM ignores these). The explicit pressure equation takes its storage term from
-    // the start of the substep, so a substep that crosses the bubble point on the undersaturated
-    // c_o books the liberation error as oil: +36% of produced oil at the 75 bar default, +3.6% at
-    // 2 bar, first order in the cap (#11, `docs/BLACK_OIL_VALIDATION.md` §2).
-    sim.set_stability_params(0.05, 2.0, 0.75);
+    sim.set_stability_params(0.05, 75.0, 0.75);
     sim.set_initial_pressure(INITIAL_PRESSURE_BAR);
     sim.set_initial_saturation(0.10);
     sim.set_initial_gas_saturation(0.0);
@@ -326,12 +322,14 @@ fn cumulative_oil_sm3(sim: &ReservoirSimulator) -> f64 {
     cumulative
 }
 
-/// #11: IMPES and FIM agree on the depletion column, and IMPES keeps its oil balance.
+/// #11/#37: IMPES and FIM agree on the depletion column, and IMPES conserves oil.
 ///
-/// IMPES never transports oil (`So = 1 - Sw - Sg`), so a pressure equation that misstates
-/// storage shows up as reported oil production the reservoir never lost. On the old,
-/// thermodynamically unstable table that was +144% of the produced oil and a 0.84 bar gap to
-/// FIM and Flow that did not close as dt shrank. Measured values: `docs/BLACK_OIL_VALIDATION.md` §2.
+/// IMPES used to keep oil as the residual `So = 1 - Sw - Sg`, so a pressure equation that
+/// misstated storage showed up as reported oil production the reservoir never lost: +144% on
+/// the old unstable table, and +36% on a stable one at the default 75 bar pressure cap, where a
+/// substep crossing the bubble point took the undersaturated storage term. It now transports oil
+/// mass and iterates the pressure to the volume balance, so the error is roundoff at any cap.
+/// Measured values: `docs/BLACK_OIL_VALIDATION.md` §2.
 #[test]
 fn physics_depletion_impes_matches_fim_and_conserves_oil() {
     let nx = 10;
@@ -349,8 +347,8 @@ fn physics_depletion_impes_matches_fim_and_conserves_oil() {
         .unwrap()
         .material_balance_error_oil_m3;
     assert!(
-        oil_error.abs() <= 0.05 * produced,
-        "IMPES oil balance error {oil_error:.2} Sm3 against {produced:.2} Sm3 produced"
+        oil_error.abs() <= 1e-8 * produced,
+        "IMPES oil balance error {oil_error:.3e} Sm3 against {produced:.2} Sm3 produced"
     );
 
     let (impes, fim) = (column_averages(&impes), column_averages(&fim));
@@ -363,16 +361,53 @@ fn physics_depletion_impes_matches_fim_and_conserves_oil() {
         fim.sat_gas
     );
     assert!(
-        (impes.pressure_bar - fim.pressure_bar).abs() <= 0.5,
+        (impes.pressure_bar - fim.pressure_bar).abs() <= 0.1,
         "IMPES p {:.4} vs FIM {:.4} bar",
         impes.pressure_bar,
         fim.pressure_bar
     );
     assert!(
-        (impes.sat_gas - fim.sat_gas).abs() <= 0.03 * fim.sat_gas,
+        (impes.sat_gas - fim.sat_gas).abs() <= 0.005 * fim.sat_gas,
         "IMPES Sg {:.6} vs FIM {:.6}",
         impes.sat_gas,
         fim.sat_gas
+    );
+}
+
+/// #37: three-phase IMPES closes all three component balances with compressible rock and water.
+///
+/// The pressure equation has always counted rock and water expansion in `c_t`, but transport
+/// moved water by reservoir volume on a fixed pore volume, and oil was the residual
+/// `1 - Sw - Sg`, so both expansions were produced as oil the reservoir never lost. Each
+/// balance is now exact up to the volume-balance tolerance.
+#[test]
+fn physics_depletion_impes_closes_balances_with_rock_and_water_compressibility() {
+    let mut sim = make_black_oil_depletion_column_sim(10, false);
+    sim.rock_compressibility = 1e-4;
+    sim.pvt.c_w = 4.5e-5;
+    for _ in 0..STEPS {
+        sim.step(DT_DAYS);
+        assert!(sim.last_solver_warning.is_empty(), "{}", sim.last_solver_warning);
+    }
+
+    let produced_oil = cumulative_oil_sm3(&sim);
+    let last = sim.rate_history.last().unwrap();
+    let water_in_place: f64 = (0..sim.nx).map(|id| sim.cell_masses(id).water_sc).sum();
+    let gas_in_place: f64 = (0..sim.nx).map(|id| sim.cell_masses(id).total_gas_sc()).sum();
+    assert!(
+        last.material_balance_error_oil_m3 <= 1e-8 * produced_oil,
+        "oil balance error {:.3e} Sm3 against {produced_oil:.2} produced",
+        last.material_balance_error_oil_m3
+    );
+    assert!(
+        last.material_balance_error_m3 <= 1e-8 * water_in_place,
+        "water balance error {:.3e} Sm3 against {water_in_place:.2} in place",
+        last.material_balance_error_m3
+    );
+    assert!(
+        last.material_balance_error_gas_m3 <= 1e-8 * gas_in_place,
+        "gas balance error {:.3e} Sm3 against {gas_in_place:.2} in place",
+        last.material_balance_error_gas_m3
     );
 }
 
