@@ -387,13 +387,19 @@ fn physics_depletion_impes_closes_balances_with_rock_and_water_compressibility()
     sim.pvt.c_w = 4.5e-5;
     for _ in 0..STEPS {
         sim.step(DT_DAYS);
-        assert!(sim.last_solver_warning.is_empty(), "{}", sim.last_solver_warning);
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "{}",
+            sim.last_solver_warning
+        );
     }
 
     let produced_oil = cumulative_oil_sm3(&sim);
     let last = sim.rate_history.last().unwrap();
     let water_in_place: f64 = (0..sim.nx).map(|id| sim.cell_masses(id).water_sc).sum();
-    let gas_in_place: f64 = (0..sim.nx).map(|id| sim.cell_masses(id).total_gas_sc()).sum();
+    let gas_in_place: f64 = (0..sim.nx)
+        .map(|id| sim.cell_masses(id).total_gas_sc())
+        .sum();
     assert!(
         last.material_balance_error_oil_m3 <= 1e-8 * produced_oil,
         "oil balance error {:.3e} Sm3 against {produced_oil:.2} produced",

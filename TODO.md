@@ -27,7 +27,6 @@ migration issue is retained as the closed record [#9](https://github.com/sergeyf
 - [#25 — dep_gas_pz produced gas exceeds gas in place, collapsing the p/z reference](https://github.com/sergeyfarin/ressim/issues/25)
 - [#26 — Give the withheld dep_pvt case a second sensitivity dimension](https://github.com/sergeyfarin/ressim/issues/26)
 - [#29 — Compositional model: C13 chart sourcing, then C14](https://github.com/sergeyfarin/ressim/issues/29)
-- [#40 — Five tests::physics tests fail on master and are in no gate bucket](https://github.com/sergeyfarin/ressim/issues/40)
 
 ## Tracking rules
 

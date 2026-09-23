@@ -76,11 +76,9 @@ fn physics_depletion_liberation_fim_stepping_liberates_gas() {
     // Gas inventory decreases because some gas is produced but the flash should not
     // create or destroy total hydrocarbon: inventory loss must be accounted for by production.
     let gas_final_sc = total_gas_inventory_sc_all_cells(&sim);
-    let cumulative_gas_produced_sc: f64 = sim
-        .rate_history
-        .iter()
-        .map(|p| p.total_production_gas.max(0.0))
-        .sum();
+    // Rates are Sm³/day over substeps of varying length, so they must be integrated (#40: a
+    // plain sum of rates only equals the cumulative when every substep is exactly one day).
+    let cumulative_gas_produced_sc = cumulative_component_production_sc(&sim).gas_sc;
     let accounted_sc = gas_final_sc + cumulative_gas_produced_sc;
     assert!(
         (accounted_sc - gas_initial_sc).abs() < gas_initial_sc * 0.01,

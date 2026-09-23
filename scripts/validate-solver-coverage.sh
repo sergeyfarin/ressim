@@ -88,6 +88,9 @@ run_shared() {
     run_test physics_geometry_waterflood_3d_high_kz_public_contract_holds_on_both_solvers
     # #11: IMPES and FIM agree on the bubble-point depletion column and IMPES keeps its oil balance.
     run_test physics_depletion_impes_matches_fim_and_conserves_oil
+    # #40: the whole physics module, so a test added there is gated without being listed. Five
+    # of its tests sat failing on master for want of exactly this line (~9 s debug).
+    run_test tests::physics::
 }
 
 run_fim() {

@@ -1863,11 +1863,16 @@ impl ReservoirSimulator {
     /// Its cumulative material-balance ledger must use the same conserved
     /// quantity; reservoir-condition `PV * Sw` changes under compression even
     /// when the component equation closes exactly.
+    ///
+    /// The same holds for pore volume: the residual accumulates on
+    /// `pore_volume_generic(p)`, so all three ledgers use the pore volume at
+    /// the cell's pressure. On the reference pore volume, rock compaction read
+    /// as a balance error in every component (#40).
     fn total_water_inventory_sc(&self) -> f64 {
         (0..self.nx * self.ny * self.nz)
             .map(|idx| {
                 self.sat_water[idx]
-                    * self.pore_volume_m3(idx)
+                    * self.pore_volume_at_pressure_m3(idx, self.pressure[idx])
                     * self.water_inverse_fvf(self.pressure[idx])
             })
             .sum()
@@ -1876,7 +1881,9 @@ impl ReservoirSimulator {
     fn total_oil_inventory_sc(&self) -> f64 {
         (0..self.nx * self.ny * self.nz)
             .map(|idx| {
-                let pore_volume_m3 = self.pore_volume_m3(idx).max(1e-9);
+                let pore_volume_m3 = self
+                    .pore_volume_at_pressure_m3(idx, self.pressure[idx])
+                    .max(1e-9);
                 let bo = self.get_b_o_cell(idx, self.pressure[idx]).max(1e-9);
                 self.sat_oil[idx] * pore_volume_m3 / bo
             })
@@ -1890,7 +1897,9 @@ impl ReservoirSimulator {
 
         (0..self.nx * self.ny * self.nz)
             .map(|idx| {
-                let pore_volume_m3 = self.pore_volume_m3(idx).max(1e-9);
+                let pore_volume_m3 = self
+                    .pore_volume_at_pressure_m3(idx, self.pressure[idx])
+                    .max(1e-9);
                 let free_gas_sc =
                     self.sat_gas[idx] * pore_volume_m3 / self.get_b_g(self.pressure[idx]).max(1e-9);
                 let dissolved_gas_sc = if self.pvt_table.is_some() {

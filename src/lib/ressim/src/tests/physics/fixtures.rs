@@ -334,56 +334,34 @@ pub(crate) fn make_3phase_gas_injection_sim(nx: usize, fim_enabled: bool) -> Res
     sim
 }
 
+/// Total surface gas in place, free plus dissolved [Sm³].
+///
+/// Same accounting as [`total_component_inventory_sc_all_cells`].
 pub(crate) fn total_gas_inventory_sc_all_cells(sim: &ReservoirSimulator) -> f64 {
-    (0..sim.nx * sim.ny * sim.nz)
-        .map(|idx| {
-            let pore_volume_m3 = sim.pore_volume_m3(idx).max(1e-9);
-            let free_gas_sc =
-                sim.sat_gas[idx] * pore_volume_m3 / sim.get_b_g(sim.pressure[idx]).max(1e-9);
-            let dissolved_gas_sc = if sim.pvt_table.is_some() {
-                sim.sat_oil[idx] * pore_volume_m3 * sim.rs[idx]
-                    / sim.get_b_o_cell(idx, sim.pressure[idx]).max(1e-9)
-            } else {
-                0.0
-            };
-            free_gas_sc + dissolved_gas_sc
-        })
-        .sum()
+    total_component_inventory_sc_all_cells(sim).gas_sc
 }
 
+/// Surface inventory of each component [Sm³], as the engine itself counts it.
+///
+/// Built on `cell_masses`, i.e. on the pore volume at the cell's pressure (rock compressibility)
+/// and pressure-dependent `Bw`, which is what both solvers conserve. The former hand-rolled sum
+/// used the reference pore volume and a constant `b_w`, so water expansion alone read as a
+/// balance drift of `c_w·Δp` (2.85e-4 over a 95 bar drawdown, #40).
 pub(crate) fn total_component_inventory_sc_all_cells(
     sim: &ReservoirSimulator,
 ) -> ComponentInventorySc {
-    let mut water_sc = 0.0;
-    let mut oil_sc = 0.0;
-    let mut gas_sc = 0.0;
-
+    let mut total = ComponentInventorySc {
+        water_sc: 0.0,
+        oil_sc: 0.0,
+        gas_sc: 0.0,
+    };
     for idx in 0..sim.nx * sim.ny * sim.nz {
-        let pore_volume_m3 = sim.pore_volume_m3(idx).max(1e-9);
-        let pressure_bar = sim.pressure[idx];
-        let bw = sim.b_w.max(1e-9);
-        let bo = sim.get_b_o_cell(idx, pressure_bar).max(1e-9);
-        let bg = sim.get_b_g(pressure_bar).max(1e-9);
-
-        let water_cell_sc = sim.sat_water[idx] * pore_volume_m3 / bw;
-        let oil_cell_sc = sim.sat_oil[idx] * pore_volume_m3 / bo;
-        let dissolved_gas_sc = if sim.three_phase_mode || sim.pvt_table.is_some() {
-            oil_cell_sc * sim.rs[idx]
-        } else {
-            0.0
-        };
-        let free_gas_sc = sim.sat_gas[idx] * pore_volume_m3 / bg;
-
-        water_sc += water_cell_sc;
-        oil_sc += oil_cell_sc;
-        gas_sc += free_gas_sc + dissolved_gas_sc;
+        let masses = sim.cell_masses(idx);
+        total.water_sc += masses.water_sc;
+        total.oil_sc += masses.oil_sc;
+        total.gas_sc += masses.total_gas_sc();
     }
-
-    ComponentInventorySc {
-        water_sc,
-        oil_sc,
-        gas_sc,
-    }
+    total
 }
 
 pub(super) fn cumulative_component_production_sc(sim: &ReservoirSimulator) -> ComponentInventorySc {
