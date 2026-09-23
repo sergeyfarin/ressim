@@ -122,6 +122,18 @@ configurations. Pre-existing on master, unrelated to the feature split; surfaced
 the no-default-features build made warnings worth reading. They are the layout surface the FIM
 repair published for reuse, so the fix is probably to consume or retire them, not to `allow` them.
 
+## 8. IMPES depletion fixture runs with a 2 bar pressure cap (#11) — **deferred to #37**
+
+The #11 fix made the depletion column's PVT table stable (`c225102`). IMPES then agrees with FIM
+and Flow only with a pressure cap of a few bar: at the 75 bar default, a substep crossing the
+bubble point books +36 % of produced oil as a balance error. The fixture sets 2 bar, and the gate
+bounds the error at 5 %. It was not fixed here because the cure is structural rather than a
+tolerance: a conservative IMPES that transports oil mass
+([#37](https://github.com/sergeyfarin/ressim/issues/37)). No shipped scenario runs IMPES on black
+oil. The same investigation also opened #38 (Bo jump in `interpolate_oil`), #39 (unstable PVT
+tables go undetected) and #40 (five ungated `tests::physics` failures that predate this change).
+Evidence: [`BLACK_OIL_VALIDATION.md` §2](BLACK_OIL_VALIDATION.md).
+
 ## Closed this session, for the record
 
 - The import gates were blind to workspace package specifiers, so a cycle spanning two packages
