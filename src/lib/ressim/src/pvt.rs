@@ -162,6 +162,7 @@ impl PvtTable {
             let last = &rows[last_idx];
             let mut extrapolated = last.clone();
             extrapolated.p_bar = p;
+            extrapolated.rs_m3m3 = Self::extrapolated_rs(rows, p);
             extrapolated.bo_m3m3 = last.bo_m3m3 * f64::exp(-c_o * (p - last.p_bar));
             extrapolated.bg_m3m3 = last.bg_m3m3 * (last.p_bar / p);
             return extrapolated;
@@ -203,7 +204,9 @@ impl PvtTable {
             let mu = row.mu_o_cp * f64::exp(c_o * (p - row.p_bar));
             return (bo, mu);
         }
-        if p <= rows[0].p_bar {
+        // Strictly below the first row only: at the row itself the first segment applies, which
+        // gives the same value and the undersaturated slope rather than a flat one.
+        if p < rows[0].p_bar {
             return (rows[0].bo_m3m3, rows[0].mu_o_cp);
         }
 
@@ -297,8 +300,15 @@ impl PvtTable {
             let bo = S::from_f64(r.bo_m3m3) * ((p * (-self.c_o)) + (self.c_o * r.p_bar)).exp();
             // Bg = last.Bg * (last.p / p)
             let bg = S::from_f64(r.bg_m3m3 * r.p_bar) / p;
+            let rs = if std::env::var_os("J1C").is_some() && rows.len() >= 2 {
+                let prev = &rows[last_idx - 1];
+                let slope = (r.rs_m3m3 - prev.rs_m3m3) / (r.p_bar - prev.p_bar);
+                S::from_f64(r.rs_m3m3) + (p - r.p_bar) * slope
+            } else {
+                S::from_f64(r.rs_m3m3)
+            };
             return SatProps {
-                rs: S::from_f64(r.rs_m3m3),
+                rs,
                 bo,
                 bg,
                 mu_o: S::from_f64(r.mu_o_cp),
@@ -363,7 +373,7 @@ impl PvtTable {
         }
 
         let pv = p.value();
-        if pv <= rows[0].p_bar {
+        if pv < rows[0].p_bar {
             return (S::from_f64(rows[0].bo_m3m3), S::from_f64(rows[0].mu_o_cp));
         }
 
@@ -387,6 +397,52 @@ impl PvtTable {
         (bo, mu)
     }
 
+    /// Whether Bo and mu_o come from the saturated curve rather than the undersaturated branches:
+    /// only for strictly supersaturated Rs (FIM-KINK-001).
+    ///
+    /// Rs *on* the boundary used to take the saturated curve too. Its value is right there, but
+    /// its derivative is the total one along the curve, as if Rs moved with pressure. A cell
+    /// whose primary is Rs holds Rs fixed, and the Sg -> Rs switch places it exactly on this
+    /// boundary, so its accumulation Jacobian lost dBo/dRs and had the wrong dBo/dp. The branches
+    /// reproduce the saturated value on the boundary and carry the partial derivatives. At the
+    /// top branch they also remove a jump: above the last saturated row, the saturated curve's
+    /// c_o extrapolation and that branch's own undersaturated rows disagreed, so Bo stepped
+    /// between Rs = Rs_max and Rs_max - eps.
+    fn saturated_curve_applies(&self, rs: f64, rs_sat: f64) -> bool {
+        match std::env::var("J1A_MODE").as_deref() {
+            Ok("orig") => rs >= rs_sat - 1e-6,
+            Ok("bracket") => {
+                if rs > rs_sat + 1e-6 { return true; }
+                if rs < rs_sat - 1e-6 { return false; }
+                !self.branch_bounds(rs).is_some_and(|(l, h)| (h.rs_m3m3 - l.rs_m3m3).abs() > PVTO_RS_TOLERANCE)
+            }
+            _ => rs > rs_sat + 1e-6,
+        }
+    }
+
+    fn extrapolated_rs(rows: &[PvtRow], p: f64) -> f64 {
+        let last = &rows[rows.len() - 1];
+        if std::env::var_os("J1C").is_none() || rows.len() < 2 {
+            return last.rs_m3m3;
+        }
+        let prev = &rows[rows.len() - 2];
+        let slope = (last.rs_m3m3 - prev.rs_m3m3) / (last.p_bar - prev.p_bar);
+        last.rs_m3m3 + slope * (p - last.p_bar)
+    }
+
+    /// On the bubble-point boundary a branch is evaluated at its own first row, and roundoff can
+    /// land the pressure a hair below it, where the branch is flat. Keep the value at the row and
+    /// the slope from the undersaturated side, so the derivative does not depend on which side
+    /// roundoff chose.
+    fn at_or_above_bubble_point<S: Scalar>(p: S, branch: &PvtOilBranch) -> S {
+        let first = branch.rows[0].p_bar;
+        if p.value() < first {
+            p + S::from_f64(first - p.value())
+        } else {
+            p
+        }
+    }
+
     /// Generic mirror of [`Self::interpolate_oil`] (undersaturation-aware Bo, mu_o).
     pub(crate) fn interpolate_oil_generic<S: Scalar>(&self, p: S, rs: S) -> (S, S) {
         if self.saturated_rows.is_empty() {
@@ -395,7 +451,7 @@ impl PvtTable {
         let sat = self.interpolate_saturated_generic(p);
         let rs_sat = sat.rs.value();
 
-        if rs.value() >= rs_sat - 1e-6 {
+        if self.saturated_curve_applies(rs.value(), rs_sat) {
             return (sat.bo, sat.mu_o);
         }
 
@@ -411,8 +467,9 @@ impl PvtTable {
             // Rs knot, selects OPM's left-segment derivative convention.
             let t = (rs - low.rs_m3m3) / (high.rs_m3m3 - low.rs_m3m3);
             let pressure_shift = high.rows[0].p_bar - low.rows[0].p_bar;
-            let p_low = p - t * pressure_shift;
-            let p_high = p + (S::from_f64(1.0) - t) * pressure_shift;
+            let p_low = Self::at_or_above_bubble_point(p - t * pressure_shift, low);
+            let p_high =
+                Self::at_or_above_bubble_point(p + (S::from_f64(1.0) - t) * pressure_shift, high);
             let (bo_low, mu_low) = Self::branch_props_generic(low, p_low, self.c_o);
             let (bo_high, mu_high) = Self::branch_props_generic(high, p_high, self.c_o);
             let inv_bo = t * (bo_high.recip() - bo_low.recip()) + bo_low.recip();
@@ -469,7 +526,7 @@ impl PvtTable {
         let sat_row = self.interpolate(p);
         let rs_sat = sat_row.rs_m3m3;
 
-        if rs >= rs_sat - 1e-6 {
+        if self.saturated_curve_applies(rs, rs_sat) {
             return (sat_row.bo_m3m3, sat_row.mu_o_cp);
         }
 
@@ -481,8 +538,8 @@ impl PvtTable {
 
             let t = (rs - low.rs_m3m3) / (high.rs_m3m3 - low.rs_m3m3);
             let pressure_shift = high.rows[0].p_bar - low.rows[0].p_bar;
-            let p_low = p - t * pressure_shift;
-            let p_high = p + (1.0 - t) * pressure_shift;
+            let p_low = (p - t * pressure_shift).max(low.rows[0].p_bar);
+            let p_high = (p + (1.0 - t) * pressure_shift).max(high.rows[0].p_bar);
             let (bo_low, mu_low) = Self::branch_props(low, p_low, self.c_o);
             let (bo_high, mu_high) = Self::branch_props(high, p_high, self.c_o);
             let inv_bo = 1.0 / bo_low + t * (1.0 / bo_high - 1.0 / bo_low);
