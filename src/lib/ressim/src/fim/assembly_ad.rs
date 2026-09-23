@@ -778,6 +778,88 @@ fn add_face_jacobian(
     scatter_block(tri, id_j, id_j, bjj);
 }
 
+/// Test-only: per-face AD vs FD of `d residual[cell][eq] / d unknown[col_cell][var]` (FIM-KINK-001
+/// audit). Lists every face touching `cell`, so a mismatched Jacobian entry can be pinned to one face.
+#[cfg(test)]
+pub(crate) fn audit_face_breakdown(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    dt_days: f64,
+    cell: usize,
+    eq: usize,
+    col_cell: usize,
+    var: usize,
+    h: f64,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let (nx, ny, nz) = (sim.nx, sim.ny, sim.nz);
+    let (k, rem) = (cell / (nx * ny), cell % (nx * ny));
+    let (j, i) = (rem / nx, rem % nx);
+    let mut faces = Vec::new();
+    if i + 1 < nx {
+        faces.push((cell, sim.idx(i + 1, j, k), 'x', k, k));
+    }
+    if i > 0 {
+        faces.push((sim.idx(i - 1, j, k), cell, 'x', k, k));
+    }
+    if j + 1 < ny {
+        faces.push((cell, sim.idx(i, j + 1, k), 'y', k, k));
+    }
+    if j > 0 {
+        faces.push((sim.idx(i, j - 1, k), cell, 'y', k, k));
+    }
+    if k + 1 < nz {
+        faces.push((cell, sim.idx(i, j, k + 1), 'z', k, k + 1));
+    }
+    if k > 0 {
+        faces.push((sim.idx(i, j, k - 1), cell, 'z', k - 1, k));
+    }
+    for (a, b, dim, ka, kb) in faces {
+        if col_cell != a && col_cell != b {
+            continue;
+        }
+        let geom_t = DARCY_METRIC_FACTOR * sim.geometric_transmissibility(a, b, dim);
+        if geom_t <= 0.0 {
+            continue;
+        }
+        let eval = |st: &FimState| {
+            let ia = face_cell_input(sim, st, a, ka);
+            let ib = face_cell_input(sim, st, b, kb);
+            face_flux_residual_f64(sim, geom_t, dt_days, &ia, &ib)
+        };
+        let slot = if cell == a { eq } else { 3 + eq };
+        let perturb = |st: &mut FimState, d: f64| {
+            let c = &mut st.cells[col_cell];
+            match var {
+                0 => c.pressure_bar += d,
+                1 => c.sw += d,
+                _ => c.hydrocarbon_var += d,
+            }
+        };
+        let (mut plus, mut minus) = (state.clone(), state.clone());
+        perturb(&mut plus, h);
+        perturb(&mut minus, -h);
+        let base = eval(state)[slot];
+        let fwd = (eval(&plus)[slot] - base) / h;
+        let bwd = (base - eval(&minus)[slot]) / h;
+        let ia = face_cell_input(sim, state, a, ka);
+        let ib = face_cell_input(sim, state, b, kb);
+        let (bii, bij, bji, bjj) = face_flux_jacobian_blocks(sim, geom_t, dt_days, &ia, &ib);
+        let ad = match (cell == a, col_cell == a) {
+            (true, true) => bii[eq][var],
+            (true, false) => bij[eq][var],
+            (false, true) => bji[eq][var],
+            (false, false) => bjj[eq][var],
+        };
+        let (pa, pb) = (state.cell(a).pressure_bar, state.cell(b).pressure_bar);
+        out.push(format!(
+            "face {a}-{b}{dim} dp={:.3e} ad={ad:.4e} fwd={fwd:.4e} bwd={bwd:.4e}",
+            pa - pb
+        ));
+    }
+    out
+}
+
 /// AD-based drop-in replacement for `assembly::assemble_fim_system`.
 pub(crate) fn assemble_fim_system_ad(
     sim: &ReservoirSimulator,

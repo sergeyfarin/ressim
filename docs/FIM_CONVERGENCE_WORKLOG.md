@@ -6142,3 +6142,58 @@ bar and 3e-6 Sg. That resolves the FIM half of #11.
 
 Verdict: **ROOT CAUSE FOUND, FIX VALIDATED**; merge pending a decision on the gas-injection
 Newton trade.
+
+### FIM-KINK-001 — finite-difference Jacobian sweep (2026-09-23)
+
+Tool: `src/lib/ressim/src/fim/jacobian_audit.rs` (test-only, inert unless `FIM_JAC_AUDIT` is
+set), hooked into the live Newton loop. It compares every AD Jacobian entry with forward and
+backward differences and classes each as `kink` (fwd ≠ bwd, AD takes one side), `kink-neither`,
+or `WRONG` (smooth, AD disagrees). In-cell samples carry an accumulation and per-face breakdown.
+
+Sweep on master `5f96ee5`, native release: every test in the `shared`/`fim` coverage buckets
+(198), 7 release replays, and the 5 `small-direct` decks. Up to 12 audits per test, every 5th
+Newton assembly, systems ≤ 1500 rows. 47 tests reached Newton; 334 audits in all; every test
+still passed.
+
+```bash
+FIM_JAC_AUDIT=12 FIM_JAC_AUDIT_EVERY=5 cargo test --release --manifest-path src/lib/ressim/Cargo.toml <test> -- --exact --nocapture --test-threads=1
+```
+
+Findings:
+
+| | Where | Classification | Verdict |
+|---|---|---|---|
+| Sg column, `bwd = 0` | every two-phase FIM run | inactive unknown pinned at 0 with slope 1 (FIM-DIRECT-001 by design) | benign |
+| **J1** | black-oil bubble-point column (`bo-1d-10`/`40`, depletion grid test) | Undersaturated cells with Rs primary **exactly at Rs_sat(p)**, where the Sg→Rs switch places them. `interpolate_oil_generic` returns the saturated curve for `rs >= rs_sat - 1e-6`: oil-row d/dRs = 0 (FD ≈ −100), d/dp −21 (FD ≈ +0.3) | **real, open** — see below |
+| J2 | water-pressure 12×12×3 heavy case | "10% wrong" water-row dp: two opposite upwind kinks on the vertical faces (Δp ≈ 3e-4 bar) superposed; every face is individually exact | benign (OPM upwinds identically) |
+| K1 | dead-oil three-phase gas floods | no-PVT branch clamps the Sg value but keeps slope 1, so the Jacobian disagrees for Sg < 0 | real on paper; raw-Sg variant changes nothing measurable (63/220, 32/152 identical; 7/50 → 7/54) — not promoted |
+| table nodes | SPE1 Rs = 226.197, `sw = 0.3` | kinks just under the 5% threshold | benign (piecewise-linear tables, as in OPM) |
+| Sw at Swc | heavy water case, rare (7 entries) | raw Sw parked on the relperm endpoint, AD takes the flat side | the deferred relperm-endpoint item; not triggered often enough to measure |
+
+**J1 attempts (not promoted; diff on branch `experiment/fim-kink-j1-pvt-boundary`).** Routing
+boundary cells through the two-branch interpolation, which reproduces the saturated value and
+has the right partials, removes every `WRONG` entry and takes `bo-1d-40` from 109 to 89 Newton
+(Flow 57), but pins `bo-1d-10` at 150 bar (38,256 substeps). Cause: three coupled
+table-edge conventions.
+
+- Above the last saturated row, ResSim holds Rs_sat flat at Rs_max. Every cell above the bubble
+  point therefore lives on the boundary. OPM extrapolates Rs_sat linearly instead.
+- Above that row, undersaturated Bo at Rs_max is defined two ways: the saturated curve's c_o
+  extrapolation and the top branch's own rows. They differ by 2e-4, a jump in Rs.
+- At the top Rs knot, AD takes the flat right-hand derivative in Rs, where OPM takes the left
+  segment.
+
+Matrix, `bo-1d-10` / `bo-1d-40` Newton to 100 d (DRSDT0 unless noted):
+
+| boundary rule | Rs_sat extrapolation | result |
+|---|---|---|
+| original | flat | 111 / 109 |
+| bracketed-only | flat | pinned at 150 bar / **89** |
+| all boundary | flat | both pinned at ~151 bar |
+| original | linear (OPM) | both pinned at ~151 bar |
+| original, redissolution on | flat | **86 / 89** |
+
+So the DRSDT0 cap alone costs ~25 Newton on this column, and no single convention change is safe
+alone. The coherent bundle is: OPM's Rs_sat extrapolation, one Bo definition at Rs_max, the
+knot-derivative convention and boundary partials, evaluated together. The prize is Newton
+efficiency (substeps already match Flow), about 111 → 86 against Flow's 63.

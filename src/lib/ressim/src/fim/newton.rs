@@ -1073,6 +1073,17 @@ pub(crate) fn run_fim_timestep(
         assembly_ms += assembly.timing.residual_ms
             + assembly.timing.sensitivity_eval_ms
             + assembly.timing.jacobian_ms;
+        #[cfg(test)]
+        crate::fim::jacobian_audit::maybe_audit(
+            sim,
+            previous_state,
+            &state,
+            dt_days,
+            iteration,
+            &topology,
+            options.flow_resv_context,
+            &assembly,
+        );
         property_eval_ms += assembly.timing.property_eval_ms;
         final_residual_inf_norm = Some(scaled_residual_inf_norm(
             &assembly.residual,

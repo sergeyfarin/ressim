@@ -4,6 +4,8 @@ pub(crate) mod flash;
 pub(crate) mod flash_ad;
 pub(crate) mod flow_resv;
 pub(crate) mod flux;
+#[cfg(test)]
+pub(crate) mod jacobian_audit;
 pub(crate) mod layout;
 pub(crate) mod linear;
 pub(crate) mod newton;

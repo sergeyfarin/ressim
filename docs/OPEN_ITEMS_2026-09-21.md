@@ -56,6 +56,22 @@ cumulatives 0.01%. SPE1 unchanged.
 That cost belongs to B's OPM-faithful in-Newton switching, and the registry already recorded it
 for Y2b3. Evidence: worklog "FIM-BUBBLE-001".
 
+## 1b. Bubble-point PVT boundary conventions (FIM-KINK-001 J1) — **open, coupled**
+
+The Jacobian sweep found one real defect cluster, at the bubble-point boundary of a live-oil
+table.
+
+- A cell whose Rs primary sits exactly at Rs_sat(p) gets the saturated curve's derivatives:
+  d/dRs = 0 and the wrong d/dp.
+- Three table-edge conventions differ from OPM: the flat Rs_sat above the table, a two-way
+  definition of Bo at Rs_max, and the top-knot derivative.
+- Fixing any one alone either helps one grid and pins the other, or pins both.
+
+Only Newton efficiency is at stake here: substeps already match Flow, and the fix is worth about
+111 → 86 Newton against Flow's 63 on the 10-cell column. It is deferred as a bundle rather than
+patched piecewise. Evidence: worklog "FIM-KINK-001"; attempt diff on
+`experiment/fim-kink-j1-pvt-boundary`.
+
 ## 2. Cross-client coverage is bounded by the Python shim, not by test effort
 
 `ressim-py` binds **29** of the engine's **85** public API functions. Ten configuration knobs the
