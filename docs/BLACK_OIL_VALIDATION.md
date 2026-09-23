@@ -260,7 +260,7 @@ was reproduced on commit `5ebdc78` with a clean tree; the replay command is next
 | Black-oil depletion FIM vs IMPES | [#11](https://github.com/sergeyfarin/ressim/issues/11) | yes | `Sg(nx=40)` FIM `0.030179` vs IMPES `0.033171` → **9.0 %** | shared PVT/flash, FIM timestep ladder | neither backend is truth; both self-consistent under refinement | **independent** |
 | Multi-completion gravity | [#10](https://github.com/sergeyfarin/ressim/issues/10) | **no** (reconstruction) | no warning on either solver; IMPES/FIM agree to 1 % on pressure, 5e-3 on peak `Sw` | shared well geometry, Peaceman PI, `refresh_well_head_offsets` | no independent geometry oracle | **not reproduced; cause/applicability inconclusive** |
 | SPE1 / gas injection & appearance | [#12](https://github.com/sergeyfarin/ressim/issues/12) | n/a | `spe1_full_horizon_matches_published_reference` and `spe1_areal_refinement_reference_error_replay` both pass (release) | FIM Newton/assembly | published SPE1 reference | **scenario/frontend scope — independent** |
-| Waterflood report-step sensitivity + Flow oil bias | [#21](https://github.com/sergeyfarin/ressim/issues/21) | not attempted | — | FIM timestep controller | OPM Flow artifacts | **deferred — needs the OPM pipeline, out of F6 scope** |
+| Waterflood report-step sensitivity + Flow oil bias | [#21](https://github.com/sergeyfarin/ressim/issues/21) | yes (2026-09-23, below) | the 8–10% gap does **not** reproduce: matched-step FOPT within 0.05–0.36% on all three controls, **0.002%** once the decks' SWOF and Bo reference match ResSim | temporal discretization + two deck-mapping differences | source-pinned Flow on the tracked decks | **resolved — no solver defect** |
 
 ### Reproduction commands
 
@@ -294,13 +294,72 @@ This supersedes nothing: it confirms the existing section 2 FIM baseline rather 
 actually delivered. #11 is real and reproduces at 9 %; preserving behavior preserves this
 unexplained accuracy limitation rather than validating it. #10 did not reproduce in the
 reconstruction, but its cause and applicability remain inconclusive. #25 did not reproduce.
-#12 is scenario/frontend scope. #21 remains an unexecuted OPM-pipeline accuracy gate.
+#12 is scenario/frontend scope. #21 was executed on 2026-09-23 and resolved (section below).
 
 ### What this record does **not** establish
 
 - #10 was tested through a **reconstruction** of the `wf_gravity` geometry, not a replay of its
   shipped deck. A negative result here does not prove the shipped scenario is clean. Agreement
   between two solvers that reuse the same geometry cannot exclude an error in that shared code.
-- #21 was not attempted at all. It needs source-pinned OPM Flow artifacts and the reference
-  pipeline, which F6 deliberately does not pull in.
+- #21 was not attempted by F6; it was executed separately on 2026-09-23 (section below).
 - #11's 9 % gap is measured, not explained. Nothing here identifies a mechanism.
+
+## #21 — waterflood report-step sensitivity and the Flow oil bias (2026-09-23)
+
+Master `654618f`, flow 2026.04. Both halves reproduced; neither is a solver defect.
+
+**Oil bias.** The historical "8–10%" compared ResSim's end-of-step rate × report step against
+Flow's cumulative `FOPT`. Integrating ResSim's rate history instead, on the three tracked
+quarter-day controls (`opm/reference-decks/water-pressure-*`), gives this:
+
+| Cumulative oil at t = 0.25 d | Flow | ResSim | ResSim vs Flow |
+|---|---|---|---|
+| 23×23×1, 1 × 0.25 | 336.24 (1 substep) | 344.08 (3) | +2.33% |
+| 23×23×1, 25 × 0.01 | 356.46 | 356.20 | −0.07% |
+| 22×22×1, 1 × 0.25 | 340.14 (1) | 348.31 (4) | +2.40% |
+| 22×22×1, 25 × 0.01 | 361.01 | 360.71 | −0.08% |
+| 20×20×3, 1 × 0.25 | 762.52 (1) | 760.61 (1) | −0.25% |
+| 20×20×3, 25 × 0.01 | 806.14 | 803.43 | −0.34% |
+
+At 2 days with matched 0.05-day steps the differences are −0.28%, −0.28% and −0.17%.
+
+- **The single-step gap is temporal.** ResSim substeps through the injection transient and Flow
+  does not, so ResSim is the closer of the two to the converged value there: −3.4% against
+  Flow's −5.6% on 23×23×1. This confirms and refines WATER-028.
+- **The matched-step remainder is deck mapping**, in two parts.
+  - The decks carry a 9-knot SWOF while the preset uses analytic Corey. With
+    `--corey-table-points 9`, injection agrees to ≤ 0.004%.
+  - The decks' `PVCDO 300 1.0 1e-5` sets Bo = 1 **at 300 bar**, while ResSim's no-table oil FVF is
+    `b_o·exp(−c_o·p)`, i.e. Bo = 1 **at 0 bar**, which is 0.30% more surface oil at 300 bar.
+    Setting the deck's reference Bo to `exp(−0.003)` makes the 23×23×1, 5 × 0.05 rung agree to
+    **+0.002%** (348.791 against 348.783).
+
+**Report-step sensitivity** (`wf_bl1d` geometry, `small-direct/ow-1d-96`, 30 days):
+
+| report dt | Flow FOPT | ResSim vs Flow FOPT | Flow / ResSim substeps |
+|---|---|---|---|
+| 2.0 | 1235.77 | +0.98% | 23 / 17 |
+| 1.0 | 1243.68 | +0.09% | 32 / 33 |
+| 0.5 | 1255.98 | +0.10% | 61 / 62 |
+| 0.25 | 1263.69 | +0.05% | 121 / 120 |
+| 0.1 | 1268.84 | +0.07% | 301 / 300 |
+| 0.05 | 1270.71 | +0.07% | 601 / 600 |
+
+Both engines move by the same 2.8% across the ladder, so the sensitivity is temporal
+discretization shared with Flow. ResSim no longer fragments here (one substep per report step,
+after FIM-DIRECT-001). At 2-day steps Flow's own controller substeps more (23 vs 17), hence the
++1% rung.
+
+Replay:
+
+```bash
+python3 tools/opm_flow/water_control_ladder.py '[["23x23x1",0.25,[0.25,0.05,0.01]],["22x22x1",0.25,[0.25,0.05,0.01]],["20x20x3",0.25,[0.25,0.05,0.01]]]'
+RS_EXTRA="--corey-table-points 9" python3 tools/opm_flow/water_control_ladder.py '[["23x23x1",0.25,[0.05,0.01]]]'
+# wf_bl1d ladder: per dt, write decks and run ResSim with OPM_SMALL_REPORT_DT=<dt>, then
+python3 tools/opm_flow/compare_small_direct.py --deck-dir <decks> --ressim-dir <out> --flow-dir <flow> --case ow-1d-96
+```
+
+The oil-FVF reference-pressure convention (0 bar for oil, 300 bar for water and rock) is a
+separate modelling decision and is tracked in [#36](https://github.com/sergeyfarin/ressim/issues/36). It moves reported surface oil by
+0.3% at 300 bar in every dead-oil scenario.
+

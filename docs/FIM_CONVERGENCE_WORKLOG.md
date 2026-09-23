@@ -6197,3 +6197,16 @@ So the DRSDT0 cap alone costs ~25 Newton on this column, and no single conventio
 alone. The coherent bundle is: OPM's Rs_sat extrapolation, one Bo definition at Rs_max, the
 knot-derivative convention and boundary partials, evaluated together. The prize is Newton
 efficiency (substeps already match Flow), about 111 → 86 against Flow's 63.
+
+### #21 resolved — report-step sensitivity and the Flow oil bias are temporal plus deck mapping (2026-09-23)
+
+Master `654618f`. The "8–10% oil over-prediction" (Objective-1 gap, 2026-07) was an end-of-step
+rate × dt compared against cumulative `FOPT`. Proper cumulatives on the three tracked quarter-day
+controls give +2.3%/+2.4%/−0.25% for a single report step, where ResSim substeps through the
+injection transient and is closer to the converged value than Flow's single step. At matched steps
+the difference is −0.05…−0.36%. The matched-step remainder closes to +0.002% on oil and ≤ 0.004%
+on injection once ResSim replays the decks' 9-knot SWOF and the deck's Bo reference is set to
+ResSim's `exp(−c_o·300)`. The `wf_bl1d` report-step sensitivity is shared with Flow (2.8% across
+dt 2 → 0.05 in both), with ResSim within 0.1% of Flow at every rung from 1 day down. Full tables
+and replay commands: `docs/BLACK_OIL_VALIDATION.md` "#21". No solver change. Separate follow-up:
+the oil-FVF reference-pressure convention (#36).

@@ -67,6 +67,22 @@ const CASES: [Case; 5] = [
     },
 ];
 
+/// The report schedule actually used: the case's own, or `OPM_SMALL_REPORT_DT` over the same
+/// horizon. The override exists for report-step ladders (#21); the deck and the ResSim run both
+/// read it, so they cannot disagree.
+fn report_schedule(case: &Case) -> (usize, f64) {
+    match std::env::var("OPM_SMALL_REPORT_DT")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+    {
+        Some(dt) if dt > 0.0 => {
+            let horizon = case.report_steps as f64 * case.report_dt_days;
+            ((horizon / dt).round() as usize, dt)
+        }
+        _ => (case.report_steps, case.report_dt_days),
+    }
+}
+
 fn build(key: &str) -> ReservoirSimulator {
     match key {
         "ow-1d-96" => oil_water(96, 1, [10.0, 10.0, 1.0], (2000.0, 2000.0), 1.0, 0.5, 0),
@@ -373,7 +389,8 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
     let _ = writeln!(
         d,
         "TSTEP\n  {}*{} /\nEND",
-        case.report_steps, case.report_dt_days
+        report_schedule(case).0,
+        report_schedule(case).1
     );
     d
 }
@@ -412,8 +429,9 @@ fn opm_small_direct_run_ressim() {
         sim.set_fim_direct_backend(backend.clone()).unwrap();
         let started = Instant::now();
         let mut reports = Vec::new();
-        for _ in 0..case.report_steps {
-            sim.step(case.report_dt_days);
+        let (report_steps, report_dt_days) = report_schedule(case);
+        for _ in 0..report_steps {
+            sim.step(report_dt_days);
             assert!(
                 sim.last_solver_warning.is_empty(),
                 "{} warned at t={}: {}",

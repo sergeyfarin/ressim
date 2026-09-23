@@ -32,13 +32,13 @@ DECKS = REPO / "opm" / "reference-decks" / "small-direct"
 BACKENDS = ("sparse", "dense")
 
 
-def run_flow(case: str, out: Path) -> float:
+def run_flow(case: str, out: Path, decks: Path = DECKS) -> float:
     out.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
     subprocess.run(
         [
             "flow",
-            str(DECKS / case / "CASE.DATA"),
+            str(decks / case / "CASE.DATA"),
             f"--output-dir={out}",
             "--enable-gravity=false",
             "--output-extra-convergence-info=steps,iterations",
@@ -113,13 +113,15 @@ def main() -> int:
     parser.add_argument("--flow-dir", required=True, type=Path)
     parser.add_argument("--case", action="append")
     parser.add_argument("--json", type=Path)
+    parser.add_argument("--deck-dir", type=Path, default=DECKS,
+                        help="decks written with OPM_SMALL_REPORT_DT, for a report-step ladder")
     args = parser.parse_args()
 
-    cases = args.case or sorted(p.name for p in DECKS.iterdir() if (p / "CASE.DATA").exists())
+    cases = args.case or sorted(p.name for p in args.deck_dir.iterdir() if (p / "CASE.DATA").exists())
     report = {}
     for case in cases:
         out = args.flow_dir / case
-        flow_ms = run_flow(case, out)
+        flow_ms = run_flow(case, out, args.deck_dir)
         flow = {
             "fields": flow_fields(out),
             "cum": flow_cumulatives(out),
