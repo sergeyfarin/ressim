@@ -86,5 +86,25 @@ are unchanged and the black-oil rows become:
 
 ResSim still takes ~1.8× Flow's Newton iterations here. Substeps and answers now match.
 
+### Stable PVT table (#11, `c225102`)
+
+The `bo-1d` decks were regenerated after the fixture's Bo at 100 bar moved from 1.05 to 1.08. The
+old table let the two-phase volume factor grow with pressure, i.e. negative total
+compressibility below the bubble point ([`BLACK_OIL_VALIDATION.md` §2](../../../docs/BLACK_OIL_VALIDATION.md)).
+The black-oil rows above were measured on that old table. On the regenerated decks:
+
+| Case | Simulator | Substeps | Newton | Retries | Wall ms | max \|Δp\| bar | max \|ΔSg\| | Cumulatives vs Flow |
+|---|---|---|---|---|---|---|---|---|
+| bo-1d-10 | Flow | 22 | 49 | 0 | 574 | | | |
+| | ResSim sparse | 22 | 85 | 0 | 9 | 0.0003 | 0.00000 | FOPT 0.00%, FGPT 0.00% |
+| | ResSim dense | 22 | 87 | 0 | 9 | 0.0004 | 0.00000 | FOPT 0.00%, FGPT 0.00% |
+| bo-1d-40 | Flow | 22 | 50 | 0 | 565 | | | |
+| | ResSim sparse | 23 | 92 | 0 | 30 | 0.184 | 0.00022 | FOPT 0.01%, FGPT 0.04% |
+| | ResSim dense | 22 | 86 | 0 | 37 | 0.0015 | 0.00000 | FOPT 0.00%, FGPT 0.00% |
+
+On bo-1d-40, sparse takes one more substep than Flow and dense. The worst-report Δp of 0.18 bar
+is that transient; the two backends agree at the end. Replay: the three commands above,
+with `--case bo-1d-10` / `--case bo-1d-40`.
+
 Wall times are single observations and include Flow's process start (~0.5 s). Flow's own
 timings are in each run's `CASE.INFOSTEP`.

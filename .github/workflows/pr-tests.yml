@@ -112,14 +112,26 @@ jobs:
           # step's pipe open, so the step never finishes even after the tests pass. And capture
           # $! rather than using `kill %1` -- job control is off in a non-interactive shell, so
           # the job spec would silently fail to match.
-          pnpm run preview > /tmp/preview.log 2>&1 &
+          #
+          # Bind 127.0.0.1 explicitly: that is what the wait loop and playwright.config.ts use,
+          # and vite's default `localhost` can resolve to ::1 on the runner, leaving 127.0.0.1
+          # refused (the first CI run of this step, on PR #41, failed exactly so).
+          pnpm exec vite preview --host 127.0.0.1 --port 4173 --strictPort > /tmp/preview.log 2>&1 &
           preview_pid=$!
+          up=0
           for _ in $(seq 1 60); do
-            curl -sf http://127.0.0.1:4173/ressim/ > /dev/null && break
+            if curl -sf http://127.0.0.1:4173/ressim/ > /dev/null; then up=1; break; fi
             sleep 1
           done
+          if [ "$up" != 1 ]; then
+            echo "::error::preview server did not answer on 127.0.0.1:4173 within 60 s"
+            cat /tmp/preview.log
+            kill "$preview_pid" 2> /dev/null || true
+            exit 1
+          fi
           if pnpm run test:deployed; then status=0; else status=$?; fi
           kill "$preview_pid" 2> /dev/null || true
+          [ "$status" = 0 ] || cat /tmp/preview.log
           exit $status
 
       - name: Upload browser smoke diagnostics

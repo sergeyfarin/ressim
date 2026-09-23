@@ -122,6 +122,18 @@ configurations. Pre-existing on master, unrelated to the feature split; surfaced
 the no-default-features build made warnings worth reading. They are the layout surface the FIM
 repair published for reuse, so the fix is probably to consume or retire them, not to `allow` them.
 
+## 8. IMPES depletion fixture ran with a 2 bar pressure cap (#11) — **closed by #37 (`30bde0d`)**
+
+The #11 fix left IMPES needing a pressure cap of a few bar through the bubble point, because it
+booked storage errors as oil. #37 made three-phase IMPES conservative, and the fixture is back on
+the 75 bar default, 0.04 bar from Flow.
+
+**Still open, deliberately:** two-phase IMPES keeps oil as the residual `1 − Sw` and moves water
+by volume on a fixed pore volume, so with `c_r` or `c_w` > 0 it books rock and water expansion
+as oil. It was left alone because every shipped IMPES scenario is two-phase and its
+Buckley–Leverett benchmarks and binding matrix are validated as they stand. The three-phase
+closure (`impes/closure.rs`) is the pattern to reuse if it is taken up.
+
 ## Closed this session, for the record
 
 - The import gates were blind to workspace package specifiers, so a cycle spanning two packages

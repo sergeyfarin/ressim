@@ -60,7 +60,7 @@ Naming: cross-solver contracts are `*_on_both_solvers`; physics regressions are 
 - No `unwrap()` in library code; explicit error handling.
 - `///` doc comments on public API; `cargo fmt` before committing.
 - New physics needs an oracle: an analytical solution, a conservation/invariant check, or a finite-difference Jacobian check — not just "runs without crashing". Existing patterns: FD Jacobian acceptance tests in `fim/assembly.rs`, Peaceman connection-law oracle in `tests/physics/wells_sources.rs`, closed-system inventory checks.
-- Material-balance caveat: water and gas closure are explicit; **oil is the residual phase** in diagnostics. Don't claim oil MB validation that isn't there.
+- Material-balance caveat: in **two-phase IMPES**, oil is the residual phase (`So = 1 − Sw`), so its oil diagnostic checks reporting, not conservation. Don't claim oil MB validation there. Three-phase IMPES transports all four black-oil masses and flashes them (`impes/closure.rs`, #37); FIM solves an oil equation. On both, the oil MB diagnostic is a real conservation check.
 
 ## Exposing new API to the frontend
 

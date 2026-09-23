@@ -169,7 +169,7 @@ fn black_oil_depletion(nx: usize) -> ReservoirSimulator {
     };
     sim.pvt_table = Some(PvtTable::new(
         vec![
-            row(100.0, 5.0, 1.05, 1.5, 0.01, 0.02),
+            row(100.0, 5.0, 1.08, 1.5, 0.01, 0.02),
             row(150.0, 15.0, 1.12, 1.2, 0.006, 0.025),
             row(200.0, 15.0, 1.119, 1.3, 0.0045, 0.03),
         ],

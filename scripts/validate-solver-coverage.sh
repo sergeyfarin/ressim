@@ -86,6 +86,8 @@ run_shared() {
     run_test physics_wellbore_datum
     run_test physics_geometry_gas_flood_2d_high_perm_streak_public_contract_holds_on_both_solvers
     run_test physics_geometry_waterflood_3d_high_kz_public_contract_holds_on_both_solvers
+    # #11: IMPES and FIM agree on the bubble-point depletion column and IMPES keeps its oil balance.
+    run_test physics_depletion_impes_matches_fim_and_conserves_oil
 }
 
 run_fim() {
@@ -126,10 +128,13 @@ run_fim() {
     run_test fim::properties::
     run_test fim::flash::
     run_test does_not_fragment
+    run_test physics_depletion_grid_convergence_fim
 }
 
 run_impes() {
     run_test physics_depletion_grid_convergence_impes
+    # #37: conservative three-phase IMPES closes oil, water and gas with compressible rock/water.
+    run_test physics_depletion_impes_closes_balances_with_rock_and_water_compressibility
     run_test impes::tests::reporting::
     run_test impes::tests::transport::
     run_test impes::tests::timestep::

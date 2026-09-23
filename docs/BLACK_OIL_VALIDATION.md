@@ -114,74 +114,136 @@ cargo test --release --manifest-path src/lib/ressim/Cargo.toml spe1_areal_refine
 (undersaturated, Rs = 15 Sm³/Sm³, bubble point 150 bar), producer at the far end on a 120 bar
 BHP, no gas redissolution, 20 × 5-day steps. The same physical domain is discretized at 5, 10,
 20 and 40 cells; pore-volume-weighted field averages of pressure, Rs, Bo and free-gas saturation
-must form a converging sequence.
+must form a converging sequence. The PVT table is three rows: (100 bar, Rs 5, Bo **1.08**,
+Bg 0.01), (150, 15, 1.12, 0.006) and an undersaturated row (200, 15, 1.119). Both solvers run at
+the default step controls (IMPES: 0.05 saturation, 75 bar).
 
-**Where.** `src/lib/ressim/src/tests/physics/depletion_grid_convergence.rs`.
+**Where.** `src/lib/ressim/src/tests/physics/depletion_grid_convergence.rs`. The OPM Flow twin
+of the column is [`small-direct`](../opm/reference-decks/small-direct/README.md) `bo-1d-10` and
+`bo-1d-40`, generated from the same fixture.
 
 Criteria per quantity: each successive refinement difference must be at most 0.8× the previous
-one (first-order upstream transport gives ~0.5–0.6 here), and the two finest grids must agree
-to within 1 %. The case also asserts it is genuinely below the bubble point with liberated free
-gas, so a degenerate state cannot pass silently.
+one (first-order upstream transport gives ~0.5–0.6 here). The two finest grids must agree to
+within 1 %, or 1.5 % for Sg (the reason is in the test). The case also asserts it is genuinely
+below the bubble point with liberated free gas, so a degenerate state cannot pass silently. A
+guard asserts the table is thermodynamically stable (`dBo/dp < Bg·dRs/dp` below the bubble
+point).
 
-### IMPES baseline (default gate, ~0.1 s debug)
+### Baselines at `30bde0d` (both default gates, conservative IMPES from #37)
 
-| nx | pressure [bar] | Rs [Sm³/Sm³] | Bo [m³/Sm³] | Sg |
-|---|---|---|---|---|
-| 5 | 122.5011 | 9.50022 | 1.080389 | 0.033903 |
-| 10 | 122.7612 | 9.55224 | 1.080751 | 0.033496 |
-| 20 | 122.8931 | 9.57862 | 1.080934 | 0.033293 |
-| 40 | 122.9711 | 9.59422 | 1.081042 | 0.033171 |
+| nx | IMPES p / Rs / Bo / Sg | FIM p / Rs / Bo / Sg | OPM Flow p / Rs / Sg |
+|---|---|---|---|
+| 5 | 129.0519 / 10.81038 / 1.102892 / 0.024359 | 129.0867 / 10.81734 / 1.102920 / 0.024344 | |
+| 10 | 129.7480 / 10.94959 / 1.103453 / 0.023417 | 129.7853 / 10.95706 / 1.103483 / 0.023399 | 129.7852 / 10.95703 / 0.023400 |
+| 20 | 130.1254 / 11.02507 / 1.103757 / 0.022909 | 130.1644 / 11.03289 / 1.103788 / 0.022889 | |
+| 40 | 130.3250 / 11.06500 / 1.103917 / 0.022641 | 130.3631 / 11.07263 / 1.103948 / 0.022622 | 130.3652 / 11.07304 / 0.022619 |
 
-Successive-difference ratios are ≈ 0.51 then ≈ 0.59 for all four quantities — first-order,
-monotone, consistent across the pressure, PVT and liberated-gas variables.
-
-```bash
-cargo test --manifest-path src/lib/ressim/Cargo.toml physics_depletion_grid_convergence_impes -- --nocapture
-```
-
-### FIM baseline — superseded 2026-09-22 by FIM-BUBBLE-001 (see below)
-
-> The table below and the "non-monotone Sg" observation were measured on a run that took ~20,000
-> substeps to cross the bubble point: gas-free cells were carried on an Sg primary pinned to
-> the Sg = 0 relperm kink. After the fix the replay takes 20 s rather than ~3.5 min, contracts
-> monotonically in every quantity, and matches OPM Flow on the same column
-> ([`small-direct`](../opm/reference-decks/small-direct/README.md) `bo-1d-10`/`bo-1d-40`).
->
-> | nx | pressure [bar] | Rs [Sm³/Sm³] | Bo [m³/Sm³] | Sg | OPM Flow p / Rs / Sg |
-> |---|---|---|---|---|---|
-> | 5 | 122.0752 | 9.41504 | 1.079797 | 0.034681 | |
-> | 10 | 122.2670 | 9.45340 | 1.080063 | 0.034384 | 122.2669 / 9.45338 / 0.034385 |
-> | 20 | 122.3742 | 9.47484 | 1.080212 | 0.034214 | |
-> | 40 | 122.4318 | 9.48635 | 1.080292 | 0.034124 | 122.4301 / 9.48602 / 0.034127 |
->
-> Successive pressure differences 0.192 / 0.107 / 0.058 bar: contraction 0.56, 0.54. Measured on
-> branch `fim/bubble-point-lifecycle`, same replay command. The FIM half of #11 is resolved: FIM
-> agrees with Flow to 0.002 bar and 3e-6 Sg. What remains is IMPES against Flow, about 0.5 bar
-> and 3% Sg.
-
-#### Historical FIM baseline (pre-FIM-BUBBLE-001)
-
-| nx | pressure [bar] | Rs [Sm³/Sm³] | Bo [m³/Sm³] | Sg |
-|---|---|---|---|---|
-| 5 | 121.7097 | 9.34195 | 1.079290 | 0.029940 |
-| 10 | 121.9734 | 9.39468 | 1.079655 | 0.030042 |
-| 20 | 122.1341 | 9.42682 | 1.079879 | 0.030277 |
-| 40 | 122.2031 | 9.44061 | 1.079974 | 0.030044 |
+- Both solvers contract monotonically in every quantity.
+- FIM matches Flow to 0.002 bar and 3e-6 Sg. IMPES sits 0.04 bar and 0.1 % Sg from Flow at
+  nx = 40, and its oil, gas and water balance errors are at roundoff (~1e-12 relative).
+- The FIM columns are unchanged from `c225102`. The IMPES columns at `c225102` (2 bar cap, before
+  #37) read 128.8256 / 129.5157 / 129.8887 / 130.0862 bar and Sg 0.024714 / 0.023777 / 0.023273 /
+  0.023008, with a +3.6 % oil balance error at nx = 10. They are superseded by the table above,
+  which is closer to Flow at a 37× coarser pressure cap.
+- Flow values are pore-volume-weighted averages of `PRESSURE`, `RS` and `SGAS` at report
+  step 20, from the same decks. The FIM/Flow cell and convergence comparison is in the
+  small-direct README.
 
 ```bash
-cargo test --release --manifest-path src/lib/ressim/Cargo.toml physics_depletion_grid_convergence_fim -- --ignored --nocapture
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml physics_depletion_ -- --nocapture --test-threads=1
 ```
 
-Two observations recorded rather than asserted:
+### #11: the old IMPES/FIM/Flow gap was an unstable PVT table (resolved 2026-09-23)
 
-- Pressure, Rs and Bo contract as on IMPES, but the FIM free-gas average is non-monotone at the
-  1e-4 level (0.029940 / 0.030042 / 0.030277 / 0.030044). The spread is ~0.8 % of the value and
-  is a substep-ladder artefact, not a refinement trend, so the FIM test bounds the spread (5 %)
-  instead of demanding contraction.
-- FIM and IMPES converge to slightly different answers on the same case (Sg ≈ 0.0300 vs 0.0332,
-  ~10 %). Both are self-consistent under refinement; the gap is a solver/timestep question, not
-  a grid-convergence one, and is tracked in
-  [GitHub issue #11](https://github.com/sergeyfarin/ressim/issues/11) rather than in these tests.
+Until `c225102` the 100 bar row had Bo = 1.05. That gives `dBo/dp = 1.4e-3 > Bg·dRs/dp ≈ 1.2e-3`
+below the bubble point: the two-phase volume factor `Bt = Bo + (Rs_i − Rs)·Bg` **grew** with
+pressure, so the total compressibility of a saturated cell was negative until Sg reached about
+1–2 %. FIM and Flow solve mass equations directly, and they still agreed with each other on that
+table (the superseded tables below). IMPES cannot represent that table:
+
+- IMPES did not transport oil (fixed by #37, next subsection). `So = 1 − Sw − Sg` was whatever
+  was left over, so any mismatch
+  between its pressure equation and the transport closure becomes oil that was produced but
+  never left the reservoir. The step report's `material_balance_error_oil_m3` measures this
+  directly. It was **+144 %** of produced oil (1980 Sm³ of 3359) at nx = 40, with no dependence
+  on grid or dt. FIM was at 0.004 %.
+- Its storage term cannot go negative. `saturated_c_o_eff` replaced the negative saturated value
+  with the scalar `c_o` (section 3), and no clamp can fix it, because a negative `c_t` leaves the
+  explicit pressure equation ill-posed. Per-cell attribution closed to 0.1 Sm³. 95 % of the
+  error arose in saturated cells holding little free gas, at about −17 Sm³ per bar of pressure
+  drop, and it vanished by Sg ≈ 2 %.
+- That is why shrinking IMPES's steps moved it *away* from Flow (the 0.84 bar / 4.4 % Sg limit
+  recorded on #11).
+- FIM breaks on the same table as well, just below the bubble point. At BHP 145 it took 10,853
+  substeps, ended with average pressure 128 bar (below the BHP) and 300 % balance errors. With
+  Bo = 1.08 the same run takes 22 substeps and conserves exactly. Other fixtures still carry the
+  unstable table, and nothing detects one ([#39](https://github.com/sergeyfarin/ressim/issues/39)).
+
+### #37: conservative three-phase IMPES (2026-09-23, `30bde0d`)
+
+With a stable table, the residual-oil IMPES still lost oil to time discretization. A substep that
+crossed the bubble point took its storage term from the undersaturated state and booked the
+liberation as oil. At `c225102`, sweeping IMPES's pressure cap on nx = 10/40 gave this:
+
+| cap (bar) | 75 | 20 | 10 | 5 | 2 | 1 (sat 0.01) |
+|---|---|---|---|---|---|---|
+| oil MB error before #37, nx=10 / 40 | +36 / +39 % | +20 / +18 % | +8.5 / +12 % | +7.7 / +8.8 % | +3.6 / +3.8 % | +2.3 / +2.5 % |
+| p nx=40 before #37 (FIM 130.36) | 129.01 | 129.73 | 129.78 | 129.89 | 130.09 | 130.12 |
+| p nx=40 after #37 | 130.33 | 130.31 | | | 130.29 | |
+
+Three-phase IMPES now transports all four black-oil masses (water, stock-tank oil, free gas,
+dissolved gas) as surface volumes. It recovers the cell state by flashing them at the new
+pressure on `Vp(p)`, using FIM's rock law (`impes/closure.rs`). After the linear pressure solve, a
+Newton loop drives `V(p, N(p)) = Vp(p)`. Its matrix is the assembled pressure operator with the
+storage diagonal replaced by the closure's own slope, and its right-hand side is the volume
+residual over dt. It converges when every cell's residual is worth less than 1e-4 bar. The linear
+solve's `c_t` (section 3) only supplies the first guess, so a poor storage estimate costs
+iterations rather than mass. After #37:
+
+- Oil, gas and water balance errors are at roundoff at every cap (1e-12 relative), with
+  `|ΣS − 1| ≤ 2e-8`. The regression bounds the oil error at 1e-8 relative, the pressure gap to
+  FIM at 0.1 bar and the Sg gap at 0.5 %.
+- Rock and water compressibility close too. With `c_r = 1e-4`, `c_w = 4.5e-5` on nx = 10, the
+  old IMPES reported 3183 Sm³ of oil error against 9536 Sm³ produced. The error is now at
+  roundoff (`physics_depletion_impes_closes_balances_with_rock_and_water_compressibility`, in
+  the `impes` bucket).
+- Well withdrawals use the conversions the step report applies, so reported production is the
+  mass removed. In three-phase mode the IMPES report balances water in surface volume, like FIM.
+- A volume-only tolerance was tried first and rejected. On the single-cell liberation contract,
+  where the 80 bar BHP sits below the table's first row and oil and gas are clamped
+  incompressible, storage is only `c_w·Sw` ≈ 3e-7 /bar. A 1e-6·Vp volume leftover is then 3 bar
+  of pressure, which the next substep drove below the BHP.
+- Two-phase IMPES is unchanged: it still moves water by volume and keeps oil as `1 − Sw`. The
+  Buckley–Leverett benchmarks and the native/wasm binding matrix are identical.
+
+Smaller IMPES effects, measured and real but not the cause of #11:
+
+- `PvtTable::interpolate_oil` is discontinuous above the highest bubble point. Rs equal to the
+  saturated value takes the `c_o` extrapolation, while an Rs just below it takes the
+  undersaturated branch rows, a relative jump of up to 2e-4 in Bo ([#38](https://github.com/sergeyfarin/ressim/issues/38)).
+- IMPES counted water and rock expansion in its pressure `c_t` but transported water by volume
+  on a fixed pore volume. Fixed in three-phase mode by #37.
+- The true-IMPES flux weighting (`Bo_i − Bg_i(Rs_i − Rs_up)` over `Bo_up`, and `Bg_i/Bg_up`) was
+  tested and ruled out: it changes pressure by 5e-4 bar.
+
+The probe behind these numbers is a diagnostic patch. It was not merged, and its commands and
+the per-cell attribution are on the issue.
+
+### Superseded baselines (unstable Bo = 1.05 table, before `c225102`)
+
+Kept for the #11 record. These numbers are not comparable with the table above.
+
+| nx | IMPES (75 bar cap) p / Rs / Bo / Sg | FIM after FIM-BUBBLE-001 p / Rs / Bo / Sg | OPM Flow p / Rs / Sg |
+|---|---|---|---|
+| 5 | 122.5011 / 9.50022 / 1.080389 / 0.033903 | 122.0752 / 9.41504 / 1.079797 / 0.034681 | |
+| 10 | 122.7612 / 9.55224 / 1.080751 / 0.033496 | 122.2670 / 9.45340 / 1.080063 / 0.034384 | 122.2669 / 9.45338 / 0.034385 |
+| 20 | 122.8931 / 9.57862 / 1.080934 / 0.033293 | 122.3742 / 9.47484 / 1.080212 / 0.034214 | |
+| 40 | 122.9711 / 9.59422 / 1.081042 / 0.033171 | 122.4318 / 9.48635 / 1.080292 / 0.034124 | 122.4301 / 9.48602 / 0.034127 |
+
+Before FIM-BUBBLE-001 the FIM replay took ~20,000 substeps to cross the bubble point and its Sg
+was non-monotone (0.029940 / 0.030042 / 0.030277 / 0.030044). That is why the FIM test used to be
+`#[ignore]`d with a 5 % Sg spread bound instead of a contraction check. Both were removed in
+`c225102`.
 
 ## 3. Black-oil solver safeguards (read this before interpreting results)
 
@@ -190,7 +252,10 @@ pressure solve well-posed; they also mean a few reported quantities are approxim
 
 **Effective oil compressibility below the bubble point.** In three-phase mode the IMPES pressure
 accumulation term uses `get_c_o_effective(p, Rs_cell)` (`src/lib/ressim/src/pvt.rs`,
-`src/lib/ressim/src/impes/pressure.rs`) rather than a raw `-1/Bo · dBo/dp`:
+`src/lib/ressim/src/impes/pressure.rs`) rather than a raw `-1/Bo · dBo/dp`. Since #37 this only
+seeds the first linear pressure solve. The volume-balance iteration that follows takes its
+storage from the mass closure itself, so none of the approximations below reach the conserved
+masses (section 2):
 
 - Saturated cells use `c_eff = -(dBo/dp)/Bo + (Bg/Bo)·dRs/dp`, i.e. rock-fluid storage plus the
   dissolved-gas contribution, evaluated by central difference on the PVT table.
@@ -198,6 +263,9 @@ accumulation term uses `get_c_o_effective(p, Rs_cell)` (`src/lib/ressim/src/pvt.
   produce, since Bo *increases* with pressure below the bubble point — the code falls back to
   the scenario's positive scalar `c_o`. A negative accumulation coefficient would make the
   pressure matrix indefinite and destabilize the IMPES solve.
+  **A non-positive `c_eff` means the table is thermodynamically unstable** (`Bt` grows with
+  pressure). A physical table never takes this fallback, and when an unstable table does, IMPES
+  misstates storage and books the error as oil (#11, section 2).
 - Undersaturated cells use the scalar `c_o` directly, blended quadratically into the saturated
   value over the last 5 bar above the cell's bubble point so the coefficient does not jump at
   the phase boundary.
@@ -219,9 +287,11 @@ the two sides stay equal, so an analytical overlay can silently disagree with th
 
 **Material-balance diagnostics report each phase explicitly, with one structural limitation.**
 Water and gas cumulative errors are direct inventory comparisons, and oil is reported against
-stock-tank inventory depletion. Oil *saturation* is still residual by construction
-(`S_o = 1 - S_w - S_g`), so the oil diagnostic checks reporting/FVF closure rather than an
-independently transported oil-saturation equation. The SPE1 acceptance criteria therefore grade
+stock-tank inventory depletion. In two-phase IMPES, oil *saturation* is still residual by
+construction (`S_o = 1 - S_w`), so there the oil diagnostic checks reporting/FVF closure rather
+than an independently transported oil equation. Three-phase IMPES has transported oil mass since
+#37, and FIM solves an oil mass equation, so on both of those the oil diagnostic is a genuine
+conservation check. The SPE1 acceptance criteria therefore grade
 oil and gas drift separately and normalize each against its own inventory. See
 `docs/THREE_PHASE_VALIDATION.md` section 4.
 
@@ -240,8 +310,11 @@ tables.
   Flow comparative solution, and the breakthrough / Sg-evolution acceptance tests are recorded in
   `docs/THREE_PHASE_VALIDATION.md`.
 - No SPE-style black-oil case beyond SPE1 (SPE9, volatile-oil style cases) is covered.
-- The IMPES/FIM answer gap on the depletion column (section 2) is unexplained. Re-measured at
-  `5ebdc78`: 9.0 % on `Sg` at `nx=40` (section 5).
+- Two-phase IMPES still keeps oil as the residual `1 − Sw` and moves water by volume on a fixed
+  pore volume, so rock and water expansion there are booked as oil. Three-phase IMPES was made
+  conservative by #37 (section 2).
+- Saturated PVT tables with `dBo/dp > Bg·dRs/dp` are accepted without warning, although they
+  break IMPES and can break FIM just below the bubble point (section 2, [#39](https://github.com/sergeyfarin/ressim/issues/39)).
 - Scenario-wiring regressions for SPE1 (published-reference panel placement, `cellDzPerLayer`,
   per-layer completion payloads) remain frontend-side TODO items.
 
@@ -274,6 +347,9 @@ cargo test --release --manifest-path src/lib/ressim/Cargo.toml physics_depletion
 cargo test --manifest-path src/lib/ressim/Cargo.toml physics_depletion_grid_convergence_impes -- --nocapture
 ```
 
+The #11 replay above is historical. Since `c225102` the FIM test is no longer `#[ignore]`d, and it
+runs on the stable table from section 2.
+
 ### Section 2 FIM baseline re-confirmed at `5ebdc78`
 
 The section 2 FIM table still reproduces; differences are at the 1e-3..1e-4 level, inside the
@@ -302,7 +378,8 @@ reconstruction, but its cause and applicability remain inconclusive. #25 did not
   shipped deck. A negative result here does not prove the shipped scenario is clean. Agreement
   between two solvers that reuse the same geometry cannot exclude an error in that shared code.
 - #21 was not attempted by F6; it was executed separately on 2026-09-23 (section below).
-- #11's 9 % gap is measured, not explained. Nothing here identifies a mechanism.
+- #11's 9 % gap is measured, not explained. Nothing here identifies a mechanism. *(Explained
+  2026-09-23: an unstable PVT table in the test fixture. See section 2.)*
 
 ## #21 — waterflood report-step sensitivity and the Flow oil bias (2026-09-23)
 

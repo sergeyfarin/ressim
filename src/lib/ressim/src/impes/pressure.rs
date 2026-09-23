@@ -2,6 +2,7 @@ use nalgebra::DVector;
 use sprs::{CsMat, TriMatI};
 use std::f64;
 
+use crate::impes::closure::CellMasses;
 use crate::solvers::{LinearSolveParams, solve_with_default};
 use crate::well_control::{ResolvedWellControl, WellControlDecision};
 use crate::{InjectedFluid, ReservoirSimulator};
@@ -9,32 +10,86 @@ use crate::{InjectedFluid, ReservoirSimulator};
 /// Conversion factor from mD·m²/(m·cP) to m³/day/bar.
 const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
+/// Newton iterations allowed for the three-phase volume balance before the substep is retried
+/// at a smaller dt.
+const MAX_VOLUME_BALANCE_ITERATIONS: usize = 20;
+/// Converged when every cell's volume residual is worth less than this much pressure [bar],
+/// i.e. `|V − Vp| ≤ tol · Vp·c_t`. A volume tolerance alone is not enough: a leftover of
+/// 1e-6·Vp in a cell whose only storage is water (c_t ≈ 3e-7 /bar) is a 3 bar pressure error
+/// that the next substep then has to correct.
+const VOLUME_BALANCE_PRESSURE_TOLERANCE_BAR: f64 = 1e-4;
+/// Floor on `c_t` [1/bar] when converting a volume residual to pressure, so a cell with almost
+/// no storage is not held to roundoff.
+const VOLUME_BALANCE_MIN_COMPRESSIBILITY: f64 = 1e-7;
+
+/// Per-cell component changes over one substep, fluxes and wells included.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TransportDeltas {
+    /// Water [reservoir m³]. The two-phase path transports water by volume, and both paths use
+    /// it for the saturation-change timestep limit.
+    pub(crate) water_m3: Vec<f64>,
+    /// Water [Sm³]; the three-phase path conserves this.
+    pub(crate) water_sc: Vec<f64>,
+    pub(crate) oil_sc: Vec<f64>,
+    pub(crate) free_gas_sc: Vec<f64>,
+    pub(crate) dissolved_gas_sc: Vec<f64>,
+}
+
+impl TransportDeltas {
+    pub(crate) fn zeros(n_cells: usize) -> Self {
+        Self {
+            water_m3: vec![0.0; n_cells],
+            water_sc: vec![0.0; n_cells],
+            oil_sc: vec![0.0; n_cells],
+            free_gas_sc: vec![0.0; n_cells],
+            dissolved_gas_sc: vec![0.0; n_cells],
+        }
+    }
+
+    /// `masses` after this substep's changes to cell `id`.
+    pub(crate) fn applied_to(&self, id: usize, masses: &CellMasses) -> CellMasses {
+        CellMasses {
+            water_sc: masses.water_sc + self.water_sc[id],
+            oil_sc: masses.oil_sc + self.oil_sc[id],
+            free_gas_sc: masses.free_gas_sc + self.free_gas_sc[id],
+            dissolved_gas_sc: masses.dissolved_gas_sc + self.dissolved_gas_sc[id],
+        }
+    }
+}
+
+/// Outcome of one IMPES pressure solve and its transport.
+pub(crate) struct PressureStep {
+    pub(crate) p_new: DVector<f64>,
+    pub(crate) deltas: TransportDeltas,
+    pub(crate) well_controls: Vec<Option<ResolvedWellControl>>,
+    pub(crate) stable_dt_factor: f64,
+    /// Every linear solve converged and, in three-phase mode, so did the volume balance.
+    pub(crate) converged: bool,
+    pub(crate) linear_iterations: usize,
+}
+
+/// The assembled pressure matrix, as triplets, with what the volume-balance Newton step needs
+/// to swap its storage diagonal.
+struct PressureOperator<'a> {
+    rows: &'a [usize],
+    cols: &'a [usize],
+    vals: &'a [f64],
+    diag_positions: &'a [usize],
+    accumulation: &'a [f64],
+}
+
 impl ReservoirSimulator {
-    pub(crate) fn calculate_fluxes(
-        &self,
-        delta_t_days: f64,
-    ) -> (
-        DVector<f64>,
-        Vec<f64>,
-        Vec<f64>,
-        Vec<f64>,
-        Vec<Option<ResolvedWellControl>>,
-        f64,
-        bool,
-        usize,
-    ) {
+    pub(crate) fn calculate_fluxes(&self, delta_t_days: f64) -> PressureStep {
         let n_cells = self.nx * self.ny * self.nz;
         if n_cells == 0 {
-            return (
-                DVector::zeros(0),
-                vec![],
-                vec![],
-                vec![],
-                vec![],
-                1.0,
-                true,
-                0,
-            );
+            return PressureStep {
+                p_new: DVector::zeros(0),
+                deltas: TransportDeltas::zeros(0),
+                well_controls: vec![],
+                stable_dt_factor: 1.0,
+                converged: true,
+                linear_iterations: 0,
+            };
         }
         let dt_days = delta_t_days.max(1e-12);
 
@@ -44,6 +99,8 @@ impl ReservoirSimulator {
 
         let mut b_rhs = DVector::<f64>::zeros(n_cells);
         let mut diag_inv = DVector::<f64>::zeros(n_cells);
+        let mut accumulation = vec![0.0f64; n_cells];
+        let mut diag_positions = vec![0usize; n_cells];
 
         let well_controls: Vec<Option<ResolvedWellControl>> = self
             .wells
@@ -78,6 +135,7 @@ impl ReservoirSimulator {
                         + self.rock_compressibility;
 
                     let accum = (vp_m3 * c_t) / dt_days;
+                    accumulation[id] = accum;
                     let mut diag = accum;
                     b_rhs[id] += accum * self.pressure[id];
 
@@ -206,6 +264,7 @@ impl ReservoirSimulator {
                         }
                     }
 
+                    diag_positions[id] = vals.len();
                     rows.push(id);
                     cols.push(id);
                     vals.push(diag);
@@ -236,246 +295,37 @@ impl ReservoirSimulator {
             tolerance: 1e-7,
             max_iterations: 1000,
         });
-        let p_new = solver_result.solution;
+        let mut linear_converged = solver_result.converged;
+        let mut linear_iterations = solver_result.iterations;
 
-        let mut delta_water_m3 = vec![0.0f64; n_cells];
-        let mut delta_free_gas_sc = vec![0.0f64; n_cells];
-        let mut delta_dg_sc = vec![0.0f64; n_cells];
+        let (p_new, deltas, volume_balance_converged) = if self.three_phase_mode {
+            self.iterate_volume_balance(
+                solver_result.solution,
+                &well_controls,
+                dt_days,
+                PressureOperator {
+                    rows: &rows,
+                    cols: &cols,
+                    vals: &vals,
+                    diag_positions: &diag_positions,
+                    accumulation: &accumulation,
+                },
+                &mut linear_converged,
+                &mut linear_iterations,
+            )
+        } else {
+            let p_new = solver_result.solution;
+            let deltas = self.transport_deltas(&p_new, &well_controls, dt_days);
+            (p_new, deltas, true)
+        };
         let mut max_sat_change = 0.0;
-
-        for k in 0..self.nz {
-            for j in 0..self.ny {
-                for i in 0..self.nx {
-                    let id = self.idx(i, j, k);
-                    let mut check = Vec::new();
-                    if i < self.nx - 1 {
-                        check.push((self.idx(i + 1, j, k), 'x', k));
-                    }
-                    if j < self.ny - 1 {
-                        check.push((self.idx(i, j + 1, k), 'y', k));
-                    }
-                    if k < self.nz - 1 {
-                        check.push((self.idx(i, j, k + 1), 'z', k + 1));
-                    }
-
-                    for (nid, dim, n_k) in check {
-                        let depth_i = self.depth_at_k(k);
-                        let depth_j = self.depth_at_k(n_k);
-
-                        let pc_i = self.get_capillary_pressure(self.sat_water[id]);
-                        let pc_j = self.get_capillary_pressure(self.sat_water[nid]);
-
-                        let rho_w_old_i = self.get_rho_w(self.pressure[id]);
-                        let rho_w_old_j = self.get_rho_w(self.pressure[nid]);
-                        let rho_w_new_i = self.get_rho_w(p_new[id]);
-                        let rho_w_new_j = self.get_rho_w(p_new[nid]);
-                        let grav_w_old = self.gravity_head_bar(
-                            depth_i,
-                            depth_j,
-                            self.interface_density_barrier(rho_w_old_i, rho_w_old_j),
-                        );
-                        let grav_w_new = self.gravity_head_bar(
-                            depth_i,
-                            depth_j,
-                            self.interface_density_barrier(rho_w_new_i, rho_w_new_j),
-                        );
-
-                        let dphi_w_old =
-                            (self.pressure[id] - self.pressure[nid]) - (pc_i - pc_j) - grav_w_old;
-                        let dphi_w = (p_new[id] - p_new[nid]) - (pc_i - pc_j) - grav_w_new;
-
-                        let (lam_w_i, lam_w_j) = if self.three_phase_mode {
-                            let (w_i, _, _) = self.phase_mobilities_3p(id);
-                            let (w_j, _, _) = self.phase_mobilities_3p(nid);
-                            (w_i, w_j)
-                        } else {
-                            let (w_i, _) = self.phase_mobilities(id);
-                            let (w_j, _) = self.phase_mobilities(nid);
-                            (w_i, w_j)
-                        };
-
-                        let lam_w_up = if dphi_w_old >= 0.0 { lam_w_i } else { lam_w_j };
-                        let geom_t =
-                            DARCY_METRIC_FACTOR * self.geometric_transmissibility(id, nid, dim);
-                        let t_w = geom_t * lam_w_up;
-                        let water_flux_m3_day = t_w * dphi_w;
-                        let dv_water = water_flux_m3_day * dt_days;
-
-                        delta_water_m3[id] -= dv_water;
-                        delta_water_m3[nid] += dv_water;
-                    }
-                }
-            }
-        }
-
-        if self.three_phase_mode {
-            for k in 0..self.nz {
-                for j in 0..self.ny {
-                    for i in 0..self.nx {
-                        let id = self.idx(i, j, k);
-
-                        let mut check = Vec::new();
-                        if i < self.nx - 1 {
-                            check.push((self.idx(i + 1, j, k), 'x', k));
-                        }
-                        if j < self.ny - 1 {
-                            check.push((self.idx(i, j + 1, k), 'y', k));
-                        }
-                        if k < self.nz - 1 {
-                            check.push((self.idx(i, j, k + 1), 'z', k + 1));
-                        }
-
-                        for (nid, dim, n_k) in check {
-                            let depth_i = self.depth_at_k(k);
-                            let depth_j = self.depth_at_k(n_k);
-
-                            let pc_og_i = self.get_gas_oil_capillary_pressure(self.sat_gas[id]);
-                            let pc_og_j = self.get_gas_oil_capillary_pressure(self.sat_gas[nid]);
-                            let rho_g_old_i = self.get_rho_g(self.pressure[id]);
-                            let rho_g_old_j = self.get_rho_g(self.pressure[nid]);
-                            let rho_g_new_i = self.get_rho_g(p_new[id]);
-                            let rho_g_new_j = self.get_rho_g(p_new[nid]);
-                            let grav_g_old = self.gravity_head_bar(
-                                depth_i,
-                                depth_j,
-                                self.interface_density_barrier(rho_g_old_i, rho_g_old_j),
-                            );
-                            let grav_g_new = self.gravity_head_bar(
-                                depth_i,
-                                depth_j,
-                                self.interface_density_barrier(rho_g_new_i, rho_g_new_j),
-                            );
-
-                            let dphi_g_old = (self.pressure[id] - self.pressure[nid])
-                                + (pc_og_i - pc_og_j)
-                                - grav_g_old;
-                            let dphi_g =
-                                (p_new[id] - p_new[nid]) + (pc_og_i - pc_og_j) - grav_g_new;
-
-                            let lam_g_up = if dphi_g_old >= 0.0 {
-                                self.gas_mobility(id)
-                            } else {
-                                self.gas_mobility(nid)
-                            };
-                            let geom_t =
-                                DARCY_METRIC_FACTOR * self.geometric_transmissibility(id, nid, dim);
-                            let t_g = geom_t * lam_g_up;
-                            let gas_flux_m3_day = t_g * dphi_g;
-                            let up_id = if dphi_g_old >= 0.0 { id } else { nid };
-                            let gas_flux_sc_day =
-                                gas_flux_m3_day / self.get_b_g(p_new[up_id]).max(1e-9);
-                            let dv_gas_sc = gas_flux_sc_day * dt_days;
-
-                            delta_free_gas_sc[id] -= dv_gas_sc;
-                            delta_free_gas_sc[nid] += dv_gas_sc;
-
-                            if self.pvt_table.is_some() {
-                                let rho_o_old_i = self.get_rho_o_cell(id, self.pressure[id]);
-                                let rho_o_old_j = self.get_rho_o_cell(nid, self.pressure[nid]);
-                                let rho_o_new_i = self.get_rho_o_cell(id, p_new[id]);
-                                let rho_o_new_j = self.get_rho_o_cell(nid, p_new[nid]);
-                                let grav_o_old = self.gravity_head_bar(
-                                    depth_i,
-                                    depth_j,
-                                    self.interface_density_barrier(rho_o_old_i, rho_o_old_j),
-                                );
-                                let grav_o_new = self.gravity_head_bar(
-                                    depth_i,
-                                    depth_j,
-                                    self.interface_density_barrier(rho_o_new_i, rho_o_new_j),
-                                );
-                                let dphi_o_old =
-                                    (self.pressure[id] - self.pressure[nid]) - grav_o_old;
-                                let dphi_o = (p_new[id] - p_new[nid]) - grav_o_new;
-
-                                let (_, lam_o_i, _) = self.phase_mobilities_3p(id);
-                                let (_, lam_o_j, _) = self.phase_mobilities_3p(nid);
-                                let lam_o_up = if dphi_o_old >= 0.0 { lam_o_i } else { lam_o_j };
-                                let t_o = geom_t * lam_o_up;
-
-                                let oil_flux_res_day = t_o * dphi_o;
-                                let up_id = if dphi_o_old >= 0.0 { id } else { nid };
-                                let oil_flux_sc_day = oil_flux_res_day
-                                    / self.get_b_o_cell(up_id, p_new[up_id]).max(1e-9);
-                                let rs_upwind = if dphi_o_old >= 0.0 {
-                                    self.rs[id]
-                                } else {
-                                    self.rs[nid]
-                                };
-                                let dg_flux_sc_day = oil_flux_sc_day * rs_upwind;
-                                let dv_dg_sc = dg_flux_sc_day * dt_days;
-
-                                delta_dg_sc[id] -= dv_dg_sc;
-                                delta_dg_sc[nid] += dv_dg_sc;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        for (w_idx, w) in self.wells.iter().enumerate() {
-            let id = self.idx(w.i, w.j, w.k);
-            if let Some(control) = well_controls[w_idx] {
-                if let Some(q_m3_day) = self.well_transport_rate_from_control(w, control, p_new[id])
-                {
-                    if self.three_phase_mode {
-                        let (fw, fg, fo) = if w.injector {
-                            match self.injected_fluid {
-                                InjectedFluid::Water => (1.0, 0.0, 0.0),
-                                InjectedFluid::Gas => (0.0, 1.0, 0.0),
-                            }
-                        } else {
-                            let producer_state = self.producer_control_state_from_resolved_control(
-                                w,
-                                control,
-                                &self.pressure,
-                            );
-                            (
-                                producer_state.water_fraction,
-                                producer_state.gas_fraction,
-                                producer_state.oil_fraction,
-                            )
-                        };
-                        delta_water_m3[id] -= q_m3_day * fw * dt_days;
-                        let producer_state = if w.injector {
-                            None
-                        } else {
-                            Some(self.producer_control_state_from_resolved_control(
-                                w,
-                                control,
-                                &self.pressure,
-                            ))
-                        };
-                        delta_free_gas_sc[id] -=
-                            q_m3_day * fg * dt_days / self.get_b_g(p_new[id]).max(1e-9);
-
-                        if !w.injector && self.pvt_table.is_some() {
-                            let producer_state = producer_state
-                                .expect("producer state should exist for producer controls");
-                            let q_o_res = q_m3_day * fo;
-                            let q_o_sc = q_o_res / producer_state.oil_fvf;
-                            let q_dg_sc = q_o_sc * producer_state.rs_sm3_sm3;
-                            delta_dg_sc[id] -= q_dg_sc * dt_days;
-                        }
-                    } else {
-                        let fw = if w.injector {
-                            1.0
-                        } else {
-                            self.frac_flow_water(id)
-                        };
-                        delta_water_m3[id] -= q_m3_day * fw * dt_days;
-                    }
-                }
-            }
-        }
 
         for idx in 0..n_cells {
             let vp_m3 = self.pore_volume_m3(idx);
             if vp_m3 > 0.0 {
-                let sat_change_w = (delta_water_m3[idx] / vp_m3).abs();
+                let sat_change_w = (deltas.water_m3[idx] / vp_m3).abs();
                 let sat_change_g = if self.three_phase_mode {
-                    (delta_free_gas_sc[idx].abs() * self.get_b_g(self.pressure[idx]).max(1e-9)
+                    (deltas.free_gas_sc[idx].abs() * self.get_b_g(self.pressure[idx]).max(1e-9)
                         / vp_m3)
                         .abs()
                 } else {
@@ -586,15 +436,328 @@ impl ReservoirSimulator {
             .min(control_transition_factor)
             .clamp(0.01, 1.0);
 
-        (
+        PressureStep {
             p_new,
-            delta_water_m3,
-            delta_free_gas_sc,
-            delta_dg_sc,
+            deltas,
             well_controls,
             stable_dt_factor,
-            solver_result.converged,
-            solver_result.iterations,
-        )
+            converged: linear_converged && volume_balance_converged,
+            linear_iterations,
+        }
+    }
+
+    /// Component changes over a substep of `dt_days` for the pressure field `p_new`: inter-cell
+    /// fluxes (explicit mobilities, upwinded on the beginning-of-substep potential) plus well
+    /// sources and sinks.
+    pub(crate) fn transport_deltas(
+        &self,
+        p_new: &DVector<f64>,
+        well_controls: &[Option<ResolvedWellControl>],
+        dt_days: f64,
+    ) -> TransportDeltas {
+        let n_cells = self.nx * self.ny * self.nz;
+        let mut deltas = TransportDeltas::zeros(n_cells);
+
+        for k in 0..self.nz {
+            for j in 0..self.ny {
+                for i in 0..self.nx {
+                    let id = self.idx(i, j, k);
+                    let mut check = Vec::new();
+                    if i < self.nx - 1 {
+                        check.push((self.idx(i + 1, j, k), 'x', k));
+                    }
+                    if j < self.ny - 1 {
+                        check.push((self.idx(i, j + 1, k), 'y', k));
+                    }
+                    if k < self.nz - 1 {
+                        check.push((self.idx(i, j, k + 1), 'z', k + 1));
+                    }
+
+                    for (nid, dim, n_k) in check {
+                        let depth_i = self.depth_at_k(k);
+                        let depth_j = self.depth_at_k(n_k);
+
+                        let pc_i = self.get_capillary_pressure(self.sat_water[id]);
+                        let pc_j = self.get_capillary_pressure(self.sat_water[nid]);
+
+                        let rho_w_old_i = self.get_rho_w(self.pressure[id]);
+                        let rho_w_old_j = self.get_rho_w(self.pressure[nid]);
+                        let rho_w_new_i = self.get_rho_w(p_new[id]);
+                        let rho_w_new_j = self.get_rho_w(p_new[nid]);
+                        let grav_w_old = self.gravity_head_bar(
+                            depth_i,
+                            depth_j,
+                            self.interface_density_barrier(rho_w_old_i, rho_w_old_j),
+                        );
+                        let grav_w_new = self.gravity_head_bar(
+                            depth_i,
+                            depth_j,
+                            self.interface_density_barrier(rho_w_new_i, rho_w_new_j),
+                        );
+
+                        let dphi_w_old =
+                            (self.pressure[id] - self.pressure[nid]) - (pc_i - pc_j) - grav_w_old;
+                        let dphi_w = (p_new[id] - p_new[nid]) - (pc_i - pc_j) - grav_w_new;
+
+                        let (lam_w_i, lam_w_j) = if self.three_phase_mode {
+                            let (w_i, _, _) = self.phase_mobilities_3p(id);
+                            let (w_j, _, _) = self.phase_mobilities_3p(nid);
+                            (w_i, w_j)
+                        } else {
+                            let (w_i, _) = self.phase_mobilities(id);
+                            let (w_j, _) = self.phase_mobilities(nid);
+                            (w_i, w_j)
+                        };
+
+                        let lam_w_up = if dphi_w_old >= 0.0 { lam_w_i } else { lam_w_j };
+                        let geom_t =
+                            DARCY_METRIC_FACTOR * self.geometric_transmissibility(id, nid, dim);
+                        let t_w = geom_t * lam_w_up;
+                        let water_flux_m3_day = t_w * dphi_w;
+                        let dv_water = water_flux_m3_day * dt_days;
+
+                        deltas.water_m3[id] -= dv_water;
+                        deltas.water_m3[nid] += dv_water;
+                        let up_w = if dphi_w_old >= 0.0 { id } else { nid };
+                        let dv_water_sc = dv_water * self.water_inverse_fvf(p_new[up_w]);
+                        deltas.water_sc[id] -= dv_water_sc;
+                        deltas.water_sc[nid] += dv_water_sc;
+                    }
+                }
+            }
+        }
+
+        if self.three_phase_mode {
+            for k in 0..self.nz {
+                for j in 0..self.ny {
+                    for i in 0..self.nx {
+                        let id = self.idx(i, j, k);
+
+                        let mut check = Vec::new();
+                        if i < self.nx - 1 {
+                            check.push((self.idx(i + 1, j, k), 'x', k));
+                        }
+                        if j < self.ny - 1 {
+                            check.push((self.idx(i, j + 1, k), 'y', k));
+                        }
+                        if k < self.nz - 1 {
+                            check.push((self.idx(i, j, k + 1), 'z', k + 1));
+                        }
+
+                        for (nid, dim, n_k) in check {
+                            let depth_i = self.depth_at_k(k);
+                            let depth_j = self.depth_at_k(n_k);
+
+                            let pc_og_i = self.get_gas_oil_capillary_pressure(self.sat_gas[id]);
+                            let pc_og_j = self.get_gas_oil_capillary_pressure(self.sat_gas[nid]);
+                            let rho_g_old_i = self.get_rho_g(self.pressure[id]);
+                            let rho_g_old_j = self.get_rho_g(self.pressure[nid]);
+                            let rho_g_new_i = self.get_rho_g(p_new[id]);
+                            let rho_g_new_j = self.get_rho_g(p_new[nid]);
+                            let grav_g_old = self.gravity_head_bar(
+                                depth_i,
+                                depth_j,
+                                self.interface_density_barrier(rho_g_old_i, rho_g_old_j),
+                            );
+                            let grav_g_new = self.gravity_head_bar(
+                                depth_i,
+                                depth_j,
+                                self.interface_density_barrier(rho_g_new_i, rho_g_new_j),
+                            );
+
+                            let dphi_g_old = (self.pressure[id] - self.pressure[nid])
+                                + (pc_og_i - pc_og_j)
+                                - grav_g_old;
+                            let dphi_g =
+                                (p_new[id] - p_new[nid]) + (pc_og_i - pc_og_j) - grav_g_new;
+
+                            let lam_g_up = if dphi_g_old >= 0.0 {
+                                self.gas_mobility(id)
+                            } else {
+                                self.gas_mobility(nid)
+                            };
+                            let geom_t =
+                                DARCY_METRIC_FACTOR * self.geometric_transmissibility(id, nid, dim);
+                            let t_g = geom_t * lam_g_up;
+                            let gas_flux_m3_day = t_g * dphi_g;
+                            let up_id = if dphi_g_old >= 0.0 { id } else { nid };
+                            let gas_flux_sc_day =
+                                gas_flux_m3_day / self.get_b_g(p_new[up_id]).max(1e-9);
+                            let dv_gas_sc = gas_flux_sc_day * dt_days;
+
+                            deltas.free_gas_sc[id] -= dv_gas_sc;
+                            deltas.free_gas_sc[nid] += dv_gas_sc;
+
+                            {
+                                let rho_o_old_i = self.get_rho_o_cell(id, self.pressure[id]);
+                                let rho_o_old_j = self.get_rho_o_cell(nid, self.pressure[nid]);
+                                let rho_o_new_i = self.get_rho_o_cell(id, p_new[id]);
+                                let rho_o_new_j = self.get_rho_o_cell(nid, p_new[nid]);
+                                let grav_o_old = self.gravity_head_bar(
+                                    depth_i,
+                                    depth_j,
+                                    self.interface_density_barrier(rho_o_old_i, rho_o_old_j),
+                                );
+                                let grav_o_new = self.gravity_head_bar(
+                                    depth_i,
+                                    depth_j,
+                                    self.interface_density_barrier(rho_o_new_i, rho_o_new_j),
+                                );
+                                let dphi_o_old =
+                                    (self.pressure[id] - self.pressure[nid]) - grav_o_old;
+                                let dphi_o = (p_new[id] - p_new[nid]) - grav_o_new;
+
+                                let (_, lam_o_i, _) = self.phase_mobilities_3p(id);
+                                let (_, lam_o_j, _) = self.phase_mobilities_3p(nid);
+                                let lam_o_up = if dphi_o_old >= 0.0 { lam_o_i } else { lam_o_j };
+                                let t_o = geom_t * lam_o_up;
+
+                                let oil_flux_res_day = t_o * dphi_o;
+                                let up_id = if dphi_o_old >= 0.0 { id } else { nid };
+                                let oil_flux_sc_day = oil_flux_res_day
+                                    / self.get_b_o_cell(up_id, p_new[up_id]).max(1e-9);
+                                let dv_oil_sc = oil_flux_sc_day * dt_days;
+                                deltas.oil_sc[id] -= dv_oil_sc;
+                                deltas.oil_sc[nid] += dv_oil_sc;
+
+                                if self.pvt_table.is_some() {
+                                    let dv_dg_sc = dv_oil_sc * self.rs[up_id];
+                                    deltas.dissolved_gas_sc[id] -= dv_dg_sc;
+                                    deltas.dissolved_gas_sc[nid] += dv_dg_sc;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for (w_idx, w) in self.wells.iter().enumerate() {
+            let id = self.idx(w.i, w.j, w.k);
+            let Some(control) = well_controls[w_idx] else {
+                continue;
+            };
+            let Some(q_m3_day) = self.well_transport_rate_from_control(w, control, p_new[id])
+            else {
+                continue;
+            };
+            let q_m3 = q_m3_day * dt_days;
+            if !self.three_phase_mode {
+                let fw = if w.injector {
+                    1.0
+                } else {
+                    self.frac_flow_water(id)
+                };
+                deltas.water_m3[id] -= q_m3 * fw;
+                continue;
+            }
+            // Withdrawals use exactly the conversions `record_step_report` applies, so the
+            // reported production is the mass this substep removes.
+            let inv_bw = self.water_inverse_fvf(p_new[id]);
+            if w.injector {
+                let (fw, fg) = match self.injected_fluid {
+                    InjectedFluid::Water => (1.0, 0.0),
+                    InjectedFluid::Gas => (0.0, 1.0),
+                };
+                deltas.water_m3[id] -= q_m3 * fw;
+                deltas.water_sc[id] -= q_m3 * fw * inv_bw;
+                deltas.free_gas_sc[id] -= q_m3 * fg / self.get_b_g(p_new[id]).max(1e-9);
+            } else {
+                let producer =
+                    self.producer_control_state_from_resolved_control(w, control, &self.pressure);
+                let oil_sc = q_m3 * producer.oil_fraction / producer.oil_fvf.max(1e-9);
+                deltas.water_m3[id] -= q_m3 * producer.water_fraction;
+                deltas.water_sc[id] -= q_m3 * producer.water_fraction * inv_bw;
+                deltas.oil_sc[id] -= oil_sc;
+                deltas.free_gas_sc[id] -= q_m3 * producer.gas_fraction / producer.gas_fvf.max(1e-9);
+                if self.pvt_table.is_some() {
+                    deltas.dissolved_gas_sc[id] -= oil_sc * producer.rs_sm3_sm3;
+                }
+            }
+        }
+
+        deltas
+    }
+
+    /// Drive the three-phase volume balance `V(p, N(p)) = Vp(p)` to convergence, starting from
+    /// the linear pressure solve `p_initial`.
+    ///
+    /// `N(p)` is each cell's masses after this substep's transport at pressure `p`, and `V` is
+    /// the volume [`flash_cell`](ReservoirSimulator::flash_cell) gives them. The Newton matrix
+    /// is the assembled pressure operator with its storage diagonal `Vp·c_t/dt` replaced by the
+    /// closure's own slope, and the right-hand side is the volume residual over dt. The linear
+    /// solve's `c_t` only supplies the first guess, so an approximate storage term, such as the
+    /// one for a substep crossing the bubble point, costs iterations rather than mass (#37).
+    fn iterate_volume_balance(
+        &self,
+        p_initial: DVector<f64>,
+        well_controls: &[Option<ResolvedWellControl>],
+        dt_days: f64,
+        operator: PressureOperator<'_>,
+        linear_converged: &mut bool,
+        linear_iterations: &mut usize,
+    ) -> (DVector<f64>, TransportDeltas, bool) {
+        let n_cells = self.nx * self.ny * self.nz;
+        let old_masses: Vec<CellMasses> = (0..n_cells).map(|id| self.cell_masses(id)).collect();
+        let mut p = p_initial;
+        let mut vals = operator.vals.to_vec();
+        let mut residual = DVector::<f64>::zeros(n_cells);
+        let mut diag_inv = DVector::<f64>::zeros(n_cells);
+
+        for _ in 0..MAX_VOLUME_BALANCE_ITERATIONS {
+            let deltas = self.transport_deltas(&p, well_controls, dt_days);
+            let mut worst = 0.0_f64;
+            for id in 0..n_cells {
+                let masses = deltas.applied_to(id, &old_masses[id]);
+                let flash = self.flash_cell(id, p[id], &masses);
+                let r = flash.volume_residual_m3();
+                residual[id] = r / dt_days;
+                let storage = self.closure_storage_m3_per_bar(id, p[id], &masses);
+                let pressure_equivalent = r.abs()
+                    / storage.max(VOLUME_BALANCE_MIN_COMPRESSIBILITY * flash.pore_volume_m3);
+                worst = worst.max(pressure_equivalent);
+                let pos = operator.diag_positions[id];
+                let diag = operator.vals[pos] - operator.accumulation[id] + storage / dt_days;
+                vals[pos] = diag;
+                diag_inv[id] = if diag.abs() > f64::EPSILON {
+                    1.0 / diag
+                } else {
+                    1.0
+                };
+            }
+            if !worst.is_finite() {
+                return (p, deltas, false);
+            }
+            if worst <= VOLUME_BALANCE_PRESSURE_TOLERANCE_BAR {
+                return (p, deltas, true);
+            }
+
+            let mut tri = TriMatI::<f64, usize>::new((n_cells, n_cells));
+            for idx in 0..vals.len() {
+                tri.add_triplet(operator.rows[idx], operator.cols[idx], vals[idx]);
+            }
+            let matrix: CsMat<f64> = tri.to_csr();
+            let correction = solve_with_default(LinearSolveParams {
+                matrix: &matrix,
+                rhs: &residual,
+                preconditioner_inv_diag: &diag_inv,
+                initial_guess: &DVector::zeros(n_cells),
+                tolerance: 1e-9,
+                max_iterations: 1000,
+            });
+            *linear_iterations += correction.iterations;
+            if !correction.converged {
+                *linear_converged = false;
+                return (
+                    p.clone(),
+                    self.transport_deltas(&p, well_controls, dt_days),
+                    false,
+                );
+            }
+            p += correction.solution;
+        }
+
+        let deltas = self.transport_deltas(&p, well_controls, dt_days);
+        (p, deltas, false)
     }
 }

@@ -29,6 +29,11 @@ const STEPS: usize = 20;
 const CONTRACTION_RATIO: f64 = 0.8;
 /// Relative gap allowed between the two finest grids.
 const FINEST_PAIR_TOLERANCE: f64 = 0.01;
+/// The same gap for free-gas saturation. Its absolute grid error (~2.7e-4 at nx 20→40) is the
+/// same as before #11 made the table physical, but the physical table liberates less gas
+/// (Sg ≈ 0.023 rather than 0.033), so the relative gap rose from 0.37% to 1.15% while the
+/// contraction ratio stayed at ~0.53.
+const FINEST_PAIR_TOLERANCE_SAT_GAS: f64 = 0.015;
 
 fn make_black_oil_depletion_column_sim(nx: usize, fim_enabled: bool) -> ReservoirSimulator {
     let mut sim = ReservoirSimulator::new(nx, 1, 1, 0.2);
@@ -52,12 +57,16 @@ fn make_black_oil_depletion_column_sim(nx: usize, fim_enabled: bool) -> Reservoi
     sim.set_initial_saturation(0.10);
     sim.set_initial_gas_saturation(0.0);
     sim.pvt.c_o = 1e-5;
+    // Bo(100 bar) must keep the two-phase volume factor Bt = Bo + (Rs_i - Rs)·Bg falling with
+    // pressure (`dBo/dp < Bg·dRs/dp`). At 1.05 it did not: below the bubble point the total
+    // compressibility went negative until free gas built up, which IMPES cannot represent and
+    // which cost it 144% of its oil balance (#11). `assert_pvt_is_thermodynamically_stable` guards it.
     sim.pvt_table = Some(PvtTable::new(
         vec![
             PvtRow {
                 p_bar: 100.0,
                 rs_m3m3: 5.0,
-                bo_m3m3: 1.05,
+                bo_m3m3: 1.08,
                 mu_o_cp: 1.5,
                 bg_m3m3: 0.01,
                 mu_g_cp: 0.02,
@@ -143,7 +152,7 @@ fn refinement_series(results: &[ColumnAverages], select: fn(&ColumnAverages) -> 
     ]
 }
 
-fn assert_converging(name: &str, values: [f64; 4]) {
+fn assert_converging(name: &str, values: [f64; 4], finest_pair_tolerance: f64) {
     for value in values {
         assert!(
             value.is_finite(),
@@ -176,12 +185,12 @@ fn assert_converging(name: &str, values: [f64; 4]) {
 
     let finest_pair_gap = fine_diff / values[3].abs().max(1e-12);
     assert!(
-        finest_pair_gap <= FINEST_PAIR_TOLERANCE,
+        finest_pair_gap <= finest_pair_tolerance,
         "{} still differs by {:.3}% between the two finest grids (values {:?}), tolerance {:.3}%",
         name,
         finest_pair_gap * 100.0,
         values,
-        FINEST_PAIR_TOLERANCE * 100.0
+        finest_pair_tolerance * 100.0
     );
 }
 
@@ -203,13 +212,50 @@ fn assert_case_actually_liberates_gas(pressure: [f64; 4], rs: [f64; 4], sat_gas:
     );
 }
 
+/// Fails if the fixture's saturated curve lets the two-phase volume factor grow with pressure.
+///
+/// `dBt/dp = dBo/dp - Bg·dRs/dp` must be negative: otherwise oil plus the gas it liberates
+/// occupies less volume as pressure falls, the total compressibility of a cell with little free
+/// gas is negative, and the explicit IMPES pressure equation has no valid storage term. FIM and
+/// Flow still run such a table, which is how the defect hid behind #11.
+fn assert_pvt_is_thermodynamically_stable(sim: &ReservoirSimulator) {
+    let table = sim
+        .pvt_table
+        .as_ref()
+        .expect("black-oil fixture has a PVT table");
+    let bubble_point = table.bubble_point_pressure(INITIAL_RS_SM3_SM3);
+    let mut p = 100.5;
+    while p < bubble_point - 0.5 {
+        let (lo, mid, hi) = (
+            table.interpolate(p - 0.5),
+            table.interpolate(p),
+            table.interpolate(p + 0.5),
+        );
+        let dbo_dp = hi.bo_m3m3 - lo.bo_m3m3;
+        let bg_drs_dp = mid.bg_m3m3 * (hi.rs_m3m3 - lo.rs_m3m3);
+        assert!(
+            dbo_dp < bg_drs_dp,
+            "PVT fixture is thermodynamically unstable at {p} bar: dBo/dp = {dbo_dp:.3e} >= Bg·dRs/dp = {bg_drs_dp:.3e}"
+        );
+        p += 1.0;
+    }
+}
+
 /// Grid convergence on the IMPES path — fast enough to run as a default gate.
 #[test]
 fn physics_depletion_grid_convergence_impes() {
+    assert_pvt_is_thermodynamically_stable(&make_black_oil_depletion_column_sim(5, false));
     let results: Vec<ColumnAverages> = REFINEMENT_LEVELS
         .iter()
         .map(|nx| run_column(*nx, false))
         .collect();
+
+    for (nx, values) in REFINEMENT_LEVELS.iter().zip(results.iter()) {
+        println!(
+            "nx={:3} pressure={:9.4} rs={:9.5} bo={:9.6} sg={:9.6}",
+            nx, values.pressure_bar, values.rs_sm3_sm3, values.bo_m3_sm3, values.sat_gas
+        );
+    }
 
     let pressure = refinement_series(&results, |values| values.pressure_bar);
     let rs = refinement_series(&results, |values| values.rs_sm3_sm3);
@@ -218,24 +264,22 @@ fn physics_depletion_grid_convergence_impes() {
 
     assert_case_actually_liberates_gas(pressure, rs, sat_gas);
 
-    assert_converging("average pressure", pressure);
-    assert_converging("average Rs", rs);
-    assert_converging("average Bo", bo);
-    assert_converging("average free-gas saturation", sat_gas);
+    assert_converging("average pressure", pressure, FINEST_PAIR_TOLERANCE);
+    assert_converging("average Rs", rs, FINEST_PAIR_TOLERANCE);
+    assert_converging("average Bo", bo, FINEST_PAIR_TOLERANCE);
+    assert_converging(
+        "average free-gas saturation",
+        sat_gas,
+        FINEST_PAIR_TOLERANCE_SAT_GAS,
+    );
 }
 
-/// FIM twin of the IMPES check. FIM is the shipped solver for three-phase scenarios, but the
-/// four-level refinement sweep costs minutes in release, so it is an explicit replay rather
-/// than a default gate:
-/// `cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
-///  physics_depletion_grid_convergence_fim -- --ignored --nocapture`
+/// FIM twin of the IMPES check, held to the same contraction and finest-pair tolerances.
 ///
-/// Free-gas saturation is only checked for a bounded spread here: unlike IMPES, the FIM substep
-/// ladder makes the liberated-gas average non-monotone at the 1e-4 level (recorded in
-/// `docs/BLACK_OIL_VALIDATION.md`), which is well inside the physical signal but outside what a
-/// strict contraction test admits.
+/// It used to be an `#[ignore]`d replay with only a 5% spread bound on Sg: before FIM-BUBBLE-001
+/// the sweep took minutes and the substep ladder made the FIM Sg average non-monotone. It now
+/// contracts like IMPES and runs in about a second in debug, so it is a default gate.
 #[test]
-#[ignore = "grid-convergence replay: 4-level FIM refinement sweep, use --release"]
 fn physics_depletion_grid_convergence_fim() {
     let results: Vec<ColumnAverages> = REFINEMENT_LEVELS
         .iter()
@@ -256,22 +300,115 @@ fn physics_depletion_grid_convergence_fim() {
 
     assert_case_actually_liberates_gas(pressure, rs, sat_gas);
 
-    assert_converging("average pressure", pressure);
-    assert_converging("average Rs", rs);
-    assert_converging("average Bo", bo);
+    assert_converging("average pressure", pressure, FINEST_PAIR_TOLERANCE);
+    assert_converging("average Rs", rs, FINEST_PAIR_TOLERANCE);
+    assert_converging("average Bo", bo, FINEST_PAIR_TOLERANCE);
 
-    let finest = sat_gas[3];
-    for (nx, value) in REFINEMENT_LEVELS.iter().zip(sat_gas.iter()) {
-        let spread = (value - finest).abs() / finest.abs().max(1e-12);
-        assert!(
-            spread <= 0.05,
-            "FIM free-gas saturation drifts with refinement: nx={} Sg={:.6} vs finest {:.6} ({:.2}%)",
-            nx,
-            value,
-            finest,
-            spread * 100.0
-        );
+    assert_converging(
+        "average free-gas saturation",
+        sat_gas,
+        FINEST_PAIR_TOLERANCE_SAT_GAS,
+    );
+}
+
+/// Cumulative stock-tank oil production over the whole history [Sm³].
+fn cumulative_oil_sm3(sim: &ReservoirSimulator) -> f64 {
+    let mut previous_time = 0.0;
+    let mut cumulative = 0.0;
+    for point in &sim.rate_history {
+        cumulative += point.total_production_oil * (point.time - previous_time);
+        previous_time = point.time;
     }
+    cumulative
+}
+
+/// #11/#37: IMPES and FIM agree on the depletion column, and IMPES conserves oil.
+///
+/// IMPES used to keep oil as the residual `So = 1 - Sw - Sg`, so a pressure equation that
+/// misstated storage showed up as reported oil production the reservoir never lost: +144% on
+/// the old unstable table, and +36% on a stable one at the default 75 bar pressure cap, where a
+/// substep crossing the bubble point took the undersaturated storage term. It now transports oil
+/// mass and iterates the pressure to the volume balance, so the error is roundoff at any cap.
+/// Measured values: `docs/BLACK_OIL_VALIDATION.md` §2.
+#[test]
+fn physics_depletion_impes_matches_fim_and_conserves_oil() {
+    let nx = 10;
+    let mut impes = make_black_oil_depletion_column_sim(nx, false);
+    let mut fim = make_black_oil_depletion_column_sim(nx, true);
+    for _ in 0..STEPS {
+        impes.step(DT_DAYS);
+        fim.step(DT_DAYS);
+    }
+
+    let produced = cumulative_oil_sm3(&impes);
+    let oil_error = impes
+        .rate_history
+        .last()
+        .unwrap()
+        .material_balance_error_oil_m3;
+    assert!(
+        oil_error.abs() <= 1e-8 * produced,
+        "IMPES oil balance error {oil_error:.3e} Sm3 against {produced:.2} Sm3 produced"
+    );
+
+    let (impes, fim) = (column_averages(&impes), column_averages(&fim));
+    println!(
+        "nx={nx} oil MB {:+.2}% | IMPES p={:.4} sg={:.6} | FIM p={:.4} sg={:.6}",
+        100.0 * oil_error / produced,
+        impes.pressure_bar,
+        impes.sat_gas,
+        fim.pressure_bar,
+        fim.sat_gas
+    );
+    assert!(
+        (impes.pressure_bar - fim.pressure_bar).abs() <= 0.1,
+        "IMPES p {:.4} vs FIM {:.4} bar",
+        impes.pressure_bar,
+        fim.pressure_bar
+    );
+    assert!(
+        (impes.sat_gas - fim.sat_gas).abs() <= 0.005 * fim.sat_gas,
+        "IMPES Sg {:.6} vs FIM {:.6}",
+        impes.sat_gas,
+        fim.sat_gas
+    );
+}
+
+/// #37: three-phase IMPES closes all three component balances with compressible rock and water.
+///
+/// The pressure equation has always counted rock and water expansion in `c_t`, but transport
+/// moved water by reservoir volume on a fixed pore volume, and oil was the residual
+/// `1 - Sw - Sg`, so both expansions were produced as oil the reservoir never lost. Each
+/// balance is now exact up to the volume-balance tolerance.
+#[test]
+fn physics_depletion_impes_closes_balances_with_rock_and_water_compressibility() {
+    let mut sim = make_black_oil_depletion_column_sim(10, false);
+    sim.rock_compressibility = 1e-4;
+    sim.pvt.c_w = 4.5e-5;
+    for _ in 0..STEPS {
+        sim.step(DT_DAYS);
+        assert!(sim.last_solver_warning.is_empty(), "{}", sim.last_solver_warning);
+    }
+
+    let produced_oil = cumulative_oil_sm3(&sim);
+    let last = sim.rate_history.last().unwrap();
+    let water_in_place: f64 = (0..sim.nx).map(|id| sim.cell_masses(id).water_sc).sum();
+    let gas_in_place: f64 = (0..sim.nx).map(|id| sim.cell_masses(id).total_gas_sc()).sum();
+    assert!(
+        last.material_balance_error_oil_m3 <= 1e-8 * produced_oil,
+        "oil balance error {:.3e} Sm3 against {produced_oil:.2} produced",
+        last.material_balance_error_oil_m3
+    );
+    assert!(
+        last.material_balance_error_m3 <= 1e-8 * water_in_place,
+        "water balance error {:.3e} Sm3 against {water_in_place:.2} in place",
+        last.material_balance_error_m3
+    );
+    assert!(
+        last.material_balance_error_gas_m3 <= 1e-8 * gas_in_place,
+        "gas balance error {:.3e} Sm3 against {gas_in_place:.2} in place",
+        last.material_balance_error_gas_m3
+    );
 }
 
 /// FIM-BUBBLE-001: the first report step crosses the bubble point. It used to take 21,797
