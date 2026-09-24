@@ -3,6 +3,9 @@
  * Returns structured validation state with blocking errors and typed warnings.
  */
 
+import type { PvtRow } from './simulator-types';
+import { findThermodynamicallyUnstableRanges } from './physics/pvt';
+
 export type SimulationInputs = {
     nx: number;
     ny: number;
@@ -55,6 +58,8 @@ export type SimulationInputs = {
     targetProducerRate: number;
     targetInjectorSurfaceRate?: number | null;
     targetProducerSurfaceRate?: number | null;
+    /** Black-oil PVT table, when the run uses one. */
+    pvtTable?: readonly PvtRow[];
 };
 
 export type ValidationState = {
@@ -65,7 +70,7 @@ export type ValidationState = {
 export type ValidationWarningSurface = 'non-physical' | 'advisory';
 
 export type ValidationWarning = {
-    code: 'pressure-step-large' | 'high-viscosity-ratio' | 'large-grid' | 'small-timestep';
+    code: 'pressure-step-large' | 'high-viscosity-ratio' | 'large-grid' | 'small-timestep' | 'pvt-thermodynamically-unstable';
     message: string;
     surface: ValidationWarningSurface;
     fieldKey?: string;
@@ -181,6 +186,15 @@ export function validateInputs(input: SimulationInputs): ValidationState {
             code: 'large-grid',
             message: `${totalCells.toLocaleString()} cells may run slowly in the browser.`,
             surface: 'advisory',
+        });
+    }
+    const unstablePvt = input.pvtTable ? findThermodynamicallyUnstableRanges(input.pvtTable) : [];
+    if (unstablePvt.length > 0) {
+        const where = unstablePvt.map(([lo, hi]) => `${lo.toFixed(0)}–${hi.toFixed(0)} bar`).join(', ');
+        warnings.push({
+            code: 'pvt-thermodynamically-unstable',
+            message: `The PVT table is thermodynamically unstable over ${where}: Bo rises with pressure faster than Bg·dRs/dp, so oil and its liberated gas shrink as pressure falls. Results through that range are not physical, and IMPES cannot represent it.`,
+            surface: 'non-physical',
         });
     }
     if (input.delta_t_days < 0.01) {

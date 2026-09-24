@@ -342,3 +342,54 @@ export function interpolatePvtAtPressure(
         mu_g_cp: lower.mu_g_cp + t * (upper.mu_g_cp - lower.mu_g_cp),
     };
 }
+
+/**
+ * Pressure ranges `[lo, hi]` [bar] where a PVT table's saturated curve is thermodynamically
+ * unstable: `dBo/dp > Bg·dRs/dp`, so oil plus the gas it liberates takes up *less* room as pressure
+ * falls, and a saturated cell with little free gas has negative total compressibility (#39).
+ *
+ * Mirrors `PvtTable::thermodynamically_unstable_ranges` in the engine. Saturated rows are each
+ * branch's first row, a branch being consecutive rows at one Rs with rising pressure. On each
+ * saturated segment `dBo/dp` and `dRs/dp` are constant and `1/Bg` is linear in pressure, so the
+ * onset is exact. Adjacent ranges are merged.
+ */
+export function findThermodynamicallyUnstableRanges(rows: readonly PvtRow[]): Array<[number, number]> {
+    // Same tolerance as the engine's PVTO_RS_TOLERANCE.
+    const RS_TOLERANCE = 1e-6;
+    const saturated = rows
+        .filter((row, i) => i === 0
+            || Math.abs(row.rs_m3m3 - rows[i - 1].rs_m3m3) > RS_TOLERANCE
+            || row.p_bar < rows[i - 1].p_bar)
+        .slice()
+        .sort((a, b) => a.p_bar - b.p_bar);
+
+    const ranges: Array<[number, number]> = [];
+    for (let i = 1; i < saturated.length; i += 1) {
+        const r0 = saturated[i - 1];
+        const r1 = saturated[i];
+        const dp = r1.p_bar - r0.p_bar;
+        if (dp <= 1e-9) continue;
+        const dBoDp = (r1.bo_m3m3 - r0.bo_m3m3) / dp;
+        const dRsDp = (r1.rs_m3m3 - r0.rs_m3m3) / dp;
+        let range: [number, number] | null = null;
+        if (dRsDp <= 0) {
+            if (dBoDp > 0) range = [r0.p_bar, r1.p_bar];
+        } else if (dBoDp > 0) {
+            const invThreshold = dRsDp / dBoDp;
+            const inv0 = 1 / r0.bg_m3m3;
+            const inv1 = 1 / r1.bg_m3m3;
+            const at = (inv: number) => r0.p_bar + ((inv - inv0) / (inv1 - inv0)) * dp;
+            const above0 = inv0 > invThreshold;
+            const above1 = inv1 > invThreshold;
+            if (above0 && above1) range = [r0.p_bar, r1.p_bar];
+            else if (!above0 && above1) range = [at(invThreshold), r1.p_bar];
+            else if (above0 && !above1) range = [r0.p_bar, at(invThreshold)];
+        }
+        if (!range) continue;
+        const last = ranges.at(-1);
+        if (last && Math.abs(last[1] - range[0]) < 1e-9) last[1] = range[1];
+        else ranges.push(range);
+    }
+    return ranges;
+}
+

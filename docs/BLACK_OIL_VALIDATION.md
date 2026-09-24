@@ -207,8 +207,23 @@ table (the superseded tables below). IMPES cannot represent that table:
   recorded on #11).
 - FIM breaks on the same table as well, just below the bubble point. At BHP 145 it took 10,853
   substeps, ended with average pressure 128 bar (below the BHP) and 300 % balance errors. With
-  Bo = 1.08 the same run takes 22 substeps and conserves exactly. Other fixtures still carry the
-  unstable table, and nothing detects one ([#39](https://github.com/sergeyfarin/ressim/issues/39)).
+  Bo = 1.08 the same run takes 22 substeps and conserves exactly. **Explained in #39**
+  (re-measured at `884035b`: 3,729 substeps, every cell at 129.4 bar):
+  - *Below the BHP.* The whole drop happens after the producer shuts in, with zero oil-balance
+    change (step 1: 151 → 129 bar, no production). The unstable table makes the fluid volume
+    non-monotone in pressure, so the closed column has a second pressure for the same masses and
+    relaxes to it.
+  - *The balance "errors".* All of them arise in the first 5-day step (3,708 substeps through the
+    132–150 bar window, where the storage term's pressure slope changes sign). Each substep is
+    inside FIM's material-balance tolerance (about 5e-8 of oil in place against a 1e-5 bound), and
+    together they reach 2e-4 of oil in place. That is large only next to the small production.
+
+  The input is ill-posed, so this is acceptable for it. The remedy is detection:
+  `PvtTable::thermodynamically_unstable_ranges` in the engine, and a `pvt-thermodynamically-unstable`
+  pre-run warning (`validateInputs.ts`) that names the range. No shipped scenario or variant
+  triggers it. The one system fixture that depleted through such a table
+  (`make_below_bubble_point_flash_sim`) moved to Bo = 1.08. Four unit fixtures keep it on
+  purpose, and each is commented.
 
 ### #37: conservative three-phase IMPES (2026-09-23, `30bde0d`)
 
@@ -344,8 +359,8 @@ tables.
 - Two-phase IMPES still keeps oil as the residual `1 − Sw` and moves water by volume on a fixed
   pore volume, so rock and water expansion there are booked as oil. Three-phase IMPES was made
   conservative by #37 (section 2).
-- Saturated PVT tables with `dBo/dp > Bg·dRs/dp` are accepted without warning, although they
-  break IMPES and can break FIM just below the bubble point (section 2, [#39](https://github.com/sergeyfarin/ressim/issues/39)).
+- Saturated PVT tables with `dBo/dp > Bg·dRs/dp` are accepted, with a pre-run warning naming the
+  unstable range since #39. They break IMPES and fragment FIM through that range (section 2).
 - SPE1 scenario wiring is covered (#12). Reference-panel placement is pinned in
   `referenceComparisonModel.test.ts`. The layer thicknesses (20/30/50 ft) and each well's
   completion layer, physical-well id, surface-rate target and BHP limit are checked in

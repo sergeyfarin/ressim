@@ -210,6 +210,8 @@ mod tests {
     fn gas_free_cell_at_saturation_starts_on_rs_under_the_opm_lifecycle() {
         let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         sim.set_three_phase_mode_enabled(true);
+        // #39: this table is thermodynamically unstable over 132–150 bar (dBo/dp > Bg·dRs/dp).
+        // Kept deliberately: a unit check of primary-variable classification at the boundary.
         sim.pvt_table = Some(PvtTable::new(
             vec![
                 PvtRow {

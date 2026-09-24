@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { validateInputs, type SimulationInputs } from './validateInputs';
+import { findThermodynamicallyUnstableRanges } from './physics/pvt';
+import { getScenarioWithVariantParams, listScenarios } from './catalog/scenarios';
+import type { PvtRow } from './simulator-types';
 
 /** Returns a valid base set of inputs (no errors expected). */
 function makeValidInputs(overrides: Partial<SimulationInputs> = {}): SimulationInputs {
@@ -262,5 +265,53 @@ describe('validateInputs', () => {
             const result = validateInputs(makeValidInputs());
             expect(result.warnings).toHaveLength(0);
         });
+    });
+});
+
+describe('PVT thermodynamic stability (#39)', () => {
+    const row = (p_bar: number, rs_m3m3: number, bo_m3m3: number, bg_m3m3: number) => ({
+        p_bar, rs_m3m3, bo_m3m3, mu_o_cp: 1.2, bg_m3m3, mu_g_cp: 0.02,
+    });
+    // The #11 depletion fixture: dBo/dp = 1.4e-3 > Bg·dRs/dp once Bg < 0.007.
+    const unstable = [row(100, 5, 1.05, 0.01), row(150, 15, 1.12, 0.006), row(200, 15, 1.119, 0.0045)];
+    const stable = [row(100, 5, 1.08, 0.01), row(150, 15, 1.12, 0.006), row(200, 15, 1.119, 0.0045)];
+
+    it('locates the unstable range exactly as the engine does', () => {
+        const ranges = findThermodynamicallyUnstableRanges(unstable);
+        expect(ranges).toHaveLength(1);
+        // Same onset as `PvtTable::thermodynamically_unstable_ranges` (132.142857 bar).
+        expect(ranges[0][0]).toBeCloseTo(132.142857, 5);
+        expect(ranges[0][1]).toBe(150);
+        expect(findThermodynamicallyUnstableRanges(stable)).toEqual([]);
+    });
+
+    it('warns and names the range, without blocking the run', () => {
+        const result = validateInputs(makeValidInputs({ pvtTable: unstable }));
+        const warning = result.warnings.find((w) => w.code === 'pvt-thermodynamically-unstable');
+        expect(warning?.surface).toBe('non-physical');
+        expect(warning?.message).toContain('132–150 bar');
+        expect(Object.keys(result.errors)).toEqual([]);
+        expect(validateInputs(makeValidInputs({ pvtTable: stable })).warnings
+            .some((w) => w.code === 'pvt-thermodynamically-unstable')).toBe(false);
+    });
+
+    it('is quiet for every shipped scenario and variant', () => {
+        const offenders: string[] = [];
+        for (const scenario of listScenarios()) {
+            const dimensions = scenario.sensitivities.length > 0 ? scenario.sensitivities : [null];
+            for (const dimension of dimensions) {
+                const variants = dimension ? dimension.variants.map((v) => v.key) : [null];
+                for (const variantKey of variants) {
+                    const params = dimension && variantKey
+                        ? getScenarioWithVariantParams(scenario.key, dimension.key, variantKey)
+                        : scenario.params;
+                    const table = params.pvtTable as PvtRow[] | undefined;
+                    if (!table || params.pvtMode !== 'black-oil') continue;
+                    const ranges = findThermodynamicallyUnstableRanges(table);
+                    if (ranges.length > 0) offenders.push(`${scenario.key}/${variantKey ?? 'base'}: ${JSON.stringify(ranges)}`);
+                }
+            }
+        }
+        expect(offenders).toEqual([]);
     });
 });

@@ -4,6 +4,8 @@ use super::*;
 fn black_oil_compressibility_falls_back_when_bo_slope_goes_negative() {
     let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
     sim.pvt.c_o = 1e-5;
+    // #39: this table is thermodynamically unstable over 132–150 bar (dBo/dp > Bg·dRs/dp).
+    // Kept deliberately: the fallback this test pins exists for exactly such a table.
     sim.pvt_table = Some(pvt::PvtTable::new(
         vec![
             pvt::PvtRow {
@@ -48,6 +50,8 @@ fn effective_oil_compressibility_includes_dissolved_gas_below_bubble_point() {
     let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
     sim.pvt.c_o = 1e-5;
     sim.rho_g = 0.9;
+    // #39: this table is thermodynamically unstable over 132–150 bar (dBo/dp > Bg·dRs/dp).
+    // Kept deliberately: a unit check of the c_eff formula at 125 bar (stable) and 175 bar.
     sim.pvt_table = Some(pvt::PvtTable::new(
         vec![
             pvt::PvtRow {
@@ -417,6 +421,8 @@ fn transported_free_gas_does_not_redissolve_into_oil_when_disabled() {
     sim.set_cell_dimensions(1.0, 1.0, 1.0).unwrap();
     sim.set_initial_pressure(175.0);
     sim.pvt.c_o = 1e-5;
+    // #39: this table is thermodynamically unstable over 132–150 bar (dBo/dp > Bg·dRs/dp).
+    // Kept deliberately: a unit check of the flash's DRSDT cap, which does not depend on stability.
     sim.pvt_table = Some(pvt::PvtTable::new(
         vec![
             pvt::PvtRow {

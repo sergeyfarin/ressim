@@ -268,6 +268,48 @@ impl PvtTable {
         row
     }
 
+    /// Pressure ranges `[lo, hi]` [bar] where the saturated curve is thermodynamically unstable:
+    /// `dBo/dp > Bg·dRs/dp`, so the two-phase volume factor `Bt = Bo + (Rs_i − Rs)·Bg` grows with
+    /// pressure and a saturated cell with little free gas has negative total compressibility.
+    /// IMPES cannot represent such a table, and FIM breaks on it just below the bubble point (#11,
+    /// #39). On each saturated segment `dBo/dp` and `dRs/dp` are constant and `1/Bg` is linear in
+    /// pressure (the PVDG rule), so the onset is solved exactly. Adjacent ranges are merged.
+    pub fn thermodynamically_unstable_ranges(&self) -> Vec<(f64, f64)> {
+        let mut ranges: Vec<(f64, f64)> = Vec::new();
+        for pair in self.saturated_rows.windows(2) {
+            let (r0, r1) = (&pair[0], &pair[1]);
+            let dp = r1.p_bar - r0.p_bar;
+            if dp <= 1e-9 {
+                continue;
+            }
+            let dbo_dp = (r1.bo_m3m3 - r0.bo_m3m3) / dp;
+            let drs_dp = (r1.rs_m3m3 - r0.rs_m3m3) / dp;
+            // Unstable where Bg(p) < dBo/dp ÷ dRs/dp, i.e. where 1/Bg exceeds its inverse.
+            let range = if drs_dp <= 0.0 {
+                (dbo_dp > 0.0).then_some((r0.p_bar, r1.p_bar))
+            } else if dbo_dp <= 0.0 {
+                None
+            } else {
+                let inv_threshold = drs_dp / dbo_dp;
+                let (inv0, inv1) = (1.0 / r0.bg_m3m3, 1.0 / r1.bg_m3m3);
+                let at = |inv: f64| r0.p_bar + (inv - inv0) / (inv1 - inv0) * dp;
+                match (inv0 > inv_threshold, inv1 > inv_threshold) {
+                    (true, true) => Some((r0.p_bar, r1.p_bar)),
+                    (false, false) => None,
+                    (false, true) => Some((at(inv_threshold), r1.p_bar)),
+                    (true, false) => Some((r0.p_bar, at(inv_threshold))),
+                }
+            };
+            if let Some((lo, hi)) = range {
+                match ranges.last_mut() {
+                    Some(last) if (last.1 - lo).abs() < 1e-9 => last.1 = hi,
+                    _ => ranges.push((lo, hi)),
+                }
+            }
+        }
+        ranges
+    }
+
     /// The branch whose bubble point is the highest saturated pressure, when `p` is above it.
     fn top_branch_above_bubble_point(&self, p: f64) -> Option<&PvtOilBranch> {
         let top = self
@@ -1275,6 +1317,44 @@ mod tests {
         // Between the branch rows Bo follows the table, not c_o: 1.12 at 150 bar, 1.119 at 200.
         let (bo_mid, _) = table.interpolate_oil(175.0, 15.0);
         assert!((bo_mid - 1.1195).abs() < 1e-4, "Bo(175) = {bo_mid}");
+    }
+
+    /// #39: the #11 fixture's table is unstable from where `Bg·dRs/dp` falls below `dBo/dp` up to
+    /// the bubble point, and the table that replaced it is stable.
+    #[test]
+    fn thermodynamic_instability_is_located_on_the_saturated_curve() {
+        let row = |p_bar, rs_m3m3, bo_m3m3, bg_m3m3| PvtRow {
+            p_bar,
+            rs_m3m3,
+            bo_m3m3,
+            mu_o_cp: 1.2,
+            bg_m3m3,
+            mu_g_cp: 0.02,
+        };
+        let unstable = PvtTable::new(
+            vec![
+                row(100.0, 5.0, 1.05, 0.01),
+                row(150.0, 15.0, 1.12, 0.006),
+                row(200.0, 15.0, 1.119, 0.0045),
+            ],
+            1e-5,
+        );
+        let ranges = unstable.thermodynamically_unstable_ranges();
+        assert_eq!(ranges.len(), 1);
+        // dBo/dp = 1.4e-3, dRs/dp = 0.2: unstable where Bg < 0.007, i.e. 1/Bg > 142.857, which
+        // the linear 1/Bg (100 at 100 bar, 166.67 at 150 bar) reaches at 132.14 bar.
+        assert!((ranges[0].0 - 132.142857).abs() < 1e-4, "{ranges:?}");
+        assert!((ranges[0].1 - 150.0).abs() < 1e-12, "{ranges:?}");
+
+        let stable = PvtTable::new(
+            vec![
+                row(100.0, 5.0, 1.08, 0.01),
+                row(150.0, 15.0, 1.12, 0.006),
+                row(200.0, 15.0, 1.119, 0.0045),
+            ],
+            1e-5,
+        );
+        assert!(stable.thermodynamically_unstable_ranges().is_empty());
     }
 
     /// #42: table-less gas is compressible. `Bg` is 1 at the reference pressure, `c_g` is its

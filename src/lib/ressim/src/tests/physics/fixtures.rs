@@ -163,12 +163,15 @@ pub(super) fn make_below_bubble_point_flash_sim(
     sim.set_initial_saturation(0.10);
     sim.set_initial_gas_saturation(0.0);
     sim.pvt.c_o = 1e-5;
+    // Bo(100 bar) = 1.08, not the 1.05 this fixture used to share with the #11 depletion column:
+    // with 1.05 the saturated curve is thermodynamically unstable over 132–150 bar (dBo/dp >
+    // Bg·dRs/dp), and these cases deplete straight through that window (#39).
     sim.pvt_table = Some(PvtTable::new(
         vec![
             PvtRow {
                 p_bar: 100.0,
                 rs_m3m3: 5.0,
-                bo_m3m3: 1.05,
+                bo_m3m3: 1.08,
                 mu_o_cp: 1.5,
                 bg_m3m3: 0.01,
                 mu_g_cp: 0.02,

@@ -223,22 +223,11 @@ fn assert_pvt_is_thermodynamically_stable(sim: &ReservoirSimulator) {
         .pvt_table
         .as_ref()
         .expect("black-oil fixture has a PVT table");
-    let bubble_point = table.bubble_point_pressure(INITIAL_RS_SM3_SM3);
-    let mut p = 100.5;
-    while p < bubble_point - 0.5 {
-        let (lo, mid, hi) = (
-            table.interpolate(p - 0.5),
-            table.interpolate(p),
-            table.interpolate(p + 0.5),
-        );
-        let dbo_dp = hi.bo_m3m3 - lo.bo_m3m3;
-        let bg_drs_dp = mid.bg_m3m3 * (hi.rs_m3m3 - lo.rs_m3m3);
-        assert!(
-            dbo_dp < bg_drs_dp,
-            "PVT fixture is thermodynamically unstable at {p} bar: dBo/dp = {dbo_dp:.3e} >= Bg·dRs/dp = {bg_drs_dp:.3e}"
-        );
-        p += 1.0;
-    }
+    let unstable = table.thermodynamically_unstable_ranges();
+    assert!(
+        unstable.is_empty(),
+        "PVT fixture is thermodynamically unstable (dBo/dp > Bg·dRs/dp) over {unstable:?} bar"
+    );
 }
 
 /// Grid convergence on the IMPES path — fast enough to run as a default gate.
