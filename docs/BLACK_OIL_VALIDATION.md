@@ -315,8 +315,11 @@ tables.
   conservative by #37 (section 2).
 - Saturated PVT tables with `dBo/dp > Bg·dRs/dp` are accepted without warning, although they
   break IMPES and can break FIM just below the bubble point (section 2, [#39](https://github.com/sergeyfarin/ressim/issues/39)).
-- Scenario-wiring regressions for SPE1 (published-reference panel placement, `cellDzPerLayer`,
-  per-layer completion payloads) remain frontend-side TODO items.
+- SPE1 scenario wiring is covered (#12). Reference-panel placement is pinned in
+  `referenceComparisonModel.test.ts`. The layer thicknesses (20/30/50 ft) and each well's
+  completion layer, physical-well id, surface-rate target and BHP limit are checked in
+  `src/lib/workers/configureSimulator.test.ts`, through the worker's own setup function rather
+  than a test replica of it.
 
 ## 5. FIM repair F6 applicability table (2026-09-15)
 

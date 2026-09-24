@@ -51,6 +51,13 @@ impl ReservoirSimulator {
         [self.nx, self.ny, self.nz]
     }
 
+    /// Layer thicknesses, top to bottom [m]: what the grid actually holds after
+    /// `set_cell_dimensions` or `set_cell_dimensions_per_layer`, so a consumer can check that a
+    /// per-layer geometry reached the engine rather than falling back to a uniform one.
+    pub fn layer_thicknesses(&self) -> &[f64] {
+        &self.dz
+    }
+
     /// Every well, in the order they were added.
     pub fn wells(&self) -> &[Well] {
         &self.wells

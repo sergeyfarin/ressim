@@ -629,13 +629,13 @@ describe('referenceComparisonModel', () => {
             .panels.diagnostics.curves.map((curve) => curve.curveKey)).not.toContain('published-pressure');
     });
 
-    it('keeps solution-gas-drive OPM optional and emits no analytical curves', () => {
+    it('shows solution-gas-drive OPM by default and emits no analytical curves', () => {
         const model = buildReferenceComparisonModel({
             family: buildScenarioFamily('gas_drive'),
             results: [],
             xAxisMode: 'time',
         });
-        expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'opm-gor')?.defaultVisible).toBe(false);
+        expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'opm-gor')?.defaultVisible).not.toBe(false);
         expect(Object.values(model.panels).flatMap((panel) => panel?.curves ?? [])
             .filter((curve) => curve.referenceSourceType === 'analytical')).toEqual([]);
     });

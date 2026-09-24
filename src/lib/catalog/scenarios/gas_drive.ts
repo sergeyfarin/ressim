@@ -57,7 +57,7 @@ export const gas_drive: Scenario = {
         parameterSummary: 'Saturated black-oil depletion · solution-gas liberation · OPM Flow reference',
     },
     description: 'Pressure depletion of a saturated black-oil reservoir. Initial pressure sits at the bubble point, so drawdown immediately liberates gas from solution: Rs falls, free gas builds past the critical gas saturation.',
-    analyticalMethodSummary: 'Simulation-only — no analytical overlay. A Tarner–Tracy tank model was evaluated but rejected for this chart because its uniform-pressure/saturation assumptions do not represent the localized BHP drawdown and initially mobile free gas; its producing GOR diverges strongly even though ResSim agrees with OPM Flow. The optional OPM benchmark is disabled by default.',
+    analyticalMethodSummary: 'Simulation-only — no analytical overlay. A Tarner–Tracy tank model was evaluated but rejected for this chart because its uniform-pressure/saturation assumptions do not represent the localized BHP drawdown and initially mobile free gas; its producing GOR diverges strongly even though ResSim agrees with OPM Flow. The reference is OPM Flow, shown by default: one deck, run on the base parameters, so it grades the base rung of whichever ladder is selected.',
     analyticalMethodReference: 'Standing (1979), Notes on Calculating Solution Gas Drive Reservoir Performance by Tarner’s Method (assumption review); Craft & Hawkins, Applied Petroleum Reservoir Engineering; quantitative grading: docs/THREE_PHASE_VALIDATION.md.',
     referenceSources: [{
         kind: 'opm-flow',
@@ -65,7 +65,9 @@ export const gas_drive: Scenario = {
         // One deck, and it is this scenario's base parameters — so it grades the
         // base rung of whichever ladder the reader has selected, not the ladder.
         artifactVariantLabels: { gas_drive: 'base' },
-        defaultVisible: false,
+        // Shown by default (#12). It was hidden when a Tarner-Tracy overlay was the primary
+        // reference; that overlay has since been rejected, which left the best-graded
+        // three-phase scenario looking reference-less.
     }],
     chartLayoutKey: 'gas',
     defaultSensitivityDimensionKey: 'sg_init',

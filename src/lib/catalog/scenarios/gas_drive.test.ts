@@ -4,6 +4,8 @@ import initWasm, { ReservoirSimulator } from '../../ressim/pkg/simulator.js';
 import { getScenarioWithVariantParams } from '../scenarios';
 import { integrateRunSeries } from '@ressim/quantities/runSeries';
 import { getStockTankOilInPlace } from '@ressim/quantities/reservoirVolumes';
+import { buildBenchmarkCreatePayload } from '../../benchmarkRunModel';
+import { configureReservoirSimulator } from '../../workers/configureSimulator';
 
 let wasmReady: Promise<unknown> | null = null;
 
@@ -29,70 +31,35 @@ const STEPS = 30;
 /** Average reservoir pressure the rungs are compared at. */
 const COMPARISON_PRESSURE_BAR = 130;
 
+/** A simulator for `params`, built the way a scenario run builds it (payload + worker setup). */
+function configure(params: Params, steps: number): ReservoirSimulator {
+    const payload = buildBenchmarkCreatePayload({ ...params, steps });
+    const sim = new ReservoirSimulator(payload.nx, payload.ny, payload.nz, Number(payload.porosity));
+    configureReservoirSimulator(sim, payload);
+    return sim;
+}
+
 function buildAndRun(params: Params, steps: number): any[] {
-    const nx = Number(params.nx);
-    const ny = Number(params.ny);
-    const nz = Number(params.nz);
-
-    const sim = new ReservoirSimulator(nx, ny, nz, Number(params.reservoirPorosity));
-    sim.setFimEnabled(Boolean(params.fimEnabled));
-    sim.setCellDimensions(Number(params.cellDx), Number(params.cellDy), Number(params.cellDz));
-    sim.setRelPermProps(
-        Number(params.s_wc), Number(params.s_or),
-        Number(params.n_w), Number(params.n_o),
-        Number(params.k_rw_max), Number(params.k_ro_max),
-    );
-    sim.setFluidProperties(Number(params.mu_o), Number(params.mu_w));
-    sim.setFluidCompressibilities(Number(params.c_o), Number(params.c_w));
-    (sim as unknown as { setPvtTable: (t: unknown) => void }).setPvtTable(params.pvtTable);
-    sim.setRockProperties(
-        Number(params.rock_compressibility), Number(params.depth_reference),
-        Number(params.volume_expansion_o), Number(params.volume_expansion_w),
-    );
-    sim.setFluidDensities(Number(params.rho_o), Number(params.rho_w));
-    sim.setInitialPressure(Number(params.initialPressure));
-    sim.setInitialSaturation(Number(params.initialSaturation));
-    (sim as unknown as { setInitialGasSaturation: (s: number) => void })
-        .setInitialGasSaturation(Number(params.initialGasSaturation));
-    sim.setCapillaryParams(
-        Boolean(params.capillaryEnabled) ? Number(params.capillaryPEntry) : 0,
-        Number(params.capillaryLambda),
-    );
-    sim.setGravityEnabled(Boolean(params.gravityEnabled));
-    (sim as unknown as { setThreePhaseModeEnabled: (b: boolean) => void }).setThreePhaseModeEnabled(true);
-    (sim as unknown as { setGasRedissolutionEnabled: (b: boolean) => void })
-        .setGasRedissolutionEnabled(Boolean(params.gasRedissolutionEnabled));
-    (sim as unknown as { setThreePhaseRelPermProps: (...a: number[]) => void }).setThreePhaseRelPermProps(
-        Number(params.s_wc), Number(params.s_or),
-        Number(params.s_gc), Number(params.s_gr), Number(params.s_org),
-        Number(params.n_w), Number(params.n_o), Number(params.n_g),
-        Number(params.k_rw_max), Number(params.k_ro_max), Number(params.k_rg_max),
-    );
-    (sim as unknown as { setGasFluidProperties: (...a: number[]) => void }).setGasFluidProperties(
-        Number(params.mu_g), Number(params.c_g), Number(params.rho_g),
-    );
-    sim.setPermeabilityPerLayer(
-        new Float64Array(Array.from({ length: nz }, () => Number(params.uniformPermX))),
-        new Float64Array(Array.from({ length: nz }, () => Number(params.uniformPermY))),
-        new Float64Array(Array.from({ length: nz }, () => Number(params.uniformPermZ))),
-    );
-    sim.setStabilityParams(
-        Number(params.max_sat_change_per_step),
-        Number(params.max_pressure_change_per_step),
-        Number(params.max_well_rate_change_fraction),
-    );
-    sim.setWellControlModes(String(params.injectorControlMode), String(params.producerControlMode));
-    sim.setTargetWellRates(0, 0);
-    const producerBhp = Number(params.producerBhp);
-    sim.setWellBhpLimits(producerBhp, Number(params.initialPressure));
-    sim.add_well(
-        Number(params.producerI), Number(params.producerJ), 0,
-        producerBhp, Number(params.well_radius), Number(params.well_skin), false,
-    );
-
+    const sim = configure(params, steps);
     const dt = Number(params.delta_t_days);
     for (let i = 0; i < steps; i++) sim.step(dt);
-    return sim.getRateHistorySince(0) as any[];
+    const history = sim.getRateHistorySince(0) as any[];
+    sim.free();
+    return history;
+}
+
+/** Saturated Rs at `pressureBar`, linearly interpolated on the scenario's own PVT table. */
+function saturatedRs(params: Params, pressureBar: number): number {
+    const rows = (params.pvtTable as Array<{ p_bar: number; rs_m3m3: number }>)
+        .slice()
+        .sort((a, b) => a.p_bar - b.p_bar);
+    for (let i = 1; i < rows.length; i += 1) {
+        if (rows[i].p_bar >= pressureBar) {
+            const t = (pressureBar - rows[i - 1].p_bar) / (rows[i].p_bar - rows[i - 1].p_bar);
+            return rows[i - 1].rs_m3m3 + t * (rows[i].rs_m3m3 - rows[i - 1].rs_m3m3);
+        }
+    }
+    return rows[rows.length - 1].rs_m3m3;
 }
 
 type AtPressure = { time: number; gor: number; gasSaturation: number; oilRecovery: number };
@@ -159,5 +126,64 @@ describe('gas_drive — critical gas saturation changes the drive, not the clock
         expect(high.oilRecovery).toBeGreaterThan(base.oilRecovery);
         expect(base.oilRecovery).toBeGreaterThan(low.oilRecovery);
         expect(high.oilRecovery / low.oilRecovery).toBeGreaterThan(2);
+    }, 300000);
+});
+
+/**
+ * #12: the solution-gas-drive story the scenario tells, checked on its base case through the
+ * same payload and worker setup a run uses.
+ */
+describe('gas_drive — a saturated start that liberates gas and raises the GOR', () => {
+    it('starts on the saturated curve with the declared free gas', async () => {
+        await ensureWasmReady();
+        const params = getScenarioWithVariantParams('gas_drive', 'sg_init', 'sg_base');
+        const sim = configure(params, 1);
+        const initialPressure = Number(params.initialPressure);
+        const rsBubble = saturatedRs(params, initialPressure);
+        const rs = Array.from(sim.getRs());
+        const sg = Array.from(sim.getSatGas());
+        sim.free();
+
+        // Initial pressure is the bubble point: every cell holds the maximum dissolved gas…
+        for (const value of rs) expect(value).toBeCloseTo(rsBubble, 6);
+        // …and the declared free gas sits alongside it.
+        for (const value of sg) expect(value).toBeCloseTo(Number(params.initialGasSaturation), 12);
+    });
+
+    it('liberates solution gas as pressure falls', async () => {
+        await ensureWasmReady();
+        const params = getScenarioWithVariantParams('gas_drive', 'sg_init', 'sg_base');
+        const sim = configure(params, STEPS);
+        for (let i = 0; i < STEPS; i++) sim.step(Number(params.delta_t_days));
+        const history = sim.getRateHistorySince(0) as any[];
+        const rs = Array.from(sim.getRs());
+        const pressures = Array.from(sim.getPressures());
+        sim.free();
+
+        const rsBubble = saturatedRs(params, Number(params.initialPressure));
+        const meanRs = rs.reduce((sum, value) => sum + value, 0) / rs.length;
+        const finalPressure = Number(history.at(-1).avg_reservoir_pressure);
+        // Pressure is well below the bubble point, and the oil holds only what the saturated
+        // curve allows at the pressure each cell is at: dissolved gas has come out of solution.
+        expect(finalPressure).toBeLessThan(Number(params.initialPressure) - 50);
+        rs.forEach((value, cell) => expect(value).toBeCloseTo(saturatedRs(params, pressures[cell]), 3));
+        expect(meanRs).toBeLessThan(0.8 * rsBubble);
+    }, 300000);
+
+    it('produces far above the solution GOR, and the GOR keeps rising', async () => {
+        await ensureWasmReady();
+        const params = getScenarioWithVariantParams('gas_drive', 'sg_init', 'sg_base');
+        const history = buildAndRun(params, STEPS);
+        const rsBubble = saturatedRs(params, Number(params.initialPressure));
+        const gors = history.map((point) => Number(point.producing_gor));
+
+        // Measured 2026-09-24 (base rung, solution GOR 28 m³/m³): 386 at the first 10 d step,
+        // rising every step to 514 at 300 d. The declared free gas (Sg 0.08) is above critical
+        // (0.05), so it flows from the start, and liberation keeps adding to it.
+        for (const gor of gors) expect(gor).toBeGreaterThan(10 * rsBubble);
+        for (let i = 1; i < gors.length; i += 1) {
+            expect(gors[i], `GOR fell at step ${i}`).toBeGreaterThan(gors[i - 1] * (1 - 0.005));
+        }
+        expect(gors.at(-1)!).toBeGreaterThan(1.25 * gors[0]);
     }, 300000);
 });

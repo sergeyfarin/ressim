@@ -58,7 +58,12 @@ Stone II and the engine uses Stone II (`relperm.rs::k_ro_stone2`).
 **Reference.** `flow 2026.04` on `tools/opm_flow/opm_flow_tool/cases.py::GAS_DRIVE`. The parsed
 series are committed as `src/lib/catalog/opm-flow-results/gas_drive.json` (status `parsed`) and
 overlaid on the scenario's charts; the Rust test embeds the same samples so the engine can be
-graded without the frontend.
+graded without the frontend. The OPM curves are shown by default (#12). They were hidden while a
+Tarner–Tracy overlay was the primary reference, and that overlay has since been rejected. The
+scenario tests also check the solution-gas-drive story on the base rung: a saturated start
+(Rs = Rs_sat at 200 bar), liberation (each cell's Rs on the saturated curve at its pressure, mean
+Rs below 80 % of the bubble-point value by 300 d), and a producing GOR above ten times the solution
+GOR that rises every step (386 to 514 m³/m³).
 
 **Where.** `src/lib/ressim/src/tests/three_phase_acceptance.rs`.
 

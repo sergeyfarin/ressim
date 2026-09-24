@@ -581,6 +581,11 @@ impl ReservoirSimulator {
         self.sat_water.clone()
     }
 
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getLayerThicknesses))]
+    pub fn get_layer_thicknesses(&self) -> Vec<f64> {
+        self.layer_thicknesses().to_vec()
+    }
+
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = getSatOil))]
     pub fn get_sat_oil(&self) -> Vec<f64> {
         self.sat_oil.clone()
