@@ -88,14 +88,18 @@ fn effective_oil_compressibility_includes_dissolved_gas_below_bubble_point() {
         "c_o_effective ({c_eff_below}) must exceed c_o ({c_o_below}) below bubble point"
     );
 
+    // Above the bubble point there is no dissolved-gas term: c_o_effective is the oil's own
+    // compressibility, which since #38 comes from the table's undersaturated rows (Bo 1.12 at
+    // 150 bar, 1.119 at 200) rather than from the scalar fallback c_o.
     let rs_sat_175 = sim.pvt_table.as_ref().unwrap().interpolate(175.0).rs_m3m3;
     let c_eff_above = sim.get_c_o_effective(175.0, rs_sat_175);
-    let c_o_above = sim.get_c_o(175.0);
+    let bo_175 = sim.pvt_table.as_ref().unwrap().interpolate(175.0).bo_m3m3;
+    let c_o_table = (1.12 - 1.119) / 50.0 / bo_175;
     assert!(c_eff_above.is_finite());
     assert!(c_eff_above > 0.0);
     assert!(
-        (c_eff_above - c_o_above).abs() / c_o_above < 0.5,
-        "c_o_effective ({c_eff_above}) should be close to c_o ({c_o_above}) above bubble point"
+        (c_eff_above - c_o_table).abs() / c_o_table < 0.01,
+        "c_o_effective ({c_eff_above}) should be the table's undersaturated compressibility ({c_o_table}) above bubble point"
     );
 
     let rho = sim.get_rho_o(125.0);

@@ -253,9 +253,29 @@ impl PvtTable {
     }
 
     /// Interpolate PVT properties for a given pressure.
-    /// Extrapolates using constant compressibility for points above the table max pressure.
+    ///
+    /// Above the highest bubble point the oil is not saturated at all: it is the top branch's oil,
+    /// undersaturated, so `Bo` and `μo` come from that branch's own rows (#38). They used to be
+    /// extrapolated from the bubble point with `c_o`, so `interpolate_oil` gave the same oil two
+    /// volume factors, one for `Rs = Rs_max` and another for `Rs` a hair below it.
     pub fn interpolate(&self, p: f64) -> PvtRow {
-        Self::interpolate_rows(&self.saturated_rows, p, self.c_o)
+        let mut row = Self::interpolate_rows(&self.saturated_rows, p, self.c_o);
+        if let Some(top) = self.top_branch_above_bubble_point(p) {
+            let (bo, mu) = Self::branch_props(top, p, self.c_o);
+            row.bo_m3m3 = bo;
+            row.mu_o_cp = mu;
+        }
+        row
+    }
+
+    /// The branch whose bubble point is the highest saturated pressure, when `p` is above it.
+    fn top_branch_above_bubble_point(&self, p: f64) -> Option<&PvtOilBranch> {
+        let top = self
+            .oil_branches
+            .iter()
+            .filter(|branch| !branch.rows.is_empty())
+            .max_by(|a, b| a.rows[0].p_bar.total_cmp(&b.rows[0].p_bar))?;
+        (p >= top.rows[0].p_bar).then_some(top)
     }
 
     /// Generic mirror of [`Self::interpolate`] over the saturated curve.
@@ -290,18 +310,24 @@ impl PvtTable {
         }
 
         let last_idx = rows.len() - 1;
-        // Above the last table pressure: exponential Bo, Boyle-law Bg, constant Rs/mu.
+        // Above the last table pressure: constant Rs, Boyle-law Bg, and Bo/mu_o from the top
+        // branch's own undersaturated rows (#38), exactly as `interpolate` does.
         if pv >= rows[last_idx].p_bar {
             let r = &rows[last_idx];
-            // Bo = last.Bo * exp(-c_o * (p - last.p))
-            let bo = S::from_f64(r.bo_m3m3) * ((p * (-self.c_o)) + (self.c_o * r.p_bar)).exp();
             // Bg = last.Bg * (last.p / p)
             let bg = S::from_f64(r.bg_m3m3 * r.p_bar) / p;
+            let (bo, mu_o) = match self.top_branch_above_bubble_point(pv) {
+                Some(top) => Self::branch_props_generic(top, p, self.c_o),
+                None => (
+                    S::from_f64(r.bo_m3m3) * ((p * (-self.c_o)) + (self.c_o * r.p_bar)).exp(),
+                    S::from_f64(r.mu_o_cp),
+                ),
+            };
             return SatProps {
                 rs: S::from_f64(r.rs_m3m3),
                 bo,
                 bg,
-                mu_o: S::from_f64(r.mu_o_cp),
+                mu_o,
                 mu_g: S::from_f64(r.mu_g_cp),
             };
         }
@@ -1205,6 +1231,50 @@ mod tests {
 
         assert!((ad.0.d(0) - fd_bo).abs() < 1e-8);
         assert!((ad.1.d(0) - fd_mu).abs() < 1e-8);
+    }
+
+    /// #38: above the highest bubble point, oil at `Rs = Rs_max` and oil a hair below it are the
+    /// same oil, so `interpolate_oil` must give them the same Bo and mu_o, in `f64` and in the
+    /// generic (AD) mirror. The table's top branch has an undersaturated row that does not follow
+    /// `c_o`, which is what used to split the two.
+    #[test]
+    fn interpolate_oil_is_continuous_in_rs_above_the_highest_bubble_point() {
+        let row = |p_bar, rs_m3m3, bo_m3m3, mu_o_cp, bg_m3m3| PvtRow {
+            p_bar,
+            rs_m3m3,
+            bo_m3m3,
+            mu_o_cp,
+            bg_m3m3,
+            mu_g_cp: 0.02,
+        };
+        let table = PvtTable::new(
+            vec![
+                row(100.0, 5.0, 1.08, 1.5, 0.01),
+                row(150.0, 15.0, 1.12, 1.2, 0.006),
+                row(200.0, 15.0, 1.119, 1.3, 0.0045),
+            ],
+            1e-5,
+        );
+        for p in [150.5, 160.0, 175.0, 199.0, 230.0] {
+            let (bo_sat, mu_sat) = table.interpolate_oil(p, 15.0);
+            // A 1e-9 step in Rs moves Bo by the (bounded) dBo/dRs slope times 1e-9, not by a jump.
+            // Before the fix the gap was 2e-4 at 175 bar whatever the step.
+            let (bo_under, mu_under) = table.interpolate_oil(p, 15.0 - 1e-9);
+            assert!(
+                (bo_sat - bo_under).abs() / bo_sat < 1e-10,
+                "Bo at {p} bar: {bo_sat} vs {bo_under}"
+            );
+            assert!(
+                (mu_sat - mu_under).abs() / mu_sat < 1e-10,
+                "mu at {p} bar: {mu_sat} vs {mu_under}"
+            );
+            let (bo_generic, mu_generic) = table.interpolate_oil_generic(p, 15.0);
+            assert_eq!(bo_generic, bo_sat, "generic Bo at {p} bar");
+            assert_eq!(mu_generic, mu_sat, "generic mu at {p} bar");
+        }
+        // Between the branch rows Bo follows the table, not c_o: 1.12 at 150 bar, 1.119 at 200.
+        let (bo_mid, _) = table.interpolate_oil(175.0, 15.0);
+        assert!((bo_mid - 1.1195).abs() < 1e-4, "Bo(175) = {bo_mid}");
     }
 
     /// #42: table-less gas is compressible. `Bg` is 1 at the reference pressure, `c_g` is its
