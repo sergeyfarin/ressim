@@ -161,3 +161,24 @@ embedded in `three_phase_gas_injection_matches_opm_flow_twin` (engine) and in
 worker's setup. Replay: the three commands at the top, with `--case go-1d-50`
 (`OPM_SMALL_CASE=go-1d-50` for the ResSim run).
 
+
+### `dep_pvt` pair (#20, `91d3a21`)
+
+`dep-pvt-correlation` / `dep-pvt-lab-report` are the withheld `dep_pvt` scenario's two rungs, written by
+`opm_small_direct::dep_pvt_column` from `dep-pvt-tables.json`: a 48-cell column at 280 bar, 130 bar
+above the bubble point, produced at 3 Sm³/d stock-tank oil (`ORAT`, BHP floor unreachable) for 300 ×
+0.75 d. They are also the frontend's OPM references for `dep_pvt`.
+
+| Case | Simulator | Substeps | Newton | Retries | Wall ms | max \|Δp\| bar | max \|ΔSg\| | Cumulatives vs Flow |
+|---|---|---|---|---|---|---|---|---|
+| dep-pvt-correlation | Flow | 300 | 608 | 0 | 4250 | | | |
+| | ResSim sparse | 301 | 908 | 0 | 421 | 0.307 | 0.00023 | FOPT 0.00%, FGPT 1.06% |
+| | ResSim dense | 301 | 908 | 0 | 606 | 0.307 | 0.00023 | identical to 1e-10 bar |
+| dep-pvt-lab-report | Flow | 300 | 607 | 0 | 4253 | | | |
+| | ResSim sparse | 301 | 906 | 0 | 413 | 0.221 | 0.00025 | FOPT 0.00%, FGPT 1.13% |
+| | ResSim dense | 301 | 906 | 0 | 604 | 0.221 | 0.00025 | identical to 1e-10 bar |
+
+Flow's FPR falls through 150 bar at 36.0 d and 87.75 d, the 2.4× clock ratio the scenario is built
+around; average-pressure gap 15.2 bar at 6.75 d, 77.5 bar at 35.25 d, 14.6 bar at 168.75 d. No
+fragmentation at the bubble point on either side. Replay: the three commands at the top, with
+`--case dep-pvt-correlation` / `--case dep-pvt-lab-report` (`OPM_SMALL_CASE=…` for the ResSim run).
