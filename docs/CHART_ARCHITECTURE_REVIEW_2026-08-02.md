@@ -484,3 +484,35 @@ reachable only through `buildGetScalePresetConfig`, whose only caller was
 - **The characterisation net records curve keys, not labels.** The recovery-label
   drift that step 4 found would not have been caught by it. Worth extending if a
   future change is label-sensitive.
+
+## 13. The active output source (#14, 2026-09-24)
+
+The chart stack above decides how a run is drawn. Which run a single-run consumer shows (the 3D
+view, the spatial profile, the default 3D property) was decided somewhere else, and not once.
+`navigationStore` built two payloads, each re-deriving "selected stored result, or the live
+model?" field by field (`result.params.x ?? live.x`). A stored result without a final snapshot
+therefore borrowed the live grid, the live replay time and the live `injectorEnabled`. Three
+analytical helpers (`liveAnalyticalOutput`, `sweepEfficiencySimSeries`, `sweepRFAnalytical`)
+ignored the selection altogether, and the last of them combined the selected run's rock properties
+with the live run's permeabilities. None of the three had a consumer, and all three were deleted.
+
+**The model.** `src/lib/stores/outputSource.ts` resolves one typed `OutputSource`, either
+`{ kind: 'live' }` or `{ kind: 'result', resultKey }`, carrying the source's params, history, rate
+history, final state and label. `navigationStore.activeOutputSource` derives it once.
+`buildOutputProfile`, `buildOutput3D` and `defaultOutput3DProperty` build their payloads from it
+alone, and `App.svelte` branches on `activeOutputSource.kind`, not on a separate
+selected-result field. Reconciling a stale comparison selection moved out of `App.svelte` into
+`navigationStore.reconcileComparisonSelection()`. The contract is pinned by
+`outputSource.test.ts`, which checks the choice, the absence of source mixing, replay clamping and
+the default property, and by the wiring assertions in `appStoreDomainWiring.test.ts`.
+
+**What stays outside it, deliberately.** Charts show every run in the active set at once
+(`ScenarioChart` takes `activeRunResults`), so they consume the result set rather than a single
+source. The selection affects them only through the comparison focus they already receive.
+
+**Extension point.** A new single-run consumer takes an `OutputSource`, or a payload built from
+one in `outputSource.ts`. It never reads the runtime or parameter stores directly. A new kind of
+source (an imported deck, a bundled prerun exhibit replayed in 3D) is a new member of the union:
+every builder then fails to type-check until it handles that source explicitly, which is the point.
+Ensemble or band features that summarise several runs belong with the chart stack's result-set
+path, not here.

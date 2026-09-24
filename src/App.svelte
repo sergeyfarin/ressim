@@ -37,7 +37,8 @@
     }
 
     function handleApplyOutputHistoryIndex(index: number) {
-        if (scenario.activeSelectedRunResult) {
+        // A stored result replays its own history; only the live model reloads worker state.
+        if (scenario.activeOutputSource.kind === "result") {
             runtime.currentIndex = index;
             return;
         }
@@ -49,19 +50,7 @@
     }
 
     // ---------- Effects ----------
-    $effect(() => {
-        const hasActiveResults = scenario.activeRunResults.length > 0;
-        if (!hasActiveResults) {
-            if (scenario.activeComparisonSelection.primaryResultKey ||
-                scenario.activeComparisonSelection.comparedResultKeys.length > 0) {
-                scenario.setComparisonSelection({ primaryResultKey: null, comparedResultKeys: [] });
-            }
-            return;
-        }
-        if (!scenario.activeComparisonSelection.primaryResultKey) return;
-        if (scenario.activePrimaryComparisonResultKey) return;
-        scenario.setComparisonSelection({ primaryResultKey: null, comparedResultKeys: [] });
-    });
+    $effect(() => { scenario.reconcileComparisonSelection(); });
 
     $effect(() => {
         if (scenario.default3DProperty) {

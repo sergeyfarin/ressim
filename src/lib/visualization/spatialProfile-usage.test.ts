@@ -7,8 +7,9 @@ const cardSrc = fs.readFileSync(
     'utf8',
 );
 const chartSrc = fs.readFileSync(path.join(__dirname, 'SpatialProfileChart.svelte'), 'utf8');
-const navStoreSrc = fs.readFileSync(
-    path.join(__dirname, '..', 'stores', 'navigationStore.svelte.ts'),
+// Since #14 the payloads are built in `outputSource.ts`, from the one resolved output source.
+const outputSourceSrc = fs.readFileSync(
+    path.join(__dirname, '..', 'stores', 'outputSource.ts'),
     'utf8',
 );
 const chartsDir = path.join(__dirname, '..', 'charts');
@@ -29,8 +30,8 @@ describe('spatial profile wiring', () => {
         // latter would silently freeze the profile at the end of the run.
         expect(/gridState=\{selectedOutput3D\.gridState\}/.test(cardSrc)).toBe(true);
         expect(/gridState=\{selectedOutputProfile\.gridState\}/.test(cardSrc)).toBe(false);
-        expect(navStoreSrc).toMatch(/const selectedSnapshot = currentIndex >= 0 \? history\[currentIndex\] : null/);
-        expect(navStoreSrc).toMatch(/gridState: selectedSnapshot\?\.grid/);
+        expect(outputSourceSrc).toMatch(/const snapshot = currentIndex >= 0 \? history\[currentIndex\] : null/);
+        expect(outputSourceSrc).toMatch(/gridState: snapshot\?\.grid \?\? source\.finalGrid/);
     });
 
     it('shares the 3D property selector rather than hardcoding a property', () => {
@@ -39,7 +40,7 @@ describe('spatial profile wiring', () => {
 
     it('passes scenario-derived spatial-reference metadata into the profile', () => {
         expect(cardSrc).toMatch(/reference=\{selectedOutputProfile\.spatialReference\}/);
-        expect(navStoreSrc).toMatch(/spatialReference: sweepGeometry === 'areal' \|\| sweepGeometry === 'both'/);
+        expect(outputSourceSrc).toMatch(/spatialReference: sweepGeometry === 'areal' \|\| sweepGeometry === 'both'/);
         expect(chartSrc).toMatch(/buildSweepDiagonalOverlay/);
     });
 

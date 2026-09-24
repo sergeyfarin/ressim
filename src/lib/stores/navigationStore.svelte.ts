@@ -22,12 +22,10 @@ import {
     getAnalyticalModeForMethod,
     getScenario,
     getScenarioAnalyticalOptions,
-    getDefaultSweepMethod,
     getScenarioChartLayout,
     getDefaultVariantKeys,
     getScenarioWithVariantParams,
     type ScenarioAnalyticalOption,
-    type ScenarioAnalyticalOutput,
 } from '../catalog/scenarios';
 import {
     buildReferenceCloneProvenance,
@@ -49,62 +47,20 @@ import type { ParameterStore } from './parameterStore.svelte';
 import type { RuntimeStore } from './runtimeStore.svelte';
 import { getReferenceChartLayoutConfig } from '@ressim/charts/referenceChartConfig';
 import { buildScenarioComparisonFamily } from '../scenario/scenarioChartModel';
-import type { RockProps, FluidProps } from '@ressim/analytical/fractionalFlow';
 import {
-    computeSweepRecoveryFactor,
-    type SweepAnalyticalMethod,
-    type SweepGeometry,
-    type SweepRFResult,
-} from '@ressim/analytical/sweepEfficiency';
-import type { GridState, WellState, SimulatorSnapshot, RateHistoryPoint } from '../simulator-types';
-import { resolvePressureDisplayRange, type PressureDisplayRange } from '../visualization/spatialViewModel';
-import type { SpatialProfileReference } from '../visualization/spatialProfileModel';
-import { getLayerPermeabilities } from '@ressim/charts/analyticalParamAdapters';
+    buildOutput3D,
+    buildOutputProfile,
+    defaultOutput3DProperty,
+    resolveOutputSource,
+    type Output3DProperty,
+    type Output3DSelection,
+    type OutputSelectionProfile,
+    type OutputSource,
+} from './outputSource';
 
-// ---------- Presentation-layer types (live in nav store; used by App.svelte) ----------
+// ---------- Presentation-layer types ----------
 
-export type OutputSelectionProfile = {
-    gridState: GridState | null;
-    nx: number; ny: number; nz: number;
-    cellDx: number; cellDy: number; cellDz: number;
-    simTime: number; porosity: number; rateHistory: RateHistoryPoint[];
-    scenarioMode: 'waterflood' | 'depletion' | 'none';
-    spatialReference: SpatialProfileReference | null;
-    spatialProfileDefaultAxis: 'i' | 'j' | 'k' | 'well-path' | null;
-    spatialProfileWellPathLabel: string;
-    sourceLabel: string;
-    injectorI: number; injectorJ: number; producerI: number; producerJ: number;
-    /** Perforated layers; empty means every layer. */
-    injectorKLayers: number[];
-    producerKLayers: number[];
-    initialSaturation: number;
-    rockProps: RockProps; fluidProps: FluidProps;
-};
-
-export type Output3DSelection = {
-    history: SimulatorSnapshot[];
-    nx: number; ny: number; nz: number;
-    cellDx: number; cellDy: number; cellDz: number; cellDzPerLayer: number[];
-    gridState: GridState | null;
-    wellState: WellState | null;
-    pressureDisplayRange: PressureDisplayRange;
-    replayTime: number | null;
-    currentIndex: number;
-    sourceLabel: string;
-};
-
-type SimSweepPoint = {
-    time: number;
-    eA: number | null;
-    eV: number | null;
-    eVol: number;
-    mobileOilRecovered: number | null;
-};
-
-const EMPTY_ANALYTICAL_OUTPUT: ScenarioAnalyticalOutput = {
-    production: [],
-    meta: { mode: 'none', shapeFactor: null, shapeLabel: '' },
-};
+export type { OutputSelectionProfile, Output3DSelection, OutputSource } from './outputSource';
 
 // ---------- Constants ----------
 
@@ -294,25 +250,11 @@ class NavigationStoreImpl {
 
     // ===== $derived: Sweep / Analytical Config =====
 
-    showSweepPanel = $derived(Boolean(this.activeScenarioAsFamily?.showSweepPanel));
-
     /** True when the active scenario ships precomputed (no live worker run, 3D off). */
     isPrerunScenario = $derived(
         !this.isCustomMode
         && (this.activeScenarioObject?.capabilities.runMode ?? 'live-worker') === 'prerun-artifacts',
     );
-
-    sweepGeometry = $derived.by((): SweepGeometry => {
-        return this.activeChartFamily?.sweepGeometry
-            ?? this.activeScenarioObject?.capabilities.sweepGeometry
-            ?? 'both';
-    });
-
-    sweepAnalyticalMethod = $derived.by((): SweepAnalyticalMethod => {
-        return this.activeAnalyticalOption?.sweepMethod
-            ?? (this.activeChartFamily as BenchmarkFamily | null)?.sweepAnalyticalMethod
-            ?? getDefaultSweepMethod(this.activeScenarioObject);
-    });
 
     analyticalPerVariant = $derived.by((): boolean => {
         const sc = this.activeScenarioObject;
@@ -400,176 +342,34 @@ class NavigationStoreImpl {
         return this.activeLibraryEntry?.layoutConfig ?? {};
     });
 
-    // ===== $derived: Output Profiles (for child components) =====
+    // ===== $derived: Active output (#14) =====
 
-    selectedOutputProfile = $derived.by((): OutputSelectionProfile => {
-        const ref = this.activeSelectedReferenceResult;
-        const outputParams = (ref?.params ?? this.#params.buildCurrentParameterSnapshot()) as Record<string, unknown>;
-        const scenarioCaps = this.activeScenarioObject?.capabilities;
-        const sweepGeometry = scenarioCaps?.analyticalMethod === 'sweep'
-            ? scenarioCaps.sweepGeometry
-            : null;
-        const scenarioMode = ref
-            ? getAnalyticalModeForMethod(ref.analyticalMethod)
-            : this.#params.analyticalMode;
-        return {
-            gridState: ref?.finalSnapshot?.grid ?? this.#runtime.gridStateRaw ?? null,
-            nx: Number(ref?.params.nx ?? this.#params.nx),
-            ny: Number(ref?.params.ny ?? this.#params.ny),
-            nz: Number(ref?.params.nz ?? this.#params.nz),
-            cellDx: Number(ref?.params.cellDx ?? this.#params.cellDx),
-            cellDy: Number(ref?.params.cellDy ?? this.#params.cellDy),
-            cellDz: Number(ref?.params.cellDz ?? this.#params.cellDz),
-            simTime: ref?.finalSnapshot?.time
-                ?? Number(ref?.rateHistory.at(-1)?.time ?? this.#runtime.simTime),
-            porosity: Number(ref?.params.reservoirPorosity ?? this.#params.reservoirPorosity),
-            rateHistory: ref?.rateHistory ?? this.#runtime.rateHistory,
-            scenarioMode,
-            spatialReference: sweepGeometry === 'areal' || sweepGeometry === 'both'
-                ? {
-                    kind: 'sweep',
-                    geometry: sweepGeometry,
-                    layerPermeabilities: getLayerPermeabilities(outputParams),
-                }
-                : scenarioMode === 'waterflood' ? { kind: 'buckley-leverett' } : null,
-            spatialProfileDefaultAxis: scenarioCaps?.spatialProfile?.defaultAxis ?? null,
-            spatialProfileWellPathLabel: scenarioCaps?.spatialProfile?.wellPathLabel
-                ?? (scenarioCaps?.hasInjector || this.#params.injectorEnabled
-                    ? 'Injector → producer'
-                    : 'Diagonal'),
-            sourceLabel: ref ? ref.label : 'Live runtime',
-            injectorI: Number(ref?.params.injectorI ?? this.#params.injectorI),
-            injectorJ: Number(ref?.params.injectorJ ?? this.#params.injectorJ),
-            producerI: Number(ref?.params.producerI ?? this.#params.producerI),
-            producerJ: Number(ref?.params.producerJ ?? this.#params.producerJ),
-            // Which layer the injector is perforated in, so a profile taken down
-            // the K axis knows which end of the column the flood starts at.
-            injectorKLayers: [...(
-                (ref?.params.injectorKLayers as number[] | undefined) ?? this.#params.injectorKLayers
-            )],
-            producerKLayers: [...(
-                (ref?.params.producerKLayers as number[] | undefined) ?? this.#params.producerKLayers
-            )],
-            initialSaturation: Number(ref?.params.initialSaturation ?? this.#params.initialSaturation),
-            rockProps: {
-                s_wc: Number(ref?.params.s_wc ?? this.#params.s_wc),
-                s_or: Number(ref?.params.s_or ?? this.#params.s_or),
-                n_w: Number(ref?.params.n_w ?? this.#params.n_w),
-                n_o: Number(ref?.params.n_o ?? this.#params.n_o),
-                k_rw_max: Number(ref?.params.k_rw_max ?? this.#params.k_rw_max),
-                k_ro_max: Number(ref?.params.k_ro_max ?? this.#params.k_ro_max),
+    /** The one run every result consumer shows: the selected stored result, else the live model. */
+    activeOutputSource = $derived.by((): OutputSource => {
+        const selected = this.activeSelectedReferenceResult;
+        return resolveOutputSource({
+            selected,
+            selectedScenarioMode: selected ? getAnalyticalModeForMethod(selected.analyticalMethod) : 'none',
+            live: {
+                params: this.#params as unknown as Record<string, unknown>,
+                history: this.#runtime.history,
+                rateHistory: this.#runtime.rateHistory,
+                gridState: this.#runtime.gridStateRaw ?? null,
+                wellState: this.#runtime.wellStateRaw ?? null,
+                simTime: this.#runtime.simTime,
+                scenarioMode: this.#params.analyticalMode,
             },
-            fluidProps: {
-                mu_w: Number(ref?.params.mu_w ?? this.#params.mu_w),
-                mu_o: Number(ref?.params.mu_o ?? this.#params.mu_o),
-            },
-        };
+        });
     });
 
-    selectedOutput3D = $derived.by((): Output3DSelection => {
-        const ref = this.activeSelectedReferenceResult;
-        const outputParams = (ref?.params ?? this.#params) as Record<string, unknown>;
-        const history = ref?.history ?? this.#runtime.history;
-        const currentIndex = history.length === 0
-            ? -1
-            : Math.max(0, Math.min(this.#runtime.currentIndex, history.length - 1));
-        const selectedSnapshot = currentIndex >= 0 ? history[currentIndex] : null;
-        const cellDzPerLayerRaw = ref?.params.cellDzPerLayer ?? this.#params.cellDzPerLayer;
-        return {
-            history,
-            nx: Number(ref?.params.nx ?? this.#params.nx),
-            ny: Number(ref?.params.ny ?? this.#params.ny),
-            nz: Number(ref?.params.nz ?? this.#params.nz),
-            cellDx: Number(ref?.params.cellDx ?? this.#params.cellDx),
-            cellDy: Number(ref?.params.cellDy ?? this.#params.cellDy),
-            cellDz: Number(ref?.params.cellDz ?? this.#params.cellDz),
-            cellDzPerLayer: Array.isArray(cellDzPerLayerRaw)
-                ? cellDzPerLayerRaw.map((v) => Number(v))
-                : [],
-            gridState: selectedSnapshot?.grid
-                ?? ref?.finalSnapshot?.grid
-                ?? this.#runtime.gridStateRaw
-                ?? null,
-            wellState: selectedSnapshot?.wells
-                ?? ref?.finalSnapshot?.wells
-                ?? this.#runtime.wellStateRaw
-                ?? null,
-            pressureDisplayRange: resolvePressureDisplayRange(outputParams),
-            replayTime: currentIndex >= 0 && currentIndex < history.length
-                ? history[currentIndex]?.time ?? null
-                : ref?.finalSnapshot?.time ?? this.#runtime.replayTime,
-            currentIndex,
-            sourceLabel: ref ? ref.label : 'Live runtime',
-        };
-    });
+    selectedOutputProfile = $derived.by((): OutputSelectionProfile =>
+        buildOutputProfile(this.activeOutputSource, this.activeScenarioObject?.capabilities));
 
-    default3DProperty = $derived.by((): 'pressure' | 'saturation_water' | 'saturation_oil' | 'saturation_gas' | 'saturation_ternary' | null => {
-        const ref = this.activeSelectedReferenceResult;
-        if (ref) {
-            const resultParams = ref.params ?? {};
-            if (resultParams.injectedFluid === 'gas') return 'saturation_gas';
-            return this.activeScenarioObject?.capabilities.default3DScalar ?? null;
-        }
-        if (this.#params.injectedFluid === 'gas' && this.#params.threePhaseModeEnabled) {
-            return 'saturation_gas';
-        }
-        const default3D = this.activeScenarioObject?.capabilities.default3DScalar;
-        if (default3D) return default3D as 'pressure' | 'saturation_water' | 'saturation_oil' | 'saturation_gas' | 'saturation_ternary';
-        return null;
-    });
+    selectedOutput3D = $derived.by((): Output3DSelection =>
+        buildOutput3D(this.activeOutputSource, this.#runtime.currentIndex, this.#runtime.replayTime));
 
-    // ===== $derived: Analytical Output =====
-
-    liveAnalyticalOutput = $derived.by((): ScenarioAnalyticalOutput => {
-        if (this.#runtime.rateHistory.length === 0) return EMPTY_ANALYTICAL_OUTPUT;
-        const def = this.activeScenarioObject?.analyticalDef;
-        if (!def) return EMPTY_ANALYTICAL_OUTPUT;
-        const inputs = def.inputsFromParams(this.#params as unknown as Record<string, unknown>, this.#runtime.rateHistory);
-        return def.fn(inputs);
-    });
-
-    sweepEfficiencySimSeries = $derived.by((): SimSweepPoint[] | null => {
-        if (!this.showSweepPanel || this.#runtime.rateHistory.length === 0) return null;
-        const points: SimSweepPoint[] = [{
-            time: 0,
-            eA: this.sweepGeometry === 'both' ? null : 0,
-            eV: this.sweepGeometry === 'both' ? null : 0,
-            eVol: 0,
-            mobileOilRecovered: this.sweepGeometry === 'both' ? 0 : null,
-        }];
-        for (const p of this.#runtime.rateHistory) {
-            if (!p.sweep) continue;
-            points.push({
-                time: p.time,
-                eA: p.sweep.e_a ?? null,
-                eV: p.sweep.e_v ?? null,
-                eVol: p.sweep.e_vol,
-                mobileOilRecovered: p.sweep.mobile_oil_recovered ?? null,
-            });
-        }
-        return points.length > 1 ? points : null;
-    });
-
-    sweepRFAnalytical = $derived.by((): SweepRFResult | null => {
-        if (!this.showSweepPanel) return null;
-        const { rockProps, fluidProps } = this.selectedOutputProfile;
-        if (!rockProps || !fluidProps) return null;
-        const perms = this.#params.permMode === 'perLayer' && (this.#params.layerPermsX as number[]).length > 1
-            ? (this.#params.layerPermsX as number[])
-            : (this.#params.nz as number) > 1
-                ? Array.from({ length: this.#params.nz as number }, () => this.#params.uniformPermX as number)
-                : [this.#params.uniformPermX as number];
-        return computeSweepRecoveryFactor(
-            rockProps,
-            fluidProps,
-            perms,
-            this.#params.cellDz as number,
-            3.0,
-            200,
-            this.sweepGeometry,
-            this.sweepAnalyticalMethod,
-        );
-    });
+    default3DProperty = $derived.by((): Output3DProperty | null =>
+        defaultOutput3DProperty(this.activeOutputSource, this.activeScenarioObject?.capabilities));
 
     // Navigation state delegation getters — flatten navigationState properties for direct access
     get activeFamily() { return this.navigationState.activeFamily; }
@@ -865,6 +665,21 @@ class NavigationStoreImpl {
 
     setComparisonSelection(selection: Partial<ComparisonSelection>) {
         this.activeComparisonSelection = buildComparisonSelection(selection);
+    }
+
+    /**
+     * Drop a comparison selection that no longer names an active result: every result was cleared,
+     * or the selected one belongs to a set that has been replaced. Without this a stale key would
+     * silently re-select its result if one with the same key came back. `App.svelte` calls it from
+     * an effect whenever the results change.
+     */
+    reconcileComparisonSelection() {
+        const selection = this.activeComparisonSelection;
+        const hasSelection = Boolean(selection.primaryResultKey) || selection.comparedResultKeys.length > 0;
+        if (!hasSelection) return;
+        const stale = this.activeRunResults.length === 0
+            || (Boolean(selection.primaryResultKey) && !this.activePrimaryComparisonResultKey);
+        if (stale) this.setComparisonSelection({ primaryResultKey: null, comparedResultKeys: [] });
     }
 
     // ===== activeScenarioChartLayout helper =====

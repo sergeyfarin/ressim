@@ -7,6 +7,7 @@ const appSource = fs.readFileSync(appPath, 'utf8');
 
 const navStorePath = path.join(__dirname, 'stores', 'navigationStore.svelte.ts');
 const navStoreSource = fs.readFileSync(navStorePath, 'utf8');
+const outputSourceSource = fs.readFileSync(path.resolve(path.dirname(navStorePath), 'outputSource.ts'), 'utf8');
 
 describe('App store domain wiring', () => {
   it('consumes domain objects from the simulation store', () => {
@@ -53,11 +54,11 @@ describe('App store domain wiring', () => {
   });
 
   it('extends outputs-owned comparison focus into the saturation-profile surface', () => {
-    // Phase 7: derived state moved to nav store; App.svelte delegates via scenario.xxx.
+    // #14: one output source, resolved once in the nav store, feeds every result payload.
     expect(navStoreSource).toMatch(/activeSelectedReferenceResult = \$derived\.by/);
-    expect(navStoreSource).toMatch(/export type OutputSelectionProfile = \{/);
-    expect(navStoreSource).toMatch(/selectedOutputProfile = \$derived\.by/);
-    expect(navStoreSource).toMatch(/computeSweepRecoveryFactor\(/);
+    expect(navStoreSource).toMatch(/activeOutputSource = \$derived\.by/);
+    expect(outputSourceSource).toMatch(/export type OutputSelectionProfile = \{/);
+    expect(navStoreSource).toMatch(/selectedOutputProfile = \$derived\.by\([^)]*\)[^;]*buildOutputProfile\(this\.activeOutputSource/);
     // The profile reaches the spatial-profile surface as one object rather than
     // as unpacked rockProps/fluidProps props. Those were also being handed to
     // ScenarioChart, which never declared them; that dead pair was removed
@@ -66,10 +67,11 @@ describe('App store domain wiring', () => {
   });
 
   it('extends outputs-owned comparison focus into the 3D surface', () => {
-    // Phase 7: type and derived state moved to nav store; 3D props wired via ThreeDViewCard.
-    expect(navStoreSource).toMatch(/export type Output3DSelection = \{/);
-    expect(navStoreSource).toMatch(/selectedOutput3D = \$derived\.by/);
+    // #14: the 3D payload is built from the same output source; App branches on its kind.
+    expect(outputSourceSource).toMatch(/export type Output3DSelection = \{/);
+    expect(navStoreSource).toMatch(/selectedOutput3D = \$derived\.by\([^)]*\)[^;]*buildOutput3D\(this\.activeOutputSource/);
     expect(appSource).toMatch(/function handleApplyOutputHistoryIndex\(index: number\)/);
+    expect(appSource).toMatch(/scenario\.activeOutputSource\.kind === "result"/);
     expect(appSource).toMatch(/selectedOutput3D=\{scenario\.selectedOutput3D\}/);
     expect(appSource).toMatch(/onApplyHistoryIndex=\{handleApplyOutputHistoryIndex\}/);
   });
