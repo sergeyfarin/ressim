@@ -687,7 +687,12 @@ export function buildBenchmarkRunResult(input: {
         const cumulativeGas = cumulative.gas[index];
 
         const watercut = liquidRate > 1e-12 ? Math.max(0, Math.min(1, waterRate / liquidRate)) : 0;
-        const pvi = poreVolume > 1e-12 ? cumulativeInjection / poreVolume : null;
+        // Reservoir volume over pore volume (#43). The surface series differs by the injected
+        // phase's FVF; for gas at black-oil pressures that is ~200x.
+        const reservoirInjection = cumulative.injectionReservoir?.[index];
+        const pvi = poreVolume > 1e-12 && reservoirInjection !== undefined
+            ? reservoirInjection / poreVolume
+            : null;
         const recovery = stockTankOilInPlace !== null
             ? Math.max(0, Math.min(1, cumulativeOil / stockTankOilInPlace))
             : null;

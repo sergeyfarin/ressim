@@ -8,6 +8,7 @@ import {
     buildBenchmarkRunSpecs,
     resolveBenchmarkReferenceComparisons,
 } from './benchmarkRunModel';
+import { buildScenarioRunSpecs } from './scenario/runModel';
 
 function getTotalThickness(params: Record<string, any>) {
     if (Array.isArray(params.cellDzPerLayer) && params.cellDzPerLayer.length > 0) {
@@ -32,6 +33,7 @@ function buildSyntheticRateHistory(params: Record<string, any>, breakthroughPvi:
         {
             time: 1,
             total_injection: breakthroughPvi * poreVolume,
+            total_injection_resv: breakthroughPvi * poreVolume,
             total_production_liquid: 100,
             total_production_oil: 100 * (1 - watercut),
             avg_reservoir_pressure: 250,
@@ -271,6 +273,7 @@ describe('benchmarkRunModel', () => {
             rateHistory: [{
                 time: 1,
                 total_injection: poreVolume,
+                total_injection_resv: poreVolume,
                 total_production_liquid: oilRate,
                 total_production_oil: oilRate,
                 avg_reservoir_pressure: 250,
@@ -279,5 +282,43 @@ describe('benchmarkRunModel', () => {
 
         expect(result.pviSeries[0]).toBeCloseTo(1, 10);
         expect(result.recoverySeries[0]).toBeCloseTo(oilRate / (poreVolume * (1 - 0.25)), 10);
+    });
+});
+
+describe('pore volumes injected (#43)', () => {
+    const [spec] = buildScenarioRunSpecs({
+        scenarioKey: 'gas_injection',
+        dimensionKey: 'mobility',
+        variantKeys: ['mob_base'],
+    });
+    // 50 x 20 m by 50 m by 10 m at 0.2 porosity.
+    const poreVolume = 100_000;
+    const point = (time: number, surface: number, reservoir?: number) => ({
+        time,
+        total_injection: surface,
+        ...(reservoir === undefined ? {} : { total_injection_resv: reservoir }),
+        total_production_liquid: 10,
+        total_production_oil: 10,
+        avg_reservoir_pressure: 250,
+    });
+
+    it('is reservoir injection over pore volume, not surface injection', () => {
+        // Gas on a black-oil table: Bg = 0.004, so a reservoir cubic metre is 250 Sm3 at the
+        // surface. Built from the surface series, PVI would read 250x too far along.
+        const bg = 0.004;
+        const result = buildBenchmarkRunResult({
+            spec,
+            rateHistory: [point(10, 5000, 5000 * bg), point(20, 5000, 5000 * bg)],
+        });
+        expect(result.pviSeries[0]).toBeCloseTo((10 * 5000 * bg) / poreVolume, 12);
+        expect(result.pviSeries[1]).toBeCloseTo((20 * 5000 * bg) / poreVolume, 12);
+    });
+
+    it('has no PVI, rather than a surface-based one, when reservoir injection is missing', () => {
+        const result = buildBenchmarkRunResult({
+            spec,
+            rateHistory: [point(10, 5000, 20), point(20, 5000)],
+        });
+        expect(result.pviSeries).toEqual([null, null]);
     });
 });

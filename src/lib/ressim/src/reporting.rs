@@ -249,7 +249,16 @@ pub struct TimePointRates {
     pub total_production_liquid: f64,
     pub total_production_liquid_reservoir: f64,
     pub total_injection: f64,
+    /// Injection at the injector cells' own reservoir conditions [m³/day]: what the reservoir
+    /// takes in at the well. The water material balance is kept on this basis.
     pub total_injection_reservoir: f64,
+    /// Injection converted to reservoir volume at the PV-weighted average reservoir pressure
+    /// [m³/day] — Eclipse's and OPM Flow's RESV convention (FVIR), and what pore volumes injected
+    /// is built from (#43). For gas it differs from `total_injection_reservoir` by Bg between the
+    /// injector cell and the average, ~1 % in `gas_injection`. Absent from histories recorded
+    /// before it existed, which then carry no PVI rather than a wrong one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_injection_resv: Option<f64>,
     /// Material balance error [m³]: cumulative (injection - production) vs actual in-place change
     pub material_balance_error_m3: f64,
     /// Oil reporting/material-balance diagnostic [Sm³]: cumulative reported oil production vs
@@ -291,6 +300,22 @@ pub struct TimePointRates {
 }
 
 impl ReservoirSimulator {
+    /// Surface injection rates converted at `p_avg_bar`, the RESV convention. The injected fluid
+    /// is one phase, so exactly one of the two rates is non-zero.
+    fn injection_resv_m3_day(&self, water_sc_day: f64, gas_sc_day: f64, p_avg_bar: f64) -> f64 {
+        let water = if water_sc_day > 0.0 {
+            water_sc_day / self.water_inverse_fvf(p_avg_bar)
+        } else {
+            0.0
+        };
+        let gas = if gas_sc_day > 0.0 {
+            gas_sc_day * self.get_b_g(p_avg_bar)
+        } else {
+            0.0
+        };
+        water + gas
+    }
+
     pub(crate) fn store_fim_step_stats(&mut self, stats: FimStepStats) {
         self.last_fim_step_stats = Some(stats.clone());
         self.fim_step_stats_history.push(stats);
@@ -539,6 +564,12 @@ impl ReservoirSimulator {
             .as_ref()
             .map(|cfg| compute_sweep_metrics(self, cfg));
 
+        let total_injection_resv = Some(self.injection_resv_m3_day(
+            total_injection - total_gas_injection_sc,
+            total_gas_injection_sc,
+            avg_reservoir_pressure,
+        ));
+
         self.rate_history.push(TimePointRates {
             time: self.time_days + dt_days,
             total_production_oil: total_prod_oil,
@@ -546,6 +577,7 @@ impl ReservoirSimulator {
             total_production_liquid_reservoir: total_prod_liquid_reservoir,
             total_injection,
             total_injection_reservoir,
+            total_injection_resv,
             material_balance_error_m3: mb_error,
             material_balance_error_oil_m3: self.cumulative_mb_oil_error_m3.abs(),
             material_balance_error_gas_m3: self.cumulative_mb_gas_error_m3.abs(),
@@ -722,6 +754,12 @@ impl ReservoirSimulator {
             .as_ref()
             .map(|cfg| compute_sweep_metrics(self, cfg));
 
+        let total_injection_resv = Some(self.injection_resv_m3_day(
+            total_injection - total_gas_injection_sc,
+            total_gas_injection_sc,
+            avg_reservoir_pressure,
+        ));
+
         self.rate_history.push(TimePointRates {
             time: self.time_days + dt_days,
             total_production_oil: total_prod_oil,
@@ -729,6 +767,7 @@ impl ReservoirSimulator {
             total_production_liquid_reservoir: total_prod_liquid_reservoir,
             total_injection,
             total_injection_reservoir,
+            total_injection_resv,
             material_balance_error_m3: mb_error,
             material_balance_error_oil_m3: self.cumulative_mb_oil_error_m3.abs(),
             avg_reservoir_pressure,

@@ -627,3 +627,59 @@ fn three_phase_gas_injection_matches_opm_flow_twin() {
         }
     }
 }
+
+/// #43: pore volumes injected is a reservoir volume over the pore volume, so the rate history
+/// has to carry injection at reservoir conditions and not only at the surface. With gas on a
+/// black-oil table the two differ by Bg ≈ 0.004, not the ≈ 1 of table-less gas, so a frontend
+/// that built PVI from the surface series was ~250x off here. This pins both reservoir figures
+/// on both solvers: `total_injection_reservoir` at the injector's own conditions, and
+/// `total_injection_resv` at the average reservoir pressure, which PVI is built from.
+#[test]
+fn three_phase_gas_injector_reports_reservoir_injection_at_its_bg() {
+    for fim in [true, false] {
+        let mut sim = super::opm_small_direct::gas_injection_1d();
+        sim.set_fim_enabled(fim);
+        sim.apply_pvt_table(gas_drive_pvt_rows()).unwrap();
+        // Inside the table (1-300 bar), above its 200 bar bubble point.
+        for well in &mut sim.wells {
+            well.bhp = if well.injector { 290.0 } else { 210.0 };
+        }
+        sim.set_well_bhp_limits(210.0, 290.0).unwrap();
+        let injector_cell = sim
+            .wells
+            .iter()
+            .find(|well| well.injector)
+            .map(|well| sim.idx(well.i, well.j, well.k))
+            .unwrap();
+
+        for _ in 0..5 {
+            sim.step(1.0);
+            let point = sim.rate_history.last().unwrap();
+            assert!(point.total_injection > 0.0, "fim={fim}: no gas injected");
+            let ratio = point.total_injection_reservoir / point.total_injection;
+            // The surface conversion is taken between the cell and the wellbore, so Bg of
+            // either bounds it.
+            let bg_cell = sim.get_b_g(sim.pressure[injector_cell]);
+            let bg_well = sim.get_b_g(290.0);
+            let (lo, hi) = (bg_cell.min(bg_well), bg_cell.max(bg_well));
+            assert!(
+                ratio > 0.98 * lo && ratio < 1.02 * hi,
+                "fim={fim} t={}: reservoir/surface injection {ratio:.6} outside Bg [{lo:.6}, {hi:.6}]",
+                point.time
+            );
+            assert!(
+                ratio < 0.01,
+                "fim={fim}: Bg should be far from 1 here, got {ratio}"
+            );
+            // PVI's numerator: the same surface rate at Bg of the average pressure, the RESV
+            // convention Flow's FVIT uses.
+            let resv = point.total_injection_resv.expect("RESV injection reported");
+            let bg_avg = sim.get_b_g(point.avg_reservoir_pressure);
+            assert!(
+                (resv - point.total_injection * bg_avg).abs() <= 1e-12 * resv.abs(),
+                "fim={fim}: RESV injection {resv} is not surface {} x Bg(p_avg) {bg_avg}",
+                point.total_injection
+            );
+        }
+    }
+}

@@ -275,7 +275,15 @@ export interface RateHistoryPoint {
   time: number;
   total_production_oil?: number;
   total_production_liquid?: number;
+  /** Injection at surface conditions [Sm³/day], whatever phase is injected. */
   total_injection?: number;
+  /** Injection at the injector cells' reservoir conditions [m³/day]. */
+  total_injection_reservoir?: number;
+  /**
+   * Injection in reservoir volume at the average reservoir pressure [m³/day], the RESV convention
+   * of Eclipse and OPM Flow (FVIR). Pore volumes injected is built from this (#43).
+   */
+  total_injection_resv?: number;
   material_balance_error_m3?: number;
   material_balance_error_oil_m3?: number;
   material_balance_error_gas_m3?: number;

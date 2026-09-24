@@ -39,6 +39,15 @@ export type CumulativeRunSeries = {
     water: number[];
     /** Cumulative injection at surface conditions [Sm³], whatever phase was injected. */
     injection: number[];
+    /**
+     * Cumulative injection in reservoir volume at the average reservoir pressure [m³] — the RESV
+     * convention of Eclipse and OPM Flow's FVIT, and the numerator of pore volumes injected (#43).
+     * It differs from `injection` by the injected phase's formation volume factor, ~200x for gas
+     * at black-oil pressures. `null` when any point lacks `total_injection_resv`: there is then no
+     * honest reservoir volume, and a consumer must drop PVI rather than fall back to the surface
+     * series.
+     */
+    injectionReservoir: number[] | null;
 };
 
 /**
@@ -49,10 +58,11 @@ export type CumulativeRunSeries = {
  */
 export function integrateRunSeries(rateHistory: readonly RateHistoryPoint[]): CumulativeRunSeries {
     const series: CumulativeRunSeries = {
-        time: [], oil: [], gas: [], liquid: [], water: [], injection: [],
+        time: [], oil: [], gas: [], liquid: [], water: [], injection: [], injectionReservoir: [],
     };
 
-    let oil = 0, gas = 0, liquid = 0, water = 0, injection = 0;
+    let oil = 0, gas = 0, liquid = 0, water = 0, injection = 0, injectionReservoir = 0;
+    let hasReservoirInjection = true;
 
     for (let index = 0; index < rateHistory.length; index += 1) {
         const point = rateHistory[index];
@@ -64,12 +74,15 @@ export function integrateRunSeries(rateHistory: readonly RateHistoryPoint[]): Cu
         const liquidRate = Math.max(0, Math.abs(toFiniteNumber(point.total_production_liquid, 0)));
         const gasRate = Math.max(0, Math.abs(toFiniteNumber(point.total_production_gas, 0)));
         const injectionRate = Math.max(0, toFiniteNumber(point.total_injection, 0));
+        const reservoirRate = Number(point.total_injection_resv);
+        if (!Number.isFinite(reservoirRate)) hasReservoirInjection = false;
 
         oil += oilRate * dt;
         gas += gasRate * dt;
         liquid += liquidRate * dt;
         water += Math.max(0, liquidRate - oilRate) * dt;
         injection += injectionRate * dt;
+        injectionReservoir += Math.max(0, reservoirRate) * dt;
 
         series.time.push(time);
         series.oil.push(oil);
@@ -77,7 +90,9 @@ export function integrateRunSeries(rateHistory: readonly RateHistoryPoint[]): Cu
         series.liquid.push(liquid);
         series.water.push(water);
         series.injection.push(injection);
+        series.injectionReservoir?.push(injectionReservoir);
     }
 
+    if (!hasReservoirInjection) series.injectionReservoir = null;
     return series;
 }

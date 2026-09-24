@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import initWasm, { ReservoirSimulator } from '../../ressim/pkg/simulator.js';
 import { buildCreatePayloadForRun, buildScenarioRunSpecs } from '../../scenario/runModel';
+import { buildBenchmarkRunResult } from '../../benchmarkRunModel';
 import { integrateRunSeries } from '@ressim/quantities/runSeries';
 import { configureReservoirSimulator } from '../../workers/configureSimulator';
 import type { RateHistoryPoint } from '../../simulator-types';
@@ -61,6 +62,18 @@ describe('gas_injection against its OPM Flow twin (#12)', () => {
             } else {
                 expect(cumulative.gas[index], `gas produced before breakthrough at ${t} d`).toBeLessThan(1);
             }
+        }
+
+        // #43: the chart's PVI, built the way the chart builds it, is Flow's FVIT over the same
+        // pore volume: both convert at the average reservoir pressure. Converting at the injector
+        // cell instead reads 0.8-1.0 % low here; the surface series happens to agree only because
+        // this fluid's Bg is 1 at the 250 bar reference, which the average stays near.
+        const { pviSeries } = buildBenchmarkRunResult({ spec, rateHistory: history });
+        const flowAxis = listOpmFlowArtifacts().find((candidate) => candidate.caseKey === 'gas_injection')!.xAxis!;
+        for (const [t] of OPM_GAS_INJECTION) {
+            const simPvi = pviSeries[history.findIndex((point) => Math.abs(Number(point.time) - t) < 1e-6)]!;
+            const flowPvi = flowAxis.pvi![flowAxis.timeDays.indexOf(t)];
+            expect(Math.abs(simPvi - flowPvi) / flowPvi, `PVI at ${t} d`).toBeLessThan(0.001);
         }
     }, 120_000);
 

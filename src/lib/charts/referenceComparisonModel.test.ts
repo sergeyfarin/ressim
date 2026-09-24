@@ -114,7 +114,7 @@ function buildSyntheticGasOilRateHistory(
     return [
         {
             time: 1,
-            total_injection: firstInjection,
+            total_injection: firstInjection, total_injection_resv: firstInjection,
             total_production_liquid: 100,
             total_production_oil: 100,
             total_production_gas: 1 + gasCutShift * 5,
@@ -123,7 +123,7 @@ function buildSyntheticGasOilRateHistory(
         },
         {
             time: 2,
-            total_injection: secondInjection,
+            total_injection: secondInjection, total_injection_resv: secondInjection,
             total_production_liquid: 100,
             total_production_oil: 85 - gasCutShift * 10,
             total_production_gas: 20 + gasCutShift * 20,
@@ -132,7 +132,7 @@ function buildSyntheticGasOilRateHistory(
         },
         {
             time: 3,
-            total_injection: thirdInjection,
+            total_injection: thirdInjection, total_injection_resv: thirdInjection,
             total_production_liquid: 100,
             total_production_oil: 55 - gasCutShift * 10,
             total_production_gas: 55 + gasCutShift * 25,
@@ -194,7 +194,7 @@ function buildSyntheticWaterfloodRateHistory(
     return [
         {
             time: 1,
-            total_injection: firstInjection,
+            total_injection: firstInjection, total_injection_resv: firstInjection,
             total_production_liquid: 100,
             total_production_oil: 100,
             avg_reservoir_pressure: 285,
@@ -202,7 +202,7 @@ function buildSyntheticWaterfloodRateHistory(
         },
         {
             time: 2,
-            total_injection: secondInjection,
+            total_injection: secondInjection, total_injection_resv: secondInjection,
             total_production_liquid: 100,
             total_production_oil: 99,
             avg_reservoir_pressure: 270,
@@ -210,7 +210,7 @@ function buildSyntheticWaterfloodRateHistory(
         },
         {
             time: 3,
-            total_injection: thirdInjection,
+            total_injection: thirdInjection, total_injection_resv: thirdInjection,
             total_production_liquid: 100,
             total_production_oil: 75 - watercutShift * 10,
             avg_reservoir_pressure: 255,
@@ -260,7 +260,7 @@ function buildDepletionReferenceRateHistory(params: Record<string, any>) {
 
     return reference.production.map((point) => ({
         time: point.time,
-        total_injection: 0,
+        total_injection: 0, total_injection_resv: 0,
         total_production_liquid: point.oilRate,
         total_production_oil: point.oilRate,
         avg_reservoir_pressure: point.avgPressure,
@@ -448,7 +448,7 @@ describe('referenceComparisonModel', () => {
             spec,
             rateHistory: [{
                 time: 1,
-                total_injection: 120,
+                total_injection: 120, total_injection_resv: 120,
                 total_production_liquid: 18,
                 total_production_oil: 18,
                 avg_reservoir_pressure: 250,
@@ -666,7 +666,7 @@ describe('referenceComparisonModel', () => {
             rateHistory: [
                 {
                     time: 5,
-                    total_injection: 100,
+                    total_injection: 100, total_injection_resv: 100,
                     total_production_liquid: 90,
                     total_production_oil: 80,
                     avg_reservoir_pressure: 300,
@@ -676,7 +676,7 @@ describe('referenceComparisonModel', () => {
                 },
                 {
                     time: 10,
-                    total_injection: 120,
+                    total_injection: 120, total_injection_resv: 120,
                     total_production_liquid: 85,
                     total_production_oil: 70,
                     avg_reservoir_pressure: 290,
@@ -762,7 +762,7 @@ describe('referenceComparisonModel', () => {
                 // A normal producing point, then a low-rate terminal point.
                 {
                     time: 5,
-                    total_injection: 100,
+                    total_injection: 100, total_injection_resv: 100,
                     total_production_liquid: 1200,
                     total_production_oil: 1000,
                     avg_reservoir_pressure: 280,
@@ -770,7 +770,7 @@ describe('referenceComparisonModel', () => {
                 },
                 {
                     time: 10,
-                    total_injection: 100,
+                    total_injection: 100, total_injection_resv: 100,
                     total_production_liquid: 1.5,
                     total_production_oil: 0.2,
                     avg_reservoir_pressure: 250,
@@ -943,9 +943,9 @@ describe('referenceComparisonModel', () => {
         const result = buildBenchmarkRunResult({
             spec,
             rateHistory: [
-                { time: 0.25, total_injection: 0, total_production_liquid: 42.277857340482505, total_production_oil: 42.277857340482505, avg_reservoir_pressure: 422.01393374377955 },
-                { time: 1, total_injection: 0, total_production_liquid: 43.63585819060618, total_production_oil: 43.63585819060618, avg_reservoir_pressure: 545.7189581144349 },
-                { time: 12.5, total_injection: 0, total_production_liquid: 0.004185734753701691, total_production_oil: 0.004185734753701691, avg_reservoir_pressure: 50.0477020420299 },
+                { time: 0.25, total_injection: 0, total_injection_resv: 0, total_production_liquid: 42.277857340482505, total_production_oil: 42.277857340482505, avg_reservoir_pressure: 422.01393374377955 },
+                { time: 1, total_injection: 0, total_injection_resv: 0, total_production_liquid: 43.63585819060618, total_production_oil: 43.63585819060618, avg_reservoir_pressure: 545.7189581144349 },
+                { time: 12.5, total_injection: 0, total_injection_resv: 0, total_production_liquid: 0.004185734753701691, total_production_oil: 0.004185734753701691, avg_reservoir_pressure: 50.0477020420299 },
             ],
         });
 
@@ -1435,7 +1435,7 @@ describe('referenceComparisonModel', () => {
             const result = buildSweepRunResult(spec);
             result.rateHistory = result.rateHistory.map((point) => ({
                 ...point,
-                total_injection: 0,
+                total_injection: 0, total_injection_resv: 0,
             }));
             result.pviSeries = [0.15, 0.4, 0.8];
             return result;

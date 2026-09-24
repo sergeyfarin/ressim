@@ -44,7 +44,7 @@ function syntheticRateHistory(params: Record<string, any>) {
             total_production_oil: oilRate,
             total_production_liquid: oilRate + waterRate,
             total_production_gas: 500 * (1 - decay),
-            total_injection: hasInjector ? poreVolume * 0.002 : 0,
+            total_injection: hasInjector ? poreVolume * 0.002 : 0, total_injection_resv: hasInjector ? poreVolume * 0.002 : 0,
             avg_reservoir_pressure: producerBhp + (initialPressure - producerBhp) * decay,
             avg_water_saturation: Number(params.initialSaturation ?? 0.2) + 0.2 * (1 - decay),
             producing_gor: 200 + 300 * (1 - decay),

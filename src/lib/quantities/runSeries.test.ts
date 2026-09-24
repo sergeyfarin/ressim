@@ -44,6 +44,22 @@ describe('integrateRunSeries', () => {
         expect(series.time).toEqual([10, 20, 30]);
     });
 
+    it('integrates reservoir injection separately from surface injection (#43)', () => {
+        const gas = integrateRunSeries([
+            { time: 10, total_injection: 5000, total_injection_resv: 20 },
+            { time: 20, total_injection: 5000, total_injection_resv: 25 },
+        ] as unknown as RateHistoryPoint[]);
+        expect(gas.injection).toEqual([50_000, 100_000]);
+        expect(gas.injectionReservoir).toEqual([200, 450]);
+    });
+
+    it('reports no reservoir injection when any point lacks it', () => {
+        // The fixture above carries only surface injection: there is no honest reservoir volume,
+        // and falling back to the surface series is what #43 fixed.
+        expect(integrateRunSeries(history).injectionReservoir).toBeNull();
+        expect(integrateRunSeries([]).injectionReservoir).toEqual([]);
+    });
+
     it('is monotone and returns empty series for an empty history', () => {
         const series = integrateRunSeries(history);
         for (const key of ['oil', 'gas', 'liquid', 'water', 'injection'] as const) {
