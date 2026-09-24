@@ -11,6 +11,7 @@ path FIM-DIRECT-001 was about. These do.
 | `ow-2d-12x12` | 12×12×1 | 436 | heterogeneous quarter five-spot; took 9,021 substeps before FIM-DIRECT-001 |
 | `bo-1d-10` | 10×1×1 | 32 | `physics_depletion_grid_convergence_fim` at nx=10: depletion through the bubble point |
 | `bo-1d-40` | 40×1×1 | 122 | the same column at nx=40 |
+| `go-1d-50` | 50×1×1 | 152 | `gas_injection` base case: dead oil displaced by gas, both wells on BHP |
 
 **The decks are generated, not hand-written.** `src/lib/ressim/src/tests/opm_small_direct.rs` builds
 each case as a ResSim simulator and writes its deck from that same object. SWOF, SGOF, PVDO,
@@ -108,3 +109,24 @@ with `--case bo-1d-10` / `--case bo-1d-40`.
 
 Wall times are single observations and include Flow's process start (~0.5 s). Flow's own
 timings are in each run's `CASE.INFOSTEP`.
+
+### `gas_injection` twin (#12)
+
+`go-1d-50` is the `gas_injection` catalog scenario's base case, written by
+`opm_small_direct::gas_injection_1d`: dead oil with no PVT table, and gas injected at 350 bar into a
+column produced at 100 bar. The deck branch is `OIL WATER GAS` without `DISGAS`, with ResSim's own
+dead-oil `PVDO` and a `PVDG` for its table-less gas. That gas has a constant `Bg = 1`, which Flow
+will not accept flat, so the table falls by 1e-9 per bar (under 1e-6 across the table).
+
+| Case | Simulator | Substeps | Newton | Retries | Wall ms | max \|Δp\| bar | max \|ΔSg\| | Cumulatives vs Flow |
+|---|---|---|---|---|---|---|---|---|
+| go-1d-50 | Flow | 151 | 336 | 0 | 1528 | | | |
+| | ResSim sparse | 151 | 482 | 0 | 132 | 0.59 | 0.0049 | FOPT 0.01%, FGPT 0.04%, FGIT 0.02% |
+| | ResSim dense | 151 | 482 | 0 | 255 | 0.59 | 0.0049 | identical to 1e-10 bar |
+
+Gas breaks through between 150 and 200 d in both simulators. Cumulatives at 100 / 200 / 300 d are
+embedded in `three_phase_gas_injection_matches_opm_flow_twin` (engine) and in
+`src/lib/catalog/scenarios/gas_injection.test.ts`, which runs the shipped scenario through the
+worker's setup. Replay: the three commands at the top, with `--case go-1d-50`
+(`OPM_SMALL_CASE=go-1d-50` for the ResSim run).
+

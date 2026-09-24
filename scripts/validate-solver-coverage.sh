@@ -98,6 +98,7 @@ run_fim() {
     # Three-phase acceptance criteria — docs/THREE_PHASE_VALIDATION.md.
     run_test three_phase_gas_drive_matches_opm_flow_reference
     run_test three_phase_gas_drive_liberates_solution_gas_as_pressure_falls
+    run_test three_phase_gas_injection_matches_opm_flow_twin
     run_test three_phase_gas_flood_breakthrough_time_is_within_acceptance_band
     run_test three_phase_gas_flood_saturation_front_is_monotone_and_advances
     run_test three_phase_gas_flood_phase_closure_holds_for_all_three_phases

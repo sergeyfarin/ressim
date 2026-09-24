@@ -559,3 +559,70 @@ fn three_phase_gas_flood_phase_closure_holds_for_all_three_phases() {
         }
     }
 }
+
+// ─── gas_injection: OPM Flow twin ────────────────────────────────────────────
+
+/// `flow 2026.04` on `opm/reference-decks/small-direct/go-1d-50`, the `gas_injection` scenario's
+/// base case written from `opm_small_direct::gas_injection_1d()` (#12): (t [d], FOPT, FGPT, FGIT)
+/// [Sm³]. Gas breaks through between 150 and 200 d in both simulators.
+const OPM_GAS_INJECTION: [(f64, f64, f64, f64); 3] = [
+    (100.0, 6166.958, 0.000, 6173.489),
+    (200.0, 15364.271, 3609.929, 18977.037),
+    (300.0, 20316.883, 28853.768, 49170.598),
+];
+/// Oil produced and gas injected. Measured ≤ 0.043 % at every checkpoint (2026-09-24).
+const GAS_INJECTION_CUMULATIVE_TOLERANCE: f64 = 0.002;
+/// Gas produced, which starts at breakthrough and so is most sensitive to front timing.
+/// Measured 0.31 % at 200 d, 0.04 % at 300 d.
+const GAS_INJECTION_GAS_PRODUCED_TOLERANCE: f64 = 0.015;
+
+/// #12: `gas_injection` against an independent simulator, not only its gas-oil fractional-flow
+/// solution. The Flow deck is written from the same simulator object this test runs, so the two
+/// read identical tables. Constant `Bg = 1` is ResSim's table-less gas, and the deck reproduces it.
+#[test]
+fn three_phase_gas_injection_matches_opm_flow_twin() {
+    let mut sim = super::opm_small_direct::gas_injection_1d();
+    let (mut oil, mut gas_produced, mut gas_injected) = (0.0, 0.0, 0.0);
+    let mut previous_time = 0.0;
+    let mut seen = 0;
+    for (t_days, flow_oil, flow_gas_produced, flow_gas_injected) in OPM_GAS_INJECTION {
+        while sim.time_days < t_days - 1e-9 {
+            sim.step(2.0);
+            assert!(
+                sim.last_solver_warning.is_empty(),
+                "gas_injection twin warned at t={}: {}",
+                sim.time_days,
+                sim.last_solver_warning
+            );
+        }
+        for point in &sim.rate_history[seen..] {
+            let dt = point.time - previous_time;
+            oil += point.total_production_oil * dt;
+            gas_produced += point.total_production_gas * dt;
+            gas_injected += point.total_injection * dt;
+            previous_time = point.time;
+        }
+        seen = sim.rate_history.len();
+
+        let rel = |ours: f64, flow: f64| (ours - flow).abs() / flow;
+        assert!(
+            rel(oil, flow_oil) <= GAS_INJECTION_CUMULATIVE_TOLERANCE,
+            "t={t_days}: FOPT {oil:.3} vs Flow {flow_oil:.3}"
+        );
+        assert!(
+            rel(gas_injected, flow_gas_injected) <= GAS_INJECTION_CUMULATIVE_TOLERANCE,
+            "t={t_days}: FGIT {gas_injected:.3} vs Flow {flow_gas_injected:.3}"
+        );
+        if flow_gas_produced > 0.0 {
+            assert!(
+                rel(gas_produced, flow_gas_produced) <= GAS_INJECTION_GAS_PRODUCED_TOLERANCE,
+                "t={t_days}: FGPT {gas_produced:.3} vs Flow {flow_gas_produced:.3}"
+            );
+        } else {
+            assert!(
+                gas_produced < 1.0,
+                "t={t_days}: gas produced before Flow's breakthrough: {gas_produced:.3}"
+            );
+        }
+    }
+}

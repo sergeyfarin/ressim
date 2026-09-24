@@ -78,7 +78,7 @@ def flow_fields(out: Path) -> list[dict]:
 def flow_cumulatives(out: Path) -> dict:
     smry = ESmry(str(out / "CASE.SMSPEC"))
     keys = set(smry.keys())
-    return {k: float(smry[k][-1]) for k in ("FOPT", "FWPT", "FWIT", "FGPT") if k in keys}
+    return {k: float(smry[k][-1]) for k in ("FOPT", "FWPT", "FWIT", "FGPT", "FGIT") if k in keys}
 
 
 def ressim_cumulatives(run: dict) -> dict:
@@ -89,7 +89,8 @@ def ressim_cumulatives(run: dict) -> dict:
         "FOPT": float(np.sum(hist[:, 1] * dt)),
         "FWPT": float(np.sum(hist[:, 2] * dt)),
         "FGPT": float(np.sum(hist[:, 3] * dt)),
-        "FWIT": float(np.sum(hist[:, 4] * dt)),
+        # The history's injection column is whatever the case injects, at surface conditions.
+        ("FGIT" if run.get("injected") == "gas" else "FWIT"): float(np.sum(hist[:, 4] * dt)),
     }
 
 

@@ -34,7 +34,7 @@ struct Case {
     report_dt_days: f64,
 }
 
-const CASES: [Case; 5] = [
+const CASES: [Case; 6] = [
     Case {
         key: "ow-1d-96",
         note: "wf_bl1d geometry: 96x1x1 waterflood, BHP injector/producer, M~2",
@@ -65,6 +65,12 @@ const CASES: [Case; 5] = [
         report_steps: 20,
         report_dt_days: 5.0,
     },
+    Case {
+        key: "go-1d-50",
+        note: "gas_injection scenario base case: dead oil displaced by gas in a 50-cell column, both wells on BHP",
+        report_steps: 150,
+        report_dt_days: 2.0,
+    },
 ];
 
 /// The report schedule actually used: the case's own, or `OPM_SMALL_REPORT_DT` over the same
@@ -90,6 +96,7 @@ fn build(key: &str) -> ReservoirSimulator {
         "ow-2d-12x12" => oil_water(12, 12, [20.0, 20.0, 5.0], (200.0, 2000.0), 1.0, 0.5, 42),
         "bo-1d-10" => black_oil_depletion(10),
         "bo-1d-40" => black_oil_depletion(40),
+        "go-1d-50" => gas_injection_1d(),
         other => panic!("unknown small-direct case {other}"),
     }
 }
@@ -183,6 +190,45 @@ fn black_oil_depletion(nx: usize) -> ReservoirSimulator {
     sim
 }
 
+/// The `gas_injection` catalog scenario's base case (`src/lib/catalog/scenarios/gas_injection.ts`),
+/// configured in the order the worker's `configureReservoirSimulator` applies its payload.
+///
+/// It has no PVT table: dead oil on `b_o·exp(−c_o·(p − p_ref))`, and gas with a constant `Bg = 1`,
+/// which is what ResSim's table-less gas is. The scenario's `c_g` does not reach the FIM physics.
+pub(super) fn gas_injection_1d() -> ReservoirSimulator {
+    let nx = 50;
+    let mut sim = ReservoirSimulator::new(nx, 1, 1, 0.2);
+    sim.set_fim_enabled(true);
+    sim.set_cell_dimensions(20.0, 50.0, 10.0).unwrap();
+    sim.set_fluid_properties(2.0, 0.5).unwrap();
+    sim.set_fluid_compressibilities(1e-5, 3e-6).unwrap();
+    sim.set_rock_properties(1e-6, 0.0, 1.0, 1.0).unwrap();
+    sim.set_fluid_densities(800.0, 1000.0).unwrap();
+    sim.set_initial_pressure(250.0);
+    sim.set_initial_saturation(0.2);
+    sim.set_capillary_params(0.0, 2.0).unwrap();
+    sim.set_gravity_enabled(false);
+    sim.set_rel_perm_props(0.2, 0.15, 2.0, 2.0, 0.4, 1.0)
+        .unwrap();
+    sim.set_three_phase_mode_enabled(true);
+    sim.set_three_phase_rel_perm_props(0.2, 0.15, 0.05, 0.05, 0.20, 2.0, 2.0, 1.5, 0.4, 1.0, 0.8)
+        .unwrap();
+    sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
+    sim.set_gas_redissolution_enabled(true);
+    sim.set_injected_fluid("gas").unwrap();
+    sim.set_stability_params(0.05, 75.0, 0.75);
+    sim.set_well_control_modes("pressure".to_string(), "pressure".to_string());
+    sim.set_target_well_rates(0.0, 0.0).unwrap();
+    sim.set_well_bhp_limits(100.0, 350.0).unwrap();
+    sim.set_permeability_per_layer(vec![100.0], vec![100.0], vec![10.0])
+        .unwrap();
+    sim.add_well_with_id(nx - 1, 0, 0, 100.0, 0.1, 0.0, false, "PROD".to_string())
+        .unwrap();
+    sim.add_well_with_id(0, 0, 0, 350.0, 0.1, 0.0, true, "INJ".to_string())
+        .unwrap();
+    sim
+}
+
 // ---- deck ---------------------------------------------------------------------------------
 
 fn values(out: &mut String, keyword: &str, data: impl IntoIterator<Item = f64>) {
@@ -211,7 +257,12 @@ fn saturation_nodes(lo: f64, hi: f64, points: usize, kinks: &[f64]) -> Vec<f64> 
 fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
     let (nx, ny, nz) = (sim.nx, sim.ny, sim.nz);
     let n = nx * ny * nz;
-    let black_oil = sim.three_phase_mode;
+    let three_phase = sim.three_phase_mode;
+    // Three-phase with a PVT table is live black oil; without one it is dead oil plus dry gas.
+    let black_oil = three_phase && sim.pvt_table.is_some();
+    let gas_injector = three_phase
+        && matches!(sim.injected_fluid, crate::InjectedFluid::Gas)
+        && sim.wells.iter().any(|well| well.injector);
     let mut d = String::new();
     let _ = writeln!(
         d,
@@ -226,6 +277,8 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
     let _ = writeln!(d, "DIMENS\n  {nx} {ny} {nz} /");
     d.push_str(if black_oil {
         "OIL\nWATER\nGAS\nDISGAS\n"
+    } else if three_phase {
+        "OIL\nWATER\nGAS\n"
     } else {
         "OIL\nWATER\n"
     });
@@ -252,14 +305,18 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
         "ROCK\n  {} {:e} /",
         sim.rock_reference_pressure_bar, sim.rock_compressibility
     );
-    d.push_str("DENSITY\n  800 1000 0.9 /\n");
+    if three_phase && !black_oil {
+        let _ = writeln!(
+            d,
+            "DENSITY\n  {} {} {} /",
+            sim.pvt.rho_o, sim.pvt.rho_w, sim.rho_g
+        );
+    } else {
+        d.push_str("DENSITY\n  800 1000 0.9 /\n");
+    }
 
-    if black_oil {
+    if three_phase {
         let scal = sim.scal_3p.as_ref().expect("three-phase case has scal_3p");
-        let table = sim
-            .pvt_table
-            .as_ref()
-            .expect("black-oil case has a PVT table");
         d.push_str("STONE2\nSWOF\n");
         for sw in saturation_nodes(scal.s_wc, 1.0, 91, &[1.0 - scal.s_or]) {
             let _ = writeln!(
@@ -280,6 +337,38 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
             );
         }
         d.push_str("/\n");
+    }
+    if three_phase && !black_oil {
+        d.push_str("PVDO\n");
+        for step in 0..=24 {
+            let p = 50.0 + 25.0 * step as f64;
+            let _ = writeln!(
+                d,
+                "  {p:.4} {:.10e} {:.10e}",
+                sim.get_b_o_cell(0, p),
+                sim.get_mu_o(p)
+            );
+        }
+        // ResSim's table-less gas has Bg = 1 at every pressure. Flow rejects a flat PVDG, so the
+        // table falls by 1e-9 per bar: under 1e-6 across the table, below anything this case
+        // resolves.
+        d.push_str("/\nPVDG\n");
+        for step in 0..=24 {
+            let p = 50.0 + 25.0 * step as f64;
+            let _ = writeln!(
+                d,
+                "  {p:.4} {:.10e} {:.10e}",
+                sim.get_b_g(p) * (1.0 - 1e-9 * (p - 50.0)),
+                sim.get_mu_g(p)
+            );
+        }
+        d.push_str("/\n");
+    }
+    if black_oil {
+        let table = sim
+            .pvt_table
+            .as_ref()
+            .expect("black-oil case has a PVT table");
         // Saturated oil every 2.5 bar across the table, each with an undersaturated branch
         // evaluated by ResSim's own `interpolate_oil`, so Flow's interpolation rule only acts
         // between nodes a few bar apart.
@@ -307,7 +396,8 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
             let _ = writeln!(d, "  {p:.4} {:.10e} {:.10e}", row.bg_m3m3, row.mu_g_cp);
         }
         d.push_str("/\n");
-    } else {
+    }
+    if !three_phase {
         d.push_str("SWOF\n");
         for sw in saturation_nodes(sim.scal.s_wc, 1.0, 161, &[1.0 - sim.scal.s_or]) {
             let _ = writeln!(
@@ -333,14 +423,19 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
     d.push_str("SOLUTION\n");
     values(&mut d, "PRESSURE", sim.pressure.iter().copied());
     values(&mut d, "SWAT", sim.sat_water.iter().copied());
-    if black_oil {
+    if three_phase {
         values(&mut d, "SGAS", sim.sat_gas.iter().copied());
+    }
+    if black_oil {
         values(&mut d, "RS", sim.rs.iter().copied());
     }
 
     d.push_str("SUMMARY\nFOPR\nFWPR\nFWIR\nFOPT\nFWPT\nFWIT\n");
-    if black_oil {
+    if three_phase {
         d.push_str("FGPR\nFGPT\n");
+    }
+    if gas_injector {
+        d.push_str("FGIR\nFGIT\n");
     }
     d.push_str("WBHP\n/\n");
 
@@ -351,7 +446,11 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
     d.push_str("WELSPECS\n");
     for well in &sim.wells {
         let name = well.physical_well_id.as_deref().unwrap_or("W");
-        let phase = if well.injector { "WATER" } else { "OIL" };
+        let phase = match (well.injector, gas_injector) {
+            (true, true) => "GAS",
+            (true, false) => "WATER",
+            (false, _) => "OIL",
+        };
         let _ = writeln!(
             d,
             "  '{name}' 'G' {} {} 1* '{phase}' /",
@@ -379,7 +478,8 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
         if well.injector {
             let _ = writeln!(
                 d,
-                "WCONINJE\n  '{name}' 'WATER' 'OPEN' 'BHP' 1* 1* {} /\n/",
+                "WCONINJE\n  '{name}' '{}' 'OPEN' 'BHP' 1* 1* {} /\n/",
+                if gas_injector { "GAS" } else { "WATER" },
                 well.bhp
             );
         } else {
@@ -486,9 +586,15 @@ fn opm_small_direct_run_ressim() {
             .collect();
         let json = format!(
             "{{\"case\":\"{}\",\"backend\":\"{backend}\",\"wall_ms\":{wall_ms:.3},\
+             \"injected\":\"{}\",\
              \"history_columns\":[\"t\",\"qo\",\"qw\",\"qg\",\"qwi\"],\
              \"history\":[{}],\"reports\":[{}]}}\n",
             case.key,
+            if sim.three_phase_mode && matches!(sim.injected_fluid, crate::InjectedFluid::Gas) {
+                "gas"
+            } else {
+                "water"
+            },
             history.join(","),
             reports.join(",")
         );
