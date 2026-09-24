@@ -104,6 +104,30 @@ breakthrough-timing/front-sharpness effect, not a whole-run degradation.
 Material balance holds on both grids at every checkpoint, so this is a transport/well-model
 question rather than a conservation defect.
 
+**Classified 2026-09-24 (#12): accepted characterization, oracle OPM Flow at matched resolution.**
+The published reference is itself a 10×10×3 result, so the refined grid's departure from it says
+nothing about which one is right. `tools/opm_flow/spe1_refinement_oracle.py` derives a 20×20×3 deck
+from the committed SPE1 case (same domain, half-size cells, producer in the far corner) and runs
+Flow on both grids. Flow shows the same refinement effect: an earlier, sharper GOR rise.
+
+| producing GOR [m³/m³] | 630 d | 720 d | 810 d | 1080 d | 1800 d | 3600 d |
+|---|---|---|---|---|---|---|
+| Flow 10×10 | 220.9 | 347.4 | 649.6 | 1305.6 | 1904.7 | 4148.2 |
+| ResSim 10×10 | 221.4 | 368.3 | 695.9 | 1321.9 | 1871.2 | 3894.8 |
+| Flow 20×20 | 236.1 | 443.7 | 733.9 | 1328.9 | 1904.1 | 3997.1 |
+| ResSim 20×20 | 241.7 | 475.5 | 781.9 | 1340.0 | 1881.5 | 3729.0 |
+
+ResSim tracks Flow equally well on both grids. The worst difference over 90–3600 d at 90-day
+checkpoints is pressure 3.06 % / 3.03 %, oil rate 2.73 % / 2.81 % and GOR 7.13 % / 7.17 %
+(10×10 / 20×20). Refinement therefore does not open a gap to an independent simulator. The 31 %
+GOR "error" at 730 d is the sharper front measured against a coarser grid, and stays a
+characterization, not a criterion.
+
+```bash
+python3 tools/opm_flow/spe1_refinement_oracle.py --out /tmp/spe1-refinement
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml spe1_areal_refinement_reference_error_replay -- --ignored --nocapture
+```
+
 ```bash
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml spe1_areal_refinement_reference_error_replay -- --ignored --nocapture
 ```

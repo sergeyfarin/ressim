@@ -378,19 +378,43 @@ fn spe1_areal_refinement_reference_error_replay() {
         let stoiip_sm3 = stock_tank_oil_in_place_sm3(&sim);
         let gas_in_place_sm3 = gas_in_place_sm3(&sim);
 
-        for (t_days, _) in REF_PRESSURE_BAR {
+        // Errors against the published reference at its own yearly checkpoints, and raw values
+        // every 90 days for the OPM Flow oracle at matched resolution,
+        // `tools/opm_flow/spe1_refinement_oracle.py`, which prints the same grid (#12).
+        let mut checkpoints: Vec<(f64, bool)> = REF_PRESSURE_BAR
+            .iter()
+            .map(|(t_days, _)| (*t_days, true))
+            .chain((1..=40).map(|i| (90.0 * i as f64, false)))
+            .collect();
+        checkpoints.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for (t_days, is_reference_checkpoint) in checkpoints {
             step_to(&mut sim, t_days, 30.0);
             assert_material_balance(&sim, stoiip_sm3, gas_in_place_sm3);
 
-            let errors = checkpoint_errors(&sim, t_days);
-            println!(
-                "nx={:3} t={:7.1} pressure_err={:7.3}% oil_rate_err={:7.3}% gor_err={:7.3}%",
-                nx,
-                t_days,
-                errors.pressure * 100.0,
-                errors.oil_rate * 100.0,
-                errors.gor * 100.0
-            );
+            if is_reference_checkpoint {
+                let errors = checkpoint_errors(&sim, t_days);
+                println!(
+                    "nx={:3} t={:7.1} pressure_err={:7.3}% oil_rate_err={:7.3}% gor_err={:7.3}%",
+                    nx,
+                    t_days,
+                    errors.pressure * 100.0,
+                    errors.oil_rate * 100.0,
+                    errors.gor * 100.0
+                );
+            } else {
+                let point = sim
+                    .rate_history
+                    .last()
+                    .expect("rate history should have a reported point");
+                println!(
+                    "raw nx={:3} t={:7.1} pressure={:9.4} oil_rate={:9.3} gor={:10.3}",
+                    nx,
+                    t_days,
+                    point.avg_reservoir_pressure,
+                    point.total_production_oil,
+                    point.producing_gor
+                );
+            }
         }
     }
 }
