@@ -115,16 +115,18 @@ timings are in each run's `CASE.INFOSTEP`.
 `go-1d-50` is the `gas_injection` catalog scenario's base case, written by
 `opm_small_direct::gas_injection_1d`: dead oil with no PVT table, and gas injected at 350 bar into a
 column produced at 100 bar. The deck branch is `OIL WATER GAS` without `DISGAS`, with ResSim's own
-dead-oil `PVDO` and a `PVDG` for its table-less gas. That gas has a constant `Bg = 1`, which Flow
-will not accept flat, so the table falls by 1e-9 per bar (under 1e-6 across the table).
+dead-oil `PVDO` and a `PVDG` for its table-less gas, `Bg = exp(−c_g·(p − p_ref))` since #42. Before
+#42 that gas had a constant `Bg = 1`, which Flow will not accept flat, so the first version of the
+deck tilted it by 1e-9 per bar.
 
 | Case | Simulator | Substeps | Newton | Retries | Wall ms | max \|Δp\| bar | max \|ΔSg\| | Cumulatives vs Flow |
 |---|---|---|---|---|---|---|---|---|
-| go-1d-50 | Flow | 151 | 336 | 0 | 1528 | | | |
-| | ResSim sparse | 151 | 482 | 0 | 132 | 0.59 | 0.0049 | FOPT 0.01%, FGPT 0.04%, FGIT 0.02% |
-| | ResSim dense | 151 | 482 | 0 | 255 | 0.59 | 0.0049 | identical to 1e-10 bar |
+| go-1d-50 | Flow | 151 | 339 | 0 | 1492 | | | |
+| | ResSim sparse | 151 | 486 | 0 | 140 | 0.50 | 0.0050 | FOPT 0.01%, FGPT 0.03%, FGIT 0.02% |
+| | ResSim dense | 151 | 486 | 0 | 260 | 0.50 | 0.0050 | identical to 1e-10 bar |
 
-Gas breaks through between 150 and 200 d in both simulators. Cumulatives at 100 / 200 / 300 d are
+Measured after #42 (compressible table-less gas). Before it, with `Bg = 1`: 0.59 bar, 0.0049 Sg, the
+same cumulative agreement. Gas breaks through between 170 and 180 d in both simulators. Cumulatives at 100 / 200 / 300 d are
 embedded in `three_phase_gas_injection_matches_opm_flow_twin` (engine) and in
 `src/lib/catalog/scenarios/gas_injection.test.ts`, which runs the shipped scenario through the
 worker's setup. Replay: the three commands at the top, with `--case go-1d-50`

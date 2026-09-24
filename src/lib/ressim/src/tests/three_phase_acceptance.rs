@@ -564,21 +564,22 @@ fn three_phase_gas_flood_phase_closure_holds_for_all_three_phases() {
 
 /// `flow 2026.04` on `opm/reference-decks/small-direct/go-1d-50`, the `gas_injection` scenario's
 /// base case written from `opm_small_direct::gas_injection_1d()` (#12): (t [d], FOPT, FGPT, FGIT)
-/// [Sm³]. Gas breaks through between 150 and 200 d in both simulators.
+/// [Sm³]. Gas breaks through between 170 and 180 d in both simulators. Re-baselined for #42, when
+/// table-less gas became compressible and the deck's PVDG followed.
 const OPM_GAS_INJECTION: [(f64, f64, f64, f64); 3] = [
-    (100.0, 6166.958, 0.000, 6173.489),
-    (200.0, 15364.271, 3609.929, 18977.037),
-    (300.0, 20316.883, 28853.768, 49170.598),
+    (100.0, 6167.734, 0.000, 6226.758),
+    (200.0, 15376.532, 3659.938, 19076.848),
+    (300.0, 20330.521, 28979.205, 49351.664),
 ];
-/// Oil produced and gas injected. Measured ≤ 0.043 % at every checkpoint (2026-09-24).
+/// Oil produced and gas injected. Measured ≤ 0.046 % at every 20-day checkpoint (2026-09-24).
 const GAS_INJECTION_CUMULATIVE_TOLERANCE: f64 = 0.002;
 /// Gas produced, which starts at breakthrough and so is most sensitive to front timing.
-/// Measured 0.31 % at 200 d, 0.04 % at 300 d.
+/// Measured 0.29 % at 200 d, 0.03 % at 300 d.
 const GAS_INJECTION_GAS_PRODUCED_TOLERANCE: f64 = 0.015;
 
 /// #12: `gas_injection` against an independent simulator, not only its gas-oil fractional-flow
 /// solution. The Flow deck is written from the same simulator object this test runs, so the two
-/// read identical tables. Constant `Bg = 1` is ResSim's table-less gas, and the deck reproduces it.
+/// read identical tables, including table-less gas's `Bg = exp(−c_g·(p − p_ref))` (#42).
 #[test]
 fn three_phase_gas_injection_matches_opm_flow_twin() {
     let mut sim = super::opm_small_direct::gas_injection_1d();

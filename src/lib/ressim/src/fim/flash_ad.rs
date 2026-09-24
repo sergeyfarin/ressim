@@ -111,7 +111,7 @@ pub(crate) fn split_gas_inventory_after_transport_generic<S: Scalar>(
     drsdt0_base_rs: Option<f64>,
 ) -> (S, S, S) {
     let Some(table) = sim.pvt_table.as_ref() else {
-        let bg = S::from_f64(1.0);
+        let bg = sim.base_gas_fvf_generic(pressure_bar);
         let sg = ((transported_free_gas_sc.max_floor(0.0) * bg) / pore_volume_m3.max_floor(1e-9))
             .max_floor(0.0)
             .min_of((S::from_f64(1.0) - water_saturation).max_floor(0.0));

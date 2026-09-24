@@ -193,8 +193,8 @@ fn black_oil_depletion(nx: usize) -> ReservoirSimulator {
 /// The `gas_injection` catalog scenario's base case (`src/lib/catalog/scenarios/gas_injection.ts`),
 /// configured in the order the worker's `configureReservoirSimulator` applies its payload.
 ///
-/// It has no PVT table: dead oil on `b_o·exp(−c_o·(p − p_ref))`, and gas with a constant `Bg = 1`,
-/// which is what ResSim's table-less gas is. The scenario's `c_g` does not reach the FIM physics.
+/// It has no PVT table: dead oil on `b_o·exp(−c_o·(p − p_ref))` and gas on
+/// `Bg = exp(−c_g·(p − p_ref))`, both referenced to the initial pressure (#36, #42).
 pub(super) fn gas_injection_1d() -> ReservoirSimulator {
     let nx = 50;
     let mut sim = ReservoirSimulator::new(nx, 1, 1, 0.2);
@@ -349,16 +349,14 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
                 sim.get_mu_o(p)
             );
         }
-        // ResSim's table-less gas has Bg = 1 at every pressure. Flow rejects a flat PVDG, so the
-        // table falls by 1e-9 per bar: under 1e-6 across the table, below anything this case
-        // resolves.
+        // ResSim's table-less gas, `Bg = exp(−c_g·(p − p_ref))` (#42), sampled like the oil.
         d.push_str("/\nPVDG\n");
         for step in 0..=24 {
             let p = 50.0 + 25.0 * step as f64;
             let _ = writeln!(
                 d,
                 "  {p:.4} {:.10e} {:.10e}",
-                sim.get_b_g(p) * (1.0 - 1e-9 * (p - 50.0)),
+                sim.get_b_g(p),
                 sim.get_mu_g(p)
             );
         }

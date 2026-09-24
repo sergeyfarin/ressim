@@ -76,7 +76,7 @@ pub(crate) fn cell_props_generic<S: Scalar>(
             sg,
             rs: S::from_f64(0.0),
             bo,
-            bg: S::from_f64(1.0),
+            bg: sim.base_gas_fvf_generic(p),
         };
     }
 

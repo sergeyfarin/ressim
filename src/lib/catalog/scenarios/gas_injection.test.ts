@@ -21,9 +21,9 @@ async function ensureWasmReady() {
  * deck, fails here.
  */
 const OPM_GAS_INJECTION: Array<[number, number, number, number]> = [
-    [100, 6166.958, 0, 6173.489],
-    [200, 15364.271, 3609.929, 18977.037],
-    [300, 20316.883, 28853.768, 49170.598],
+    [100, 6167.734, 0, 6226.758],
+    [200, 15376.532, 3659.938, 19076.848],
+    [300, 20330.521, 28979.205, 49351.664],
 ];
 
 describe('gas_injection against its OPM Flow twin (#12)', () => {
@@ -49,11 +49,11 @@ describe('gas_injection against its OPM Flow twin (#12)', () => {
         for (const [t, flowOil, flowGasProduced, flowGasInjected] of OPM_GAS_INJECTION) {
             const index = history.findIndex((point) => Math.abs(Number(point.time) - t) < 1e-6);
             expect(index, `no report at ${t} d`).toBeGreaterThanOrEqual(0);
-            // Oil produced and gas injected: measured ≤ 0.043 % (2026-09-24).
+            // Oil produced and gas injected: measured ≤ 0.046 % (2026-09-24, after #42).
             expect(Math.abs(cumulative.oil[index] - flowOil) / flowOil, `FOPT at ${t} d`).toBeLessThan(0.002);
             expect(Math.abs(cumulative.injection[index] - flowGasInjected) / flowGasInjected, `FGIT at ${t} d`)
                 .toBeLessThan(0.002);
-            // Gas produced starts at breakthrough (150-200 d in both): 0.31 % at 200 d, 0.04 % at 300 d.
+            // Gas produced starts at breakthrough (170-180 d in both): 0.29 % at 200 d, 0.03 % at 300 d.
             if (flowGasProduced > 0) {
                 expect(Math.abs(cumulative.gas[index] - flowGasProduced) / flowGasProduced, `FGPT at ${t} d`)
                     .toBeLessThan(0.015);

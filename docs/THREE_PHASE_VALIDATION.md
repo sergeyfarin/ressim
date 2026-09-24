@@ -208,14 +208,15 @@ three-phase fidelity. Known remaining gaps:
   gas-condensate behavior is out of the envelope. The OPM decks use `PVDG` (dry gas) accordingly.
 - **`gas_injection`'s OPM Flow reference is a validation twin, not a chart overlay.** Since #12 it
   is graded against Flow on the identical model (`opm/reference-decks/small-direct/go-1d-50`):
-  cumulative oil and injected gas within 0.05 % at every checkpoint, gas produced within 0.31 %
-  just after breakthrough and 0.04 % at 300 d, in both the engine test and a test of the shipped
+  cumulative oil and injected gas within 0.05 % at every checkpoint, gas produced within 0.29 %
+  just after breakthrough and 0.03 % at 300 d, in both the engine test and a test of the shipped
   scenario. It has no parsed artifact, so the chart still shows only the gas–oil fractional-flow
   solution.
-- **Table-less three-phase gas is incompressible.** Without a PVT table the engine's gas has
-  `Bg = 1` at every pressure. The `c_g` input reaches only IMPES's first-guess storage term, not
-  FIM and not the conserved masses. `gas_injection` runs this way, and so does its Flow twin, so
-  they agree on it. Tracked in #42.
+- **Table-less three-phase gas is compressible since #42.** It had `Bg = 1` at every pressure, and
+  `c_g` reached only IMPES's first-guess storage term. It now has `Bg = exp(−c_g·(p − p_ref))`,
+  referenced to the initial pressure like the table-less oil (#36), in FIM, in IMPES and in every
+  reported inventory. At `c_g = 1e-4` this moved `gas_injection`'s injected gas by +0.9 % at 100 d.
+  The Flow twin was regenerated with the new PVDG and still agrees as above.
 - **Gravity-dominated three-phase segregation** is exercised by `gas_cap.rs` as behavior, not
   against an external reference.
 - **The +4 % cumulative-oil bias** in section 2 is inside the band but unexplained.

@@ -633,6 +633,16 @@ impl ReservoirSimulator {
     /// follow here. It used to be referenced to 0 bar, so `b_o` was the FVF at vacuum and every
     /// dead-oil run reported about `c_o * p` more surface oil than its stated Bo implied: 0.3% at
     /// 300 bar (#36).
+    /// Gas FVF without a PVT table: 1 at `gas_pvt_reference_pressure_bar`, shrinking with `c_g`
+    /// above it, so `c_g = −(1/Bg)·dBg/dp` exactly, which is what `get_c_g` reports. It used to be 1
+    /// at every pressure: table-less gas was incompressible and `c_g` reached only IMPES's
+    /// first-guess storage term (#42).
+    pub(crate) fn base_gas_fvf_generic<S: Scalar>(&self, p: S) -> S {
+        ((p - self.gas_pvt_reference_pressure_bar) * (-self.c_g))
+            .exp()
+            .max_floor(1e-9)
+    }
+
     pub(crate) fn base_oil_fvf_generic<S: Scalar>(&self, p: S) -> S {
         (S::from_f64(self.b_o)
             * ((p - self.oil_pvt_reference_pressure_bar) * (-self.pvt.c_o)).exp())
@@ -842,7 +852,7 @@ impl ReservoirSimulator {
         if let Some(table) = &self.pvt_table {
             self.rho_g / table.interpolate(p).bg_m3m3
         } else {
-            self.rho_g
+            self.rho_g / self.base_gas_fvf_generic(p)
         }
     }
 
@@ -854,7 +864,7 @@ impl ReservoirSimulator {
         if let Some(table) = &self.pvt_table {
             table.interpolate(p).bg_m3m3
         } else {
-            1.0
+            self.base_gas_fvf_generic(p)
         }
     }
 
@@ -887,8 +897,8 @@ impl ReservoirSimulator {
         if let Some(table) = &self.pvt_table {
             return table.d_bg_d_p(p);
         }
-        let _ = p;
-        0.0
+        // Derivative of `base_gas_fvf_generic` (#42), which the AD assembly differentiates itself.
+        -self.c_g * self.base_gas_fvf_generic(p)
     }
 
     #[cfg(test)]
@@ -993,10 +1003,11 @@ impl ReservoirSimulator {
         if let Some(table) = &self.pvt_table {
             table.gas_props_at(p, self.rho_g)
         } else {
+            let bg = self.base_gas_fvf_generic(p);
             GasProps {
-                bg_m3m3: 1.0,
+                bg_m3m3: bg,
                 mu_g_cp: self.mu_g,
-                rho_g_kg_m3: self.rho_g,
+                rho_g_kg_m3: self.rho_g / bg,
             }
         }
     }
@@ -1019,7 +1030,7 @@ impl ReservoirSimulator {
             let bg = table.interpolate_saturated_generic(p).bg;
             S::from_f64(self.rho_g) / bg.max_floor(1e-9)
         } else {
-            S::from_f64(self.rho_g)
+            S::from_f64(self.rho_g) / self.base_gas_fvf_generic(p)
         }
     }
 }
@@ -1196,12 +1207,22 @@ mod tests {
         assert!((ad.1.d(0) - fd_mu).abs() < 1e-8);
     }
 
+    /// #42: table-less gas is compressible. `Bg` is 1 at the reference pressure, `c_g` is its
+    /// logarithmic derivative, and the legacy assembly's analytic derivative agrees with it.
     #[test]
-    fn bg_derivative_matches_flat_bg_without_pvt_table() {
-        let sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+    fn no_table_bg_follows_c_g_from_the_reference_pressure() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
+        sim.set_initial_pressure(250.0);
 
-        assert!((sim.get_b_g(250.0) - 1.0).abs() < 1e-12);
-        assert!(sim.get_d_bg_d_p_for_state(250.0).abs() < 1e-12);
+        assert!((sim.get_b_g(250.0) - 1.0).abs() < 1e-15);
+        assert!((sim.get_b_g(150.0) - (100.0f64 * 1e-4).exp()).abs() < 1e-15);
+        let h = 1e-3;
+        let fd = (sim.get_b_g(200.0 + h) - sim.get_b_g(200.0 - h)) / (2.0 * h);
+        assert!((sim.get_d_bg_d_p_for_state(200.0) - fd).abs() < 1e-10);
+        let c_g = -fd / sim.get_b_g(200.0);
+        assert!((c_g - sim.get_c_g(200.0)).abs() < 1e-10);
+        assert!((sim.get_rho_g(150.0) - 10.0 / sim.get_b_g(150.0)).abs() < 1e-12);
     }
 
     #[test]

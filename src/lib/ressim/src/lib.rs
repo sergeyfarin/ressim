@@ -205,6 +205,9 @@ pub struct ReservoirSimulator {
     /// Pressure at which the no-table oil FVF equals `b_o` (#36). Set with the water and rock
     /// references by `set_initial_pressure`, so all three expansion factors mean the same thing.
     pub(crate) oil_pvt_reference_pressure_bar: f64,
+    /// Pressure at which the no-table gas FVF equals 1 (#42). Set with the oil, water and rock
+    /// references by `set_initial_pressure`.
+    pub(crate) gas_pvt_reference_pressure_bar: f64,
     /// Pressure at which the porosity array — and therefore `pore_volume_m3()` —
     /// is defined. This is Eclipse `ROCK` item 1, and pore volume is
     /// `pv_ref * exp(c_f * (p - this))`.
