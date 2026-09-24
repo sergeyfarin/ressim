@@ -5,8 +5,18 @@
   "generatedAt": "1970-01-01T00:00:00+00:00",
   "label": "Dry-Gas Depletion (c_f = 5e-6 /bar, base)",
   "notes": "Series parsed from a real Flow run.",
+  "provenance": {
+    "deckSource": "tools/opm_flow/opm_flow_tool/cases.py",
+    "flowArgs": [
+      "--enable-terminal-output=false"
+    ],
+    "generator": "tools/opm_flow (opm_flow_tool)",
+    "origin": "Deck written in this repository from the ResSim scenario's own parameters; no third-party data. Distributed under the repository licence (AGPL-3.0).",
+    "replay": "uv run --directory tools/opm_flow python -m opm_flow_tool.cli run-flow dep_gas_pz && uv run --directory tools/opm_flow python -m opm_flow_tool.cli build-artifacts dep_gas_pz",
+    "simulator": "flow 2026.04"
+  },
   "scenarioKey": "dep_gas_pz",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "series": [
     {
       "curveKey": "opm-avg-pressure",
@@ -844,8 +854,10 @@
           "y": 30.37754
         }
       ],
-      "label": "OPM Flow — Avg Pressure (c_f = 5e-6)",
-      "panelKey": "diagnostics"
+      "label": "OPM Flow \u2014 Avg Pressure (c_f = 5e-6)",
+      "mnemonic": "FPR",
+      "panelKey": "diagnostics",
+      "unit": "BARSA"
     },
     {
       "curveKey": "opm-gas-rate",
@@ -1683,8 +1695,10 @@
           "y": 183.5217
         }
       ],
-      "label": "OPM Flow — Gas Rate (c_f = 5e-6)",
-      "panelKey": "gas_rate"
+      "label": "OPM Flow \u2014 Gas Rate (c_f = 5e-6)",
+      "mnemonic": "FGPR",
+      "panelKey": "gas_rate",
+      "unit": "SM3/DAY"
     }
   ],
   "sourceType": "opm-flow-precomputed",
@@ -1697,8 +1711,6 @@
     "FGIP"
   ],
   "units": {
-    "pressure": "bar",
-    "rate": "sm3/day",
     "system": "METRIC",
     "time": "days"
   },

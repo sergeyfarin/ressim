@@ -5,6 +5,8 @@ import { getScenarioWithVariantParams } from '../scenarios';
 import { calculateMaterialBalance } from '@ressim/analytical/materialBalance';
 import { integrateRunSeries } from '@ressim/quantities/runSeries';
 import { getInitialSaturations, getPoreVolume } from '@ressim/quantities/reservoirVolumes';
+import { listOpmFlowArtifacts } from '../opmFlowArtifacts';
+import depPvtDeckTables from '../../../../opm/reference-decks/small-direct/dep-pvt-tables.json';
 
 let wasmReady: Promise<unknown> | null = null;
 
@@ -262,4 +264,26 @@ describe('dep_pvt — PVT-table representation risk', () => {
         // …and it has closed substantially by the end of the window.
         expect(final).toBeLessThan(0.5 * peak);
     }, 300000);
+});
+
+describe('dep_pvt against OPM Flow (#20)', () => {
+    it('ships the PVT tables its Flow decks were generated from', () => {
+        // opm_small_direct.rs builds both decks from this fixture. If the correlation behind
+        // generateBlackOilTable changes, the scenario drifts from its decks here, before any
+        // chart shows a reference for a fluid the scenario no longer has.
+        const lab = getScenarioWithVariantParams('dep_pvt', 'pvt_model', 'pvt_lab_report');
+        expect(getScenarioWithVariantParams('dep_pvt', null, null).pvtTable).toEqual(depPvtDeckTables.correlation);
+        expect(lab.pvtTable).toEqual(depPvtDeckTables.lab_report);
+    });
+
+    it('Flow reaches the bubble point 2.4x later on the lab-report table, as ResSim does', () => {
+        const crossing = (caseKey: string) => {
+            const artifact = listOpmFlowArtifacts().find((candidate) => candidate.caseKey === caseKey)!;
+            const pressure = artifact.series.find((series) => series.mnemonic === 'FPR')!;
+            return pressure.data.find((point) => point.y < BUBBLE_POINT_BAR)!.x;
+        };
+        // Measured (flow 2026.04): 36.0 d and 87.75 d; the scenario's own runs give 36 d and 88 d.
+        expect(crossing('dep_pvt_correlation')).toBeCloseTo(36, 0);
+        expect(crossing('dep_pvt_lab_report')).toBeCloseTo(88, 0);
+    });
 });

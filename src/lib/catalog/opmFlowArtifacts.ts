@@ -9,6 +9,9 @@ import wfNumericsArtifact from './opm-flow-results/wf_numerics.json';
 import wfNumericsFineArtifact from './opm-flow-results/wf_numerics_fine.json';
 import depGasPzArtifact from './opm-flow-results/dep_gas_pz.json';
 import depGasPzGeopressuredArtifact from './opm-flow-results/dep_gas_pz_geopressured.json';
+import gasInjectionArtifact from './opm-flow-results/gas_injection.json';
+import depPvtCorrelationArtifact from './opm-flow-results/dep_pvt_correlation.json';
+import depPvtLabReportArtifact from './opm-flow-results/dep_pvt_lab_report.json';
 
 export type ReferenceSourceType =
     | 'analytical'
@@ -20,8 +23,25 @@ export type OpmFlowArtifactSeries = {
     panelKey: string;
     label: string;
     curveKey: string;
+    /** Summary vector the series was read from, e.g. 'FOPT' or 'WBHP:PROD'. */
+    mnemonic: string;
+    /** Unit Flow printed for it, checked against `tools/opm_flow/opm_flow_tool/vectors.py`. */
+    unit: string;
     data: { x: number; y: number }[];
     yAxisID?: string;
+};
+
+/** Where an artifact came from and how to regenerate it (#20). */
+export type OpmFlowArtifactProvenance = {
+    generator: string;
+    simulator: string | null;
+    /** Repo-relative path of the deck text. */
+    deckSource: string;
+    flowArgs: string[];
+    /** Shell command that regenerates the artifact from a clean checkout. */
+    replay: string;
+    /** Source of the model inputs and the terms they are distributed under. */
+    origin: string;
 };
 
 /**
@@ -34,14 +54,18 @@ export type OpmFlowArtifactSeries = {
 export type OpmFlowArtifactXAxis = ReferenceXAxisMap & {
     /** Present when the case declares one; a depletion deck need not. */
     poreVolumeM3?: number;
-    /** Summary mnemonic the injection mapping was built from, e.g. 'FVIT'. */
+    /** Reservoir-volume injection the PVI mapping was built from, m³. */
+    cumulativeInjectionM3?: number[];
+    /** Summary mnemonic the PVI mapping was built from, e.g. 'FVIT'. */
     cumulativeInjectionCurve?: string;
+    /** Summary mnemonic of the surface injection axis, e.g. 'FWIT' or 'FGIT'. */
+    cumulativeSurfaceInjectionCurve?: string;
     /** Summary mnemonic the gas-production mapping was built from, e.g. 'FGPT'. */
     cumulativeGasCurve?: string;
 };
 
 export type OpmFlowArtifact = {
-    schemaVersion: 1;
+    schemaVersion: 2;
     sourceType: 'opm-flow-precomputed';
     caseKey: string;
     scenarioKey: string;
@@ -55,6 +79,7 @@ export type OpmFlowArtifact = {
     status: 'deck-ready' | 'flow-run' | 'parsed' | 'error';
     notes?: string;
     xAxis?: OpmFlowArtifactXAxis;
+    provenance: OpmFlowArtifactProvenance;
 };
 
 const ARTIFACTS = [
@@ -66,6 +91,9 @@ const ARTIFACTS = [
     wfNumericsFineArtifact as OpmFlowArtifact,
     depGasPzArtifact as OpmFlowArtifact,
     depGasPzGeopressuredArtifact as OpmFlowArtifact,
+    gasInjectionArtifact as OpmFlowArtifact,
+    depPvtCorrelationArtifact as OpmFlowArtifact,
+    depPvtLabReportArtifact as OpmFlowArtifact,
 ];
 
 export function listOpmFlowArtifacts(): OpmFlowArtifact[] {

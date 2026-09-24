@@ -13,6 +13,15 @@ export const wf_bl1d: Scenario = {
     description: 'One-dimensional waterflood without gravity or capillary pressure, compared with the Buckley–Leverett solution.',
     analyticalMethodSummary: 'Fractional-flow solution with Welge shock construction — predicts breakthrough timing and post-breakthrough recovery, independent of grid resolution.',
     analyticalMethodReference: 'Buckley and Leverett (1942); Welge (1952).',
+    // OPM Flow on the base case. Taken off this scenario on 2026-07-28 while its
+    // oil, water and injection rates were mapped onto the water-cut panel; it
+    // now carries water cut, oil rate, cumulative oil, pressure and cumulative
+    // injection, each beside the ResSim curve of the same quantity (#20).
+    referenceSources: [{
+        kind: 'opm-flow',
+        artifactKeys: ['wf_bl1d'],
+        artifactVariantLabels: { wf_bl1d: 'base' },
+    }],
     chartLayoutKey: 'waterflood',
     chartLayoutPatch: {
         chart: {

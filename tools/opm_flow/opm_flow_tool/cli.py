@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import sys
 from pathlib import Path
 
 from .artifacts import DEFAULT_ARTIFACT_DIR, DEFAULT_RUN_ROOT, build_artifact, run_flow, write_deck
@@ -47,9 +49,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "build-artifacts":
+        failed = []
         for key in _case_keys(args.case):
-            print(build_artifact(CASES[key], args.artifact_dir, args.generated_at, args.run_root))
-        return 0
+            path = build_artifact(CASES[key], args.artifact_dir, args.generated_at, args.run_root)
+            artifact = json.loads(path.read_text(encoding="utf-8"))
+            print(f"{path} [{artifact['status']}]")
+            if artifact["status"] == "error":
+                failed.append(f"{key}: {artifact['notes']}")
+        # A unit mismatch or an unparseable summary fails generation outright;
+        # the error artifact is left on disk only so the reason can be read.
+        for reason in failed:
+            print(f"error: {reason}", file=sys.stderr)
+        return 1 if failed else 0
 
     parser.error(f"Unhandled command {args.command}")
     return 2

@@ -34,7 +34,7 @@ struct Case {
     report_dt_days: f64,
 }
 
-const CASES: [Case; 6] = [
+const CASES: [Case; 8] = [
     Case {
         key: "ow-1d-96",
         note: "wf_bl1d geometry: 96x1x1 waterflood, BHP injector/producer, M~2",
@@ -71,6 +71,18 @@ const CASES: [Case; 6] = [
         report_steps: 150,
         report_dt_days: 2.0,
     },
+    Case {
+        key: "dep-pvt-correlation",
+        note: "dep_pvt scenario base case: constant-rate black-oil blowdown through the bubble point, correlation c_o",
+        report_steps: 300,
+        report_dt_days: 0.75,
+    },
+    Case {
+        key: "dep-pvt-lab-report",
+        note: "dep_pvt scenario lab-report variant: the same blowdown with 2.5x the undersaturated c_o",
+        report_steps: 300,
+        report_dt_days: 0.75,
+    },
 ];
 
 /// The report schedule actually used: the case's own, or `OPM_SMALL_REPORT_DT` over the same
@@ -97,6 +109,8 @@ fn build(key: &str) -> ReservoirSimulator {
         "bo-1d-10" => black_oil_depletion(10),
         "bo-1d-40" => black_oil_depletion(40),
         "go-1d-50" => gas_injection_1d(),
+        "dep-pvt-correlation" => dep_pvt_column(false),
+        "dep-pvt-lab-report" => dep_pvt_column(true),
         other => panic!("unknown small-direct case {other}"),
     }
 }
@@ -226,6 +240,74 @@ pub(super) fn gas_injection_1d() -> ReservoirSimulator {
         .unwrap();
     sim.add_well_with_id(0, 0, 0, 350.0, 0.1, 0.0, true, "INJ".to_string())
         .unwrap();
+    sim
+}
+
+/// The `dep_pvt` scenario's two PVT tables, exactly as `generateBlackOilTable` makes them.
+/// `dep_pvt.test.ts` asserts the scenario still ships these rows, so a change to the correlation
+/// shows up there instead of as a deck that no longer matches the scenario.
+#[derive(serde::Deserialize)]
+struct DepPvtTables {
+    correlation: Vec<PvtRow>,
+    lab_report: Vec<PvtRow>,
+}
+
+const DEP_PVT_TABLES: &str =
+    include_str!("../../../../../opm/reference-decks/small-direct/dep-pvt-tables.json");
+
+/// The `dep_pvt` catalog scenario (`src/lib/catalog/scenarios/dep_pvt.ts`), configured in the order
+/// the worker's `configureReservoirSimulator` applies its payload. `lab_report` selects the
+/// `pvt_lab_report` sensitivity variant: its own table and its own scalar `c_o`.
+///
+/// The producer is on a surface-oil target of 3 Sm3/day. The scenario's 30 bar `producerBhp` is
+/// only the well's BHP target; a rate-controlled producer gets the worker's family BHP floor of 0.
+fn dep_pvt_column(lab_report: bool) -> ReservoirSimulator {
+    let tables: DepPvtTables =
+        serde_json::from_str(DEP_PVT_TABLES).expect("dep-pvt-tables.json parses");
+    let (rows, c_o) = if lab_report {
+        (tables.lab_report, 2.5e-4)
+    } else {
+        (tables.correlation, 1.0e-4)
+    };
+    let nx = 48;
+    let mut sim = ReservoirSimulator::new(nx, 1, 1, 0.2);
+    sim.set_fim_enabled(true);
+    sim.set_cell_dimensions(10.0, 10.0, 10.0).unwrap();
+    sim.set_fluid_properties(1.0, 0.5).unwrap();
+    sim.set_fluid_compressibilities(c_o, 3e-6).unwrap();
+    sim.apply_pvt_table(rows).unwrap();
+    sim.set_rock_properties(1e-6, 0.0, 1.1, 1.0).unwrap();
+    sim.set_fluid_densities(800.0, 1000.0).unwrap();
+    sim.set_initial_pressure(280.0);
+    sim.set_initial_saturation(0.1);
+    sim.set_capillary_params(0.0, 2.0).unwrap();
+    sim.set_gravity_enabled(false);
+    sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0, 1.0, 1.0)
+        .unwrap();
+    sim.set_three_phase_mode_enabled(true);
+    sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 1.5, 1.0, 1.0, 1.0)
+        .unwrap();
+    sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
+    sim.set_gas_redissolution_enabled(true);
+    sim.set_injected_fluid("gas").unwrap();
+    sim.set_stability_params(0.05, 75.0, 0.75);
+    sim.set_well_control_modes("pressure".to_string(), "rate".to_string());
+    sim.set_target_well_rates(0.0, 3.0).unwrap();
+    sim.set_target_well_surface_rates(0.0, 3.0).unwrap();
+    sim.set_well_bhp_limits(0.0, 500.0).unwrap();
+    sim.set_permeability_per_layer(vec![200.0], vec![200.0], vec![20.0])
+        .unwrap();
+    sim.add_well_with_id(nx - 1, 0, 0, 30.0, 0.1, 0.0, false, "PROD".to_string())
+        .unwrap();
+    sim.set_well_schedule(
+        "PROD".to_string(),
+        "rate".to_string(),
+        3.0,
+        3.0,
+        f64::NAN,
+        true,
+    )
+    .unwrap();
     sim
 }
 
@@ -367,13 +449,26 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
             .pvt_table
             .as_ref()
             .expect("black-oil case has a PVT table");
-        // Saturated oil every 2.5 bar across the table, each with an undersaturated branch
-        // evaluated by ResSim's own `interpolate_oil`, so Flow's interpolation rule only acts
-        // between nodes a few bar apart.
+        // Pressure nodes about every 2.5 bar across the table, with the table's own rows (the
+        // bubble point among them) on nodes. Saturated oil sits on every node where Rs still
+        // rises, each with an undersaturated branch evaluated by ResSim's own `interpolate_oil`,
+        // so Flow's interpolation rule only acts between nodes a few bar apart.
+        let (p_lo, p_hi) = table
+            .rows
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |acc, row| {
+                (acc.0.min(row.p_bar), acc.1.max(row.p_bar))
+            });
+        let row_pressures: Vec<f64> = table.rows.iter().map(|row| row.p_bar).collect();
+        let pressure_nodes = saturation_nodes(
+            p_lo,
+            p_hi,
+            ((p_hi - p_lo) / 2.5).round() as usize + 1,
+            &row_pressures,
+        );
         d.push_str("PVTO\n");
         let mut last_rs = f64::NEG_INFINITY;
-        for step in 0..=20 {
-            let p = 100.0 + 2.5 * step as f64;
+        for &p in &pressure_nodes {
             let sat = table.interpolate(p);
             if sat.rs_m3m3 <= last_rs + 1e-9 {
                 continue;
@@ -381,15 +476,19 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
             last_rs = sat.rs_m3m3;
             let (bo, mu) = table.interpolate_oil(p, sat.rs_m3m3);
             let _ = writeln!(d, "  {:.8} {p:.4} {bo:.10e} {mu:.10e}", sat.rs_m3m3);
-            for dp in [10.0, 25.0, 50.0, 100.0] {
+            // Each branch reaches the top of the table, so Flow never extrapolates one.
+            let mut offsets = vec![10.0, 25.0, 50.0, 100.0];
+            if p + 100.0 < p_hi {
+                offsets.push(p_hi - p);
+            }
+            for dp in offsets {
                 let (bo_u, mu_u) = table.interpolate_oil(p + dp, sat.rs_m3m3);
                 let _ = writeln!(d, "           {:.4} {bo_u:.10e} {mu_u:.10e}", p + dp);
             }
             d.push_str("  /\n");
         }
         d.push_str("/\nPVDG\n");
-        for step in 0..=40 {
-            let p = 100.0 + 2.5 * step as f64;
+        for &p in &pressure_nodes {
             let row = table.interpolate(p);
             let _ = writeln!(d, "  {p:.4} {:.10e} {:.10e}", row.bg_m3m3, row.mu_g_cp);
         }
@@ -428,14 +527,19 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
         values(&mut d, "RS", sim.rs.iter().copied());
     }
 
-    d.push_str("SUMMARY\nFOPR\nFWPR\nFWIR\nFOPT\nFWPT\nFWIT\n");
+    // FPR and FVIT (reservoir-volume injection) are what the frontend artifacts of
+    // `tools/opm_flow` need; RUNSUM/SEPARATE make Flow write the text summary those read.
+    d.push_str("SUMMARY\nFOPR\nFWPR\nFWIR\nFOPT\nFWPT\nFWIT\nFPR\n");
     if three_phase {
-        d.push_str("FGPR\nFGPT\n");
+        d.push_str("FGPR\nFGPT\nFGOR\n");
     }
     if gas_injector {
         d.push_str("FGIR\nFGIT\n");
     }
-    d.push_str("WBHP\n/\n");
+    if sim.wells.iter().any(|well| well.injector) {
+        d.push_str("FVIT\n");
+    }
+    d.push_str("WBHP\n/\nRUNSUM\nSEPARATE\n");
 
     d.push_str("SCHEDULE\nRPTRST\n  BASIC=2 /\n");
     if black_oil && !sim.gas_redissolution_enabled {
@@ -481,7 +585,22 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
                 well.bhp
             );
         } else {
-            let _ = writeln!(d, "WCONPROD\n  '{name}' 'OPEN' 'BHP' 5* {} /\n/", well.bhp);
+            let control = sim.well_control_config(well);
+            match (control.rate_controlled, control.target_surface_rate_m3_day) {
+                // A producer's surface target is stock-tank oil. Flow needs a positive BHP
+                // limit; ResSim's floor of 0 means "none", and 1 bar never binds either.
+                (true, Some(target)) => {
+                    let _ = writeln!(
+                        d,
+                        "WCONPROD\n  '{name}' 'OPEN' 'ORAT' {target} 4* {} /\n/",
+                        control.bhp_limit.max(1.0)
+                    );
+                }
+                (true, None) => panic!("{name}: reservoir-volume producer targets are not written"),
+                (false, _) => {
+                    let _ = writeln!(d, "WCONPROD\n  '{name}' 'OPEN' 'BHP' 5* {} /\n/", well.bhp);
+                }
+            }
         }
     }
     let _ = writeln!(

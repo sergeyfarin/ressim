@@ -5,8 +5,18 @@
   "generatedAt": "1970-01-01T00:00:00+00:00",
   "label": "SPE1 Black-Oil Benchmark",
   "notes": "Series parsed from a real Flow run.",
+  "provenance": {
+    "deckSource": "tools/opm_flow/opm_flow_tool/cases.py",
+    "flowArgs": [
+      "--enable-terminal-output=false"
+    ],
+    "generator": "tools/opm_flow (opm_flow_tool)",
+    "origin": "Model inputs from the published SPE1 comparative solution project (Odeh, A.S., 1981, 'Comparison of Solutions to a Three-Dimensional Black-Oil Reservoir Simulation Problem', JPT 33(1), SPE-9723-PA), converted to METRIC. The deck is written in this repository, not copied from OPM's SPE1CASE1.DATA. Distributed under the repository licence (AGPL-3.0).",
+    "replay": "uv run --directory tools/opm_flow python -m opm_flow_tool.cli run-flow spe1_gas_injection && uv run --directory tools/opm_flow python -m opm_flow_tool.cli build-artifacts spe1_gas_injection",
+    "simulator": "flow 2026.04"
+  },
   "scenarioKey": "spe1_gas_injection",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "series": [
     {
       "curveKey": "opm-oil-rate",
@@ -504,8 +514,10 @@
           "y": 849.6506
         }
       ],
-      "label": "OPM Flow — Oil Rate",
-      "panelKey": "oil_rate"
+      "label": "OPM Flow \u2014 Oil Rate",
+      "mnemonic": "FOPR",
+      "panelKey": "oil_rate",
+      "unit": "SM3/DAY"
     },
     {
       "curveKey": "opm-gas-injection-rate",
@@ -1003,8 +1015,10 @@
           "y": 2831680.0
         }
       ],
-      "label": "OPM Flow — Gas Injection Rate",
-      "panelKey": "injection_rate"
+      "label": "OPM Flow \u2014 Gas Injection Rate",
+      "mnemonic": "FGIR",
+      "panelKey": "injection_rate",
+      "unit": "SM3/DAY"
     },
     {
       "curveKey": "opm-cum-oil",
@@ -1502,8 +1516,10 @@
           "y": 7168837.0
         }
       ],
-      "label": "OPM Flow — Cum Oil",
-      "panelKey": "cumulative"
+      "label": "OPM Flow \u2014 Cum Oil",
+      "mnemonic": "FOPT",
+      "panelKey": "cumulative",
+      "unit": "SM3"
     },
     {
       "curveKey": "opm-cum-gas",
@@ -2001,8 +2017,10 @@
           "y": 10085660000.0
         }
       ],
-      "label": "OPM Flow — Cum Gas",
-      "panelKey": "cumulative_gas"
+      "label": "OPM Flow \u2014 Cum Gas",
+      "mnemonic": "FGPT",
+      "panelKey": "cumulative_gas",
+      "unit": "SM3"
     },
     {
       "curveKey": "opm-avg-pressure",
@@ -2500,8 +2518,10 @@
           "y": 249.0998
         }
       ],
-      "label": "OPM Flow — Avg Pressure",
-      "panelKey": "diagnostics"
+      "label": "OPM Flow \u2014 Avg Pressure",
+      "mnemonic": "FPR",
+      "panelKey": "diagnostics",
+      "unit": "BARSA"
     },
     {
       "curveKey": "opm-injector-bhp",
@@ -2999,8 +3019,10 @@
           "y": 288.1645
         }
       ],
-      "label": "OPM Flow — Injector BHP",
-      "panelKey": "injector_bhp"
+      "label": "OPM Flow \u2014 Injector BHP",
+      "mnemonic": "WBHP:INJ",
+      "panelKey": "injector_bhp",
+      "unit": "BARSA"
     },
     {
       "curveKey": "opm-producer-bhp",
@@ -3498,8 +3520,10 @@
           "y": 69.0
         }
       ],
-      "label": "OPM Flow — Producer BHP",
-      "panelKey": "producer_bhp"
+      "label": "OPM Flow \u2014 Producer BHP",
+      "mnemonic": "WBHP:PROD",
+      "panelKey": "producer_bhp",
+      "unit": "BARSA"
     },
     {
       "curveKey": "opm-gor",
@@ -3997,8 +4021,10 @@
           "y": 4148.199
         }
       ],
-      "label": "OPM Flow — GOR",
-      "panelKey": "gor"
+      "label": "OPM Flow \u2014 GOR",
+      "mnemonic": "WGOR:PROD",
+      "panelKey": "gor",
+      "unit": "SM3/SM3"
     }
   ],
   "sourceType": "opm-flow-precomputed",
@@ -4013,8 +4039,6 @@
     "WGOR"
   ],
   "units": {
-    "pressure": "bar",
-    "rate": "sm3/day",
     "system": "METRIC",
     "time": "days"
   }

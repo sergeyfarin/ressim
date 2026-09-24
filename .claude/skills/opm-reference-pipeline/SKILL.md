@@ -5,7 +5,7 @@ description: Generate, run, and parse OPM Flow reference simulations used as off
 
 # OPM Flow Reference Pipeline
 
-OPM Flow is the industrial open-source simulator used as offline ground truth. The browser never runs OPM — precomputed JSON artifacts are committed into the frontend catalog. The summary parser gap is **closed** (2026-07-16) — both committed artifacts are now `status: "parsed"` with real series data. See "Known deck-physics caveat" below for what's still open.
+OPM Flow is the industrial open-source simulator used as offline ground truth. The browser never runs OPM — precomputed JSON artifacts are committed into the frontend catalog. Every committed artifact is `status: "parsed"`, unit-checked and provenance-stamped (#20, 2026-09-24).
 
 ## Requirements
 
@@ -25,12 +25,23 @@ uv run --directory tools/opm_flow python -m opm_flow_tool.cli build-artifacts al
 
 ## How the pieces connect
 
-- `tools/opm_flow/opm_flow_tool/cases.py` — `OpmCase` deck definitions, now including a `curve_display` map (mnemonic, or `"MNEMONIC:NAME"` for well/group vectors → `{panelKey, curveKey, label}` matching the frontend's existing panel-key conventions). Six cases as of 2026-08-01: `wf_bl1d`, `spe1_gas_injection`, `gas_drive`, `wf_gravity`, and the `wf_numerics` / `wf_numerics_fine` pair (the same 1D column at 10 m and 2.5 m cells, both declared by the one `wf_numerics` scenario — two artifacts on one chart need distinct `curveKey`s, so the fine deck prefixes its with `opm-fine-`). The SPE1 deck contains the **real tabulated SWOF/SGOF** that the ResSim scenario still only Corey-approximates (known confound for match quality).
-- **x-axis mapping (added 2026-08-01).** A case that injects should declare `cumulative_injection_curve` (a cumulative *reservoir*-volume vector — `FVIT`, unit RM3, not the surface `FWIT`) and `pore_volume_m3` (grid x porosity of its own deck). `build_artifact()` then emits an `xAxis` block — `timeDays`, `pvi`, `cumulativeInjectionM3` — and the frontend's `mapReferenceTimesToXAxis` uses it to place the reference curves on a PVI or cumulative-injection axis. Without it the series exist only on time/log-time axes and are **dropped** (not misplaced) elsewhere, so a scenario whose chart opens on PVI will simply show no OPM curves. Declaring the vector but not requesting it in SUMMARY is recorded in the artifact's `notes`.
-- `tools/opm_flow/opm_flow_tool/summary.py` — hand-rolled `.RSM` text-summary parser. Fixed-width columns, uniform gap derived from the mnemonic row's own token spacing (not from dividing separator width evenly — that fails when there's non-column margin). Header/data separator is found by scanning *forward* from the `TIME` row, not by taking the first dashed line in the page (a title line is flanked by two decorative separators that come first). See the module docstring for the full validated layout.
-- `tools/opm_flow/opm_flow_tool/artifacts.py::build_artifact()` — writes `src/lib/catalog/opm-flow-results/<case>.json`. Looks for `<run-root>/<case-key>/*.RSM`; parses it via `summary.py` if present, mapping vectors through the case's `curve_display`. Never raises — a parse failure or missing expected curve degrades to `status: "error"` with the reason in `notes`, so one bad case can't crash `build-artifacts all`.
-- Artifact status model: `deck-ready → flow-run → parsed → error`. **As of 2026-07-16, both committed artifacts are `parsed`** with real series from actual `flow 2026.04` runs.
-- Frontend: `src/lib/catalog/opmFlowArtifacts.ts::resolveScenarioReferenceSeries()` renders series **only when `status === 'parsed'`** (an unrun deck degrades to no curves rather than a broken chart). Scenarios opt in with a `referenceSources` entry `{ kind: 'opm-flow', artifactKeys: ['<caseKey>'] }` — there is no implicit scenarioKey match, so an artifact appears only where it is named.
+- `tools/opm_flow/opm_flow_tool/cases.py` — `OpmCase` definitions. Eleven cases as of 2026-09-24: `wf_bl1d`, `spe1_gas_injection`, `gas_drive`, `wf_gravity`, `wf_numerics` / `wf_numerics_fine`, `dep_gas_pz` / `dep_gas_pz_geopressured`, `gas_injection`, `dep_pvt_correlation` / `dep_pvt_lab_report`. A pair drawn on one chart needs distinct `curveKey`s (`opm-fine-`, `opm-geo-`, `opm-lab-` prefixes) and says its rung in every label.
+  - **Inline vs committed decks.** Most decks are text in `cases.py`. The last three read a committed deck (`deck_source`) that `src/lib/ressim/src/tests/opm_small_direct.rs` generates from the same ResSim simulator the scenario configures — prefer this for a new case: relperm and PVT are sampled from ResSim's own functions, so the deck cannot disagree with the engine about inputs, and `compare_small_direct.py` grades ResSim cell by cell against the same Flow run. `flow_args` carries options the deck must run with (`--enable-gravity=false` for small-direct).
+  - `curve_display` maps a summary vector (mnemonic, or `"MNEMONIC:NAME"` for well vectors) to `{panelKey, curveKey, label}`.
+- **The vector contract** — `tools/opm_flow/opm_flow_tool/vectors.py` (#20). Each mnemonic has the METRIC unit Flow prints for it, the panels it may be drawn on, and a token (`oil`, `water`, `gas`, `injection`, `pressure`, …) its curve key *and* label must contain. `build_artifact()` checks the `.RSM` unit row against it: a non-METRIC deck, a TIME column not in DAYS, a unit mismatch, or a mapped mnemonic with no contract makes the artifact `status: "error"` and `build-artifacts` exits 1. Adding a vector means adding its row here first. (Before the contract, four waterflood cases declared `m3/day` while Flow wrote `SM3/DAY`, and `wf_bl1d` drew Sm³/day rates on the water-cut panel.)
+- **x-axis mapping.** Three independent mappings, each from a declared vector:
+  - `cumulative_injection_curve` (FVIT, **reservoir** RM3) + `pore_volume_m3` -> `xAxis.pvi` / `cumulativeInjectionM3`. PVI only.
+  - `cumulative_surface_injection_curve` (FWIT/FGIT, **surface** SM3) -> `xAxis.cumulativeInjectionSm3`, the only source for the cumulative-injection axis, because ResSim's cum-injection is surface volume. For gas the two bases differ by Bg; never feed one axis from the other.
+  - `cumulative_gas_curve` (FGPT) -> `xAxis.cumulativeGasSm3`, for p/z charts.
+  The frontend's `mapReferenceTimesToXAxis` returns `null` — the series is **dropped**, not misplaced — on any axis the artifact publishes no mapping for.
+- `tools/opm_flow/opm_flow_tool/summary.py` — hand-rolled `.RSM` text-summary parser (records the TIME unit too). Fixed-width columns, uniform gap derived from the mnemonic row's own token spacing (not from dividing separator width evenly — that fails when there's non-column margin). Header/data separator is found by scanning *forward* from the `TIME` row, not by taking the first dashed line in the page. See the module docstring for the full validated layout.
+- `tools/opm_flow/opm_flow_tool/artifacts.py::build_artifact()` — writes `src/lib/catalog/opm-flow-results/<case>.json`, **schema 2**: each series carries `mnemonic` and verified `unit`; `provenance` records `deckSource`, `flowArgs`, the `replay` command and `origin` (where the model inputs come from and their licence — record this *before* bundling any third-party-derived deck). `deckHash` is the SHA-256 of the deck text. Never raises; a failure degrades to `status: "error"` with the reason in `notes`.
+- Frontend: `src/lib/catalog/opmFlowArtifacts.ts::resolveScenarioReferenceSeries()` renders series only when `status === 'parsed'`. Scenarios opt in with `referenceSources: [{ kind: 'opm-flow', artifactKeys: [...] }]` — no implicit scenarioKey match.
+
+### Gates
+
+- `tools/opm_flow/tests` (pytest; PR CI step "Run OPM artifact pipeline tests"): the unit contract, every case's mappings against it, every committed artifact `parsed`, schema-current, attributed, and generated from the deck its case holds now (deck edited without a Flow re-run fails).
+- `src/lib/catalog/opmReferenceWiring.test.ts` (Vitest, also on master): every artifact is declared by its scenario, lands on a panel that scenario draws, can be placed on the axis its chart opens on, and has one unit per panel; committed-deck artifacts re-hash their deck file.
 
 ## Deck-physics caveat — RESOLVED 2026-07-24 (COMPDAT item shift)
 
@@ -54,13 +65,15 @@ now shows a proper Buckley-Leverett front: FOPR flat ~70 sm3/day to breakthrough
 
 Also fixed in the 2026-07-16 pass in the same pass, two pre-existing deck bugs unrelated to parsing that were silently blocking any real `flow` run of these two cases: `wf_bl1d`'s `PVDO` table had non-monotonic (flat) Bo values, which Flow rejects — now uses `c_o = 1e-5/bar` matching the ResSim `wf_bl1d` scenario's own declared compressibility; `spe1_gas_injection`'s `TABDIMS` declared `NTSFUN=2, NTPVT=15` while every PVT/SCAL keyword only supplied one region's table — corrected to `1 1`.
 
-## Next after the parser (Phase C)
+## Adding a case
 
-Add decks for `gas_injection` and `gas_drive` (no OPM ground truth exists for them today), then define quantitative acceptance bands vs OPM (analogous to `docs/P4_TWO_PHASE_BENCHMARKS.md`). The `wf_bl1d` deck-physics blocker on this is cleared (see above), so the bands are now worth defining.
+1. Prefer a small-direct case: add it to `CASES`/`build` in `opm_small_direct.rs`, mirroring the worker's `configureReservoirSimulator` order, and regenerate the decks (`OPM_SMALL_DECK_DIR=$PWD/opm/reference-decks/small-direct cargo test --release --manifest-path src/lib/ressim/Cargo.toml opm_small_direct_write_decks -- --ignored`). Any scenario input that is not a scalar (a PVT table) goes in a committed fixture both sides assert against (`dep-pvt-tables.json`).
+2. Add the `OpmCase` (deck via `_committed_deck`), run `run-flow <key>` then `build-artifacts <key>`, register the JSON in `opmFlowArtifacts.ts`, declare it on the scenario, and extend `EXPECTED` in `opmReferenceWiring.test.ts`.
+3. Grade ResSim against the same run with `compare_small_direct.py` and record it in `opm/reference-decks/small-direct/README.md`.
 
-## Units warning
+## Units
 
-OPM decks are in METRIC units matching ResSim conventions (bar, m, m³/day). When parsing summaries, verify unit strings from the summary file itself — don't assume. Record deck + flow version in artifact provenance.
+Enforced, not advisory: see the vector contract above. OPM decks are METRIC (bar, m, Sm³/day); `vectors.py` is the single statement of what unit each vector must carry.
 
 ## FIM-vs-OPM solver comparison (separate use case)
 

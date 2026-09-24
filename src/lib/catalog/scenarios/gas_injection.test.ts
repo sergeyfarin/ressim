@@ -5,6 +5,7 @@ import { buildCreatePayloadForRun, buildScenarioRunSpecs } from '../../scenario/
 import { integrateRunSeries } from '@ressim/quantities/runSeries';
 import { configureReservoirSimulator } from '../../workers/configureSimulator';
 import type { RateHistoryPoint } from '../../simulator-types';
+import { listOpmFlowArtifacts } from '../opmFlowArtifacts';
 
 let wasmReady: Promise<unknown> | null = null;
 
@@ -62,4 +63,23 @@ describe('gas_injection against its OPM Flow twin (#12)', () => {
             }
         }
     }, 120_000);
+
+    it('draws the same Flow run on its chart (#20)', () => {
+        // The bundled artifact is a separate run of the same committed deck. It has to carry these
+        // numbers, or the chart would grade the scenario against a different Flow result than the
+        // engine gate does.
+        const artifact = listOpmFlowArtifacts().find((candidate) => candidate.caseKey === 'gas_injection')!;
+        expect(artifact.provenance.deckSource).toBe('opm/reference-decks/small-direct/go-1d-50/CASE.DATA');
+        const cumOil = artifact.series.find((series) => series.mnemonic === 'FOPT')!;
+        const xAxis = artifact.xAxis!;
+        // The text summary the artifact reads prints 7 significant digits; the constants above
+        // come from the binary summary.
+        const sameRun = (value: number, flow: number) => Math.abs(value - flow) / flow;
+        for (const [t, flowOil, , flowGasInjected] of OPM_GAS_INJECTION) {
+            const index = xAxis.timeDays.indexOf(t);
+            expect(cumOil.data[index].x).toBe(t);
+            expect(sameRun(cumOil.data[index].y, flowOil), `FOPT at ${t} d`).toBeLessThan(1e-6);
+            expect(sameRun(xAxis.cumulativeInjectionSm3![index], flowGasInjected), `FGIT at ${t} d`).toBeLessThan(1e-6);
+        }
+    });
 });

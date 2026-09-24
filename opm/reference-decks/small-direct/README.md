@@ -12,12 +12,25 @@ path FIM-DIRECT-001 was about. These do.
 | `bo-1d-10` | 10×1×1 | 32 | `physics_depletion_grid_convergence_fim` at nx=10: depletion through the bubble point |
 | `bo-1d-40` | 40×1×1 | 122 | the same column at nx=40 |
 | `go-1d-50` | 50×1×1 | 152 | `gas_injection` base case: dead oil displaced by gas, both wells on BHP |
+| `dep-pvt-correlation` | 48×1×1 | 146 | `dep_pvt` base case: constant-rate (3 Sm³/d ORAT) blowdown through the bubble point |
+| `dep-pvt-lab-report` | 48×1×1 | 146 | the same with the lab-report table (2.5× the undersaturated c_o) |
 
 **The decks are generated, not hand-written.** `src/lib/ressim/src/tests/opm_small_direct.rs` builds
 each case as a ResSim simulator and writes its deck from that same object. SWOF, SGOF, PVDO,
 PVTO and PVDG are ResSim's own relperm and PVT functions sampled onto dense nodes: 91–161
-saturation points with the Corey kinks on nodes, and PVT every 2.5 bar. Differences in how the
-two simulators interpolate between nodes are therefore second-order. Regenerate rather than edit.
+saturation points with the Corey kinks on nodes, and PVT about every 2.5 bar with the table's own
+rows (the bubble point among them) on nodes. Differences in how the two simulators interpolate
+between nodes are therefore second-order. Regenerate rather than edit.
+
+A PVT table that is not a scalar input comes from a committed fixture both sides assert against:
+`dep-pvt-tables.json` is what `generateBlackOilTable` makes for `dep_pvt`, and `dep_pvt.test.ts`
+fails if the scenario stops shipping it.
+
+Three of these decks are also the frontend's OPM references (`gas_injection`,
+`dep_pvt_correlation`, `dep_pvt_lab_report` in `tools/opm_flow/opm_flow_tool/cases.py`), which is
+why every deck requests FPR/FVIT/FGOR and writes a text summary (RUNSUM/SEPARATE). The artifact
+records the deck's SHA-256, so regenerating a deck without re-running Flow fails
+`opmReferenceWiring.test.ts`.
 
 ## Replay
 

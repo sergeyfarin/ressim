@@ -79,6 +79,9 @@ class SummaryVector:
 class SummaryData:
     time_days: list[float]
     vectors: list[SummaryVector]
+    # The unit Flow printed under TIME. Named `time_days` because the artifact
+    # builder refuses any summary where this is not DAYS.
+    time_unit: str = "DAYS"
 
     def by_curve_id(self) -> dict[str, SummaryVector]:
         return {vector.curve_id: vector for vector in self.vectors}
@@ -99,9 +102,14 @@ def parse_rsm(text: str) -> SummaryData:
         raise ValueError("No summary pages found in .RSM text")
 
     merged_time: list[float] | None = None
+    time_unit: str | None = None
     vectors: list[SummaryVector] = []
     for page_lines in pages:
-        page_time, page_vectors = _parse_page(page_lines)
+        page_time, page_time_unit, page_vectors = _parse_page(page_lines)
+        if time_unit is None:
+            time_unit = page_time_unit
+        elif page_time_unit != time_unit:
+            raise ValueError(f"RSM pages disagree on the TIME unit: {time_unit} vs {page_time_unit}")
         if merged_time is None:
             merged_time = page_time
         elif page_time != merged_time:
@@ -111,7 +119,7 @@ def parse_rsm(text: str) -> SummaryData:
             )
         vectors.extend(page_vectors)
 
-    return SummaryData(time_days=merged_time or [], vectors=vectors)
+    return SummaryData(time_days=merged_time or [], vectors=vectors, time_unit=time_unit or "")
 
 
 def _split_pages(lines: list[str]) -> list[list[str]]:
@@ -128,7 +136,7 @@ def _split_pages(lines: list[str]) -> list[list[str]]:
     return pages
 
 
-def _parse_page(lines: list[str]) -> tuple[list[float], list[SummaryVector]]:
+def _parse_page(lines: list[str]) -> tuple[list[float], str, list[SummaryVector]]:
     # Anchor on the mnemonic row (first token "TIME") by scanning forward,
     # not on "the first dashed line in the page": the page also has a title
     # line flanked by two decorative separators before the real header
@@ -228,7 +236,7 @@ def _parse_page(lines: list[str]) -> tuple[list[float], list[SummaryVector]]:
             )
         )
 
-    return time_days, vectors
+    return time_days, units[0], vectors
 
 
 def _is_separator(line: str) -> bool:

@@ -239,8 +239,13 @@ export type ReferenceXAxisMap = {
      * injector, which is not a defect — a depletion run has no PVI to publish.
      */
     pvi?: number[];
-    /** Cumulative reservoir-volume injection at each of those times, m³. */
-    cumulativeInjectionM3?: number[];
+    /**
+     * Cumulative injection at *surface* conditions at each of those times, Sm³:
+     * the basis of the simulation's own cumulative-injection axis. The reservoir
+     * volume the PVI mapping is built from is not interchangeable with it; for gas
+     * the two differ by Bg (#20).
+     */
+    cumulativeInjectionSm3?: number[];
     /** Cumulative surface gas production at each of those times, Sm³. */
     cumulativeGasSm3?: number[];
 };
@@ -272,8 +277,8 @@ export function mapReferenceTimesToXAxis(
         return map.pvi ? interpolateXAxisAtTimes(map.timeDays, map.pvi, timeDays) : null;
     }
     if (xAxisMode === 'cumInjection') {
-        return map.cumulativeInjectionM3
-            ? interpolateXAxisAtTimes(map.timeDays, map.cumulativeInjectionM3, timeDays)
+        return map.cumulativeInjectionSm3
+            ? interpolateXAxisAtTimes(map.timeDays, map.cumulativeInjectionSm3, timeDays)
             : null;
     }
     if (xAxisMode === 'cumGas') {

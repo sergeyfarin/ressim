@@ -225,7 +225,7 @@ describe('mapReferenceTimesToXAxis', () => {
     const map = {
         timeDays: [0, 10, 20, 40],
         pvi: [0, 0.25, 0.5, 1],
-        cumulativeInjectionM3: [0, 250, 500, 1000],
+        cumulativeInjectionSm3: [0, 250, 500, 1000],
     };
 
     it('passes time through unchanged and needs no mapping to do it', () => {
@@ -249,6 +249,14 @@ describe('mapReferenceTimesToXAxis', () => {
         // disagreement between the simulator and its ground truth.
         expect(mapReferenceTimesToXAxis([0, 10], 'pvi', undefined)).toBeNull();
         expect(mapReferenceTimesToXAxis([0, 10], 'cumInjection', null)).toBeNull();
+    });
+
+    it('refuses the cumulative-injection axis on a reservoir-volume mapping alone', () => {
+        // A run that published only its reservoir-volume injection (the PVI
+        // numerator) has no surface basis to match the simulation's Sm³ axis.
+        const reservoirOnly = { timeDays: map.timeDays, pvi: map.pvi, cumulativeInjectionM3: [0, 250, 500, 1000] };
+        expect(mapReferenceTimesToXAxis([5, 30], 'cumInjection', reservoirOnly)).toBeNull();
+        expect(mapReferenceTimesToXAxis([5], 'pvi', reservoirOnly)).toEqual([0.125]);
     });
 
     it('refuses axes the reference run publishes nothing for', () => {

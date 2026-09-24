@@ -87,6 +87,15 @@ jobs:
       - name: Run native binding parity gate
         run: bash scripts/validate-native-binding.sh
 
+      # The OPM artifact pipeline's unit contract, provenance and deck-hash checks (#20). Flow is
+      # not needed: the tests read the committed artifacts and trimmed real summaries.
+      - name: Run OPM artifact pipeline tests
+        working-directory: tools/opm_flow
+        run: |
+          python3 -m venv "$RUNNER_TEMP/opm-venv"
+          "$RUNNER_TEMP/opm-venv/bin/pip" install --quiet pytest
+          "$RUNNER_TEMP/opm-venv/bin/python" -m pytest -q
+
       - name: Run unit tests (Vitest) and upload coverage
         run: pnpm run test:coverage
 

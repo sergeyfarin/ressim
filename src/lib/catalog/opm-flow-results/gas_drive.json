@@ -2,11 +2,21 @@
   "caseKey": "gas_drive",
   "deckHash": "dff10045676a6f1c4a7923b81db196ebbff860900c5c36941be47ac5146d1d45",
   "flowVersion": "flow 2026.04",
-  "generatedAt": "2026-08-02T00:00:00+00:00",
+  "generatedAt": "1970-01-01T00:00:00+00:00",
   "label": "Solution Gas Drive Black-Oil Reference",
   "notes": "Series parsed from a real Flow run.",
+  "provenance": {
+    "deckSource": "tools/opm_flow/opm_flow_tool/cases.py",
+    "flowArgs": [
+      "--enable-terminal-output=false"
+    ],
+    "generator": "tools/opm_flow (opm_flow_tool)",
+    "origin": "Deck written in this repository from the ResSim scenario's own parameters; no third-party data. Distributed under the repository licence (AGPL-3.0).",
+    "replay": "uv run --directory tools/opm_flow python -m opm_flow_tool.cli run-flow gas_drive && uv run --directory tools/opm_flow python -m opm_flow_tool.cli build-artifacts gas_drive",
+    "simulator": "flow 2026.04"
+  },
   "scenarioKey": "gas_drive",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "series": [
     {
       "curveKey": "opm-oil-rate",
@@ -269,7 +279,9 @@
         }
       ],
       "label": "OPM Flow \u2014 Oil Rate",
-      "panelKey": "rates"
+      "mnemonic": "FOPR",
+      "panelKey": "rates",
+      "unit": "SM3/DAY"
     },
     {
       "curveKey": "opm-cum-oil",
@@ -532,7 +544,9 @@
         }
       ],
       "label": "OPM Flow \u2014 Cum Oil",
-      "panelKey": "cumulative"
+      "mnemonic": "FOPT",
+      "panelKey": "cumulative",
+      "unit": "SM3"
     },
     {
       "curveKey": "opm-gas-rate",
@@ -795,7 +809,9 @@
         }
       ],
       "label": "OPM Flow \u2014 Gas Rate",
-      "panelKey": "gas_rate"
+      "mnemonic": "FGPR",
+      "panelKey": "gas_rate",
+      "unit": "SM3/DAY"
     },
     {
       "curveKey": "opm-cum-gas",
@@ -1058,7 +1074,9 @@
         }
       ],
       "label": "OPM Flow \u2014 Cum Gas",
-      "panelKey": "cumulative_gas"
+      "mnemonic": "FGPT",
+      "panelKey": "cumulative_gas",
+      "unit": "SM3"
     },
     {
       "curveKey": "opm-avg-pressure",
@@ -1321,7 +1339,9 @@
         }
       ],
       "label": "OPM Flow \u2014 Avg Pressure",
-      "panelKey": "diagnostics"
+      "mnemonic": "FPR",
+      "panelKey": "diagnostics",
+      "unit": "BARSA"
     },
     {
       "curveKey": "opm-gor",
@@ -1584,7 +1604,9 @@
         }
       ],
       "label": "OPM Flow \u2014 GOR",
-      "panelKey": "gor"
+      "mnemonic": "FGOR",
+      "panelKey": "gor",
+      "unit": "SM3/SM3"
     }
   ],
   "sourceType": "opm-flow-precomputed",
@@ -1598,8 +1620,6 @@
     "FGOR"
   ],
   "units": {
-    "pressure": "bar",
-    "rate": "sm3/day",
     "system": "METRIC",
     "time": "days"
   }

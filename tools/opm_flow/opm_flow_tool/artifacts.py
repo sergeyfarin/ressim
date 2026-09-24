@@ -7,10 +7,13 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .cases import CASES, OpmCase
-from .summary import find_summary_file, parse_rsm
+from .cases import CASES, REPO_ROOT, OpmCase
+from .summary import SummaryData, find_summary_file, parse_rsm
+from .vectors import METRIC_VECTORS, TIME_UNIT, mnemonic_of
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+# 2: series carry their mnemonic and verified unit, the artifact carries a
+# provenance block, and xAxis separates surface from reservoir injection (#20).
+SCHEMA_VERSION = 2
 DEFAULT_RUN_ROOT = REPO_ROOT / "tmp" / "opm-flow-runs"
 DEFAULT_ARTIFACT_DIR = REPO_ROOT / "src" / "lib" / "catalog" / "opm-flow-results"
 
@@ -42,10 +45,67 @@ def run_flow(case: OpmCase, run_root: Path = DEFAULT_RUN_ROOT) -> Path:
     output_dir = run_root / case.key
     output_dir.mkdir(parents=True, exist_ok=True)
     subprocess.run(
-        [flow, str(deck_path), f"--output-dir={output_dir}", "--enable-terminal-output=false"],
+        [flow, str(deck_path), f"--output-dir={output_dir}", "--enable-terminal-output=false", *case.flow_args],
         check=True,
     )
     return output_dir
+
+
+def _deck_is_metric(deck: str) -> bool:
+    return any(line.strip() == "METRIC" for line in deck.splitlines())
+
+
+def check_unit_contract(case: OpmCase, summary: SummaryData) -> str | None:
+    """Why this summary cannot become an artifact, or None if it can.
+
+    Checks what Flow printed, not what the case says it asked for: the deck's
+    unit system, the TIME unit, and the unit row under every vector the case
+    displays or builds an axis from. A mnemonic with no entry in
+    `vectors.METRIC_VECTORS` is refused too, since nothing says what its unit
+    should be.
+    """
+    if not _deck_is_metric(case.deck):
+        return "the deck is not METRIC, and the unit contract is METRIC's"
+    if summary.time_unit != TIME_UNIT:
+        return f"TIME is in {summary.time_unit or 'no unit'}, expected {TIME_UNIT}"
+
+    used = set(case.curve_display)
+    used.update(
+        curve
+        for curve in (
+            case.cumulative_injection_curve,
+            case.cumulative_surface_injection_curve,
+            case.cumulative_gas_curve,
+        )
+        if curve
+    )
+    by_curve = summary.by_curve_id()
+    problems = []
+    for curve_id in sorted(used):
+        vector = by_curve.get(curve_id)
+        if vector is None:
+            continue  # reported as a missing curve / missing mapping, not a unit error
+        spec = METRIC_VECTORS.get(mnemonic_of(curve_id))
+        if spec is None:
+            problems.append(f"{curve_id} has no unit contract")
+        elif vector.unit != spec.unit:
+            problems.append(f"{curve_id} is in {vector.unit or 'no unit'}, expected {spec.unit or 'no unit'}")
+    if problems:
+        return "unit mismatch: " + "; ".join(problems)
+    return None
+
+
+def _provenance(case: OpmCase, flow: str | None) -> dict:
+    run = f"uv run --directory tools/opm_flow python -m opm_flow_tool.cli run-flow {case.key}"
+    build = f"uv run --directory tools/opm_flow python -m opm_flow_tool.cli build-artifacts {case.key}"
+    return {
+        "generator": "tools/opm_flow (opm_flow_tool)",
+        "simulator": flow,
+        "deckSource": case.deck_source,
+        "flowArgs": ["--enable-terminal-output=false", *case.flow_args],
+        "replay": f"{run} && {build}",
+        "origin": case.origin,
+    }
 
 
 def _build_x_axis(case: OpmCase, summary) -> dict | None:
@@ -65,6 +125,7 @@ def _build_x_axis(case: OpmCase, summary) -> dict | None:
     by_curve = summary.by_curve_id()
     axis: dict = {"timeDays": list(summary.time_days)}
 
+    # PVI is a reservoir-volume ratio: FVIT over the deck's pore volume.
     if case.cumulative_injection_curve and case.pore_volume_m3:
         vector = by_curve.get(case.cumulative_injection_curve)
         if vector is not None:
@@ -72,6 +133,14 @@ def _build_x_axis(case: OpmCase, summary) -> dict | None:
             axis["pvi"] = [value / case.pore_volume_m3 for value in vector.values]
             axis["poreVolumeM3"] = case.pore_volume_m3
             axis["cumulativeInjectionCurve"] = case.cumulative_injection_curve
+
+    # The cumulative-injection axis is ResSim's surface volume, so it is fed from
+    # the surface vector, never from FVIT: for gas the two differ by Bg.
+    if case.cumulative_surface_injection_curve:
+        vector = by_curve.get(case.cumulative_surface_injection_curve)
+        if vector is not None:
+            axis["cumulativeInjectionSm3"] = list(vector.values)
+            axis["cumulativeSurfaceInjectionCurve"] = case.cumulative_surface_injection_curve
 
     if case.cumulative_gas_curve:
         vector = by_curve.get(case.cumulative_gas_curve)
@@ -105,6 +174,10 @@ def _build_series(case: OpmCase, run_dir: Path) -> tuple[list[dict], str, str, d
     except ValueError as exc:
         return [], "error", f"Failed to parse {summary_path.name}: {exc}", None
 
+    contract_error = check_unit_contract(case, summary)
+    if contract_error:
+        return [], "error", f"{summary_path.name}: {contract_error}", None
+
     vectors_by_id = summary.by_curve_id()
     series: list[dict] = []
     missing = [curve_id for curve_id in case.curve_display if curve_id not in vectors_by_id]
@@ -123,6 +196,8 @@ def _build_series(case: OpmCase, run_dir: Path) -> tuple[list[dict], str, str, d
                 "panelKey": display["panelKey"],
                 "label": display["label"],
                 "curveKey": display["curveKey"],
+                "mnemonic": curve_id,
+                "unit": vector.unit,
                 "data": [{"x": t, "y": v} for t, v in zip(summary.time_days, vector.values)],
             }
         )
@@ -133,6 +208,11 @@ def _build_series(case: OpmCase, run_dir: Path) -> tuple[list[dict], str, str, d
         notes += (
             f" No time->PVI mapping: {case.cumulative_injection_curve} was requested by the case"
             " but is missing from the summary (or the case declares no pore volume)."
+        )
+    if case.cumulative_surface_injection_curve and not (x_axis or {}).get("cumulativeInjectionSm3"):
+        notes += (
+            f" No time->cumulative-injection mapping: {case.cumulative_surface_injection_curve} was"
+            " requested by the case but is missing from the summary."
         )
     if case.cumulative_gas_curve and not (x_axis or {}).get("cumulativeGasSm3"):
         notes += (
@@ -162,16 +242,19 @@ def build_artifact(
             None,
         )
 
+    flow = flow_version()
     artifact = {
-        "schemaVersion": 1,
+        "schemaVersion": SCHEMA_VERSION,
         "sourceType": "opm-flow-precomputed",
         "caseKey": case.key,
         "scenarioKey": case.scenario_key,
         "label": case.label,
-        "flowVersion": flow_version(),
+        "flowVersion": flow,
         "deckHash": deck_hash(case.deck),
         "generatedAt": generated_at,
-        "units": case.units,
+        # Only what the unit contract verified; each series names its own unit.
+        "units": {"system": "METRIC", "time": "days"},
+        "provenance": _provenance(case, flow),
         "supportedCurves": list(case.supported_curves),
         "series": series,
         "status": status,

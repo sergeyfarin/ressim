@@ -11,6 +11,41 @@ from opm_flow_tool.cases import CASES
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+def _wf_bl1d_fixture_case():
+    """wf_bl1d as it was when `wf_bl1d_sample.RSM` was captured.
+
+    The fixture is a trimmed real Flow run from before the deck asked for FWCT,
+    FWIT and FVIT, so the case is narrowed to the vectors the fixture holds.
+    """
+    return dataclasses.replace(
+        CASES["wf_bl1d"],
+        curve_display={
+            "FOPR": {"panelKey": "oil_rate", "curveKey": "opm-oil-rate", "label": "OPM Flow — Oil Rate"},
+            "FWPR": {"panelKey": "rates", "curveKey": "opm-water-rate", "label": "OPM Flow — Water Rate"},
+            "FWIR": {"panelKey": "injection_rate", "curveKey": "opm-injection-rate", "label": "OPM Flow — Injection Rate"},
+            "FOPT": {"panelKey": "cumulative", "curveKey": "opm-cum-oil", "label": "OPM Flow — Cum Oil"},
+            "FWPT": {"panelKey": "cumulative", "curveKey": "opm-cum-water", "label": "OPM Flow — Cum Water"},
+            "FPR": {"panelKey": "diagnostics", "curveKey": "opm-avg-pressure", "label": "OPM Flow — Avg Pressure"},
+        },
+        cumulative_injection_curve=None,
+        cumulative_surface_injection_curve=None,
+        pore_volume_m3=None,
+    )
+
+
+def _run_with_fixture(tmp_path, case, fixture="wf_bl1d_sample.RSM", text=None):
+    run_root = tmp_path / "runs"
+    run_dir = run_root / case.key
+    run_dir.mkdir(parents=True)
+    target = run_dir / f"{case.deck_name.removesuffix('.DATA')}.RSM"
+    if text is None:
+        shutil.copy(FIXTURES / fixture, target)
+    else:
+        target.write_text(text, encoding="utf-8")
+    output = build_artifact(case, artifact_dir=tmp_path / "artifacts", run_root=run_root)
+    return json.loads(output.read_text(encoding="utf-8"))
+
+
 def test_build_artifact_stays_deck_ready_when_no_run_directory_exists(tmp_path):
     case = CASES["wf_bl1d"]
     output = build_artifact(case, artifact_dir=tmp_path / "artifacts", run_root=tmp_path / "runs")
@@ -34,14 +69,7 @@ def test_build_artifact_stays_flow_run_when_run_dir_exists_but_no_rsm(tmp_path):
 
 
 def test_build_artifact_parses_real_summary_into_series(tmp_path):
-    case = CASES["wf_bl1d"]
-    run_root = tmp_path / "runs"
-    run_dir = run_root / case.key
-    run_dir.mkdir(parents=True)
-    shutil.copy(FIXTURES / "wf_bl1d_sample.RSM", run_dir / f"{case.deck_name.removesuffix('.DATA')}.RSM")
-
-    output = build_artifact(case, artifact_dir=tmp_path / "artifacts", run_root=run_root)
-    artifact = json.loads(output.read_text(encoding="utf-8"))
+    artifact = _run_with_fixture(tmp_path, _wf_bl1d_fixture_case())
 
     assert artifact["status"] == "parsed"
     curve_keys = {series["curveKey"] for series in artifact["series"]}
@@ -55,7 +83,9 @@ def test_build_artifact_parses_real_summary_into_series(tmp_path):
     }
 
     oil_rate = next(s for s in artifact["series"] if s["curveKey"] == "opm-oil-rate")
-    assert oil_rate["panelKey"] == "rates"
+    assert oil_rate["panelKey"] == "oil_rate"
+    assert oil_rate["mnemonic"] == "FOPR"
+    assert oil_rate["unit"] == "SM3/DAY"
     assert oil_rate["data"] == [
         {"x": 0.25, "y": 14.51805},
         {"x": 0.5, "y": 13.59252},
@@ -74,7 +104,7 @@ def test_build_artifact_publishes_time_to_pvi_mapping(tmp_path):
     (FVIT for a real injector) is the case's own declaration.
     """
     case = dataclasses.replace(
-        CASES["wf_bl1d"],
+        _wf_bl1d_fixture_case(),
         cumulative_injection_curve="FWPT",
         pore_volume_m3=1000.0,
     )
@@ -97,7 +127,7 @@ def test_build_artifact_publishes_time_to_pvi_mapping(tmp_path):
 
 def test_build_artifact_notes_a_declared_but_missing_injection_vector(tmp_path):
     case = dataclasses.replace(
-        CASES["wf_bl1d"],
+        _wf_bl1d_fixture_case(),
         cumulative_injection_curve="FVIT",
         pore_volume_m3=1000.0,
     )
@@ -181,3 +211,87 @@ def test_every_case_curve_display_key_is_a_subset_of_its_supported_curves():
                 f"{case.key}: curve_display key '{curve_id}' has mnemonic "
                 f"'{mnemonic}' not in supported_curves {case.supported_curves}"
             )
+
+
+# ---- unit contract (#20) --------------------------------------------------------------------
+
+
+def test_a_unit_row_that_disagrees_with_the_contract_fails_generation(tmp_path):
+    text = (FIXTURES / "wf_bl1d_sample.RSM").read_text(encoding="utf-8")
+    # FOPR's column, relabelled as a reservoir rate: same width, so the layout still parses.
+    tampered = text.replace(" SM3/DAY      SM3          BARSA", " RM3/DAY      SM3          BARSA", 1)
+    assert tampered != text
+
+    artifact = _run_with_fixture(tmp_path, _wf_bl1d_fixture_case(), text=tampered)
+
+    assert artifact["status"] == "error"
+    assert artifact["series"] == []
+    assert "FOPR is in RM3/DAY, expected SM3/DAY" in artifact["notes"]
+
+
+def test_a_time_axis_not_in_days_fails_generation(tmp_path):
+    text = (FIXTURES / "wf_bl1d_sample.RSM").read_text(encoding="utf-8")
+    tampered = text.replace(" DAYS         YEARS", " HOURS        YEARS")
+    assert tampered != text
+
+    artifact = _run_with_fixture(tmp_path, _wf_bl1d_fixture_case(), text=tampered)
+
+    assert artifact["status"] == "error"
+    assert "TIME is in HOURS" in artifact["notes"]
+
+
+def test_a_deck_that_is_not_metric_fails_generation(tmp_path):
+    case = _wf_bl1d_fixture_case()
+    case = dataclasses.replace(case, deck=case.deck.replace("\nMETRIC\n", "\nFIELD\n"))
+
+    artifact = _run_with_fixture(tmp_path, case)
+
+    assert artifact["status"] == "error"
+    assert "not METRIC" in artifact["notes"]
+
+
+def test_a_mapped_vector_without_a_contract_fails_generation(tmp_path):
+    case = _wf_bl1d_fixture_case()
+    # YEARS is in every summary; pretend a case drew it on a panel, with no contract for it.
+    from opm_flow_tool import vectors
+
+    original = vectors.METRIC_VECTORS.pop("YEARS")
+    try:
+        case = dataclasses.replace(
+            case,
+            curve_display={**case.curve_display, "YEARS": {"panelKey": "diagnostics", "curveKey": "opm-years", "label": "OPM Flow — Years"}},
+        )
+        artifact = _run_with_fixture(tmp_path, case)
+    finally:
+        vectors.METRIC_VECTORS["YEARS"] = original
+
+    assert artifact["status"] == "error"
+    assert "YEARS has no unit contract" in artifact["notes"]
+
+
+def test_the_cli_exits_nonzero_when_an_artifact_fails(tmp_path, monkeypatch):
+    from opm_flow_tool import cli
+
+    case = _wf_bl1d_fixture_case()
+    run_dir = tmp_path / "runs" / case.key
+    run_dir.mkdir(parents=True)
+    (run_dir / "WF_BL1D.RSM").write_text("not a summary", encoding="utf-8")
+    monkeypatch.setitem(cli.CASES, case.key, case)
+
+    code = cli.main([
+        "build-artifacts", case.key,
+        "--artifact-dir", str(tmp_path / "artifacts"),
+        "--run-root", str(tmp_path / "runs"),
+    ])
+
+    assert code == 1
+
+
+def test_build_artifact_records_provenance(tmp_path):
+    artifact = _run_with_fixture(tmp_path, _wf_bl1d_fixture_case())
+
+    assert artifact["schemaVersion"] == 2
+    provenance = artifact["provenance"]
+    assert provenance["deckSource"] == "tools/opm_flow/opm_flow_tool/cases.py"
+    assert "build-artifacts wf_bl1d" in provenance["replay"]
+    assert "AGPL-3.0" in provenance["origin"]

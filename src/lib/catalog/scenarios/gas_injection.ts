@@ -11,8 +11,18 @@ export const gas_injection: Scenario = {
         parameterSummary: '1D gas–oil displacement · gas breakthrough · gas-oil fractional-flow reference',
     },
     description: 'Gas injector displacing oil in a 1D homogeneous reservoir; no initial free gas. The numerical gas front sharpens toward the analytical solution as grid resolution increases.',
-    analyticalMethodSummary: 'Fractional-flow solution with Welge shock construction for gas-oil displacement — predicts gas breakthrough timing and post-breakthrough recovery. The base case is also graded, outside this chart, against OPM Flow on the identical model: cumulative oil and injected gas agree within 0.05 %, and gas breaks through in the same 170–180 day window.',
+    analyticalMethodSummary: 'Fractional-flow solution with Welge shock construction for gas-oil displacement — predicts gas breakthrough timing and post-breakthrough recovery. The base case is also run in OPM Flow on the identical model, shown as the OPM Flow reference curves: cumulative oil and injected gas agree within 0.05 %, and gas breaks through in the same 170–180 day window.',
     analyticalMethodReference: 'Buckley and Leverett (1942); Welge (1952) — applied to gas-oil system.',
+    // OPM Flow on the base case: the small-direct twin that
+    // `three_phase_gas_injection_matches_opm_flow_twin` grades the engine
+    // against, so the chart and the engine gate read the same Flow run. It
+    // carries its own PVI mapping (FVIT over the deck's pore volume), so it
+    // stays on the chart on the default PVI axis.
+    referenceSources: [{
+        kind: 'opm-flow',
+        artifactKeys: ['gas_injection'],
+        artifactVariantLabels: { gas_injection: 'base' },
+    }],
     chartLayoutKey: 'gas_oil_bl',
     // Scenario-owned comparison presentation. The generic renderer does not
     // infer this from gas parameters or scenario keys.

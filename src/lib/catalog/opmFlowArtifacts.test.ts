@@ -16,6 +16,7 @@ import { getScenario, listScenarios } from './scenarios';
 const PARSED_BASELINE = [
     'wf_bl1d', 'spe1_gas_injection', 'gas_drive', 'wf_gravity',
     'wf_numerics', 'wf_numerics_fine', 'dep_gas_pz', 'dep_gas_pz_geopressured',
+    'gas_injection', 'dep_pvt_correlation', 'dep_pvt_lab_report',
 ];
 
 describe('OPM Flow precomputed artifacts', () => {
@@ -25,7 +26,10 @@ describe('OPM Flow precomputed artifacts', () => {
         expect(artifacts.map((artifact) => artifact.scenarioKey).sort()).toEqual([
             'dep_gas_pz',
             'dep_gas_pz',
+            'dep_pvt',
+            'dep_pvt',
             'gas_drive',
+            'gas_injection',
             'spe1_gas_injection',
             'wf_bl1d',
             'wf_gravity',
@@ -33,7 +37,7 @@ describe('OPM Flow precomputed artifacts', () => {
             'wf_numerics',
         ]);
         for (const artifact of artifacts) {
-            expect(artifact.schemaVersion).toBe(1);
+            expect(artifact.schemaVersion).toBe(2);
             expect(artifact.sourceType).toBe('opm-flow-precomputed');
             expect(artifact.deckHash.length).toBeGreaterThan(8);
             expect(artifact.units.time).toBe('days');
@@ -52,6 +56,10 @@ describe('OPM Flow precomputed artifacts', () => {
         expect(xAxis!.timeDays).toHaveLength(artifact!.series[0].data.length);
         expect(xAxis!.pvi!).toHaveLength(xAxis!.timeDays.length);
         expect(xAxis!.cumulativeInjectionM3!).toHaveLength(xAxis!.timeDays.length);
+        // The cumulative-injection axis is the simulation's surface volume, so it
+        // comes from FWIT, not from the FVIT behind PVI (#20).
+        expect(xAxis!.cumulativeSurfaceInjectionCurve).toBe('FWIT');
+        expect(xAxis!.cumulativeInjectionSm3!).toHaveLength(xAxis!.timeDays.length);
         // Monotone, as a cumulative injection must be.
         expect(xAxis!.pvi!.every((value, index) => index === 0 || value >= xAxis!.pvi![index - 1])).toBe(true);
 

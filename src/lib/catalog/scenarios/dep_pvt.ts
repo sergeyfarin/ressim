@@ -103,8 +103,18 @@ export const dep_pvt: Scenario = {
         parameterSummary: 'Constant-rate black-oil blowdown · two PVT tables share one calibration point · time to bubble point differs 2.4x',
     },
     description: 'Constant-rate blowdown of a black-oil reservoir starting 130 bar above the bubble point.',
-    analyticalMethodSummary: 'No closed-form overlay is drawn: the run crosses the bubble point, and the Dietz PSS depletion model used elsewhere in this catalog is oil-only and does not represent gas liberation. Two quantitative checks stand in its place. The undersaturated leg must obey dP/dt = -q_res/(V_p·c_t), and does — the 2.48x ratio in c_t between the two tables produces a measured 2.4x ratio in time-to-bubble-point. And the Havlena-Odeh material-balance ratio on the chart is a genuine self-check: it holds within 2% of 1.0 for the whole run.',
+    analyticalMethodSummary: 'No closed-form overlay is drawn: the run crosses the bubble point, and the Dietz PSS depletion model used elsewhere in this catalog is oil-only and does not represent gas liberation. OPM Flow runs both fluid models, shown as the OPM Flow reference curves. Two further quantitative checks stand beside them. The undersaturated leg must obey dP/dt = -q_res/(V_p·c_t), and does — the 2.48x ratio in c_t between the two tables produces a measured 2.4x ratio in time-to-bubble-point. And the Havlena-Odeh material-balance ratio on the chart is a genuine self-check: it holds within 2% of 1.0 for the whole run.',
     analyticalMethodReference: 'Standing (1947); McCain, "The Properties of Petroleum Fluids" (undersaturated oil compressibility 5-30e-6 psi^-1); Havlena & Odeh (1963), The Material Balance as an Equation of a Straight Line.',
+    // OPM Flow on both rungs of the ladder: decks generated from this
+    // scenario's own tables (opm/reference-decks/small-direct/dep-pvt-*). Flow
+    // reaches the bubble point at 36 d and 88 d as ResSim does, and the two
+    // agree within 0.31 bar anywhere in the reservoir at every report step.
+    referenceSources: [{
+        kind: 'opm-flow',
+        artifactKeys: ['dep_pvt_correlation', 'dep_pvt_lab_report'],
+        // No `artifactVariantLabels`: each deck already names its rung
+        // ("… (c_o = 1.0e-4)") in every curve label, as dep_gas_pz's do.
+    }],
     chartLayoutKey: 'gas',
     /**
      * Pressure leads, and the balance that grades it follows immediately.
