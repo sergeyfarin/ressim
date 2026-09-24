@@ -110,6 +110,22 @@ with `--case bo-1d-10` / `--case bo-1d-40`.
 Wall times are single observations and include Flow's process start (~0.5 s). Flow's own
 timings are in each run's `CASE.INFOSTEP`.
 
+### Top-branch Bo above the bubble point (#38, `1b7853e`)
+
+`bo-1d-10` / `bo-1d-40` were regenerated after #38. Their undersaturated PVTO rows come from ResSim's
+`interpolate_oil`, which above the highest bubble point had extrapolated `Bo` with the scalar `c_o`
+instead of following the table's own 200-bar row. Against the new Flow runs:
+
+| Case | Simulator | Substeps | Newton | max \|Δp\| bar | max \|ΔSg\| | Cumulatives vs Flow |
+|---|---|---|---|---|---|---|
+| bo-1d-10 | Flow | 22 | 52 | | | |
+| | ResSim sparse / dense | 22 / 22 | 84 / 84 | 0.0009 / 0.0005 | 0.00000 | FOPT 0.00%, FGPT 0.00% |
+| bo-1d-40 | Flow | 23 | 54 | | | |
+| | ResSim sparse / dense | 22 / 22 | 91 / 90 | 0.274 / 0.274 | 0.00033 | FOPT 0.05%, FGPT 0.12% |
+
+The bo-1d-40 pressure maximum is a transient: Flow takes one more substep. The final averages agree
+to 0.008 bar (`docs/BLACK_OIL_VALIDATION.md` §2). `go-1d-50` has no PVT table and is unchanged.
+
 ### `gas_injection` twin (#12)
 
 `go-1d-50` is the `gas_injection` catalog scenario's base case, written by

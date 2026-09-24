@@ -153,22 +153,29 @@ below the bubble point with liberated free gas, so a degenerate state cannot pas
 guard asserts the table is thermodynamically stable (`dBo/dp < Bg·dRs/dp` below the bubble
 point).
 
-### Baselines at `30bde0d` (both default gates, conservative IMPES from #37)
+### Baselines at `1b7853e` (both default gates; top-branch Bo above the bubble point, #38)
 
 | nx | IMPES p / Rs / Bo / Sg | FIM p / Rs / Bo / Sg | OPM Flow p / Rs / Sg |
 |---|---|---|---|
-| 5 | 129.0519 / 10.81038 / 1.102892 / 0.024359 | 129.0867 / 10.81734 / 1.102920 / 0.024344 | |
-| 10 | 129.7480 / 10.94959 / 1.103453 / 0.023417 | 129.7853 / 10.95706 / 1.103483 / 0.023399 | 129.7852 / 10.95703 / 0.023400 |
-| 20 | 130.1254 / 11.02507 / 1.103757 / 0.022909 | 130.1644 / 11.03289 / 1.103788 / 0.022889 | |
-| 40 | 130.3250 / 11.06500 / 1.103917 / 0.022641 | 130.3631 / 11.07263 / 1.103948 / 0.022622 | 130.3652 / 11.07304 / 0.022619 |
+| 5 | 129.1222 / 10.82444 / 1.102949 / 0.024266 | 129.1342 / 10.82685 / 1.102959 / 0.024281 | |
+| 10 | 129.8236 / 10.96472 / 1.103514 / 0.023319 | 129.8390 / 10.96780 / 1.103526 / 0.023330 | 129.8389 / 10.96777 / 0.023330 |
+| 20 | 130.2046 / 11.04092 / 1.103820 / 0.022807 | 130.2210 / 11.04420 / 1.103834 / 0.022816 | |
+| 40 | 130.4062 / 11.08123 / 1.103983 / 0.022537 | 130.4234 / 11.08469 / 1.103997 / 0.022545 | 130.4151 / 11.08302 / 0.022556 |
 
 - Both solvers contract monotonically in every quantity.
-- FIM matches Flow to 0.002 bar and 3e-6 Sg. IMPES sits 0.04 bar and 0.1 % Sg from Flow at
-  nx = 40, and its oil, gas and water balance errors are at roundoff (~1e-12 relative).
-- The FIM columns are unchanged from `c225102`. The IMPES columns at `c225102` (2 bar cap, before
-  #37) read 128.8256 / 129.5157 / 129.8887 / 130.0862 bar and Sg 0.024714 / 0.023777 / 0.023273 /
-  0.023008, with a +3.6 % oil balance error at nx = 10. They are superseded by the table above,
-  which is closer to Flow at a 37× coarser pressure cap.
+- FIM matches Flow to 1e-4 bar at nx = 10 and 0.008 bar / 1.1e-5 Sg at nx = 40. IMPES sits
+  0.009 bar and 0.08 % Sg from Flow at nx = 40, and its oil, gas and water balance errors are at
+  roundoff (~1e-12 relative).
+- Flow is re-run on regenerated `small-direct` `bo-1d-*` decks. Their undersaturated PVTO rows are
+  written by ResSim's own `interpolate_oil`, so before #38 they had encoded its `c_o` extrapolation
+  above the bubble point. This column's 200-bar row (Bo 1.119) does not follow `c_o`, which is why
+  this case moved while SPE1 and the three-phase acceptance cases did not.
+- Superseded: the table at `30bde0d` (conservative IMPES, #37, before #38) read FIM 129.0867 /
+  129.7853 / 130.1644 / 130.3631 bar, IMPES 129.0519 / 129.7480 / 130.1254 / 130.3250 bar, and
+  Flow 129.7852 / 130.3652 bar at nx = 10 / 40. It is superseded because the table itself changed.
+  The solver-to-Flow agreement is the same order on both. The IMPES columns at `c225102` (2 bar
+  cap, before #37) read 128.8256 / 129.5157 / 129.8887 / 130.0862 bar and Sg 0.024714 / 0.023777 /
+  0.023273 / 0.023008, with a +3.6 % oil balance error at nx = 10.
 - Flow values are pore-volume-weighted averages of `PRESSURE`, `RS` and `SGAS` at report
   step 20, from the same decks. The FIM/Flow cell and convergence comparison is in the
   small-direct README.
