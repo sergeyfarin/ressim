@@ -331,7 +331,7 @@ was reproduced on commit `5ebdc78` with a clean tree; the replay command is next
 | Closed depletion | — | yes | water/oil inventory drift `+8.9e-10` / `-1.2e-9` relative over 8 steps | accumulation, accepted-source integration | self-consistency (no sources) | **pass** |
 | Gas reporting / `dep_gas_pz` | [#25](https://github.com/sergeyfarin/ressim/issues/25) | **no** | closure `+0.0109` (issue claimed `+0.0885`); recovery `0.9280` vs documented `0.928` | `record_fim_step_report` gas conversion | scenario's own volumetric GIIP | **not reproduced — close** |
 | Black-oil depletion FIM vs IMPES | [#11](https://github.com/sergeyfarin/ressim/issues/11) | yes | `Sg(nx=40)` FIM `0.030179` vs IMPES `0.033171` → **9.0 %** | shared PVT/flash, FIM timestep ladder | neither backend is truth; both self-consistent under refinement | **independent** |
-| Multi-completion gravity | [#10](https://github.com/sergeyfarin/ressim/issues/10) | **no** (reconstruction) | no warning on either solver; IMPES/FIM agree to 1 % on pressure, 5e-3 on peak `Sw` | shared well geometry, Peaceman PI, `refresh_well_head_offsets` | no independent geometry oracle | **not reproduced; cause/applicability inconclusive** |
+| Multi-completion gravity | [#10](https://github.com/sergeyfarin/ressim/issues/10) | **no** (reconstruction) | no warning on either solver; IMPES/FIM agree to 1 % on pressure, 5e-3 on peak `Sw` | shared well geometry, Peaceman PI, `refresh_well_head_offsets` | no independent geometry oracle | **not reproduced; cause/applicability inconclusive.** Superseded 2026-09-24: the exact replay reproduced it; four IMPES multi-completion defects, fixed ([#10](https://github.com/sergeyfarin/ressim/issues/10), `docs/CASE_LIBRARY_ROADMAP.md`) |
 | SPE1 / gas injection & appearance | [#12](https://github.com/sergeyfarin/ressim/issues/12) | n/a | `spe1_full_horizon_matches_published_reference` and `spe1_areal_refinement_reference_error_replay` both pass (release) | FIM Newton/assembly | published SPE1 reference | **scenario/frontend scope — independent** |
 | Waterflood report-step sensitivity + Flow oil bias | [#21](https://github.com/sergeyfarin/ressim/issues/21) | yes (2026-09-23, below) | the 8–10% gap does **not** reproduce: matched-step FOPT within 0.05–0.36% on all three controls, **0.002%** once the decks' SWOF and Bo reference match ResSim | temporal discretization + two deck-mapping differences | source-pinned Flow on the tracked decks | **resolved — no solver defect** |
 
@@ -376,7 +376,8 @@ reconstruction, but its cause and applicability remain inconclusive. #25 did not
 
 - #10 was tested through a **reconstruction** of the `wf_gravity` geometry, not a replay of its
   shipped deck. A negative result here does not prove the shipped scenario is clean. Agreement
-  between two solvers that reuse the same geometry cannot exclude an error in that shared code.
+  between two solvers that reuse the same geometry cannot exclude an error in that shared code. *(The
+  exact replay, run 2026-09-24, did reproduce it. The cause was IMPES-only, not shared geometry.)*
 - #21 was not attempted by F6; it was executed separately on 2026-09-23 (section below).
 - #11's 9 % gap is measured, not explained. Nothing here identifies a mechanism. *(Explained
   2026-09-23: an unstable PVT table in the test fixture. See section 2.)*

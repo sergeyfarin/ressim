@@ -21,6 +21,8 @@ pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
             remaining_dt
         };
         let mut retry_count = 0;
+        // The last rejected trial whose cut came from the step-change limits: (dt, factor).
+        let mut previous_limited_trial: Option<(f64, f64)> = None;
         let actual_dt;
         let accepted;
 
@@ -29,6 +31,7 @@ pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
 
             let step = sim.calculate_fluxes(trial_dt);
             let stable_dt_factor = step.stable_dt_factor;
+            let change_factor = step.change_factor;
             let solver_converged = step.converged;
             let solver_iterations = step.linear_iterations;
 
@@ -45,7 +48,19 @@ pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
                 break;
             }
 
-            let next_dt = trial_dt * retry_factor * 0.9;
+            // Only a rejection the dt-scaling limits alone decided can measure how the change
+            // responds to dt. A control switch halves dt whatever dt is, and a solver or
+            // physicality failure is not a change measurement at all.
+            let limited_by_step_change =
+                solver_converged && pressure_physical && change_factor <= retry_factor;
+            let next_dt = if limited_by_step_change {
+                trial_dt
+                    * sublinear_retry_factor(previous_limited_trial, trial_dt, change_factor)
+                    * 0.9
+            } else {
+                trial_dt * retry_factor * 0.9
+            };
+            previous_limited_trial = limited_by_step_change.then_some((trial_dt, change_factor));
             retry_count += 1;
 
             if !next_dt.is_finite() || next_dt <= 1e-12 {
@@ -102,6 +117,52 @@ pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
             time_stepped, target_dt_days
         );
     }
+}
+
+/// Below this measured exponent the step-change response is treated as saturated.
+const SATURATED_RESPONSE_EXPONENT: f64 = 0.5;
+/// Floor on the exponent used to extrapolate a saturated response, so one retry never jumps by
+/// more than `factor^10`.
+const MIN_RESPONSE_EXPONENT: f64 = 0.1;
+/// The same floor `calculate_fluxes` puts on its own dt factor.
+const MIN_RETRY_FACTOR: f64 = 0.01;
+
+/// The dt factor for the next retry after a trial the step-change limits rejected.
+///
+/// The limits scale dt by `limit / change`, which assumes the change grows linearly with dt. A
+/// transient that completes within any practical dt breaks that: a fully perforated producer at
+/// 5 D drains 100 bar to its BHP in about a microsecond, so the pressure and rate changes stay
+/// pinned near 100 % however far dt falls, every retry shrinks dt by only 0.75 · 0.9, and the
+/// 32-retry budget runs out before dt reaches the transient (#10). Two consecutive trials that
+/// the dt-scaling limits rejected measure the response's actual exponent
+/// `a = ln(c₂/c₁) / ln(dt₂/dt₁)`, `c = 1/change_factor`. The control-switch halving is excluded:
+/// it is 0.5 whatever dt is, so it reads as a zero exponent, and taking it for one shrank dt by
+/// 0.5¹⁰ per retry until a limiter-off waterflood crawled for hours.
+/// A clearly sublinear one (`a < 0.5`) is extrapolated with that exponent. Anything closer to
+/// linear keeps the linear rule, so a step that was accepted within two trials, or whose
+/// response scales normally, takes exactly the dt it did before.
+fn sublinear_retry_factor(
+    previous_limited_trial: Option<(f64, f64)>,
+    trial_dt: f64,
+    retry_factor: f64,
+) -> f64 {
+    let Some((previous_dt, previous_factor)) = previous_limited_trial else {
+        return retry_factor;
+    };
+    if !(retry_factor > 0.0
+        && retry_factor < 1.0
+        && previous_factor > 0.0
+        && trial_dt < previous_dt)
+    {
+        return retry_factor;
+    }
+    let exponent = (previous_factor / retry_factor).ln() / (trial_dt / previous_dt).ln();
+    if !exponent.is_finite() || exponent >= SATURATED_RESPONSE_EXPONENT {
+        return retry_factor;
+    }
+    retry_factor
+        .powf(1.0 / exponent.max(MIN_RESPONSE_EXPONENT))
+        .max(MIN_RETRY_FACTOR)
 }
 
 impl ReservoirSimulator {

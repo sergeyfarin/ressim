@@ -320,10 +320,7 @@ describe('wf_gravity measured behaviour', () => {
         const cellDz = Number(scenario?.params.cellDz);
         const allLayers = Array.from({ length: nz }, (_, k) => k);
         // Short horizon: what this test measures is the head profile the wasm
-        // API produces, not a recovery number. Note that this configuration
-        // still trips IMPES's pressure recovery at t≈0 — that failure is
-        // reproducible on the pre-datum engine and is tracked separately in
-        // TODO.md, so the warning is deliberately not asserted here.
+        // API produces, not a recovery number.
         const fullyPerforatedParams = { steps: 20 };
 
         const fullyPerforated = runVariant('gravity_number', 'ng_base', {
@@ -331,6 +328,7 @@ describe('wf_gravity measured behaviour', () => {
             producerKLayers: allLayers,
             params: fullyPerforatedParams,
         });
+        expect(fullyPerforated.warning).toBe('');
 
         // Default datum is the shallowest completion, so the head runs from zero
         // at the top of the section to ρ·g·H at its base. With water standing in
@@ -369,6 +367,31 @@ describe('wf_gravity measured behaviour', () => {
             params: { ...fullyPerforatedParams, gravityEnabled: false },
         });
         expect(noGravity.headOffsets.every((head) => head === 0)).toBe(true);
+    }, 240_000);
+
+    it('runs fully perforated wells on IMPES and agrees with FIM (#10)', async () => {
+        await ensureWasmReady();
+
+        // Both wells perforated in all twenty layers, the full 420-day base
+        // schedule. IMPES used to exhaust its pressure-recovery budget here at
+        // t = 120 d (and at t ≈ 0 in `ng_gravity`); once it ran, it reported
+        // 0.83 recovery at 1 PVI against FIM's 0.66, because its pressure
+        // equation let the producer's upper completions crossflow while
+        // transport shut them. FIM, which shuts them in both places, is the
+        // reference here.
+        const nz = Number(getScenario('wf_gravity')?.params.nz);
+        const allLayers = Array.from({ length: nz }, (_, k) => k);
+        const perforation = { injectorKLayers: allLayers, producerKLayers: allLayers };
+        const impes = runVariant('gravity_number', 'ng_base', perforation);
+        const fim = runVariant('gravity_number', 'ng_base', {
+            ...perforation,
+            params: { fimEnabled: true },
+        });
+
+        expect(impes.warning).toBe('');
+        expect(fim.warning).toBe('');
+        expect(Math.abs(impes.recoveryAtOnePvi - fim.recoveryAtOnePvi)).toBeLessThan(0.01);
+        expect(Math.abs(impes.breakthroughPvi - fim.breakthroughPvi)).toBeLessThan(0.03);
     }, 240_000);
 
     it('needs vertical communication before gravity can segregate the fluids', async () => {

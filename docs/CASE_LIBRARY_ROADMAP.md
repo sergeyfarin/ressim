@@ -425,11 +425,44 @@ The offset is lagged to the state entering the step, so it is a constant of the 
 Jacobian is untouched. It is identically zero without gravity and zero for a single-completion well,
 so nothing in this scenario or any other committed case moved.
 
-**Still blocking multi-layer gravity cases (T7.16, WAG, aquifer work).** The datum is correct, but a
-fully perforated well under gravity still trips IMPES's pressure recovery at t≈0 — reproduced on the
-pre-datum engine, so it is a separate defect, tracked in
-[#10](https://github.com/sergeyfarin/ressim/issues/10). Single-layer completions remain
-the only usable configuration for a gravity case until that is fixed.
+**Fully perforated wells under gravity — fixed 2026-09-24 ([#10](https://github.com/sergeyfarin/ressim/issues/10)).** Replaying the shipped
+deck with both wells perforated in all 20 layers, every sensitivity variant, on both solvers: IMPES
+failed in four gravity variants (`ng_base` and `drho_base` at t = 120 d, `drho_strong` at 76 d,
+`ng_gravity` at 3e-5 d, `kv_tight_gravity` at 0.015 d) and in `kv_tight_nogravity` at 4.8 d. FIM
+was clean everywhere. The 20-step replay in the scenario test and the earlier reconstruction both
+stopped short of the failures. Gravity was one trigger, not the cause. Four IMPES defects sat
+behind them, each specific to multi-completion wells:
+
+1. **The well-rate limiter measured each completion alone.** A rate-controlled well's fixed total
+   is split across its completions, and the split moves with pressure. A completion going from 0
+   to 7.5 m³/day read as a 750 % change against the 1 m³/day floor and cut dt tenfold at any dt,
+   while the well's total never moved. The limiter now measures each physical well's summed rate.
+2. **The pressure equation kept wrong-way completions open.** Transport shuts a producer
+   completion below its connection pressure, as FIM does. The pressure equation still applied
+   `PI·(p − p_conn)`, so the producer's upper completions, under the wellbore head, crossflowed
+   back into the formation in the pressure solve only. With oil the two-phase residual, IMPES then
+   reported 64 m³/day produced against 40 injected at steady pressure, and 0.85 recovery at 1 PVI
+   against an inventory drop of 0.44 (FIM 0.56). BHP completions are now active-set terms.
+3. **A multi-completion rate well's split was explicit.** Computed from the old pressures and held
+   fixed, it went bang-bang when the layers barely communicate: 37 m³/day into a layer one substep,
+   none the next. The reversals near the injector destroyed water at the saturation clamps, 42 %
+   of pore volume on `kv_tight_nogravity`. The well's BHP is now an unknown of the pressure system,
+   fixed by its rate (`impes/wells.rs`). A single-completion rate well keeps its fixed source.
+4. **Retries assumed changes scale linearly with dt.** A 5 D fully perforated producer drains
+   100 bar in about a microsecond, so the pressure and rate changes stayed pinned near 100 % however
+   far dt fell, and 32 retries at ×0.675 ran out first. Two consecutive limited trials now measure
+   the response's exponent, and a clearly sublinear one (< 0.5) is extrapolated with it. Only the
+   dt-scaling limits count: the fixed halving on a control switch reads as a zero exponent and,
+   taken for one, stalled a limiter-off waterflood.
+
+After the fix every variant runs clean on both solvers, and fully perforated IMPES matches FIM:
+recovery at 1 PVI 0.664 / 0.664 (base), 0.555 / 0.559 (`ng_gravity`), 0.611 / 0.611
+(`drho_strong`), breakthrough within 0.02 PVI. Fixes 1–3 leave a single-completion run
+bit-identical. Fix 4 changes the dt path only where two limited rejections in a row respond
+sublinearly. On this scenario's single-completion wells, against `57a2fbd`: the base case and
+`kv_tight_gravity` are identical in substeps and recovery. `ng_gravity` recovers 0.38133 at 1 PVI
+against 0.38145, in 1502 substeps against 1465. The scenario tests, including the OPM cross-check,
+pass unchanged. Multi-layer completions are usable under gravity.
 
 **OPM Flow cross-check (added 2026-08-01).** The base case is now also an `OpmCase` deck, run with
 flow 2026.04 and bundled as `src/lib/catalog/opm-flow-results/wf_gravity.json`. OPM: breakthrough

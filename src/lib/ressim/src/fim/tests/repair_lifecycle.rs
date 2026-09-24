@@ -554,8 +554,10 @@ fn gravity_section(fim: bool, fully_perforated: bool) -> ReservoirSimulator {
 /// Measured at `5ebdc78` over 12 days: no solver warning on either backend for either completion
 /// strategy, saturations inside `[s_wc, 1]`, and pressures bounded. Fully perforated, IMPES and
 /// FIM agree to about 1 % on the pressure envelope and to 5e-3 on peak water saturation. This
-/// reconstruction does not reproduce #10; its cause remains inconclusive without an independent
-/// geometry oracle or an exact replay.
+/// reconstruction did not reproduce #10. The exact replay of the shipped `wf_gravity` deck did:
+/// four IMPES-only multi-completion defects, fixed and pinned by
+/// `physics_wellbore_fully_perforated_rate_controlled_well_does_not_stall_impes` and the
+/// `wf_gravity` scenario test (`docs/CASE_LIBRARY_ROADMAP.md`).
 #[test]
 fn fim_repair_multi_completion_gravity_stays_physical_on_both_solvers() {
     for fully_perforated in [false, true] {

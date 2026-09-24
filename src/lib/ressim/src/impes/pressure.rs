@@ -3,8 +3,9 @@ use sprs::{CsMat, TriMatI};
 use std::f64;
 
 use crate::impes::closure::CellMasses;
+use crate::impes::wells::{MAX_ACTIVE_SET_PASSES, WellSystem};
 use crate::solvers::{LinearSolveParams, solve_with_default};
-use crate::well_control::{ResolvedWellControl, WellControlDecision};
+use crate::well_control::{ResolvedWellControl, WellControlDecision, WellControlGroupKey};
 use crate::{InjectedFluid, ReservoirSimulator};
 
 /// Conversion factor from mD·m²/(m·cP) to m³/day/bar.
@@ -21,6 +22,8 @@ const VOLUME_BALANCE_PRESSURE_TOLERANCE_BAR: f64 = 1e-4;
 /// Floor on `c_t` [1/bar] when converting a volume residual to pressure, so a cell with almost
 /// no storage is not held to roundoff.
 const VOLUME_BALANCE_MIN_COMPRESSIBILITY: f64 = 1e-7;
+/// Converged when every implicit rate well meets its target to this rate [m³/day].
+const VOLUME_BALANCE_RATE_TOLERANCE_M3_DAY: f64 = 1e-6;
 
 /// Per-cell component changes over one substep, fluxes and wells included.
 #[derive(Clone, Debug, PartialEq)]
@@ -63,6 +66,9 @@ pub(crate) struct PressureStep {
     pub(crate) deltas: TransportDeltas,
     pub(crate) well_controls: Vec<Option<ResolvedWellControl>>,
     pub(crate) stable_dt_factor: f64,
+    /// The part of `stable_dt_factor` that scales with dt: the saturation, well-throughput,
+    /// pressure and rate limits, without the fixed halving on a control-mode switch.
+    pub(crate) change_factor: f64,
     /// Every linear solve converged and, in three-phase mode, so did the volume balance.
     pub(crate) converged: bool,
     pub(crate) linear_iterations: usize,
@@ -87,6 +93,7 @@ impl ReservoirSimulator {
                 deltas: TransportDeltas::zeros(0),
                 well_controls: vec![],
                 stable_dt_factor: 1.0,
+                change_factor: 1.0,
                 converged: true,
                 linear_iterations: 0,
             };
@@ -98,7 +105,6 @@ impl ReservoirSimulator {
         let mut vals: Vec<f64> = Vec::with_capacity(n_cells * 7);
 
         let mut b_rhs = DVector::<f64>::zeros(n_cells);
-        let mut diag_inv = DVector::<f64>::zeros(n_cells);
         let mut accumulation = vec![0.0f64; n_cells];
         let mut diag_positions = vec![0usize; n_cells];
 
@@ -107,6 +113,7 @@ impl ReservoirSimulator {
             .iter()
             .map(|w| self.resolve_well_control_for_pressures(w, &self.pressure))
             .collect();
+        let mut well_system = self.build_well_system(&well_controls);
 
         for k in 0..self.nz {
             for j in 0..self.ny {
@@ -244,22 +251,16 @@ impl ReservoirSimulator {
                         b_rhs[id] += explicit_rhs;
                     }
 
+                    // Only single-completion rate wells enter as a fixed source here. BHP
+                    // completions and multi-completion rate wells are `WellSystem` terms.
                     for (w_idx, w) in self.wells.iter().enumerate() {
-                        if w.i == i && w.j == j && w.k == k {
-                            if let Some(ref control) = well_controls[w_idx] {
-                                match &control.decision {
-                                    WellControlDecision::Disabled => {}
-                                    WellControlDecision::Rate { q_m3_day } => {
-                                        b_rhs[id] -= q_m3_day;
-                                    }
-                                    WellControlDecision::Bhp { bhp_bar } => {
-                                        if w.productivity_index.is_finite() && bhp_bar.is_finite() {
-                                            diag += w.productivity_index;
-                                            b_rhs[id] += w.productivity_index
-                                                * w.connection_pressure_bar(*bhp_bar);
-                                        }
-                                    }
-                                }
+                        if w.i == i && w.j == j && w.k == k && well_system.has_fixed_rate(w_idx) {
+                            if let Some(ResolvedWellControl {
+                                decision: WellControlDecision::Rate { q_m3_day },
+                                ..
+                            }) = well_controls[w_idx]
+                            {
+                                b_rhs[id] -= q_m3_day;
                             }
                         }
                     }
@@ -268,45 +269,59 @@ impl ReservoirSimulator {
                     rows.push(id);
                     cols.push(id);
                     vals.push(diag);
-                    diag_inv[id] = if diag.abs() > f64::EPSILON {
-                        1.0 / diag
-                    } else {
-                        1.0
-                    };
                 }
             }
         }
 
-        let mut tri = TriMatI::<f64, usize>::new((n_cells, n_cells));
-        for idx in 0..vals.len() {
-            tri.add_triplet(rows[idx], cols[idx], vals[idx]);
+        // Solve with the active well terms, then let the solution revise which completions
+        // flow and which implicit wells hit their BHP limit, until both settle
+        // (`impes/wells.rs`, #10).
+        let mut x0 = well_system.initial_guess(&self.pressure);
+        let mut linear_converged = true;
+        let mut linear_iterations = 0;
+        let mut solution;
+        let mut operator;
+        let mut active_set_passes = 0;
+        loop {
+            operator = well_system.assemble(&rows, &cols, &vals, &b_rhs, &diag_positions);
+            let (ext_rows, ext_cols, ext_vals, ext_rhs, ext_diag_inv) = &operator;
+            let n = well_system.unknowns();
+            let mut tri = TriMatI::<f64, usize>::new((n, n));
+            for idx in 0..ext_vals.len() {
+                tri.add_triplet(ext_rows[idx], ext_cols[idx], ext_vals[idx]);
+            }
+            let a_mat: CsMat<f64> = tri.to_csr();
+            let solver_result = solve_with_default(LinearSolveParams {
+                matrix: &a_mat,
+                rhs: ext_rhs,
+                preconditioner_inv_diag: ext_diag_inv,
+                initial_guess: &x0,
+                tolerance: 1e-7,
+                max_iterations: 1000,
+            });
+            linear_converged &= solver_result.converged;
+            linear_iterations += solver_result.iterations;
+            solution = solver_result.solution;
+            active_set_passes += 1;
+            if !well_system.update(&solution) || active_set_passes >= MAX_ACTIVE_SET_PASSES {
+                break;
+            }
+            x0 = solution.clone();
         }
-        let a_mat: CsMat<f64> = tri.to_csr();
+        let well_controls = well_system.step_controls(&well_controls);
+        let cell_solution = DVector::from_iterator(n_cells, solution.iter().take(n_cells).copied());
 
-        let mut x0 = DVector::<f64>::zeros(n_cells);
-        for i in 0..n_cells {
-            x0[i] = self.pressure[i];
-        }
-        let solver_result = solve_with_default(LinearSolveParams {
-            matrix: &a_mat,
-            rhs: &b_rhs,
-            preconditioner_inv_diag: &diag_inv,
-            initial_guess: &x0,
-            tolerance: 1e-7,
-            max_iterations: 1000,
-        });
-        let mut linear_converged = solver_result.converged;
-        let mut linear_iterations = solver_result.iterations;
-
-        let (p_new, deltas, volume_balance_converged) = if self.three_phase_mode {
+        let (p_new, deltas, well_controls, volume_balance_converged) = if self.three_phase_mode {
+            let (ext_rows, ext_cols, ext_vals, _, _) = &operator;
             self.iterate_volume_balance(
-                solver_result.solution,
+                solution,
+                &mut well_system,
                 &well_controls,
                 dt_days,
                 PressureOperator {
-                    rows: &rows,
-                    cols: &cols,
-                    vals: &vals,
+                    rows: ext_rows,
+                    cols: ext_cols,
+                    vals: ext_vals,
                     diag_positions: &diag_positions,
                     accumulation: &accumulation,
                 },
@@ -314,9 +329,8 @@ impl ReservoirSimulator {
                 &mut linear_iterations,
             )
         } else {
-            let p_new = solver_result.solution;
-            let deltas = self.transport_deltas(&p_new, &well_controls, dt_days);
-            (p_new, deltas, true)
+            let deltas = self.transport_deltas(&cell_solution, &well_controls, dt_days);
+            (cell_solution, deltas, well_controls, true)
         };
         let mut max_sat_change = 0.0;
 
@@ -391,7 +405,14 @@ impl ReservoirSimulator {
             1.0
         };
 
-        let mut max_well_rate_rel_change = 0.0;
+        // Rate change is measured per physical well: the summed rate of its completions at the
+        // beginning and end of the substep. A rate-controlled well spreads a fixed total over
+        // its completions, and that split moves with every pressure change. Taken completion
+        // by completion, against a 1 m³/day floor, a completion going from 0 to 7.5 m³/day read
+        // as a 750% change and cut dt tenfold at any dt while the well's total never moved, so
+        // a fully perforated well exhausted the retry budget (#10). For a single-completion
+        // well the per-well sum is the completion's own rate, so nothing else changes.
+        let mut well_rate_totals: Vec<(WellControlGroupKey, f64, f64)> = Vec::new();
         let mut crossed_control_mode = false;
         for w in &self.wells {
             let old_control = self.resolve_well_control_for_pressures(w, &self.pressure);
@@ -415,32 +436,42 @@ impl ReservoirSimulator {
                 })
                 .unwrap_or(0.0);
 
-            let rel = (q_new - q_old).abs() / (q_old.abs() + 1.0);
-            if rel > max_well_rate_rel_change {
-                max_well_rate_rel_change = rel;
+            let key = self.well_control_group_key(w);
+            match well_rate_totals.iter_mut().find(|(k, _, _)| *k == key) {
+                Some((_, old_total, new_total)) => {
+                    *old_total += q_old;
+                    *new_total += q_new;
+                }
+                None => well_rate_totals.push((key, q_old, q_new)),
             }
             if !Self::well_control_mode_matches(old_control, new_control) {
                 crossed_control_mode = true;
             }
         }
+        let max_well_rate_rel_change = well_rate_totals
+            .iter()
+            .map(|(_, q_old, q_new)| (q_new - q_old).abs() / (q_old.abs() + 1.0))
+            .fold(0.0_f64, f64::max);
         let rate_factor = if max_well_rate_rel_change > self.max_well_rate_change_fraction {
             self.max_well_rate_change_fraction / max_well_rate_rel_change
         } else {
             1.0
         };
         let control_transition_factor = if crossed_control_mode { 0.5 } else { 1.0 };
-        let stable_dt_factor = sat_factor
+        // The factors that scale with dt, as opposed to the fixed halving on a control switch.
+        let change_factor = sat_factor
             .min(well_throughput_factor)
             .min(pressure_factor)
-            .min(rate_factor)
+            .min(rate_factor);
+        let stable_dt_factor = change_factor
             .min(control_transition_factor)
             .clamp(0.01, 1.0);
-
         PressureStep {
             p_new,
             deltas,
             well_controls,
             stable_dt_factor,
+            change_factor,
             converged: linear_converged && volume_balance_converged,
             linear_iterations,
         }
@@ -690,22 +721,43 @@ impl ReservoirSimulator {
     /// one for a substep crossing the bubble point, costs iterations rather than mass (#37).
     fn iterate_volume_balance(
         &self,
-        p_initial: DVector<f64>,
-        well_controls: &[Option<ResolvedWellControl>],
+        x_initial: DVector<f64>,
+        well_system: &mut WellSystem,
+        resolved_controls: &[Option<ResolvedWellControl>],
         dt_days: f64,
         operator: PressureOperator<'_>,
         linear_converged: &mut bool,
         linear_iterations: &mut usize,
-    ) -> (DVector<f64>, TransportDeltas, bool) {
+    ) -> (
+        DVector<f64>,
+        TransportDeltas,
+        Vec<Option<ResolvedWellControl>>,
+        bool,
+    ) {
         let n_cells = self.nx * self.ny * self.nz;
+        let n = well_system.unknowns();
         let old_masses: Vec<CellMasses> = (0..n_cells).map(|id| self.cell_masses(id)).collect();
-        let mut p = p_initial;
+        let mut x = x_initial;
         let mut vals = operator.vals.to_vec();
-        let mut residual = DVector::<f64>::zeros(n_cells);
-        let mut diag_inv = DVector::<f64>::zeros(n_cells);
+        let mut residual = DVector::<f64>::zeros(n);
+        let mut diag_inv = DVector::<f64>::zeros(n);
+        for idx in 0..vals.len() {
+            let row = operator.rows[idx];
+            if row >= n_cells && row == operator.cols[idx] && vals[idx].abs() > f64::EPSILON {
+                diag_inv[row] = 1.0 / vals[idx];
+            }
+        }
+
+        let finish = |x: &DVector<f64>, well_system: &WellSystem| {
+            let p = DVector::from_iterator(n_cells, x.iter().take(n_cells).copied());
+            let controls = well_system.step_controls(resolved_controls);
+            let deltas = self.transport_deltas(&p, &controls, dt_days);
+            (p, deltas, controls)
+        };
 
         for _ in 0..MAX_VOLUME_BALANCE_ITERATIONS {
-            let deltas = self.transport_deltas(&p, well_controls, dt_days);
+            well_system.set_bhps(&x);
+            let (p, deltas, _) = finish(&x, well_system);
             let mut worst = 0.0_f64;
             for id in 0..n_cells {
                 let masses = deltas.applied_to(id, &old_masses[id]);
@@ -725,14 +777,22 @@ impl ReservoirSimulator {
                     1.0
                 };
             }
-            if !worst.is_finite() {
-                return (p, deltas, false);
+            // Implicit wells: `Σ q_k − Q`, the right-hand side of the well rows' Newton step.
+            let mut wells_converged = true;
+            for (g, r) in well_system.rate_residuals(self, &p).into_iter().enumerate() {
+                residual[n_cells + g] = r;
+                wells_converged &= r.abs() <= VOLUME_BALANCE_RATE_TOLERANCE_M3_DAY;
             }
-            if worst <= VOLUME_BALANCE_PRESSURE_TOLERANCE_BAR {
-                return (p, deltas, true);
+            if !worst.is_finite() {
+                let (p, deltas, controls) = finish(&x, well_system);
+                return (p, deltas, controls, false);
+            }
+            if worst <= VOLUME_BALANCE_PRESSURE_TOLERANCE_BAR && wells_converged {
+                let (p, deltas, controls) = finish(&x, well_system);
+                return (p, deltas, controls, true);
             }
 
-            let mut tri = TriMatI::<f64, usize>::new((n_cells, n_cells));
+            let mut tri = TriMatI::<f64, usize>::new((n, n));
             for idx in 0..vals.len() {
                 tri.add_triplet(operator.rows[idx], operator.cols[idx], vals[idx]);
             }
@@ -741,23 +801,21 @@ impl ReservoirSimulator {
                 matrix: &matrix,
                 rhs: &residual,
                 preconditioner_inv_diag: &diag_inv,
-                initial_guess: &DVector::zeros(n_cells),
+                initial_guess: &DVector::zeros(n),
                 tolerance: 1e-9,
                 max_iterations: 1000,
             });
             *linear_iterations += correction.iterations;
             if !correction.converged {
                 *linear_converged = false;
-                return (
-                    p.clone(),
-                    self.transport_deltas(&p, well_controls, dt_days),
-                    false,
-                );
+                let (p, deltas, controls) = finish(&x, well_system);
+                return (p, deltas, controls, false);
             }
-            p += correction.solution;
+            x += correction.solution;
         }
 
-        let deltas = self.transport_deltas(&p, well_controls, dt_days);
-        (p, deltas, false)
+        well_system.set_bhps(&x);
+        let (p, deltas, controls) = finish(&x, well_system);
+        (p, deltas, controls, false)
     }
 }

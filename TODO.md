@@ -20,7 +20,6 @@ migration issue is retained as the closed record [#9](https://github.com/sergeyf
 
 ### High priority
 
-- [#10 — Support fully perforated wells under gravity](https://github.com/sergeyfarin/ressim/issues/10)
 - [#12 — Close remaining SPE1 and black-oil validation gaps](https://github.com/sergeyfarin/ressim/issues/12)
 - [#13 — Strengthen pull-request CI](https://github.com/sergeyfarin/ressim/issues/13)
 - [#14 — Consolidate chart architecture and output selection](https://github.com/sergeyfarin/ressim/issues/14)
