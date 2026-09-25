@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import initWasm, { ReservoirSimulator } from '../../ressim/pkg/simulator.js';
 import { computeVerticalSweep } from '@ressim/analytical/sweepEfficiency';
 import { getScenario, getScenarioWithVariantParams } from '../scenarios';
+import { compareWithFlowTwin, expectWithinFlowTwinBands } from '../opmFlowTwin';
 
 let wasmReady: Promise<unknown> | null = null;
 
@@ -218,5 +219,34 @@ describe('sweep_crossflow measured behaviour', () => {
         expect(viscousAlone).toBeGreaterThan(0.03);
         expect(both).toBeGreaterThan(viscousAlone + capillaryAlone + 0.005);
         expect(openPc.breakthroughPvi).toBeGreaterThan(openDry.breakthroughPvi);
+    }, 300_000);
+});
+
+describe('sweep_crossflow against its OPM Flow twin', () => {
+    /**
+     * The shipped run, through the worker's own setup, against Flow on
+     * `opm/reference-decks/small-direct/sweep-crossflow`, the deck the chart's Flow curves
+     * come from.
+     * The correlation cannot see k_v; Flow resolves the same crossflow the scenario does.
+     *
+     * The run is the scenario's default solver; FIM on the same deck is closer still (see the
+     * cross-solver scorecard). Measured 2026-09-25: oil 1.05 % worst / 0.17 % final,
+     * injection 0.96 %, breakthrough 118 d against 117 d, final water cut 0.9489 against
+     * 0.9448.
+     */
+    it('runs the shipped case to the Flow run of the same model', async () => {
+        const comparison = await compareWithFlowTwin({
+            scenarioKey: 'sweep_crossflow',
+            dimensionKey: 'vertical_communication',
+            variantKey: 'kv_base',
+            artifactKey: 'sweep_crossflow',
+        });
+        expectWithinFlowTwinBands(comparison, {
+            oilWorstOfFinal: 0.02,
+            oilFinal: 0.005,
+            injection: 0.02,
+            breakthroughDays: 2,
+            finalWaterCut: 0.01,
+        });
     }, 300_000);
 });

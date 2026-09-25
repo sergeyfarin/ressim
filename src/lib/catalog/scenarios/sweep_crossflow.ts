@@ -140,6 +140,11 @@ export const sweep_crossflow: Scenario = {
         gravityEnabled: false,
     },
     analyticalDef: waterfloodBLDef,
+    referenceSources: [{
+        kind: 'opm-flow',
+        artifactKeys: ['sweep_crossflow'],
+        artifactVariantLabels: { sweep_crossflow: 'base' },
+    }],
     sensitivities: [
         {
             key: 'vertical_communication',

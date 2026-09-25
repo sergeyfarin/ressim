@@ -40,7 +40,7 @@ struct Case {
     report_dt_days: f64,
 }
 
-const CASES: [Case; 11] = [
+const CASES: [Case; 17] = [
     Case {
         key: "ow-1d-96",
         note: "wf_bl1d geometry: 96x1x1 waterflood, BHP injector/producer, M~2",
@@ -113,6 +113,46 @@ const CASES: [Case; 11] = [
         report_steps: 120,
         report_dt_days: 30.0,
     },
+    // The catalog waterfloods that had only an analytical reference: their base cases, over the
+    // scenario's own report schedule. Four of them are past the forced-direct threshold; like
+    // SPE1 they are here for the one-definition deck writer, which is what makes their Flow
+    // reference the same model as the scenario.
+    Case {
+        key: "sweep-areal",
+        note: "sweep_areal base case: 21x21 quarter five-spot, both wells on BHP",
+        report_steps: 80,
+        report_dt_days: 5.0,
+    },
+    Case {
+        key: "sweep-vertical",
+        note: "sweep_vertical base case: 48x1x5 layered section (V_DP ~ 0.5, kv/kh 0.1), fully perforated BHP wells",
+        report_steps: 300,
+        report_dt_days: 0.5,
+    },
+    Case {
+        key: "sweep-crossflow",
+        note: "sweep_crossflow base case: the sweep_vertical section with k_rw_max 0.25",
+        report_steps: 310,
+        report_dt_days: 1.0,
+    },
+    Case {
+        key: "sweep-combined",
+        note: "sweep_combined 'Favorable + layered' (mu_o 0.5): 21x21x5 layered five-spot, near-sealed layers, fully perforated BHP wells",
+        report_steps: 200,
+        report_dt_days: 5.0,
+    },
+    Case {
+        key: "wf-capillary",
+        note: "wf_capillary base case: the wf_bl1d slab with Brooks-Corey P_c (P_e 3 bar) under a 40 bar drawdown",
+        report_steps: 200,
+        report_dt_days: 2.5,
+    },
+    Case {
+        key: "wf-gravity-stability",
+        note: "wf_gravity_stability base case: 60 m vertical column flooded upward at 100 rm3/day, gravity on",
+        report_steps: 134,
+        report_dt_days: 0.5,
+    },
 ];
 
 /// The report schedule actually used: the case's own, or `OPM_SMALL_REPORT_DT` over the same
@@ -148,8 +188,201 @@ fn build(key: &str) -> ReservoirSimulator {
             sim.set_gas_redissolution_enabled(true);
             sim
         }
+        "sweep-areal" => catalog_waterflood(&Waterflood {
+            dims: [21, 21, 1],
+            cell: [20.0, 20.0, 10.0],
+            perm_xy: vec![200.0],
+            perm_z: vec![20.0],
+            producer_ij: (20, 20),
+            stability: [0.01, 50.0, 1.0],
+            ..Waterflood::default()
+        }),
+        "sweep-vertical" => catalog_waterflood(&Waterflood::layered_section(1.0)),
+        "sweep-crossflow" => catalog_waterflood(&Waterflood::layered_section(0.25)),
+        // The scenario's own parameters (mu_o = 1) are no variant of either dimension, so the twin
+        // is `interaction_favorable_layered` (= `ladder_vertical`), which both draw. Its layers
+        // are sealed (k_v = 0.001 mD), the layered correlations' assumption.
+        "sweep-combined" => catalog_waterflood(&Waterflood {
+            dims: [21, 21, 5],
+            mu_o: 0.5,
+            cell: [20.0, 20.0, 4.0],
+            perm_xy: vec![1000.0, 150.0, 5.0, 60.0, 40.0],
+            perm_z: vec![0.001; 5],
+            producer_ij: (20, 20),
+            ..Waterflood::default()
+        }),
+        "wf-capillary" => catalog_waterflood(&Waterflood {
+            dims: [96, 1, 1],
+            cell: [10.0, 10.0, 1.0],
+            perm_xy: vec![2000.0],
+            perm_z: vec![200.0],
+            pc_entry: 3.0,
+            producer_ij: (95, 0),
+            injector_bhp: 320.0,
+            producer_bhp: 280.0,
+            fim: true,
+            ..Waterflood::default()
+        }),
+        "wf-gravity-stability" => catalog_waterflood(&Waterflood {
+            dims: [1, 1, 60],
+            cell: [20.0, 20.0, 1.0],
+            perm_xy: vec![2000.0; 60],
+            perm_z: vec![2000.0; 60],
+            gravity: true,
+            producer_ij: (0, 0),
+            injector_layers: Some(vec![59]),
+            producer_layers: Some(vec![0]),
+            injector_bhp: 700.0,
+            producer_bhp: 200.0,
+            injector_rate: Some(100.0),
+            ..Waterflood::default()
+        }),
         other => panic!("unknown small-direct case {other}"),
     }
+}
+
+/// The inputs that differ between the two-phase catalog waterfloods (`sweep_*`, `wf_capillary`,
+/// `wf_gravity_stability`). Everything else those six scenarios ship is the same and is written
+/// out in [`catalog_waterflood`]. Each scenario's test runs its shipped base case through the
+/// worker and grades it against the Flow run of the deck written from here, so a scenario edit
+/// that is not mirrored here fails there.
+struct Waterflood {
+    dims: [usize; 3],
+    cell: [f64; 3],
+    /// Per-layer horizontal (x = y) and vertical permeability, mD.
+    perm_xy: Vec<f64>,
+    perm_z: Vec<f64>,
+    mu_o: f64,
+    k_rw_max: f64,
+    /// Brooks-Corey entry pressure, bar. 0 is how the worker passes "capillary off".
+    pc_entry: f64,
+    gravity: bool,
+    injector_ij: (usize, usize),
+    producer_ij: (usize, usize),
+    /// Completed layers; `None` perforates every layer, the worker's default.
+    injector_layers: Option<Vec<usize>>,
+    producer_layers: Option<Vec<usize>>,
+    injector_bhp: f64,
+    producer_bhp: f64,
+    /// Reservoir-volume injection target, m3/day. `None` puts the injector on BHP.
+    injector_rate: Option<f64>,
+    /// `max_sat_change_per_step`, `max_pressure_change_per_step`, `max_well_rate_change_fraction`.
+    stability: [f64; 3],
+    fim: bool,
+}
+
+impl Default for Waterflood {
+    fn default() -> Self {
+        Self {
+            dims: [1, 1, 1],
+            cell: [10.0, 10.0, 1.0],
+            perm_xy: vec![100.0],
+            perm_z: vec![10.0],
+            mu_o: 1.0,
+            k_rw_max: 1.0,
+            pc_entry: 0.0,
+            gravity: false,
+            injector_ij: (0, 0),
+            producer_ij: (0, 0),
+            injector_layers: None,
+            producer_layers: None,
+            injector_bhp: 500.0,
+            producer_bhp: 100.0,
+            injector_rate: None,
+            stability: [0.05, 75.0, 0.75],
+            fim: false,
+        }
+    }
+}
+
+impl Waterflood {
+    /// `sweep_vertical`'s 48x1x5 section, which `sweep_crossflow` shares apart from `k_rw_max`.
+    fn layered_section(k_rw_max: f64) -> Self {
+        Self {
+            dims: [48, 1, 5],
+            cell: [10.0, 10.0, 4.0],
+            perm_xy: vec![200.0, 150.0, 100.0, 60.0, 40.0],
+            perm_z: vec![20.0, 15.0, 10.0, 6.0, 4.0],
+            k_rw_max,
+            producer_ij: (47, 0),
+            ..Self::default()
+        }
+    }
+}
+
+/// A two-phase catalog waterflood, configured in the order the worker's
+/// `configureReservoirSimulator` applies its payload, with the payload's wells: `producer-main`
+/// then `injector-main`, each added completion by completion and then given its schedule.
+fn catalog_waterflood(w: &Waterflood) -> ReservoirSimulator {
+    let [nx, ny, nz] = w.dims;
+    let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.2);
+    sim.set_fim_enabled(w.fim);
+    sim.set_cell_dimensions(w.cell[0], w.cell[1], w.cell[2])
+        .unwrap();
+    sim.set_fluid_properties(w.mu_o, 0.5).unwrap();
+    sim.set_fluid_compressibilities(1e-5, 3e-6).unwrap();
+    sim.set_rock_properties(1e-6, 0.0, 1.0, 1.0).unwrap();
+    sim.set_fluid_densities(800.0, 1000.0).unwrap();
+    sim.set_initial_pressure(300.0);
+    sim.set_initial_saturation(0.1);
+    sim.set_capillary_params(w.pc_entry, 2.0).unwrap();
+    sim.set_gravity_enabled(w.gravity);
+    sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0, w.k_rw_max, 1.0)
+        .unwrap();
+    sim.set_stability_params(w.stability[0], w.stability[1], w.stability[2]);
+    let injector_mode = if w.injector_rate.is_some() {
+        "rate"
+    } else {
+        "pressure"
+    };
+    sim.set_well_control_modes(injector_mode.to_string(), "pressure".to_string());
+    let injector_rate = w.injector_rate.unwrap_or(0.0);
+    sim.set_target_well_rates(injector_rate, 0.0).unwrap();
+    sim.set_target_well_surface_rates(0.0, 0.0).unwrap();
+    sim.set_well_bhp_limits(
+        w.producer_bhp.min(w.injector_bhp),
+        w.producer_bhp.max(w.injector_bhp),
+    )
+    .unwrap();
+    sim.set_permeability_per_layer(w.perm_xy.clone(), w.perm_xy.clone(), w.perm_z.clone())
+        .unwrap();
+    let every_layer: Vec<usize> = (0..nz).collect();
+    let wells = [
+        (
+            "producer-main",
+            false,
+            w.producer_ij,
+            &w.producer_layers,
+            w.producer_bhp,
+            "pressure",
+            0.0,
+        ),
+        (
+            "injector-main",
+            true,
+            w.injector_ij,
+            &w.injector_layers,
+            w.injector_bhp,
+            injector_mode,
+            injector_rate,
+        ),
+    ];
+    for (id, injector, (i, j), layers, bhp, mode, rate) in wells {
+        for &k in layers.as_deref().unwrap_or(&every_layer) {
+            sim.add_well_with_id(i, j, k, bhp, 0.1, 0.0, injector, id.to_string())
+                .unwrap();
+        }
+        sim.set_well_schedule(
+            id.to_string(),
+            mode.to_string(),
+            rate,
+            f64::NAN,
+            f64::NAN,
+            true,
+        )
+        .unwrap();
+    }
+    sim
 }
 
 /// Two-phase waterflood: injector in the first cell, producer in the last, both on BHP.
@@ -374,12 +607,66 @@ fn saturation_nodes(lo: f64, hi: f64, points: usize, kinks: &[f64]) -> Vec<f64> 
 }
 
 /// The deck name of a well: its physical-well id, or its role and index when it has none (the
-/// acceptance setups add anonymous wells, and two wells cannot share a name in a deck).
+/// acceptance setups add anonymous wells, and two wells cannot share a name in a deck). A deck
+/// name is at most eight characters, so the worker's `producer-main` / `injector-main` become
+/// their role.
 fn well_name(well: &crate::well::Well, index: usize) -> String {
     match &well.physical_well_id {
-        Some(id) => id.clone(),
+        Some(id) if id.len() <= 8 => id.clone(),
+        Some(_) if well.injector => "INJ".to_string(),
+        Some(_) => "PROD".to_string(),
         None if well.injector => format!("INJ{index}"),
         None => format!("PROD{index}"),
+    }
+}
+
+/// One deck well: every ResSim completion sharing a physical-well id (the worker adds a
+/// perforated well completion by completion, and they share one BHP), or one anonymous
+/// completion.
+struct DeckWell<'a> {
+    name: String,
+    completions: Vec<&'a crate::well::Well>,
+}
+
+impl DeckWell<'_> {
+    fn head(&self) -> &crate::well::Well {
+        self.completions[0]
+    }
+}
+
+fn deck_wells(sim: &ReservoirSimulator) -> Vec<DeckWell<'_>> {
+    let mut wells: Vec<DeckWell<'_>> = Vec::new();
+    for (index, well) in sim.wells.iter().enumerate() {
+        let joined = well.physical_well_id.as_ref().and_then(|id| {
+            wells
+                .iter_mut()
+                .find(|deck_well| deck_well.head().physical_well_id.as_ref() == Some(id))
+        });
+        match joined {
+            Some(deck_well) => deck_well.completions.push(well),
+            None => wells.push(DeckWell {
+                name: well_name(well, index),
+                completions: vec![well],
+            }),
+        }
+    }
+    for (index, well) in wells.iter().enumerate() {
+        assert!(
+            wells[..index].iter().all(|other| other.name != well.name),
+            "two deck wells named {}",
+            well.name
+        );
+    }
+    wells
+}
+
+/// A capillary-pressure table entry. Zero is written as `0`, as it was before the writer
+/// carried P_c, so a deck with no capillarity is unchanged byte for byte.
+fn pc_entry(pc: f64) -> String {
+    if pc == 0.0 {
+        "0".to_string()
+    } else {
+        format!("{pc:.10e}")
     }
 }
 
@@ -392,6 +679,18 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
     let gas_injector = three_phase
         && matches!(sim.injected_fluid, crate::InjectedFluid::Gas)
         && sim.wells.iter().any(|well| well.injector);
+    // The three-phase tables below carry no capillary pressure.
+    assert!(
+        !three_phase || (sim.pc.p_entry == 0.0 && sim.pc_og.is_none_or(|pc| pc.p_entry == 0.0)),
+        "{}: three-phase capillary pressure is not written",
+        case.key
+    );
+    let wells = deck_wells(sim);
+    let max_connections = wells
+        .iter()
+        .map(|well| well.completions.len())
+        .max()
+        .unwrap_or(1);
     let mut d = String::new();
     let _ = writeln!(
         d,
@@ -417,7 +716,13 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
     } else {
         "OIL\nWATER\n"
     });
-    d.push_str("METRIC\nTABDIMS\n  1 1 250 250 1 250 /\nWELLDIMS\n  2 1 1 2 /\n");
+    d.push_str("METRIC\nTABDIMS\n  1 1 250 250 1 250 /\n");
+    let _ = writeln!(
+        d,
+        "WELLDIMS\n  {} {max_connections} 1 {} /",
+        wells.len().max(2),
+        wells.len().max(2)
+    );
     d.push_str("START\n  1 JAN 2026 /\nUNIFOUT\n");
     d.push_str("GRID\nINIT\n");
     values(&mut d, "DX", (0..n).map(|_| sim.dx));
@@ -455,7 +760,7 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
             sim.pvt.rho_o, sim.pvt.rho_w, sim.rho_g
         );
     } else {
-        d.push_str("DENSITY\n  800 1000 0.9 /\n");
+        let _ = writeln!(d, "DENSITY\n  {} {} 0.9 /", sim.pvt.rho_o, sim.pvt.rho_w);
     }
 
     if three_phase {
@@ -569,12 +874,21 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
     }
     if !three_phase {
         d.push_str("SWOF\n");
-        for sw in saturation_nodes(sim.scal.s_wc, 1.0, 161, &[1.0 - sim.scal.s_or]) {
+        let (s_wc, s_or) = (sim.scal.s_wc, sim.scal.s_or);
+        let mut kinks = vec![1.0 - s_or];
+        if sim.pc.p_entry > 0.0 {
+            // Brooks-Corey P_c meets its 20 x P_e cap at S_eff = 20^-lambda, and drops from P_e
+            // to 0 at S_eff = 1. Both land on nodes, the drop as a 1e-6-wide step.
+            kinks.push(s_wc + (1.0 - s_wc - s_or) * 20f64.powf(-sim.pc.lambda));
+            kinks.push(1.0 - s_or - 1e-6);
+        }
+        for sw in saturation_nodes(s_wc, 1.0, 161, &kinks) {
             let _ = writeln!(
                 d,
-                "  {sw:.8} {:.10e} {:.10e} 0",
+                "  {sw:.8} {:.10e} {:.10e} {}",
                 sim.scal.k_rw(sw),
-                sim.scal.k_ro(sw)
+                sim.scal.k_ro(sw),
+                pc_entry(sim.get_capillary_pressure(sw))
             );
         }
         d.push_str("/\nPVDO\n");
@@ -605,6 +919,8 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
     d.push_str("SUMMARY\nFOPR\nFWPR\nFWIR\nFOPT\nFWPT\nFWIT\nFPR\n");
     if three_phase {
         d.push_str("FGPR\nFGPT\nFGOR\n");
+    } else {
+        d.push_str("FWCT\n");
     }
     if gas_injector {
         d.push_str("FGIR\nFGIT\n");
@@ -619,17 +935,23 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
         d.push_str("DRSDT\n  0 /\n");
     }
     d.push_str("WELSPECS\n");
-    for (index, well) in sim.wells.iter().enumerate() {
-        let name = well_name(well, index);
-        let name = name.as_str();
+    for deck_well in &wells {
+        let (name, well) = (deck_well.name.as_str(), deck_well.head());
         let phase = match (well.injector, gas_injector) {
             (true, true) => "GAS",
             (true, false) => "WATER",
             (false, _) => "OIL",
         };
         // With gravity on, BHP is quoted at the engine's datum: the shallowest completion's
-        // centre, which is also Flow's default, written out so the two cannot differ.
+        // centre, which is also Flow's default, written out so the two cannot differ. Between
+        // completions the two carry the BHP down the wellbore with different densities, so a
+        // gravity case gets one completion per well.
         let datum = if sim.gravity_enabled {
+            assert_eq!(
+                deck_well.completions.len(),
+                1,
+                "{name}: a multi-completion well under gravity is not written"
+            );
             format!("{:.6}", sim.depth_at_k(well.k))
         } else {
             "1*".to_string()
@@ -642,37 +964,56 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
         );
     }
     d.push_str("/\nCOMPDAT\n");
-    for (index, well) in sim.wells.iter().enumerate() {
-        let name = well_name(well, index);
-        let name = name.as_str();
-        // Items 7-8 defaulted so Flow computes the Peaceman factor; item 9 is a DIAMETER.
-        let _ = writeln!(
-            d,
-            "  '{name}' {} {} {} {} 'OPEN' 2* {} /",
-            well.i + 1,
-            well.j + 1,
-            well.k + 1,
-            well.k + 1,
-            2.0 * well.well_radius
-        );
+    for deck_well in &wells {
+        let name = deck_well.name.as_str();
+        for well in &deck_well.completions {
+            // Items 7-8 defaulted so Flow computes the Peaceman factor; item 9 is a DIAMETER.
+            let _ = writeln!(
+                d,
+                "  '{name}' {} {} {} {} 'OPEN' 2* {} /",
+                well.i + 1,
+                well.j + 1,
+                well.k + 1,
+                well.k + 1,
+                2.0 * well.well_radius
+            );
+        }
     }
     d.push_str("/\n");
-    for (index, well) in sim.wells.iter().enumerate() {
-        let name = well_name(well, index);
-        let name = name.as_str();
+    for deck_well in &wells {
+        let (name, well) = (deck_well.name.as_str(), deck_well.head());
+        let control = sim.well_control_config(well);
         if well.injector {
             let fluid = if gas_injector { "GAS" } else { "WATER" };
-            let control = sim.well_control_config(well);
-            match (control.rate_controlled, control.target_surface_rate_m3_day) {
-                (true, Some(target)) => {
+            match (
+                control.rate_controlled,
+                control.target_surface_rate_m3_day,
+                control.target_rate_m3_day,
+            ) {
+                (true, Some(target), _) => {
                     let _ = writeln!(
                         d,
                         "WCONINJE\n  '{name}' '{fluid}' 'OPEN' 'RATE' {target} 1* {} /\n/",
                         control.bhp_limit
                     );
                 }
-                (true, None) => panic!("{name}: reservoir-volume injector targets are not written"),
-                (false, _) => {
+                // A reservoir-volume target, which ResSim meets at the completion cell's pressure.
+                // Written as the surface rate it is at the cell's initial pressure: water's FVF
+                // moves by c_w ~ 3e-6/bar from there, so the two differ by ~1e-4 over the run,
+                // which is as close as Flow's own RESV (converted at the field-average pressure)
+                // gets, and JutulDarcy 0.3.7 cannot run RESV injectors. For gas they would differ
+                // by Bg, so a gas target is not written.
+                (true, None, Some(target)) if !gas_injector => {
+                    let p_cell = sim.pressure[sim.idx(well.i, well.j, well.k)];
+                    let surface = target * sim.water_inverse_fvf_generic(p_cell);
+                    let _ = writeln!(
+                        d,
+                        "WCONINJE\n  '{name}' '{fluid}' 'OPEN' 'RATE' {surface:.10} 1* {} /\n/",
+                        control.bhp_limit
+                    );
+                }
+                (true, _, _) => panic!("{name}: this injector target is not written"),
+                (false, _, _) => {
                     let _ = writeln!(
                         d,
                         "WCONINJE\n  '{name}' '{fluid}' 'OPEN' 'BHP' 1* 1* {} /\n/",
@@ -681,7 +1022,6 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
                 }
             }
         } else {
-            let control = sim.well_control_config(well);
             match (control.rate_controlled, control.target_surface_rate_m3_day) {
                 // A producer's surface target is stock-tank oil. Flow needs a positive BHP
                 // limit; ResSim's floor of 0 means "none", and 1 bar never binds either.

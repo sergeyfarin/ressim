@@ -104,6 +104,11 @@ export const wf_gravity_stability: Scenario = {
         gravityEnabled: true,
     },
     analyticalDef: waterfloodBLDef,
+    referenceSources: [{
+        kind: 'opm-flow',
+        artifactKeys: ['wf_gravity_stability'],
+        artifactVariantLabels: { wf_gravity_stability: 'base' },
+    }],
     sensitivities: [
         {
             key: 'flood_direction',

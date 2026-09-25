@@ -12,6 +12,12 @@ import depGasPzGeopressuredArtifact from './opm-flow-results/dep_gas_pz_geopress
 import gasInjectionArtifact from './opm-flow-results/gas_injection.json';
 import depPvtCorrelationArtifact from './opm-flow-results/dep_pvt_correlation.json';
 import depPvtLabReportArtifact from './opm-flow-results/dep_pvt_lab_report.json';
+import sweepArealArtifact from './opm-flow-results/sweep_areal.json';
+import sweepVerticalArtifact from './opm-flow-results/sweep_vertical.json';
+import sweepCrossflowArtifact from './opm-flow-results/sweep_crossflow.json';
+import sweepCombinedArtifact from './opm-flow-results/sweep_combined.json';
+import wfCapillaryArtifact from './opm-flow-results/wf_capillary.json';
+import wfGravityStabilityArtifact from './opm-flow-results/wf_gravity_stability.json';
 
 export type ReferenceSourceType =
     | 'analytical'
@@ -94,6 +100,12 @@ const ARTIFACTS = [
     gasInjectionArtifact as OpmFlowArtifact,
     depPvtCorrelationArtifact as OpmFlowArtifact,
     depPvtLabReportArtifact as OpmFlowArtifact,
+    sweepArealArtifact as OpmFlowArtifact,
+    sweepVerticalArtifact as OpmFlowArtifact,
+    sweepCrossflowArtifact as OpmFlowArtifact,
+    sweepCombinedArtifact as OpmFlowArtifact,
+    wfCapillaryArtifact as OpmFlowArtifact,
+    wfGravityStabilityArtifact as OpmFlowArtifact,
 ];
 
 export function listOpmFlowArtifacts(): OpmFlowArtifact[] {

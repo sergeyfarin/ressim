@@ -40,7 +40,10 @@ PAGE = REPO / "docs" / "BENCHMARKS.md"
 # Every file holding GENERATED blocks; `render --check` covers them all.
 PAGES = [PAGE, REPO / "README.md"]
 SCENARIOS = REPO / "src" / "lib" / "catalog" / "scenarios"
-OPM_CASES = REPO / "tools" / "opm_flow" / "opm_flow_tool" / "cases.py"
+# The committed Flow artifacts, one per case in tools/opm_flow/opm_flow_tool/cases.py (its tests
+# hold the two to each other). Read here rather than cases.py, where a case built by a helper
+# names its scenario in an argument, not a `scenario_key=` literal.
+OPM_ARTIFACTS = REPO / "src" / "lib" / "catalog" / "opm-flow-results"
 
 # Section key -> (title for the summary, reference). Order is page order.
 SECTIONS = {
@@ -756,7 +759,7 @@ def scenario_catalog() -> list[dict]:
     withheld_block = re.search(r"const WITHHELD_SCENARIOS[^=]*=\s*\[(.*?)\];",
                                (SCENARIOS.parent / "scenarios.ts").read_text(), re.S)
     withheld = set(re.findall(r"^\s*(\w+),", withheld_block.group(1), re.M)) if withheld_block else set()
-    flow = set(re.findall(r'scenario_key="(\w+)"', OPM_CASES.read_text())) if OPM_CASES.exists() else set()
+    flow = {json.loads(path.read_text())["scenarioKey"] for path in OPM_ARTIFACTS.glob("*.json")}
     out = []
     for path in sorted(SCENARIOS.glob("*.ts")):
         if path.name.endswith(".test.ts"):

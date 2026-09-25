@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import initWasm, { ReservoirSimulator } from '../../ressim/pkg/simulator.js';
 import { getScenarioWithVariantParams } from '../scenarios';
+import { compareWithFlowTwin, expectWithinFlowTwinBands } from '../opmFlowTwin';
 
 let wasmReady: Promise<unknown> | null = null;
 
@@ -171,4 +172,34 @@ describe('sweep_vertical / endpoints_vs_geology — rock curves vs geology (T7.1
         const actualCombined = rf.base - rf.both;
         expect(actualCombined).toBeLessThan(0.9 * additivePrediction);
     }, 300000);
+});
+
+describe('sweep_vertical against its OPM Flow twin', () => {
+    /**
+     * The shipped run, through the worker's own setup, against Flow on
+     * `opm/reference-decks/small-direct/sweep-vertical`, the deck the chart's Flow curves
+     * come from.
+     * Dykstra-Parsons is a correlation for non-communicating layers; Flow solves the same
+     * five communicating layers the scenario does.
+     *
+     * The run is the scenario's default solver; FIM on the same deck is closer still (see the
+     * cross-solver scorecard). Measured 2026-09-25: oil 0.82 % worst / 0.18 % final,
+     * injection 1.15 %, breakthrough on the same 41.5 d report, final water cut 0.9067
+     * against 0.9052.
+     */
+    it('runs the shipped case to the Flow run of the same model', async () => {
+        const comparison = await compareWithFlowTwin({
+            scenarioKey: 'sweep_vertical',
+            dimensionKey: 'heterogeneity',
+            variantKey: 'vdp_moderate',
+            artifactKey: 'sweep_vertical',
+        });
+        expectWithinFlowTwinBands(comparison, {
+            oilWorstOfFinal: 0.015,
+            oilFinal: 0.005,
+            injection: 0.02,
+            breakthroughDays: 0.5,
+            finalWaterCut: 0.01,
+        });
+    }, 300_000);
 });

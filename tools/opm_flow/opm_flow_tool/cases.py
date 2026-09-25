@@ -1205,8 +1205,77 @@ DEP_PVT_LAB_REPORT = _dep_pvt_case(
 )
 
 
+def _catalog_waterflood_case(
+    scenario_key: str, deck_dir: str, label: str, pore_volume_m3: float, *, gravity: bool, layout: str,
+) -> OpmCase:
+    """The base case of a two-phase catalog waterflood that used to have only an analytical reference.
+
+    Each deck is written by `opm_small_direct.rs` from the same simulator setup the scenario
+    ships, and the scenario's own test grades its base case against this artifact. The
+    waterflood layout has oil-rate and cumulative-injection panels; the sweep layout does not.
+    """
+    deck_path = f"opm/reference-decks/small-direct/{deck_dir}/CASE.DATA"
+    curve_display = {
+        "FWCT": {"panelKey": "rates", "curveKey": "opm-water-cut", "label": "OPM Flow — Water Cut"},
+        "FOPT": {"panelKey": "cumulative", "curveKey": "opm-cum-oil", "label": "OPM Flow — Cum Oil"},
+        "FPR": {"panelKey": "diagnostics", "curveKey": "opm-avg-pressure", "label": "OPM Flow — Avg Pressure"},
+    }
+    if layout == "waterflood":
+        curve_display = {
+            "FWCT": curve_display["FWCT"],
+            "FOPR": {"panelKey": "oil_rate", "curveKey": "opm-oil-rate", "label": "OPM Flow — Oil Rate"},
+            "FOPT": curve_display["FOPT"],
+            "FPR": curve_display["FPR"],
+            "FWIT": {"panelKey": "volumes", "curveKey": "opm-cum-injection", "label": "OPM Flow — Cum Water Injection"},
+        }
+    return OpmCase(
+        key=scenario_key,
+        scenario_key=scenario_key,
+        label=label,
+        deck_name=f"{scenario_key.upper()}.DATA",
+        supported_curves=("FOPR", "FWPR", "FWIR", "FOPT", "FWPT", "FWIT", "FPR", "FWCT", "FVIT", "WBHP"),
+        deck_source=deck_path,
+        deck=_committed_deck(deck_path),
+        flow_args=() if gravity else ("--enable-gravity=false",),
+        origin=ORIGIN_SMALL_DIRECT,
+        cumulative_injection_curve="FVIT",
+        cumulative_surface_injection_curve="FWIT",
+        pore_volume_m3=pore_volume_m3,
+        curve_display=curve_display,
+    )
+
+
+# 21 x 21 x 1 cells of 20 m x 20 m x 10 m at 0.2 porosity.
+SWEEP_AREAL = _catalog_waterflood_case(
+    "sweep_areal", "sweep-areal", "Areal Sweep (base case, M = 2)", 352_800.0, gravity=False, layout="sweep",
+)
+# 48 x 1 x 5 cells of 10 m x 10 m x 4 m at 0.2 porosity.
+SWEEP_VERTICAL = _catalog_waterflood_case(
+    "sweep_vertical", "sweep-vertical", "Vertical Sweep (base case, V_DP ~ 0.5)", 19_200.0, gravity=False, layout="sweep",
+)
+SWEEP_CROSSFLOW = _catalog_waterflood_case(
+    "sweep_crossflow", "sweep-crossflow", "Layer Crossflow (base case, kv/kh = 0.1)", 19_200.0, gravity=False, layout="sweep",
+)
+# 21 x 21 x 5 cells of 20 m x 20 m x 4 m at 0.2 porosity. The scenario's own parameters are no
+# variant it runs; this is `interaction_favorable_layered`, which both its dimensions draw.
+SWEEP_COMBINED = _catalog_waterflood_case(
+    "sweep_combined", "sweep-combined", "Combined Sweep (favorable + layered, μo = 0.5 cp)", 705_600.0,
+    gravity=False, layout="sweep",
+)
+# 96 x 10 m by 1 x 10 m by 1 x 1 m at 0.2 porosity, as wf_bl1d.
+WF_CAPILLARY = _catalog_waterflood_case(
+    "wf_capillary", "wf-capillary", "Capillary Effects (base case, P_e = 3 bar)", 1_920.0, gravity=False, layout="waterflood",
+)
+# 1 x 20 m by 1 x 20 m by 60 x 1 m at 0.2 porosity.
+WF_GRAVITY_STABILITY = _catalog_waterflood_case(
+    "wf_gravity_stability", "wf-gravity-stability", "Gravity-Stable Displacement (base case, upward)", 4_800.0,
+    gravity=True, layout="waterflood",
+)
+
+
 CASES = {case.key: case for case in (
     WF_BL1D, SPE1_GAS_INJECTION, GAS_DRIVE, WF_GRAVITY,
     WF_NUMERICS, WF_NUMERICS_FINE, DEP_GAS_PZ, DEP_GAS_PZ_GEOPRESSURED,
     GAS_INJECTION, DEP_PVT_CORRELATION, DEP_PVT_LAB_REPORT,
+    SWEEP_AREAL, SWEEP_VERTICAL, SWEEP_CROSSFLOW, SWEEP_COMBINED, WF_CAPILLARY, WF_GRAVITY_STABILITY,
 )}

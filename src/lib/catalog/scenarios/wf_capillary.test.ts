@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import initWasm, { ReservoirSimulator } from '../../ressim/pkg/simulator.js';
 import { getScenarioWithVariantParams } from '../scenarios';
+import { compareWithFlowTwin, expectWithinFlowTwinBands } from '../opmFlowTwin';
 
 let wasmReady: Promise<unknown> | null = null;
 
@@ -164,4 +165,33 @@ describe('wf_capillary — capillary smearing vs the Buckley-Leverett shock', ()
         const capillarySharpening = Math.abs(finePc.frontWidthPvi - finerPc.frontWidthPvi);
         expect(capillarySharpening).toBeLessThan(numericalSharpening);
     }, 120000);
+});
+
+describe('wf_capillary against its OPM Flow twin', () => {
+    /**
+     * The shipped run, through the worker's own setup, against Flow on
+     * `opm/reference-decks/small-direct/wf-capillary`, the deck the chart's Flow curves come from.
+     * The deck carries the scenario's Brooks-Corey curve in SWOF, so this is the one
+     * reference in the catalog that includes the capillary term BL leaves out.
+     *
+     * The run is the scenario's default solver; FIM on the same deck is closer still (see the
+     * cross-solver scorecard). Measured 2026-09-25: oil 0.10 % worst / 0.09 % final,
+     * injection 0.19 %, breakthrough on the same 135 d report, final water cut 0.9701
+     * against 0.9704.
+     */
+    it('runs the shipped case to the Flow run of the same model', async () => {
+        const comparison = await compareWithFlowTwin({
+            scenarioKey: 'wf_capillary',
+            dimensionKey: 'capillary_strength',
+            variantKey: 'pc_base',
+            artifactKey: 'wf_capillary',
+        });
+        expectWithinFlowTwinBands(comparison, {
+            oilWorstOfFinal: 0.003,
+            oilFinal: 0.003,
+            injection: 0.005,
+            breakthroughDays: 2.5,
+            finalWaterCut: 0.005,
+        });
+    }, 300_000);
 });

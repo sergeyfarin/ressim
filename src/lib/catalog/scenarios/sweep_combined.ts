@@ -83,7 +83,8 @@ export const sweep_combined: Scenario = {
         capillaryPEntry: 0,
         capillaryLambda: 2,
         // Grid: 21×21×5 five-spot + 5 layers, 420 m × 420 m × 20 m
-        // Base: moderate heterogeneity (V_DP ≈ 0.5) + moderate mobility (M ≈ 2)
+        // Base: V_DP ≈ 0.55 layering + M = 2. No variant runs these parameters
+        // as they stand: every one sets mu_o or the permeability mode.
         nx: 21,
         ny: 21,
         nz: 5,
@@ -96,7 +97,10 @@ export const sweep_combined: Scenario = {
         uniformPermZ: 0,
         layerPermsX: [1000, 150, 5, 60, 40],
         layerPermsY: [1000, 150, 5, 60, 40],
-        // layerPermsZ: [100, 15, .5, 6, 4],
+        // Sealed layers, the Stiles and Dykstra-Parsons assumption. This used to
+        // come from leaving layerPermsZ out, so the payload builder filled it with
+        // its 0.001 mD floor; it is the same value, written down.
+        layerPermsZ: [0.001, 0.001, 0.001, 0.001, 0.001],
         // Initial conditions
         initialPressure: 300,
         initialSaturation: 0.1,
@@ -124,6 +128,11 @@ export const sweep_combined: Scenario = {
         gravityEnabled: false,
     },
     analyticalDef: waterfloodBLDef,
+    referenceSources: [{
+        kind: 'opm-flow',
+        artifactKeys: ['sweep_combined'],
+        artifactVariantLabels: { sweep_combined: 'Favorable + layered' },
+    }],
     sensitivities: [
         {
             key: 'interaction_core',

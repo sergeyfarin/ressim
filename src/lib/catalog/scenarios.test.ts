@@ -381,16 +381,10 @@ describe('scenario catalog taxonomy', () => {
             `externally-referenced cases sit in ${[...groupsWithReferences].join(', ')} — collapsing them ` +
             'into one group would be the reference axis reappearing',
         ).toBeGreaterThanOrEqual(3);
-
-        // And at least one group must hold both kinds, so membership never
-        // implies an answer to "can this run be checked against anything?".
-        const mixed = SCENARIO_GROUPS.some((group) => {
-            const members = listScenarios().filter((scenario) => scenario.catalog.group === group.key);
-            if (members.length < 2) return false;
-            const withRef = members.filter((scenario) => (scenario.referenceSources ?? []).length > 0).length;
-            return withRef > 0 && withRef < members.length;
-        });
-        expect(mixed, 'no group mixes referenced and unreferenced cases').toBe(true);
+        // This used to also require one group mixing referenced and unreferenced cases. That
+        // measured coverage, not grouping: once the sweep and 1D waterfloods got their Flow twins
+        // (2026-09-25), every group but flow regimes & decline was fully referenced, and adding a
+        // reference to a case is never a reason to regroup it.
     });
 
     it('keeps the Buckley-Leverett group one-dimensional in fact, not just in its description', () => {

@@ -17,8 +17,14 @@ path FIM-DIRECT-001 was about. These do.
 | `gas-drive-20` | 20×1×1 | 60 | `three_phase_acceptance` `gas_drive`: saturated solution-gas drive, BHP producer, redissolution on (#55) |
 | `spe1-10x10x3` | 10×10×3 | 900 | `spe1_acceptance` SPE1 Case 1: gravity, three layers, gas rate injector, ORAT producer with a BHP floor (#55) |
 | `spe1-case2-10x10x3` | 10×10×3 | 900 | the same with redissolution (Case 2): no `DRSDT`, so JutulDarcy runs the same model. Guards the saturated-Rs convention above the table: until #35 continued the saturated curve, ResSim was 112 bar and 5.8 % cumulative oil off Flow and JutulDarcy here |
+| `wf-capillary` | 96×1×1 | 292 | `wf_capillary` base case: the `wf_bl1d` slab with Brooks–Corey P_c (P_e = 3 bar) under a 40 bar drawdown |
+| `wf-gravity-stability` | 1×1×60 | 184 | `wf_gravity_stability` base case: vertical column flooded upward at 100 rm³/day, gravity on |
+| `sweep-vertical` | 48×1×5 | ~730 | `sweep_vertical` base case: five layers, V_DP ≈ 0.5, kv/kh = 0.1, fully perforated BHP wells |
+| `sweep-crossflow` | 48×1×5 | ~730 | `sweep_crossflow` base case: the same section with k_rw,max = 0.25 |
+| `sweep-areal` | 21×21×1 | ~1,330 | `sweep_areal` base case: quarter five-spot, both wells on BHP |
+| `sweep-combined` | 21×21×5 | ~6,620 | `sweep_combined` "Favorable + layered" (μo = 0.5; the scenario's own μo = 1 is no variant it runs): layered five-spot with near-sealed layers (k_v = 0.001 mD) |
 
-The last two are not small: SPE1 is past the forced-direct threshold. They are here for the
+The SPE1 pair and the last four are not small: they are past the forced-direct threshold. They are here for the
 one-definition deck writer, which settled #55: their hand-written Flow decks disagreed with
 ResSim by 3–8 %, and these decks, written from the acceptance tests' own simulators, agree to
 0.1–0.8 % (see "Generated decks for the #55 gaps" below). A gravity-on case gets real `TOPS`, the
@@ -36,9 +42,10 @@ A PVT table that is not a scalar input comes from a committed fixture both sides
 `dep-pvt-tables.json` is what `generateBlackOilTable` makes for `dep_pvt`, and `dep_pvt.test.ts`
 fails if the scenario stops shipping it.
 
-Three of these decks are also the frontend's OPM references (`gas_injection`,
-`dep_pvt_correlation`, `dep_pvt_lab_report` in `tools/opm_flow/opm_flow_tool/cases.py`), which is
-why every deck requests FPR/FVIT/FGOR and writes a text summary (RUNSUM/SEPARATE). The artifact
+Ten of these decks are also the frontend's OPM references (`gas_drive`, `gas_injection`,
+`dep_pvt_correlation`, `dep_pvt_lab_report` and the six waterfloods in
+`tools/opm_flow/opm_flow_tool/cases.py`), which is why every deck requests FPR/FVIT (FGOR with gas,
+FWCT without) and writes a text summary (RUNSUM/SEPARATE). The artifact
 records the deck's SHA-256, so regenerating a deck without re-running Flow fails
 `opmReferenceWiring.test.ts`.
 
@@ -362,3 +369,30 @@ one group at a time and re-running Flow:
 
 The PVT table-edge conventions of #35 play no part in either.
 
+
+### The analytical-only waterfloods get Flow twins (2026-09-25, flow 2026.04)
+
+`sweep_areal`, `sweep_vertical`, `sweep_crossflow`, `sweep_combined`, `wf_capillary` and
+`wf_gravity_stability` were graded only against analytical references, and the sweep correlations
+only approximate the discrete model the scenario solves. Each now has a generated deck here and a
+frontend artifact of the same Flow run. The writer gained what they need:
+
+- **Capillary pressure.** Two-phase `SWOF` carries ResSim's own Brooks–Corey P_c, with nodes on the
+  20 × P_e cap and on the drop to 0 at S_w = 1 − S_or. Three-phase P_c is not written; the writer
+  refuses a case that has it.
+- **Multi-completion wells.** Completions that share a physical-well id (the worker adds a
+  perforated well one completion at a time) are one deck well: one `WELSPECS`, a `COMPDAT` row per
+  completion, one control. Under gravity a well must have one completion, because the two
+  simulators carry BHP down the wellbore with different densities.
+- **Reservoir-volume water injection.** ResSim meets the target at the completion cell's pressure;
+  the deck states it as the surface `RATE` it is at that cell's initial pressure. Water's FVF moves
+  by ~c_w·Δp ≈ 1e-4 from there, about what Flow's own `RESV` (converted at the field-average
+  pressure) would differ by, and JutulDarcy 0.3.7 cannot run a `RESV` injector. A gas target would
+  differ by Bg and is refused.
+- Two-phase decks take `DENSITY` from the engine and request `FWCT`. That adds one summary line to
+  the three `ow-*` decks and changes nothing they compute.
+
+The scenario side is graded too: `src/lib/catalog/opmFlowTwin.ts` runs each scenario's shipped
+variant through the worker's own setup and compares it with the artifact. The bands, and what they
+measured, are in each scenario's `<key>.test.ts`. The per-solver numbers against Flow on these decks
+are in the scorecard (`--markdown`).

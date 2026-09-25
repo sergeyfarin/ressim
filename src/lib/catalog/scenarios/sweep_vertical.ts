@@ -103,6 +103,11 @@ export const sweep_vertical: Scenario = {
         gravityEnabled: false,
     },
     analyticalDef: waterfloodBLDef,
+    referenceSources: [{
+        kind: 'opm-flow',
+        artifactKeys: ['sweep_vertical'],
+        artifactVariantLabels: { sweep_vertical: 'base' },
+    }],
     sensitivities: [
         {
             key: 'heterogeneity',

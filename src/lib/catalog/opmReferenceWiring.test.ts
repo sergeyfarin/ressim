@@ -33,6 +33,38 @@ const EXPECTED: Record<string, { artifacts: string[]; curveKeys: string[]; varia
         curveKeys: ['opm-oil-rate', 'opm-cum-oil', 'opm-avg-pressure', 'opm-cum-injection'],
         variantLabel: 'base',
     },
+    wf_capillary: {
+        artifacts: ['wf_capillary'],
+        curveKeys: ['opm-water-cut', 'opm-oil-rate', 'opm-cum-oil', 'opm-avg-pressure', 'opm-cum-injection'],
+        variantLabel: 'base',
+    },
+    wf_gravity_stability: {
+        artifacts: ['wf_gravity_stability'],
+        curveKeys: ['opm-water-cut', 'opm-oil-rate', 'opm-cum-oil', 'opm-avg-pressure', 'opm-cum-injection'],
+        variantLabel: 'base',
+    },
+    // The sweep layout has no oil-rate or cumulative-injection panel.
+    sweep_areal: {
+        artifacts: ['sweep_areal'],
+        curveKeys: ['opm-water-cut', 'opm-cum-oil', 'opm-avg-pressure'],
+        variantLabel: 'base',
+    },
+    sweep_vertical: {
+        artifacts: ['sweep_vertical'],
+        curveKeys: ['opm-water-cut', 'opm-cum-oil', 'opm-avg-pressure'],
+        variantLabel: 'base',
+    },
+    sweep_crossflow: {
+        artifacts: ['sweep_crossflow'],
+        curveKeys: ['opm-water-cut', 'opm-cum-oil', 'opm-avg-pressure'],
+        variantLabel: 'base',
+    },
+    // Its own parameters are no variant it runs; the Flow run is the one both dimensions draw.
+    sweep_combined: {
+        artifacts: ['sweep_combined'],
+        curveKeys: ['opm-water-cut', 'opm-cum-oil', 'opm-avg-pressure'],
+        variantLabel: 'Favorable + layered',
+    },
     dep_pvt: {
         artifacts: ['dep_pvt_correlation', 'dep_pvt_lab_report'],
         curveKeys: [
@@ -149,7 +181,11 @@ describe('committed OPM artifacts (#20)', () => {
         // file can be hashed here, so an edit that is not followed by a Flow run fails in CI.
         const fileBacked = listOpmFlowArtifacts().filter((artifact) => artifact.provenance.deckSource.endsWith('.DATA'));
         expect(fileBacked.map((artifact) => artifact.caseKey).sort())
-            .toEqual(['dep_pvt_correlation', 'dep_pvt_lab_report', 'gas_drive', 'gas_injection']);
+            .toEqual([
+                'dep_pvt_correlation', 'dep_pvt_lab_report', 'gas_drive', 'gas_injection',
+                'sweep_areal', 'sweep_combined', 'sweep_crossflow', 'sweep_vertical',
+                'wf_capillary', 'wf_gravity_stability',
+            ]);
         for (const artifact of fileBacked) {
             const deck = readFileSync(new URL(artifact.provenance.deckSource, REPO_ROOT));
             expect(createHash('sha256').update(deck).digest('hex'), artifact.caseKey).toBe(artifact.deckHash);

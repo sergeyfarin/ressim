@@ -17,6 +17,8 @@ const PARSED_BASELINE = [
     'wf_bl1d', 'spe1_gas_injection', 'gas_drive', 'wf_gravity',
     'wf_numerics', 'wf_numerics_fine', 'dep_gas_pz', 'dep_gas_pz_geopressured',
     'gas_injection', 'dep_pvt_correlation', 'dep_pvt_lab_report',
+    'sweep_areal', 'sweep_vertical', 'sweep_crossflow', 'sweep_combined',
+    'wf_capillary', 'wf_gravity_stability',
 ];
 
 describe('OPM Flow precomputed artifacts', () => {
@@ -31,8 +33,14 @@ describe('OPM Flow precomputed artifacts', () => {
             'gas_drive',
             'gas_injection',
             'spe1_gas_injection',
+            'sweep_areal',
+            'sweep_combined',
+            'sweep_crossflow',
+            'sweep_vertical',
             'wf_bl1d',
+            'wf_capillary',
             'wf_gravity',
+            'wf_gravity_stability',
             'wf_numerics',
             'wf_numerics',
         ]);

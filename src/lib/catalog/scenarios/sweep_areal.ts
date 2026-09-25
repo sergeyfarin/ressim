@@ -119,6 +119,11 @@ export const sweep_areal: Scenario = {
         gravityEnabled: false,
     },
     analyticalDef: waterfloodBLDef,
+    referenceSources: [{
+        kind: 'opm-flow',
+        artifactKeys: ['sweep_areal'],
+        artifactVariantLabels: { sweep_areal: 'base' },
+    }],
     sensitivities: [
         {
             key: 'mobility',

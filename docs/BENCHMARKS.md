@@ -466,8 +466,9 @@ documented in each test. They are not restated here, because the test is the rec
 
 ## Coverage
 
-Every scenario in the catalog, generated from `src/lib/catalog/scenarios/` and the OPM Flow
-artifact cases in `tools/opm_flow/opm_flow_tool/cases.py`. "Engine benchmark" is a section of this
+Every scenario in the catalog, generated from `src/lib/catalog/scenarios/` and the committed OPM
+Flow artifacts in `src/lib/catalog/opm-flow-results/` (one per case in
+`tools/opm_flow/opm_flow_tool/cases.py`). "Engine benchmark" is a section of this
 page that grades the scenario's physics; a scenario is mapped to one in `SCENARIO_SECTIONS`
 (`tools/benchmarks/benchmarks.py`). A refinement dimension is a sensitivity that varies grid or
 time step, which is where discretization error shows.
@@ -485,17 +486,17 @@ time step, which is where discretization error shows.
 | `gas_drive` | — | yes | §3, §5, §9 | — | JutulDarcy | yes |
 | `gas_injection` | gas-oil-bl | yes | §3, §5, §9 | grid | JutulDarcy | yes |
 | `spe1_gas_injection` | digitized-reference | yes | §2, §5 | — | — | **none** |
-| `sweep_areal` | sweep | — | — | grid_resolution | — | **none** |
-| `sweep_combined` | sweep | — | — | — | — | **none** |
-| `sweep_crossflow` | sweep | — | — | — | — | yes |
-| `sweep_vertical` | sweep | — | — | — | — | yes |
+| `sweep_areal` | sweep | yes | — | grid_resolution | — | yes |
+| `sweep_combined` | sweep | yes | — | — | — | yes |
+| `sweep_crossflow` | sweep | yes | — | — | — | yes |
+| `sweep_vertical` | sweep | yes | — | — | — | yes |
 | `wf_bl1d` | buckley-leverett | yes | §1 | — | — | yes |
-| `wf_capillary` | buckley-leverett | — | — | — | — | yes |
+| `wf_capillary` | buckley-leverett | yes | — | — | — | yes |
 | `wf_gravity` | buckley-leverett | yes | — | — | — | yes |
-| `wf_gravity_stability` | buckley-leverett | — | — | resolution | — | yes |
+| `wf_gravity_stability` | buckley-leverett | yes | — | resolution | — | yes |
 | `wf_numerics` | buckley-leverett | yes | — | grid_refinement, time_truncation | — | yes |
 
-**10 scenario(s) have no numerical reference** (neither a Flow artifact nor an engine benchmark), only an analytical one or none: `dep_arps`, `dep_decline`, `dep_pss`, `dep_welltest`, `sweep_areal`, `sweep_combined`, `sweep_crossflow`, `sweep_vertical`, `wf_capillary`, `wf_gravity_stability`. 3 scenario(s) are graded against a second independent simulator. 3 scenario(s) have no test file of their own, only the catalog-wide contract tests: `spe1_gas_injection`, `sweep_areal`, `sweep_combined`.
+**4 scenario(s) have no numerical reference** (neither a Flow artifact nor an engine benchmark), only an analytical one or none: `dep_arps`, `dep_decline`, `dep_pss`, `dep_welltest`. 3 scenario(s) are graded against a second independent simulator. 1 scenario(s) have no test file of their own, only the catalog-wide contract tests: `spe1_gas_injection`.
 <!-- /GENERATED:coverage -->
 
 ## Not benchmarked

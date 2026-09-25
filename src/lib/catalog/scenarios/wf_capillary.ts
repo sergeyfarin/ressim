@@ -159,6 +159,11 @@ export const wf_capillary: Scenario = {
         gravityEnabled: false,
     },
     analyticalDef: waterfloodBLDef,
+    referenceSources: [{
+        kind: 'opm-flow',
+        artifactKeys: ['wf_capillary'],
+        artifactVariantLabels: { wf_capillary: 'base' },
+    }],
     sensitivities: [
         {
             key: 'capillary_strength',

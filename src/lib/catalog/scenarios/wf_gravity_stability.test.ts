@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import initWasm, { ReservoirSimulator } from '../../ressim/pkg/simulator.js';
 import { computeBLRecoveryVsPVI, computeWelgeMetrics } from '@ressim/analytical/fractionalFlow';
 import { getScenario, getScenarioWithVariantParams } from '../scenarios';
+import { compareWithFlowTwin, expectWithinFlowTwinBands } from '../opmFlowTwin';
 
 let wasmReady: Promise<unknown> | null = null;
 
@@ -192,4 +193,34 @@ describe('wf_gravity_stability measured behaviour', () => {
         expect(fineUp.recoveryAtOnePvi).toBeGreaterThan(BL_RECOVERY_AT_ONE_PVI + 0.05);
         expect(fineDown.recoveryAtOnePvi).toBeLessThan(BL_RECOVERY_AT_ONE_PVI - 0.15);
     }, 240_000);
+});
+
+describe('wf_gravity_stability against its OPM Flow twin', () => {
+    /**
+     * The shipped run, through the worker's own setup, against Flow on
+     * `opm/reference-decks/small-direct/wf-gravity-stability`, the deck the chart's Flow
+     * curves come from.
+     * Unlike the viscous-only BL curve, Flow carries the gravity term along the column, so
+     * this is the reference the stable-direction departure from BL is measured against.
+     *
+     * The run is the scenario's default solver; FIM on the same deck is closer still (see the
+     * cross-solver scorecard). Measured 2026-09-25: oil 1.36 % worst / 0.34 % final,
+     * injection 0.027 %, breakthrough 32 d against 31 d, final water cut 0.9586 against
+     * 0.9558.
+     */
+    it('runs the shipped case to the Flow run of the same model', async () => {
+        const comparison = await compareWithFlowTwin({
+            scenarioKey: 'wf_gravity_stability',
+            dimensionKey: 'flood_direction',
+            variantKey: 'dir_up',
+            artifactKey: 'wf_gravity_stability',
+        });
+        expectWithinFlowTwinBands(comparison, {
+            oilWorstOfFinal: 0.025,
+            oilFinal: 0.01,
+            injection: 0.001,
+            breakthroughDays: 1,
+            finalWaterCut: 0.01,
+        });
+    }, 300_000);
 });
