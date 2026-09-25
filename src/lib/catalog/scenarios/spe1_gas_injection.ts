@@ -58,7 +58,9 @@ const SPE1_PVT_TABLE = [
     { p_bar: 276.79, rs_m3m3: 226.20, bo_m3m3: 1.695, mu_o_cp: 0.510, bg_m3m3: 0.00455, mu_g_cp: 0.0268 },
     { p_bar: 621.54, rs_m3m3: 226.20, bo_m3m3: 1.579, mu_o_cp: 0.740, bg_m3m3: 0.00455, mu_g_cp: 0.0268 },
     { p_bar: 345.73, rs_m3m3: 288.17, bo_m3m3: 1.827, mu_o_cp: 0.449, bg_m3m3: 0.00364, mu_g_cp: 0.0309 },
-    { p_bar: 621.54, rs_m3m3: 288.17, bo_m3m3: 1.737, mu_o_cp: 0.631, bg_m3m3: 0.00364, mu_g_cp: 0.0309 },
+    // Gas columns: SPE1CASE1's PVDG row at 9014.7 psia (0.386 rb/Mscf, 0.047 cP), which the engine's
+    // gas curve reads as a node; the 226.20 branch row above keeps the padding copy (#57).
+    { p_bar: 621.54, rs_m3m3: 288.17, bo_m3m3: 1.737, mu_o_cp: 0.631, bg_m3m3: 0.002167, mu_g_cp: 0.0470 },
 ];
 
 // Exact SWOF/SGOF inputs from OPM's props_spe1case1b.inc.

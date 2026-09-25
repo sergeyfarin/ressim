@@ -139,10 +139,14 @@ viscosity above the 345.73 bar table top used to be held flat, and now continues
 which the app scenario had all along. Either fix alone skews the gas/oil mobility ratio: gas alone
 put GOR 25.8 % off Flow. #57 then gave SPE1 its rock reference pressure (porosity quoted at
 14.7 psia, not the initial 331 bar), a hydrostatic initial state from the 8400 ft datum (`EQUIL`), and
-the right top depth (8325 ft; the setup had used the 8400 ft datum as the top). Against Flow on the
-faithful deck the worst gaps went from pressure 1.59 %, oil rate 3.30 %, GOR 5.54 % to about 1.4, 1.2
-and 1.3 %. Against the published series they went from 1.60 / 3.15 / 4.30 % to 1.35 / 1.27 / 1.85 %.
-The residual is not attributed yet (#57).
+the right top depth (8325 ft; the setup had used the 8400 ft datum as the top). A last bisection
+attributed what remained (about 1.4 % in pressure and oil rate) to PVDG alone. SPE1CASE1 has a gas
+row at 9014.7 psia (621.54 bar: Bg 0.002167, 0.047 cP), and ResSim extrapolated from 345.73 bar
+instead (Bg 6.5 % low). The table's top-branch row at that pressure now carries that gas, which the
+engine's gas curve reads as a node. Against Flow on the faithful deck the worst gaps went from
+pressure 1.59 %, oil rate 3.30 %, GOR 5.54 % before #57 to 0.08, 0.21 and 0.69 %. Against the
+published series they went from 1.60 / 3.15 / 4.30 % to 0.09 / 0.32 / 1.25 % (bands 3 / 8 / 12 %).
+The GOR residual sits on the breakthrough ramp, where timing is steep.
 
 ```bash
 python3 tools/opm_flow/spe1_refinement_oracle.py --out /tmp/spe1-refinement

@@ -402,8 +402,8 @@ pub(crate) mod tests {
                 // SPE1CASE1's undersaturated branch at 9014.7 psia, right after its saturated row
                 // (PVTO order: `build_oil_branches` joins consecutive rows of one Rs). The app's
                 // `spe1_gas_injection` table carried both branches and this setup did not (#57):
-                // oil viscosity rises to 0.740 / 0.631 cP instead of following c_o. The gas
-                // columns repeat the saturated row's, as the app table's do, which marks them as
+                // oil viscosity rises to 0.740 / 0.631 cP instead of following c_o. This row's gas
+                // columns repeat its saturated row's, as the app table's do, which marks them as
                 // padding rather than gas data.
                 PvtRow {
                     p_bar: 621.54,
@@ -421,13 +421,17 @@ pub(crate) mod tests {
                     bg_m3m3: 0.00364,
                     mu_g_cp: 0.0309,
                 },
+                // The top branch's row also carries SPE1CASE1's PVDG row at 9014.7 psia: Bg
+                // 0.386 rb/Mscf = 0.002167 rm3/sm3, 0.047 cP. The gas curve takes it as a node
+                // (its values are not a copy of the saturated row's), so gas is interpolated to
+                // 621 bar instead of extrapolated from 345.73 bar (#57).
                 PvtRow {
                     p_bar: 621.54,
                     rs_m3m3: 288.17,
                     bo_m3m3: 1.737,
                     mu_o_cp: 0.631,
-                    bg_m3m3: 0.00364,
-                    mu_g_cp: 0.0309,
+                    bg_m3m3: 0.002167,
+                    mu_g_cp: 0.0470,
                 },
             ],
             sim.pvt.c_o,
