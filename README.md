@@ -216,19 +216,24 @@ Full `cargo test` is not used as a gate, because FIM diagnostic tests can domina
 
 ## Benchmarks
 
-Current scorecard, measured on commit `5c29e0e` (2026-09-25). Every row, its band and its replay
-command are in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md), which is the authoritative record.
+Current scorecard: per area, the banded criterion closest to its band, the largest gap to a
+reference solving the same discrete model, and the commit it was measured on. The table is generated from `docs/benchmarks/benchmarks.json` by
+`bash scripts/benchmarks.sh render`; every row, its band and its replay command are in
+[`docs/BENCHMARKS.md`](docs/BENCHMARKS.md), which is the authoritative record.
 
-| Benchmark | Reference | Worst measured error (band) |
-|---|---|---|
-| 1D waterflood breakthrough | Buckley–Leverett + Welge | 9.4 % / 8.2 % early on two mobility ratios (25 % / 30 %) |
-| SPE1 Case 1, 10 years | Published SPE1 / OPM Flow | pressure 1.6 % (3 %), oil rate 3.1 % (8 %), GOR 4.3 % (12 %) |
-| Solution gas drive, 600 days | OPM Flow, identical deck | pressure 1.6 % (3 %), GOR 6.1 % (12 %), cumulative oil 4.3 % (8 %) |
-| 1D gas injection, 300 days | OPM Flow, identical deck | cumulative oil and injected gas ≤ 0.05 % (0.2 %) |
-| Black-oil depletion below the bubble point | OPM Flow, identical deck | FIM 0.008 bar at 40 cells; both solvers converge under refinement |
-| Eight generated decks, FIM and IMPES | OPM Flow | FIM: oil ≤ 0.08 %, injection ≤ 0.21 %, produced water or gas ≤ 1.13 %; within one substep of Flow |
-| Native vs browser build | Each other | 1e-13 (FIM), 1e-12 (IMPES) |
-| Compositional 1D CO₂ flood | OPM `flowexp_comp` | 0.0074 bar, cumulative production 0.041 % |
+<!-- GENERATED:summary -->
+| Area | Reference | Tightest criterion | Band | Band used | Largest same-model gap | Measured on |
+|---|---|---|---|---|---|---|
+| 1D waterflood breakthrough | Buckley-Leverett + Welge | BL-Case-A nx=24: breakthrough_rel_err 9.44 % | 25.0 % | 38% | — | `e1cf8e6` |
+| SPE1 Case 1, 10 years | Published SPE1 / Flow | 10x10x3: gor_rel_err 1.25 % | 12.0 % | 10% | 20x20x3: vs_flow.WGOR_rel_err +0.69 % (explained) | `e1cf8e6` |
+| Three-phase gas drive and injection | OPM Flow | gas_drive: oil_rate_rel_err 3.90 % | 8.0 % | 49% | gas_drive: vs_jutul.FOPR_rel_err +4.61 % (explained) | `e1cf8e6` |
+| Black-oil depletion column | Grid self-convergence, Flow | FIM: sat_gas_finest_pair_gap 1.20 % | 1.5 % | 80% | — | `e1cf8e6` |
+| Eight small decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | dep-pvt-lab-report: dense.cum.FGPT +1.13 % (tracked) | `e1cf8e6` |
+| Native vs wasm bindings | Each other | favorable-mobility (IMPES): rates_max_abs_diff 1.25e-10 abs | 1e-09 abs | 12% | — | `e1cf8e6` |
+| FIM convergence, long horizons | Substeps per report step | no banded criterion | — | — | — | `e1cf8e6` |
+| Compositional, matched timestep | OPM flowexp_comp | 1D plain: worst_pressure_diff 1.68 bar | 2 bar | 84% | 1D plain: worst_pressure_diff 1.68 bar (explained) | `e1cf8e6` |
+| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | dep-pvt-lab-report: jutul_vs_flow.final_FGPR_rel_err -4.14 % (tracked) | `e1cf8e6` |
+<!-- /GENERATED:summary -->
 
 Scenario tests (`pnpm run test:scenarios`) also grade each case in the picker against its own
 reference, and analytical-contract tests check that every dimension marked `affectsAnalytical`

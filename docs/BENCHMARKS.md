@@ -30,20 +30,22 @@ be widened to make a change pass. A regression that breaks one is a physics or s
 
 ## Summary
 
-Per section, the banded criterion closest to its band, and how much of the band it uses.
+Per section, the banded criterion closest to its band and how much of the band it uses, and the
+largest gap to a reference that solves the same discrete model. That gap is usually unbanded, so
+it is never the tightest criterion, and it can be the larger error (see Signals for all of them).
 
 <!-- GENERATED:summary -->
-| Area | Reference | Tightest criterion | Band | Band used | Measured on |
-|---|---|---|---|---|---|
-| 1D waterflood breakthrough | Buckley-Leverett + Welge | BL-Case-A nx=24: breakthrough_rel_err 9.44 % | 25.0 % | 38% | `e1cf8e6` |
-| SPE1 Case 1, 10 years | Published SPE1 / Flow | 10x10x3: gor_rel_err 1.25 % | 12.0 % | 10% | `e1cf8e6` |
-| Three-phase gas drive and injection | OPM Flow | gas_drive: oil_rate_rel_err 3.90 % | 8.0 % | 49% | `e1cf8e6` |
-| Black-oil depletion column | Grid self-convergence, Flow | FIM: sat_gas_finest_pair_gap 1.20 % | 1.5 % | 80% | `e1cf8e6` |
-| Eight small decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | `e1cf8e6` |
-| Native vs wasm bindings | Each other | favorable-mobility (IMPES): rates_max_abs_diff 1.25e-10 abs | 1e-09 abs | 12% | `e1cf8e6` |
-| FIM convergence, long horizons | Substeps per report step | no banded criterion | — | — | `e1cf8e6` |
-| Compositional, matched timestep | OPM flowexp_comp | 1D plain: worst_pressure_diff 1.68 bar | 2 bar | 84% | `e1cf8e6` |
-| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | `e1cf8e6` |
+| Area | Reference | Tightest criterion | Band | Band used | Largest same-model gap | Measured on |
+|---|---|---|---|---|---|---|
+| 1D waterflood breakthrough | Buckley-Leverett + Welge | BL-Case-A nx=24: breakthrough_rel_err 9.44 % | 25.0 % | 38% | — | `e1cf8e6` |
+| SPE1 Case 1, 10 years | Published SPE1 / Flow | 10x10x3: gor_rel_err 1.25 % | 12.0 % | 10% | 20x20x3: vs_flow.WGOR_rel_err +0.69 % (explained) | `e1cf8e6` |
+| Three-phase gas drive and injection | OPM Flow | gas_drive: oil_rate_rel_err 3.90 % | 8.0 % | 49% | gas_drive: vs_jutul.FOPR_rel_err +4.61 % (explained) | `e1cf8e6` |
+| Black-oil depletion column | Grid self-convergence, Flow | FIM: sat_gas_finest_pair_gap 1.20 % | 1.5 % | 80% | — | `e1cf8e6` |
+| Eight small decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | dep-pvt-lab-report: dense.cum.FGPT +1.13 % (tracked) | `e1cf8e6` |
+| Native vs wasm bindings | Each other | favorable-mobility (IMPES): rates_max_abs_diff 1.25e-10 abs | 1e-09 abs | 12% | — | `e1cf8e6` |
+| FIM convergence, long horizons | Substeps per report step | no banded criterion | — | — | — | `e1cf8e6` |
+| Compositional, matched timestep | OPM flowexp_comp | 1D plain: worst_pressure_diff 1.68 bar | 2 bar | 84% | 1D plain: worst_pressure_diff 1.68 bar (explained) | `e1cf8e6` |
+| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | dep-pvt-lab-report: jutul_vs_flow.final_FGPR_rel_err -4.14 % (tracked) | `e1cf8e6` |
 <!-- /GENERATED:summary -->
 
 ## Signals

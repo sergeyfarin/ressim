@@ -15,7 +15,8 @@ A run directory holds whatever the producers wrote:
     status.json            {section: {"status": "ran" | "skipped" | "failed", "note": ..., "command": ...}}
 
 Only the text between `<!-- GENERATED:<name> -->` and `<!-- /GENERATED:<name> -->` in the page is
-rewritten; the prose around it stays hand-written. Every number in a generated block comes from
+rewritten; the prose around it stays hand-written. README.md carries the page's `summary` block, so
+its scorecard is generated too rather than copied. Every number in a generated block comes from
 `benchmarks.json`, which records per section the commit it was measured on.
 
 Standard library only, so it runs anywhere `python3` does (CI included).
@@ -36,6 +37,8 @@ REPO = Path(__file__).resolve().parents[2]
 RECORDS = REPO / "docs" / "benchmarks" / "benchmarks.json"
 EXPLAINED = REPO / "docs" / "benchmarks" / "explained.json"
 PAGE = REPO / "docs" / "BENCHMARKS.md"
+# Every file holding GENERATED blocks; `render --check` covers them all.
+PAGES = [PAGE, REPO / "README.md"]
 SCENARIOS = REPO / "src" / "lib" / "catalog" / "scenarios"
 OPM_CASES = REPO / "tools" / "opm_flow" / "opm_flow_tool" / "cases.py"
 
@@ -388,8 +391,9 @@ def criteria_rows(s: Section, case: str, labels: list[tuple[str, str]], signed=F
     return rows
 
 
-def render_summary(sections: dict[str, Section]) -> str:
-    """One row per section: its tightest banded criterion, i.e. the most band used."""
+def render_summary(sections: dict[str, Section], explained: list[dict]) -> str:
+    """One row per section: its tightest banded criterion, i.e. the most band used, and beside it
+    the largest same-model gap, which is often unbanded and so never the tightest criterion."""
     rows = []
     for name, (title, reference) in SECTIONS.items():
         s = sections[name]
@@ -397,15 +401,23 @@ def render_summary(sections: dict[str, Section]) -> str:
                   and not math.isnan(r["value"])]
         p = s.data["provenance"]
         stamp = f"`{p['commit']}`" + (" (dirty)" if p and p["dirty"] else "") if p else "—"
+        gaps = [r for r in s.data["records"] if gap_threshold(r) is not None]
+        if gaps:
+            r = max(gaps, key=lambda r: abs(r["value"]) / gap_threshold(r))
+            e = explanation(name, r, explained)
+            gap = f"{r['case']}: {r['metric']} {shown(r)}" + (f" ({e['status']})" if e else "")
+        else:
+            gap = "—"
         if not banded:
-            rows.append([title, reference, "no banded criterion", "—", "—", stamp])
+            rows.append([title, reference, "no banded criterion", "—", "—", gap, stamp])
             continue
         r = max(banded, key=lambda r: abs(r["value"]) / r["band"])
-        shown = pct(abs(r["value"])) if r["unit"] == "frac" else f"{g(abs(r['value']))} {r['unit']}"
+        shown_value = pct(abs(r["value"])) if r["unit"] == "frac" else f"{g(abs(r['value']))} {r['unit']}"
         band = pct(r["band"], 1) if r["unit"] == "frac" else f"{g(r['band'])} {r['unit']}"
-        rows.append([title, reference, f"{r['case']}: {r['metric']} {shown}", band,
-                     f"{abs(r['value']) / r['band']:.0%}", stamp])
-    return table(["Area", "Reference", "Tightest criterion", "Band", "Band used", "Measured on"], rows)
+        rows.append([title, reference, f"{r['case']}: {r['metric']} {shown_value}", band,
+                     f"{abs(r['value']) / r['band']:.0%}", gap, stamp])
+    return table(["Area", "Reference", "Tightest criterion", "Band", "Band used",
+                  "Largest same-model gap", "Measured on"], rows)
 
 
 def render_buckley(s: Section) -> str:
@@ -602,14 +614,21 @@ def explanation(section: str, r: dict, explained: list[dict]) -> dict | None:
     return None
 
 
-def is_gap(r: dict) -> bool:
-    """A same-model difference large enough to be a finding: the two sides solve the same discrete
-    model, so it is neither discretization nor time-step error."""
+def gap_threshold(r: dict) -> float | None:
+    """The finding threshold when `r` compares against a reference solving the same discrete
+    model, so a difference is neither discretization nor time-step error; else None."""
     name = r["metric"]
     kind = name.endswith("_rel_err") or name.endswith("_diff") or ".cum." in name
-    threshold = GAP_THRESHOLD.get(r["unit"])
-    return (bool(r["same_model"]) and kind and threshold is not None
-            and isinstance(r["value"], (int, float)) and abs(r["value"]) > threshold)
+    if not (r["same_model"] and kind and isinstance(r["value"], (int, float))
+            and not math.isnan(r["value"])):
+        return None
+    return GAP_THRESHOLD.get(r["unit"])
+
+
+def is_gap(r: dict) -> bool:
+    """A same-model difference large enough to be a finding."""
+    threshold = gap_threshold(r)
+    return threshold is not None and abs(r["value"]) > threshold
 
 
 def band_used(r: dict) -> float | None:
@@ -814,13 +833,13 @@ RENDERERS = {
 BLOCK = re.compile(r"(<!-- GENERATED:(\w+) -->\n).*?(<!-- /GENERATED:\2 -->)", re.S)
 
 
-def render_page(page: str, doc: dict) -> str:
+def render_page(path: Path, page: str, doc: dict) -> str:
     sections = {k: Section(doc["sections"].get(k)) for k in SECTIONS}
 
     def block(m: re.Match) -> str:
         name = m.group(2)
         if name == "summary":
-            body = render_summary(sections)
+            body = render_summary(sections, load_explained())
         elif name == "signals":
             body = render_signals(doc)
         elif name == "coverage":
@@ -828,7 +847,7 @@ def render_page(page: str, doc: dict) -> str:
         elif name in RENDERERS:
             body = RENDERERS[name](sections[name])
         else:
-            raise SystemExit(f"unknown generated block {name!r} in {PAGE}")
+            raise SystemExit(f"unknown generated block {name!r} in {path.relative_to(REPO)}")
         return m.group(1) + body + "\n" + m.group(3)
 
     return BLOCK.sub(block, page)
@@ -836,17 +855,24 @@ def render_page(page: str, doc: dict) -> str:
 
 def cmd_render(args: argparse.Namespace) -> int:
     doc = json.loads(RECORDS.read_text())
-    page = PAGE.read_text()
-    rendered = render_page(page, doc)
+    stale = []
+    for path in PAGES:
+        page = path.read_text()
+        rendered = render_page(path, page, doc)
+        if rendered == page:
+            continue
+        stale.append(path.relative_to(REPO))
+        if not args.check:
+            path.write_text(rendered)
+            print(f"rendered {path.relative_to(REPO)}")
     if args.check:
-        if rendered != page:
-            print(f"{PAGE.relative_to(REPO)} differs from what {RECORDS.relative_to(REPO)} generates; "
+        if stale:
+            print(f"{', '.join(map(str, stale))} differ from what {RECORDS.relative_to(REPO)} generates; "
                   "run `bash scripts/benchmarks.sh render` (never edit a GENERATED block by hand)")
             return 1
-        print("benchmark page: in sync with its records")
-        return 0
-    PAGE.write_text(rendered)
-    print(f"rendered {PAGE.relative_to(REPO)}")
+        print("benchmark pages: in sync with their records")
+    elif not stale:
+        print("benchmark pages: already in sync with their records")
     return 0
 
 

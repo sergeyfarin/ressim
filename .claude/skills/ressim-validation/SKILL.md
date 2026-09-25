@@ -182,7 +182,7 @@ Benchmark records — `docs/BENCHMARKS.md` is generated, never typed (#54):
 bash scripts/benchmarks.sh check                 # measure every section, compare with docs/benchmarks/benchmarks.json
 bash scripts/benchmarks.sh check --tier fast     # without Flow / flowexp_comp / JutulDarcy (what CI has)
 bash scripts/benchmarks.sh update [--only spe1]  # re-record and re-render: on a COMMITTED tree only
-bash scripts/benchmarks.sh render --check        # page in sync with its records (no runs)
+bash scripts/benchmarks.sh render --check        # page and README summary in sync with records (no runs)
 ```
 
 The full tier runs JutulDarcy (`tools/jutul`, needs `juliaup add 1.12`; ~4 min of it is Julia
