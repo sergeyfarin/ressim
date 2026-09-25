@@ -17,6 +17,10 @@ struct BuckleyCase {
     mu_w: f64,
     mu_o: f64,
     breakthrough_watercut: f64,
+    /// Band on the signed breakthrough error, which must also be negative (early). 15 % for both
+    /// cases since #53: once the harness integrated every IMPES substep, nx = 24 reads -9.4 % (A)
+    /// and -8.2 % (B), and 25 % / 30 % (from `e10560a`, sized to the harness artifact) would have
+    /// passed a threefold regression. 15 % uses 63 % / 55 % of the band.
     rel_tol_breakthrough_pv: f64,
 }
 
@@ -41,7 +45,7 @@ fn buckley_case_a(name: &'static str, nx: usize, dt_days: f64, max_steps: usize)
         mu_w: 0.5,
         mu_o: 1.0,
         breakthrough_watercut: 0.01,
-        rel_tol_breakthrough_pv: 0.25,
+        rel_tol_breakthrough_pv: 0.15,
     }
 }
 
@@ -61,7 +65,7 @@ fn buckley_case_b(name: &'static str, nx: usize, dt_days: f64, max_steps: usize)
         mu_w: 0.6,
         mu_o: 1.4,
         breakthrough_watercut: 0.01,
-        rel_tol_breakthrough_pv: 0.30,
+        rel_tol_breakthrough_pv: 0.15,
     }
 }
 
@@ -268,14 +272,11 @@ fn native_single_step_fim_probe_case_a_24_cells() {
     );
 }
 
-#[test]
-fn benchmark_buckley_leverett_case_a_favorable_mobility() {
-    let case = buckley_case_a("BL-Case-A", 24, 0.5, 4000);
-
-    let metrics = run_buckley_case(&case);
-    let rel_err = ((metrics.breakthrough_pv - metrics.reference_breakthrough_pv)
-        / metrics.reference_breakthrough_pv)
-        .abs();
+/// First-order upstream smearing brings breakthrough early, so the gate fails a late front
+/// however close it is, as well as an early one outside the band.
+fn assert_breakthrough_within_band(case: &BuckleyCase) {
+    let metrics = run_buckley_case(case);
+    let rel_err = breakthrough_rel_err(&metrics);
 
     println!(
         "{}: breakthrough_pv_sim={:.4}, breakthrough_pv_ref={:.4}, rel_err={:.3}",
@@ -283,15 +284,15 @@ fn benchmark_buckley_leverett_case_a_favorable_mobility() {
     );
 
     record_breakthrough(
-        "BL-Case-A",
+        case.name,
         case.nx,
         &metrics,
         Some(case.rel_tol_breakthrough_pv),
     );
 
     assert!(
-        rel_err <= case.rel_tol_breakthrough_pv,
-        "{} breakthrough PV mismatch too high: sim={:.4}, ref={:.4}, rel_err={:.3}, tol={:.3}",
+        rel_err < 0.0 && -rel_err <= case.rel_tol_breakthrough_pv,
+        "{} breakthrough should be early and within the band: sim={:.4}, ref={:.4}, rel_err={:.3}, tol={:.3}",
         case.name,
         metrics.breakthrough_pv,
         metrics.reference_breakthrough_pv,
@@ -301,35 +302,13 @@ fn benchmark_buckley_leverett_case_a_favorable_mobility() {
 }
 
 #[test]
+fn benchmark_buckley_leverett_case_a_favorable_mobility() {
+    assert_breakthrough_within_band(&buckley_case_a("BL-Case-A", 24, 0.5, 4000));
+}
+
+#[test]
 fn benchmark_buckley_leverett_case_b_more_adverse_mobility() {
-    let case = buckley_case_b("BL-Case-B", 24, 0.5, 4000);
-
-    let metrics = run_buckley_case(&case);
-    let rel_err = ((metrics.breakthrough_pv - metrics.reference_breakthrough_pv)
-        / metrics.reference_breakthrough_pv)
-        .abs();
-
-    println!(
-        "{}: breakthrough_pv_sim={:.4}, breakthrough_pv_ref={:.4}, rel_err={:.3}",
-        case.name, metrics.breakthrough_pv, metrics.reference_breakthrough_pv, rel_err
-    );
-
-    record_breakthrough(
-        "BL-Case-B",
-        case.nx,
-        &metrics,
-        Some(case.rel_tol_breakthrough_pv),
-    );
-
-    assert!(
-        rel_err <= case.rel_tol_breakthrough_pv,
-        "{} breakthrough PV mismatch too high: sim={:.4}, ref={:.4}, rel_err={:.3}, tol={:.3}",
-        case.name,
-        metrics.breakthrough_pv,
-        metrics.reference_breakthrough_pv,
-        rel_err,
-        case.rel_tol_breakthrough_pv,
-    );
+    assert_breakthrough_within_band(&buckley_case_b("BL-Case-B", 24, 0.5, 4000));
 }
 
 fn breakthrough_rel_err(metrics: &BuckleyMetrics) -> f64 {
