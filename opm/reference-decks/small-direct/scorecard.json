@@ -1,7 +1,7 @@
 {
   "$comment": "Written by compare_small_direct.py --write-scorecard; do not edit by hand. Bands are BANDS in that script. See opm/reference-decks/small-direct/README.md.",
   "provenance": {
-    "commit": "8d48847",
+    "commit": "5b0fa89",
     "dirty": false,
     "date": "2026-09-25",
     "flow": "flow 2026.04",
@@ -28,7 +28,7 @@
             "newton": 84
           },
           "warnings": 0,
-          "wall_ms": 9.8
+          "wall_ms": 10.5
         },
         "dense": {
           "metrics": {
@@ -44,7 +44,7 @@
             "newton": 92
           },
           "warnings": 0,
-          "wall_ms": 9.2
+          "wall_ms": 9.5
         },
         "impes": {
           "metrics": {
@@ -97,7 +97,7 @@
             "newton": 91
           },
           "warnings": 0,
-          "wall_ms": 30.9
+          "wall_ms": 32.8
         },
         "dense": {
           "metrics": {
@@ -113,7 +113,7 @@
             "newton": 90
           },
           "warnings": 0,
-          "wall_ms": 43.2
+          "wall_ms": 41.5
         },
         "impes": {
           "metrics": {
@@ -128,7 +128,7 @@
             "substeps": 27
           },
           "warnings": 0,
-          "wall_ms": 17.5
+          "wall_ms": 17.2
         }
       },
       "pairs": {
@@ -166,7 +166,7 @@
             "newton": 914
           },
           "warnings": 0,
-          "wall_ms": 436.1
+          "wall_ms": 473.7
         },
         "dense": {
           "metrics": {
@@ -182,7 +182,7 @@
             "newton": 914
           },
           "warnings": 0,
-          "wall_ms": 645.9
+          "wall_ms": 633.7
         },
         "impes": {
           "metrics": {
@@ -197,7 +197,7 @@
             "substeps": 300
           },
           "warnings": 0,
-          "wall_ms": 191.3
+          "wall_ms": 189.7
         }
       },
       "pairs": {
@@ -235,7 +235,7 @@
             "newton": 910
           },
           "warnings": 0,
-          "wall_ms": 429.9
+          "wall_ms": 478.8
         },
         "dense": {
           "metrics": {
@@ -251,7 +251,7 @@
             "newton": 910
           },
           "warnings": 0,
-          "wall_ms": 626.4
+          "wall_ms": 624.2
         },
         "impes": {
           "metrics": {
@@ -266,7 +266,7 @@
             "substeps": 300
           },
           "warnings": 0,
-          "wall_ms": 183.9
+          "wall_ms": 184.1
         }
       },
       "pairs": {
@@ -304,7 +304,7 @@
             "newton": 195
           },
           "warnings": 0,
-          "wall_ms": 39.2
+          "wall_ms": 42.6
         },
         "dense": {
           "metrics": {
@@ -320,7 +320,7 @@
             "newton": 195
           },
           "warnings": 0,
-          "wall_ms": 40.0
+          "wall_ms": 37.6
         },
         "impes": {
           "metrics": {
@@ -335,7 +335,7 @@
             "substeps": 125
           },
           "warnings": 0,
-          "wall_ms": 103.1
+          "wall_ms": 103.6
         }
       },
       "pairs": {
@@ -374,7 +374,7 @@
             "newton": 486
           },
           "warnings": 0,
-          "wall_ms": 134.6
+          "wall_ms": 147.1
         },
         "dense": {
           "metrics": {
@@ -391,7 +391,7 @@
             "newton": 486
           },
           "warnings": 0,
-          "wall_ms": 257.2
+          "wall_ms": 257.3
         },
         "impes": {
           "metrics": {
@@ -407,7 +407,7 @@
             "substeps": 213
           },
           "warnings": 0,
-          "wall_ms": 87.2
+          "wall_ms": 86.5
         }
       },
       "pairs": {
@@ -445,7 +445,7 @@
             "newton": 48
           },
           "warnings": 0,
-          "wall_ms": 11.0
+          "wall_ms": 13.4
         },
         "dense": {
           "metrics": {
@@ -461,7 +461,7 @@
             "newton": 48
           },
           "warnings": 0,
-          "wall_ms": 24.2
+          "wall_ms": 24.8
         },
         "impes": {
           "metrics": {
@@ -476,7 +476,7 @@
             "substeps": 28
           },
           "warnings": 0,
-          "wall_ms": 3.9
+          "wall_ms": 3.4
         }
       },
       "pairs": {
@@ -515,7 +515,7 @@
             "newton": 376
           },
           "warnings": 0,
-          "wall_ms": 163.0
+          "wall_ms": 170.7
         },
         "dense": {
           "metrics": {
@@ -532,7 +532,7 @@
             "newton": 376
           },
           "warnings": 0,
-          "wall_ms": 927.0
+          "wall_ms": 923.9
         },
         "impes": {
           "metrics": {
@@ -587,7 +587,7 @@
             "newton": 133
           },
           "warnings": 0,
-          "wall_ms": 176.0
+          "wall_ms": 178.1
         },
         "dense": {
           "metrics": {
@@ -604,7 +604,7 @@
             "newton": 133
           },
           "warnings": 0,
-          "wall_ms": 1115.3
+          "wall_ms": 1048.8
         },
         "impes": {
           "metrics": {
@@ -620,7 +620,7 @@
             "substeps": 225
           },
           "warnings": 0,
-          "wall_ms": 131.3
+          "wall_ms": 129.9
         }
       },
       "pairs": {
@@ -659,7 +659,7 @@
             "newton": 475
           },
           "warnings": 0,
-          "wall_ms": 3133.0
+          "wall_ms": 3135.3
         },
         "dense": {
           "metrics": {
@@ -676,7 +676,7 @@
             "newton": 475
           },
           "warnings": 0,
-          "wall_ms": 3068.8
+          "wall_ms": 3123.5
         },
         "impes": {
           "metrics": {
@@ -692,7 +692,7 @@
             "substeps": 206
           },
           "warnings": 0,
-          "wall_ms": 5769.5
+          "wall_ms": 5699.2
         }
       },
       "pairs": {
@@ -731,7 +731,7 @@
             "newton": 520
           },
           "warnings": 0,
-          "wall_ms": 3232.5
+          "wall_ms": 3129.7
         },
         "dense": {
           "metrics": {
@@ -748,7 +748,7 @@
             "newton": 520
           },
           "warnings": 0,
-          "wall_ms": 3135.2
+          "wall_ms": 3206.5
         },
         "impes": {
           "metrics": {
@@ -764,7 +764,7 @@
             "substeps": 374
           },
           "warnings": 0,
-          "wall_ms": 11493.2
+          "wall_ms": 11560.5
         }
       },
       "pairs": {
@@ -803,7 +803,7 @@
             "newton": 311
           },
           "warnings": 0,
-          "wall_ms": 1449.7
+          "wall_ms": 1486.8
         },
         "dense": {
           "metrics": {
@@ -820,7 +820,7 @@
             "newton": 311
           },
           "warnings": 0,
-          "wall_ms": 1466.9
+          "wall_ms": 1474.9
         },
         "impes": {
           "metrics": {
@@ -836,7 +836,7 @@
             "substeps": 1791
           },
           "warnings": 0,
-          "wall_ms": 4248.7
+          "wall_ms": 4240.6
         }
       },
       "pairs": {
@@ -856,8 +856,8 @@
     },
     "sweep-combined": {
       "flow": {
-        "substeps": 206,
-        "newton": 530
+        "substeps": 81,
+        "newton": 275
       },
       "runs": {
         "sparse": {
@@ -865,50 +865,50 @@
             "p": 4.461014360534364,
             "sw": 0.11454806992428906,
             "sg": 0.0,
-            "final.p": 2.033339740462509,
-            "final.sw": 0.011544306745820299,
+            "final.p": 1.3056978358593483,
+            "final.sw": 0.017650607986870348,
             "final.sg": 0.0,
-            "cum.FOPT": 0.0028598168926360587,
-            "cum.FWPT": 0.0071137169802016,
-            "cum.FWIT": 0.006807323231326271,
-            "substeps": 204,
-            "newton": 735
+            "cum.FOPT": 0.00304509136813826,
+            "cum.FWPT": 0.0013134713522522782,
+            "cum.FWIT": 0.0005644052665723382,
+            "substeps": 79,
+            "newton": 357
           },
           "warnings": 0,
-          "wall_ms": 27141.6
+          "wall_ms": 13889.0
         },
         "dense": {
           "metrics": {
             "p": 4.461014360534364,
             "sw": 0.11454806992428906,
             "sg": 0.0,
-            "final.p": 2.033339740462509,
-            "final.sw": 0.011544306745820299,
+            "final.p": 1.3056978358593483,
+            "final.sw": 0.017650607986870348,
             "final.sg": 0.0,
-            "cum.FOPT": 0.0028598168926360587,
-            "cum.FWPT": 0.0071137169802016,
-            "cum.FWIT": 0.006807323231326271,
-            "substeps": 204,
-            "newton": 735
+            "cum.FOPT": 0.00304509136813826,
+            "cum.FWPT": 0.0013134713522522782,
+            "cum.FWIT": 0.0005644052665723382,
+            "substeps": 79,
+            "newton": 357
           },
           "warnings": 0,
-          "wall_ms": 27268.8
+          "wall_ms": 13933.6
         },
         "impes": {
           "metrics": {
             "p": 28.06010842657969,
             "sw": 0.22945564229611037,
             "sg": 0.0,
-            "final.p": 0.6562540279250015,
-            "final.sw": 0.0069896733294508295,
+            "final.p": 2.3164064404937506,
+            "final.sw": 0.08853928799763114,
             "final.sg": 0.0,
-            "cum.FOPT": 0.00011148901990632687,
-            "cum.FWPT": 0.004712640803864001,
-            "cum.FWIT": 0.0053771394663690115,
-            "substeps": 2764
+            "cum.FOPT": 0.0041712896443914385,
+            "cum.FWPT": 0.013026296382346196,
+            "cum.FWIT": 0.012632801690027827,
+            "substeps": 2133
           },
           "warnings": 0,
-          "wall_ms": 33802.2
+          "wall_ms": 27453.2
         }
       },
       "pairs": {
@@ -947,7 +947,7 @@
             "newton": 1040
           },
           "warnings": 0,
-          "wall_ms": 7118.6
+          "wall_ms": 7254.6
         },
         "dense": {
           "metrics": {
@@ -964,7 +964,7 @@
             "newton": 1040
           },
           "warnings": 0,
-          "wall_ms": 7155.4
+          "wall_ms": 7130.2
         },
         "impes": {
           "metrics": {
@@ -980,7 +980,7 @@
             "substeps": 707
           },
           "warnings": 0,
-          "wall_ms": 477.8
+          "wall_ms": 490.8
         }
       },
       "pairs": {
@@ -1019,7 +1019,7 @@
             "newton": 972
           },
           "warnings": 0,
-          "wall_ms": 6542.8
+          "wall_ms": 6698.9
         },
         "dense": {
           "metrics": {
@@ -1036,7 +1036,7 @@
             "newton": 972
           },
           "warnings": 0,
-          "wall_ms": 6655.0
+          "wall_ms": 6732.5
         },
         "impes": {
           "metrics": {
@@ -1052,7 +1052,7 @@
             "substeps": 540
           },
           "warnings": 0,
-          "wall_ms": 373.6
+          "wall_ms": 369.6
         }
       },
       "pairs": {
@@ -1091,7 +1091,7 @@
             "newton": 624
           },
           "warnings": 0,
-          "wall_ms": 286.2
+          "wall_ms": 293.3
         },
         "dense": {
           "metrics": {
@@ -1108,7 +1108,7 @@
             "newton": 624
           },
           "warnings": 0,
-          "wall_ms": 1456.6
+          "wall_ms": 1452.6
         },
         "impes": {
           "metrics": {
@@ -1124,7 +1124,7 @@
             "substeps": 780
           },
           "warnings": 0,
-          "wall_ms": 143.6
+          "wall_ms": 143.1
         }
       },
       "pairs": {
@@ -1163,7 +1163,7 @@
             "newton": 468
           },
           "warnings": 0,
-          "wall_ms": 147.0
+          "wall_ms": 153.3
         },
         "dense": {
           "metrics": {
@@ -1180,7 +1180,7 @@
             "newton": 468
           },
           "warnings": 0,
-          "wall_ms": 389.2
+          "wall_ms": 373.6
         },
         "impes": {
           "metrics": {
@@ -1196,7 +1196,7 @@
             "substeps": 532
           },
           "warnings": 0,
-          "wall_ms": 104.7
+          "wall_ms": 107.0
         }
       },
       "pairs": {
