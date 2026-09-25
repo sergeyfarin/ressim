@@ -55,6 +55,12 @@ issue owns it). An unexplained, untracked gap needs an issue. Staleness depends 
 commit, so it is not on this page: `python3 tools/benchmarks/benchmarks.py signals` prints it
 together with everything below, and `benchmarks.sh check` warns about it.
 
+**Nightly signals.** On the development machine, a user crontab entry runs
+`scripts/benchmarks-nightly.sh` every night. It runs the full tier on `origin/master` in its own
+worktree (`~/.cache/ressim-nightly`) and rewrites one pinned issue, "Benchmark signals (nightly)",
+with the drift check and the signals. It comments there only when the state changes, and it never
+commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
+
 <!-- GENERATED:signals -->
 **Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 0 unexplained and untracked, 23 tracked, 1 explained.
 

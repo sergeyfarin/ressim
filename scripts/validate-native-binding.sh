@@ -42,7 +42,8 @@ echo "gate ok: the extension module builds and imports"
 echo "== 3. native/wasm parity on the committed fixture"
 # Rebuild rather than trust an existing bundle: a stale one compares the native engine against
 # an older wasm engine. build-wasm.sh no-ops when the bundle is newer than its sources.
-bash "$repo_root/scripts/build-wasm.sh"
+# build-wasm.sh works on the current directory's tree; build this one's.
+( cd "$repo_root" && bash scripts/build-wasm.sh )
 node "$parity/run_wasm.mjs"
 ( cd "$parity" && python3 compare_native.py )
 

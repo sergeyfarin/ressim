@@ -50,6 +50,9 @@ case "$command" in
     *) sed -n '3,24p' "$0"; exit 2 ;;
 esac
 
+# build-wasm.sh and several producers resolve paths from the current directory.
+cd "$repo_root"
+
 if [ "$command" = update ] && [ -n "$(git -C "$repo_root" status --porcelain --untracked-files=no)" ]; then
     echo "update: tracked files are modified; commit first so the records name the commit they measure" >&2
     exit 1
@@ -247,12 +250,16 @@ fi
 
 if wanted fim_wasm; then
     echo "== fim_wasm"
-    bash "$repo_root/scripts/build-wasm.sh" > "$run_dir/build-wasm.log" 2>&1
-    python3 "$tool" plan-fim-wasm | while read -r file preset grid dt steps; do
+    rc=0
+    bash "$repo_root/scripts/build-wasm.sh" > "$run_dir/build-wasm.log" 2>&1 || rc=$?
+    while read -r file preset grid dt steps; do
+        [ "$rc" -eq 0 ] || break
         node "$repo_root/scripts/fim-wasm-diagnostic.mjs" --preset "$preset" --grid "$grid" --dt "$dt" \
-            --steps "$steps" --diagnostic quiet --json > "$run_dir/fim_wasm/$file.json"
-    done
-    status fim_wasm ran "node scripts/fim-wasm-diagnostic.mjs --preset <P> --grid <G> --dt <D> --steps <N> --diagnostic quiet --json" "" "" "node=$(node --version)"
+            --steps "$steps" --diagnostic quiet --json > "$run_dir/fim_wasm/$file.json" 2> "$run_dir/fim_wasm/$file.err" \
+            || { rc=$?; tail -3 "$run_dir/fim_wasm/$file.err"; }
+    done < <(python3 "$tool" plan-fim-wasm)
+    ran_or_failed fim_wasm "node scripts/fim-wasm-diagnostic.mjs --preset <P> --grid <G> --dt <D> --steps <N> --diagnostic quiet --json" \
+        "$rc" "" "" "node=$(node --version)"
 fi
 
 if wanted compositional; then
