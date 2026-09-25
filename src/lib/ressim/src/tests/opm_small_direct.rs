@@ -13,12 +13,16 @@
 //! # write the decks (committed under opm/reference-decks/small-direct/)
 //! OPM_SMALL_DECK_DIR=opm/reference-decks/small-direct cargo test --release \
 //!   --manifest-path src/lib/ressim/Cargo.toml opm_small_direct_write_decks -- --ignored
-//! # run ResSim, once per backend
-//! OPM_SMALL_OUT=/tmp/small-direct OPM_SMALL_BACKEND=sparse cargo test --release \
+//! # run ResSim: FIM once per small-system LU (OPM_SMALL_BACKEND), and IMPES
+//! OPM_SMALL_OUT=/tmp/small-direct OPM_SMALL_SOLVER=fim OPM_SMALL_BACKEND=sparse cargo test --release \
+//!   --manifest-path src/lib/ressim/Cargo.toml opm_small_direct_run_ressim -- --ignored --nocapture
+//! OPM_SMALL_OUT=/tmp/small-direct OPM_SMALL_SOLVER=impes cargo test --release \
 //!   --manifest-path src/lib/ressim/Cargo.toml opm_small_direct_run_ressim -- --ignored --nocapture
 //! ```
 //!
-//! `tools/opm_flow/compare_small_direct.py` runs Flow on the decks and compares the two.
+//! `tools/opm_flow/compare_small_direct.py` runs Flow on the decks and compares every run against
+//! it and against each other. `scripts/validate-cross-solver.sh` does all of the above and checks
+//! the result against the committed scorecard.
 
 use std::fmt::Write as _;
 use std::time::Instant;
@@ -631,11 +635,23 @@ fn json_array(values: &[f64]) -> String {
     format!("[{}]", parts.join(","))
 }
 
+/// Which ResSim solver a run uses: FIM on one small-system LU, or IMPES. The id names the output
+/// file, `<case>.<id>.json`, and is the column `compare_small_direct.py` reports it under.
+fn run_id(solver: &str, backend: &str) -> String {
+    match solver {
+        "fim" => backend.to_string(),
+        "impes" => "impes".to_string(),
+        other => panic!("OPM_SMALL_SOLVER must be fim or impes, not {other}"),
+    }
+}
+
 #[test]
-#[ignore = "runs the small-direct cases through ResSim; set OPM_SMALL_OUT and OPM_SMALL_BACKEND"]
+#[ignore = "runs the small-direct cases through ResSim; set OPM_SMALL_OUT, OPM_SMALL_SOLVER and OPM_SMALL_BACKEND"]
 fn opm_small_direct_run_ressim() {
     let out = std::env::var("OPM_SMALL_OUT").expect("set OPM_SMALL_OUT");
+    let solver = std::env::var("OPM_SMALL_SOLVER").unwrap_or_else(|_| "fim".to_string());
     let backend = std::env::var("OPM_SMALL_BACKEND").unwrap_or_else(|_| "sparse".to_string());
+    let id = run_id(&solver, &backend);
     let only = std::env::var("OPM_SMALL_CASE").ok();
     std::fs::create_dir_all(&out).unwrap();
     for case in CASES
@@ -643,43 +659,57 @@ fn opm_small_direct_run_ressim() {
         .filter(|c| only.as_deref().is_none_or(|k| k == c.key))
     {
         let mut sim = build(case.key);
-        sim.set_fim_direct_backend(backend.clone()).unwrap();
+        let fim = solver == "fim";
+        sim.set_fim_enabled(fim);
+        if fim {
+            sim.set_fim_direct_backend(backend.clone()).unwrap();
+        }
         let started = Instant::now();
         let mut reports = Vec::new();
+        // A warning is recorded, not asserted: the comparison is where a run is judged, and a
+        // diagnostic that aborts on the first warning hides everything after it.
+        let mut warnings: Vec<String> = Vec::new();
         let (report_steps, report_dt_days) = report_schedule(case);
         for _ in 0..report_steps {
+            let history_before = sim.rate_history.len();
             sim.step(report_dt_days);
-            assert!(
-                sim.last_solver_warning.is_empty(),
-                "{} warned at t={}: {}",
-                case.key,
-                sim.time_days,
-                sim.last_solver_warning
-            );
-            let stats = sim
-                .last_fim_step_stats
-                .clone()
-                .expect("FIM step records stats");
-            let newton: usize = stats
-                .accepted_rungs
-                .iter()
-                .flatten()
-                .map(|r| r.newton_iterations)
-                .sum();
-            let retry_newton: usize = stats
-                .retry_rungs
-                .iter()
-                .flatten()
-                .map(|r| r.newton_iterations)
-                .sum();
+            if !sim.last_solver_warning.is_empty() {
+                warnings.push(format!(
+                    "t={:.4}: {}",
+                    sim.time_days, sim.last_solver_warning
+                ));
+            }
+            // Every accepted substep appends one history row, on both solvers.
+            let substeps = sim.rate_history.len() - history_before;
+            // IMPES has no Newton loop and no retry ladder: its counters are null, not zero.
+            let counters = if fim {
+                let stats = sim
+                    .last_fim_step_stats
+                    .clone()
+                    .expect("FIM step records stats");
+                let newton: usize = stats
+                    .accepted_rungs
+                    .iter()
+                    .flatten()
+                    .map(|r| r.newton_iterations)
+                    .sum();
+                let retry_newton: usize = stats
+                    .retry_rungs
+                    .iter()
+                    .flatten()
+                    .map(|r| r.newton_iterations)
+                    .sum();
+                format!(
+                    "\"retries\":{},\"newton\":{newton},\"retry_newton\":{retry_newton}",
+                    stats.linear_bad_retries + stats.nonlinear_bad_retries + stats.mixed_retries,
+                )
+            } else {
+                "\"retries\":null,\"newton\":null,\"retry_newton\":null".to_string()
+            };
             reports.push(format!(
-                "{{\"t\":{:.10},\"substeps\":{},\"retries\":{},\"newton\":{},\"retry_newton\":{},\
+                "{{\"t\":{:.10},\"substeps\":{substeps},{counters},\
                  \"p\":{},\"sw\":{},\"sg\":{},\"rs\":{}}}",
                 sim.time_days,
-                stats.accepted_substeps,
-                stats.linear_bad_retries + stats.nonlinear_bad_retries + stats.mixed_retries,
-                newton,
-                retry_newton,
                 json_array(&sim.pressure),
                 json_array(&sim.sat_water),
                 json_array(&sim.sat_gas),
@@ -702,28 +732,31 @@ fn opm_small_direct_run_ressim() {
             })
             .collect();
         let json = format!(
-            "{{\"case\":\"{}\",\"backend\":\"{backend}\",\"wall_ms\":{wall_ms:.3},\
-             \"injected\":\"{}\",\
+            "{{\"case\":\"{}\",\"solver\":\"{solver}\",\"backend\":\"{}\",\"run\":\"{id}\",\
+             \"wall_ms\":{wall_ms:.3},\"injected\":\"{}\",\"warnings\":{},\
              \"history_columns\":[\"t\",\"qo\",\"qw\",\"qg\",\"qwi\"],\
              \"history\":[{}],\"reports\":[{}]}}\n",
             case.key,
+            if fim { backend.as_str() } else { "" },
             if sim.three_phase_mode && matches!(sim.injected_fluid, crate::InjectedFluid::Gas) {
                 "gas"
             } else {
                 "water"
             },
+            serde_json::to_string(&warnings).expect("warnings serialize"),
             history.join(","),
             reports.join(",")
         );
         std::fs::write(
-            std::path::Path::new(&out).join(format!("{}.{backend}.json", case.key)),
+            std::path::Path::new(&out).join(format!("{}.{id}.json", case.key)),
             json,
         )
         .unwrap();
         let substeps: usize = sim.rate_history.len();
         println!(
-            "{:<18} {backend:<6} substeps={substeps:<7} wall={wall_ms:.1} ms",
-            case.key
+            "{:<20} {id:<6} substeps={substeps:<7} warnings={:<3} wall={wall_ms:.1} ms",
+            case.key,
+            warnings.len()
         );
     }
 }

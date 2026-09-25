@@ -62,6 +62,7 @@ rather than hidden behind a default.
 | Analytical modules (`src/lib/analytical/`) | `pnpm test` (analytical + contract tests) |
 | Scenario catalog (`src/lib/catalog/`) | `pnpm test` then `pnpm run typecheck` |
 | WASM API surface (`frontend.rs`, `lib.rs`, worker payloads) | `bash scripts/build-wasm.sh` + `pnpm run validate:product` |
+| Physics, PVT, wells, either timestep controller, or the small-system linear route — anything that can move an answer | the rows above **plus** `bash scripts/validate-cross-solver.sh` (every solver vs OPM Flow, scorecard ratchet; needs `flow`) |
 
 ## Command reference
 
@@ -153,6 +154,29 @@ WASM rebuild (required before any `scripts/fim-wasm-diagnostic.mjs` run and befo
 bash scripts/build-wasm.sh
 ```
 
+Cross-solver gate — every ResSim solver against OPM Flow and against each other (~20 s with
+Flow cached; skips with a note when `flow` is not installed):
+
+```bash
+bash scripts/validate-cross-solver.sh                   # check against the committed scorecard
+bash scripts/validate-cross-solver.sh --update          # re-baseline: on a COMMITTED tree only
+bash scripts/validate-cross-solver.sh --markdown        # README-ready tables, then check
+bash scripts/validate-cross-solver.sh --refine 0.025 --case ow-2d-12x12   # time-refined referee
+```
+
+It runs FIM (sparse and dense LU) and IMPES natively on the eight small-direct decks
+(`opm/reference-decks/small-direct/`), runs Flow on the same decks, and fails when an accuracy
+metric against Flow (worst and final cell Δp/ΔSw/ΔSg, cumulatives) or a work metric (substeps,
+Newton) regresses past its band, when a run raises a new solver warning, or when sparse and dense
+stop agreeing. It prints improvements past the band too: re-baseline them deliberately with
+`--update` on a committed tree and commit the scorecard with the change that earned it, so the
+scorecard's provenance names that commit. **Do not hand-copy small-direct numbers into a doc**;
+use `--markdown`.
+
+Agreement with Flow at the same time step is not accuracy: FIM and Flow share an implicit scheme
+and its time-step error. When FIM and IMPES disagree, `--refine` is the referee (see the
+small-direct README's "Referee" section, where refinement shows IMPES converging to Flow).
+
 ## Interpreting failures
 
 - **Vitest contract failures after a catalog change** usually mean the scenario metadata violated a real contract (e.g. a sensitivity variant claims `affectsAnalytical: true` but doesn't perturb the analytical result). Fix the metadata, not the test — the test is the spec.
@@ -182,6 +206,8 @@ That covers the same ground as local `validate:full`, with two deliberate except
   change touches what they measure.
 - The wasm control matrix (`scripts/fim-wasm-diagnostic.mjs`) is not in CI either; see the
   `fim-solver-debug` skill.
+- `scripts/validate-cross-solver.sh` is not in CI: CI has no OPM Flow. It is the gate for any
+  change that can move an answer; run it locally.
 
 The explicit WASM build matters: `src/lib/ressim/pkg/` is **generated, not committed** (#30), so
 that step is what produces the bindings every frontend simulation test loads. It is belt and

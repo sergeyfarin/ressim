@@ -134,6 +134,30 @@ as oil. It was left alone because every shipped IMPES scenario is two-phase and 
 Buckley–Leverett benchmarks and binding matrix are validated as they stand. The three-phase
 closure (`impes/closure.rs`) is the pattern to reuse if it is taken up.
 
+## 9. Cross-solver harness covers the small-direct black-oil decks only (2026-09-25, #22)
+
+`scripts/validate-cross-solver.sh` gates FIM sparse, FIM dense and IMPES against OPM Flow on the
+eight small-direct decks. These were deliberately left out of the first version:
+
+- **Compositional.** `scripts/validate-compositional.sh reference` already checks against
+  `flowexp_comp`, with its own fixtures and bands. It is not on the shared scorecard because its
+  run record is a different shape: components, not Sw/Sg. Close by giving the compositional runs
+  the same `<case>.<run>.json` record and adding a `comp` run id. Do not write a second comparator.
+- **The ≥ 900-row decks and the wasm presets** (`opm/reference-decks/{gas-rate,water-*}`). These
+  are hand-mapped decks with known mapping gaps (that README's "#21"), driven through
+  `fim-wasm-diagnostic.mjs`. Their convergence numbers still live in `SOLVER_COMPARISON_SUMMARY.md`
+  and `FIM_STATUS.md` as typed tables. Close by generating those decks from the simulator the way
+  `opm_small_direct.rs` does, then adding them as cases.
+- **The wasm target.** The harness runs natively. Native/wasm parity is
+  `validate-native-binding.sh`'s job and has held to ~1e-13 since FIM-DIRECT-001.
+- **A second independent simulator.** Flow is the only external oracle, so a Flow defect or a
+  shared-convention error would go unnoticed. The recommendation is JutulDarcy.jl, which reads the
+  same `CASE.DATA` decks unchanged. It was not added because it needs a Julia toolchain this
+  machine does not have. See #22.
+- **CI.** CI has no Flow. A committed Flow-output cache would let CI run the check, but it would
+  cost several MB of reference fields in the repository. Not worth it while the gate takes 20 s
+  locally.
+
 ## Closed this session, for the record
 
 - The import gates were blind to workspace package specifiers, so a cycle spanning two packages

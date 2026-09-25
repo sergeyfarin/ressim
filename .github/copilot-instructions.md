@@ -77,6 +77,11 @@ never give a primary a slope that depends on which side of a clamp its roundoff 
 `pnpm run test:deployed` (Playwright against `pnpm run preview`, the only check that catches an
 unstyled page — a Tailwind content-glob miss raises no error anywhere).
 
+**Cross-solver gate** (local only; needs OPM Flow): `bash scripts/validate-cross-solver.sh` runs
+FIM and IMPES against Flow and each other on the small-direct decks and checks a committed
+scorecard. Run it for any change that can move an answer; re-baseline with `--update` only on a
+committed tree. Never hand-copy its numbers into docs — use `--markdown`.
+
 **Testing caution**: full `cargo test` is NOT a valid gate — FIM/SPE1 tests can hang or dominate runtime. Use `bash scripts/validate-solver-coverage.sh {shared|fim|impes|all}` and the targeted commands in `.claude/skills/ressim-validation/SKILL.md`.
 
 **CurveConfig / ChartSubPanel**: charts are driven by `CurveConfig[]` arrays. Curves grouped by `toggleGroupKey` into legend toggle buttons. `legendSection` / `legendSectionLabel` group buttons under collapsible section headers. Don't bypass this pattern.

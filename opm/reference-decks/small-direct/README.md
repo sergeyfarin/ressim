@@ -32,15 +32,47 @@ why every deck requests FPR/FVIT/FGOR and writes a text summary (RUNSUM/SEPARATE
 records the deck's SHA-256, so regenerating a deck without re-running Flow fails
 `opmReferenceWiring.test.ts`.
 
+## Gate: `scripts/validate-cross-solver.sh`
+
+```bash
+bash scripts/validate-cross-solver.sh              # FIM sparse + dense + IMPES vs Flow, checked against scorecard.json
+bash scripts/validate-cross-solver.sh --update     # re-baseline, on a committed tree only
+bash scripts/validate-cross-solver.sh --markdown   # the tables below, generated rather than typed
+bash scripts/validate-cross-solver.sh --refine 0.025 --case ow-2d-12x12   # time-refined referee
+```
+
+The script runs the three steps under "Replay" for every ResSim solver and checks the result against
+[`scorecard.json`](scorecard.json). That file is written by the comparator and never edited by hand.
+It fails when:
+
+- an accuracy metric against Flow gets worse than its band: worst and final cell Δp/ΔSw/ΔSg, and
+  cumulatives;
+- a work metric gets worse than its band: substeps, Newton;
+- a run raises a solver warning the scorecard did not record;
+- sparse and dense stop agreeing;
+- a run the scorecard covers produces no output.
+
+Bands are `BANDS` in `tools/opm_flow/compare_small_direct.py`. Each is a relative allowance plus an
+absolute floor, so roundoff on a near-zero baseline is not a failure.
+
+Improvements past the band are printed. Record them with `--update` and commit the scorecard with
+the change that earned them. Its `provenance` then names the commit, the Flow version and the
+command. Flow output is cached per deck SHA-256, so a warm check takes about 20 s.
+
+Before this gate, every result table below was typed into this README by hand after each fix, and
+nothing noticed when a later change moved a number.
+
 ## Replay
 
 ```bash
 # decks (only after changing a case)
 OPM_SMALL_DECK_DIR=$PWD/opm/reference-decks/small-direct cargo test --release \
   --manifest-path src/lib/ressim/Cargo.toml opm_small_direct_write_decks -- --ignored
-# ResSim, once per small-system LU
-for b in sparse dense; do OPM_SMALL_OUT=/tmp/small-direct OPM_SMALL_BACKEND=$b cargo test --release \
+# ResSim: FIM once per small-system LU, then IMPES
+for b in sparse dense; do OPM_SMALL_OUT=/tmp/small-direct OPM_SMALL_SOLVER=fim OPM_SMALL_BACKEND=$b cargo test --release \
   --manifest-path src/lib/ressim/Cargo.toml opm_small_direct_run_ressim -- --ignored --nocapture; done
+OPM_SMALL_OUT=/tmp/small-direct OPM_SMALL_SOLVER=impes cargo test --release \
+  --manifest-path src/lib/ressim/Cargo.toml opm_small_direct_run_ressim -- --ignored --nocapture
 # Flow + comparison (Flow always runs with --enable-gravity=false)
 python3 tools/opm_flow/compare_small_direct.py --ressim-dir /tmp/small-direct --flow-dir /tmp/small-direct-flow
 ```
@@ -182,3 +214,67 @@ Flow's FPR falls through 150 bar at 36.0 d and 87.75 d, the 2.4× clock ratio th
 around; average-pressure gap 15.2 bar at 6.75 d, 77.5 bar at 35.25 d, 14.6 bar at 168.75 d. No
 fragmentation at the bubble point on either side. Replay: the three commands at the top, with
 `--case dep-pvt-correlation` / `--case dep-pvt-lab-report` (`OPM_SMALL_CASE=…` for the ResSim run).
+
+### IMPES joins the matrix, and a refined referee (2026-09-25, base `5c290b0`)
+
+Until now only FIM ran on these decks. IMPES, the product solver, now runs on all eight. Numbers
+come from `bash scripts/validate-cross-solver.sh --markdown`, run natively in release with
+`flow 2026.04`. FIM rows reproduce the sections above exactly. Worst cell difference over every
+report:
+
+| Case | IMPES substeps | max \|Δp\| bar | max \|ΔSw\| | max \|ΔSg\| | Cumulatives vs Flow | FIM sparse, same columns |
+|---|---|---|---|---|---|---|
+| ow-1d-96 | 631 | 7.51 | 0.19 | — | FOPT 0.64%, FWPT 4.84%, FWIT 2.82% | 0.94 / 0.032 / — / FWPT 0.10% |
+| ow-1d-50-adverse | 28 | 6.15 | 0.040 | — | FOPT 0.45%, FWIT 0.08% | 0.38 / 0.0042 / — / FOPT 0.08% |
+| ow-2d-12x12 | 225 | 23.9 | 0.15 | — | FOPT 2.25%, FWPT 6.16%, FWIT 3.18% | 0.75 / 0.0079 / — / FWPT 0.81% |
+| bo-1d-10 | **20** | 2.10 | 0.000 | 0.0011 | FOPT 0.20%, **FGPT 3.91%** | 0.0009 / 0 / 0 / 0.00% |
+| bo-1d-40 | **20** | 2.15 | 0.000 | 0.0010 | FOPT 0.24%, **FGPT 3.97%** | 0.27 / 0 / 0.0003 / FGPT 0.12% |
+| go-1d-50 | 213 | 12.6 | 0.000 | 0.074 | FOPT 0.81%, FGPT 0.57%, FGIT 0.67% | 0.50 / 0 / 0.005 / FGPT 0.03% |
+| dep-pvt-correlation | 300 | 0.32 | 0.000 | 0.00026 | FOPT 0.00%, FGPT 2.10% | 0.31 / 0 / 0.0002 / FGPT 1.06% |
+| dep-pvt-lab-report | 300 | 0.15 | 0.000 | 0.00028 | FOPT 0.00%, FGPT 1.59% | 0.22 / 0 / 0.0003 / FGPT 1.13% |
+
+**At the same report step, FIM matches Flow far better than IMPES does. That is not evidence that
+FIM is more accurate.** FIM and Flow share an implicit scheme and take the same steps, so they
+share its time-step error. The referee is the same decks with a 10× finer report step
+(`--refine`), where all three simulators are close to time-converged:
+
+| Case (report dt) | Solver | max \|Δp\| bar | max \|ΔSw\| / \|ΔSg\| | final \|Δp\| bar | final \|ΔSw\| / \|ΔSg\| | Cumulatives vs Flow |
+|---|---|---|---|---|---|---|
+| ow-2d-12x12 (0.025 d) | FIM sparse | 1.18 | 0.0081 | 0.80 | 0.0081 | FWPT 0.83% |
+| | IMPES | 5.51 | 0.052 | 0.32 | **0.0037** | FWPT 1.39% |
+| ow-1d-96 (0.025 d) | FIM sparse | 0.75 | 0.0082 | 0.18 | 0.0082 | FWPT 0.18% |
+| | IMPES | 10.7 | 0.064 | 0.23 | **0.0017** | FWPT 1.07% |
+| ow-1d-50-adverse (0.025 d) | FIM sparse | 0.59 | 0.0042 | 0.34 | 0.0037 | FOPT 0.05% |
+| | IMPES | 12.4 | 0.0041 | 0.23 | 0.0040 | FOPT 0.21% |
+| go-1d-50 (0.2 d) | FIM sparse | 1.16 | 0.0036 | 0.010 | 0.0001 | FGPT 0.04% |
+| | IMPES | 6.50 | 0.019 | 0.011 | 0.0002 | FGPT 0.04% |
+| bo-1d-10 (0.5 d) | FIM sparse | 1.27 | 0.0001 | 0.0025 | 0.0000 | FGPT 0.05% |
+| | IMPES | 0.21 | 0.0001 | 0.0099 | 0.0000 | FGPT 0.58% |
+| bo-1d-40 (0.5 d) | FIM sparse | 1.18 | 0.0005 | 0.0054 | 0.0000 | FGPT 0.05% |
+| | IMPES | 0.18 | 0.0001 | 0.0101 | 0.0000 | FGPT 0.62% |
+
+Reading it:
+
+- **IMPES converges to Flow under refinement.** Its final oil–water saturation gap is 0.0017–0.004,
+  the same as or below FIM's. Most of the coarse-step IMPES "gap" is the implicit schemes' shared
+  time error, not an IMPES defect.
+- **The worst-over-reports Δp for IMPES is a start-up transient.** On ow-1d-50-adverse at 0.025 d
+  it is 12.4 bar at the first report, 3.5 bar at the second, and ≤ 0.3 bar from 0.15 d onward.
+  Mobilities are explicit, so the first substep's pressure solve sees the injector cell at
+  connate water. This is why the scorecard gates the final state as well as the worst.
+- **IMPES does not cut its step at the bubble point.** On bo-1d it takes exactly one substep per
+  5-day report and ends 3.9% off Flow's FGPT. At 0.5 d the gap is 0.6%, so it falls with dt at
+  roughly first order. Nothing in the IMPES step controller limits dt when a cell crosses the
+  bubble point, and its saturation-change limit never trips there because Sg starts at zero.
+  Tracked in [#44](https://github.com/sergeyfarin/ressim/issues/44).
+- Sparse against dense stays at 1e-10 bar on every case except bo-1d, where roundoff crosses one
+  adaptive threshold and the gap is 9e-4 bar. That agreement is gated as an invariant.
+
+The scorecard committed with this section was written on a working tree with local changes, so
+its provenance says `dirty: true` and it is provisional. Re-write it with `--update` once the
+harness is committed.
+
+Replay: `bash scripts/validate-cross-solver.sh --markdown`, and for the referee
+`--refine 0.025 --case ow-2d-12x12 --case ow-1d-96 --case ow-1d-50-adverse`, `--refine 0.2 --case go-1d-50`,
+`--refine 0.5 --case bo-1d-10 --case bo-1d-40`. The refined Flow runs are slow: ow-1d-96 takes ~55 s
+and go-1d-50 ~90 s.
