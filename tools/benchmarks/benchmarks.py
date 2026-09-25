@@ -267,6 +267,11 @@ def cmd_check(args: argparse.Namespace) -> int:
     fresh = collect_run(args.run)
     failures, notes, changed = [], [], 0
     for section, s in status.items():
+        if s["status"] == "failed":
+            # A benchmark test that fails is the loudest regression there is, not a note (#57:
+            # the SPE1 acceptance replay failed and `check` still said OK).
+            failures.append(f"{section}: {s.get('note', 'failed')}")
+            continue
         if s["status"] != "ran":
             notes.append(f"{section}: {s['status']} ({s.get('note', '')})")
             continue
