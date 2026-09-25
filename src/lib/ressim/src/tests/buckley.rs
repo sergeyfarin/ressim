@@ -173,23 +173,34 @@ fn run_buckley_case(case: &BuckleyCase) -> BuckleyMetrics {
     let mut previous_time = 0.0;
     let mut breakthrough_pv = None;
 
-    for _ in 0..case.max_steps {
+    // IMPES splits each `step` into adaptive substeps and records one rate point per substep, so
+    // every new point is integrated and tested. Reading only the last one would bill the whole
+    // outer step at its final substep's rate and see breakthrough only at outer-step boundaries,
+    // which made the result depend on the report interval (Case B: 40 % at dt = 0.5 vs 10 % at
+    // 0.25) instead of on the discretization.
+    'outer: for _ in 0..case.max_steps {
+        let first_new_point = sim.rate_history.len();
         sim.step(case.dt_days);
-        let point = sim
-            .rate_history
-            .last()
-            .expect("rate history should have entries");
-        let dt = point.time - previous_time;
-        previous_time = point.time;
+        assert!(
+            sim.rate_history.len() > first_new_point,
+            "{}: step recorded no rate history",
+            case.name
+        );
 
-        cumulative_injection += point.total_injection.max(0.0) * dt;
+        for point in &sim.rate_history[first_new_point..] {
+            let dt = point.time - previous_time;
+            previous_time = point.time;
 
-        if point.total_production_liquid > 1e-9 {
-            let water_rate = (point.total_production_liquid - point.total_production_oil).max(0.0);
-            let watercut = (water_rate / point.total_production_liquid).clamp(0.0, 1.0);
-            if watercut >= case.breakthrough_watercut {
-                breakthrough_pv = Some(cumulative_injection / total_pv);
-                break;
+            cumulative_injection += point.total_injection.max(0.0) * dt;
+
+            if point.total_production_liquid > 1e-9 {
+                let water_rate =
+                    (point.total_production_liquid - point.total_production_oil).max(0.0);
+                let watercut = (water_rate / point.total_production_liquid).clamp(0.0, 1.0);
+                if watercut >= case.breakthrough_watercut {
+                    breakthrough_pv = Some(cumulative_injection / total_pv);
+                    break 'outer;
+                }
             }
         }
     }
@@ -283,7 +294,7 @@ fn benchmark_buckley_leverett_case_a_favorable_mobility() {
 
 #[test]
 fn benchmark_buckley_leverett_case_b_more_adverse_mobility() {
-    let case = buckley_case_b("BL-Case-B", 24, 0.25, 4000);
+    let case = buckley_case_b("BL-Case-B", 24, 0.5, 4000);
 
     let metrics = run_buckley_case(&case);
     let rel_err = ((metrics.breakthrough_pv - metrics.reference_breakthrough_pv)
@@ -306,55 +317,85 @@ fn benchmark_buckley_leverett_case_b_more_adverse_mobility() {
     );
 }
 
+fn breakthrough_rel_err(metrics: &BuckleyMetrics) -> f64 {
+    (metrics.breakthrough_pv - metrics.reference_breakthrough_pv)
+        / metrics.reference_breakthrough_pv
+}
+
+/// IMPES chooses its own substeps, so the outer `step` size is only a report interval and must
+/// not move breakthrough. It used to: the harness sampled one substep per outer step, and Case B
+/// read 40 % at dt = 0.5 against 10 % at dt = 0.25.
 #[test]
-fn benchmark_buckley_leverett_smaller_dt_improves_coarse_alignment() {
-    let case_a_dt_050 = buckley_case_a("BL-Case-A-Coarse-dt0.50", 24, 0.5, 4000);
-    let case_a_dt_025 = buckley_case_a("BL-Case-A-Coarse-dt0.25", 24, 0.25, 8000);
-    let metrics_a_dt_050 = run_buckley_case(&case_a_dt_050);
-    let metrics_a_dt_025 = run_buckley_case(&case_a_dt_025);
-    let rel_err_a_dt_050 = ((metrics_a_dt_050.breakthrough_pv
-        - metrics_a_dt_050.reference_breakthrough_pv)
-        / metrics_a_dt_050.reference_breakthrough_pv)
-        .abs();
-    let rel_err_a_dt_025 = ((metrics_a_dt_025.breakthrough_pv
-        - metrics_a_dt_025.reference_breakthrough_pv)
-        / metrics_a_dt_025.reference_breakthrough_pv)
-        .abs();
+fn benchmark_buckley_leverett_breakthrough_is_independent_of_report_interval() {
+    for (coarse, fine) in [
+        (
+            buckley_case_a("BL-Case-A-dt0.50", 24, 0.5, 4000),
+            buckley_case_a("BL-Case-A-dt0.25", 24, 0.25, 8000),
+        ),
+        (
+            buckley_case_b("BL-Case-B-dt0.50", 24, 0.5, 4000),
+            buckley_case_b("BL-Case-B-dt0.25", 24, 0.25, 8000),
+        ),
+    ] {
+        let pv_coarse = run_buckley_case(&coarse).breakthrough_pv;
+        let pv_fine = run_buckley_case(&fine).breakthrough_pv;
+        let spread = ((pv_coarse - pv_fine) / pv_fine).abs();
 
-    let case_b_dt_050 = buckley_case_b("BL-Case-B-Coarse-dt0.50", 24, 0.5, 4000);
-    let case_b_dt_025 = buckley_case_b("BL-Case-B-Coarse-dt0.25", 24, 0.25, 4000);
-    let metrics_b_dt_050 = run_buckley_case(&case_b_dt_050);
-    let metrics_b_dt_025 = run_buckley_case(&case_b_dt_025);
-    let rel_err_b_dt_050 = ((metrics_b_dt_050.breakthrough_pv
-        - metrics_b_dt_050.reference_breakthrough_pv)
-        / metrics_b_dt_050.reference_breakthrough_pv)
-        .abs();
-    let rel_err_b_dt_025 = ((metrics_b_dt_025.breakthrough_pv
-        - metrics_b_dt_025.reference_breakthrough_pv)
-        / metrics_b_dt_025.reference_breakthrough_pv)
-        .abs();
+        println!(
+            "{} vs {}: breakthrough_pv {:.4} vs {:.4}, spread={:.4}",
+            coarse.name, fine.name, pv_coarse, pv_fine, spread
+        );
 
-    println!(
-        "Case-A coarse dt sweep rel_err: dt=0.50 -> {:.3}, dt=0.25 -> {:.3}",
-        rel_err_a_dt_050, rel_err_a_dt_025
-    );
-    println!(
-        "Case-B coarse dt sweep rel_err: dt=0.50 -> {:.3}, dt=0.25 -> {:.3}",
-        rel_err_b_dt_050, rel_err_b_dt_025
-    );
+        assert!(
+            spread <= 0.01,
+            "report interval moved breakthrough: {}={:.4}, {}={:.4}",
+            coarse.name,
+            pv_coarse,
+            fine.name,
+            pv_fine,
+        );
+    }
+}
 
-    assert!(
-        rel_err_a_dt_025 + 1e-9 < rel_err_a_dt_050,
-        "Smaller dt should improve Case-A coarse alignment: dt=0.50 -> {:.3}, dt=0.25 -> {:.3}",
-        rel_err_a_dt_050,
-        rel_err_a_dt_025
-    );
-    assert!(
-        rel_err_b_dt_025 + 1e-9 < rel_err_b_dt_050,
-        "Smaller dt should improve Case-B coarse alignment: dt=0.50 -> {:.3}, dt=0.25 -> {:.3}",
-        rel_err_b_dt_050,
-        rel_err_b_dt_025
-    );
+/// The remaining mismatch is first-order upstream smearing: the front arrives early, and
+/// halving the cell size brings it closer to the Welge shock.
+#[test]
+fn benchmark_buckley_leverett_grid_refinement_improves_alignment() {
+    for (coarse, fine) in [
+        (
+            buckley_case_a("BL-Case-A-nx24", 24, 0.5, 4000),
+            buckley_case_a("BL-Case-A-nx48", 48, 0.5, 4000),
+        ),
+        (
+            buckley_case_b("BL-Case-B-nx24", 24, 0.5, 4000),
+            buckley_case_b("BL-Case-B-nx48", 48, 0.5, 4000),
+        ),
+    ] {
+        let err_coarse = breakthrough_rel_err(&run_buckley_case(&coarse));
+        let err_fine = breakthrough_rel_err(&run_buckley_case(&fine));
+
+        println!(
+            "{} -> {}: rel_err {:.3} -> {:.3}",
+            coarse.name, fine.name, err_coarse, err_fine
+        );
+
+        assert!(
+            err_coarse < 0.0 && err_fine < 0.0,
+            "numerical diffusion should bring breakthrough early: {}={:.3}, {}={:.3}",
+            coarse.name,
+            err_coarse,
+            fine.name,
+            err_fine,
+        );
+        assert!(
+            err_fine.abs() + 1e-9 < err_coarse.abs(),
+            "grid refinement should improve alignment: {}={:.3}, {}={:.3}",
+            coarse.name,
+            err_coarse,
+            fine.name,
+            err_fine,
+        );
+    }
 }
 
 /// The parity fixture's FIM case (`crates/ressim-py/parity/cases.json`, `buckley-fim`) takes one
