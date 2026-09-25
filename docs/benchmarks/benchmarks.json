@@ -463,7 +463,7 @@
   },
   "three_phase": {
    "provenance": {
-    "commit": "21f25f8",
+    "commit": "57a0532",
     "dirty": false,
     "date": "2026-09-25",
     "command": "cargo test --release --lib -- --include-ignored --exact tests::three_phase_acceptance::three_phase_acceptance_error_replay tests::three_phase_acceptance::three_phase_gas_injection_matches_opm_flow_twin"
@@ -578,6 +578,66 @@
      "same_model": true,
      "unit": "frac",
      "value": -0.0028776200792483466
+    },
+    {
+     "case": "gas_drive",
+     "metric": "vs_jutul.FGOR_rel_err",
+     "value": -0.06041674725494346,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy, same deck (ignores STONE2)",
+     "same_model": true,
+     "at": "t=20 d"
+    },
+    {
+     "case": "gas_drive",
+     "metric": "jutul_vs_flow.FGOR_rel_err",
+     "value": 0.004095610892825924,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy vs OPM Flow, same deck (ignores STONE2)",
+     "same_model": true,
+     "at": "t=100 d"
+    },
+    {
+     "case": "gas_drive",
+     "metric": "vs_jutul.FOPR_rel_err",
+     "value": 0.11143636549452755,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy, same deck (ignores STONE2)",
+     "same_model": true,
+     "at": "t=600 d"
+    },
+    {
+     "case": "gas_drive",
+     "metric": "jutul_vs_flow.FOPR_rel_err",
+     "value": 0.03102137299100227,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy vs OPM Flow, same deck (ignores STONE2)",
+     "same_model": true,
+     "at": "t=20 d"
+    },
+    {
+     "case": "gas_drive",
+     "metric": "vs_jutul.FPR_rel_err",
+     "value": 0.014682642436670572,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy, same deck (ignores STONE2)",
+     "same_model": true,
+     "at": "t=50 d"
+    },
+    {
+     "case": "gas_drive",
+     "metric": "jutul_vs_flow.FPR_rel_err",
+     "value": 0.002747181318121752,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy vs OPM Flow, same deck (ignores STONE2)",
+     "same_model": true,
+     "at": "t=20 d"
     }
    ]
   },
@@ -5122,6 +5182,959 @@
      "same_model": true,
      "unit": "frac",
      "value": 0.0004181842040498703
+    }
+   ]
+  },
+  "jutul": {
+   "provenance": {
+    "commit": "57a0532",
+    "dirty": false,
+    "date": "2026-09-25",
+    "command": "julia +1.12 --project=tools/jutul tools/jutul/run_decks.jl; python3 tools/jutul/compare_jutul.py",
+    "flow": "flow 2026.04",
+    "jutuldarcy": "0.3.7",
+    "julia": "julia version 1.12.7"
+   },
+   "records": [
+    {
+     "case": "bo-1d-10",
+     "metric": "jutul_vs_flow.worst.p",
+     "value": 0.2829065840549845,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "jutul_vs_flow.worst.sw",
+     "value": 8.554147547246149e-08,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "jutul_vs_flow.worst.sg",
+     "value": 0.000348053314252552,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "jutul_vs_flow.final_FGPR_rel_err",
+     "value": -0.0008116892445930785,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "jutul_vs_flow.final_FOPR_rel_err",
+     "value": -0.0009333668864796221,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "fim_vs_jutul.worst.p",
+     "value": 0.28303772578937014,
+     "band": null,
+     "unit": "bar",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "fim_vs_jutul.worst.sw",
+     "value": 8.247944220662884e-08,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "fim_vs_jutul.worst.sg",
+     "value": 0.0003481214171247096,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "fim_vs_jutul.final_FGPR_rel_err",
+     "value": 0.0007844797771893469,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "fim_vs_jutul.final_FOPR_rel_err",
+     "value": 0.0009059306005985698,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "wall_s",
+     "value": 26.88196611404419,
+     "band": null,
+     "unit": "s",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "jutul_vs_flow.worst.p",
+     "value": 0.006172072107915483,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "jutul_vs_flow.worst.sw",
+     "value": 5.0707637949676254e-09,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "jutul_vs_flow.worst.sg",
+     "value": 6.100428103654942e-06,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "jutul_vs_flow.final_FGPR_rel_err",
+     "value": 0.0001468925212804867,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "jutul_vs_flow.final_FOPR_rel_err",
+     "value": -3.086551788146255e-05,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "fim_vs_jutul.worst.p",
+     "value": 0.27348376089247495,
+     "band": null,
+     "unit": "bar",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "fim_vs_jutul.worst.sw",
+     "value": 7.91153421664248e-08,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "fim_vs_jutul.worst.sg",
+     "value": 0.0003309728149163832,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "fim_vs_jutul.final_FGPR_rel_err",
+     "value": 0.00080948172115956,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "fim_vs_jutul.final_FOPR_rel_err",
+     "value": 0.0009201888710237467,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "wall_s",
+     "value": 0.17747783660888672,
+     "band": null,
+     "unit": "s",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "jutul_vs_flow.worst.p",
+     "value": 0.6839840380004034,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "jutul_vs_flow.worst.sw",
+     "value": 2.766389254060808e-07,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "jutul_vs_flow.worst.sg",
+     "value": 0.0004144316453671554,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "jutul_vs_flow.final_FGPR_rel_err",
+     "value": -0.022104694783981957,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "jutul_vs_flow.final_FOPR_rel_err",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "fim_vs_jutul.worst.p",
+     "value": 0.681657081666657,
+     "band": null,
+     "unit": "bar",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "fim_vs_jutul.worst.sw",
+     "value": 4.160397496649759e-07,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "fim_vs_jutul.worst.sg",
+     "value": 0.00038613067738524354,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "fim_vs_jutul.final_FGPR_rel_err",
+     "value": 0.01665282608951027,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "fim_vs_jutul.final_FOPR_rel_err",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "wall_s",
+     "value": 6.280098915100098,
+     "band": null,
+     "unit": "s",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "jutul_vs_flow.worst.p",
+     "value": 0.3707769956636753,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "jutul_vs_flow.worst.sw",
+     "value": 1.4799295243450583e-07,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "jutul_vs_flow.worst.sg",
+     "value": 0.00021946560033681006,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "jutul_vs_flow.final_FGPR_rel_err",
+     "value": -0.041362174444163485,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "jutul_vs_flow.final_FOPR_rel_err",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "fim_vs_jutul.worst.p",
+     "value": 0.3420352781024576,
+     "band": null,
+     "unit": "bar",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "fim_vs_jutul.worst.sw",
+     "value": 2.8853924642635587e-07,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "fim_vs_jutul.worst.sg",
+     "value": 0.00029370932001503147,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "fim_vs_jutul.final_FGPR_rel_err",
+     "value": 0.027974112563592987,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "fim_vs_jutul.final_FOPR_rel_err",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "wall_s",
+     "value": 1.0829410552978516,
+     "band": null,
+     "unit": "s",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "jutul_vs_flow.worst.p",
+     "value": 0.9499209891168618,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "jutul_vs_flow.worst.sw",
+     "value": 0.0006260823946304672,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "jutul_vs_flow.worst.sg",
+     "value": 0.004740872753187898,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "jutul_vs_flow.final_FGIR_rel_err",
+     "value": -0.0006368813634337797,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "jutul_vs_flow.final_FGPR_rel_err",
+     "value": -0.0007779916033521985,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "jutul_vs_flow.final_FOPR_rel_err",
+     "value": 0.0004261063108629086,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "fim_vs_jutul.worst.p",
+     "value": 0.48146531953923954,
+     "band": null,
+     "unit": "bar",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "fim_vs_jutul.worst.sw",
+     "value": 0.0006260839201830404,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "fim_vs_jutul.worst.sg",
+     "value": 0.004716903746524656,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "fim_vs_jutul.final_FGIR_rel_err",
+     "value": 0.000586119564892292,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "fim_vs_jutul.final_FGPR_rel_err",
+     "value": 0.0008058190227750026,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "fim_vs_jutul.final_FOPR_rel_err",
+     "value": -0.0010721557716598447,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "wall_s",
+     "value": 51.68253302574158,
+     "band": null,
+     "unit": "s",
+     "reference": "JutulDarcy 0.3.7, ignores STONE2",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "jutul_vs_flow.worst.p",
+     "value": 1.2616136724811895,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "jutul_vs_flow.worst.sw",
+     "value": 0.015936056029708545,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "jutul_vs_flow.worst.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "jutul_vs_flow.final_FOPR_rel_err",
+     "value": -0.0020496102754365584,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "jutul_vs_flow.final_FWIR_rel_err",
+     "value": -0.0020267141467685277,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "fim_vs_jutul.worst.p",
+     "value": 1.279608076892373,
+     "band": null,
+     "unit": "bar",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "fim_vs_jutul.worst.sw",
+     "value": 0.013064072372408503,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "fim_vs_jutul.worst.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "fim_vs_jutul.final_FOPR_rel_err",
+     "value": 0.0029660766350231233,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "fim_vs_jutul.final_FWIR_rel_err",
+     "value": 0.003091980951107807,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "wall_s",
+     "value": 49.14840793609619,
+     "band": null,
+     "unit": "s",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "jutul_vs_flow.worst.p",
+     "value": 1.0437740258128088,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "jutul_vs_flow.worst.sw",
+     "value": 0.037798407971206274,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "jutul_vs_flow.worst.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "jutul_vs_flow.final_FOPR_rel_err",
+     "value": -0.0008475359685637625,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "jutul_vs_flow.final_FWIR_rel_err",
+     "value": 0.00033232391382936345,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "jutul_vs_flow.final_FWPR_rel_err",
+     "value": 0.00042775242763509226,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "fim_vs_jutul.worst.p",
+     "value": 1.7092107857065457,
+     "band": null,
+     "unit": "bar",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "fim_vs_jutul.worst.sw",
+     "value": 0.05236423846666306,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "fim_vs_jutul.worst.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "fim_vs_jutul.final_FOPR_rel_err",
+     "value": 0.014631783383861443,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "fim_vs_jutul.final_FWIR_rel_err",
+     "value": 0.001220815358545012,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "fim_vs_jutul.final_FWPR_rel_err",
+     "value": 0.0001377805100431465,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "wall_s",
+     "value": 1.4246718883514404,
+     "band": null,
+     "unit": "s",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "jutul_vs_flow.worst.p",
+     "value": 4.398182742006156,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "jutul_vs_flow.worst.sw",
+     "value": 0.032000457736558324,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "jutul_vs_flow.worst.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "jutul_vs_flow.final_FOPR_rel_err",
+     "value": -0.002710889146239322,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "jutul_vs_flow.final_FWIR_rel_err",
+     "value": 0.0011931437861738465,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "jutul_vs_flow.final_FWPR_rel_err",
+     "value": 0.0028446099652083383,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow vs JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "fim_vs_jutul.worst.p",
+     "value": 4.228890197831163,
+     "band": null,
+     "unit": "bar",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "fim_vs_jutul.worst.sw",
+     "value": 0.03222788670418031,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "fim_vs_jutul.worst.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "fim_vs_jutul.final_FOPR_rel_err",
+     "value": 0.004806180665028396,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "fim_vs_jutul.final_FWIR_rel_err",
+     "value": 0.0033376103501668673,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "fim_vs_jutul.final_FWPR_rel_err",
+     "value": 0.002729177763185843,
+     "band": null,
+     "unit": "frac",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "wall_s",
+     "value": 0.30501699447631836,
+     "band": null,
+     "unit": "s",
+     "reference": "JutulDarcy 0.3.7",
+     "same_model": true,
+     "at": ""
     }
    ]
   }

@@ -37,13 +37,13 @@ Per section, the banded criterion closest to its band, and how much of the band 
 |---|---|---|---|---|---|
 | 1D waterflood breakthrough | Buckley-Leverett + Welge | BL-Case-A nx=24: breakthrough_rel_err 9.44 % | 25.0 % | 38% | `21f25f8` |
 | SPE1 Case 1, 10 years | Published SPE1 / Flow | 10x10x3: pressure_rel_err 1.60 % | 3.0 % | 53% | `21f25f8` |
-| Three-phase gas drive and injection | OPM Flow | gas_drive: cum_oil_rel_err 4.31 % | 8.0 % | 54% | `21f25f8` |
+| Three-phase gas drive and injection | OPM Flow | gas_drive: cum_oil_rel_err 4.31 % | 8.0 % | 54% | `57a0532` |
 | Black-oil depletion column | Grid self-convergence, Flow | IMPES: sat_gas_finest_pair_gap 1.21 % | 1.5 % | 80% | `21f25f8` |
 | Eight small decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | `501327e` |
 | Native vs wasm bindings | Each other | favorable-mobility (IMPES): rates_max_abs_diff 1.25e-10 abs | 1e-09 abs | 12% | `21f25f8` |
 | FIM convergence, long horizons | Substeps per report step | no banded criterion | — | — | `21f25f8` |
 | Compositional, matched timestep | OPM flowexp_comp | 1D plain: worst_pressure_diff 1.68 bar | 2 bar | 84% | `21f25f8` |
-| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | — |
+| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | `57a0532` |
 <!-- /GENERATED:summary -->
 
 ## Signals
@@ -56,7 +56,7 @@ commit, so it is not on this page: `python3 tools/benchmarks/benchmarks.py signa
 together with everything below, and `benchmarks.sh check` warns about it.
 
 <!-- GENERATED:signals -->
-**Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 0 unexplained and untracked, 14 tracked, 1 explained.
+**Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 0 unexplained and untracked, 23 tracked, 1 explained.
 
 | Section | Case | Metric | Value | Where | Status |
 |---|---|---|---|---|---|
@@ -70,10 +70,19 @@ together with everything below, and `benchmarks.sh check` warns about it.
 | three_phase | gas_drive | gor_rel_err | -6.08 % | t=10 d | tracked: #55 |
 | three_phase | gas_drive | cum_oil_rel_err | +4.31 % | t=600 d | tracked: #55 |
 | three_phase | gas_drive | oil_rate_rel_err | +4.61 % | t=20 d | tracked: #55 |
+| three_phase | gas_drive | vs_jutul.FGOR_rel_err | -6.04 % | t=20 d | tracked: #55 |
+| three_phase | gas_drive | vs_jutul.FOPR_rel_err | +11.14 % | t=600 d | tracked: #55 |
+| three_phase | gas_drive | jutul_vs_flow.FOPR_rel_err | +3.10 % | t=20 d | tracked: #55 |
+| three_phase | gas_drive | vs_jutul.FPR_rel_err | +1.47 % | t=50 d | tracked: #55 |
 | cross_solver | dep-pvt-correlation | sparse.cum.FGPT | +1.06 % |  | tracked: #55 |
 | cross_solver | dep-pvt-correlation | dense.cum.FGPT | +1.06 % |  | tracked: #55 |
 | cross_solver | dep-pvt-lab-report | sparse.cum.FGPT | +1.13 % |  | tracked: #55 |
 | cross_solver | dep-pvt-lab-report | dense.cum.FGPT | +1.13 % |  | tracked: #55 |
+| jutul | dep-pvt-correlation | jutul_vs_flow.final_FGPR_rel_err | -2.21 % |  | tracked: #55 |
+| jutul | dep-pvt-correlation | fim_vs_jutul.final_FGPR_rel_err | +1.67 % |  | tracked: #55 |
+| jutul | dep-pvt-lab-report | jutul_vs_flow.final_FGPR_rel_err | -4.14 % |  | tracked: #55 |
+| jutul | dep-pvt-lab-report | fim_vs_jutul.final_FGPR_rel_err | +2.80 % |  | tracked: #55 |
+| jutul | ow-1d-96 | fim_vs_jutul.final_FOPR_rel_err | +1.46 % |  | tracked: #55 |
 | compositional | 1D plain | worst_pressure_diff | 1.68 bar | t = 0.19 d, cell 4: 59.4244 vs 61.1053 bar | explained: COMPOSITIONAL_VALIDATION.md §8 (C12) |
 
 **Near the band** — more than 70% of an acceptance band used, so one modest regression from failing:
@@ -94,11 +103,6 @@ together with everything below, and `benchmarks.sh check` warns about it.
 | depletion | 2 of 8 | — | FIM: pressure_finest_pair_gap | 15.5% | — |
 | parity | 0 of 15 | 15 | buckley-fim (FIM): rates_max_abs_diff | < 0.1 % | explained: crates/ressim-py/parity/compare_native.py, TOL |
 | compositional | 4 of 8 | — | 1D skin 60: cum_injection_rel_err | 2.7% | — |
-
-**Stale explanations** — entries in `explained.json` that match no record:
-
-- jutul / dep-pvt-* / ['jutul_vs_flow.final_FGPR_rel_err', 'fim_vs_jutul.final_FGPR_rel_err'] (#55)
-- jutul / ow-1d-96 / fim_vs_jutul.final_FOPR_rel_err (#55)
 <!-- /GENERATED:signals -->
 
 ## 1. Buckley–Leverett breakthrough (analytical)
@@ -193,7 +197,7 @@ Errors are signed (ResSim − Flow), so a one-sided bias reads as one; the gas-d
 bias is inside its band but unexplained (`THREE_PHASE_VALIDATION.md` §6).
 
 <!-- GENERATED:three_phase -->
-*Measured on `21f25f8` (clean tree), 2026-09-25.*
+*Measured on `57a0532` (clean tree), 2026-09-25.*
 
 **Solution gas drive** (`gas_drive`, 20 cells, FIM, 60 × 10 d; signed ResSim − Flow):
 
@@ -210,8 +214,8 @@ Against JutulDarcy on the same deck (worst signed difference over the 11 checkpo
 
 | Pair | p | q_o | GOR |
 |---|---|---|---|
-| ResSim − JutulDarcy | — | — | — |
-| JutulDarcy − Flow | — | — | — |
+| ResSim − JutulDarcy | +1.47 % | +11.14 % | -6.04 % |
+| JutulDarcy − Flow | +0.27 % | +3.10 % | +0.41 % |
 
 **1D gas injection** (`gas_injection`'s Flow twin, `small-direct/go-1d-50`; signed):
 
@@ -419,10 +423,18 @@ reference itself is uncertain. The pinned project is `tools/jutul` (JutulDarcy 0
   starting with free gas (`gas_drive`); it changes no physics.
 
 <!-- GENERATED:jutul -->
-*Not measured yet.*
+*Measured on `57a0532` (clean tree), 2026-09-25, flow `flow 2026.04`, jutuldarcy `0.3.7`, julia `julia version 1.12.7`.*
 
 | Deck | JutulDarcy ignores | Jutul − Flow: max \|Δp\| bar | max \|ΔS\| | final rates | FIM − Jutul: max \|Δp\| bar | final rates |
 |---|---|---|---|---|---|---|
+| bo-1d-10 | STONE2, DRSDT | 0.283 | 0.00035 | FGPR -0.08 %, FOPR -0.09 % | 0.283 | FGPR +0.08 %, FOPR +0.09 % |
+| bo-1d-40 | STONE2, DRSDT | 0.00617 | 6.1e-06 | FGPR +0.01 %, FOPR -3.1e-03 % | 0.273 | FGPR +0.08 %, FOPR +0.09 % |
+| dep-pvt-correlation | STONE2 | 0.684 | 0.00041 | FGPR -2.21 %, FOPR +0.00 % | 0.682 | FGPR +1.67 %, FOPR +0.00 % |
+| dep-pvt-lab-report | STONE2 | 0.371 | 0.00022 | FGPR -4.14 %, FOPR +0.00 % | 0.342 | FGPR +2.80 %, FOPR +0.00 % |
+| go-1d-50 | STONE2 | 0.95 | 0.0047 | FGIR -0.06 %, FGPR -0.08 %, FOPR +0.04 % | 0.481 | FGIR +0.06 %, FGPR +0.08 %, FOPR -0.11 % |
+| ow-1d-50-adverse | — | 1.26 | 0.016 | FOPR -0.20 %, FWIR -0.20 % | 1.28 | FOPR +0.30 %, FWIR +0.31 % |
+| ow-1d-96 | — | 1.04 | 0.038 | FOPR -0.08 %, FWIR +0.03 %, FWPR +0.04 % | 1.71 | FOPR +1.46 %, FWIR +0.12 %, FWPR +0.01 % |
+| ow-2d-12x12 | — | 4.4 | 0.032 | FOPR -0.27 %, FWIR +0.12 %, FWPR +0.28 % | 4.23 | FOPR +0.48 %, FWIR +0.33 %, FWPR +0.27 % |
 <!-- /GENERATED:jutul -->
 
 ```bash
@@ -455,10 +467,10 @@ time step, which is where discretization error shows.
 | `dep_decline` | depletion | — | — | timestep, grid_refinement | — | yes |
 | `dep_gas_pz` | gas-material-balance | yes | — | — | — | yes |
 | `dep_pss` | well-test | — | — | — | — | yes |
-| `dep_pvt` (withheld) | — | yes | §5, §9 | — | — | yes |
+| `dep_pvt` (withheld) | — | yes | §5, §9 | — | JutulDarcy | yes |
 | `dep_welltest` | well-test | — | — | — | — | yes |
-| `gas_drive` | — | yes | §3 | — | — | yes |
-| `gas_injection` | gas-oil-bl | yes | §3, §5, §9 | grid | — | yes |
+| `gas_drive` | — | yes | §3 | — | JutulDarcy | yes |
+| `gas_injection` | gas-oil-bl | yes | §3, §5, §9 | grid | JutulDarcy | yes |
 | `spe1_gas_injection` | digitized-reference | yes | §2 | — | — | **none** |
 | `sweep_areal` | sweep | — | — | grid_resolution | — | **none** |
 | `sweep_combined` | sweep | — | — | — | — | **none** |
@@ -470,7 +482,7 @@ time step, which is where discretization error shows.
 | `wf_gravity_stability` | buckley-leverett | — | — | resolution | — | yes |
 | `wf_numerics` | buckley-leverett | yes | — | grid_refinement, time_truncation | — | yes |
 
-**10 scenario(s) have no numerical reference** (neither a Flow artifact nor an engine benchmark), only an analytical one or none: `dep_arps`, `dep_decline`, `dep_pss`, `dep_welltest`, `sweep_areal`, `sweep_combined`, `sweep_crossflow`, `sweep_vertical`, `wf_capillary`, `wf_gravity_stability`. 0 scenario(s) are graded against a second independent simulator. 3 scenario(s) have no test file of their own, only the catalog-wide contract tests: `spe1_gas_injection`, `sweep_areal`, `sweep_combined`.
+**10 scenario(s) have no numerical reference** (neither a Flow artifact nor an engine benchmark), only an analytical one or none: `dep_arps`, `dep_decline`, `dep_pss`, `dep_welltest`, `sweep_areal`, `sweep_combined`, `sweep_crossflow`, `sweep_vertical`, `wf_capillary`, `wf_gravity_stability`. 3 scenario(s) are graded against a second independent simulator. 3 scenario(s) have no test file of their own, only the catalog-wide contract tests: `spe1_gas_injection`, `sweep_areal`, `sweep_combined`.
 <!-- /GENERATED:coverage -->
 
 ## Not benchmarked
