@@ -89,8 +89,11 @@ reference rate is still meaningful (≥ 10 Sm³/day, i.e. the first ~50 days), a
 conditioned integral is graded over the whole horizon.
 
 **Where the remaining error sits.** The oil-rate and cumulative-oil worsts are at 20 d, in the
-steep first transient where the two simulators' time steps differ. By 600 d cumulative oil agrees
-to 0.09 %.
+steep first transient, and they are time discretization. With both simulators refined to 1-day
+reports (`validate-cross-solver.sh --refine 1 --case gas-drive-20`) the 20 d gaps fall from +3.9 %
+oil rate and −1.37 % cumulative oil to −0.48 % and +0.04 %, and by 50 d to 0.02–0.04 %. Neither
+simulator is time-converged there at 10-day reports: refining Flow alone moves its own 20 d oil rate
+from 27.6 to 26.1 Sm³/d. By 600 d cumulative oil agrees to 0.09 % at the scenario's own steps.
 
 ## 3. Gas-front behavior
 

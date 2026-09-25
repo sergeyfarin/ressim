@@ -132,9 +132,11 @@ oil +0.04 %. The hand deck omits `ROCK` (Flow ran incompressible rock), which al
 pressure +3.6 % and GOR −15 %. Its SPE1-published PVTO and coarser saturation tables partly offset
 that. Attribution by piecewise swap is in the small-direct README ("Generated decks for the #55
 gaps"). The published-series criteria above are unaffected: they grade against Flow on
-`SPE1CASE1.DATA`, which has `ROCK`. One genuine input difference remains: the SPE1 scenario gives
-undersaturated oil a single compressibility and no viscosity rise with pressure, where published
-SPE1 has both.
+`SPE1CASE1.DATA`, which has `ROCK`. Against the fixed deck, what remains (pressure −1.6 %, oil
+rate −3.3 %, GOR +5.5 %, generated in `BENCHMARKS.md` §2) is ResSim's SPE1 *inputs*, not its solver.
+Above 345.73 bar the engine holds gas viscosity flat (0.031 cP where SPE1 has 0.047 at 621 bar). Its
+undersaturated oil has one compressibility and no viscosity rise. Porosity is referenced at 331 bar
+rather than 14.7 psia, and the initial pressure is uniform rather than hydrostatic. Tracked in #57.
 
 ```bash
 python3 tools/opm_flow/spe1_refinement_oracle.py --out /tmp/spe1-refinement

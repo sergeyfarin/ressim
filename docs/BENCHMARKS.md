@@ -36,14 +36,14 @@ Per section, the banded criterion closest to its band, and how much of the band 
 | Area | Reference | Tightest criterion | Band | Band used | Measured on |
 |---|---|---|---|---|---|
 | 1D waterflood breakthrough | Buckley-Leverett + Welge | BL-Case-A nx=24: breakthrough_rel_err 9.44 % | 25.0 % | 38% | `21f25f8` |
-| SPE1 Case 1, 10 years | Published SPE1 / Flow | 10x10x3: pressure_rel_err 1.60 % | 3.0 % | 53% | `21f25f8` |
-| Three-phase gas drive and injection | OPM Flow | gas_drive: cum_oil_rel_err 4.31 % | 8.0 % | 54% | `57a0532` |
+| SPE1 Case 1, 10 years | Published SPE1 / Flow | 10x10x3: pressure_rel_err 1.60 % | 3.0 % | 53% | `914541f` |
+| Three-phase gas drive and injection | OPM Flow | gas_drive: oil_rate_rel_err 3.90 % | 8.0 % | 49% | `914541f` |
 | Black-oil depletion column | Grid self-convergence, Flow | IMPES: sat_gas_finest_pair_gap 1.21 % | 1.5 % | 80% | `21f25f8` |
 | Eight small decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | `8a0bccd` |
 | Native vs wasm bindings | Each other | favorable-mobility (IMPES): rates_max_abs_diff 1.25e-10 abs | 1e-09 abs | 12% | `21f25f8` |
 | FIM convergence, long horizons | Substeps per report step | no banded criterion | — | — | `21f25f8` |
 | Compositional, matched timestep | OPM flowexp_comp | 1D plain: worst_pressure_diff 1.68 bar | 2 bar | 84% | `21f25f8` |
-| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | `8a0bccd` |
+| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | `914541f` |
 <!-- /GENERATED:summary -->
 
 ## Signals
@@ -62,11 +62,17 @@ with the drift check and the signals. It comments there only when the state chan
 commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
 
 <!-- GENERATED:signals -->
-**Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 0 unexplained and untracked, 10 tracked, 14 explained.
+**Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 0 unexplained and untracked, 16 tracked, 4 explained.
 
 | Section | Case | Metric | Value | Where | Status |
 |---|---|---|---|---|---|
-| three_phase | gas_drive | jutul_vs_flow.FOPR_rel_err | +3.10 % | t=20 d | tracked: #55 |
+| spe1 | 10x10x3 | vs_flow.FOPR_rel_err | -3.30 % | t=2610 d | tracked: #57 |
+| spe1 | 10x10x3 | vs_flow.FPR_rel_err | -1.59 % | t=1170 d | tracked: #57 |
+| spe1 | 10x10x3 | vs_flow.WGOR_rel_err | +5.54 % | t=810 d | tracked: #57 |
+| spe1 | 20x20x3 | vs_flow.FOPR_rel_err | -3.00 % | t=2880 d | tracked: #57 |
+| spe1 | 20x20x3 | vs_flow.FPR_rel_err | -1.63 % | t=1080 d | tracked: #57 |
+| spe1 | 20x20x3 | vs_flow.WGOR_rel_err | +5.67 % | t=720 d | tracked: #57 |
+| three_phase | gas_drive | jutul_vs_flow.FOPR_rel_err | -2.33 % | t=10 d | tracked: #55 |
 | cross_solver | dep-pvt-correlation | sparse.cum.FGPT | +1.06 % |  | tracked: #55 |
 | cross_solver | dep-pvt-correlation | dense.cum.FGPT | +1.06 % |  | tracked: #55 |
 | cross_solver | dep-pvt-lab-report | sparse.cum.FGPT | +1.13 % |  | tracked: #55 |
@@ -76,19 +82,9 @@ commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
 | jutul | dep-pvt-lab-report | jutul_vs_flow.final_FGPR_rel_err | -4.14 % |  | tracked: #55 |
 | jutul | dep-pvt-lab-report | fim_vs_jutul.final_FGPR_rel_err | +2.80 % |  | tracked: #55 |
 | jutul | ow-1d-96 | fim_vs_jutul.final_FOPR_rel_err | +1.46 % |  | tracked: #55 |
-| spe1 | 10x10x3 | vs_flow.FOPR_rel_err | +2.73 % | t=3510 d | explained: BLACK_OIL_VALIDATION.md §1 (#55) |
-| spe1 | 10x10x3 | vs_flow.FPR_rel_err | -3.06 % | t=900 d | explained: BLACK_OIL_VALIDATION.md §1 (#55) |
-| spe1 | 10x10x3 | vs_flow.WGOR_rel_err | +7.13 % | t=810 d | explained: BLACK_OIL_VALIDATION.md §1 (#55) |
-| spe1 | 20x20x3 | vs_flow.FOPR_rel_err | +2.81 % | t=3600 d | explained: BLACK_OIL_VALIDATION.md §1 (#55) |
-| spe1 | 20x20x3 | vs_flow.FPR_rel_err | -3.03 % | t=900 d | explained: BLACK_OIL_VALIDATION.md §1 (#55) |
-| spe1 | 20x20x3 | vs_flow.WGOR_rel_err | +7.17 % | t=720 d | explained: BLACK_OIL_VALIDATION.md §1 (#55) |
-| three_phase | gas_drive | pressure_rel_err | +1.59 % | t=50 d | explained: THREE_PHASE_VALIDATION.md §6 (#55) |
-| three_phase | gas_drive | gor_rel_err | -6.08 % | t=10 d | explained: THREE_PHASE_VALIDATION.md §6 (#55) |
-| three_phase | gas_drive | cum_oil_rel_err | +4.31 % | t=600 d | explained: THREE_PHASE_VALIDATION.md §6 (#55) |
-| three_phase | gas_drive | oil_rate_rel_err | +4.61 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §6 (#55) |
-| three_phase | gas_drive | vs_jutul.FGOR_rel_err | -6.04 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §6 (#55) |
-| three_phase | gas_drive | vs_jutul.FOPR_rel_err | +11.14 % | t=600 d | explained: THREE_PHASE_VALIDATION.md §6 (#55) |
-| three_phase | gas_drive | vs_jutul.FPR_rel_err | +1.47 % | t=50 d | explained: THREE_PHASE_VALIDATION.md §6 (#55) |
+| three_phase | gas_drive | cum_oil_rel_err | -1.37 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
+| three_phase | gas_drive | oil_rate_rel_err | +3.90 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
+| three_phase | gas_drive | vs_jutul.FOPR_rel_err | +4.61 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
 | compositional | 1D plain | worst_pressure_diff | 1.68 bar | t = 0.19 d, cell 4: 59.4244 vs 61.1053 bar | explained: COMPOSITIONAL_VALIDATION.md §8 (C12) |
 
 **Near the band** — more than 70% of an acceptance band used, so one modest regression from failing:
@@ -105,7 +101,7 @@ commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
 |---|---|---|---|---|---|
 | buckley | 3 of 4 | — | BL-Case-B-dt0.50: report_interval_spread | 0.3% | — |
 | spe1 | 3 of 6 | — | 10x10x3: plateau_rel_err | < 0.1 % | — |
-| three_phase | 5 of 9 | — | gas_drive: mb_drift_oil | < 0.1 % | — |
+| three_phase | 5 of 9 | 2 | gas_drive: mb_drift_oil | < 0.1 % | — |
 | depletion | 2 of 8 | — | FIM: pressure_finest_pair_gap | 15.5% | — |
 | parity | 0 of 15 | 15 | buckley-fim (FIM): rates_max_abs_diff | < 0.1 % | explained: crates/ressim-py/parity/compare_native.py, TOL |
 | compositional | 4 of 8 | — | 1D skin 60: cum_injection_rel_err | 2.7% | — |
@@ -153,7 +149,7 @@ Owning document: [`BLACK_OIL_VALIDATION.md`](BLACK_OIL_VALIDATION.md) §1. Odeh 
 `tests/spe1_acceptance.rs`. No solver warnings are allowed at any step.
 
 <!-- GENERATED:spe1 -->
-*Measured on `21f25f8` (clean tree), 2026-09-25, flow `flow 2026.04`.*
+*Measured on `914541f` (clean tree), 2026-09-25, flow `flow 2026.04`.*
 
 Against the published series:
 
@@ -177,8 +173,8 @@ Against OPM Flow run on the same grid (`tools/opm_flow/spe1_refinement_oracle.py
 
 | Grid | p | q_o | GOR |
 |---|---|---|---|
-| 10x10x3 | -3.06 % | +2.73 % | +7.13 % |
-| 20x20x3 | -3.03 % | +2.81 % | +7.17 % |
+| 10x10x3 | -1.59 % | -3.30 % | +5.54 % |
+| 20x20x3 | -1.63 % | -3.00 % | +5.67 % |
 <!-- /GENERATED:spe1 -->
 
 Areal refinement (20×20×3) is a characterization, not a criterion: against the 10×10×3 published
@@ -203,16 +199,16 @@ Errors are signed (ResSim − Flow), so a one-sided bias reads as one; the gas-d
 bias is inside its band but unexplained (`THREE_PHASE_VALIDATION.md` §6).
 
 <!-- GENERATED:three_phase -->
-*Measured on `57a0532` (clean tree), 2026-09-25.*
+*Measured on `914541f` (clean tree), 2026-09-25.*
 
 **Solution gas drive** (`gas_drive`, 20 cells, FIM, 60 × 10 d; signed ResSim − Flow):
 
 | Criterion | Band | Worst measured |
 |---|---|---|
-| Field average pressure, 11 checkpoints | 3.0 % | +1.588 % (t=50 d) |
-| Producing GOR | 12.0 % | -6.076 % (t=10 d) |
-| Cumulative surface oil | 8.0 % | +4.310 % (t=600 d) |
-| Producer oil rate while reference ≥ 10 Sm³/d | 10.0 % | +4.609 % (t=20 d) |
+| Field average pressure, 11 checkpoints | 1.0 % | +0.298 % (t=20 d) |
+| Producing GOR | 1.0 % | +0.237 % (t=50 d) |
+| Cumulative surface oil | 3.0 % | -1.374 % (t=20 d) |
+| Producer oil rate while reference ≥ 10 Sm³/d | 8.0 % | +3.898 % (t=20 d) |
 | Oil material-balance drift | 1.0 % | +6.3e-06 % (t=500 d) |
 | Gas material-balance drift | 1.0 % | +8.2e-05 % (t=500 d) |
 
@@ -220,8 +216,8 @@ Against JutulDarcy on the same deck (worst signed difference over the 11 checkpo
 
 | Pair | p | q_o | GOR |
 |---|---|---|---|
-| ResSim − JutulDarcy | +1.47 % | +11.14 % | -6.04 % |
-| JutulDarcy − Flow | +0.27 % | +3.10 % | +0.41 % |
+| ResSim − JutulDarcy | +0.36 % | +4.61 % | -0.10 % |
+| JutulDarcy − Flow | -0.10 % | -2.33 % | +0.21 % |
 
 **1D gas injection** (`gas_injection`'s Flow twin, `small-direct/go-1d-50`; signed):
 
@@ -437,7 +433,7 @@ reference itself is uncertain. The pinned project is `tools/jutul` (JutulDarcy 0
   starting with free gas (`gas_drive`); it changes no physics.
 
 <!-- GENERATED:jutul -->
-*Measured on `8a0bccd` (clean tree), 2026-09-25, flow `flow 2026.04`, jutuldarcy `0.3.7`, julia `julia version 1.12.7`.*
+*Measured on `914541f` (clean tree), 2026-09-25, flow `flow 2026.04`, jutuldarcy `0.3.7`, julia `julia version 1.12.7`.*
 
 | Deck | JutulDarcy ignores | Jutul − Flow: max \|Δp\| bar | max \|ΔS\| | final rates | FIM − Jutul: max \|Δp\| bar | final rates |
 |---|---|---|---|---|---|---|
