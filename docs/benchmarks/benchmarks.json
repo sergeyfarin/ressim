@@ -1,0 +1,5130 @@
+{
+ "sections": {
+  "buckley": {
+   "provenance": {
+    "commit": "21f25f8",
+    "dirty": false,
+    "date": "2026-09-25",
+    "command": "cargo test --release --lib benchmark_buckley -- --include-ignored"
+   },
+   "records": [
+    {
+     "at": "",
+     "band": 0.3,
+     "case": "BL-Case-B nx=24",
+     "metric": "breakthrough_rel_err",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "frac",
+     "value": -0.08218104369601442
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-B nx=24",
+     "metric": "pv_bt_sim",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.4656570534798833
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-B nx=24",
+     "metric": "pv_bt_ref",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.5073517497993969
+    },
+    {
+     "at": "",
+     "band": 0.25,
+     "case": "BL-Case-A nx=24",
+     "metric": "breakthrough_rel_err",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "frac",
+     "value": -0.09442374829348824
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-A nx=24",
+     "metric": "pv_bt_sim",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.5306678832167944
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-A nx=24",
+     "metric": "pv_bt_ref",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.5860002205410954
+    },
+    {
+     "at": "",
+     "band": 0.01,
+     "case": "BL-Case-A-dt0.50",
+     "metric": "report_interval_spread",
+     "reference": "BL-Case-A-dt0.25",
+     "same_model": true,
+     "unit": "frac",
+     "value": 0.0011897246788754201
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-A nx=48",
+     "metric": "breakthrough_rel_err",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "frac",
+     "value": -0.053687405650945465
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-A nx=48",
+     "metric": "pv_bt_sim",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.5545393889893621
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-A nx=48",
+     "metric": "pv_bt_ref",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.5860002205410954
+    },
+    {
+     "at": "",
+     "band": 0.01,
+     "case": "BL-Case-B-dt0.50",
+     "metric": "report_interval_spread",
+     "reference": "BL-Case-B-dt0.25",
+     "same_model": true,
+     "unit": "frac",
+     "value": 3.4951902219950454e-05
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-B nx=48",
+     "metric": "breakthrough_rel_err",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "frac",
+     "value": -0.045315583685955695
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-B nx=48",
+     "metric": "pv_bt_sim",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.4843608091231463
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-B nx=48",
+     "metric": "pv_bt_ref",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.5073517497993969
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-A nx=96",
+     "metric": "breakthrough_rel_err",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "frac",
+     "value": -0.03013673271762076
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-A nx=96",
+     "metric": "pv_bt_sim",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.5683400885221815
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-A nx=96",
+     "metric": "pv_bt_ref",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.5860002205410954
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-A nx=192",
+     "metric": "breakthrough_rel_err",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "frac",
+     "value": -0.016512163931598604
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-A nx=192",
+     "metric": "pv_bt_sim",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.5763240888355678
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-A nx=192",
+     "metric": "pv_bt_ref",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.5860002205410954
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-B nx=96",
+     "metric": "breakthrough_rel_err",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "frac",
+     "value": -0.02661320546833797
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-B nx=96",
+     "metric": "pv_bt_sim",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.49384949343726475
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-B nx=96",
+     "metric": "pv_bt_ref",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.5073517497993969
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-B nx=192",
+     "metric": "breakthrough_rel_err",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "frac",
+     "value": -0.014466542782659688
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-B nx=192",
+     "metric": "pv_bt_sim",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.5000121240050667
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "BL-Case-B nx=192",
+     "metric": "pv_bt_ref",
+     "reference": "Buckley-Leverett + Welge",
+     "same_model": false,
+     "unit": "PV",
+     "value": 0.5073517497993969
+    }
+   ]
+  },
+  "spe1": {
+   "provenance": {
+    "commit": "21f25f8",
+    "dirty": false,
+    "date": "2026-09-25",
+    "command": "cargo test --release --lib -- --include-ignored --exact tests::spe1_acceptance::spe1_full_horizon_matches_published_reference tests::spe1_acceptance::spe1_areal_refinement_reference_error_replay; python3 tools/opm_flow/spe1_refinement_oracle.py",
+    "flow": "flow 2026.04"
+   },
+   "records": [
+    {
+     "at": "t=1095 d",
+     "band": null,
+     "case": "10x10x3",
+     "metric": "published_pressure_rel_err",
+     "reference": "SPE1 published 10x10x3",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.01598007913298305
+    },
+    {
+     "at": "t=3285 d",
+     "band": null,
+     "case": "10x10x3",
+     "metric": "published_oil_rate_rel_err",
+     "reference": "SPE1 published 10x10x3",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.031533662212457785
+    },
+    {
+     "at": "t=3285 d",
+     "band": null,
+     "case": "10x10x3",
+     "metric": "published_gor_rel_err",
+     "reference": "SPE1 published 10x10x3",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.04305503711604736
+    },
+    {
+     "at": "t=1095 d",
+     "band": 0.03,
+     "case": "10x10x3",
+     "metric": "pressure_rel_err",
+     "reference": "SPE1 published (Flow, SPE1CASE1)",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.015966770004031863
+    },
+    {
+     "at": "t=3285 d",
+     "band": 0.08,
+     "case": "10x10x3",
+     "metric": "oil_rate_rel_err",
+     "reference": "SPE1 published (Flow, SPE1CASE1)",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.03148667653860978
+    },
+    {
+     "at": "t=3285 d",
+     "band": 0.12,
+     "case": "10x10x3",
+     "metric": "gor_rel_err",
+     "reference": "SPE1 published (Flow, SPE1CASE1)",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.042946816544329657
+    },
+    {
+     "at": "t=730 d",
+     "band": 0.005,
+     "case": "10x10x3",
+     "metric": "plateau_rel_err",
+     "reference": "SPE1 published (Flow, SPE1CASE1)",
+     "same_model": false,
+     "unit": "frac",
+     "value": 4.614384756112057e-09
+    },
+    {
+     "at": "t=3650 d",
+     "band": 0.01,
+     "case": "10x10x3",
+     "metric": "mb_drift_oil",
+     "reference": "SPE1 published (Flow, SPE1CASE1)",
+     "same_model": false,
+     "unit": "frac",
+     "value": 4.421945311006319e-07
+    },
+    {
+     "at": "t=3650 d",
+     "band": 0.01,
+     "case": "10x10x3",
+     "metric": "mb_drift_gas",
+     "reference": "SPE1 published (Flow, SPE1CASE1)",
+     "same_model": false,
+     "unit": "frac",
+     "value": 1.6710284042852524e-06
+    },
+    {
+     "at": "t=1095 d",
+     "band": null,
+     "case": "20x20x3",
+     "metric": "published_pressure_rel_err",
+     "reference": "SPE1 published 10x10x3",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.02712252871836725
+    },
+    {
+     "at": "t=1095 d",
+     "band": null,
+     "case": "20x20x3",
+     "metric": "published_oil_rate_rel_err",
+     "reference": "SPE1 published 10x10x3",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.06333355174823511
+    },
+    {
+     "at": "t=730 d",
+     "band": null,
+     "case": "20x20x3",
+     "metric": "published_gor_rel_err",
+     "reference": "SPE1 published 10x10x3",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.3109334828726033
+    },
+    {
+     "case": "10x10x3",
+     "metric": "vs_flow.FOPR_rel_err",
+     "value": 0.027333136158366782,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, same grid, hand-mapped deck",
+     "same_model": true,
+     "at": "t=3510 d"
+    },
+    {
+     "case": "10x10x3",
+     "metric": "vs_flow.FPR_rel_err",
+     "value": -0.03058285498098366,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, same grid, hand-mapped deck",
+     "same_model": true,
+     "at": "t=900 d"
+    },
+    {
+     "case": "10x10x3",
+     "metric": "vs_flow.WGOR_rel_err",
+     "value": 0.07132288749813308,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, same grid, hand-mapped deck",
+     "same_model": true,
+     "at": "t=810 d"
+    },
+    {
+     "case": "20x20x3",
+     "metric": "vs_flow.FOPR_rel_err",
+     "value": 0.028085559053493376,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, same grid, hand-mapped deck",
+     "same_model": true,
+     "at": "t=3600 d"
+    },
+    {
+     "case": "20x20x3",
+     "metric": "vs_flow.FPR_rel_err",
+     "value": -0.030275737657668056,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, same grid, hand-mapped deck",
+     "same_model": true,
+     "at": "t=900 d"
+    },
+    {
+     "case": "20x20x3",
+     "metric": "vs_flow.WGOR_rel_err",
+     "value": 0.0717050363585945,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, same grid, hand-mapped deck",
+     "same_model": true,
+     "at": "t=720 d"
+    }
+   ]
+  },
+  "three_phase": {
+   "provenance": {
+    "commit": "21f25f8",
+    "dirty": false,
+    "date": "2026-09-25",
+    "command": "cargo test --release --lib -- --include-ignored --exact tests::three_phase_acceptance::three_phase_acceptance_error_replay tests::three_phase_acceptance::three_phase_gas_injection_matches_opm_flow_twin"
+   },
+   "records": [
+    {
+     "at": "t=50 d",
+     "band": 0.03,
+     "case": "gas_drive",
+     "metric": "pressure_rel_err",
+     "reference": "OPM Flow, hand-mapped deck",
+     "same_model": true,
+     "unit": "frac",
+     "value": 0.01587791649627459
+    },
+    {
+     "at": "t=10 d",
+     "band": 0.12,
+     "case": "gas_drive",
+     "metric": "gor_rel_err",
+     "reference": "OPM Flow, hand-mapped deck",
+     "same_model": true,
+     "unit": "frac",
+     "value": -0.06075916049281149
+    },
+    {
+     "at": "t=600 d",
+     "band": 0.08,
+     "case": "gas_drive",
+     "metric": "cum_oil_rel_err",
+     "reference": "OPM Flow, hand-mapped deck",
+     "same_model": true,
+     "unit": "frac",
+     "value": 0.04310123659638034
+    },
+    {
+     "at": "t=20 d",
+     "band": 0.1,
+     "case": "gas_drive",
+     "metric": "oil_rate_rel_err",
+     "reference": "OPM Flow, hand-mapped deck",
+     "same_model": true,
+     "unit": "frac",
+     "value": 0.0460895214869481
+    },
+    {
+     "at": "t=500 d",
+     "band": 0.01,
+     "case": "gas_drive",
+     "metric": "mb_drift_oil",
+     "reference": "OPM Flow, hand-mapped deck",
+     "same_model": true,
+     "unit": "frac",
+     "value": 6.337874235837013e-08
+    },
+    {
+     "at": "t=500 d",
+     "band": 0.01,
+     "case": "gas_drive",
+     "metric": "mb_drift_gas",
+     "reference": "OPM Flow, hand-mapped deck",
+     "same_model": true,
+     "unit": "frac",
+     "value": 8.158938588214635e-07
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "gas_flood dt=1.0",
+     "metric": "breakthrough_days",
+     "reference": "band 2-8 d (physics::gas_flood)",
+     "same_model": false,
+     "unit": "d",
+     "value": 4.0
+    },
+    {
+     "at": "",
+     "band": null,
+     "case": "gas_flood dt=0.5",
+     "metric": "breakthrough_days",
+     "reference": "band 2-8 d (physics::gas_flood)",
+     "same_model": false,
+     "unit": "d",
+     "value": 4.0
+    },
+    {
+     "at": "t=200 d",
+     "band": 0.002,
+     "case": "gas_injection (go-1d-50)",
+     "metric": "cum_oil_rel_err",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "unit": "frac",
+     "value": 0.00022526344368329606
+    },
+    {
+     "at": "t=200 d",
+     "band": 0.002,
+     "case": "gas_injection (go-1d-50)",
+     "metric": "cum_gas_injected_rel_err",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "unit": "frac",
+     "value": -0.0003752377026029123
+    },
+    {
+     "at": "t=200 d",
+     "band": 0.015,
+     "case": "gas_injection (go-1d-50)",
+     "metric": "cum_gas_produced_rel_err",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "unit": "frac",
+     "value": -0.0028776200792483466
+    }
+   ]
+  },
+  "depletion": {
+   "provenance": {
+    "commit": "21f25f8",
+    "dirty": false,
+    "date": "2026-09-25",
+    "command": "cargo test --release --lib physics_depletion_grid_convergence_; small-direct bo-1d-10/40 Flow output",
+    "flow": "flow 2026.04"
+   },
+   "records": [
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "IMPES nx=5",
+     "metric": "avg_pressure",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "bar",
+     "value": 129.0697198271739
+    },
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "IMPES nx=5",
+     "metric": "avg_sat_gas",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.024349037260322275
+    },
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "IMPES nx=10",
+     "metric": "avg_pressure",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "bar",
+     "value": 129.76986418609042
+    },
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "IMPES nx=10",
+     "metric": "avg_sat_gas",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.023405362878276437
+    },
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "IMPES nx=20",
+     "metric": "avg_pressure",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "bar",
+     "value": 130.14968820806638
+    },
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "IMPES nx=20",
+     "metric": "avg_sat_gas",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.022896072654903878
+    },
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "IMPES nx=40",
+     "metric": "avg_pressure",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "bar",
+     "value": 130.35332821301063
+    },
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "IMPES nx=40",
+     "metric": "avg_sat_gas",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.022623432046959793
+    },
+    {
+     "at": "t=100 d",
+     "band": 0.8,
+     "case": "IMPES",
+     "metric": "pressure_contraction",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "ratio",
+     "value": 0.5424938687840799
+    },
+    {
+     "at": "t=100 d",
+     "band": 0.01,
+     "case": "IMPES",
+     "metric": "pressure_finest_pair_gap",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.001562215616094429
+    },
+    {
+     "at": "t=100 d",
+     "band": 0.8,
+     "case": "IMPES",
+     "metric": "sat_gas_contraction",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "ratio",
+     "value": 0.5396885123324465
+    },
+    {
+     "at": "t=100 d",
+     "band": 0.015,
+     "case": "IMPES",
+     "metric": "sat_gas_finest_pair_gap",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.012051248783922833
+    },
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "FIM nx=5",
+     "metric": "avg_pressure",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "bar",
+     "value": 129.13424285067106
+    },
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "FIM nx=5",
+     "metric": "avg_sat_gas",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.024281197661059996
+    },
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "FIM nx=10",
+     "metric": "avg_pressure",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "bar",
+     "value": 129.83898227615495
+    },
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "FIM nx=10",
+     "metric": "avg_sat_gas",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.02332989217346534
+    },
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "FIM nx=20",
+     "metric": "avg_pressure",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "bar",
+     "value": 130.22102166423562
+    },
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "FIM nx=20",
+     "metric": "avg_sat_gas",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.02281630994018981
+    },
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "FIM nx=40",
+     "metric": "avg_pressure",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "bar",
+     "value": 130.42342674087047
+    },
+    {
+     "at": "t=100 d",
+     "band": null,
+     "case": "FIM nx=40",
+     "metric": "avg_sat_gas",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.02254487813680589
+    },
+    {
+     "at": "t=100 d",
+     "band": 0.8,
+     "case": "FIM",
+     "metric": "pressure_contraction",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "ratio",
+     "value": 0.5421002064959709
+    },
+    {
+     "at": "t=100 d",
+     "band": 0.01,
+     "case": "FIM",
+     "metric": "pressure_finest_pair_gap",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.0015519073658215687
+    },
+    {
+     "at": "t=100 d",
+     "band": 0.8,
+     "case": "FIM",
+     "metric": "sat_gas_contraction",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "ratio",
+     "value": 0.5398709877876404
+    },
+    {
+     "at": "t=100 d",
+     "band": 0.015,
+     "case": "FIM",
+     "metric": "sat_gas_finest_pair_gap",
+     "reference": "grid self-convergence",
+     "same_model": false,
+     "unit": "frac",
+     "value": 0.012039621670910342
+    },
+    {
+     "case": "Flow nx=10",
+     "metric": "avg_pressure",
+     "value": 129.83885192871094,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, small-direct bo-1d deck",
+     "same_model": true,
+     "at": "t=100 d"
+    },
+    {
+     "case": "Flow nx=10",
+     "metric": "avg_sat_gas",
+     "value": 0.023330137133598328,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, small-direct bo-1d deck",
+     "same_model": true,
+     "at": "t=100 d"
+    },
+    {
+     "case": "Flow nx=40",
+     "metric": "avg_pressure",
+     "value": 130.4150848388672,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, small-direct bo-1d deck",
+     "same_model": true,
+     "at": "t=100 d"
+    },
+    {
+     "case": "Flow nx=40",
+     "metric": "avg_sat_gas",
+     "value": 0.022555697709321976,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, small-direct bo-1d deck",
+     "same_model": true,
+     "at": "t=100 d"
+    }
+   ]
+  },
+  "cross_solver": {
+   "provenance": {
+    "commit": "21f25f8",
+    "dirty": false,
+    "date": "2026-09-25",
+    "command": "bash scripts/validate-cross-solver.sh",
+    "flow": "flow 2026.04"
+   },
+   "records": [
+    {
+     "case": "bo-1d-10",
+     "metric": "flow.substeps",
+     "value": 22,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "flow.newton",
+     "value": 52,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "flow.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "sparse.substeps",
+     "value": 22,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "sparse.newton",
+     "value": 84,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "sparse.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "sparse.wall_ms",
+     "value": 9.181,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "sparse.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "sparse.worst.p",
+     "value": 0.0009458764124872232,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "sparse.worst.sw",
+     "value": 1.3708564658432287e-08,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "sparse.worst.sg",
+     "value": 2.0963086832075095e-06,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "sparse.cum.FOPT",
+     "value": 1.4451223642223206e-05,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "sparse.cum.FGPT",
+     "value": 1.2937054835672715e-05,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "dense.substeps",
+     "value": 22,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "dense.newton",
+     "value": 84,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "dense.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "dense.wall_ms",
+     "value": 7.383,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "dense.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "dense.worst.p",
+     "value": 0.0004883969218667517,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "dense.worst.sw",
+     "value": 1.3718364666459593e-08,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "dense.worst.sg",
+     "value": 1.4838494291312398e-06,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "dense.cum.FOPT",
+     "value": 1.7393117082944445e-05,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "dense.cum.FGPT",
+     "value": 1.5879432341457155e-05,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "impes.substeps",
+     "value": 25,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "impes.newton",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "impes.retries",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "impes.wall_ms",
+     "value": 3.747,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "impes.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "impes.worst.p",
+     "value": 0.4680716463609258,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "impes.worst.sw",
+     "value": 1.3824078844149046e-07,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "impes.worst.sg",
+     "value": 0.0004918850113900721,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "impes.cum.FOPT",
+     "value": 0.0029454809368599276,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "impes.cum.FGPT",
+     "value": 0.025580114429275515,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "pair.sparse_vs_dense.p",
+     "value": 0.0008907707999981085,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "pair.sparse_vs_dense.sw",
+     "value": 2.674000049163183e-10,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "pair.sparse_vs_dense.sg",
+     "value": 1.6370765100019724e-06,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "pair.sparse_vs_impes.p",
+     "value": 0.4681582355999865,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "pair.sparse_vs_impes.sw",
+     "value": 1.4045769999859736e-07,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-10",
+     "metric": "pair.sparse_vs_impes.sg",
+     "value": 0.0004920446608699999,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "flow.substeps",
+     "value": 23,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "flow.newton",
+     "value": 54,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "flow.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "sparse.substeps",
+     "value": 22,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "sparse.newton",
+     "value": 91,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "sparse.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "sparse.wall_ms",
+     "value": 29.616,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "sparse.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "sparse.worst.p",
+     "value": 0.27401925424061346,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "sparse.worst.sw",
+     "value": 7.986919060842812e-08,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "sparse.worst.sg",
+     "value": 0.00033163588883072283,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "sparse.cum.FOPT",
+     "value": 0.000543590781726919,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "sparse.cum.FGPT",
+     "value": 0.001160848038635115,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "dense.substeps",
+     "value": 22,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "dense.newton",
+     "value": 90,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "dense.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "dense.wall_ms",
+     "value": 39.012,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "dense.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "dense.worst.p",
+     "value": 0.27384354744063444,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "dense.worst.sw",
+     "value": 7.981649061128415e-08,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "dense.worst.sg",
+     "value": 0.00033148142627072164,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "dense.cum.FOPT",
+     "value": 0.0005483564881601325,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "dense.cum.FGPT",
+     "value": 0.001166180319201725,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "impes.substeps",
+     "value": 28,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "impes.newton",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "impes.retries",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "impes.wall_ms",
+     "value": 18.546,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "impes.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "impes.worst.p",
+     "value": 0.5105263531984292,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "impes.worst.sw",
+     "value": 1.5189757501810064e-07,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "impes.worst.sg",
+     "value": 0.0004673631293801543,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "impes.cum.FOPT",
+     "value": 0.0027772047950045155,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "impes.cum.FGPT",
+     "value": 0.022666999075137098,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "pair.sparse_vs_dense.p",
+     "value": 0.0004082025999991856,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "pair.sparse_vs_dense.sw",
+     "value": 1.2249999625790764e-10,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "pair.sparse_vs_dense.sg",
+     "value": 4.72329997999732e-06,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "pair.sparse_vs_impes.p",
+     "value": 0.5103996205999977,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "pair.sparse_vs_impes.sw",
+     "value": 1.5313090000190765e-07,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "bo-1d-40",
+     "metric": "pair.sparse_vs_impes.sg",
+     "value": 0.00048101320324999905,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "flow.substeps",
+     "value": 300,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "flow.newton",
+     "value": 608,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "flow.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "sparse.substeps",
+     "value": 301,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "sparse.newton",
+     "value": 908,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "sparse.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "sparse.wall_ms",
+     "value": 408.047,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "sparse.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "sparse.worst.p",
+     "value": 0.30700961248123804,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "sparse.worst.sw",
+     "value": 2.4106112665733814e-07,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "sparse.worst.sg",
+     "value": 0.00023390343241984357,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "sparse.cum.FOPT",
+     "value": 2.335555446161716e-10,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "sparse.cum.FGPT",
+     "value": 0.010584559838230497,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "dense.substeps",
+     "value": 301,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "dense.newton",
+     "value": 908,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "dense.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "dense.wall_ms",
+     "value": 606.72,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "dense.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "dense.worst.p",
+     "value": 0.30700961248123804,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "dense.worst.sw",
+     "value": 2.4106112665733814e-07,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "dense.worst.sg",
+     "value": 0.00023390343241984357,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "dense.cum.FOPT",
+     "value": 2.335555446161716e-10,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "dense.cum.FGPT",
+     "value": 0.010584559838230497,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "impes.substeps",
+     "value": 300,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "impes.newton",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "impes.retries",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "impes.wall_ms",
+     "value": 199.55,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "impes.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "impes.worst.p",
+     "value": 0.3215242118561008,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "impes.worst.sw",
+     "value": 1.7736492664843784e-07,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "impes.worst.sg",
+     "value": 0.00026129087958984276,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "impes.cum.FOPT",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "impes.cum.FGPT",
+     "value": 0.020978305051739067,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "pair.sparse_vs_dense.p",
+     "value": 1.000159954855917e-10,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "pair.sparse_vs_dense.sw",
+     "value": 1.0000333894311098e-13,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "pair.sparse_vs_dense.sg",
+     "value": 1.0005885009434223e-14,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "pair.sparse_vs_impes.p",
+     "value": 0.28235688879999543,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "pair.sparse_vs_impes.sw",
+     "value": 1.1294570000097703e-07,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-correlation",
+     "metric": "pair.sparse_vs_impes.sg",
+     "value": 0.00012586359857999496,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "flow.substeps",
+     "value": 300,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "flow.newton",
+     "value": 607,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "flow.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "sparse.substeps",
+     "value": 301,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "sparse.newton",
+     "value": 906,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "sparse.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "sparse.wall_ms",
+     "value": 430.024,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "sparse.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "sparse.worst.p",
+     "value": 0.22129863375312198,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "sparse.worst.sw",
+     "value": 2.0562935641732505e-07,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "sparse.worst.sg",
+     "value": 0.0002498486228135269,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "sparse.cum.FOPT",
+     "value": 4.981110477173287e-10,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "sparse.cum.FGPT",
+     "value": 0.011331431090314124,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "dense.substeps",
+     "value": 301,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "dense.newton",
+     "value": 906,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "dense.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "dense.wall_ms",
+     "value": 620.681,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "dense.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "dense.worst.p",
+     "value": 0.22129863375312198,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "dense.worst.sw",
+     "value": 2.0562935641732505e-07,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "dense.worst.sg",
+     "value": 0.0002498486228135269,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "dense.cum.FOPT",
+     "value": 4.981110477173287e-10,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "dense.cum.FGPT",
+     "value": 0.011331431090314124,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "impes.substeps",
+     "value": 300,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "impes.newton",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "impes.retries",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "impes.wall_ms",
+     "value": 198.232,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "impes.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "impes.worst.p",
+     "value": 0.14939748175078194,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "impes.worst.sw",
+     "value": 1.8574355642453355e-07,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "impes.worst.sg",
+     "value": 0.0002779379510030808,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "impes.cum.FOPT",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "impes.cum.FGPT",
+     "value": 0.015858986939122268,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "pair.sparse_vs_dense.p",
+     "value": 1.000159954855917e-10,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "pair.sparse_vs_dense.sw",
+     "value": 1.0000333894311098e-13,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "pair.sparse_vs_dense.sg",
+     "value": 1.0005885009434223e-14,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "pair.sparse_vs_impes.p",
+     "value": 0.2127497163999692,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "pair.sparse_vs_impes.sw",
+     "value": 8.510119998972332e-08,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "dep-pvt-lab-report",
+     "metric": "pair.sparse_vs_impes.sg",
+     "value": 4.9888283329996286e-05,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "flow.substeps",
+     "value": 151,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "flow.newton",
+     "value": 339,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "flow.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "sparse.substeps",
+     "value": 151,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "sparse.newton",
+     "value": 486,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "sparse.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "sparse.wall_ms",
+     "value": 132.509,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "sparse.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "sparse.worst.p",
+     "value": 0.49605934732656465,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "sparse.worst.sw",
+     "value": 3.0112262033865633e-06,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "sparse.worst.sg",
+     "value": 0.005001680112752226,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "sparse.cum.FOPT",
+     "value": 7.814394511342655e-05,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "sparse.cum.FGPT",
+     "value": 0.00033689321845392113,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "sparse.cum.FGIT",
+     "value": 0.0001680915252520799,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "dense.substeps",
+     "value": 151,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "dense.newton",
+     "value": 486,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "dense.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "dense.wall_ms",
+     "value": 255.993,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "dense.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "dense.worst.p",
+     "value": 0.49605934732656465,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "dense.worst.sw",
+     "value": 3.0112262033865633e-06,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "dense.worst.sg",
+     "value": 0.005001680112752226,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "dense.cum.FOPT",
+     "value": 7.814394511342655e-05,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "dense.cum.FGPT",
+     "value": 0.00033689321845392113,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "dense.cum.FGIT",
+     "value": 0.0001680915252520799,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "impes.substeps",
+     "value": 213,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "impes.newton",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "impes.retries",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "impes.wall_ms",
+     "value": 86.285,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "impes.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "impes.worst.p",
+     "value": 12.602612161870326,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "impes.worst.sw",
+     "value": 8.451925789326742e-06,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "impes.worst.sg",
+     "value": 0.0735241249203682,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "impes.cum.FOPT",
+     "value": 0.008122255888868675,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "impes.cum.FGPT",
+     "value": 0.005719549672716942,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "impes.cum.FGIT",
+     "value": 0.006707224099404649,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "pair.sparse_vs_dense.p",
+     "value": 9.99875737761613e-11,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "pair.sparse_vs_dense.sw",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "pair.sparse_vs_dense.sg",
+     "value": 1.000310945187266e-13,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "pair.sparse_vs_impes.p",
+     "value": 12.131644362200007,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "pair.sparse_vs_impes.sw",
+     "value": 9.709985899997164e-06,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "go-1d-50",
+     "metric": "pair.sparse_vs_impes.sg",
+     "value": 0.07310660023689,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "flow.substeps",
+     "value": 13,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "flow.newton",
+     "value": 33,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "flow.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "sparse.substeps",
+     "value": 12,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "sparse.newton",
+     "value": 48,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "sparse.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "sparse.wall_ms",
+     "value": 10.962,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "sparse.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "sparse.worst.p",
+     "value": 0.37880635543126573,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "sparse.worst.sw",
+     "value": 0.004197462205939265,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "sparse.worst.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "sparse.cum.FOPT",
+     "value": 0.0008037568125284609,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "sparse.cum.FWIT",
+     "value": 0.0009806686540521732,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "dense.substeps",
+     "value": 12,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "dense.newton",
+     "value": 48,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "dense.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "dense.wall_ms",
+     "value": 24.222,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "dense.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "dense.worst.p",
+     "value": 0.37880635543126573,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "dense.worst.sw",
+     "value": 0.004197462205939265,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "dense.worst.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "dense.cum.FOPT",
+     "value": 0.0008037568125284609,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "dense.cum.FWIT",
+     "value": 0.0009806686540521732,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "impes.substeps",
+     "value": 28,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "impes.newton",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "impes.retries",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "impes.wall_ms",
+     "value": 3.334,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "impes.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "impes.worst.p",
+     "value": 6.1492897806640485,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "impes.worst.sw",
+     "value": 0.04001377006041365,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "impes.worst.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "impes.cum.FOPT",
+     "value": 0.0045339844764203645,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "impes.cum.FWIT",
+     "value": 0.000834481579725739,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "pair.sparse_vs_dense.p",
+     "value": 9.99875737761613e-11,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "pair.sparse_vs_dense.sw",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "pair.sparse_vs_dense.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "pair.sparse_vs_impes.p",
+     "value": 6.208980942499977,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "pair.sparse_vs_impes.sw",
+     "value": 0.0396826218762,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-50-adverse",
+     "metric": "pair.sparse_vs_impes.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "flow.substeps",
+     "value": 121,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "flow.newton",
+     "value": 259,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "flow.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "sparse.substeps",
+     "value": 120,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "sparse.newton",
+     "value": 376,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "sparse.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "sparse.wall_ms",
+     "value": 161.613,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "sparse.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "sparse.worst.p",
+     "value": 0.9425528916093526,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "sparse.worst.sw",
+     "value": 0.032339667337043604,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "sparse.worst.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "sparse.cum.FOPT",
+     "value": 0.0004582899398258194,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "sparse.cum.FWPT",
+     "value": 0.001018894816693632,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "sparse.cum.FWIT",
+     "value": 0.0007217910102875316,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "dense.substeps",
+     "value": 120,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "dense.newton",
+     "value": 376,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "dense.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "dense.wall_ms",
+     "value": 929.796,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "dense.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "dense.worst.p",
+     "value": 0.9425528916093526,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "dense.worst.sw",
+     "value": 0.032339667337043604,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "dense.worst.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "dense.cum.FOPT",
+     "value": 0.0004582899398258194,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "dense.cum.FWPT",
+     "value": 0.001018894816693632,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "dense.cum.FWIT",
+     "value": 0.0007217910102875316,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "impes.substeps",
+     "value": 631,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "impes.newton",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "impes.retries",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "impes.wall_ms",
+     "value": 115.982,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "impes.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "impes.worst.p",
+     "value": 7.514663712168726,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "impes.worst.sw",
+     "value": 0.1914929297342125,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "impes.worst.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "impes.cum.FOPT",
+     "value": 0.006433925510294175,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "impes.cum.FWPT",
+     "value": 0.04837843144525713,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "impes.cum.FWIT",
+     "value": 0.02817326320771639,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "pair.sparse_vs_dense.p",
+     "value": 1.000444171950221e-10,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "pair.sparse_vs_dense.sw",
+     "value": 1.000310945187266e-13,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "pair.sparse_vs_dense.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "pair.sparse_vs_impes.p",
+     "value": 7.515482154600022,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "pair.sparse_vs_impes.sw",
+     "value": 0.19267661775650002,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-1d-96",
+     "metric": "pair.sparse_vs_impes.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "flow.substeps",
+     "value": 40,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "flow.newton",
+     "value": 114,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "flow.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "sparse.substeps",
+     "value": 40,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "sparse.newton",
+     "value": 133,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "sparse.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "sparse.wall_ms",
+     "value": 174.365,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "sparse.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "sparse.worst.p",
+     "value": 0.7523111618093594,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "sparse.worst.sw",
+     "value": 0.007938281488158672,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "sparse.worst.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "sparse.cum.FOPT",
+     "value": 0.0007866203622634651,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "sparse.cum.FWPT",
+     "value": 0.008058627240977846,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "sparse.cum.FWIT",
+     "value": 0.0020926800843677628,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "dense.substeps",
+     "value": 40,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "dense.newton",
+     "value": 133,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "dense.retries",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "dense.wall_ms",
+     "value": 1026.871,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "dense.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "dense.worst.p",
+     "value": 0.7523111618093594,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "dense.worst.sw",
+     "value": 0.007938281488158672,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "dense.worst.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "dense.cum.FOPT",
+     "value": 0.0007866203622634651,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "dense.cum.FWPT",
+     "value": 0.008058627240977846,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "dense.cum.FWIT",
+     "value": 0.0020926800843677628,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "impes.substeps",
+     "value": 225,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "impes.newton",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "impes.retries",
+     "value": null,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "impes.wall_ms",
+     "value": 130.073,
+     "band": null,
+     "unit": "ms",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "impes.warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "impes.worst.p",
+     "value": 23.938019271325004,
+     "band": null,
+     "unit": "bar",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "impes.worst.sw",
+     "value": 0.15421811240766836,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "impes.worst.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "impes.cum.FOPT",
+     "value": 0.022532366510593912,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "impes.cum.FWPT",
+     "value": 0.06163297694738078,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "impes.cum.FWIT",
+     "value": 0.03183028633803884,
+     "band": null,
+     "unit": "frac",
+     "reference": "OPM Flow, generated deck",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "pair.sparse_vs_dense.p",
+     "value": 9.99875737761613e-11,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "pair.sparse_vs_dense.sw",
+     "value": 1.0000333894311098e-13,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "pair.sparse_vs_dense.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_dense",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "pair.sparse_vs_impes.p",
+     "value": 23.758211339000013,
+     "band": null,
+     "unit": "bar",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "pair.sparse_vs_impes.sw",
+     "value": 0.15402816528350005,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "ow-2d-12x12",
+     "metric": "pair.sparse_vs_impes.sg",
+     "value": 0.0,
+     "band": null,
+     "unit": "frac",
+     "reference": "sparse_vs_impes",
+     "same_model": false,
+     "at": ""
+    }
+   ]
+  },
+  "parity": {
+   "provenance": {
+    "commit": "21f25f8",
+    "dirty": false,
+    "date": "2026-09-25",
+    "command": "bash scripts/validate-native-binding.sh"
+   },
+   "records": [
+    {
+     "case": "buckley-impes (IMPES)",
+     "metric": "cells_max_abs_diff",
+     "value": 1.9326762412674725e-12,
+     "band": 1e-09,
+     "unit": "abs",
+     "reference": "wasm bindings",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "buckley-impes (IMPES)",
+     "metric": "rates_max_abs_diff",
+     "value": 2.9473312679328956e-11,
+     "band": 1e-09,
+     "unit": "abs",
+     "reference": "wasm bindings",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "buckley-impes (IMPES)",
+     "metric": "grid_max_abs_diff",
+     "value": 1.9326762412674725e-12,
+     "band": 1e-09,
+     "unit": "abs",
+     "reference": "wasm bindings",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "buckley-fim (FIM)",
+     "metric": "cells_max_abs_diff",
+     "value": 5.684341886080802e-14,
+     "band": 1e-09,
+     "unit": "abs",
+     "reference": "wasm bindings",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "buckley-fim (FIM)",
+     "metric": "rates_max_abs_diff",
+     "value": 0.0,
+     "band": 1e-09,
+     "unit": "abs",
+     "reference": "wasm bindings",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "buckley-fim (FIM)",
+     "metric": "grid_max_abs_diff",
+     "value": 5.684341886080802e-14,
+     "band": 1e-09,
+     "unit": "abs",
+     "reference": "wasm bindings",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "favorable-mobility (IMPES)",
+     "metric": "cells_max_abs_diff",
+     "value": 1.7621459846850485e-12,
+     "band": 1e-09,
+     "unit": "abs",
+     "reference": "wasm bindings",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "favorable-mobility (IMPES)",
+     "metric": "rates_max_abs_diff",
+     "value": 1.2494183465605602e-10,
+     "band": 1e-09,
+     "unit": "abs",
+     "reference": "wasm bindings",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "favorable-mobility (IMPES)",
+     "metric": "grid_max_abs_diff",
+     "value": 1.7621459846850485e-12,
+     "band": 1e-09,
+     "unit": "abs",
+     "reference": "wasm bindings",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "adverse-mobility-fim (FIM)",
+     "metric": "cells_max_abs_diff",
+     "value": 5.684341886080802e-14,
+     "band": 1e-09,
+     "unit": "abs",
+     "reference": "wasm bindings",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "adverse-mobility-fim (FIM)",
+     "metric": "rates_max_abs_diff",
+     "value": 1.1368683772161603e-13,
+     "band": 1e-09,
+     "unit": "abs",
+     "reference": "wasm bindings",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "adverse-mobility-fim (FIM)",
+     "metric": "grid_max_abs_diff",
+     "value": 5.684341886080802e-14,
+     "band": 1e-09,
+     "unit": "abs",
+     "reference": "wasm bindings",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "coarse-grid (IMPES)",
+     "metric": "cells_max_abs_diff",
+     "value": 0.0,
+     "band": 1e-09,
+     "unit": "abs",
+     "reference": "wasm bindings",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "coarse-grid (IMPES)",
+     "metric": "rates_max_abs_diff",
+     "value": 0.0,
+     "band": 1e-09,
+     "unit": "abs",
+     "reference": "wasm bindings",
+     "same_model": true,
+     "at": ""
+    },
+    {
+     "case": "coarse-grid (IMPES)",
+     "metric": "grid_max_abs_diff",
+     "value": 0.0,
+     "band": 1e-09,
+     "unit": "abs",
+     "reference": "wasm bindings",
+     "same_model": true,
+     "at": ""
+    }
+   ]
+  },
+  "fim_wasm": {
+   "provenance": {
+    "commit": "21f25f8",
+    "dirty": false,
+    "date": "2026-09-25",
+    "command": "node scripts/fim-wasm-diagnostic.mjs --preset <P> --grid <G> --dt <D> --steps <N> --diagnostic quiet --json",
+    "node": "v24.18.0"
+   },
+   "records": [
+    {
+     "case": "water-pressure 20x20x3 dt 0.25",
+     "metric": "report_steps",
+     "value": 20,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 20x20x3 dt 0.25",
+     "metric": "substeps",
+     "value": 20,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 20x20x3 dt 0.25",
+     "metric": "ratio",
+     "value": 1.0,
+     "band": null,
+     "unit": "ratio",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 20x20x3 dt 0.25",
+     "metric": "newton",
+     "value": 117,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 20x20x3 dt 0.25",
+     "metric": "retry_newton",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 20x20x3 dt 0.25",
+     "metric": "retries.linear",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 20x20x3 dt 0.25",
+     "metric": "retries.nonlinear",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 20x20x3 dt 0.25",
+     "metric": "retries.mixed",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 20x20x3 dt 0.25",
+     "metric": "warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 20x20x3 dt 0.25",
+     "metric": "fim_ms",
+     "value": 2681,
+     "band": null,
+     "unit": "ms",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 20x20x3 dt 0.25",
+     "metric": "linear_share",
+     "value": 0.5214472211861246,
+     "band": null,
+     "unit": "share",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 22x22x1 dt 0.25",
+     "metric": "report_steps",
+     "value": 20,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 22x22x1 dt 0.25",
+     "metric": "substeps",
+     "value": 22,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 22x22x1 dt 0.25",
+     "metric": "ratio",
+     "value": 1.1,
+     "band": null,
+     "unit": "ratio",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 22x22x1 dt 0.25",
+     "metric": "newton",
+     "value": 126,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 22x22x1 dt 0.25",
+     "metric": "retry_newton",
+     "value": 20,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 22x22x1 dt 0.25",
+     "metric": "retries.linear",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 22x22x1 dt 0.25",
+     "metric": "retries.nonlinear",
+     "value": 1,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 22x22x1 dt 0.25",
+     "metric": "retries.mixed",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 22x22x1 dt 0.25",
+     "metric": "warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 22x22x1 dt 0.25",
+     "metric": "fim_ms",
+     "value": 1022,
+     "band": null,
+     "unit": "ms",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 22x22x1 dt 0.25",
+     "metric": "linear_share",
+     "value": 0.48336594911937375,
+     "band": null,
+     "unit": "share",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 23x23x1 dt 0.25",
+     "metric": "report_steps",
+     "value": 20,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 23x23x1 dt 0.25",
+     "metric": "substeps",
+     "value": 22,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 23x23x1 dt 0.25",
+     "metric": "ratio",
+     "value": 1.1,
+     "band": null,
+     "unit": "ratio",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 23x23x1 dt 0.25",
+     "metric": "newton",
+     "value": 123,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 23x23x1 dt 0.25",
+     "metric": "retry_newton",
+     "value": 20,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 23x23x1 dt 0.25",
+     "metric": "retries.linear",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 23x23x1 dt 0.25",
+     "metric": "retries.nonlinear",
+     "value": 1,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 23x23x1 dt 0.25",
+     "metric": "retries.mixed",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 23x23x1 dt 0.25",
+     "metric": "warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 23x23x1 dt 0.25",
+     "metric": "fim_ms",
+     "value": 1090,
+     "band": null,
+     "unit": "ms",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 23x23x1 dt 0.25",
+     "metric": "linear_share",
+     "value": 0.4834862385321101,
+     "band": null,
+     "unit": "share",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 12x12x3 dt 1 (heavy)",
+     "metric": "report_steps",
+     "value": 20,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 12x12x3 dt 1 (heavy)",
+     "metric": "substeps",
+     "value": 23,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 12x12x3 dt 1 (heavy)",
+     "metric": "ratio",
+     "value": 1.15,
+     "band": null,
+     "unit": "ratio",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 12x12x3 dt 1 (heavy)",
+     "metric": "newton",
+     "value": 116,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 12x12x3 dt 1 (heavy)",
+     "metric": "retry_newton",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 12x12x3 dt 1 (heavy)",
+     "metric": "retries.linear",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 12x12x3 dt 1 (heavy)",
+     "metric": "retries.nonlinear",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 12x12x3 dt 1 (heavy)",
+     "metric": "retries.mixed",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 12x12x3 dt 1 (heavy)",
+     "metric": "warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 12x12x3 dt 1 (heavy)",
+     "metric": "fim_ms",
+     "value": 890,
+     "band": null,
+     "unit": "ms",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "water-pressure 12x12x3 dt 1 (heavy)",
+     "metric": "linear_share",
+     "value": 0.4550561797752809,
+     "band": null,
+     "unit": "share",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-rate 10x10x3 dt 0.25",
+     "metric": "report_steps",
+     "value": 24,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-rate 10x10x3 dt 0.25",
+     "metric": "substeps",
+     "value": 27,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-rate 10x10x3 dt 0.25",
+     "metric": "ratio",
+     "value": 1.125,
+     "band": null,
+     "unit": "ratio",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-rate 10x10x3 dt 0.25",
+     "metric": "newton",
+     "value": 129,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-rate 10x10x3 dt 0.25",
+     "metric": "retry_newton",
+     "value": 20,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-rate 10x10x3 dt 0.25",
+     "metric": "retries.linear",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-rate 10x10x3 dt 0.25",
+     "metric": "retries.nonlinear",
+     "value": 1,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-rate 10x10x3 dt 0.25",
+     "metric": "retries.mixed",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-rate 10x10x3 dt 0.25",
+     "metric": "warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-rate 10x10x3 dt 0.25",
+     "metric": "fim_ms",
+     "value": 1239,
+     "band": null,
+     "unit": "ms",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-rate 10x10x3 dt 0.25",
+     "metric": "linear_share",
+     "value": 0.2122679580306699,
+     "band": null,
+     "unit": "share",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-pressure 10x10x3 dt 0.25",
+     "metric": "report_steps",
+     "value": 20,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-pressure 10x10x3 dt 0.25",
+     "metric": "substeps",
+     "value": 25,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-pressure 10x10x3 dt 0.25",
+     "metric": "ratio",
+     "value": 1.25,
+     "band": null,
+     "unit": "ratio",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-pressure 10x10x3 dt 0.25",
+     "metric": "newton",
+     "value": 147,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-pressure 10x10x3 dt 0.25",
+     "metric": "retry_newton",
+     "value": 40,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-pressure 10x10x3 dt 0.25",
+     "metric": "retries.linear",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-pressure 10x10x3 dt 0.25",
+     "metric": "retries.nonlinear",
+     "value": 2,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-pressure 10x10x3 dt 0.25",
+     "metric": "retries.mixed",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-pressure 10x10x3 dt 0.25",
+     "metric": "warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-pressure 10x10x3 dt 0.25",
+     "metric": "fim_ms",
+     "value": 1578,
+     "band": null,
+     "unit": "ms",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "gas-pressure 10x10x3 dt 0.25",
+     "metric": "linear_share",
+     "value": 0.2458808618504436,
+     "band": null,
+     "unit": "share",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "sweep-areal 21x21x1 dt 0.25",
+     "metric": "report_steps",
+     "value": 20,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "sweep-areal 21x21x1 dt 0.25",
+     "metric": "substeps",
+     "value": 20,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "sweep-areal 21x21x1 dt 0.25",
+     "metric": "ratio",
+     "value": 1.0,
+     "band": null,
+     "unit": "ratio",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "sweep-areal 21x21x1 dt 0.25",
+     "metric": "newton",
+     "value": 63,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "sweep-areal 21x21x1 dt 0.25",
+     "metric": "retry_newton",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "sweep-areal 21x21x1 dt 0.25",
+     "metric": "retries.linear",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "sweep-areal 21x21x1 dt 0.25",
+     "metric": "retries.nonlinear",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "sweep-areal 21x21x1 dt 0.25",
+     "metric": "retries.mixed",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "sweep-areal 21x21x1 dt 0.25",
+     "metric": "warnings",
+     "value": 0,
+     "band": null,
+     "unit": "count",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "sweep-areal 21x21x1 dt 0.25",
+     "metric": "fim_ms",
+     "value": 343,
+     "band": null,
+     "unit": "ms",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    },
+    {
+     "case": "sweep-areal 21x21x1 dt 0.25",
+     "metric": "linear_share",
+     "value": 0.42565597667638483,
+     "band": null,
+     "unit": "share",
+     "reference": "wasm build",
+     "same_model": false,
+     "at": ""
+    }
+   ]
+  },
+  "compositional": {
+   "provenance": {
+    "commit": "21f25f8",
+    "dirty": false,
+    "date": "2026-09-25",
+    "command": "cargo test --release --lib -- comp_matched_1d_trajectory_agrees_with_opm comp_depletion_bhp_trajectory_matches_opm_at_matched_timestep comp_depletion_bhp_cumulative_production_matches_opm; bash scripts/validate-compositional.sh reference",
+    "note": "fixtures reproduce from flowexp_comp"
+   },
+   "records": [
+    {
+     "at": "",
+     "band": 0.01,
+     "case": "depletion BHP",
+     "metric": "cum_production_rel_err",
+     "reference": "OPM flowexp_comp, matched timestep",
+     "same_model": true,
+     "unit": "frac",
+     "value": 0.00040712435817215727
+    },
+    {
+     "at": "component 2",
+     "band": 0.01,
+     "case": "depletion BHP",
+     "metric": "cum_production_worst_component_rel_err",
+     "reference": "OPM flowexp_comp, matched timestep",
+     "same_model": true,
+     "unit": "frac",
+     "value": 0.000878657574827898
+    },
+    {
+     "at": "t = 2.0 d: 91.7794 vs 91.7889 bar",
+     "band": 0.02,
+     "case": "depletion BHP",
+     "metric": "worst_pressure_diff",
+     "reference": "OPM flowexp_comp, matched timestep",
+     "same_model": true,
+     "unit": "bar",
+     "value": 0.009507400236614671
+    },
+    {
+     "at": "",
+     "band": 0.0005,
+     "case": "depletion BHP",
+     "metric": "worst_sg_diff",
+     "reference": "OPM flowexp_comp, matched timestep",
+     "same_model": true,
+     "unit": "frac",
+     "value": 0.0001813902171702575
+    },
+    {
+     "at": "t = 5.11 d, cell 3: 97.2283 vs 97.2357 bar",
+     "band": 0.02,
+     "case": "1D skin 60",
+     "metric": "worst_pressure_diff",
+     "reference": "OPM flowexp_comp, matched timestep",
+     "same_model": true,
+     "unit": "bar",
+     "value": 0.007424267299015241
+    },
+    {
+     "at": "",
+     "band": 0.0005,
+     "case": "1D skin 60",
+     "metric": "cum_injection_rel_err",
+     "reference": "OPM flowexp_comp, matched timestep",
+     "same_model": true,
+     "unit": "frac",
+     "value": 1.3680777069386498e-05
+    },
+    {
+     "at": "t = 0.19 d, cell 4: 59.4244 vs 61.1053 bar",
+     "band": 2.0,
+     "case": "1D plain",
+     "metric": "worst_pressure_diff",
+     "reference": "OPM flowexp_comp, matched timestep",
+     "same_model": true,
+     "unit": "bar",
+     "value": 1.6809713137332238
+    },
+    {
+     "at": "",
+     "band": 0.002,
+     "case": "1D plain",
+     "metric": "cum_injection_rel_err",
+     "reference": "OPM flowexp_comp, matched timestep",
+     "same_model": true,
+     "unit": "frac",
+     "value": 0.0004181842040498703
+    }
+   ]
+  }
+ },
+ "$comment": "Written by tools/benchmarks/benchmarks.py via scripts/benchmarks.sh update; do not edit by hand. See docs/BENCHMARKS.md and #54."
+}

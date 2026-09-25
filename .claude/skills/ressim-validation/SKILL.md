@@ -62,7 +62,7 @@ rather than hidden behind a default.
 | Analytical modules (`src/lib/analytical/`) | `pnpm test` (analytical + contract tests) |
 | Scenario catalog (`src/lib/catalog/`) | `pnpm test` then `pnpm run typecheck` |
 | WASM API surface (`frontend.rs`, `lib.rs`, worker payloads) | `bash scripts/build-wasm.sh` + `pnpm run validate:product` |
-| Physics, PVT, wells, either timestep controller, or the small-system linear route — anything that can move an answer | the rows above **plus** `bash scripts/validate-cross-solver.sh` (every solver vs OPM Flow, scorecard ratchet; needs `flow`) |
+| Physics, PVT, wells, either timestep controller, or the small-system linear route — anything that can move an answer | the rows above **plus** `bash scripts/validate-cross-solver.sh` (every solver vs OPM Flow, scorecard ratchet; needs `flow`) **plus** `bash scripts/benchmarks.sh check` (every number on `docs/BENCHMARKS.md`, ~2–3 min) |
 | Engine payload boundary (`api.rs`, `frontend.rs`) or `crates/ressim-py` | the rows above **plus** `bash scripts/validate-native-binding.sh` (native vs browser bindings on a case matrix; ~1e-13 FIM, ~1e-12 IMPES) |
 | Compositional engine (`src/lib/ressim/src/compositional/`) | `bash scripts/validate-compositional.sh thermo`; `native` or `all` when OPM headers / `flowexp_comp` are available |
 | Styling, Tailwind config, `index.html`, Vite/build config | `pnpm run build` + `pnpm run test:deployed` against `pnpm run preview` — the only check that catches an unstyled page (a Tailwind content-glob miss raises no error anywhere) |
@@ -175,6 +175,22 @@ stop agreeing. It prints improvements past the band too: re-baseline them delibe
 `--update` on a committed tree and commit the scorecard with the change that earned it, so the
 scorecard's provenance names that commit. **Do not hand-copy small-direct numbers into a doc**;
 use `--markdown`.
+
+Benchmark records — `docs/BENCHMARKS.md` is generated, never typed (#54):
+
+```bash
+bash scripts/benchmarks.sh check                 # measure every section, compare with docs/benchmarks/benchmarks.json
+bash scripts/benchmarks.sh check --tier fast     # without Flow / flowexp_comp (what CI has)
+bash scripts/benchmarks.sh update [--only spe1]  # re-record and re-render: on a COMMITTED tree only
+bash scripts/benchmarks.sh render --check        # page in sync with its records (no runs)
+```
+
+`check` fails when a banded error grows by more than a tenth of its band or leaves it, or when a
+recorded measurement disappears (a renamed test, a broken producer). Every other change is listed:
+record it with `update` in a follow-up commit on the committed tree, so the section's stamp names
+the commit that moved it. To add a benchmark, record it from its test with
+`tests/bench_record.rs` (or append to `$RESSIM_BENCH_OUT/records.jsonl` from a script), then give
+its section a renderer in `tools/benchmarks/benchmarks.py`.
 
 Agreement with Flow at the same time step is not accuracy: FIM and Flow share an implicit scheme
 and its time-step error. When FIM and IMPES disagree, `--refine` is the referee (see the
