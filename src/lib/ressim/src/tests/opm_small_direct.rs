@@ -40,7 +40,7 @@ struct Case {
     report_dt_days: f64,
 }
 
-const CASES: [Case; 10] = [
+const CASES: [Case; 11] = [
     Case {
         key: "ow-1d-96",
         note: "wf_bl1d geometry: 96x1x1 waterflood, BHP injector/producer, M~2",
@@ -104,6 +104,15 @@ const CASES: [Case; 10] = [
         report_steps: 120,
         report_dt_days: 30.0,
     },
+    // SPE1 Case 2 (redissolution on): the variant JutulDarcy can run, since it ignores DRSDT.
+    // With no DRSDT in the deck all three simulators solve the same model, so it is SPE1's
+    // second-simulator check (#57).
+    Case {
+        key: "spe1-case2-10x10x3",
+        note: "spe1_acceptance SPE1 with gas redissolution (Case 2): the SPE1 model JutulDarcy can run",
+        report_steps: 120,
+        report_dt_days: 30.0,
+    },
 ];
 
 /// The report schedule actually used: the case's own, or `OPM_SMALL_REPORT_DT` over the same
@@ -134,6 +143,11 @@ fn build(key: &str) -> ReservoirSimulator {
         "dep-pvt-lab-report" => dep_pvt_column(true),
         "gas-drive-20" => super::three_phase_acceptance::make_gas_drive_acceptance_sim(),
         "spe1-10x10x3" => super::spe1_acceptance::make_spe1_acceptance_sim(),
+        "spe1-case2-10x10x3" => {
+            let mut sim = super::spe1_acceptance::make_spe1_acceptance_sim();
+            sim.set_gas_redissolution_enabled(true);
+            sim
+        }
         other => panic!("unknown small-direct case {other}"),
     }
 }

@@ -16,6 +16,7 @@ path FIM-DIRECT-001 was about. These do.
 | `dep-pvt-lab-report` | 48×1×1 | 146 | the same with the lab-report table (2.5× the undersaturated c_o) |
 | `gas-drive-20` | 20×1×1 | 60 | `three_phase_acceptance` `gas_drive`: saturated solution-gas drive, BHP producer, redissolution on (#55) |
 | `spe1-10x10x3` | 10×10×3 | 900 | `spe1_acceptance` SPE1 Case 1: gravity, three layers, gas rate injector, ORAT producer with a BHP floor (#55) |
+| `spe1-case2-10x10x3` | 10×10×3 | 900 | the same with redissolution (Case 2): no `DRSDT`, so JutulDarcy runs the same model. Kept for the saturated-Rs convention above the table (#35), where ResSim differs from both Flow and JutulDarcy |
 
 The last two are not small: SPE1 is past the forced-direct threshold. They are here for the
 one-definition deck writer, which settled #55: their hand-written Flow decks disagreed with
