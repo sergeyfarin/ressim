@@ -6,6 +6,7 @@ pub(crate) mod fixtures;
 mod gas_cap;
 mod gas_flood;
 mod geometry_anisotropy;
+mod initial_state;
 mod pvt_flash;
 mod waterflood;
 mod wellbore_datum;

@@ -220,6 +220,10 @@ pub struct ReservoirSimulator {
     /// reason the water reference is: one uniform initial pressure is the whole
     /// public input model.
     pub(crate) rock_reference_pressure_bar: f64,
+    /// True once `set_rock_reference_pressure` has stated the rock reference (Eclipse `ROCK`
+    /// item 1); `set_initial_pressure` then leaves it alone instead of setting it to the initial
+    /// pressure (#57).
+    pub(crate) rock_reference_pressure_explicit: bool,
     rate_history: Vec<TimePointRates>,
     pub(crate) sat_gas: Vec<f64>,
     pub(crate) scal_3p: Option<RockFluidPropsThreePhase>,
@@ -429,8 +433,12 @@ pub(crate) mod tests {
             sim.pvt.c_o,
         ));
         sim.set_initial_rs(226.197);
-        sim.set_rock_properties(4.35e-5, 2560.0, 1.695, 1.038)
+        // Top of the reservoir at 8325 ft = 2537.46 m. It was 2560 m, the 8400 ft datum, which
+        // put every layer 22.5 m too deep once depth mattered (#57).
+        sim.set_rock_properties(4.35e-5, 2537.46, 1.695, 1.038)
             .unwrap();
+        // SPE1's porosity is quoted at 14.7 psia (Odeh, Table 1), not at the initial pressure.
+        sim.set_rock_reference_pressure(1.01353).unwrap();
         sim.set_fluid_densities(860.0, 1033.0).unwrap();
         sim.set_initial_pressure(331.0);
         sim.set_initial_saturation(0.12);
@@ -649,6 +657,10 @@ pub(crate) mod tests {
         sim.add_well(producer_i, producer_j, 2, 69.0, 0.0762, 0.0, false)
             .unwrap();
         sim.add_well(0, 0, 0, 621.0, 0.0762, 0.0, true).unwrap();
+        // SPE1CASE1's EQUIL: 4800 psia at the 8400 ft datum, oil throughout (both contacts lie
+        // outside the grid), after every input the oil density depends on (#57).
+        sim.set_initial_pressure_hydrostatic(2560.32, 331.0)
+            .unwrap();
         sim
     }
 

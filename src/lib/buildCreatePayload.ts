@@ -399,6 +399,12 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     injectedFluid: (state.injectedFluid ?? 'gas') as 'water' | 'gas',
     initialGasSaturation: toClamped(state.initialGasSaturation, 0, 1, 0),
 
+    // Optional initial-state inputs (#57); absent means the engine's defaults.
+    rockReferencePressure: Number.isFinite(Number(state.rockReferencePressure)) && state.rockReferencePressure != null
+      ? Number(state.rockReferencePressure) : undefined,
+    initialPressureDatumDepth: Number.isFinite(Number(state.initialPressureDatumDepth)) && state.initialPressureDatumDepth != null
+      ? Number(state.initialPressureDatumDepth) : undefined,
+
     // Per-layer overrides — spread into fresh arrays to strip Svelte 5 reactive
     // proxies that cannot be structured-cloned by postMessage.
     initialSaturationPerLayer: Array.isArray(state.initialSaturationPerLayer) ? [...state.initialSaturationPerLayer] : undefined,

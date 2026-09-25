@@ -1245,6 +1245,31 @@ impl ReservoirSimulator {
         }
     }
 
+    /// Pressure [bar] at cell `id`'s centre in a static oil column that has `datum_pressure_bar`
+    /// at `datum_depth_m`: dp/dz = rho_o(p, Rs)·g integrated from the datum with the cell's own
+    /// Rs, midpoint rule on steps of at most 1 m. The density is the one the flux gravity term
+    /// uses, so the column starts close to the engine's discrete equilibrium (#57).
+    pub(crate) fn hydrostatic_oil_pressure_bar(
+        &self,
+        id: usize,
+        datum_depth_m: f64,
+        datum_pressure_bar: f64,
+    ) -> f64 {
+        const G: f64 = 9.80665;
+        let k = id / (self.nx * self.ny);
+        let target_depth = self.depth_at_k(k);
+        let rs = self.rs.get(id).copied().unwrap_or(0.0);
+        let span = target_depth - datum_depth_m;
+        let steps = span.abs().ceil().max(1.0) as usize;
+        let dz = span / steps as f64;
+        let mut p = datum_pressure_bar;
+        for _ in 0..steps {
+            let half = p + self.oil_density_generic(p, rs) * G * 0.5 * dz * 1e-5;
+            p += self.oil_density_generic(half, rs) * G * dz * 1e-5;
+        }
+        p
+    }
+
     /// Generic (differentiable) mirror of [`Self::oil_props_for_state`], oil
     /// mass density only (the field the flux gravity term needs).
     pub(crate) fn oil_density_generic<S: Scalar>(&self, p: S, rs: S) -> S {

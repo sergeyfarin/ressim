@@ -93,4 +93,29 @@ describe('SPE1 worker wiring', () => {
             },
         ]);
     });
+
+    /**
+     * #57: SPE1 starts from its EQUIL, a hydrostatic oil column with 4800 psia at the 8400 ft datum,
+     * not a uniform 331 bar. The bottom layer's centre is the datum (8325 ft top + 20 + 30 + 25 ft),
+     * so it holds exactly 331 bar and the layers above hold less by the oil head.
+     */
+    it('starts from a hydrostatic oil column at the 8400 ft datum', async () => {
+        await ensureWasmReady();
+        const simulator = configure(scenarioBasePayload('spe1_gas_injection'));
+        const pressures = Array.from(simulator.getPressures() as Float64Array);
+        simulator.free();
+
+        const layer = (k: number) => pressures.slice(k * 100, (k + 1) * 100);
+        for (const k of [0, 1, 2]) {
+            const values = layer(k);
+            expect(Math.max(...values) - Math.min(...values), `layer ${k} is flat`).toBeLessThan(1e-9);
+        }
+        const [top, middle, bottom] = [0, 1, 2].map((k) => layer(k)[0]);
+        expect(bottom).toBeCloseTo(331, 9);
+        // Oil at ~620 kg/m3 over 19.8 m and 12.2 m: about 1.2 and 0.74 bar of head.
+        expect(bottom - top).toBeGreaterThan(1.0);
+        expect(bottom - top).toBeLessThan(1.4);
+        expect(middle).toBeGreaterThan(top);
+        expect(middle).toBeLessThan(bottom);
+    });
 });

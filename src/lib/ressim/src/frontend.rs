@@ -93,6 +93,7 @@ impl ReservoirSimulator {
             oil_pvt_reference_pressure_bar: 300.0,
             gas_pvt_reference_pressure_bar: 300.0,
             rock_reference_pressure_bar: 300.0,
+            rock_reference_pressure_explicit: false,
             rate_history: Vec::new(),
             last_solver_warning: String::new(),
             last_fim_trace: String::new(),
@@ -660,7 +661,52 @@ impl ReservoirSimulator {
         self.water_pvt_reference_pressure_bar = pressure;
         self.oil_pvt_reference_pressure_bar = pressure;
         self.gas_pvt_reference_pressure_bar = pressure;
-        self.rock_reference_pressure_bar = pressure;
+        if !self.rock_reference_pressure_explicit {
+            self.rock_reference_pressure_bar = pressure;
+        }
+    }
+
+    /// The pressure [bar] the porosity is quoted at (Eclipse `ROCK` item 1): pore volume is
+    /// `V·phi·exp(c_r·(p − p_ref))`. Without this call it is the initial pressure. Once set,
+    /// `set_initial_pressure` no longer moves it, so the call may come before or after (#57).
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setRockReferencePressure))]
+    pub fn set_rock_reference_pressure(&mut self, pressure_bar: f64) -> Result<(), String> {
+        if !pressure_bar.is_finite() || pressure_bar < 0.0 {
+            return Err(format!(
+                "Rock reference pressure must be a non-negative number, got {pressure_bar}"
+            ));
+        }
+        self.rock_reference_pressure_bar = pressure_bar;
+        self.rock_reference_pressure_explicit = true;
+        Ok(())
+    }
+
+    /// Initial pressure in hydrostatic equilibrium with the oil column: `datum_pressure_bar` at
+    /// `datum_depth_m`, and each cell at the pressure the oil between the datum and its centre
+    /// adds, using that cell's own Rs (Eclipse `EQUIL` for an oil zone with no contact inside
+    /// the grid). Calls `set_initial_pressure(datum_pressure_bar)` first, so the PVT and rock
+    /// references are the datum pressure unless stated otherwise. Call it after the PVT table,
+    /// initial Rs and densities are set: the oil density depends on all three (#57).
+    #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setInitialPressureHydrostatic))]
+    pub fn set_initial_pressure_hydrostatic(
+        &mut self,
+        datum_depth_m: f64,
+        datum_pressure_bar: f64,
+    ) -> Result<(), String> {
+        if !datum_depth_m.is_finite()
+            || !datum_pressure_bar.is_finite()
+            || datum_pressure_bar <= 0.0
+        {
+            return Err(format!(
+                "Hydrostatic datum must be finite with a positive pressure, got {datum_pressure_bar} bar at {datum_depth_m} m"
+            ));
+        }
+        self.set_initial_pressure(datum_pressure_bar);
+        let pressures = (0..self.nx * self.ny * self.nz)
+            .map(|id| self.hydrostatic_oil_pressure_bar(id, datum_depth_m, datum_pressure_bar))
+            .collect::<Vec<_>>();
+        self.pressure = pressures;
+        Ok(())
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setCellDimensions))]

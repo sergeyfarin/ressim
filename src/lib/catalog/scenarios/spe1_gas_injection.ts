@@ -390,7 +390,8 @@ export const spe1_gas_injection: Scenario = {
         rho_w: 1033,
         rho_o: 860,
         rho_g: 0.854,    // surface gas density
-        depth_reference: 2560,   // 8400 ft datum depth in meters
+        depth_reference: 2537.46,   // 8325 ft, top of the reservoir (#57: was the 8400 ft datum)
+        rockReferencePressure: 1.01353,   // 14.7 psia: SPE1's porosity is quoted at 1 atm (#57)
         volume_expansion_o: 1.695,  // Bo at bubble point
         volume_expansion_w: 1.038,  // Bw at reference
 
@@ -410,6 +411,7 @@ export const spe1_gas_injection: Scenario = {
 
         // ── Initial conditions ──────────────────────────────────────────
         initialPressure: 331,     // 4800 psia — undersaturated
+        initialPressureDatumDepth: 2560.32,   // at the 8400 ft datum, hydrostatic oil column (EQUIL, #57)
         initialSaturation: 0.12,  // Swi = 0.12 (connate, immobile)
         initialGasSaturation: 0,  // no free gas initially
 

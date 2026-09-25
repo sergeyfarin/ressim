@@ -62,14 +62,24 @@ export function getAverageLayerThickness(params: Record<string, any>): number {
     return layers.reduce((sum, t) => sum + t, 0) / layers.length;
 }
 
-/** Bulk pore volume (m³). Supports per-layer cellDz via getLayerThicknesses. */
+/**
+ * Pore volume at the initial pressure (m³). Supports per-layer cellDz via getLayerThicknesses.
+ * When the porosity is quoted at a separate rock reference pressure (Eclipse ROCK, #57), it is
+ * expanded to the initial pressure the way the engine does: `exp(c_r·(p_i − p_ref))`.
+ */
 export function getPoreVolume(params: Record<string, any>): number {
+    const referencePressure = Number(params.rockReferencePressure);
+    const compaction = params.rockReferencePressure != null && Number.isFinite(referencePressure)
+        ? Math.exp(toFiniteNumber(params.rock_compressibility, 0)
+            * (toFiniteNumber(params.initialPressure, referencePressure) - referencePressure))
+        : 1;
     return toFiniteNumber(params.nx, 1)
         * toFiniteNumber(params.ny, 1)
         * toFiniteNumber(params.cellDx, 10)
         * toFiniteNumber(params.cellDy, 10)
         * getTotalThickness(params)
-        * toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2);
+        * toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2)
+        * compaction;
 }
 
 /**

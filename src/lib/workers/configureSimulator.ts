@@ -127,6 +127,10 @@ export function configureReservoirSimulator(simulator: ReservoirSimulator, paylo
     );
   }
 
+  if (payload.rockReferencePressure != null) {
+    (simulator as any).setRockReferencePressure(Number(payload.rockReferencePressure));
+  }
+
   const setFluidDensities = /** @type {any} */ (simulator).setFluidDensities;
   if (typeof setFluidDensities === 'function') {
     setFluidDensities.call(simulator, Number(payload.rho_o), Number(payload.rho_w));
@@ -189,6 +193,14 @@ export function configureReservoirSimulator(simulator: ReservoirSimulator, paylo
     } else if ((payload.initialGasSaturation ?? 0) > 0) {
       call3p('setInitialGasSaturation', payload.initialGasSaturation);
     }
+  }
+
+  // A hydrostatic initial state needs the oil density, so it comes after the PVT table,
+  // initial Rs and every density (including the gas density set just above) (#57).
+  if (payload.initialPressureDatumDepth != null) {
+    (simulator as any).setInitialPressureHydrostatic(
+      Number(payload.initialPressureDatumDepth), Number(payload.initialPressure),
+    );
   }
 
   simulator.setStabilityParams(

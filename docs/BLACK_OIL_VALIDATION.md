@@ -137,8 +137,12 @@ gaps"). The published-series criteria above are unaffected: they grade against F
 viscosity above the 345.73 bar table top used to be held flat, and now continues the last segment:
 0.042 cP at 621 bar against SPE1's 0.047. The engine setup lacked SPE1's undersaturated oil branches,
 which the app scenario had all along. Either fix alone skews the gas/oil mobility ratio: gas alone
-put GOR 25.8 % off Flow. The remaining two are open in #57: porosity is referenced at 331 bar rather
-than 14.7 psia, and the initial pressure is uniform rather than hydrostatic.
+put GOR 25.8 % off Flow. #57 then gave SPE1 its rock reference pressure (porosity quoted at
+14.7 psia, not the initial 331 bar), a hydrostatic initial state from the 8400 ft datum (`EQUIL`), and
+the right top depth (8325 ft; the setup had used the 8400 ft datum as the top). Against Flow on the
+faithful deck the worst gaps went from pressure 1.59 %, oil rate 3.30 %, GOR 5.54 % to about 1.4, 1.2
+and 1.3 %. Against the published series they went from 1.60 / 3.15 / 4.30 % to 1.35 / 1.27 / 1.85 %.
+The residual is not attributed yet (#57).
 
 ```bash
 python3 tools/opm_flow/spe1_refinement_oracle.py --out /tmp/spe1-refinement

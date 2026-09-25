@@ -184,6 +184,11 @@ export interface SimulatorCreatePayload {
   injectedFluid?: 'water' | 'gas';
   // Initial gas saturation
   initialGasSaturation?: number;
+  // Pressure [bar] the porosity is quoted at (Eclipse ROCK item 1). Absent: the initial pressure.
+  rockReferencePressure?: number;
+  // Depth [m] at which `initialPressure` holds when the initial state is a hydrostatic oil
+  // column (Eclipse EQUIL, no contact in the grid). Absent: uniform `initialPressure`.
+  initialPressureDatumDepth?: number;
   // Per-layer initial conditions (optional; override scalar values when present)
   initialSaturationPerLayer?: number[];
   initialGasSaturationPerLayer?: number[];
