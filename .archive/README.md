@@ -44,6 +44,14 @@ these files are provenance, not live specs.
   2026-07-13 addendum already marked it "historical decomposition, not the active execution
   order". Strategic ordering now lives in `ROADMAP.md` and GitHub Issues.
 
+### Added 2026-09-25 (README and benchmark review)
+
+- `BENCHMARK_MODE_GUIDE.md` — described the legacy "benchmark family" workflow
+  (`bl_case_a_refined`, `dietz_sq_center`, ..., `ReferenceExecutionCard`). That system was retired
+  in 2026-07 (see `src/lib/catalog/benchmarkCases.ts` below); the stub returns no families, and
+  several files the guide cited no longer exist. Current benchmark numbers live in
+  `docs/BENCHMARKS.md`; Buckley-Leverett methodology stays in `docs/P4_TWO_PHASE_BENCHMARKS.md`.
+
 Also archived here: `PLAN.md` (historical scenario-first rewrite plan),
 `docs/REFACTOR_PLAN.md` (historical refactor plan), and
 `CODEX_FIM_DIALOGUE_03.07.2026.md` (historical design dialogue).

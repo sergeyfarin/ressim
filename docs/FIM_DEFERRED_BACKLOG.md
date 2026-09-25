@@ -7,15 +7,16 @@ FIM is in the user-facing product path as of `b88ee28` (2026-07-24). This file t
 Declared completely in each module under `src/lib/catalog/scenarios/`; catalog assembly does not
 inject solver parameters or sensitivities.
 
-- Gas / three-phase scenarios default to FIM: `gas_injection`, `gas_drive`, `spe1_gas_injection`.
-- Ordinary oil/water scenarios default to IMPES and do not carry a generic solver sensitivity.
-- `wf_bl1d`'s `solver_formulation` dimension is the single public formulation comparison, folded in
-  from the standalone `solver_fim_impes` scenario on 2026-07-31. It holds the 1D waterflood fixed
-  and varies only `fimEnabled` and the report timestep (0.25 d and 5 d), so the four runs are judged
-  against the timestep-independent Buckley-Leverett reference instead of only against each other.
-  Measured over the 50-day flood: the formulations agree to 0.97% in cumulative oil at 0.25-day
-  steps, while coarsening to 5-day steps costs IMPES 8.8% of its own fine-step recovery against
-  FIM's 3.1%.
+- Gas and black-oil scenarios default to FIM: `gas_injection`, `gas_drive`, `spe1_gas_injection`,
+  `dep_gas_pz` (and the withheld `dep_pvt`). `wf_capillary` also defaults to FIM, because FIM couples
+  the capillary saturation gradient into the nonlinear solve.
+- The other oil/water scenarios default to IMPES and do not carry a generic solver sensitivity.
+- `wf_numerics`' `solver_formulation` dimension is the single public formulation comparison. It
+  holds the 1D waterflood fixed and varies only `fimEnabled` and the report timestep (1 d and
+  10 d), so the four runs are judged against the timestep-independent Buckley-Leverett reference
+  instead of only against each other. (It lived on `wf_bl1d`, at 0.25 d and 5 d, until it moved
+  here. The numbers measured there are not restated, because they no longer describe a shipped
+  case.)
 - Every scenario carries a `solverPolicy` with a user-visible rationale, surfaced in scenario cards and run labels.
 
 ## Later FIM Work

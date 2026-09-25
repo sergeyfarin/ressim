@@ -29,12 +29,11 @@ with the same answers. Checked against OPM Flow on five new decks under 512 rows
 [`opm/reference-decks/small-direct/`](../opm/reference-decks/small-direct/README.md).
 `fim/unify-linear-routing` (`f5a9577`) is superseded.
 
-**Still open:**
+**Follow-up closed 2026-09-25:** the `FIM_STATUS.md` long-horizon table was re-measured on
+`5c29e0e` and reproduces to within one substep. It is recorded in
+[`BENCHMARKS.md` §7](BENCHMARKS.md#7-fim-convergence-wasm), next to the native/wasm parity result.
 
-- *Re-baseline `FIM_STATUS.md`.* Its wasm figures for two-phase cases may now reproduce natively;
-  measure before citing any of them as cross-target.
-
-## 1a. Bubble-point fragmentation in three-phase FIM — **fixed on branch `fim/bubble-point-lifecycle` (FIM-BUBBLE-001), awaiting merge decision**
+## 1a. Bubble-point fragmentation in three-phase FIM — **fixed (FIM-BUBBLE-001, `3fdefa4`, merged)**
 
 The first 5-day step of the depletion column crossed the bubble point in ~21,800 substeps;
 Flow takes 4. A finite-difference Jacobian audit at the stuck state found every mismatch in an

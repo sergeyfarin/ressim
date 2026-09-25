@@ -16,23 +16,23 @@ gas injection at (1,1) in the top layer, producer at (10,10) in the bottom layer
 20,000 STB/day oil with a 1000 psia BHP floor, injector 100 MMscf/day with a 9014 psia ceiling.
 
 **Reference.** `flow 2026.04` on `OPM/opm-common/tests/SPE1CASE1.DATA` — the same series the
-frontend overlays on the `spe1_gas_injection` scenario (`TODO.md`, "SPE1 reference data
-(2026-07-24)"). The Rust test embeds the yearly field-pressure and producing-GOR samples plus
+frontend overlays on the `spe1_gas_injection` scenario
+(`src/lib/catalog/opm-flow-results/spe1_gas_injection.json`). The Rust test embeds the yearly field-pressure and producing-GOR samples plus
 the producer oil-rate report schedule so the engine can be graded without the frontend.
 
 **Where.** `src/lib/ressim/src/tests/spe1_acceptance.rs`.
 
 | Criterion | Tolerance | Worst measured error |
 |---|---|---|
-| Field average reservoir pressure, yearly to 3650 d | 3 % | 1.73 % (at 1095 d) |
-| Producer surface oil rate, yearly to 3650 d | 8 % | 3.33 % (at 2190 d) |
-| Producing GOR, yearly to 3650 d | 12 % | 4.39 % (at 3285 d) |
+| Field average reservoir pressure, yearly to 3650 d | 3 % | 1.60 % (at 1095 d) |
+| Producer surface oil rate, yearly to 3650 d | 8 % | 3.15 % (at 3285 d) |
+| Producing GOR, yearly to 3650 d | 12 % | 4.30 % (at 3285 d) |
 | Producer holds the 3179.74 Sm³/d surface target while the reference is on plateau (≤ 730 d) | 0.5 % | met |
 | Oil material-balance drift vs STOIIP | 1 % | within band at every checkpoint |
 | Gas material-balance drift vs gas handled (initial free + dissolved in place, plus cumulative injection) | 1 % | within band at every checkpoint |
 | Solver warnings during the run | none | none |
 
-Tolerances are acceptance criteria with deliberate headroom (roughly 1.7×–2.7× the measured
+Tolerances are acceptance criteria with deliberate headroom (roughly 1.9×–2.8× the measured
 error), not tuned-to-the-build benchmark tolerances. They are not to be widened to make a change
 pass; a regression that breaks one is a physics or solver finding.
 
@@ -59,47 +59,46 @@ cargo test --release --manifest-path src/lib/ressim/Cargo.toml spe1_full_horizon
 
 ### Recorded baseline
 
-Engine revision `0cfead9` ("fixing OPM decks"), solver FIM (the catalog default for
-`spe1_gas_injection`), 30-day report steps, measured 2026-07-24 with the acceptance tests added
-on top of `0cfead9` and no engine files modified. Verbatim summary from the full replay:
+Committed revision `5c29e0e`, clean tree, measured 2026-09-25 (release). Solver FIM (the catalog
+default for `spe1_gas_injection`), 30-day report steps. Verbatim summary from the full replay:
 
 ```
-t=  365.0 pressure_err= 0.282% oil_rate_err= 0.001% gor_err= 1.079%
-t=  730.0 pressure_err= 0.939% oil_rate_err= 0.001% gor_err= 3.736%
-t= 1095.0 pressure_err= 1.728% oil_rate_err= 0.121% gor_err= 1.450%
-t= 1460.0 pressure_err= 1.383% oil_rate_err= 0.652% gor_err= 0.198%
-t= 1825.0 pressure_err= 1.075% oil_rate_err= 1.730% gor_err= 1.221%
-t= 2190.0 pressure_err= 1.098% oil_rate_err= 3.325% gor_err= 3.659%
-t= 2555.0 pressure_err= 1.011% oil_rate_err= 3.230% gor_err= 3.719%
-t= 2920.0 pressure_err= 0.822% oil_rate_err= 3.112% gor_err= 3.940%
-t= 3285.0 pressure_err= 0.856% oil_rate_err= 3.213% gor_err= 4.390%
-t= 3650.0 pressure_err= 0.923% oil_rate_err= 3.153% gor_err= 3.617%
-SPE1 worst-case errors: pressure=1.728% oil_rate=3.325% gor=4.390%
+t=  365.0 pressure_err= 0.297% oil_rate_err= 0.001% gor_err= 1.023%
+t=  730.0 pressure_err= 0.952% oil_rate_err= 0.001% gor_err= 2.252%
+t= 1095.0 pressure_err= 1.597% oil_rate_err= 0.477% gor_err= 1.095%
+t= 1460.0 pressure_err= 1.263% oil_rate_err= 0.410% gor_err= 0.348%
+t= 1825.0 pressure_err= 0.982% oil_rate_err= 1.541% gor_err= 1.081%
+t= 2190.0 pressure_err= 1.031% oil_rate_err= 3.139% gor_err= 3.470%
+t= 2555.0 pressure_err= 0.968% oil_rate_err= 3.088% gor_err= 3.550%
+t= 2920.0 pressure_err= 0.801% oil_rate_err= 3.028% gor_err= 3.819%
+t= 3285.0 pressure_err= 0.842% oil_rate_err= 3.149% gor_err= 4.295%
+t= 3650.0 pressure_err= 0.918% oil_rate_err= 3.129% gor_err= 3.586%
+SPE1 worst-case errors: pressure=1.597% oil_rate=3.149% gor=4.295%
 ```
 
-Provisional until rerun on the committed revision that contains these tests; the engine under
-test is `0cfead9` either way, since the change adds tests only.
+Superseded: the provisional baseline on `0cfead9` with the then-uncommitted tests (2026-07-24)
+read worst 1.728 % / 3.325 % / 4.390 %. Every figure moved by less than 0.2 percentage points.
 
 ### SPE1 under areal refinement (characterization, not a criterion)
 
 The catalog's `grid` sensitivity offers 20×20×3 over the same domain. Refining does **not**
-uniformly improve reference agreement, so it is recorded rather than asserted:
+uniformly improve reference agreement, so it is recorded rather than asserted. Measured at
+`5c29e0e` (2026-09-25), 90-day report steps:
 
 ```
-nx= 10 t=  730.0 pressure_err=  0.939% oil_rate_err=  0.001% gor_err=  3.736%
-nx= 10 t= 1095.0 pressure_err=  1.728% oil_rate_err=  0.121% gor_err=  1.450%
-nx= 10 t= 3650.0 pressure_err=  0.923% oil_rate_err=  3.153% gor_err=  3.617%
-nx= 20 t=  730.0 pressure_err=  1.878% oil_rate_err=  0.001% gor_err= 32.834%
-nx= 20 t= 1095.0 pressure_err=  2.845% oil_rate_err=  6.559% gor_err=  2.356%
-nx= 20 t= 3650.0 pressure_err=  0.121% oil_rate_err=  0.979% gor_err=  1.047%
+nx= 10 t=  730.0 pressure_err=  0.941% oil_rate_err=  0.001% gor_err=  2.733%
+nx= 10 t= 1095.0 pressure_err=  1.598% oil_rate_err=  0.410% gor_err=  1.210%
+nx= 10 t= 3650.0 pressure_err=  0.920% oil_rate_err=  3.148% gor_err=  3.612%
+nx= 20 t=  730.0 pressure_err=  1.856% oil_rate_err=  0.001% gor_err= 31.093%
+nx= 20 t= 1095.0 pressure_err=  2.712% oil_rate_err=  6.333% gor_err=  2.206%
+nx= 20 t= 3650.0 pressure_err=  0.118% oil_rate_err=  0.988% gor_err=  1.055%
 ```
 
-Read together: the refined grid is *better* late (pressure 0.12 % vs 0.92 %, GOR 1.0 % vs 3.6 %
-at 3650 d) and *worse* through breakthrough (GOR 32.8 % at 730 d, oil rate 6.6 % at 1095 d). The
+Read together: the refined grid is *better* late (pressure 0.12 % vs 0.92 %, GOR 1.1 % vs 3.6 %
+at 3650 d) and *worse* through breakthrough (GOR 31.1 % at 730 d, oil rate 6.3 % at 1095 d). The
 refined case breaks gas through earlier and more sharply than the reference; once the field is
-well past breakthrough it tracks the reference more closely than the coarse grid does. This
-narrows the older "finer grid moves away from reference" note in `TODO.md`: the divergence is a
-breakthrough-timing/front-sharpness effect, not a whole-run degradation.
+well past breakthrough it tracks the reference more closely than the coarse grid does. The
+divergence is a breakthrough-timing/front-sharpness effect, not a whole-run degradation.
 
 Material balance holds on both grids at every checkpoint, so this is a transport/well-model
 question rather than a conservation defect.
@@ -125,10 +124,6 @@ characterization, not a criterion.
 
 ```bash
 python3 tools/opm_flow/spe1_refinement_oracle.py --out /tmp/spe1-refinement
-cargo test --release --manifest-path src/lib/ressim/Cargo.toml spe1_areal_refinement_reference_error_replay -- --ignored --nocapture
-```
-
-```bash
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml spe1_areal_refinement_reference_error_replay -- --ignored --nocapture
 ```
 
@@ -335,10 +330,10 @@ not; it is not a substitute for a fully implicit compositional treatment.
 **The scalar undersaturated `c_o` default is asserted in two places.** The Rust core defaults to
 `c_o = 1e-5 /bar` (`src/lib/ressim/src/lib.rs`); the frontend asserts the same number as
 `DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR` in `src/lib/physics/pvt.ts`, which
-`src/lib/analytical/materialBalance.ts` imports rather than redeclaring. Nothing enforces that
-the two sides stay equal, so an analytical overlay can silently disagree with the engine if one
-  default moves. A cross-language regression guard now asserts the shared value. Scenarios that set
-  their own value (SPE1 uses 2.06e-4 /bar) override it on both sides.
+`src/lib/analytical/materialBalance.ts` imports rather than redeclaring. A cross-language
+regression guard (`materialBalance.test.ts`) asserts that the two stay equal, so an analytical
+overlay cannot silently disagree with the engine if one default moves. Scenarios that set
+their own value (SPE1 uses 2.06e-4 /bar) override it on both sides.
 
 **Material-balance diagnostics report each phase explicitly, with one structural limitation.**
 Water and gas cumulative errors are direct inventory comparisons, and oil is reported against
@@ -365,6 +360,8 @@ tables.
   Flow comparative solution, and the breakthrough / Sg-evolution acceptance tests are recorded in
   `docs/THREE_PHASE_VALIDATION.md`.
 - No SPE-style black-oil case beyond SPE1 (SPE9, volatile-oil style cases) is covered.
+- Current measured values for every criterion in this document are collected in
+  [`BENCHMARKS.md`](BENCHMARKS.md).
 - Two-phase IMPES still keeps oil as the residual `1 − Sw` and moves water by volume on a fixed
   pore volume, so rock and water expansion there are booked as oil. Three-phase IMPES was made
   conservative by #37 (section 2).
@@ -408,9 +405,11 @@ cargo test --manifest-path src/lib/ressim/Cargo.toml physics_depletion_grid_conv
 The #11 replay above is historical. Since `c225102` the FIM test is no longer `#[ignore]`d, and it
 runs on the stable table from section 2.
 
-### Section 2 FIM baseline re-confirmed at `5ebdc78`
+### Section 2 FIM baseline re-confirmed at `5ebdc78` (superseded)
 
-The section 2 FIM table still reproduces; differences are at the 1e-3..1e-4 level, inside the
+Historical: this confirmed the section 2 table **as it stood on 2026-09-15**, which used the
+unstable Bo = 1.05 PVT table. Section 2 has since moved to a stable table (#11, #38), so these
+numbers are not comparable with its current baseline. At the time, the section 2 FIM table still reproduced; differences are at the 1e-3..1e-4 level, inside the
 substep-ladder spread that section already records as an artefact rather than a trend.
 
 | nx | pressure [bar] | Rs [Sm³/Sm³] | Bo [m³/Sm³] | Sg |

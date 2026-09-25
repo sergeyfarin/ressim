@@ -44,11 +44,12 @@ c_t = ϕ · (c_o · S_o + c_w · S_w + c_g · S_g) + c_r
 
 ### Saturation Update
 
-Two explicit transport equations solved after pressure:
-- Δv_water (from water fluxes)
-- Δv_gas (from gas fluxes)
-- S_o_new = 1 − S_w_new − S_g_new (enforced by material balance)
-- All three saturations clamped and re-normalized if round-off causes sum ≠ 1
+Since #37 (`30bde0d`), three-phase IMPES transports all four black-oil masses (water, stock-tank
+oil, free gas, dissolved gas) as surface volumes. It then recovers the cell state by flashing them
+at the new pressure on `Vp(p)` (`impes/closure.rs`). A Newton loop drives `V(p, N(p)) = Vp(p)`, so
+the pressure equation's `c_t` below only supplies the first guess. The original design, kept here
+for context, moved water and gas by volume and set S_o = 1 − S_w − S_g. That booked storage errors
+as oil. Two-phase IMPES still works that way. See `docs/BLACK_OIL_VALIDATION.md` §2 (#37).
 
 ### CFL Check
 
@@ -82,7 +83,7 @@ The per-layer arrays (`initialGasSaturationPerLayer`, `initialSaturationPerLayer
 
 ---
 
-## Files Changed
+## Files Changed (when three-phase was introduced)
 
 | Layer | Files |
 |-------|-------|
@@ -134,10 +135,8 @@ its own diagnostic. That was wrong, and the correction matters:
   production versus actual stock-tank oil inventory depletion. It is not backed out as a
   residual.
 
-What *is* residual about oil is its **saturation**: transport solves water and gas and sets
-S_o = 1 - S_w - S_g. The constraint therefore cannot fail — it is enforced by construction — so
-the oil diagnostic grades the reporting and FVF path rather than the constraint. See
-`docs/THREE_PHASE_VALIDATION.md` section 4.
+FIM and three-phase IMPES both conserve oil mass, so on them the oil diagnostic is a genuine
+conservation check. See `docs/THREE_PHASE_VALIDATION.md` section 4.
 
 ## Remaining Gaps
 
@@ -147,7 +146,7 @@ These are envelope limits, not validation debt:
   Dietz is oil-only. Three-phase grading is numerical.
 - **Vaporized oil (Rv) is not modelled** — the gas phase carries no oil, so wet-gas and
   gas-condensate behavior is outside the envelope. The OPM decks use dry-gas `PVDG` to match.
-- **`gas_injection` has no OPM reference of its own**; it is covered by SPE1 (same mechanism)
-  and the gas-front criteria.
+- **`gas_injection`'s OPM reference is a 1D twin** of its base case. It is graded against Flow and
+  drawn on the charts, but there is no three-phase analytical reference to compare with.
 - **A +4 % cumulative-oil bias** against OPM on `gas_drive` is inside the acceptance band but
   unexplained.

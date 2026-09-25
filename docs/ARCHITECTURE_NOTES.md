@@ -5,10 +5,12 @@ This document tracks active architectural decisions that are still relevant. His
 ## Current Architecture Snapshot
 
 - `src/lib/catalog/scenarios.ts` is the primary scenario registry.
-- There are 10 canonical scenario definitions under `src/lib/catalog/scenarios/`.
+- There are 19 scenario definitions under `src/lib/catalog/scenarios/`: 17 offered in the picker,
+  and `dep_pvt` and `comp_co2_1d` withheld.
 - `ScenarioCapabilities` is the main routing contract for analytical behavior, chart defaults, injector presence, sweep geometry, and three-phase gating.
-- The custom-mode UI is denser and more structured than before, but it still sits beside the scenario system rather than on top of it.
-- The benchmark layer is partially modernized but still split across legacy family-owned files and the newer scenario workflow.
+- Custom Mode was removed from the production UI in 2026-07 (`.archive/README.md`).
+- The legacy benchmark-family layer is a stub: `benchmarkCases.ts` returns no families, and
+  `ReferenceExecutionCard` is not mounted. The files remain only as compatibility surfaces.
 
 ## Active Architecture Priorities
 
@@ -24,9 +26,10 @@ Why:
 
 - The scenario system is now the clearest mental model in the app. Full custom mode should be an escape hatch, not the normal extension path.
 
-### 2. Output-selection view model extraction
+### 2. Output-selection view model extraction — done (#14)
 
-Needed outcome:
+Delivered by `2a7141a` ("one typed output source feeds every single-run result consumer"). Kept
+here as the rationale. The outcome was:
 
 - One typed helper that resolves the active runtime or comparison payload for charts, 3D view, and analytical helpers.
 
@@ -39,7 +42,8 @@ Why:
 
 Needed outcome:
 
-- Reduce or remove the remaining dependence on `benchmarkCases.ts`, `caseCatalog.ts`, and `ReferenceExecutionCard`.
+- Remove the remaining stubs (`benchmarkCases.ts`, `caseCatalog.ts`, `ReferenceExecutionCard`)
+  and their null-checking consumers.
 - Move shared reference-run contracts into a clearer module that is owned by the scenario architecture instead of by the older benchmark layer.
 
 Why:

@@ -11,21 +11,16 @@ checkbox tracker. Do not add task narratives or completed-work history here.
 
 ## Now
 
-### Limited public release
-
-- [#8 — Deploy ResSim to GitHub Pages and smoke-test the public URL](https://github.com/sergeyfarin/ressim/issues/8)
-
-The catalog-integrity blocker found during the release audit was completed by `991b19d`; its
-migration issue is retained as the closed record [#9](https://github.com/sergeyfarin/ressim/issues/9).
+The limited public release ([#8](https://github.com/sergeyfarin/ressim/issues/8)) is deployed and
+its milestone is closed. See [ROADMAP.md](ROADMAP.md) for the current order.
 
 ### High priority
 
 - [#12 — Close remaining SPE1 and black-oil validation gaps](https://github.com/sergeyfarin/ressim/issues/12)
-- [#13 — Strengthen pull-request CI](https://github.com/sergeyfarin/ressim/issues/13)
-- [#14 — Consolidate chart architecture and output selection](https://github.com/sergeyfarin/ressim/issues/14)
-- [#25 — dep_gas_pz produced gas exceeds gas in place, collapsing the p/z reference](https://github.com/sergeyfarin/ressim/issues/25)
+- [#15 — Fix remaining chart correctness and presentation defects](https://github.com/sergeyfarin/ressim/issues/15)
 - [#26 — Give the withheld dep_pvt case a second sensitivity dimension](https://github.com/sergeyfarin/ressim/issues/26)
 - [#29 — Compositional model: C13 chart sourcing, then C14](https://github.com/sergeyfarin/ressim/issues/29)
+- [#52 — Run SPE5, then SPE3, on the compositional engine](https://github.com/sergeyfarin/ressim/issues/52)
 
 ## Tracking rules
 

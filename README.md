@@ -61,11 +61,11 @@ https://farin.nl/ressim - No installation required
 
 | Catalog group | Scenario | Key | Primary reference / purpose |
 |---|---|---|---|
-| 1D Displacement — Buckley–Leverett | 1D Waterflood | `wf_bl1d` | Buckley–Leverett + Welge analytical reference; also hosts the FIM-vs-IMPES formulation comparison |
+| 1D Displacement — Buckley–Leverett | 1D Waterflood | `wf_bl1d` | Buckley–Leverett + Welge analytical reference across mobility ratio, oil Corey exponent and residual oil |
 | 1D Displacement — Buckley–Leverett | 1D Waterflood — Capillary Effects | `wf_capillary` | Departure from the zero-capillary BL limit; physical versus numerical front spreading |
 | 1D Displacement — Buckley–Leverett | Gravity-Stable vs Unstable Displacement | `wf_gravity_stability` | 1D vertical column flooded upward or downward; gravity along the flow path brackets the viscous BL curve instead of bounding it |
 | 1D Displacement — Buckley–Leverett | Numerical Dispersion & Convergence | `wf_numerics` | The case where no BL assumption is broken, so the whole gap is the grid: first-order convergence over a 40x cell-size range, the IMPES stability limit made visible, IMPES vs FIM, and OPM Flow runs at two resolutions |
-| 1D Displacement — Buckley–Leverett | Gas Injection | `gas_injection` | Gas-oil fractional-flow breakthrough |
+| 1D Displacement — Buckley–Leverett | Gas Injection | `gas_injection` | Gas-oil fractional-flow breakthrough; OPM Flow run of the identical model |
 | Sweep Efficiency | Areal Sweep | `sweep_areal` | Craig confined five-spot correlation |
 | Sweep Efficiency | Vertical Sweep | `sweep_vertical` | Dykstra–Parsons / Stiles layered sweep |
 | Sweep Efficiency | Layer Crossflow — Do the Layers Talk? | `sweep_crossflow` | Dykstra–Parsons' non-communicating assumption tested directly: a k_v/k_h ladder the correlation cannot see, a crossflow benefit that reverses sign with mobility ratio, and capillary crossflow that needs a path |
@@ -79,6 +79,7 @@ https://farin.nl/ressim - No installation required
 | Material Balance & Drive Mechanism | Solution Gas Drive | `gas_drive` | Saturated black-oil depletion — liberation, free-gas build-up and the GOR rise; graded against an OPM Flow reference (`docs/THREE_PHASE_VALIDATION.md` §2) |
 | Material Balance & Drive Mechanism | PVT Model Risk — One Calibration Point *(defined and tested; withheld from picker)* | `dep_pvt` | Two PVT representations constrained at one point; constant-rate blowdown, so unmeasured undersaturated compressibility shows up as a 2.4x difference in time to the bubble point; withheld until it has a second sensitivity dimension ([issue #26](https://github.com/sergeyfarin/ressim/issues/26)) |
 | Published Benchmark Decks | SPE1 Black-Oil Benchmark | `spe1_gas_injection` | Published Eclipse and OPM Flow comparative-solution references |
+| Compositional *(defined and tested; withheld from picker)* | 1D Compositional CO₂ Flood | `comp_co2_1d` | Peng–Robinson compositional engine; withheld until the chart stack can plot compositional series ([issue #29](https://github.com/sergeyfarin/ressim/issues/29)) |
 
 ## Reading The Results — Model Validity Notes
 
@@ -89,18 +90,19 @@ What each reference is entitled to claim, and where it stops.
 - Dykstra-Parsons assumes layered, non-communicating flow. When the simulator allows vertical communication, analytical sweep penalties are intentionally conservative.
 - Stiles-style combined sweep improves layered recovery interpretation, but it is still an analytical teaching aid rather than a substitute for full streamline or field-scale pattern modeling.
 - Three-phase mode is graded quantitatively against numerical references (OPM Flow, SPE1), not promoted tank-model overlays. A Tarner–Tracy model was evaluated for Solution Gas Drive but rejected because its uniform tank assumptions do not represent the case's localized BHP drawdown and initially mobile free gas. Vaporized oil (Rv) is not modelled, so wet-gas and gas-condensate behavior is outside the envelope. See `docs/THREE_PHASE_VALIDATION.md` section 6.
-- Material-balance closure is reported explicitly for all three phases. Oil is the residual *saturation* in transport (S_o = 1 - S_w - S_g), but its diagnostic is direct: reported surface oil production versus actual stock-tank oil inventory depletion.
+- Material-balance closure is reported explicitly for all three phases. FIM and three-phase IMPES transport every component mass, so their oil balance is a genuine conservation check. Two-phase IMPES still keeps oil as the residual saturation (S_o = 1 - S_w) and moves water by volume on a fixed pore volume, so with rock or water compressibility it books their expansion as oil. See `docs/BLACK_OIL_VALIDATION.md` §3–4.
 - The Brooks-Corey capillary model is numerically capped at `20 x P_entry`. That cap is a stability safeguard, not a physical plateau.
-- Pore volume is held constant within each timestep. Rock compressibility enters the pressure equation accumulation term but does not update cell geometry. This is the standard IMPES simplification and is consistent with the compressibility magnitudes used.
+- Rock compressibility changes pore volume, not cell geometry. FIM and three-phase IMPES evaluate pore volume at the new pressure; two-phase IMPES transports on a fixed pore volume (see the material-balance item above).
 - Water density and viscosity are pressure-independent. This is adequate for the reservoir pressure and temperature ranges targeted by this simulator.
-- Two-phase PVT mode uses the scalar undersaturated oil compressibility `c_o` for the accumulation term. In three-phase mode, an effective oil compressibility is computed from the bubble-point curve and blended with the undersaturated value over a 5-bar margin near the bubble point, keeping the accumulation term continuous across phase-state transitions.
+- IMPES seeds its pressure solve with an oil compressibility: the scalar undersaturated `c_o` in two-phase mode, and in three-phase mode an effective value from the bubble-point curve, blended over the last 5 bar above the bubble point. In three-phase mode this is only the first guess. A volume-balance iteration then takes storage from the mass closure itself, so the approximation does not reach the conserved masses.
+- A PVT table whose `Bo` rises faster than `Bg·dRs/dp` below the bubble point is thermodynamically unstable. The run is allowed, with a pre-run warning that names the pressure range.
 - Numerical derivatives of PVT properties (effective gas compressibility, saturated Bo/Bg slopes used in three-phase accumulation) use a fixed 1-bar finite-difference step. Accuracy degrades below roughly 5 bar, which the pressure floor prevents from being reached in practice.
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+ with `pnpm`
+- Node.js 24 (the CI version) with `pnpm`
 - Rust toolchain
 - `wasm-pack`
 - `wasm32-unknown-unknown` target
@@ -134,9 +136,10 @@ bash scripts/validate-solver-coverage.sh all   # Rust solver test buckets on the
 cargo test --manifest-path src/lib/ressim/Cargo.toml benchmark_buckley   # physics benchmark
 ```
 
-Pull-request CI runs the same ground as `validate:full` plus the Buckley-Leverett benchmarks.
-The `#[ignore]`d release replays and the wasm control matrix stay out of PR CI and are run
-explicitly; `.claude/skills/ressim-validation/SKILL.md` lists them and says when each applies.
+Pull-request CI runs the same ground as `validate:full`, plus the Buckley-Leverett benchmarks, the
+compositional thermodynamics gate and the two gates below. The `#[ignore]`d release replays and
+the wasm control matrix stay out of PR CI and are run explicitly;
+`.claude/skills/ressim-validation/SKILL.md` lists them and says when each applies.
 
 Two gates sit outside `validate:*` because they need more than a Rust toolchain and Node:
 
@@ -146,39 +149,53 @@ pnpm run test:deployed                    # Playwright, against `pnpm run previe
 ```
 
 Both run in PR CI. The first builds `crates/ressim-py` against the engine with its browser
-bindings switched off and compares the two clients; it is also what revealed that the FIM solver
-substeps differently on wasm32 than on x86-64 (`docs/OPEN_ITEMS_2026-09-21.md` §1). The second is
-the only check that would catch an unstyled page — a Tailwind content-glob miss raises no error
-anywhere.
+bindings switched off and compares the two clients. The two agree to about 1e-13 on FIM and 1e-12
+on IMPES. The second is the only check that would catch an unstyled page, because a Tailwind
+content-glob miss raises no error anywhere.
 
-Note: full `cargo test` is not used as a gate — FIM diagnostic tests can dominate runtime (see `docs/FIM_DEFERRED_BACKLOG.md` and `.claude/skills/ressim-validation/SKILL.md`).
+One gate is local only, because CI has no OPM Flow. Run it after any change that can move an
+answer:
+
+```bash
+bash scripts/validate-cross-solver.sh     # FIM and IMPES vs OPM Flow on the small-direct decks
+```
+
+Full `cargo test` is not used as a gate, because FIM diagnostic tests can dominate its runtime
+(see `.claude/skills/ressim-validation/SKILL.md`).
 
 ## Implemented Capabilities
 
 ### Status
 
-- 17 canonical scenarios are offered in the picker across five physics-question groups. An 18th,
-  `dep_pvt`, remains defined and tested but is deliberately withheld pending a second sensitivity
-  dimension.
-- Two-phase oil/water IMPES workflow validated against Buckley-Leverett breakthrough references.
-- Analytical overlays for Buckley-Leverett, Craig areal sweep, Dykstra-Parsons vertical sweep, Stiles-style combined sweep, Dietz pseudo-steady-state depletion, Fetkovich decline, Arps decline, line-source well-test drawdown, and Havlena-Odeh material-balance diagnostics.
-- Black-oil PVT mode is available for volatile-oil style studies through correlation-based or tabular PVT input.
-- Three-phase oil/water/gas flow is validated against comparative solutions: SPE1 Case 1 for gas injection and an OPM Flow reference for solution gas drive (`docs/THREE_PHASE_VALIDATION.md`).
-- Two-phase cases use scenario-declared IMPES defaults, while black-oil cases and the dedicated solver-formulation exhibit expose FIM in the public app.
-- OPM Flow reference work is handled offline through precomputed artifacts; browser execution remains local WASM.
+- 17 scenarios are offered in the picker across five physics-question groups. Two more,
+  `dep_pvt` and `comp_co2_1d`, are defined and tested but withheld from the picker (see the
+  inventory above).
+- Every scenario declares its solver and says why. Gas, black-oil and capillary cases run FIM by
+  default (`gas_injection`, `gas_drive`, `spe1_gas_injection`, `dep_gas_pz`, `wf_capillary`). The
+  other oil/water cases run IMPES. `wf_numerics` runs the two side by side.
+- OPM Flow references are precomputed offline and bundled as eleven parsed artifacts. Every
+  simulation in the browser runs in local WebAssembly.
+- The engine also builds as a native Python module (`crates/ressim-py`, PyO3), with its browser
+  bindings switched off.
 
 ### Flow Physics
 
-- IMPES pressure-saturation splitting on a 3D Cartesian grid with per-layer cell thickness support.
+- Two solvers on a 3D Cartesian grid with per-layer cell thickness: IMPES (implicit pressure,
+  explicit transport) and a fully implicit (FIM) Newton solver with automatic differentiation, a
+  sparse direct route for small systems and CPR-preconditioned GMRES for larger ones.
 - Two-phase oil/water flow with Corey relative permeability.
 - Optional Brooks-Corey oil-water and oil-gas capillary pressure.
 - Optional gravity with density-weighted hydrostatic head.
-- Three-phase oil/water/gas transport with Stone II oil relative permeability, gas Corey curves, explicit gas transport, and gas-phase CFL handling.
+- Three-phase oil/water/gas flow with Stone II oil relative permeability, gas Corey curves or tabular SWOF/SGOF. Three-phase IMPES transports all four black-oil masses and recovers the cell state with a flash, so it conserves oil and gas as well as water.
 - Correlation-based or tabular black-oil PVT support with bubble-point tracking, Rs liberation/re-dissolution, pressure-dependent mobility, and producing GOR reporting.
 - Peaceman-style well model with BHP or rate control, per-layer completion, dynamic PI updates, and injector / producer switching logic. Well PI uses per-layer cell thickness.
 - Eclipse-style wellbore datum: a well's BHP is quoted at a datum depth (default the shallowest completion) and carried down to each completion by a wellbore column whose density is derived from the completion fluids, or fixed per well. Active only when gravity is enabled.
 - Per-layer initial conditions: water saturation, gas saturation, and cell thickness can be specified per z-layer for scenarios with gas caps or non-uniform geology.
-- Adaptive timestep checks based on saturation change, pressure change, and well-rate change limits.
+- Adaptive timestep checks based on saturation change, pressure change, and well-rate change
+  limits, plus, in IMPES, a limit on the dissolved-gas change per substep.
+- A separate isothermal compositional engine (Peng–Robinson EOS, two or three components, phase
+  appearance and disappearance, compositional wells). It is validated natively against OPM's
+  compositional simulator and not yet offered in the app.
 
 ### Analytical and Diagnostic Surfaces
 
@@ -188,35 +205,34 @@ Note: full `cargo test` is not used as a gate — FIM diagnostic tests can domin
 - Line-source (exponential-integral) well-test drawdown with semilog slope fitting for permeability and skin.
 - Havlena-Odeh material-balance terms and drive indices in depletion diagnostics.
 - p/z-style gas diagnostics and producing GOR outputs for gas-oriented cases.
-- Comparison metrics such as MAE, RMSE, and MAPE for selected overlays.
 
 ### UI and Workflow
 
-- Scenario-first input workflow through `ScenarioPicker.svelte`.
-- Scenario-owned sensitivity dimensions with per-variant run sweeps.
+- Scenario-first case selection through `ScenarioPicker.svelte`, with scenario-owned parameters,
+  sensitivity dimensions, per-variant run sweeps and references.
 - Worker-based execution to keep the UI responsive.
 - 3D scalar visualization for pressure, water saturation, gas saturation, permeability, and porosity.
 - Shared chart layout system for runtime and comparison views.
-- Scenario-first case selection with scenario-owned parameters, sensitivities, and references.
 
-## Validation Status
+## Benchmarks
 
-### Verified
+Current scorecard, measured on commit `5c29e0e` (2026-09-25). Every row, its band and its replay
+command are in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md), which is the authoritative record.
 
-- Rust benchmark cases compare 1D waterflood breakthrough timing against Buckley-Leverett reference behavior.
-- Frontend and catalog tests cover scenario contracts, analytical overlay wiring, chart layout behavior, and payload generation.
-- Analytical-contract tests verify that scenario dimensions marked `affectsAnalytical: true` actually perturb the analytical result.
+| Benchmark | Reference | Worst measured error (band) |
+|---|---|---|
+| 1D waterflood breakthrough | Buckley–Leverett + Welge | 9.4 % / 8.2 % early on two mobility ratios (25 % / 30 %) |
+| SPE1 Case 1, 10 years | Published SPE1 / OPM Flow | pressure 1.6 % (3 %), oil rate 3.1 % (8 %), GOR 4.3 % (12 %) |
+| Solution gas drive, 600 days | OPM Flow, identical deck | pressure 1.6 % (3 %), GOR 6.1 % (12 %), cumulative oil 4.3 % (8 %) |
+| 1D gas injection, 300 days | OPM Flow, identical deck | cumulative oil and injected gas ≤ 0.05 % (0.2 %) |
+| Black-oil depletion below the bubble point | OPM Flow, identical deck | FIM 0.008 bar at 40 cells; both solvers converge under refinement |
+| Eight generated decks, FIM and IMPES | OPM Flow | FIM: oil ≤ 0.08 %, injection ≤ 0.21 %, produced water or gas ≤ 1.13 %; within one substep of Flow |
+| Native vs browser build | Each other | 1e-13 (FIM), 1e-12 (IMPES) |
+| Compositional 1D CO₂ flood | OPM `flowexp_comp` | 0.0074 bar, cumulative production 0.041 % |
 
-### Verified numerical-reference acceptance
-
-- SPE1 is graded against committed published/OPM reference samples for field pressure, producer
-  oil rate, producing GOR, and oil/gas material balance. The full-horizon replay and tolerances are
-  recorded in `docs/BLACK_OIL_VALIDATION.md`.
-- Solution-gas drive is graded against OPM Flow, and the gas-injection path has quantitative
-  breakthrough and saturation-profile criteria. Three-phase status is validated for these bounded
-  cases; the remaining model envelope is listed in `docs/THREE_PHASE_VALIDATION.md`.
-- Eight parsed OPM Flow artifacts are bundled and appear only when explicitly declared by a
-  scenario.
+Scenario tests (`pnpm run test:scenarios`) also grade each case in the picker against its own
+reference, and analytical-contract tests check that every dimension marked `affectsAnalytical`
+actually moves the analytical curve.
 
 ## Why The Roadmap Is Ordered This Way
 
@@ -243,7 +259,8 @@ src/
     primitives/       # @ressim/primitives  - presentational controls, no domain vocabulary
     quantities/       # @ressim/quantities  - derived run series and in-place volumes
     presets/          # @ressim/presets     - the preset/scenario editability contract
-    catalog/          # scenario definitions and benchmark cases
+    catalog/          # scenario definitions and bundled OPM Flow artifacts
+    compositional/    # compositional run payloads, series and quantities
     physics/
     ressim/           # the Rust/WASM engine
     scenario/
@@ -258,15 +275,11 @@ crates/
 contracts/
   run-quantities.json # GENERATED from the TypeScript registry; the shared data contract
 docs/                 # authoritative + active working docs (see DOCUMENTATION_INDEX.md)
-  ARCHITECTURE_NOTES.md
-  BENCHMARK_MODE_GUIDE.md
+  BENCHMARKS.md       # current benchmark scorecard
   DOCUMENTATION_INDEX.md
-  FIM_STATUS.md
-  SOLVER_COMPARISON_SUMMARY.md
-  P4_TWO_PHASE_BENCHMARKS.md
-  THREE_PHASE_IMPLEMENTATION_NOTES.md
-  UNIT_SYSTEM.md
   ...
+opm/                  # OPM Flow reference decks, the small-direct scorecard, compositional fixtures
+tools/                # offline OPM Flow pipeline (Python, run with uv)
 .archive/             # superseded experiments, closed plans, historical snapshots
   docs/               # (git-tracked, reversible; see .archive/README.md)
 ROADMAP.md
@@ -288,28 +301,32 @@ page" is demonstrated rather than asserted; see `docs/ARCHITECTURE_SPLIT_PLAN_20
 |----------|---------|
 | [GitHub Issues](https://github.com/sergeyfarin/ressim/issues) | Actionable work, priorities, acceptance criteria, and status |
 | `ROADMAP.md` | Strategic ordering and links to active issues |
-| `TODO.md` | Short issue-dashboard landing page for stable legacy links |
-| `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
-| `.archive/docs/DELIVERED_WORK_2026_Q1.md` | Archived delivered work moved out of TODO |
-| `docs/BENCHMARK_MODE_GUIDE.md` | Benchmark workflow semantics and chart behavior |
+| `docs/BENCHMARKS.md` | Current benchmark scorecard: every reference, band, measured error and replay command |
 | `docs/P4_TWO_PHASE_BENCHMARKS.md` | Buckley-Leverett benchmark methodology and tolerance policy |
 | `docs/BLACK_OIL_VALIDATION.md` | SPE1 acceptance criteria, black-oil grid convergence, solver safeguards |
 | `docs/THREE_PHASE_VALIDATION.md` | Three-phase exit criteria, OPM Flow / SPE1 acceptance, phase-closure diagnostics |
+| `docs/COMPOSITIONAL_VALIDATION.md` | Compositional fluid dataset, oracles, acceptance contract and gate status |
+| `docs/FIM_STATUS.md` | FIM solver state, convergence history and source map |
+| `docs/OPEN_ITEMS_2026-09-21.md` | Deliberate deferrals and known gaps, each with why and what would close it |
+| `docs/SCIENTIFIC_LIMITATIONS.md` | What the software is not qualified for |
 | `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase implementation details and parameter reference |
 | `docs/UNIT_SYSTEM.md` | Unit conventions, equations, and PVT / solver notes |
+| `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
 | `docs/DOCUMENTATION_INDEX.md` | Which documents are authoritative vs historical |
 
 ## Near-Term Focus
 
-See `ROADMAP.md` and the
-[Limited public release milestone](https://github.com/sergeyfarin/ressim/milestone/1) for current
-ordering. The next major engineering priorities are:
+The limited public release is deployed. See `ROADMAP.md` for current ordering. The next
+priorities are:
 
-1. Deploy and smoke-test the stable public link.
-2. Close the remaining black-oil, gravity, and IMPES/FIM agreement gaps.
-3. Consolidate output selection and chart architecture.
-4. Add scenario enablers only with consuming cases and independent references.
-5. Keep the FIM OPM-parity frontier parked behind product validation unless a user-visible defect
+1. Close the remaining SPE1 and black-oil scenario validation gaps
+   ([#12](https://github.com/sergeyfarin/ressim/issues/12)) and the chart presentation defects
+   ([#15](https://github.com/sergeyfarin/ressim/issues/15)).
+2. Bring the compositional engine into the app: chart sourcing for `comp_co2_1d`
+   ([#29](https://github.com/sergeyfarin/ressim/issues/29)), then SPE5 and SPE3
+   ([#52](https://github.com/sergeyfarin/ressim/issues/52)).
+3. Add scenario enablers only with consuming cases and independent references.
+4. Keep the FIM OPM-parity frontier parked behind product validation unless a user-visible defect
    requires it.
 
 ## License

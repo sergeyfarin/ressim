@@ -71,10 +71,10 @@ GOR that rises every step (386 to 514 m³/m³).
 |---|---|---|
 | Field average reservoir pressure, 11 checkpoints to 600 d | 3 % | 1.588 % (at 50 d) |
 | Producing GOR | 12 % | 6.076 % (at 10 d) |
-| Cumulative surface oil | 8 % | 4.315 % (at 600 d) |
-| Producer surface oil rate, while the reference rate ≥ 10 Sm³/d | 10 % | 4.610 % (at 20 d) |
-| Oil material-balance drift vs STOIIP | 1 % | 0.0097 % |
-| Gas material-balance drift vs gas in place (free + dissolved) | 1 % | 0.0080 % |
+| Cumulative surface oil | 8 % | 4.310 % (at 600 d) |
+| Producer surface oil rate, while the reference rate ≥ 10 Sm³/d | 10 % | 4.609 % (at 20 d) |
+| Oil material-balance drift vs STOIIP | 1 % | < 0.0001 % |
+| Gas material-balance drift vs gas in place (free + dissolved) | 1 % | 0.0001 % |
 | Solver warnings during the run | none | none |
 
 **Why cumulative oil carries the late-time oil comparison.** The producer's oil rate decays from
@@ -84,8 +84,8 @@ which measures nothing useful. The instantaneous rate is therefore graded only w
 reference rate is still meaningful (≥ 10 Sm³/day, i.e. the first ~50 days), and the well-
 conditioned integral is graded over the whole horizon.
 
-**Known bias.** The engine produces systematically *more* oil than the reference — cumulative oil
-runs +1.1 % at 10 d rising to +4.3 % by 600 d, monotonically and without sign change. Pressure
+**Known bias.** The engine produces systematically *more* oil than the reference. Cumulative oil
+runs +1.1 % at 10 d, rising to +4.3 % by 600 d,, monotonically and without sign change. Pressure
 and GOR agreement both *improve* with time (0.008 % and 0.117 % at 600 d), so this is an
 early-time displacement-efficiency difference that is then locked into the cumulative, not a
 drift that keeps accumulating. It is inside the acceptance band and recorded here rather than
@@ -125,11 +125,12 @@ overstated it in another.
   Earlier documentation described oil as "residual" and "not reported explicitly"; that was
   wrong about the diagnostic and is corrected here.
 
-What *is* residual about oil is its **saturation**: transport solves water and gas explicitly and
-sets S_o = 1 − S_w − S_g. So the oil diagnostic answers "does reported oil production track the
-oil inventory?" — it is not an independent check that the saturation constraint itself closes.
-The constraint is enforced by construction, so it cannot fail; what can fail is the reporting and
-FVF path between them, and that is what is graded.
+How strong a check that is depends on the solver. FIM solves an oil mass equation, and since #37
+three-phase IMPES transports all four black-oil masses and flashes them at the new pressure
+(`impes/closure.rs`). On both, the oil diagnostic is a genuine conservation check. Only two-phase
+IMPES still keeps oil as the residual saturation S_o = 1 − S_w. There the constraint holds by
+construction, and the oil diagnostic grades the reporting and FVF path rather than an independently
+transported oil equation.
 
 Runtime scenarios do not inject oil, so no injection term appears in the oil balance.
 
@@ -149,31 +150,31 @@ explicitly, the FIM path reads a component gas rate that already includes them.
 
 ## 5. Recorded baseline
 
-Engine revision `a651c02` ("Make validate-solver-coverage.sh fail on gates that never run") with
-the acceptance tests and the `gas_drive` PVT upgrade applied on top, measured 2026-07-25. Solver
-FIM (the scenario default). Reference: `flow 2026.04`, deck hash
+Committed revision `5c29e0e`, clean tree, measured 2026-09-25 (release). Solver FIM (the scenario
+default). Reference: `flow 2026.04`, deck hash
 `dff10045676a6f1c4a7923b81db196ebbff860900c5c36941be47ac5146d1d45`.
 
 Verbatim summary from the characterization replay:
 
 ```
-t=  10.0 pressure_err= 0.801% oil_rate_err= 0.509% cum_oil_err= 1.055% gor_err= 6.076% mb_oil= 0.0027% mb_gas= 0.0024%
-t=  20.0 pressure_err= 1.426% oil_rate_err= 4.610% cum_oil_err= 0.491% gor_err= 5.854% mb_oil= 0.0038% mb_gas= 0.0034%
-t=  30.0 pressure_err= 1.523% oil_rate_err= 3.305% cum_oil_err= 0.204% gor_err= 5.723% mb_oil= 0.0047% mb_gas= 0.0041%
-t=  50.0 pressure_err= 1.588% oil_rate_err= 4.111% cum_oil_err= 0.983% gor_err= 5.444% mb_oil= 0.0059% mb_gas= 0.0052%
-t= 100.0 pressure_err= 1.300% oil_rate_err=     -- cum_oil_err= 2.464% gor_err= 4.109% mb_oil= 0.0077% mb_gas= 0.0066%
-t= 150.0 pressure_err= 0.840% oil_rate_err=     -- cum_oil_err= 3.388% gor_err= 2.634% mb_oil= 0.0086% mb_gas= 0.0073%
-t= 200.0 pressure_err= 0.497% oil_rate_err=     -- cum_oil_err= 3.861% gor_err= 1.569% mb_oil= 0.0091% mb_gas= 0.0076%
-t= 300.0 pressure_err= 0.175% oil_rate_err=     -- cum_oil_err= 4.181% gor_err= 0.535% mb_oil= 0.0095% mb_gas= 0.0079%
-t= 400.0 pressure_err= 0.064% oil_rate_err=     -- cum_oil_err= 4.271% gor_err= 0.237% mb_oil= 0.0097% mb_gas= 0.0080%
-t= 500.0 pressure_err= 0.023% oil_rate_err=     -- cum_oil_err= 4.303% gor_err= 0.147% mb_oil= 0.0097% mb_gas= 0.0080%
-t= 600.0 pressure_err= 0.008% oil_rate_err=     -- cum_oil_err= 4.315% gor_err= 0.117% mb_oil= 0.0097% mb_gas= 0.0080%
+t=  10.0 pressure_err= 0.801% oil_rate_err= 0.508% cum_oil_err= 1.054% gor_err= 6.076% mb_oil= 0.0000% mb_gas= 0.0000%
+t=  20.0 pressure_err= 1.426% oil_rate_err= 4.609% cum_oil_err= 0.492% gor_err= 5.855% mb_oil= 0.0000% mb_gas= 0.0000%
+t=  30.0 pressure_err= 1.523% oil_rate_err= 3.304% cum_oil_err= 0.203% gor_err= 5.724% mb_oil= 0.0000% mb_gas= 0.0000%
+t=  50.0 pressure_err= 1.588% oil_rate_err= 4.109% cum_oil_err= 0.982% gor_err= 5.445% mb_oil= 0.0000% mb_gas= 0.0001%
+t= 100.0 pressure_err= 1.299% oil_rate_err=     -- cum_oil_err= 2.462% gor_err= 4.109% mb_oil= 0.0000% mb_gas= 0.0001%
+t= 150.0 pressure_err= 0.839% oil_rate_err=     -- cum_oil_err= 3.386% gor_err= 2.634% mb_oil= 0.0000% mb_gas= 0.0001%
+t= 200.0 pressure_err= 0.496% oil_rate_err=     -- cum_oil_err= 3.858% gor_err= 1.569% mb_oil= 0.0000% mb_gas= 0.0001%
+t= 300.0 pressure_err= 0.175% oil_rate_err=     -- cum_oil_err= 4.177% gor_err= 0.535% mb_oil= 0.0000% mb_gas= 0.0001%
+t= 400.0 pressure_err= 0.063% oil_rate_err=     -- cum_oil_err= 4.266% gor_err= 0.237% mb_oil= 0.0000% mb_gas= 0.0001%
+t= 500.0 pressure_err= 0.023% oil_rate_err=     -- cum_oil_err= 4.298% gor_err= 0.147% mb_oil= 0.0000% mb_gas= 0.0001%
+t= 600.0 pressure_err= 0.008% oil_rate_err=     -- cum_oil_err= 4.310% gor_err= 0.117% mb_oil= 0.0000% mb_gas= 0.0001%
 gas-flood breakthrough: dt=1.0 -> Some(4.0) days, dt=0.5 -> Some(4.0) days
 ```
 
-Provisional until rerun on the committed revision that contains these tests; the engine under
-test is `a651c02` plus the reporting fix in section 4, which is the only engine-behavior change
-in this pass.
+Superseded: the provisional baseline on `a651c02` plus the then-uncommitted tests (2026-07-25).
+Its errors agree with the above to three decimals. Its balance drift was 0.0097 % oil and
+0.0080 % gas, and it is now at the 1e-6 level. The change that caused this was not isolated in
+this re-measurement.
 
 ### Replay
 
@@ -206,12 +207,12 @@ three-phase fidelity. Known remaining gaps:
   references (OPM Flow, SPE1), not closed-form solutions.
 - **Vaporized oil (Rv) is not modelled.** The gas phase carries no oil, so wet-gas and
   gas-condensate behavior is out of the envelope. The OPM decks use `PVDG` (dry gas) accordingly.
-- **`gas_injection`'s OPM Flow reference is a validation twin, not a chart overlay.** Since #12 it
-  is graded against Flow on the identical model (`opm/reference-decks/small-direct/go-1d-50`):
-  cumulative oil and injected gas within 0.05 % at every checkpoint, gas produced within 0.29 %
-  just after breakthrough and 0.03 % at 300 d, in both the engine test and a test of the shipped
-  scenario. It has no parsed artifact, so the chart still shows only the gas–oil fractional-flow
-  solution.
+- **`gas_injection` is graded against Flow on the identical model** (#12,
+  `opm/reference-decks/small-direct/go-1d-50`): cumulative oil and injected gas within 0.05 % at
+  every checkpoint (band 0.2 %), gas produced within 0.29 % just after breakthrough and 0.03 % at
+  300 d (band 1.5 %), in both the engine test (`three_phase_gas_injection_matches_opm_flow_twin`)
+  and a test of the shipped scenario. Since #20 the Flow run is also a parsed artifact, drawn on the
+  scenario's charts beside the gas–oil fractional-flow solution.
 - **Table-less three-phase gas is compressible since #42.** It had `Bg = 1` at every pressure, and
   `c_g` reached only IMPES's first-guess storage term. It now has `Bg = exp(−c_g·(p − p_ref))`,
   referenced to the initial pressure like the table-less oil (#36), in FIM, in IMPES and in every

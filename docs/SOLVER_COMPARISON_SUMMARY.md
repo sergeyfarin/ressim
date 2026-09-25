@@ -1,5 +1,13 @@
 # OPM Flow vs ResSim FIM vs ResSim IMPES
 
+> **Historical record, superseded 2026-09-25.** Current numbers are in
+> [`BENCHMARKS.md`](BENCHMARKS.md): the cross-solver scorecard against Flow (§5) and the
+> long-horizon FIM convergence table on `5c29e0e` (§7). The `linear-bad` retries this page records
+> on 22×22×1, 23×23×1 and sweep-areal no longer fire (0 on all three), and its "Decision" section's
+> next step, relperm-endpoint regularization, was closed by `FIM-LINEAR-014`. The G4c6 count
+> reconciliation and the exact-gas work-unit table below remain the only record of that
+> comparison. The `TODO.md:709` references point at the pre-migration tracker (commit `991b19d`).
+
 Convergence numbers re-baselined **2026-07-24 on clean committed tree `663e380`** (wasm rebuilt
 via `scripts/build-wasm.sh` first). This **supersedes the provisional dirty-tree `1db2db8`
 (2026-07-22) baseline**, whose water-heavy row reported `50 substeps` for the `--opm-aligned` path;
@@ -92,7 +100,7 @@ min_dt≥5e-3, all satisfied with wide margin.)
 | Water-heavy pressure case, 12x12x3, 1 d | Corrected well-diameter oracle: `0.03-0.04 s` simulation; 1 step, 11 Newton, 12 evaluations, 13 Krylov iterations, 0 cuts | Default (`OpmAligned`), clean `663e380`: `~1.0 s` WASM, **4 substeps / 0 retries**, dt=[0.18,0.33] (`Legacy`: 24 substeps / 4 nonlinear retries, 4.6 s) | `2.35 s` WASM; 128 adaptive explicit substeps, finite/bounded state | FIM now within `4×` of Flow's single-substep solve (was `50` on the dirty-tree baseline). Final FIM pressure/rates still differ from Flow; IMPES remains a separate explicit-stability mechanism. |
 | Default gas-rate control, 10x10x3, 6 x 0.25 d | Not comparable: tracked Flow deck uses the typed RESV/unlimited-redissolution lifecycle absent from this browser preset | Clean `663e380`: 1 substep/step, 0 retries; steady GOR=80; `Sg_max=0.438` | `0.09 s` WASM last step; ~4 adaptive substeps/step; `Sg_max=0.329` | Smoke/conservation evidence only. The materially different final gas saturation proves FIM and IMPES are not interchangeable correctness oracles here. |
 | Areal sweep smoke, 21x21x1, 0.25 d | N/A: no tracked OPM deck | Clean `663e380`: `0.7 s` WASM; 6 substeps / 4 `linear-bad` (singularity backstop); `Sw_max=0.354` | `0.60 s` WASM; 37 adaptive substeps; `Sw_max=0.414` | Finite/bounded smoke only; no OPM or analytical field-level acceptance band. |
-| Buckley-Leverett benchmarks | Bundled `wf_bl1d` artifact is parsed and physically active, but no solver-to-Flow acceptance band is defined | Not qualified on the BL benchmark gate | `2.78 s` for the three-test debug suite; breakthrough relative error `4.1%` (Case A) and `9.1%` (Case B); finer dt improves both | IMPES has the strongest quantitative correctness evidence here because the oracle is analytical. Do not use the OPM artifact as a numerical acceptance gate until bands are defined. |
+| Buckley-Leverett benchmarks | Bundled `wf_bl1d` artifact is parsed and physically active, but no solver-to-Flow acceptance band is defined | Not qualified on the BL benchmark gate | `2.78 s` for the three-test debug suite; breakthrough relative error `4.1%` (Case A) and `9.1%` (Case B); finer dt improves both (superseded: a harness artifact, see `BENCHMARKS.md` §1) | IMPES has the strongest quantitative correctness evidence here because the oracle is analytical. Do not use the OPM artifact as a numerical acceptance gate until bands are defined. |
 
 ## Timing contract
 

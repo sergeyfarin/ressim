@@ -9,6 +9,7 @@ under `.archive/`.
 | Document | Use it for |
 |----------|------------|
 | `README.md` | Product overview, current feature state, quick start, doc map |
+| [`docs/BENCHMARKS.md`](BENCHMARKS.md) | **Current benchmark scorecard**: every reference, band, measured error, commit and replay command. Owning documents below keep methodology and history |
 | [GitHub Issues](https://github.com/sergeyfarin/ressim/issues) | Actionable work, priority, acceptance criteria, and status |
 | `ROADMAP.md` | Strategic priority order and links to active issues |
 | `TODO.md` | Stable landing page for issue links; not a second tracker |
@@ -19,8 +20,8 @@ under `.archive/`.
 | Document | Use it for |
 |----------|------------|
 | `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
-| [FIM cross-target divergence](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md) | Why wasm32 and x86-64 disagree on FIM: the `cfg(target_arch)` linear-backend split, proof by experiment, which solvers are affected, and what unifying would cost |
-| [Open items](OPEN_ITEMS_2026-09-21.md) | Deliberate deferrals and known gaps in one place, each with why it was not done and what would close it. Starts with the wasm32/x86-64 FIM substepping divergence |
+| [FIM cross-target divergence](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md) | Why wasm32 and x86-64 disagreed on FIM, and the fix (§9, FIM-DIRECT-001): a sign-of-roundoff singularity, not the backend split. Routing is now the same on every target |
+| [Open items](OPEN_ITEMS_2026-09-21.md) | Deliberate deferrals and known gaps in one place, each with why it was not done and what would close it |
 | [Engine payload boundary design](ENGINE_PAYLOAD_BOUNDARY_DESIGN_2026-09-21.md) | Pre-implementation note: how the engine's 12 remaining `JsValue`-bound functions become target-agnostic, by generalising the `compositional/api.rs` pattern to black-oil; phases, alternatives rejected, and the gates that keep it true |
 | [Architecture split plan](ARCHITECTURE_SPLIT_PLAN_2026-09-19.md) | S0–S6 engine/frontend separation: measured WASM and module coupling at `93c8c5c`, the four leaf extractions that zero it, workspace packaging, a non-WASM engine target, and why one repository rather than several |
 | [Compositional readiness assessment](COMPOSITIONAL_READINESS_ASSESSMENT_2026-09-14.md) | Rust/OPM reuse map, FIM prerequisites, reproduced well-contract gaps, and staged compositional scope |
@@ -32,8 +33,7 @@ under `.archive/`.
 | `docs/UNIT_SYSTEM.md` | Unit conventions, equations, solver / PVT notes |
 | `docs/UNIT_REFERENCE.md` | Quick unit lookup card |
 | `docs/TRANSMISSIBILITY_FACTOR.md` | Derivation of the transmissibility conversion factor |
-| `docs/BENCHMARK_MODE_GUIDE.md` | Benchmark workflow semantics and comparison behavior |
-| `docs/P4_TWO_PHASE_BENCHMARKS.md` | Buckley-Leverett benchmark methodology, tolerances, results |
+| `docs/P4_TWO_PHASE_BENCHMARKS.md` | Buckley-Leverett benchmark methodology and tolerances |
 | `docs/BLACK_OIL_VALIDATION.md` | SPE1 acceptance criteria, depletion grid convergence, black-oil solver safeguards |
 | `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase implementation details and remaining validation gaps |
 | `docs/SCENARIO_TERMINATION_POLICY.md` | Early-stop policy syntax, conditions, runtime behavior |
@@ -50,7 +50,7 @@ the registry **by mechanism name** before proposing any convergence change.
 
 | Document | Use it for |
 |----------|------------|
-| `docs/FIM_STATUS.md` | Consolidated FIM state, blockers, validation entry points and source map. Read the **2026-09-22 small-system review** and target qualification before using the 2026-09-15 WASM baseline; older gaps are provenance |
+| `docs/FIM_STATUS.md` | Consolidated FIM state, blockers, validation entry points and source map. Its 2026-09-15 long-horizon baseline was re-measured on `5c29e0e` (`BENCHMARKS.md` §7); older gaps are provenance |
 | [FIM dense/sparse review and repair plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md) | Current small-system investigation: replay-option defects, full/reduced routing, separate time/grid convergence, paired correction oracles and interaction-aware repair gates. Next task: S0; no backend promotion |
 | [FIM repair execution plan](FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md) | F0–F8 repair order, issue mapping, exact gates and the solver-interface handoff. Completed record, preserved as issued — read its documentation-boundary note before citing it |
 | [FIM repair handoff](FIM_REPAIR_HANDOFF_2026-09-15.md) | What F0–F8 repaired, the validated envelope, reusable layout surface, final regression replay and release-equivalence measurement; see its 2026-09-18 qualification |
@@ -58,7 +58,7 @@ the registry **by mechanism name** before proposing any convergence change.
 | [FIM model/solver boundary](FIM_MODEL_SOLVER_BOUNDARY_2026-09-18.md) | Minimal assembly/update/accept/commit/rollback adapter contract requested by F7; current reuse map and extraction admission tests |
 | `docs/FIM_EXPERIMENT_REGISTRY.md` | Searchable anti-repeat ledger of levers, verdicts, retry conditions |
 | `docs/FIM_CONVERGENCE_WORKLOG.md` | Active investigation log: current-head traces, temporary hypotheses |
-| `docs/SOLVER_COMPARISON_SUMMARY.md` | Current OPM/FIM/IMPES timing + convergence re-baseline (clean tree `663e380`, 2026-07-24) |
+| `docs/SOLVER_COMPARISON_SUMMARY.md` | Historical OPM/FIM/IMPES timing and convergence baseline (`663e380`, 2026-07-24), superseded by `BENCHMARKS.md` §5 and §7; still the record of the exact-gas work-unit reconciliation |
 | `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md` | The 95%-track-OPM policy and Bundle A/B/C sequencing |
 | `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` | Decision-frontier execution plan (oracle repair, raw-state replay, promotion matrix) |
 | `docs/FIM_OPM_PARITY_PLAN.md` | Bundle Y evidence record and original Y0–Y4 roadmap. **Frontier superseded 2026-09-15** — the 695-substep gas-rate stall it tracks is fixed; read its top banner before acting on anything inside |
@@ -106,15 +106,16 @@ in `FIM_EXPERIMENT_REGISTRY.md`; the docs themselves are provenance, not live sp
 ## Current repo-level facts
 
 - `src/lib/catalog/scenarios/` is the primary scenario registry: **17 scenarios are offered in the
-  picker**. A further definition, `dep_pvt`, is resolvable and tested but explicitly withheld in
-  `scenarios.ts` pending a second sensitivity dimension.
+  picker**. Two further definitions are resolvable and tested but explicitly withheld in
+  `scenarios.ts`: `dep_pvt` (pending a second sensitivity dimension, #26) and `comp_co2_1d`
+  (pending compositional chart sourcing, #29).
 - `ScenarioPicker.svelte` is the only live case-selection surface, driven entirely by
   `scenarios.ts`. The legacy benchmark-family data and Custom Mode's preset/facet entries were
   archived in 2026-07 (`.archive/README.md`); compatibility types and empty stubs remain, but
   production case definitions live only in `src/lib/catalog/scenarios/`.
 - Public simulations execute in browser-side WASM through scenario-declared **IMPES or FIM**
   policies. Offline OPM Flow artifacts are precomputed reference data, not live simulation. The
-  **8 committed artifacts** are `status: "parsed"` and are rendered only when a scenario declares
+  **11 committed artifacts** are `status: "parsed"` and are rendered only when a scenario declares
   them as a reference source.
 - Black-oil and three-phase modes are implemented and exposed. SPE1 has published reference
   overlays, OPM artifacts, and

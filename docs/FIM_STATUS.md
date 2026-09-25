@@ -2,6 +2,16 @@
 
 This is the consolidated current-state summary for the Rust FIM solver.
 
+> **2026-09-25: re-measured on `5c29e0e`.** The 2026-09-15 long-horizon table below reproduces on
+> the unified linear routing to within one substep (22x22x1: 22 vs 23). gas-pressure 10x10x3 adds
+> a row at ratio 1.25, and there are no linear retries anywhere. The current table and replay
+> commands are in [`BENCHMARKS.md` §7](BENCHMARKS.md#7-fim-convergence-wasm). Native/wasm
+> parity holds at 5.7e-14 (§6), so these counts are no longer wasm-specific. The bubble-point
+> fragmentation named as "still open" in the next banner was fixed by FIM-BUBBLE-001 (`3fdefa4`,
+> merged): the depletion column now takes 22 substeps against Flow's 22–23 (`bo-1d-10`/`-40` in
+> `BENCHMARKS.md` §5). The remaining bubble-point
+> item is Newton efficiency only (FIM-KINK-001 J1, #35).
+
 > **2026-09-22: small-system fragmentation root-caused and fixed (FIM-DIRECT-001).** Not a
 > backend defect: the inactive two-phase gas unknown lost its Jacobian slope at negative roundoff,
 > making the Jacobian exactly singular (see
@@ -33,8 +43,9 @@ This is the consolidated current-state summary for the Rust FIM solver.
 > **Cause identified 2026-09-22:** an explicit `cfg(target_arch)` split runs different linear
 > solver backends in production — `sparse_lu_debug` natively, `dense_lu_debug` on wasm. These
 > baselines were measured on the dense/wasm path. See
-> [`FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md`](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md); the
-> routing is not yet unified, so re-baselining is still owed.
+> [`FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md`](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md). *(The
+> routing was unified the same day, and the re-baseline was done on 2026-09-25; see the top
+> banner.)*
 
 > ## 2026-09-15 measured baseline (clean tree `6be6d08`) — read this before any convergence work
 >
