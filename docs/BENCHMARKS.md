@@ -39,11 +39,11 @@ Per section, the banded criterion closest to its band, and how much of the band 
 | SPE1 Case 1, 10 years | Published SPE1 / Flow | 10x10x3: gor_rel_err 1.25 % | 12.0 % | 10% | `0548a06` |
 | Three-phase gas drive and injection | OPM Flow | gas_drive: oil_rate_rel_err 3.90 % | 8.0 % | 49% | `0548a06` |
 | Black-oil depletion column | Grid self-convergence, Flow | IMPES: sat_gas_finest_pair_gap 1.21 % | 1.5 % | 80% | `0548a06` |
-| Eight small decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | `0548a06` |
+| Eight small decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | `4f2b771` |
 | Native vs wasm bindings | Each other | favorable-mobility (IMPES): rates_max_abs_diff 1.25e-10 abs | 1e-09 abs | 12% | `0548a06` |
 | FIM convergence, long horizons | Substeps per report step | no banded criterion | — | — | `0548a06` |
 | Compositional, matched timestep | OPM flowexp_comp | 1D plain: worst_pressure_diff 1.68 bar | 2 bar | 84% | `0548a06` |
-| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | `0548a06` |
+| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | `4f2b771` |
 <!-- /GENERATED:summary -->
 
 ## Signals
@@ -62,7 +62,7 @@ with the drift check and the signals. It comments there only when the state chan
 commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
 
 <!-- GENERATED:signals -->
-**Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 0 unexplained and untracked, 10 tracked, 4 explained.
+**Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 0 unexplained and untracked, 15 tracked, 4 explained.
 
 | Section | Case | Metric | Value | Where | Status |
 |---|---|---|---|---|---|
@@ -71,11 +71,16 @@ commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
 | cross_solver | dep-pvt-correlation | dense.cum.FGPT | +1.06 % |  | tracked: #55 |
 | cross_solver | dep-pvt-lab-report | sparse.cum.FGPT | +1.13 % |  | tracked: #55 |
 | cross_solver | dep-pvt-lab-report | dense.cum.FGPT | +1.13 % |  | tracked: #55 |
+| cross_solver | spe1-case2-10x10x3 | sparse.cum.FOPT | +5.83 % |  | tracked: #35 |
+| cross_solver | spe1-case2-10x10x3 | sparse.cum.FGPT | +2.05 % |  | tracked: #35 |
+| cross_solver | spe1-case2-10x10x3 | dense.cum.FOPT | +5.83 % |  | tracked: #35 |
+| cross_solver | spe1-case2-10x10x3 | dense.cum.FGPT | +2.05 % |  | tracked: #35 |
 | jutul | dep-pvt-correlation | jutul_vs_flow.final_FGPR_rel_err | -2.21 % |  | tracked: #55 |
 | jutul | dep-pvt-correlation | fim_vs_jutul.final_FGPR_rel_err | +1.67 % |  | tracked: #55 |
 | jutul | dep-pvt-lab-report | jutul_vs_flow.final_FGPR_rel_err | -4.14 % |  | tracked: #55 |
 | jutul | dep-pvt-lab-report | fim_vs_jutul.final_FGPR_rel_err | +2.80 % |  | tracked: #55 |
 | jutul | ow-1d-96 | fim_vs_jutul.final_FOPR_rel_err | +1.46 % |  | tracked: #55 |
+| jutul | spe1-case2-10x10x3 | fim_vs_jutul.final_FGPR_rel_err | -2.55 % |  | tracked: #35 |
 | three_phase | gas_drive | cum_oil_rel_err | -1.37 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
 | three_phase | gas_drive | oil_rate_rel_err | +3.90 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
 | three_phase | gas_drive | vs_jutul.FOPR_rel_err | +4.61 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
@@ -273,7 +278,7 @@ and the committed `scorecard.json`, the regression ratchet for this table (its o
 IMPES and Flow.
 
 <!-- GENERATED:cross_solver -->
-*Measured on `0548a06` (clean tree), 2026-09-25, flow `flow 2026.04`.*
+*Measured on `4f2b771` (clean tree), 2026-09-25, flow `flow 2026.04`.*
 
 | Case | Simulator | Substeps | Newton | Retries / cuts | Wall ms | max \|Δp\| bar | max \|ΔSw\| | max \|ΔSg\| | Cumulatives vs Flow |
 |---|---|---|---|---|---|---|---|---|---|
@@ -282,41 +287,45 @@ IMPES and Flow.
 |  | ResSim FIM dense | 22 | 92 | 0 | 9 | 0.00156 | 1.4e-08 | 6.8e-07 | FOPT 1.9e-03 %, FGPT 1.8e-03 % |
 |  | ResSim IMPES | 25 | — | — | 4 | 0.468 | 1.4e-07 | 0.00049 | FOPT 0.29 %, FGPT 2.56 % |
 | bo-1d-40 | Flow | 23 | 54 | 0 |  |  |  |  |  |
-|  | ResSim FIM sparse | 22 | 91 | 0 | 31 | 0.274 | 8e-08 | 0.00033 | FOPT 0.05 %, FGPT 0.12 % |
-|  | ResSim FIM dense | 22 | 90 | 0 | 41 | 0.274 | 8e-08 | 0.00033 | FOPT 0.05 %, FGPT 0.12 % |
-|  | ResSim IMPES | 28 | — | — | 20 | 0.511 | 1.5e-07 | 0.00047 | FOPT 0.28 %, FGPT 2.27 % |
+|  | ResSim FIM sparse | 22 | 91 | 0 | 30 | 0.274 | 8e-08 | 0.00033 | FOPT 0.05 %, FGPT 0.12 % |
+|  | ResSim FIM dense | 22 | 90 | 0 | 42 | 0.274 | 8e-08 | 0.00033 | FOPT 0.05 %, FGPT 0.12 % |
+|  | ResSim IMPES | 28 | — | — | 21 | 0.511 | 1.5e-07 | 0.00047 | FOPT 0.28 %, FGPT 2.27 % |
 | dep-pvt-correlation | Flow | 300 | 608 | 0 |  |  |  |  |  |
-|  | ResSim FIM sparse | 301 | 908 | 0 | 475 | 0.307 | 2.4e-07 | 0.00023 | FOPT 2.3e-08 %, FGPT 1.06 % |
-|  | ResSim FIM dense | 301 | 908 | 0 | 653 | 0.307 | 2.4e-07 | 0.00023 | FOPT 2.3e-08 %, FGPT 1.06 % |
-|  | ResSim IMPES | 300 | — | — | 230 | 0.322 | 1.8e-07 | 0.00026 | FOPT 0.00 %, FGPT 2.10 % |
+|  | ResSim FIM sparse | 301 | 908 | 0 | 470 | 0.307 | 2.4e-07 | 0.00023 | FOPT 2.3e-08 %, FGPT 1.06 % |
+|  | ResSim FIM dense | 301 | 908 | 0 | 651 | 0.307 | 2.4e-07 | 0.00023 | FOPT 2.3e-08 %, FGPT 1.06 % |
+|  | ResSim IMPES | 300 | — | — | 228 | 0.322 | 1.8e-07 | 0.00026 | FOPT 0.00 %, FGPT 2.10 % |
 | dep-pvt-lab-report | Flow | 300 | 607 | 0 |  |  |  |  |  |
-|  | ResSim FIM sparse | 301 | 906 | 0 | 473 | 0.221 | 2.1e-07 | 0.00025 | FOPT 5.0e-08 %, FGPT 1.13 % |
-|  | ResSim FIM dense | 301 | 906 | 0 | 663 | 0.221 | 2.1e-07 | 0.00025 | FOPT 5.0e-08 %, FGPT 1.13 % |
-|  | ResSim IMPES | 300 | — | — | 222 | 0.149 | 1.9e-07 | 0.00028 | FOPT 0.00 %, FGPT 1.59 % |
+|  | ResSim FIM sparse | 301 | 906 | 0 | 470 | 0.221 | 2.1e-07 | 0.00025 | FOPT 5.0e-08 %, FGPT 1.13 % |
+|  | ResSim FIM dense | 301 | 906 | 0 | 655 | 0.221 | 2.1e-07 | 0.00025 | FOPT 5.0e-08 %, FGPT 1.13 % |
+|  | ResSim IMPES | 300 | — | — | 226 | 0.149 | 1.9e-07 | 0.00028 | FOPT 0.00 %, FGPT 1.59 % |
 | gas-drive-20 | Flow | 64 | 134 | 0 |  |  |  |  |  |
 |  | ResSim FIM sparse | 63 | 196 | 0 | 41 | 1.16 | 8.9e-07 | 0.00063 | FOPT 0.09 %, FGPT 0.02 % |
 |  | ResSim FIM dense | 63 | 196 | 0 | 39 | 1.16 | 8.9e-07 | 0.00063 | FOPT 0.09 %, FGPT 0.02 % |
-|  | ResSim IMPES | 125 | — | — | 131 | 2.13 | 1.7e-06 | 0.0021 | FOPT 2.87 %, FGPT 0.56 % |
+|  | ResSim IMPES | 125 | — | — | 136 | 2.13 | 1.7e-06 | 0.0021 | FOPT 2.87 %, FGPT 0.56 % |
 | go-1d-50 | Flow | 151 | 339 | 0 |  |  |  |  |  |
-|  | ResSim FIM sparse | 151 | 486 | 0 | 137 | 0.496 | 3e-06 | 0.005 | FOPT 0.01 %, FGPT 0.03 %, FGIT 0.02 % |
-|  | ResSim FIM dense | 151 | 486 | 0 | 261 | 0.496 | 3e-06 | 0.005 | FOPT 0.01 %, FGPT 0.03 %, FGIT 0.02 % |
-|  | ResSim IMPES | 213 | — | — | 86 | 12.6 | 8.5e-06 | 0.074 | FOPT 0.81 %, FGPT 0.57 %, FGIT 0.67 % |
+|  | ResSim FIM sparse | 151 | 486 | 0 | 145 | 0.496 | 3e-06 | 0.005 | FOPT 0.01 %, FGPT 0.03 %, FGIT 0.02 % |
+|  | ResSim FIM dense | 151 | 486 | 0 | 258 | 0.496 | 3e-06 | 0.005 | FOPT 0.01 %, FGPT 0.03 %, FGIT 0.02 % |
+|  | ResSim IMPES | 213 | — | — | 87 | 12.6 | 8.5e-06 | 0.074 | FOPT 0.81 %, FGPT 0.57 %, FGIT 0.67 % |
 | ow-1d-50-adverse | Flow | 13 | 33 | 0 |  |  |  |  |  |
 |  | ResSim FIM sparse | 12 | 48 | 0 | 11 | 0.379 | 0.0042 | 0 | FOPT 0.08 %, FWIT 0.10 % |
 |  | ResSim FIM dense | 12 | 48 | 0 | 25 | 0.379 | 0.0042 | 0 | FOPT 0.08 %, FWIT 0.10 % |
-|  | ResSim IMPES | 28 | — | — | 3 | 6.15 | 0.04 | 0 | FOPT 0.45 %, FWIT 0.08 % |
+|  | ResSim IMPES | 28 | — | — | 4 | 6.15 | 0.04 | 0 | FOPT 0.45 %, FWIT 0.08 % |
 | ow-1d-96 | Flow | 121 | 259 | 0 |  |  |  |  |  |
-|  | ResSim FIM sparse | 120 | 376 | 0 | 165 | 0.943 | 0.032 | 0 | FOPT 0.05 %, FWPT 0.10 %, FWIT 0.07 % |
-|  | ResSim FIM dense | 120 | 376 | 0 | 919 | 0.943 | 0.032 | 0 | FOPT 0.05 %, FWPT 0.10 %, FWIT 0.07 % |
-|  | ResSim IMPES | 631 | — | — | 115 | 7.51 | 0.19 | 0 | FOPT 0.64 %, FWPT 4.84 %, FWIT 2.82 % |
+|  | ResSim FIM sparse | 120 | 376 | 0 | 161 | 0.943 | 0.032 | 0 | FOPT 0.05 %, FWPT 0.10 %, FWIT 0.07 % |
+|  | ResSim FIM dense | 120 | 376 | 0 | 925 | 0.943 | 0.032 | 0 | FOPT 0.05 %, FWPT 0.10 %, FWIT 0.07 % |
+|  | ResSim IMPES | 631 | — | — | 117 | 7.51 | 0.19 | 0 | FOPT 0.64 %, FWPT 4.84 %, FWIT 2.82 % |
 | ow-2d-12x12 | Flow | 40 | 114 | 0 |  |  |  |  |  |
-|  | ResSim FIM sparse | 40 | 133 | 0 | 181 | 0.752 | 0.0079 | 0 | FOPT 0.08 %, FWPT 0.81 %, FWIT 0.21 % |
-|  | ResSim FIM dense | 40 | 133 | 0 | 1073 | 0.752 | 0.0079 | 0 | FOPT 0.08 %, FWPT 0.81 %, FWIT 0.21 % |
-|  | ResSim IMPES | 225 | — | — | 129 | 23.9 | 0.15 | 0 | FOPT 2.25 %, FWPT 6.16 %, FWIT 3.18 % |
+|  | ResSim FIM sparse | 40 | 133 | 0 | 178 | 0.752 | 0.0079 | 0 | FOPT 0.08 %, FWPT 0.81 %, FWIT 0.21 % |
+|  | ResSim FIM dense | 40 | 133 | 0 | 1066 | 0.752 | 0.0079 | 0 | FOPT 0.08 %, FWPT 0.81 %, FWIT 0.21 % |
+|  | ResSim IMPES | 225 | — | — | 132 | 23.9 | 0.15 | 0 | FOPT 2.25 %, FWPT 6.16 %, FWIT 3.18 % |
 | spe1-10x10x3 | Flow | 124 | 304 | 0 |  |  |  |  |  |
-|  | ResSim FIM sparse | 124 | 475 | 0 | 3276 | 0.713 | 7.7e-06 | 0.0038 | FOPT 0.04 %, FGPT 0.07 %, FGIT 1.5e-06 % |
-|  | ResSim FIM dense | 124 | 475 | 0 | 3267 | 0.713 | 7.7e-06 | 0.0038 | FOPT 0.04 %, FGPT 0.07 %, FGIT 1.5e-06 % |
-|  | ResSim IMPES | 202 | — | — | 6381 | 24.3 | 0.00026 | 0.11 | FOPT 0.11 %, FGPT 0.29 %, FGIT 0.25 % |
+|  | ResSim FIM sparse | 124 | 475 | 0 | 3230 | 0.713 | 7.7e-06 | 0.0038 | FOPT 0.04 %, FGPT 0.07 %, FGIT 1.5e-06 % |
+|  | ResSim FIM dense | 124 | 475 | 0 | 3228 | 0.713 | 7.7e-06 | 0.0038 | FOPT 0.04 %, FGPT 0.07 %, FGIT 1.5e-06 % |
+|  | ResSim IMPES | 202 | — | — | 6363 | 24.3 | 0.00026 | 0.11 | FOPT 0.11 %, FGPT 0.29 %, FGIT 0.25 % |
+| spe1-case2-10x10x3 | Flow | 123 | 345 | 0 |  |  |  |  |  |
+|  | ResSim FIM sparse | 124 | 504 | 0 | 3247 | 113 | 0.0012 | 0.29 | FOPT 5.83 %, FGPT 2.05 %, FGIT 9.0e-07 % |
+|  | ResSim FIM dense | 124 | 504 | 0 | 3201 | 113 | 0.0012 | 0.29 | FOPT 5.83 %, FGPT 2.05 %, FGIT 9.0e-07 % |
+|  | ResSim IMPES | 326 | — | — | 10992 | 110 | 0.0012 | 0.31 | FOPT 5.84 %, FGPT 1.80 %, FGIT 0.29 % |
 <!-- /GENERATED:cross_solver -->
 
 How to read it: FIM should track Flow's substep count closely and take somewhat more Newton
@@ -427,7 +436,7 @@ reference itself is uncertain. The pinned project is `tools/jutul` (JutulDarcy 0
   starting with free gas (`gas_drive`); it changes no physics.
 
 <!-- GENERATED:jutul -->
-*Measured on `0548a06` (clean tree), 2026-09-25, flow `flow 2026.04`, jutuldarcy `0.3.7`, julia `julia version 1.12.7`.*
+*Measured on `4f2b771` (clean tree), 2026-09-25, flow `flow 2026.04`, jutuldarcy `0.3.7`, julia `julia version 1.12.7`.*
 
 | Deck | JutulDarcy ignores | Jutul − Flow: max \|Δp\| bar | max \|ΔS\| | final rates | FIM − Jutul: max \|Δp\| bar | final rates |
 |---|---|---|---|---|---|---|
@@ -441,6 +450,7 @@ reference itself is uncertain. The pinned project is `tools/jutul` (JutulDarcy 0
 | ow-1d-96 | — | 1.04 | 0.038 | FOPR -0.08 %, FWIR +0.03 %, FWPR +0.04 % | 1.71 | FOPR +1.46 %, FWIR +0.12 %, FWPR +0.01 % |
 | ow-2d-12x12 | — | 4.4 | 0.032 | FOPR -0.27 %, FWIR +0.12 %, FWPR +0.28 % | 4.23 | FOPR +0.48 %, FWIR +0.33 %, FWPR +0.27 % |
 | spe1-10x10x3 | STONE2, DRSDT | 137 | 0.36 | FGIR +0.00 %, FGPR +6.33 % | 137 | FGIR +0.00 %, FGPR -6.10 % |
+| spe1-case2-10x10x3 | STONE2 | 5.25 | 0.031 | FGIR +0.00 %, FGPR -0.19 % | 111 | FGIR +0.00 %, FGPR -2.55 % |
 <!-- /GENERATED:jutul -->
 
 ```bash
