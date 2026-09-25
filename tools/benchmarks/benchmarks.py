@@ -245,7 +245,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     status = json.loads((args.run / "status.json").read_text())
     committed = json.loads(RECORDS.read_text())["sections"] if RECORDS.exists() else {}
     fresh = collect_run(args.run)
-    failures, notes = [], []
+    failures, notes, changed = [], [], 0
     for section, s in status.items():
         if s["status"] != "ran":
             notes.append(f"{section}: {s['status']} ({s.get('note', '')})")
@@ -260,6 +260,7 @@ def cmd_check(args: argparse.Namespace) -> int:
                 failures.append(f"{section}/{k[0]}/{k[1]}: recorded before, not produced now")
         for k in sorted(new.keys() - old.keys()):
             notes.append(f"{section}/{k[0]}/{k[1]}: new, not yet recorded")
+            changed += 1
         for k in sorted(new.keys() & old.keys()):
             a, b = old[k]["value"], new[k]["value"]
             label = f"{section}/{k[0]}/{k[1]}"
@@ -267,6 +268,7 @@ def cmd_check(args: argparse.Namespace) -> int:
                 continue
             if not (isinstance(a, (int, float)) and isinstance(b, (int, float))):
                 notes.append(f"{label}: {a!r} -> {b!r}")
+                changed += 1
                 continue
             band = new[k]["band"]
             if band is not None and abs(b) > band:
@@ -276,6 +278,7 @@ def cmd_check(args: argparse.Namespace) -> int:
                                 f"its band {band:.4g}")
             elif abs(b - a) > 1e-9 * max(abs(a), 1.0):
                 notes.append(f"{label}: {a:.6g} -> {b:.6g}")
+                changed += 1
     for n in notes:
         print(f"  note: {n}")
     for f in failures:
@@ -283,7 +286,8 @@ def cmd_check(args: argparse.Namespace) -> int:
     if failures:
         print(f"benchmark check: FAILED ({len(failures)})")
         return 1
-    print("benchmark check: OK" + (" (changes noted above: record them with update)" if notes else ""))
+    print("benchmark check: OK" + (f" ({changed} change(s) noted above: record them with update)"
+                                   if changed else ""))
     return 0
 
 
