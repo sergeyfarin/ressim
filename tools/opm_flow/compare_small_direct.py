@@ -195,9 +195,12 @@ def compare_case(case: str, args: argparse.Namespace) -> dict:
             "warnings": run.get("warnings", []),
             "vs_flow": field_error(fields, flow["fields"]),
             # A cumulative below 0.1% of the case's largest is a trace volume (immobile
-            # connate water, pre-breakthrough water): a percentage of it means nothing.
+            # connate water, pre-breakthrough water): a percentage of it means nothing. Oil is
+            # always graded: surface gas volumes dwarf it (SPE1 injects ~1e10 Sm3), not trace it.
             "cum_rel_vs_flow": {
-                k: rel(cum[k], v) for k, v in flow["cum"].items() if k in cum and abs(v) > 1e-3 * largest
+                k: rel(cum[k], v)
+                for k, v in flow["cum"].items()
+                if k in cum and (k == "FOPT" or abs(v) > 1e-3 * largest)
             },
         }
     entry["pairs"] = {
