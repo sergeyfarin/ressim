@@ -1,7 +1,7 @@
 {
   "$comment": "Written by compare_small_direct.py --write-scorecard; do not edit by hand. Bands are BANDS in that script. See opm/reference-decks/small-direct/README.md.",
   "provenance": {
-    "commit": "5dba960",
+    "commit": "e0c63d4",
     "dirty": false,
     "date": "2026-09-25",
     "flow": "flow 2026.04",
@@ -28,7 +28,7 @@
             "newton": 84
           },
           "warnings": 0,
-          "wall_ms": 9.8
+          "wall_ms": 9.7
         },
         "dense": {
           "metrics": {
@@ -44,7 +44,7 @@
             "newton": 92
           },
           "warnings": 0,
-          "wall_ms": 8.8
+          "wall_ms": 8.7
         },
         "impes": {
           "metrics": {
@@ -59,7 +59,7 @@
             "substeps": 25
           },
           "warnings": 0,
-          "wall_ms": 4.2
+          "wall_ms": 5.4
         }
       },
       "pairs": {
@@ -113,7 +113,7 @@
             "newton": 90
           },
           "warnings": 0,
-          "wall_ms": 41.4
+          "wall_ms": 41.5
         },
         "impes": {
           "metrics": {
@@ -128,7 +128,7 @@
             "substeps": 28
           },
           "warnings": 0,
-          "wall_ms": 23.7
+          "wall_ms": 31.5
         }
       },
       "pairs": {
@@ -166,7 +166,7 @@
             "newton": 908
           },
           "warnings": 0,
-          "wall_ms": 470.2
+          "wall_ms": 458.4
         },
         "dense": {
           "metrics": {
@@ -182,7 +182,7 @@
             "newton": 908
           },
           "warnings": 0,
-          "wall_ms": 701.7
+          "wall_ms": 662.4
         },
         "impes": {
           "metrics": {
@@ -197,7 +197,7 @@
             "substeps": 300
           },
           "warnings": 0,
-          "wall_ms": 240.1
+          "wall_ms": 232.4
         }
       },
       "pairs": {
@@ -235,7 +235,7 @@
             "newton": 906
           },
           "warnings": 0,
-          "wall_ms": 508.7
+          "wall_ms": 465.6
         },
         "dense": {
           "metrics": {
@@ -251,7 +251,7 @@
             "newton": 906
           },
           "warnings": 0,
-          "wall_ms": 690.9
+          "wall_ms": 673.3
         },
         "impes": {
           "metrics": {
@@ -266,7 +266,7 @@
             "substeps": 300
           },
           "warnings": 0,
-          "wall_ms": 229.5
+          "wall_ms": 226.8
         }
       },
       "pairs": {
@@ -304,7 +304,7 @@
             "newton": 196
           },
           "warnings": 0,
-          "wall_ms": 42.6
+          "wall_ms": 40.8
         },
         "dense": {
           "metrics": {
@@ -320,7 +320,7 @@
             "newton": 196
           },
           "warnings": 0,
-          "wall_ms": 39.1
+          "wall_ms": 40.5
         },
         "impes": {
           "metrics": {
@@ -335,7 +335,7 @@
             "substeps": 125
           },
           "warnings": 0,
-          "wall_ms": 133.0
+          "wall_ms": 129.9
         }
       },
       "pairs": {
@@ -374,7 +374,7 @@
             "newton": 486
           },
           "warnings": 0,
-          "wall_ms": 137.5
+          "wall_ms": 145.0
         },
         "dense": {
           "metrics": {
@@ -391,7 +391,7 @@
             "newton": 486
           },
           "warnings": 0,
-          "wall_ms": 253.8
+          "wall_ms": 258.0
         },
         "impes": {
           "metrics": {
@@ -407,7 +407,7 @@
             "substeps": 213
           },
           "warnings": 0,
-          "wall_ms": 90.4
+          "wall_ms": 88.1
         }
       },
       "pairs": {
@@ -445,7 +445,7 @@
             "newton": 48
           },
           "warnings": 0,
-          "wall_ms": 11.2
+          "wall_ms": 11.1
         },
         "dense": {
           "metrics": {
@@ -461,7 +461,7 @@
             "newton": 48
           },
           "warnings": 0,
-          "wall_ms": 24.4
+          "wall_ms": 24.3
         },
         "impes": {
           "metrics": {
@@ -476,7 +476,7 @@
             "substeps": 28
           },
           "warnings": 0,
-          "wall_ms": 3.4
+          "wall_ms": 3.3
         }
       },
       "pairs": {
@@ -515,7 +515,7 @@
             "newton": 376
           },
           "warnings": 0,
-          "wall_ms": 163.2
+          "wall_ms": 161.2
         },
         "dense": {
           "metrics": {
@@ -532,7 +532,7 @@
             "newton": 376
           },
           "warnings": 0,
-          "wall_ms": 875.4
+          "wall_ms": 878.9
         },
         "impes": {
           "metrics": {
@@ -548,7 +548,7 @@
             "substeps": 631
           },
           "warnings": 0,
-          "wall_ms": 116.6
+          "wall_ms": 116.1
         }
       },
       "pairs": {
@@ -587,7 +587,7 @@
             "newton": 133
           },
           "warnings": 0,
-          "wall_ms": 175.9
+          "wall_ms": 173.4
         },
         "dense": {
           "metrics": {
@@ -604,7 +604,7 @@
             "newton": 133
           },
           "warnings": 0,
-          "wall_ms": 1027.8
+          "wall_ms": 1113.2
         },
         "impes": {
           "metrics": {
@@ -641,58 +641,58 @@
     "spe1-10x10x3": {
       "flow": {
         "substeps": 124,
-        "newton": 313
+        "newton": 307
       },
       "runs": {
         "sparse": {
           "metrics": {
-            "p": 0.7046820359000208,
-            "sw": 7.661558358684761e-06,
-            "sg": 0.0040764969632848536,
-            "final.p": 0.2626469660343673,
-            "final.sw": 2.8656042782571056e-06,
-            "final.sg": 0.0027451327858301067,
-            "cum.FOPT": 0.0004178049266837137,
-            "cum.FGPT": 0.0007148247706880157,
-            "cum.FGIT": 2.0469865142020057e-09,
+            "p": 1.0394869994750024,
+            "sw": 1.1171968123627196e-05,
+            "sg": 0.007194880686866828,
+            "final.p": 0.25922137413749624,
+            "final.sw": 2.792863969702797e-06,
+            "final.sg": 0.002850058724213289,
+            "cum.FOPT": 0.00046419776142723286,
+            "cum.FGPT": 0.0007177653003472301,
+            "cum.FGIT": 1.422944066184455e-08,
             "substeps": 124,
-            "newton": 491
+            "newton": 480
           },
           "warnings": 0,
-          "wall_ms": 3364.2
+          "wall_ms": 3269.4
         },
         "dense": {
           "metrics": {
-            "p": 0.7046820359000208,
-            "sw": 7.661558358684761e-06,
-            "sg": 0.0040764969632848536,
-            "final.p": 0.2626469660343673,
-            "final.sw": 2.8656042782571056e-06,
-            "final.sg": 0.0027451327858301067,
-            "cum.FOPT": 0.0004178049266837137,
-            "cum.FGPT": 0.0007148247706880157,
-            "cum.FGIT": 2.0469865142020057e-09,
+            "p": 1.0394869994750024,
+            "sw": 1.1171968123627196e-05,
+            "sg": 0.007194880686866828,
+            "final.p": 0.25922137413749624,
+            "final.sw": 2.792863969702797e-06,
+            "final.sg": 0.002850058724213289,
+            "cum.FOPT": 0.00046419776142723286,
+            "cum.FGPT": 0.0007177653003472301,
+            "cum.FGIT": 1.422944066184455e-08,
             "substeps": 124,
-            "newton": 491
+            "newton": 480
           },
           "warnings": 0,
-          "wall_ms": 3371.6
+          "wall_ms": 3225.2
         },
         "impes": {
           "metrics": {
-            "p": 23.92499507939374,
-            "sw": 0.00025810904802854584,
-            "sg": 0.10568857125296853,
-            "final.p": 2.3696797662796882,
-            "final.sw": 2.5964683032800306e-05,
-            "final.sg": 0.026314349236166046,
-            "cum.FOPT": 0.00034893814215492474,
-            "cum.FGPT": 0.0026580837867244468,
-            "cum.FGIT": 0.002922076360094537,
-            "substeps": 206
+            "p": 23.370873485487493,
+            "sw": 0.00025228931579580893,
+            "sg": 0.10950097181520946,
+            "final.p": 2.2958464757874992,
+            "final.sw": 2.519737887302087e-05,
+            "final.sg": 0.02408688222186295,
+            "cum.FOPT": 0.0006029054553843558,
+            "cum.FGPT": 0.002298837908005611,
+            "cum.FGIT": 0.0025933988141910416,
+            "substeps": 204
           },
           "warnings": 0,
-          "wall_ms": 7007.2
+          "wall_ms": 6283.1
         }
       },
       "pairs": {
@@ -704,9 +704,9 @@
         },
         "sparse_vs_impes": {
           "invariant": false,
-          "p": 23.82587554029999,
-          "sw": 0.0002570429512999961,
-          "sg": 0.10559863822546998
+          "p": 23.267085996100036,
+          "sw": 0.00025203100079999874,
+          "sg": 0.10949964736024001
         }
       }
     }
