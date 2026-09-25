@@ -53,8 +53,6 @@ export async function compareWithFlowTwin(input: {
     dimensionKey: string;
     variantKey: string;
     artifactKey: string;
-    /** Report steps to run and grade; the scenario's own count when absent. */
-    steps?: number;
 }): Promise<FlowTwinComparison> {
     await ensureWasmReady();
     const [spec] = buildScenarioRunSpecs({
@@ -65,7 +63,7 @@ export async function compareWithFlowTwin(input: {
     const payload = buildCreatePayloadForRun(spec);
     const sim = new ReservoirSimulator(payload.nx, payload.ny, payload.nz, Number(payload.porosity));
     const dt = Number(spec.params.delta_t_days);
-    const steps = input.steps ?? Number(spec.params.steps);
+    const steps = Number(spec.params.steps);
     let history: RateHistoryPoint[];
     let warning: string;
     try {

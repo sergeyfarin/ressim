@@ -1256,10 +1256,9 @@ SWEEP_VERTICAL = _catalog_waterflood_case(
 SWEEP_CROSSFLOW = _catalog_waterflood_case(
     "sweep_crossflow", "sweep-crossflow", "Layer Crossflow (base case, kv/kh = 0.1)", 19_200.0, gravity=False, layout="sweep",
 )
-# 21 x 21 x 5 cells of 20 m x 20 m x 4 m at 0.2 porosity. The scenario's own parameters are no
-# variant it runs; this is `interaction_favorable_layered`, which both its dimensions draw.
+# 21 x 21 x 5 cells of 20 m x 20 m x 4 m at 0.2 porosity.
 SWEEP_COMBINED = _catalog_waterflood_case(
-    "sweep_combined", "sweep-combined", "Combined Sweep (favorable + layered, μo = 0.5 cp)", 705_600.0,
+    "sweep_combined", "sweep-combined", "Combined Sweep (base case, layered, M = 1)", 705_600.0,
     gravity=False, layout="sweep",
 )
 # 96 x 10 m by 1 x 10 m by 1 x 1 m at 0.2 porosity, as wf_bl1d.

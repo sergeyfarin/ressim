@@ -137,8 +137,8 @@ const CASES: [Case; 17] = [
     },
     Case {
         key: "sweep-combined",
-        note: "sweep_combined 'Favorable + layered' (mu_o 0.5): 21x21x5 layered five-spot, near-sealed layers, fully perforated BHP wells",
-        report_steps: 200,
+        note: "sweep_combined base case: 21x21x5 five-spot over five sealed layers (V_DP ~ 0.55), M = 1, fully perforated BHP wells",
+        report_steps: 75,
         report_dt_days: 5.0,
     },
     Case {
@@ -199,9 +199,7 @@ fn build(key: &str) -> ReservoirSimulator {
         }),
         "sweep-vertical" => catalog_waterflood(&Waterflood::layered_section(1.0)),
         "sweep-crossflow" => catalog_waterflood(&Waterflood::layered_section(0.25)),
-        // The scenario's own parameters (mu_o = 1) are no variant of either dimension, so the twin
-        // is `interaction_favorable_layered` (= `ladder_vertical`), which both draw. Its layers
-        // are sealed (k_v = 0.001 mD), the layered correlations' assumption.
+        // Sealed layers (k_v = 0.001 mD), the layered correlations' assumption.
         "sweep-combined" => catalog_waterflood(&Waterflood {
             dims: [21, 21, 5],
             mu_o: 0.5,

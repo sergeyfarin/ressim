@@ -22,7 +22,7 @@ path FIM-DIRECT-001 was about. These do.
 | `sweep-vertical` | 48×1×5 | ~730 | `sweep_vertical` base case: five layers, V_DP ≈ 0.5, kv/kh = 0.1, fully perforated BHP wells |
 | `sweep-crossflow` | 48×1×5 | ~730 | `sweep_crossflow` base case: the same section with k_rw,max = 0.25 |
 | `sweep-areal` | 21×21×1 | ~1,330 | `sweep_areal` base case: quarter five-spot, both wells on BHP |
-| `sweep-combined` | 21×21×5 | ~6,620 | `sweep_combined` "Favorable + layered" (μo = 0.5; the scenario's own μo = 1 is no variant it runs): layered five-spot with near-sealed layers (k_v = 0.001 mD) |
+| `sweep-combined` | 21×21×5 | ~6,620 | `sweep_combined` base case: five-spot over five sealed layers (k_v = 0.001 mD), M = 1 |
 
 The SPE1 pair and the last four are not small: they are past the forced-direct threshold. They are here for the
 one-definition deck writer, which settled #55: their hand-written Flow decks disagreed with

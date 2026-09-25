@@ -69,7 +69,7 @@ https://farin.nl/ressim - No installation required
 | Sweep Efficiency | Areal Sweep | `sweep_areal` | Craig confined five-spot correlation; OPM Flow run of the identical model |
 | Sweep Efficiency | Vertical Sweep | `sweep_vertical` | Dykstra–Parsons / Stiles layered sweep; OPM Flow run of the identical model |
 | Sweep Efficiency | Layer Crossflow — Do the Layers Talk? | `sweep_crossflow` | Dykstra–Parsons' non-communicating assumption tested directly: a k_v/k_h ladder the correlation cannot see, a crossflow benefit that reverses sign with mobility ratio, and capillary crossflow that needs a path; OPM Flow run of the base case |
-| Sweep Efficiency | Combined Sweep | `sweep_combined` | Combined areal and vertical contact with selectable layered correlation; OPM Flow run of the favorable layered variant |
+| Sweep Efficiency | Combined Sweep | `sweep_combined` | Combined areal and vertical contact with selectable layered correlation; OPM Flow run of the base case |
 | Sweep Efficiency | Gravity Override (Dietz Tongue) | `wf_gravity` | Vertical sweep lost to a gravity tongue; gravity-off control returns to BL, rate/density/k_z/completion ladders leave it; OPM Flow cross-check of the base case |
 | Flow Regimes & Decline | Transient Radial Flow (Theis) | `dep_welltest` | Line-source drawdown before boundaries are felt; permeability, skin, and near-well grid bias |
 | Flow Regimes & Decline | Drainage Geometry & Productivity (Dietz) | `dep_pss` | Equal-area drainage geometries and well positions; C_A recovered from the measured PSS drawdown |

@@ -10,7 +10,7 @@ export const sweep_combined: Scenario = {
         caseMode: 'wf',
         parameterSummary: 'Layered five-spot waterflood · combined areal and vertical sweep · interaction matrix',
     },
-    description: 'Volumetric sweep E_vol = E_A × E_V in a 3D five-spot-over-layers flood. Two axes: a 2×2 interaction matrix of mobility vs. layering, and a progressive sweep from ideal to fully-degraded conditions.',
+    description: 'Volumetric sweep E_vol = E_A × E_V in a 3D five-spot-over-layers flood. Two axes: a 2×2 interaction matrix of mobility vs. layering, and a progressive sweep from ideal to degraded conditions that ends in per-cell random permeability fields.',
     analyticalMethodSummary: 'Stiles layer-by-layer sweep: the total RF and combined E_vol use layer-by-layer Buckley-Leverett displacement inside the Craig-contacted region, while E_A and E_V remain analytical diagnostic decomposition views.',
     analyticalMethodReference: 'Stiles (1949); Craig (1971); Buckley and Leverett (1942); Welge (1952).',
     chartLayoutKey: 'sweep',
@@ -60,9 +60,10 @@ export const sweep_combined: Scenario = {
         rationale: 'IMPES is the interactive default for the larger combined-sweep grid.',
     },
     params: {
-        // Fluid
+        // Fluid — M = 1 (favorable), the base case both dimensions run as
+        // "Favorable + layered" / "Vertical only".
         mu_w: 0.5,
-        mu_o: 1.0,
+        mu_o: 0.5,
         c_o: 1e-5,
         c_w: 3e-6,
         rock_compressibility: 1e-6,
@@ -83,8 +84,7 @@ export const sweep_combined: Scenario = {
         capillaryPEntry: 0,
         capillaryLambda: 2,
         // Grid: 21×21×5 five-spot + 5 layers, 420 m × 420 m × 20 m
-        // Base: V_DP ≈ 0.55 layering + M = 2. No variant runs these parameters
-        // as they stand: every one sets mu_o or the permeability mode.
+        // Base: V_DP ≈ 0.55 layering, sealed layers, M = 1.
         nx: 21,
         ny: 21,
         nz: 5,
@@ -92,9 +92,12 @@ export const sweep_combined: Scenario = {
         cellDy: 20,
         cellDz: 4,
         permMode: 'perLayer',
-        uniformPermX: 100,
-        uniformPermY: 100,
-        uniformPermZ: 0,
+        // The uniform variants' permeability: the layers' arithmetic mean, so a
+        // uniform and a layered run have the same kh and inject at comparable
+        // rates. Only the heterogeneity differs between them.
+        uniformPermX: 251,
+        uniformPermY: 251,
+        uniformPermZ: 25.1,
         layerPermsX: [1000, 150, 5, 60, 40],
         layerPermsY: [1000, 150, 5, 60, 40],
         // Sealed layers, the Stiles and Dykstra-Parsons assumption. This used to
@@ -120,8 +123,13 @@ export const sweep_combined: Scenario = {
         well_skin: 0,
         // Numerics
         fimEnabled: false,
+        // Each run goes to about 3 PVI, past the chart's 2.5 PVI window. The
+        // variants inject at very different rates (measured 2026-09-25: 2.5 PVI
+        // at 296 d here, at 796 d for the unfavorable uniform case), so each
+        // sets its own step count; one shared horizon either stopped short of
+        // the window or ran several times past it.
         delta_t_days: 5.0,
-        steps: 200,
+        steps: 75,
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 75,
         max_well_rate_change_fraction: 0.75,
@@ -131,53 +139,48 @@ export const sweep_combined: Scenario = {
     referenceSources: [{
         kind: 'opm-flow',
         artifactKeys: ['sweep_combined'],
-        artifactVariantLabels: { sweep_combined: 'Favorable + layered' },
+        artifactVariantLabels: { sweep_combined: 'base' },
     }],
     sensitivities: [
         {
             key: 'interaction_core',
             label: 'Mobility × Vertical Heterogeneity',
-            description: 'Minimal 2 × 2 interaction map for 3D sweep. Separate mobility-only, layering-only, and compounded penalties without introducing areal randomness.',
+            description: '2 × 2 interaction map: M = 1 or 10, in uniform permeability or the sealed five-layer stack at the same kh. Separates mobility-only, layering-only and compounded penalties without areal randomness.',
             analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'interaction_favorable_uniform',
-                    label: 'Favorable + uniform',
+                    label: 'Favorable (M = 1) + uniform',
                     description: 'Near-piston 3D baseline: favorable mobility and no vertical heterogeneity.',
                     paramPatch: {
-                        mu_o: 0.5,
                         permMode: 'uniform',
-                        uniformPermX: 100,
-                        uniformPermY: 100,
-                        uniformPermZ: 10,
+                        steps: 80,
                     },
                     affectsAnalytical: true,
                 },
                 {
                     key: 'interaction_unfavorable_uniform',
-                    label: 'Unfavorable + uniform',
-                    description: 'Mobility penalty only: poor mobility with otherwise uniform layering.',
+                    label: 'Unfavorable (M = 10) + uniform',
+                    description: 'Mobility penalty only: poor mobility in uniform permeability.',
                     paramPatch: {
                         mu_o: 5.0,
                         permMode: 'uniform',
-                        uniformPermX: 100,
-                        uniformPermY: 100,
-                        uniformPermZ: 10,
+                        steps: 180,
                     },
                     affectsAnalytical: true,
                 },
                 {
                     key: 'interaction_favorable_layered',
-                    label: 'Favorable + layered',
-                    description: 'Vertical heterogeneity penalty only: good mobility in a layered reservoir.',
-                    paramPatch: { mu_o: 0.5 },
+                    label: 'Favorable (M = 1) + layered  (base)',
+                    description: 'Vertical heterogeneity penalty only: good mobility in the sealed layered stack. The base case.',
+                    paramPatch: {},
                     affectsAnalytical: true,
                 },
                 {
                     key: 'interaction_unfavorable_layered',
-                    label: 'Unfavorable + layered',
+                    label: 'Unfavorable (M = 10) + layered',
                     description: 'Compounded mobility plus vertical layering penalty in the same 3D flood.',
-                    paramPatch: { mu_o: 5.0 },
+                    paramPatch: { mu_o: 5.0, steps: 130 },
                     affectsAnalytical: true,
                 },
             ],
@@ -185,46 +188,45 @@ export const sweep_combined: Scenario = {
         {
             key: 'sweep_ladder',
             label: 'Ideal to Worst',
-            description: 'Progressive sweep comparison from ideal to fully degraded: starts with uniform permeability and favorable mobility, then adds vertical heterogeneity, full-field randomness, and finally unfavorable mobility.',
+            description: 'Uniform at M = 1, then the sealed layers, then per-cell random fields at M = 2 and M = 10. The random fields replace the layering rather than add to it. One analytical curve: the base case (layered, M = 1).',
             analyticalOverlayMode: 'shared',
             variants: [
                 {
                     key: 'ladder_ideal',
-                    label: 'Ideal  (uniform, favorable)',
+                    label: 'Ideal  (uniform, M = 1)',
                     description: 'Best-case 3D sweep: uniform permeability and favorable mobility.',
                     paramPatch: {
-                        mu_o: 0.5,
                         permMode: 'uniform',
-                        uniformPermX: 100,
-                        uniformPermY: 100,
-                        uniformPermZ: 10,
+                        steps: 80,
                     },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'ladder_vertical',
-                    label: 'Vertical only  (layered, favorable)',
-                    description: 'First degradation step: layered vertical heterogeneity with favorable mobility retained.',
-                    paramPatch: { mu_o: 0.5 },
+                    label: 'Layered  (sealed layers, M = 1, base)',
+                    description: 'First degradation step: the sealed layered stack with favorable mobility retained. The base case.',
+                    paramPatch: {},
                     affectsAnalytical: false,
                 },
                 {
                     key: 'ladder_full_het',
-                    label: 'Vertical + areal heterogeneity',
-                    description: 'Seeded full-field random permeability to approximate simultaneous areal and vertical non-uniformity at moderate mobility.',
+                    label: 'Random field  (40–500 mD per cell, M = 2)',
+                    description: 'A seeded per-cell random field replaces the layers: each cell draws k_x and k_y from 40–500 mD and k_z from that range / 10. Heterogeneous in every direction, vertically communicating, not layered.',
                     paramPatch: {
+                        mu_o: 1.0,
                         permMode: 'random',
                         minPerm: 40,
                         maxPerm: 500,
                         useRandomSeed: true,
                         randomSeed: 4301,
+                        steps: 100,
                     },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'ladder_worst',
-                    label: 'Worst case  (full heterogeneity, unfavorable)',
-                    description: 'Fully degraded: full-field heterogeneity combined with strongly unfavorable mobility.',
+                    label: 'Random field, unfavorable  (20–700 mD per cell, M = 10)',
+                    description: 'A wider per-cell random field drawn the same way (20–700 mD, a different seed) with strongly unfavorable mobility: the most degraded rung.',
                     paramPatch: {
                         mu_o: 5.0,
                         permMode: 'random',
@@ -232,6 +234,7 @@ export const sweep_combined: Scenario = {
                         maxPerm: 700,
                         useRandomSeed: true,
                         randomSeed: 4302,
+                        steps: 165,
                     },
                     affectsAnalytical: false,
                 },

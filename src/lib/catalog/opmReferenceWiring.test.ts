@@ -59,11 +59,10 @@ const EXPECTED: Record<string, { artifacts: string[]; curveKeys: string[]; varia
         curveKeys: ['opm-water-cut', 'opm-cum-oil', 'opm-avg-pressure'],
         variantLabel: 'base',
     },
-    // Its own parameters are no variant it runs; the Flow run is the one both dimensions draw.
     sweep_combined: {
         artifacts: ['sweep_combined'],
         curveKeys: ['opm-water-cut', 'opm-cum-oil', 'opm-avg-pressure'],
-        variantLabel: 'Favorable + layered',
+        variantLabel: 'base',
     },
     dep_pvt: {
         artifacts: ['dep_pvt_correlation', 'dep_pvt_lab_report'],
