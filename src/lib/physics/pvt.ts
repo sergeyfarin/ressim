@@ -284,9 +284,10 @@ export function generateBlackOilTable(
  * follows OPM/ECL PVTO/PVDG: linear in `1/Bo` and `1/Bg` across a segment,
  * linear in `Rs`, clamped to the first row below the table, and extrapolated
  * above it along the fixed-Rs undersaturated branch as `Bo·exp(-c_o·ΔP)` with
- * `Bg·p_last/p`. Bg is read along every row, as the engine's gas curve reads it
- * since #57; before that the engine used only the saturated rows for gas, so
- * above the highest bubble point this function and the engine disagreed.
+ * `Bg·p_last/p`. Bg is read along the table's gas curve, exactly as the engine
+ * reads it since #57 (`gasFormationVolumeFactorOnGasCurve`); before that the
+ * engine used only the saturated rows for gas, so above the highest bubble
+ * point this function and the engine disagreed.
  *
  * This lives here, beside the table generator, because every consumer that
  * needs "what fluid did the simulator actually see?" must answer it the same
@@ -310,13 +311,14 @@ export function interpolatePvtAtPressure(
         return { ...rows[0] };
     }
 
+    const bgAt = gasFormationVolumeFactorOnGasCurve(rows, pressureBar);
     const last = rows[rows.length - 1];
     if (pressureBar >= last.p_bar) {
         return {
             ...last,
             p_bar: pressureBar,
             bo_m3m3: last.bo_m3m3 * Math.exp(-undersaturatedCompressibilityPerBar * (pressureBar - last.p_bar)),
-            bg_m3m3: last.bg_m3m3 * (last.p_bar / pressureBar),
+            bg_m3m3: bgAt,
         };
     }
 
@@ -333,16 +335,49 @@ export function interpolatePvtAtPressure(
     if (span < 1e-6) return { ...lower };
     const t = (pressureBar - lower.p_bar) / span;
     const invBo = (1 / lower.bo_m3m3) + t * ((1 / upper.bo_m3m3) - (1 / lower.bo_m3m3));
-    const invBg = (1 / lower.bg_m3m3) + t * ((1 / upper.bg_m3m3) - (1 / lower.bg_m3m3));
 
     return {
         p_bar: pressureBar,
         rs_m3m3: lower.rs_m3m3 + t * (upper.rs_m3m3 - lower.rs_m3m3),
         bo_m3m3: invBo > 0 ? 1 / invBo : lower.bo_m3m3,
         mu_o_cp: lower.mu_o_cp + t * (upper.mu_o_cp - lower.mu_o_cp),
-        bg_m3m3: invBg > 0 ? 1 / invBg : lower.bg_m3m3,
+        bg_m3m3: bgAt,
         mu_g_cp: lower.mu_g_cp + t * (upper.mu_g_cp - lower.mu_g_cp),
     };
+}
+
+/**
+ * Bg along the table's gas curve, as `PvtTable::build_gas_rows` builds it (#57): rows by
+ * pressure, skipping a row whose gas columns repeat exactly those of a lower-pressure row with
+ * the same Rs (a PVTO-style table pads its undersaturated rows that way; SPE1's does) and a
+ * second row at a pressure already on the curve. Linear in 1/Bg between nodes, the first node
+ * below them, Boyle-law above them.
+ */
+function gasFormationVolumeFactorOnGasCurve(sortedRows: readonly PvtRow[], pressureBar: number): number {
+    const nodes: PvtRow[] = [];
+    sortedRows.forEach((row, index) => {
+        const padding = sortedRows.slice(0, index).some((earlier) => (
+            Math.abs(earlier.rs_m3m3 - row.rs_m3m3) <= 1e-6
+            && earlier.bg_m3m3 === row.bg_m3m3
+            && earlier.mu_g_cp === row.mu_g_cp
+        ));
+        const repeated = nodes.length > 0 && Math.abs(nodes[nodes.length - 1].p_bar - row.p_bar) < 1e-9;
+        if (!padding && !repeated) nodes.push(row);
+    });
+    if (pressureBar <= nodes[0].p_bar) return nodes[0].bg_m3m3;
+    const top = nodes[nodes.length - 1];
+    if (pressureBar >= top.p_bar) return top.bg_m3m3 * (top.p_bar / pressureBar);
+    for (let index = 1; index < nodes.length; index += 1) {
+        const [lower, upper] = [nodes[index - 1], nodes[index]];
+        if (pressureBar <= upper.p_bar) {
+            const span = upper.p_bar - lower.p_bar;
+            if (span < 1e-6) return lower.bg_m3m3;
+            const t = (pressureBar - lower.p_bar) / span;
+            const invBg = (1 / lower.bg_m3m3) + t * ((1 / upper.bg_m3m3) - (1 / lower.bg_m3m3));
+            return invBg > 0 ? 1 / invBg : lower.bg_m3m3;
+        }
+    }
+    return top.bg_m3m3;
 }
 
 /**

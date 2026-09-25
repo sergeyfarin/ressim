@@ -141,9 +141,7 @@ impl PvtTable {
             .collect::<Vec<_>>();
         saturated_rows.sort_by(|a, b| a.p_bar.partial_cmp(&b.p_bar).unwrap());
 
-        let mut gas_rows = rows.clone();
-        gas_rows.sort_by(|a, b| a.p_bar.total_cmp(&b.p_bar));
-        gas_rows.dedup_by(|later, earlier| (later.p_bar - earlier.p_bar).abs() < 1e-9);
+        let gas_rows = Self::build_gas_rows(&rows);
 
         Self {
             rows,
@@ -152,6 +150,32 @@ impl PvtTable {
             oil_branches,
             c_o,
         }
+    }
+
+    /// The table's gas curve (its PVDG), by pressure. A flat row carries gas columns whether or
+    /// not it has gas data: tables written by `generateBlackOilTable` give every row, bubble
+    /// point or not, the gas at its own pressure, while PVTO-style tables (SPE1's) pad an
+    /// undersaturated row with its saturated row's gas. A row whose gas columns repeat, exactly,
+    /// those of a lower-pressure row with the same Rs is padding and is not a node; so is a
+    /// second row at a pressure already on the curve.
+    fn build_gas_rows(rows: &[PvtRow]) -> Vec<PvtRow> {
+        let mut sorted = rows.to_vec();
+        sorted.sort_by(|a, b| a.p_bar.total_cmp(&b.p_bar));
+        let mut gas_rows: Vec<PvtRow> = Vec::new();
+        for (index, row) in sorted.iter().enumerate() {
+            let padding = sorted[..index].iter().any(|earlier| {
+                (earlier.rs_m3m3 - row.rs_m3m3).abs() <= PVTO_RS_TOLERANCE
+                    && earlier.bg_m3m3 == row.bg_m3m3
+                    && earlier.mu_g_cp == row.mu_g_cp
+            });
+            let repeated_pressure = gas_rows
+                .last()
+                .is_some_and(|last| (row.p_bar - last.p_bar).abs() < 1e-9);
+            if !padding && !repeated_pressure {
+                gas_rows.push(row.clone());
+            }
+        }
+        gas_rows
     }
 
     /// The gas curve: `gas_rows`, or the saturated rows for a table built before it existed.
@@ -1719,5 +1743,42 @@ mod tests {
             / (2.0 * h);
         assert!((generic.mu_g.d(0) - fd).abs() < 1e-9);
         assert!((table.d_bg_d_p(225.0) - generic.bg.d(0)).abs() < 1e-12);
+    }
+
+    /// #57: a PVTO-style table pads an undersaturated row with its saturated row's gas (SPE1's
+    /// app table does, at 621.54 bar). Those copies are not gas data: taking them as nodes would
+    /// make Bg rise with pressure. They are skipped; real gas rows above a bubble point are kept.
+    #[test]
+    fn padded_undersaturated_rows_are_not_gas_nodes() {
+        let row = |p_bar, rs_m3m3, bo_m3m3, mu_o_cp, bg_m3m3, mu_g_cp| PvtRow {
+            p_bar,
+            rs_m3m3,
+            bo_m3m3,
+            mu_o_cp,
+            bg_m3m3,
+            mu_g_cp,
+        };
+        let spe1_top = PvtTable::new(
+            vec![
+                row(276.79, 226.20, 1.695, 0.510, 0.00455, 0.0268),
+                row(621.54, 226.20, 1.579, 0.740, 0.00455, 0.0268),
+                row(345.73, 288.17, 1.827, 0.449, 0.00364, 0.0309),
+                row(621.54, 288.17, 1.737, 0.631, 0.00364, 0.0309),
+            ],
+            2.06e-4,
+        );
+        let nodes: Vec<f64> = spe1_top.gas_nodes().iter().map(|r| r.p_bar).collect();
+        assert_eq!(nodes, vec![276.79, 345.73]);
+        // Above 345.73 bar gas continues the last segment, exactly as without the padding.
+        let at = spe1_top.interpolate(621.54);
+        assert!((at.mu_g_cp - 0.042446).abs() < 1e-5);
+        assert!(
+            at.bg_m3m3 < 0.00364,
+            "Bg must fall with pressure, got {}",
+            at.bg_m3m3
+        );
+        // The undersaturated oil branch is still read for oil.
+        let (_, mu_o) = spe1_top.interpolate_oil(621.54, 226.20);
+        assert!((mu_o - 0.740).abs() < 1e-9);
     }
 }
