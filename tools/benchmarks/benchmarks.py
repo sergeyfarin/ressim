@@ -51,7 +51,7 @@ SECTIONS = {
     "spe1": ("SPE1 Case 1, 10 years", "Published SPE1 / Flow"),
     "three_phase": ("Three-phase gas drive and injection", "OPM Flow"),
     "depletion": ("Black-oil depletion column", "Grid self-convergence, Flow"),
-    "cross_solver": ("Eight small decks, three solvers", "OPM Flow, generated decks"),
+    "cross_solver": ("Generated decks, three solvers", "OPM Flow, generated decks"),
     "parity": ("Native vs wasm bindings", "Each other"),
     "fim_wasm": ("FIM convergence, long horizons", "Substeps per report step"),
     "compositional": ("Compositional, matched timestep", "OPM flowexp_comp"),

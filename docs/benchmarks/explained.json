@@ -84,6 +84,22 @@
    "status": "tracked",
    "ref": "#55",
    "note": "FIM's end-of-run oil rate differs from JutulDarcy while JutulDarcy and Flow agree; cumulative oil agrees with Flow to 0.05 %."
+  },
+  {
+   "section": "jutul",
+   "case": "wf-*",
+   "metric": "fim_vs_jutul.final_*_rel_err",
+   "status": "tracked",
+   "ref": "#55",
+   "note": "FIM's end-of-run rates differ from JutulDarcy by 1.0-1.7 % while JutulDarcy and Flow agree to 0.1-0.6 %: the ow-1d-96 pattern on the oil-water decks added for #54. FIM final FOPR vs Flow, measured on 8dcde91: wf-capillary +1.09 %, wf-gravity-stability +1.90 %, sweep-crossflow +1.76 %, sweep-areal +0.54 %, sweep-vertical -0.14 %, sweep-combined -0.52 % (ow-1d-96 +1.38 %). Cumulatives agree with Flow to <= 0.7 %; at 90-99 % water cut the oil rate is a small remainder, so a water-cut shift of a few 1e-4 reads as 1-2 %. Mechanism not shown."
+  },
+  {
+   "section": "jutul",
+   "case": "sweep-*",
+   "metric": "fim_vs_jutul.final_*_rel_err",
+   "status": "tracked",
+   "ref": "#55",
+   "note": "FIM's end-of-run rates differ from JutulDarcy by 1.0-1.7 % while JutulDarcy and Flow agree to 0.1-0.6 %: the ow-1d-96 pattern on the oil-water decks added for #54. FIM final FOPR vs Flow, measured on 8dcde91: wf-capillary +1.09 %, wf-gravity-stability +1.90 %, sweep-crossflow +1.76 %, sweep-areal +0.54 %, sweep-vertical -0.14 %, sweep-combined -0.52 % (ow-1d-96 +1.38 %). Cumulatives agree with Flow to <= 0.7 %; at 90-99 % water cut the oil rate is a small remainder, so a water-cut shift of a few 1e-4 reads as 1-2 %. Mechanism not shown."
   }
  ]
 }
