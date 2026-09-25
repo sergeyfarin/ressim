@@ -6230,6 +6230,16 @@ GOR within 0.5 %), and ResSim did not: worst cell 112.5 bar, cumulative oil +5.8
 
 **Verdict.** PROMOTED as a physics convention.
 
+**Follow-up defect, found by JutulDarcy.** The first version extrapolated oil richer than the top
+branch across Rs from the last two branches (t > 1). On `gas_drive`'s table the second-to-last
+branch has one row (plain c_o) and the top branch is tabulated, so a t of about 10 amplified the
+shape difference into negative viscosity (−5.1 cP at 400 bar for Rs 45). Flow accepted the deck;
+JutulDarcy's PVTO ordering check rejected it. That oil now takes the continued saturated values at
+its own bubble point and follows the top branch's relative undersaturated shape above it, which is
+how OPM fills a PVTO branch without undersaturated data. A test pins continuity at the bubble point
+and at saturation, and checks AD against FD in p and Rs. Every generated PVTO is positive, and the
+FIM trajectories are unchanged.
+
 **Still open in #35.** J1's boundary partials (an undersaturated cell with Rs exactly at Rs_sat takes the saturated curve's derivatives), and the bo-1d Newton gap to Flow that goes with them (84 vs 51).
 
 ### #21 resolved — report-step sensitivity and the Flow oil bias are temporal plus deck mapping (2026-09-23)

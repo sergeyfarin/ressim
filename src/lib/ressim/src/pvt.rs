@@ -145,6 +145,55 @@ impl PvtTable {
             .then(|| (rs, inv_bo.recip(), inv_bo / inv_bo_mu))
     }
 
+    /// The top branch, when `rs` is richer than it and the saturated curve continues: such oil
+    /// exists only where the continued curve dissolved it (#35).
+    fn top_branch_below(&self, rs: f64) -> Option<&PvtOilBranch> {
+        let top = self.oil_branches.last()?;
+        (self.saturated_curve_continues()
+            && rs > top.rs_m3m3 + PVTO_RS_TOLERANCE
+            && top.rows.len() > 1)
+            .then_some(top)
+    }
+
+    /// Undersaturated oil richer than the top branch: the continued saturated values at its own
+    /// bubble point, carried up in pressure by the top branch's relative undersaturated shape.
+    /// This is how OPM fills a PVTO branch without undersaturated data (it copies the shape of
+    /// the nearest branch that has some). Extrapolating across Rs from the last two branches
+    /// instead amplifies any difference in their shapes: a single-row branch next to a
+    /// tabulated top branch gave negative viscosity 20 Sm3/Sm3 above the table (#35).
+    fn richer_oil_props(&self, top: &PvtOilBranch, p: f64, rs: f64) -> (f64, f64) {
+        let p_b = self.bubble_point_pressure(rs);
+        let saturated = Self::interpolate_rows(&self.saturated_rows, p_b, self.c_o);
+        let top_bubble = &top.rows[0];
+        let (bo_top, mu_top) =
+            Self::branch_props(top, top_bubble.p_bar + (p - p_b).max(0.0), self.c_o);
+        (
+            saturated.bo_m3m3 * bo_top / top_bubble.bo_m3m3,
+            saturated.mu_o_cp * mu_top / top_bubble.mu_o_cp,
+        )
+    }
+
+    /// Generic (differentiable) mirror of [`Self::richer_oil_props`].
+    fn richer_oil_props_generic<S: Scalar>(&self, top: &PvtOilBranch, p: S, rs: S) -> (S, S) {
+        let n = self.oil_branches.len();
+        let (r0, r1) = (&self.oil_branches[n - 2].rows[0], &top.rows[0]);
+        let drs = (r1.rs_m3m3 - r0.rs_m3m3).max(1e-12);
+        // The continued bubble-point line, the inverse of the continued Rs_sat (linear).
+        let p_b = (rs - r0.rs_m3m3) * ((r1.p_bar - r0.p_bar) / drs) + r0.p_bar;
+        let saturated = self.interpolate_saturated_oil_generic(p_b);
+        let excess = p - p_b;
+        let excess = if excess.value() > 0.0 {
+            excess
+        } else {
+            S::from_f64(0.0)
+        };
+        let (bo_top, mu_top) = Self::branch_props_generic(top, excess + r1.p_bar, self.c_o);
+        (
+            saturated.bo * bo_top / r1.bo_m3m3,
+            saturated.mu_o * mu_top / r1.mu_o_cp,
+        )
+    }
+
     /// Whether the saturated curve continues past its last row (it has a segment to continue).
     /// Tables with one saturated row keep the flat-Rs convention, and #38's top-branch oil.
     fn saturated_curve_continues(&self) -> bool {
@@ -459,14 +508,6 @@ impl PvtTable {
         if rs <= first.rs_m3m3 + PVTO_RS_TOLERANCE {
             return Some((first, first));
         }
-        if rs > last.rs_m3m3 + PVTO_RS_TOLERANCE && self.saturated_curve_continues() {
-            // Oil richer than the table's top branch exists only where the continued saturated
-            // curve dissolves it (#35). The last two branches extrapolate across Rs along the
-            // saturated-pressure guide (the interpolation below with t > 1), which reproduces the
-            // continued saturated curve at the new bubble points.
-            let n = self.oil_branches.len();
-            return Some((&self.oil_branches[n - 2], last));
-        }
         if rs >= last.rs_m3m3 - PVTO_RS_TOLERANCE {
             return Some((last, last));
         }
@@ -724,6 +765,10 @@ impl PvtTable {
             return (sat.bo, sat.mu_o);
         }
 
+        if let Some(top) = self.top_branch_below(rs.value()) {
+            return self.richer_oil_props_generic(top, p, rs);
+        }
+
         if let Some((low, high)) = self.branch_bounds(rs.value()) {
             let (bo_low, mu_low) = Self::branch_props_generic(low, p, self.c_o);
             if (high.rs_m3m3 - low.rs_m3m3).abs() <= PVTO_RS_TOLERANCE {
@@ -805,6 +850,10 @@ impl PvtTable {
 
         if rs >= rs_sat - 1e-6 {
             return (sat_row.bo_m3m3, sat_row.mu_o_cp);
+        }
+
+        if let Some(top) = self.top_branch_below(rs) {
+            return self.richer_oil_props(top, p, rs);
         }
 
         if let Some((low, high)) = self.branch_bounds(rs) {
@@ -1923,5 +1972,74 @@ mod tests {
         // The undersaturated oil branch is still read for oil.
         let (_, mu_o) = spe1_top.interpolate_oil(621.54, 226.20);
         assert!((mu_o - 0.740).abs() < 1e-9);
+    }
+
+    /// #35: oil richer than the top branch (dissolved above the table by the continued saturated
+    /// curve) takes the continued saturated values at its own bubble point and the top branch's
+    /// relative undersaturated shape above it. Extrapolating across Rs from a single-row branch
+    /// and a tabulated top branch instead gave negative viscosity on gas_drive's table.
+    #[test]
+    fn oil_richer_than_the_top_branch_follows_the_top_branch_shape() {
+        let row = |p_bar, rs_m3m3, bo_m3m3, mu_o_cp| PvtRow {
+            p_bar,
+            rs_m3m3,
+            bo_m3m3,
+            mu_o_cp,
+            bg_m3m3: 0.005,
+            mu_g_cp: 0.02,
+        };
+        let table = PvtTable::new(
+            vec![
+                row(100.0, 5.0, 1.05, 1.5),
+                row(150.0, 10.0, 1.08, 1.3),
+                row(200.0, 15.0, 1.12, 1.2),
+                row(250.0, 15.0, 1.118, 1.25),
+                row(300.0, 15.0, 1.116, 1.3),
+            ],
+            1e-5,
+        );
+        // Rs_sat continues at 0.1 /bar, so Rs = 20 has its bubble point at 250 bar.
+        let rs = 20.0;
+        assert!((table.bubble_point_pressure(rs) - 250.0).abs() < 1e-9);
+        let at_bubble = table.interpolate(250.0);
+        let (bo_b, mu_b) = table.interpolate_oil(250.0 + 1e-9, rs);
+        assert!((bo_b - at_bubble.bo_m3m3).abs() < 1e-9 && (mu_b - at_bubble.mu_o_cp).abs() < 1e-9);
+
+        // 50 bar above its bubble point it has the top branch's relative change over 50 bar.
+        let (bo, mu) = table.interpolate_oil(300.0, rs);
+        assert!((bo / at_bubble.bo_m3m3 - 1.118 / 1.12).abs() < 1e-12);
+        assert!((mu / at_bubble.mu_o_cp - 1.25 / 1.2).abs() < 1e-12);
+        assert!(bo > 0.0 && mu > 0.0);
+
+        // Continuous as Rs rises to Rs_sat(300) = 30, where the oil is saturated.
+        let saturated = table.interpolate(300.0);
+        let (bo_edge, mu_edge) = table.interpolate_oil(300.0, 30.0 - 1e-7);
+        assert!((bo_edge - saturated.bo_m3m3).abs() < 1e-6);
+        assert!((mu_edge - saturated.mu_o_cp).abs() < 1e-6);
+
+        // AD (FIM) matches the f64 path, and its derivatives match central differences. At 290 bar
+        // the top branch is read at 240, inside a segment (at 300 it would be on the 250 bar node,
+        // where a central difference averages two slopes).
+        let (bo_290, mu_290) = table.interpolate_oil(290.0, rs);
+        let ad =
+            table.interpolate_oil_generic(Ad::<2>::variable(290.0, 0), Ad::<2>::variable(rs, 1));
+        assert!((ad.0.value() - bo_290).abs() < 1e-14 && (ad.1.value() - mu_290).abs() < 1e-14);
+        let h = 1e-4;
+        let fd = |f: &dyn Fn(f64) -> f64| (f(h) - f(-h)) / (2.0 * h);
+        let d_bo_dp = fd(&|e| table.interpolate_oil(290.0 + e, rs).0);
+        let d_mu_dp = fd(&|e| table.interpolate_oil(290.0 + e, rs).1);
+        let d_bo_drs = fd(&|e| table.interpolate_oil(290.0, rs + e).0);
+        let d_mu_drs = fd(&|e| table.interpolate_oil(290.0, rs + e).1);
+        for (name, ad_value, fd_value) in [
+            ("dBo/dp", ad.0.d(0), d_bo_dp),
+            ("dmu/dp", ad.1.d(0), d_mu_dp),
+            ("dBo/dRs", ad.0.d(1), d_bo_drs),
+            ("dmu/dRs", ad.1.d(1), d_mu_drs),
+        ] {
+            assert!(
+                (ad_value - fd_value).abs() < 1e-8,
+                "{name}: AD {ad_value} vs FD {fd_value}"
+            );
+        }
     }
 }
