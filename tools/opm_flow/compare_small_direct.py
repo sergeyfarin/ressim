@@ -66,6 +66,15 @@ BANDS = {
 }
 
 
+def deck_flow_args(deck: Path) -> list[str]:
+    """The options the deck says it must run with: its `-- Run with: flow CASE.DATA ...` header,
+    written by opm_small_direct.rs (gravity-off cases add --enable-gravity=false)."""
+    for line in deck.read_text().splitlines():
+        if line.startswith("-- Run with: flow CASE.DATA"):
+            return line.removeprefix("-- Run with: flow CASE.DATA").split()
+    raise SystemExit(f"{deck}: no '-- Run with: flow CASE.DATA' header")
+
+
 def run_flow(case: str, out: Path, decks: Path = DECKS) -> float | None:
     """Run Flow unless `out` already holds a finished run of this exact deck."""
     deck = decks / case / "CASE.DATA"
@@ -80,7 +89,7 @@ def run_flow(case: str, out: Path, decks: Path = DECKS) -> float | None:
             "flow",
             str(deck),
             f"--output-dir={out}",
-            "--enable-gravity=false",
+            *deck_flow_args(deck),
             "--output-extra-convergence-info=steps,iterations",
         ],
         check=True,

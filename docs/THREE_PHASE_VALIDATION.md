@@ -220,4 +220,11 @@ three-phase fidelity. Known remaining gaps:
   The Flow twin was regenerated with the new PVDG and still agrees as above.
 - **Gravity-dominated three-phase segregation** is exercised by `gas_cap.rs` as behavior, not
   against an external reference.
-- **The +4 % cumulative-oil bias** in section 2 is inside the band but unexplained.
+- **The +4 % cumulative-oil bias** in section 2 is the reference deck's, not the engine's (#55).
+  The hand-written `cases.GAS_DRIVE` samples its Corey SGOF at ten nodes; between S_gc = 0.05 and
+  0.1286 Flow's linear interpolation overstates k_rg by up to 41 %, and the case starts at
+  S_g = 0.08. Written from `make_gas_drive_acceptance_sim` instead
+  (`opm/reference-decks/small-direct/gas-drive-20`), Flow agrees with ResSim to cumulative oil
+  −0.09 %, GOR +0.24 %, pressure +0.55 %. JutulDarcy on the hand deck agrees with Flow on the
+  hand deck, as it should: both read the same coarse table. The acceptance constants
+  `OPM_GAS_DRIVE` still come from the hand deck, and so does the frontend artifact.

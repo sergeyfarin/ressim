@@ -122,6 +122,17 @@ checkpoints is pressure 3.06 % / 3.03 %, oil rate 2.73 % / 2.81 % and GOR 7.13 %
 GOR "error" at 730 d is the sharper front measured against a coarser grid, and stays a
 characterization, not a criterion.
 
+**Update 2026-09-25 (#55): that 3 % / 7 % gap to Flow is the hand-written deck's.** Written from
+`make_spe1_acceptance_sim` itself (`opm/reference-decks/small-direct/spe1-10x10x3`), the same
+10×10×3 case agrees with Flow to pressure −0.15 %, oil rate −0.53 %, GOR −0.80 % and cumulative
+oil +0.04 %. The hand deck omits `ROCK` (Flow ran incompressible rock), which alone accounts for
+pressure +3.6 % and GOR −15 %. Its SPE1-published PVTO and coarser saturation tables partly offset
+that. Attribution by piecewise swap is in the small-direct README ("Generated decks for the #55
+gaps"). The published-series criteria above are unaffected: they grade against Flow on
+`SPE1CASE1.DATA`, which has `ROCK`. One genuine input difference remains: the SPE1 scenario gives
+undersaturated oil a single compressibility and no viscosity rise with pressure, where published
+SPE1 has both.
+
 ```bash
 python3 tools/opm_flow/spe1_refinement_oracle.py --out /tmp/spe1-refinement
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml spe1_areal_refinement_reference_error_replay -- --ignored --nocapture

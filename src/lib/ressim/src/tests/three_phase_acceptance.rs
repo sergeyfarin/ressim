@@ -80,7 +80,7 @@ fn gas_drive_pvt_rows() -> Vec<PvtRow> {
 /// 50 m × 50 m × 10 m cells, 100 mD, porosity 0.2, saturated at 200 bar with 8 % free gas, a
 /// single BHP-controlled producer in the last cell and no injector. Gravity is off, matching
 /// both the scenario and the flat single-layer deck.
-fn make_gas_drive_acceptance_sim() -> ReservoirSimulator {
+pub(super) fn make_gas_drive_acceptance_sim() -> ReservoirSimulator {
     let mut sim = ReservoirSimulator::new(20, 1, 1, 0.2);
     sim.set_fim_enabled(true);
     sim.set_cell_dimensions_per_layer(50.0, 50.0, vec![10.0])

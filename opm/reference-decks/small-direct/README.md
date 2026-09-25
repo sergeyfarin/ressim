@@ -14,6 +14,15 @@ path FIM-DIRECT-001 was about. These do.
 | `go-1d-50` | 50×1×1 | 152 | `gas_injection` base case: dead oil displaced by gas, both wells on BHP |
 | `dep-pvt-correlation` | 48×1×1 | 146 | `dep_pvt` base case: constant-rate (3 Sm³/d ORAT) blowdown through the bubble point |
 | `dep-pvt-lab-report` | 48×1×1 | 146 | the same with the lab-report table (2.5× the undersaturated c_o) |
+| `gas-drive-20` | 20×1×1 | 60 | `three_phase_acceptance` `gas_drive`: saturated solution-gas drive, BHP producer, redissolution on (#55) |
+| `spe1-10x10x3` | 10×10×3 | 900 | `spe1_acceptance` SPE1 Case 1: gravity, three layers, gas rate injector, ORAT producer with a BHP floor (#55) |
+
+The last two are not small: SPE1 is past the forced-direct threshold. They are here for the
+one-definition deck writer, which settled #55: their hand-written Flow decks disagreed with
+ResSim by 3–8 %, and these decks, written from the acceptance tests' own simulators, agree to
+0.1–0.8 % (see "Generated decks for the #55 gaps" below). A gravity-on case gets real `TOPS`, the
+engine's surface densities and an explicit well datum, and its header says to run plain `flow`;
+`compare_small_direct.py` takes the Flow options from that header.
 
 **The decks are generated, not hand-written.** `src/lib/ressim/src/tests/opm_small_direct.rs` builds
 each case as a ResSim simulator and writes its deck from that same object. SWOF, SGOF, PVDO,
@@ -321,3 +330,34 @@ from 0.25–0.27 to 0.18–0.20 bar.
 
 Replay: `bash scripts/validate-cross-solver.sh --markdown --case bo-1d-10 --case bo-1d-40`, then the
 same with `--refine 0.5` and `--refine 0.1` (`/tmp/ressim-cross-solver/{,refine-0.5/,refine-0.1/}report.json`).
+
+### Generated decks for the #55 gaps (2026-09-25, flow 2026.04)
+
+The two acceptance cases whose hand-written Flow decks disagreed with ResSim, written instead by
+`opm_small_direct.rs` from `make_spe1_acceptance_sim` and `make_gas_drive_acceptance_sim`. FIM
+against Flow, worst signed difference at report times (`FPR` hydrocarbon-pore-volume weighted as
+Flow reports it):
+
+| Case | Deck | p | q_o | GOR | Cum. oil |
+|---|---|---|---|---|---|
+| SPE1 10×10×3 | hand-written (`cases.SPE1_GAS_INJECTION`) | −3.06 % | +2.73 % | +7.13 % | — |
+| | **generated** | −0.15 % | −0.53 % | −0.80 % | +0.04 % |
+| `gas_drive` | hand-written (`cases.GAS_DRIVE`) | +1.59 % | +4.61 % | −6.08 % | +4.31 % |
+| | **generated** | +0.55 % | +3.90 % (20 d transient; +0.76 % final) | +0.24 % | −0.09 % final |
+
+What the hand-written decks got wrong, found by swapping their pieces into the generated deck
+one group at a time and re-running Flow:
+
+- **SPE1:** the hand deck has **no `ROCK`**, so Flow ran incompressible rock where ResSim (and
+  published SPE1, 3e-6 /psi) has 4.35e-5 /bar. Alone that moves Flow by pressure +3.6 %, GOR
+  −15 %. Its SPE1-published PVTO (undersaturated viscosity rising 0.51 → 0.74 cP by 621 bar,
+  where ResSim's setup has one c_o and no branch data) and coarser SWOF/SGOF partly offset it.
+  The three together reproduce the hand deck to 0.3 %. `EQUIL` against ResSim's uniform initial
+  pressure, `TOPS`, and the well datums contribute about 0.1 %.
+- **`gas_drive`:** only **SGOF**. Its Corey values are right at the nodes, but ten nodes are too
+  few: between S_gc = 0.05 and 0.1286 Flow's linear interpolation overstates k_rg by up to 41 %,
+  and the case starts at S_g = 0.08, inside that interval. PVT, initialization and wells change
+  nothing.
+
+The PVT table-edge conventions of #35 play no part in either.
+

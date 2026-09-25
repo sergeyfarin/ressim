@@ -141,8 +141,9 @@ fn make_spe1_acceptance_sim_at(nx: usize) -> ReservoirSimulator {
     sim
 }
 
-/// SPE1 Case 1 on the catalog's shipped configuration: 10×10×3.
-fn make_spe1_acceptance_sim() -> ReservoirSimulator {
+/// SPE1 Case 1 on the catalog's shipped configuration: 10×10×3. Also the setup the
+/// `spe1-10x10x3` small-direct deck is generated from (#55).
+pub(super) fn make_spe1_acceptance_sim() -> ReservoirSimulator {
     make_spe1_acceptance_sim_at(10)
 }
 

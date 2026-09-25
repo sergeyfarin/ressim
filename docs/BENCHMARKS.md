@@ -62,24 +62,11 @@ with the drift check and the signals. It comments there only when the state chan
 commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
 
 <!-- GENERATED:signals -->
-**Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 0 unexplained and untracked, 23 tracked, 1 explained.
+**Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 0 unexplained and untracked, 10 tracked, 14 explained.
 
 | Section | Case | Metric | Value | Where | Status |
 |---|---|---|---|---|---|
-| spe1 | 10x10x3 | vs_flow.FOPR_rel_err | +2.73 % | t=3510 d | tracked: #55 |
-| spe1 | 10x10x3 | vs_flow.FPR_rel_err | -3.06 % | t=900 d | tracked: #55 |
-| spe1 | 10x10x3 | vs_flow.WGOR_rel_err | +7.13 % | t=810 d | tracked: #55 |
-| spe1 | 20x20x3 | vs_flow.FOPR_rel_err | +2.81 % | t=3600 d | tracked: #55 |
-| spe1 | 20x20x3 | vs_flow.FPR_rel_err | -3.03 % | t=900 d | tracked: #55 |
-| spe1 | 20x20x3 | vs_flow.WGOR_rel_err | +7.17 % | t=720 d | tracked: #55 |
-| three_phase | gas_drive | pressure_rel_err | +1.59 % | t=50 d | tracked: #55 |
-| three_phase | gas_drive | gor_rel_err | -6.08 % | t=10 d | tracked: #55 |
-| three_phase | gas_drive | cum_oil_rel_err | +4.31 % | t=600 d | tracked: #55 |
-| three_phase | gas_drive | oil_rate_rel_err | +4.61 % | t=20 d | tracked: #55 |
-| three_phase | gas_drive | vs_jutul.FGOR_rel_err | -6.04 % | t=20 d | tracked: #55 |
-| three_phase | gas_drive | vs_jutul.FOPR_rel_err | +11.14 % | t=600 d | tracked: #55 |
 | three_phase | gas_drive | jutul_vs_flow.FOPR_rel_err | +3.10 % | t=20 d | tracked: #55 |
-| three_phase | gas_drive | vs_jutul.FPR_rel_err | +1.47 % | t=50 d | tracked: #55 |
 | cross_solver | dep-pvt-correlation | sparse.cum.FGPT | +1.06 % |  | tracked: #55 |
 | cross_solver | dep-pvt-correlation | dense.cum.FGPT | +1.06 % |  | tracked: #55 |
 | cross_solver | dep-pvt-lab-report | sparse.cum.FGPT | +1.13 % |  | tracked: #55 |
@@ -89,6 +76,19 @@ commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
 | jutul | dep-pvt-lab-report | jutul_vs_flow.final_FGPR_rel_err | -4.14 % |  | tracked: #55 |
 | jutul | dep-pvt-lab-report | fim_vs_jutul.final_FGPR_rel_err | +2.80 % |  | tracked: #55 |
 | jutul | ow-1d-96 | fim_vs_jutul.final_FOPR_rel_err | +1.46 % |  | tracked: #55 |
+| spe1 | 10x10x3 | vs_flow.FOPR_rel_err | +2.73 % | t=3510 d | explained: BLACK_OIL_VALIDATION.md §1 (#55) |
+| spe1 | 10x10x3 | vs_flow.FPR_rel_err | -3.06 % | t=900 d | explained: BLACK_OIL_VALIDATION.md §1 (#55) |
+| spe1 | 10x10x3 | vs_flow.WGOR_rel_err | +7.13 % | t=810 d | explained: BLACK_OIL_VALIDATION.md §1 (#55) |
+| spe1 | 20x20x3 | vs_flow.FOPR_rel_err | +2.81 % | t=3600 d | explained: BLACK_OIL_VALIDATION.md §1 (#55) |
+| spe1 | 20x20x3 | vs_flow.FPR_rel_err | -3.03 % | t=900 d | explained: BLACK_OIL_VALIDATION.md §1 (#55) |
+| spe1 | 20x20x3 | vs_flow.WGOR_rel_err | +7.17 % | t=720 d | explained: BLACK_OIL_VALIDATION.md §1 (#55) |
+| three_phase | gas_drive | pressure_rel_err | +1.59 % | t=50 d | explained: THREE_PHASE_VALIDATION.md §6 (#55) |
+| three_phase | gas_drive | gor_rel_err | -6.08 % | t=10 d | explained: THREE_PHASE_VALIDATION.md §6 (#55) |
+| three_phase | gas_drive | cum_oil_rel_err | +4.31 % | t=600 d | explained: THREE_PHASE_VALIDATION.md §6 (#55) |
+| three_phase | gas_drive | oil_rate_rel_err | +4.61 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §6 (#55) |
+| three_phase | gas_drive | vs_jutul.FGOR_rel_err | -6.04 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §6 (#55) |
+| three_phase | gas_drive | vs_jutul.FOPR_rel_err | +11.14 % | t=600 d | explained: THREE_PHASE_VALIDATION.md §6 (#55) |
+| three_phase | gas_drive | vs_jutul.FPR_rel_err | +1.47 % | t=50 d | explained: THREE_PHASE_VALIDATION.md §6 (#55) |
 | compositional | 1D plain | worst_pressure_diff | 1.68 bar | t = 0.19 d, cell 4: 59.4244 vs 61.1053 bar | explained: COMPOSITIONAL_VALIDATION.md §8 (C12) |
 
 **Near the band** — more than 70% of an acceptance band used, so one modest regression from failing:
