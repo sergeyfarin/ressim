@@ -1,8 +1,8 @@
 {
   "$comment": "Written by compare_small_direct.py --write-scorecard; do not edit by hand. Bands are BANDS in that script. See opm/reference-decks/small-direct/README.md.",
   "provenance": {
-    "commit": "5c290b0",
-    "dirty": true,
+    "commit": "35eb950",
+    "dirty": false,
     "date": "2026-09-25",
     "flow": "flow 2026.04",
     "command": "bash scripts/validate-cross-solver.sh --update"
@@ -44,7 +44,7 @@
             "newton": 84
           },
           "warnings": 0,
-          "wall_ms": 7.9
+          "wall_ms": 7.6
         },
         "impes": {
           "metrics": {
@@ -97,7 +97,7 @@
             "newton": 91
           },
           "warnings": 0,
-          "wall_ms": 28.0
+          "wall_ms": 27.9
         },
         "dense": {
           "metrics": {
@@ -113,7 +113,7 @@
             "newton": 90
           },
           "warnings": 0,
-          "wall_ms": 39.7
+          "wall_ms": 39.1
         },
         "impes": {
           "metrics": {
@@ -128,7 +128,7 @@
             "substeps": 20
           },
           "warnings": 0,
-          "wall_ms": 7.3
+          "wall_ms": 7.4
         }
       },
       "pairs": {
@@ -166,7 +166,7 @@
             "newton": 908
           },
           "warnings": 0,
-          "wall_ms": 411.5
+          "wall_ms": 425.4
         },
         "dense": {
           "metrics": {
@@ -182,7 +182,7 @@
             "newton": 908
           },
           "warnings": 0,
-          "wall_ms": 605.7
+          "wall_ms": 606.4
         },
         "impes": {
           "metrics": {
@@ -197,7 +197,7 @@
             "substeps": 300
           },
           "warnings": 0,
-          "wall_ms": 195.0
+          "wall_ms": 198.0
         }
       },
       "pairs": {
@@ -235,7 +235,7 @@
             "newton": 906
           },
           "warnings": 0,
-          "wall_ms": 411.2
+          "wall_ms": 428.4
         },
         "dense": {
           "metrics": {
@@ -251,7 +251,7 @@
             "newton": 906
           },
           "warnings": 0,
-          "wall_ms": 614.9
+          "wall_ms": 610.6
         },
         "impes": {
           "metrics": {
@@ -266,7 +266,7 @@
             "substeps": 300
           },
           "warnings": 0,
-          "wall_ms": 185.5
+          "wall_ms": 189.2
         }
       },
       "pairs": {
@@ -305,7 +305,7 @@
             "newton": 486
           },
           "warnings": 0,
-          "wall_ms": 133.2
+          "wall_ms": 145.4
         },
         "dense": {
           "metrics": {
@@ -322,7 +322,7 @@
             "newton": 486
           },
           "warnings": 0,
-          "wall_ms": 255.7
+          "wall_ms": 258.7
         },
         "impes": {
           "metrics": {
@@ -338,7 +338,7 @@
             "substeps": 213
           },
           "warnings": 0,
-          "wall_ms": 85.5
+          "wall_ms": 86.2
         }
       },
       "pairs": {
@@ -376,7 +376,7 @@
             "newton": 48
           },
           "warnings": 0,
-          "wall_ms": 11.2
+          "wall_ms": 10.9
         },
         "dense": {
           "metrics": {
@@ -392,7 +392,7 @@
             "newton": 48
           },
           "warnings": 0,
-          "wall_ms": 24.6
+          "wall_ms": 24.5
         },
         "impes": {
           "metrics": {
@@ -407,7 +407,7 @@
             "substeps": 28
           },
           "warnings": 0,
-          "wall_ms": 3.3
+          "wall_ms": 3.4
         }
       },
       "pairs": {
@@ -446,7 +446,7 @@
             "newton": 376
           },
           "warnings": 0,
-          "wall_ms": 163.5
+          "wall_ms": 165.5
         },
         "dense": {
           "metrics": {
@@ -463,7 +463,7 @@
             "newton": 376
           },
           "warnings": 0,
-          "wall_ms": 885.4
+          "wall_ms": 877.7
         },
         "impes": {
           "metrics": {
@@ -479,7 +479,7 @@
             "substeps": 631
           },
           "warnings": 0,
-          "wall_ms": 115.3
+          "wall_ms": 117.9
         }
       },
       "pairs": {
@@ -518,7 +518,7 @@
             "newton": 133
           },
           "warnings": 0,
-          "wall_ms": 176.2
+          "wall_ms": 174.7
         },
         "dense": {
           "metrics": {
@@ -535,7 +535,7 @@
             "newton": 133
           },
           "warnings": 0,
-          "wall_ms": 1026.5
+          "wall_ms": 1058.3
         },
         "impes": {
           "metrics": {
@@ -551,7 +551,7 @@
             "substeps": 225
           },
           "warnings": 0,
-          "wall_ms": 132.7
+          "wall_ms": 131.5
         }
       },
       "pairs": {

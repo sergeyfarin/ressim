@@ -270,9 +270,9 @@ Reading it:
 - Sparse against dense stays at 1e-10 bar on every case except bo-1d, where roundoff crosses one
   adaptive threshold and the gap is 9e-4 bar. That agreement is gated as an invariant.
 
-The scorecard committed with this section was written on a working tree with local changes, so
-its provenance says `dirty: true` and it is provisional. Re-write it with `--update` once the
-harness is committed.
+The scorecard was first written on a dirty tree (provisional), then re-baselined on the committed
+harness `35eb950` with `bash scripts/validate-cross-solver.sh --update` (`dirty: false`,
+`flow 2026.04`). That supersedes the provisional one; the numbers did not change.
 
 Replay: `bash scripts/validate-cross-solver.sh --markdown`, and for the referee
 `--refine 0.025 --case ow-2d-12x12 --case ow-1d-96 --case ow-1d-50-adverse`, `--refine 0.2 --case go-1d-50`,
