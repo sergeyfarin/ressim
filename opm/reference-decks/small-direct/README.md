@@ -266,7 +266,8 @@ Reading it:
   5-day report and ends 3.9% off Flow's FGPT. At 0.5 d the gap is 0.6%, so it falls with dt at
   roughly first order. Nothing in the IMPES step controller limits dt when a cell crosses the
   bubble point, and its saturation-change limit never trips there because Sg starts at zero.
-  Tracked in [#44](https://github.com/sergeyfarin/ressim/issues/44).
+  Tracked in [#44](https://github.com/sergeyfarin/ressim/issues/44), fixed in `58231be`: see the
+  next section, which also shows that most of the 3.9% was Flow's time error, not IMPES's.
 - Sparse against dense stays at 1e-10 bar on every case except bo-1d, where roundoff crosses one
   adaptive threshold and the gap is 9e-4 bar. That agreement is gated as an invariant.
 
@@ -278,3 +279,45 @@ Replay: `bash scripts/validate-cross-solver.sh --markdown`, and for the referee
 `--refine 0.025 --case ow-2d-12x12 --case ow-1d-96 --case ow-1d-50-adverse`, `--refine 0.2 --case go-1d-50`,
 `--refine 0.5 --case bo-1d-10 --case bo-1d-40`. The refined Flow runs are slow: ow-1d-96 takes ~55 s
 and go-1d-50 ~90 s.
+
+### IMPES limits the dissolved-gas change per substep (2026-09-25, `58231be`, #44)
+
+**Mechanism, confirmed.** Logging every IMPES trial on bo-1d-10 at base `0f9b2ce` showed that
+every limit read 1.0 on every substep. Liberated gas stays under the critical saturation, so the
+saturation limit measured zero change. The whole drop, from 175 bar to a 120 bar BHP, is under the
+75 bar pressure limit. The first substep dropped 38 bar and took Rs from 15 to about 12.4 in one
+explicit step.
+
+**Fix.** A substep is now cut when its flash would change a cell's Rs by more than 5% of the
+saturated Rs at the cell's pressure (`MAX_RS_RELATIVE_CHANGE_PER_STEP`, `impes/pressure.rs`).
+The limit binds only on bo-1d. The other six decks are bit-identical and the `dep_*` scenario
+tests take the same time.
+
+**The referee changes the verdict.** At 5-day reports Flow and FIM share a ~2.2% time error in
+FGPT, so the gate's "vs Flow" column mixes that error in. Cumulative gas in Sm³, from the harness
+runs (`report.json` for Flow, each run's history for ResSim):
+
+| Case | Report dt | Flow | FIM sparse | IMPES, before (`0f9b2ce`) | IMPES, after (`58231be`) |
+|---|---|---|---|---|---|
+| bo-1d-10 | 5 d | 82,485 | 82,484 | 85,707 (20 substeps) | 84,595 (25 substeps) |
+| | 0.5 d | 84,079 | 84,119 | | 84,569 |
+| | 0.1 d | 84,359 | 84,362 | | 84,459 |
+| bo-1d-40 | 5 d | 78,298 | 78,207 | 81,410 (20 substeps) | 80,072 (28 substeps) |
+| | 0.5 d | 79,656 | 79,697 | | 80,127 |
+| | 0.1 d | 79,938 | 79,934 | | 80,038 |
+
+Before the fix, IMPES at 5 d was 1.6–1.8% above Flow at 0.1 d. After it, IMPES is within 0.3% of
+that at every report step, and its spread across report steps is at most 0.16%, against Flow's
+2.1–2.3%. Its gap to Flow at 5 d is now 2.3–2.6%, which is Flow's time error, not an IMPES error. The issue's
+"within ~1% of Flow at 5-day reports" criterion therefore does not apply: meeting it would mean
+matching Flow's time error. The test `physics_depletion_impes_gas_production_is_independent_of_report_step`
+pins the outcome that matters: 5-day and 0.5-day reports agree to 0.03% (1.35% before).
+
+The scorecard was re-baselined on `58231be` with `--update`, which supersedes the `35eb950`
+baseline for the bo-1d IMPES rows only. Against Flow at the same step, IMPES's worst Δp fell from
+2.1 to 0.5 bar. Its final Δp rose from 0.017–0.025 to 0.086–0.097 bar, because Flow's 5-day final pressure
+is itself 0.27–0.29 bar off Flow at 0.1 d. Against Flow at 0.1 d, IMPES's final pressure gap fell
+from 0.25–0.27 to 0.18–0.20 bar.
+
+Replay: `bash scripts/validate-cross-solver.sh --markdown --case bo-1d-10 --case bo-1d-40`, then the
+same with `--refine 0.5` and `--refine 0.1` (`/tmp/ressim-cross-solver/{,refine-0.5/,refine-0.1/}report.json`).
