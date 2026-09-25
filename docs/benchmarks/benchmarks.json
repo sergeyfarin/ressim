@@ -874,7 +874,7 @@
   },
   "cross_solver": {
    "provenance": {
-    "commit": "21f25f8",
+    "commit": "501327e",
     "dirty": false,
     "date": "2026-09-25",
     "command": "bash scripts/validate-cross-solver.sh",
@@ -944,7 +944,7 @@
     {
      "case": "bo-1d-10",
      "metric": "sparse.wall_ms",
-     "value": 9.181,
+     "value": 9.556,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -1044,7 +1044,7 @@
     {
      "case": "bo-1d-10",
      "metric": "dense.wall_ms",
-     "value": 7.383,
+     "value": 7.43,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -1118,7 +1118,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1128,7 +1128,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1138,17 +1138,17 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
      "case": "bo-1d-10",
      "metric": "impes.wall_ms",
-     "value": 3.747,
+     "value": 3.939,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1158,7 +1158,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1168,7 +1168,7 @@
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1178,7 +1178,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1188,7 +1188,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1198,7 +1198,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1208,7 +1208,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1334,7 +1334,7 @@
     {
      "case": "bo-1d-40",
      "metric": "sparse.wall_ms",
-     "value": 29.616,
+     "value": 28.217,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -1434,7 +1434,7 @@
     {
      "case": "bo-1d-40",
      "metric": "dense.wall_ms",
-     "value": 39.012,
+     "value": 39.297,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -1508,7 +1508,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1518,7 +1518,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1528,17 +1528,17 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
      "case": "bo-1d-40",
      "metric": "impes.wall_ms",
-     "value": 18.546,
+     "value": 18.453,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1548,7 +1548,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1558,7 +1558,7 @@
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1568,7 +1568,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1578,7 +1578,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1588,7 +1588,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1598,7 +1598,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1724,7 +1724,7 @@
     {
      "case": "dep-pvt-correlation",
      "metric": "sparse.wall_ms",
-     "value": 408.047,
+     "value": 425.555,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -1824,7 +1824,7 @@
     {
      "case": "dep-pvt-correlation",
      "metric": "dense.wall_ms",
-     "value": 606.72,
+     "value": 610.168,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -1898,7 +1898,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1908,7 +1908,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1918,17 +1918,17 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
      "case": "dep-pvt-correlation",
      "metric": "impes.wall_ms",
-     "value": 199.55,
+     "value": 199.606,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1938,7 +1938,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1948,7 +1948,7 @@
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1958,7 +1958,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1968,7 +1968,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1978,7 +1978,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -1988,7 +1988,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2114,7 +2114,7 @@
     {
      "case": "dep-pvt-lab-report",
      "metric": "sparse.wall_ms",
-     "value": 430.024,
+     "value": 420.011,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -2214,7 +2214,7 @@
     {
      "case": "dep-pvt-lab-report",
      "metric": "dense.wall_ms",
-     "value": 620.681,
+     "value": 621.362,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -2288,7 +2288,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2298,7 +2298,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2308,17 +2308,17 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
      "case": "dep-pvt-lab-report",
      "metric": "impes.wall_ms",
-     "value": 198.232,
+     "value": 190.482,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2328,7 +2328,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2338,7 +2338,7 @@
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2348,7 +2348,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2358,7 +2358,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2368,7 +2368,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2378,7 +2378,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2504,7 +2504,7 @@
     {
      "case": "go-1d-50",
      "metric": "sparse.wall_ms",
-     "value": 132.509,
+     "value": 149.948,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -2614,7 +2614,7 @@
     {
      "case": "go-1d-50",
      "metric": "dense.wall_ms",
-     "value": 255.993,
+     "value": 259.83,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -2698,7 +2698,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2708,7 +2708,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2718,17 +2718,17 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
      "case": "go-1d-50",
      "metric": "impes.wall_ms",
-     "value": 86.285,
+     "value": 87.438,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2738,7 +2738,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2748,7 +2748,7 @@
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2758,7 +2758,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2768,7 +2768,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2778,7 +2778,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2788,7 +2788,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2798,7 +2798,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -2924,7 +2924,7 @@
     {
      "case": "ow-1d-50-adverse",
      "metric": "sparse.wall_ms",
-     "value": 10.962,
+     "value": 11.444,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -3024,7 +3024,7 @@
     {
      "case": "ow-1d-50-adverse",
      "metric": "dense.wall_ms",
-     "value": 24.222,
+     "value": 28.337,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -3098,7 +3098,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3108,7 +3108,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3118,17 +3118,17 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
      "case": "ow-1d-50-adverse",
      "metric": "impes.wall_ms",
-     "value": 3.334,
+     "value": 3.348,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3138,7 +3138,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3148,7 +3148,7 @@
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3158,7 +3158,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3168,7 +3168,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3178,7 +3178,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3188,7 +3188,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3314,7 +3314,7 @@
     {
      "case": "ow-1d-96",
      "metric": "sparse.wall_ms",
-     "value": 161.613,
+     "value": 167.951,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -3424,7 +3424,7 @@
     {
      "case": "ow-1d-96",
      "metric": "dense.wall_ms",
-     "value": 929.796,
+     "value": 930.067,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -3508,7 +3508,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3518,7 +3518,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3528,17 +3528,17 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
      "case": "ow-1d-96",
      "metric": "impes.wall_ms",
-     "value": 115.982,
+     "value": 122.167,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3548,7 +3548,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3558,7 +3558,7 @@
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3568,7 +3568,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3578,7 +3578,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3588,7 +3588,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3598,7 +3598,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3608,7 +3608,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3734,7 +3734,7 @@
     {
      "case": "ow-2d-12x12",
      "metric": "sparse.wall_ms",
-     "value": 174.365,
+     "value": 180.788,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -3844,7 +3844,7 @@
     {
      "case": "ow-2d-12x12",
      "metric": "dense.wall_ms",
-     "value": 1026.871,
+     "value": 1092.082,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -3928,7 +3928,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3938,7 +3938,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3948,17 +3948,17 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
      "case": "ow-2d-12x12",
      "metric": "impes.wall_ms",
-     "value": 130.073,
+     "value": 132.681,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3968,7 +3968,7 @@
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3978,7 +3978,7 @@
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3988,7 +3988,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -3998,7 +3998,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -4008,7 +4008,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -4018,7 +4018,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
@@ -4028,7 +4028,7 @@
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
-     "same_model": true,
+     "same_model": false,
      "at": ""
     },
     {
