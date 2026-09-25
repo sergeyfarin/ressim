@@ -27,9 +27,11 @@ Transmissibility: `T = 8.5269888e-3 × k[mD] × A[m²] × λ[1/cP] / L[m]` in m�
 
 - Shared physics (used by BOTH solvers): `relperm.rs`, `pvt.rs`, `mobility.rs`, `capillary.rs`, `well.rs`, `well_control.rs`, `grid.rs`, `reporting.rs`.
 - `step.rs` — thin dispatcher (IMPES vs FIM) + shared gas-split helpers. Keep it thin.
-- `impes/` — product solver: `pressure.rs` (PCG), `transport.rs` (explicit saturation), `timestep.rs`.
-- `fim/` — dev-only fully implicit solver (see `fim-solver-debug` skill before touching).
-- `frontend.rs` + `lib.rs` — wasm-bindgen public API consumed by `src/lib/workers/sim.worker.ts`.
+- `impes/` — IMPES solver: `pressure.rs` (PCG), `transport.rs` (explicit saturation), `closure.rs` (three-phase flash), `timestep.rs`.
+- `fim/` — fully implicit solver; ships in the gas, black-oil and capillary scenarios (read the `fim-solver-debug` skill before touching).
+- `compositional/` — separate Peng–Robinson engine; gated by `scripts/validate-compositional.sh`.
+- `api.rs` — the payload boundary: plain Rust types a consumer reads and supplies, over serde. **No target types** (`JsValue`, `PyObject`) here or anywhere else in the engine.
+- `frontend.rs` — wasm-bindgen shim converting `api.rs` types to `JsValue`, consumed by `src/lib/workers/sim.worker.ts`. `crates/ressim-py` is the Python shim over the same API. Neither shim holds a decision (`docs/ENGINE_PAYLOAD_BOUNDARY_DESIGN_2026-09-21.md`).
 
 ## The dual-implementation trap (most important)
 
@@ -56,7 +58,7 @@ Naming: cross-solver contracts are `*_on_both_solvers`; physics regressions are 
 
 ## Non-negotiables
 
-- **Do not weaken benchmark tolerances** (`benchmark_buckley_*` in `lib.rs`, methodology in `docs/P4_TWO_PHASE_BENCHMARKS.md`) without written justification.
+- **Do not weaken benchmark tolerances** (`benchmark_buckley_*` in `src/tests/buckley.rs`, methodology in `docs/P4_TWO_PHASE_BENCHMARKS.md`) without written justification.
 - No `unwrap()` in library code; explicit error handling.
 - `///` doc comments on public API; `cargo fmt` before committing.
 - New physics needs an oracle: an analytical solution, a conservation/invariant check, or a finite-difference Jacobian check — not just "runs without crashing". Existing patterns: FD Jacobian acceptance tests in `fim/assembly.rs`, Peaceman connection-law oracle in `tests/physics/wells_sources.rs`, closed-system inventory checks.
@@ -64,12 +66,13 @@ Naming: cross-solver contracts are `*_on_both_solvers`; physics regressions are 
 
 ## Exposing new API to the frontend
 
-1. Add the method/field in `frontend.rs` (wasm-bindgen).
+1. Add the type to `api.rs` and its conversion in `frontend.rs` (and `crates/ressim-py` if Python needs it); keep logic out of the shims.
 2. Rebuild: `bash scripts/build-wasm.sh` (regenerates `src/lib/ressim/pkg/`, which is generated
    output and **not** committed — #30). The `pretypecheck` / `pretest*` / `prebuild` hooks do this
    for you; run it by hand when you want the failure on its own.
 3. Wire through `src/lib/workers/sim.worker.ts` — worker messages must be **structured-cloneable** (plain objects/arrays only, no functions or class instances).
 4. Update `src/lib/simulator-types.ts` / `buildCreatePayload.ts` as needed; `pnpm run typecheck`.
+5. Run `bash scripts/validate-native-binding.sh` — the native and browser bindings must still agree.
 
 ## Validation
 

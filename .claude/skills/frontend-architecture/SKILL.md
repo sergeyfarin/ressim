@@ -15,7 +15,8 @@ ScenarioPicker → parameterStore → buildCreatePayload → sim.worker.ts → W
 ```
 
 - Stores (`src/lib/stores/`): `parameterStore.svelte.ts` (inputs), `runtimeStore.svelte.ts` (run results/playback), `navigationStore.svelte.ts` (mode/selection). All Svelte 5 runes classes. `simulationStore.svelte.ts` is a thin compatibility shim — don't add to it.
-- Worker (`src/lib/workers/sim.worker.ts`): owns WASM lifecycle (explicit `initWasm()` gate before use). Messages must be **structured-cloneable**. Early-stop logic: `terminationPolicy.ts`.
+- Worker (`src/lib/workers/sim.worker.ts`): owns WASM lifecycle (explicit `initWasm()` gate before use). Early-stop logic: `terminationPolicy.ts`.
+- Worker messages must be **structured-cloneable**. `$state` values are deep Proxies and fail with `DataCloneError`, so every send goes through `RuntimeStoreImpl.#post()` (applies `$state.snapshot()`); never call `simWorker.postMessage` directly. Payload builders (`buildCreatePayload.ts`) still copy the arrays they pass through — the snapshot is a backstop, not a licence to leak proxies.
 - Scenario run model: `src/lib/scenario/runModel.ts` (run policy/specs per scenario).
 
 ## The chart stack (post-2026-07-17 consolidation)
@@ -61,4 +62,4 @@ Rules:
 
 ## Validation
 
-`pnpm run validate` (typecheck + lint + vitest + build). Visual check with `pnpm run dev` for anything user-visible. See `ressim-validation` skill.
+`pnpm run validate` (typecheck + lint + cycles + fast vitest + build) while iterating; `pnpm run validate:product` before committing. Styling or build-config changes also need `pnpm run test:deployed`. Visual check with `pnpm run dev` for anything user-visible. See `ressim-validation` skill.

@@ -65,7 +65,7 @@ equation or trajectory oracle.
 
 Many plausible levers were already tried and **reverted**. Check these, in order, before designing anything:
 
-1. `docs/FIM_STATUS.md` — current state, baselines with replay commands, open gaps (rewritten 2026-07-05).
+1. `docs/FIM_STATUS.md` — current state, baselines with replay commands, open gaps. Then `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` and the active row in the registry below.
 2. `docs/FIM_EXPERIMENT_REGISTRY.md` — fast searchable index of promoted, reverted, refuted, diagnostic, and open FIM levers. **Search by mechanism name and by file, not just by target case** — the `FIM-NEWTON-007`→`FIM-DAMP-004` episode cost 3 live-test cycles because the "loosen the inflection chop" axis was searched by case, not by mechanism. If an equivalent experiment is already listed, do **not** repeat it unless the row's `Retry only if` condition is satisfied.
 3. `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md` + `.archive/docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` — the standing 95%-track-OPM policy, Bundle A/B/C sequencing, and the FIM-vs-OPM gap decomposition with current triage. Any proposed change should be locatable on this map.
 4. The active FIM GitHub Issues linked from `ROADMAP.md` — scope and acceptance criteria only;
@@ -85,16 +85,26 @@ Known-reverted lever classes (do not re-try without new evidence): widening Newt
 
 **Lesson from `FIM-NEWTON-007`→`FIM-DAMP-004`: always check `FIM_EXPERIMENT_REGISTRY.md` for the exact mechanism by name before live-testing a fix, not just by target case** — "loosen the inflection chop" was searchable prior art (`FIM-DAMP-002`/`003`) that would have saved 3 live-test cycles.
 
-## Architecture orientation (as of 2026-07)
+## Architecture orientation
 
-- `fim/newton.rs` (~5.2k lines) — damped Newton, Appleyard-style damping, hotspot streak tracking, direct-backend bypass logic.
-- `fim/timestep.rs` (~2.5k lines) — outer step / substep / retry ladder controller, hotspot-repeat cooldown memory, plateau-replay bookkeeping, gas outer-step carryover.
+- `fim/newton.rs` (~3.4k lines) — damped Newton, Appleyard-style damping, hotspot streak tracking, direct-backend bypass logic.
+- `fim/timestep.rs` (~4.3k lines) — outer step / substep / retry ladder controller, hotspot-repeat cooldown memory, plateau-replay bookkeeping, gas outer-step carryover.
 - `fim/assembly_ad.rs` + `fim/ad.rs` + `*_ad.rs` — **the live assembly path** (AD-based). `fim/assembly.rs` is the legacy assembler, kept as the bit-parity reference. The alias is at the top of `timestep.rs`/`newton.rs`: `use crate::fim::assembly_ad::assemble_fim_system_ad as assemble_fim_system;`
 - Parity gates live in `fim/assembly_ad.rs` tests (bit-identical residual + Jacobian occupancy vs legacy). Run them after touching assembly, properties, flux, flash, or wells:
   ```bash
   cargo test --manifest-path src/lib/ressim/Cargo.toml assembly_ad -- --nocapture
   ```
 - Linear solvers: `solvers/faer_sparse_lu.rs` (direct), `solvers/bicgstab.rs`; FIM-specific wiring under `fim/linear/`.
+- **Linear routing is the same on every target.** Small systems (≤ 512 rows) try sparse LU, then
+  dense LU as a backup, then iterative CPR; `setFimDirectBackend` swaps the direct order. Do not
+  reintroduce a `cfg(target_arch)` into solver routing. Native and wasm FIM agree to ~1e-13 on the
+  parity matrix since FIM-DIRECT-001; before it they substepped differently (18 vs 4) because
+  roundoff of one sign in an inactive unknown made the Jacobian singular. A direct solve never
+  returns exactly 0 for an unknown that should not move, so **never give a primary a slope that
+  depends on which side of a clamp its roundoff lands**
+  (`docs/FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md` §9).
+- The older convergence baselines in `docs/FIM_STATUS.md` are **wasm** measurements on the former
+  dense route; re-measure before citing one against a native count.
 
 ## The canonical diagnostic loop
 
@@ -164,7 +174,7 @@ evidence: [issue #23](https://github.com/sergeyfarin/ressim/issues/23), `docs/FI
 
 ## Baseline & promotion discipline (non-negotiable)
 
-From project instructions (`.github/copilot-instructions.md`):
+From the evidence rules in `AGENTS.md`:
 
 1. Before experimenting: run the control matrix on a **clean committed tree**, record commit hash, exact commands, and verbatim summary lines.
 2. Results from dirty trees or partially reverted states are **provisional** — say so explicitly.
@@ -196,4 +206,4 @@ From project instructions (`.github/copilot-instructions.md`):
 
 ## Reference target
 
-OPM Flow solves comparable cases at ~2.5 Newton iterations/step with zero timestep cuts. Reference decks for side-by-side comparison live on branch `origin/fim-opm-continuation-plan` (`opm/reference-decks/`, `scripts/opm-ressim-compare.sh`). See the `opm-reference-pipeline` skill.
+OPM Flow solves comparable cases at ~2.5 Newton iterations/step with zero timestep cuts. Reference decks for side-by-side comparison are in `opm/reference-decks/` with `scripts/opm-ressim-compare.sh`; the small-direct scorecard is `scripts/validate-cross-solver.sh`. See the `opm-reference-pipeline` skill.

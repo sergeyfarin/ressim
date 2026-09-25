@@ -77,6 +77,6 @@ Enforced, not advisory: see the vector contract above. OPM decks are METRIC (bar
 
 ## FIM-vs-OPM solver comparison (separate use case)
 
-For solver-convergence benchmarking (not product artifacts): branch `origin/fim-opm-continuation-plan` has `opm/reference-decks/` (gas-rate 10x10x3, water-medium cases, with DT4/DT16 variants) and `scripts/opm-ressim-compare.sh`. OPM source checkouts live under `OPM/` at repo root for algorithm reference. Useful flow flags for diagnosis: `--solver-verbosity=3 --time-step-verbosity=3`. OPM's benchmark to beat: ~2.5 Newton iterations/step, zero cut timesteps on SPE1-class cases.
+For solver-convergence benchmarking (not product artifacts): `opm/reference-decks/` holds the gas-rate and water-pressure control decks plus `small-direct/` (the cross-solver scorecard, `scripts/validate-cross-solver.sh`); `scripts/opm-ressim-compare.sh` runs a side-by-side. OPM source checkouts live under `OPM/` at repo root for algorithm reference. Useful flow flags for diagnosis: `--solver-verbosity=3 --time-step-verbosity=3`. OPM's benchmark to beat: ~2.5 Newton iterations/step, zero cut timesteps on SPE1-class cases.
 
-Related docs: `docs/OPM_FLOW_MINIMAL_MAPPING.md` (solver mapping), `docs/20260426.md` (track-OPM vs originality analysis).
+Related docs: `docs/OPM_FLOW_MINIMAL_MAPPING.md` (solver mapping), `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md` (track-OPM vs originality policy).

@@ -63,6 +63,9 @@ rather than hidden behind a default.
 | Scenario catalog (`src/lib/catalog/`) | `pnpm test` then `pnpm run typecheck` |
 | WASM API surface (`frontend.rs`, `lib.rs`, worker payloads) | `bash scripts/build-wasm.sh` + `pnpm run validate:product` |
 | Physics, PVT, wells, either timestep controller, or the small-system linear route — anything that can move an answer | the rows above **plus** `bash scripts/validate-cross-solver.sh` (every solver vs OPM Flow, scorecard ratchet; needs `flow`) |
+| Engine payload boundary (`api.rs`, `frontend.rs`) or `crates/ressim-py` | the rows above **plus** `bash scripts/validate-native-binding.sh` (native vs browser bindings on a case matrix; ~1e-13 FIM, ~1e-12 IMPES) |
+| Compositional engine (`src/lib/ressim/src/compositional/`) | `bash scripts/validate-compositional.sh thermo`; `native` or `all` when OPM headers / `flowexp_comp` are available |
+| Styling, Tailwind config, `index.html`, Vite/build config | `pnpm run build` + `pnpm run test:deployed` against `pnpm run preview` — the only check that catches an unstyled page (a Tailwind content-glob miss raises no error anywhere) |
 
 ## Command reference
 
@@ -193,21 +196,21 @@ small-direct README's "Referee" section, where refinement shows IMPES converging
 
 ## CI reality check
 
-`.github/workflows/pr-tests.yml` runs, in order: `pnpm install`, an explicit
-`scripts/build-wasm.sh`, `pnpm run lint`, `pnpm run check:cycles`, `pnpm run typecheck`,
-`scripts/validate-solver-coverage.sh all` (shared + FIM + IMPES), the Buckley-Leverett
-benchmarks, the full vitest suite via `pnpm run test:coverage`, and `pnpm run build`.
+`.github/workflows/pr-tests.yml` is the source of truth. As of 2026-09-25 it runs, in order:
+`pnpm install`, an explicit `scripts/build-wasm.sh`, lint, `check:cycles`, typecheck,
+`validate-solver-coverage.sh all`, the Buckley-Leverett benchmarks,
+`validate-compositional.sh thermo`, `validate-native-binding.sh`, the OPM artifact pipeline
+pytest (`tools/opm_flow`), the full vitest suite via `pnpm run test:coverage`, `pnpm run build`,
+and a Playwright smoke test of the built bundle (`test:deployed` against `vite preview`).
 
-That covers the same ground as local `validate:full`, with two deliberate exceptions:
+Not in PR CI — run them yourself when a change touches what they measure:
 
 - The `#[ignore]`d release replays (`spe1_full_horizon_matches_published_reference`,
-  `spe1_areal_refinement_reference_error_replay`, `physics_depletion_grid_convergence_fim`) are
-  **not** in PR CI. They are explicit release/relevant-change gates — run them yourself when a
-  change touches what they measure.
-- The wasm control matrix (`scripts/fim-wasm-diagnostic.mjs`) is not in CI either; see the
-  `fim-solver-debug` skill.
-- `scripts/validate-cross-solver.sh` is not in CI: CI has no OPM Flow. It is the gate for any
-  change that can move an answer; run it locally.
+  `spe1_areal_refinement_reference_error_replay`, `physics_depletion_grid_convergence_fim`).
+- The wasm control matrix (`scripts/fim-wasm-diagnostic.mjs`); see the `fim-solver-debug` skill.
+- `scripts/validate-cross-solver.sh`: CI has no OPM Flow. It is the gate for any change that can
+  move an answer.
+- `validate-compositional.sh` modes beyond `thermo` (they need OPM headers or `flowexp_comp`).
 
 The explicit WASM build matters: `src/lib/ressim/pkg/` is **generated, not committed** (#30), so
 that step is what produces the bindings every frontend simulation test loads. It is belt and

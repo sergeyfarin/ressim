@@ -88,7 +88,8 @@ issues #21–#23). Kept because they are prescriptive and not yet superseded.
 | `docs/MULTI_SOURCE_COMPARISON_ROADMAP.md` | Comparison-axis roadmap across analytical/IMPES/FIM/OPM/published sources |
 | `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` | 2026-07 comparison-architecture findings and forward plan |
 | `docs/WAVE4_REVIEW_2026-07-19.md` | Open post-Wave-4 review findings (ranked). **Untracked** — its findings were pointed at `TODO.md` checkboxes that no longer exist after the 2026-08-02 tracker migration, and finding 1 is an unverified BLOCKER. Needs an issue or a verification pass before it can be archived |
-| `.claude/skills/README.md` | Workflow skill library index |
+| `AGENTS.md` | Agent instructions: the only always-loaded file (`CLAUDE.md` imports it) and the skill list |
+| `.claude/skills/README.md` | How to use the workflow skills and what belongs in a skill vs `AGENTS.md` vs `docs/` |
 
 ## Archived material
 
