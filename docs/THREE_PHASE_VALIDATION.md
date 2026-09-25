@@ -48,34 +48,38 @@ PVT table's bubble point, with 8 % initial free gas — so drawdown liberates di
 the first step rather than first traversing an undersaturated leg.
 
 **Fluid.** `generateBlackOilTable(35 API, 0.75 gas gravity, 80 °C, Pb = 200 bar, Pmax = 300 bar,
-20 points, c_o = 1e-5/bar)` from `src/lib/physics/pvt.ts` — the scenario's own table. The same 20
-rows are emitted verbatim into the deck's `PVTO`/`PVDG` and embedded in the Rust test, so all
-three read identical fluid properties. SCAL is the scenario's own Corey curves, evaluated with
-the same effective-saturation definitions as `relperm.rs` and emitted as tabular `SWOF`/`SGOF`;
-the deck selects `STONE2` explicitly, because Flow's default three-phase oil model is not
-Stone II and the engine uses Stone II (`relperm.rs::k_ro_stone2`).
+20 points, c_o = 1e-5/bar)` from `src/lib/physics/pvt.ts`, the scenario's own table, embedded in
+the Rust test as `gas_drive_pvt_rows`. SCAL is the scenario's Corey curves; the engine and the deck
+both use Stone II (`relperm.rs::k_ro_stone2`, `STONE2`).
 
-**Reference.** `flow 2026.04` on `tools/opm_flow/opm_flow_tool/cases.py::GAS_DRIVE`. The parsed
-series are committed as `src/lib/catalog/opm-flow-results/gas_drive.json` (status `parsed`) and
-overlaid on the scenario's charts; the Rust test embeds the same samples so the engine can be
-graded without the frontend. The OPM curves are shown by default (#12). They were hidden while a
-Tarner–Tracy overlay was the primary reference, and that overlay has since been rejected. The
-scenario tests also check the solution-gas-drive story on the base rung: a saturated start
-(Rs = Rs_sat at 200 bar), liberation (each cell's Rs on the saturated curve at its pressure, mean
-Rs below 80 % of the bubble-point value by 300 d), and a producing GOR above ten times the solution
-GOR that rises every step (386 to 514 m³/m³).
+**Reference.** `flow 2026.04` on `tools/opm_flow/opm_flow_tool/cases.py::GAS_DRIVE`. Since #55 its
+deck is `opm/reference-decks/small-direct/gas-drive-20`, written by `opm_small_direct.rs` from the
+test's own simulator (`make_gas_drive_acceptance_sim`): PVT and relperm are ResSim's functions
+sampled onto dense nodes (91 saturation points), so the deck cannot disagree with the engine about
+its inputs. The hand-written deck it replaced sampled SGOF at ten nodes, and linear interpolation
+between them overstated k_rg by up to 41 % around the initial S_g = 0.08. That put the reference
+4–6 % off this model, and the "+4 % cumulative-oil bias" recorded here until then came from it.
+The parsed series are committed as `src/lib/catalog/opm-flow-results/gas_drive.json` (status
+`parsed`) and overlaid on the scenario's charts, and the Rust test embeds the same samples. The
+OPM curves are shown by default (#12). The scenario tests also check the solution-gas-drive story on
+the base rung: a saturated start (Rs = Rs_sat at 200 bar), liberation (each cell's Rs on the
+saturated curve at its pressure, mean Rs below 80 % of the bubble-point value by 300 d), and a
+producing GOR above ten times the solution GOR that rises every step (386 to 514 m³/m³).
 
 **Where.** `src/lib/ressim/src/tests/three_phase_acceptance.rs`.
 
-| Criterion | Tolerance | Worst measured error |
-|---|---|---|
-| Field average reservoir pressure, 11 checkpoints to 600 d | 3 % | 1.588 % (at 50 d) |
-| Producing GOR | 12 % | 6.076 % (at 10 d) |
-| Cumulative surface oil | 8 % | 4.310 % (at 600 d) |
-| Producer surface oil rate, while the reference rate ≥ 10 Sm³/d | 10 % | 4.609 % (at 20 d) |
-| Oil material-balance drift vs STOIIP | 1 % | < 0.0001 % |
-| Gas material-balance drift vs gas in place (free + dissolved) | 1 % | 0.0001 % |
-| Solver warnings during the run | none | none |
+The tolerances were tightened in #55, with the justification in the test. Measured errors are
+generated in [`BENCHMARKS.md`](BENCHMARKS.md) §3.
+
+| Criterion | Tolerance |
+|---|---|
+| Field average reservoir pressure, 11 checkpoints to 600 d | 1 % (was 3 %) |
+| Producing GOR | 1 % (was 12 %) |
+| Cumulative surface oil | 3 % (was 8 %) |
+| Producer surface oil rate, while the reference rate ≥ 10 Sm³/d | 8 % (was 10 %) |
+| Oil material-balance drift vs STOIIP | 1 % |
+| Gas material-balance drift vs gas in place (free + dissolved) | 1 % |
+| Solver warnings during the run | none |
 
 **Why cumulative oil carries the late-time oil comparison.** The producer's oil rate decays from
 40 Sm³/day to 0.03 Sm³/day over the run. Past ~100 days the absolute difference from the
@@ -84,12 +88,9 @@ which measures nothing useful. The instantaneous rate is therefore graded only w
 reference rate is still meaningful (≥ 10 Sm³/day, i.e. the first ~50 days), and the well-
 conditioned integral is graded over the whole horizon.
 
-**Known bias.** The engine produces systematically *more* oil than the reference. Cumulative oil
-runs +1.1 % at 10 d, rising to +4.3 % by 600 d,, monotonically and without sign change. Pressure
-and GOR agreement both *improve* with time (0.008 % and 0.117 % at 600 d), so this is an
-early-time displacement-efficiency difference that is then locked into the cumulative, not a
-drift that keeps accumulating. It is inside the acceptance band and recorded here rather than
-tuned away.
+**Where the remaining error sits.** The oil-rate and cumulative-oil worsts are at 20 d, in the
+steep first transient where the two simulators' time steps differ. By 600 d cumulative oil agrees
+to 0.09 %.
 
 ## 3. Gas-front behavior
 
@@ -220,11 +221,5 @@ three-phase fidelity. Known remaining gaps:
   The Flow twin was regenerated with the new PVDG and still agrees as above.
 - **Gravity-dominated three-phase segregation** is exercised by `gas_cap.rs` as behavior, not
   against an external reference.
-- **The +4 % cumulative-oil bias** in section 2 is the reference deck's, not the engine's (#55).
-  The hand-written `cases.GAS_DRIVE` samples its Corey SGOF at ten nodes; between S_gc = 0.05 and
-  0.1286 Flow's linear interpolation overstates k_rg by up to 41 %, and the case starts at
-  S_g = 0.08. Written from `make_gas_drive_acceptance_sim` instead
-  (`opm/reference-decks/small-direct/gas-drive-20`), Flow agrees with ResSim to cumulative oil
-  −0.09 %, GOR +0.24 %, pressure +0.55 %. JutulDarcy on the hand deck agrees with Flow on the
-  hand deck, as it should: both read the same coarse table. The acceptance constants
-  `OPM_GAS_DRIVE` still come from the hand deck, and so does the frontend artifact.
+- **The +4 % cumulative-oil bias** formerly recorded in section 2 was the reference deck's, not
+  the engine's (#55); section 2 now grades against a deck generated from the engine setup.

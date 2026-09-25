@@ -165,33 +165,44 @@ fn stock_tank_oil_in_place_sm3(sim: &ReservoirSimulator) -> f64 {
 // ─── gas_drive: OPM Flow reference ───────────────────────────────────────────
 
 /// `flow 2026.04` on `tools/opm_flow/opm_flow_tool/cases.py::GAS_DRIVE`, parsed from the run's
-/// `.RSM` and also committed as `src/lib/catalog/opm-flow-results/gas_drive.json`.
+/// `.RSM` and also committed as `src/lib/catalog/opm-flow-results/gas_drive.json`. Since #55 that
+/// deck is `opm/reference-decks/small-direct/gas-drive-20`, written by `opm_small_direct.rs` from
+/// [`make_gas_drive_acceptance_sim`] itself; the hand-written deck before it sampled SGOF at ten
+/// nodes and put the reference 4-6 % off this model.
 /// Columns: time [days], FPR [bar], FOPR [Sm³/day], FOPT [Sm³], FGOR [Sm³/Sm³].
 const OPM_GAS_DRIVE: [(f64, f64, f64, f64, f64); 11] = [
-    (10.0, 171.3294, 40.60961, 679.7952, 486.9769),
-    (20.0, 158.8346, 27.37219, 978.1079, 488.0770),
-    (30.0, 150.0534, 21.92094, 1197.317, 489.2926),
-    (50.0, 137.4439, 15.66580, 1537.213, 492.1335),
-    (100.0, 119.8228, 8.056358, 2066.835, 500.5772),
-    (150.0, 111.0780, 4.427388, 2351.238, 507.4564),
-    (200.0, 106.3287, 2.518755, 2510.644, 511.9746),
-    (300.0, 102.0964, 0.837407, 2654.952, 516.6122),
-    (400.0, 100.7018, 0.280382, 2703.107, 518.5769),
-    (500.0, 100.2358, 0.094192, 2719.259, 519.3077),
-    (600.0, 100.0793, 0.031684, 2724.689, 519.5609),
+    (10.0, 172.6900, 40.8089, 686.7442, 457.7479),
+    (20.0, 160.6220, 27.55961, 986.8553, 459.0350),
+    (30.0, 152.0119, 22.2229, 1209.084, 460.3886),
+    (50.0, 139.4304, 16.21544, 1558.811, 464.2398),
+    (100.0, 121.2865, 8.740335, 2122.727, 479.0799),
+    (150.0, 111.9562, 4.893212, 2435.061, 493.7973),
+    (200.0, 106.8226, 2.771546, 2611.131, 503.9905),
+    (300.0, 102.2617, 0.9099436, 2768.749, 514.0984),
+    (400.0, 100.7607, 0.3048172, 2821.054, 517.6306),
+    (500.0, 100.2571, 0.1028707, 2838.648, 518.8369),
+    (600.0, 100.0870, 0.03480567, 2844.594, 519.2465),
 ];
 
-/// Field average reservoir pressure.
-const GAS_DRIVE_PRESSURE_TOLERANCE: f64 = 0.03;
-/// Producing gas-oil ratio.
-const GAS_DRIVE_GOR_TOLERANCE: f64 = 0.12;
+// Tightened in #55, when the reference moved from the hand-written deck to one generated from
+// this simulator. Against the old reference the worst errors were 1.6 / 6.1 / 4.3 / 4.6 %
+// (pressure / GOR / cumulative oil / oil rate), almost all of it the old deck's coarse SGOF.
+// Measured against the new one (flow 2026.04): 0.30 / 0.24 / 1.37 / 3.90 %. The oil-rate and
+// cumulative-oil worsts both sit at 20 d, in the steep first transient where the two simulators'
+// time steps differ; each band keeps 2-4x headroom over its measured error.
+
+/// Field average reservoir pressure. Measured 0.30 % (20 d).
+const GAS_DRIVE_PRESSURE_TOLERANCE: f64 = 0.01;
+/// Producing gas-oil ratio. Measured 0.24 % (50 d).
+const GAS_DRIVE_GOR_TOLERANCE: f64 = 0.01;
 /// Cumulative surface oil. This is the load-bearing oil criterion over the whole horizon:
 /// the instantaneous rate decays below 1 Sm³/day, where a small absolute difference is a
-/// large relative one, but the integral stays well conditioned.
-const GAS_DRIVE_CUMULATIVE_OIL_TOLERANCE: f64 = 0.08;
+/// large relative one, but the integral stays well conditioned. Measured 1.37 % (20 d),
+/// 0.09 % by 600 d.
+const GAS_DRIVE_CUMULATIVE_OIL_TOLERANCE: f64 = 0.03;
 /// Instantaneous producer oil rate, graded only while the reference rate is still
-/// meaningfully large (see `GAS_DRIVE_MIN_GRADED_OIL_RATE_SC_DAY`).
-const GAS_DRIVE_OIL_RATE_TOLERANCE: f64 = 0.10;
+/// meaningfully large (see `GAS_DRIVE_MIN_GRADED_OIL_RATE_SC_DAY`). Measured 3.90 % (20 d).
+const GAS_DRIVE_OIL_RATE_TOLERANCE: f64 = 0.08;
 /// Below this reference oil rate [Sm³/day] the instantaneous rate is not graded; cumulative
 /// oil carries the late-time comparison instead.
 const GAS_DRIVE_MIN_GRADED_OIL_RATE_SC_DAY: f64 = 10.0;

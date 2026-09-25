@@ -149,7 +149,7 @@ describe('committed OPM artifacts (#20)', () => {
         // file can be hashed here, so an edit that is not followed by a Flow run fails in CI.
         const fileBacked = listOpmFlowArtifacts().filter((artifact) => artifact.provenance.deckSource.endsWith('.DATA'));
         expect(fileBacked.map((artifact) => artifact.caseKey).sort())
-            .toEqual(['dep_pvt_correlation', 'dep_pvt_lab_report', 'gas_injection']);
+            .toEqual(['dep_pvt_correlation', 'dep_pvt_lab_report', 'gas_drive', 'gas_injection']);
         for (const artifact of fileBacked) {
             const deck = readFileSync(new URL(artifact.provenance.deckSource, REPO_ROOT));
             expect(createHash('sha256').update(deck).digest('hex'), artifact.caseKey).toBe(artifact.deckHash);
