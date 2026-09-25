@@ -49,6 +49,22 @@ of each history, which is the extrapolation an engineer performs:
 
 Every row reads worse from an early window than from a complete one, which is the case's through-line.
 
+**Superseded 2026-09-25 (#57).** The table above was measured on an engine that treated this dry
+gas as ideal above the table's 20 bar bubble point, by a harness that billed each step at its last
+substep's rate. The two errors partly offset. With the table's own gas rows and every substep
+integrated (`dep_gas_pz.test.ts`), the compressibility ladder reads:
+
+| variant | reserves error (full history) | reserves error (first 40 %) | recovery |
+|---|---|---|---|
+| c_f = 5e-6 /bar (base) | −0.003 % | −0.19 % | 0.917 |
+| c_f = 5e-5 | +0.01 % | +0.01 % | 0.919 |
+| c_f = 2e-4 | +0.06 % | +0.64 % | 0.925 |
+| c_f = 5e-4 (geopressured) | +0.14 % | +1.85 % | 0.935 |
+
+Cumulative gas is now 129.9 → 132.5e6 Sm³ over the ladder, against OPM Flow's 129.9 → 132.4e6
+below. The early window still reads worse, and more so as c_f rises. The tight-interval and
+abandonment rows were not re-measured.
+
 **Defect found and fixed on the way.** `DerivedRunSeries.p_z` was computed with `z = 1` hard-coded
 and labelled "P/z" on the diagnostics panel of every three-phase chart — an average-pressure curve
 under a p/z label. It now inverts z from the run's own `B_g` table and returns null when the case

@@ -118,10 +118,21 @@ function runVariant(dimensionKey: string, variantKey: string): VariantRun {
     let pressureAt500Days = finalPressure;
     let pressureAt1000Days = finalPressure;
     let pressureAt2000Days = finalPressure;
+    // The engine may split a step into substeps and records one rate point per substep, so
+    // every new point is integrated over its own interval. Billing each step at its last
+    // point's rate (as this harness used to) misses ~4.6 % of the gas here, all in the first,
+    // highest-rate steps (#57; the same harness defect as #53).
+    let pointsSeen = 0;
+    let previousTime = 0;
     for (let step = 0; step < Number(params.steps); step += 1) {
         sim.step(dt);
-        const point = sim.getRateHistory().at(-1) as Record<string, number> | undefined;
-        cumulativeGas += Math.abs(Number(point?.total_production_gas ?? 0)) * dt;
+        const history = sim.getRateHistory() as Array<Record<string, number>>;
+        for (const row of history.slice(pointsSeen)) {
+            cumulativeGas += Math.abs(Number(row.total_production_gas ?? 0)) * (Number(row.time) - previousTime);
+            previousTime = Number(row.time);
+        }
+        pointsSeen = history.length;
+        const point = history.at(-1);
         finalPressure = Number(point?.avg_reservoir_pressure ?? finalPressure);
         if ((step + 1) * dt <= 500) pressureAt500Days = finalPressure;
         if ((step + 1) * dt <= 1000) pressureAt1000Days = finalPressure;
@@ -231,10 +242,11 @@ describe('dep_gas_pz measured behaviour', () => {
         // Produced plus remaining, against what the volumetrics said was there.
         // Not expected to be exactly zero: compaction and connate-water
         // expansion legitimately deliver gas the initial-volume estimate never
-        // counted, which is this case's whole subject. At the base
-        // compressibility that is a couple of percent; a surface gas density
-        // that did not match the PVT table's gravity would put it in double
-        // figures, which is the failure this guards.
+        // counted, which is this case's whole subject. Measured (#57): 0.015 %
+        // at the base compressibility, 1.3 % geopressured. A surface gas
+        // density that did not match the PVT table's gravity would put it in
+        // double figures, and so did an engine that took ideal gas above the
+        // table's 20 bar bubble point: +8.8 % (#25, fixed in #57).
         expect(Math.abs(base.inventoryClosure)).toBeLessThan(0.04);
 
         // And the residual is that physics, not noise: it scales with c_f, by
@@ -262,7 +274,13 @@ describe('dep_gas_pz measured behaviour', () => {
                 .toBeGreaterThan(ladder[index - 1].earlyGiipError);
         }
         expect(ladder[0].earlyGiipError).toBeLessThan(0.01);
-        expect(ladder.at(-1)!.earlyGiipError).toBeGreaterThan(0.02);
+        // Measured (#57): -0.19 %, +0.01 %, +0.64 %, +1.85 % up the ladder. The bound was 2 %,
+        // set when the engine treated this dry gas as ideal above its 20 bar bubble point and
+        // the harness billed each step at its last substep's rate; the two errors offset. With
+        // real gas and every substep integrated, the geopressured early error is 1.85 % and the
+        // ordering, the claim this test makes, holds. 1.5 % keeps the bend a visible,
+        // several-fold larger error than the base case's.
+        expect(ladder.at(-1)!.earlyGiipError).toBeGreaterThan(0.015);
 
         // Read to abandonment, it does not — the bend has straightened out.
         for (const run of ladder) expect(run.giipError).toBeLessThan(0.01);

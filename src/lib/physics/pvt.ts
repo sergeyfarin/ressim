@@ -280,11 +280,13 @@ export function generateBlackOilTable(
  * Black-oil properties read from a PVT table at `pressureBar`, using the
  * engine's own interpolation.
  *
- * Mirrors `PvtTable::interpolate_rows` in `src/lib/ressim/src/pvt.rs`, which
+ * Mirrors `PvtTable::interpolate` in `src/lib/ressim/src/pvt.rs`, which
  * follows OPM/ECL PVTO/PVDG: linear in `1/Bo` and `1/Bg` across a segment,
  * linear in `Rs`, clamped to the first row below the table, and extrapolated
  * above it along the fixed-Rs undersaturated branch as `Bo·exp(-c_o·ΔP)` with
- * `Bg·p_last/p`.
+ * `Bg·p_last/p`. Bg is read along every row, as the engine's gas curve reads it
+ * since #57; before that the engine used only the saturated rows for gas, so
+ * above the highest bubble point this function and the engine disagreed.
  *
  * This lives here, beside the table generator, because every consumer that
  * needs "what fluid did the simulator actually see?" must answer it the same

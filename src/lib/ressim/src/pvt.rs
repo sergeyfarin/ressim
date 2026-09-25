@@ -47,6 +47,10 @@ pub struct PvtTable {
     /// Original flat PVTO-style rows in input order.
     pub rows: Vec<PvtRow>,
     saturated_rows: Vec<PvtRow>,
+    /// Every row's gas columns, by pressure: the table's PVDG. Gas properties depend on
+    /// pressure alone, so rows above a bubble point (constant Rs) are gas nodes too (#57).
+    #[serde(default)]
+    gas_rows: Vec<PvtRow>,
     oil_branches: Vec<PvtOilBranch>,
     /// Base oil compressibility above bubble point [1/bar]
     pub c_o: f64,
@@ -66,6 +70,44 @@ impl PvtTable {
         let inv_bg_mu = (1.0 / (r0.bg_m3m3 * r0.mu_g_cp))
             + t * (1.0 / (r1.bg_m3m3 * r1.mu_g_cp) - 1.0 / (r0.bg_m3m3 * r0.mu_g_cp));
         (1.0 / inv_bg, inv_bg / inv_bg_mu)
+    }
+
+    /// Gas viscosity above the table's last row: the last segment's PVDG rule, linear in `1/Bg`
+    /// and `1/(Bg*mu_g)`, continued past its end. This is what OPM Flow evaluates there (its PVDG
+    /// tables extrapolate), so a deck written from this table and the engine agree above it too.
+    /// It used to be held at the last row's value, 34 % below SPE1's own 621 bar row (#57).
+    /// Falls back to that value where the continued line would leave the physical range.
+    fn extrapolated_gas_viscosity(r0: &PvtRow, r1: &PvtRow, p: f64) -> f64 {
+        let dp = r1.p_bar - r0.p_bar;
+        if dp < 1e-6 {
+            return r1.mu_g_cp;
+        }
+        let inv_bg = 1.0 / r0.bg_m3m3 + (p - r0.p_bar) / dp * (1.0 / r1.bg_m3m3 - 1.0 / r0.bg_m3m3);
+        let inv_bg_mu = 1.0 / (r0.bg_m3m3 * r0.mu_g_cp)
+            + (p - r0.p_bar) / dp
+                * (1.0 / (r1.bg_m3m3 * r1.mu_g_cp) - 1.0 / (r0.bg_m3m3 * r0.mu_g_cp));
+        if inv_bg > 0.0 && inv_bg_mu > 0.0 {
+            inv_bg / inv_bg_mu
+        } else {
+            r1.mu_g_cp
+        }
+    }
+
+    /// Generic (differentiable) mirror of [`Self::extrapolated_gas_viscosity`].
+    fn extrapolated_gas_viscosity_generic<S: Scalar>(r0: &PvtRow, r1: &PvtRow, p: S) -> S {
+        let dp = r1.p_bar - r0.p_bar;
+        if dp < 1e-6 {
+            return S::from_f64(r1.mu_g_cp);
+        }
+        let t = (p - r0.p_bar) / dp;
+        let inv_bg = t * (1.0 / r1.bg_m3m3 - 1.0 / r0.bg_m3m3) + 1.0 / r0.bg_m3m3;
+        let inv_bg_mu = t * (1.0 / (r1.bg_m3m3 * r1.mu_g_cp) - 1.0 / (r0.bg_m3m3 * r0.mu_g_cp))
+            + 1.0 / (r0.bg_m3m3 * r0.mu_g_cp);
+        if inv_bg.value() > 0.0 && inv_bg_mu.value() > 0.0 {
+            inv_bg / inv_bg_mu
+        } else {
+            S::from_f64(r1.mu_g_cp)
+        }
     }
 
     /// OPM/ECL PVTO interpolation is performed on `1/Bo` and `1/(Bo*mu_o)`.
@@ -99,12 +141,102 @@ impl PvtTable {
             .collect::<Vec<_>>();
         saturated_rows.sort_by(|a, b| a.p_bar.partial_cmp(&b.p_bar).unwrap());
 
+        let mut gas_rows = rows.clone();
+        gas_rows.sort_by(|a, b| a.p_bar.total_cmp(&b.p_bar));
+        gas_rows.dedup_by(|later, earlier| (later.p_bar - earlier.p_bar).abs() < 1e-9);
+
         Self {
             rows,
             saturated_rows,
+            gas_rows,
             oil_branches,
             c_o,
         }
+    }
+
+    /// The gas curve: `gas_rows`, or the saturated rows for a table built before it existed.
+    fn gas_nodes(&self) -> &[PvtRow] {
+        if self.gas_rows.is_empty() {
+            &self.saturated_rows
+        } else {
+            &self.gas_rows
+        }
+    }
+
+    /// Bg and mu_g at `p` along the gas curve, the way OPM evaluates a PVDG table: linear in
+    /// `1/Bg` and `1/(Bg*mu_g)` between nodes, the first node's values below them, and above
+    /// them Boyle-law Bg with mu_g continued along the last segment
+    /// ([`Self::extrapolated_gas_viscosity`]).
+    ///
+    /// Gas used to come from the saturated rows only, so above the highest bubble point a
+    /// table's own gas rows were ignored for Boyle-law Bg and a flat mu_g (#57).
+    fn gas_props(&self, p: f64) -> (f64, f64) {
+        let nodes = self.gas_nodes();
+        let Some(first) = nodes.first() else {
+            return (1.0, 0.02);
+        };
+        if p <= first.p_bar {
+            return (first.bg_m3m3, first.mu_g_cp);
+        }
+        let last_idx = nodes.len() - 1;
+        let last = &nodes[last_idx];
+        if p >= last.p_bar {
+            let mu_g = if last_idx > 0 {
+                Self::extrapolated_gas_viscosity(&nodes[last_idx - 1], last, p)
+            } else {
+                last.mu_g_cp
+            };
+            return (last.bg_m3m3 * (last.p_bar / p), mu_g);
+        }
+        for pair in nodes.windows(2) {
+            let (r0, r1) = (&pair[0], &pair[1]);
+            if p >= r0.p_bar && p <= r1.p_bar {
+                let dp = r1.p_bar - r0.p_bar;
+                if dp < 1e-6 {
+                    return (r0.bg_m3m3, r0.mu_g_cp);
+                }
+                return Self::interpolate_gas_segment(r0, r1, (p - r0.p_bar) / dp);
+            }
+        }
+        (last.bg_m3m3, last.mu_g_cp)
+    }
+
+    /// Generic (differentiable) mirror of [`Self::gas_props`].
+    fn gas_props_generic<S: Scalar>(&self, p: S) -> (S, S) {
+        let nodes = self.gas_nodes();
+        let Some(first) = nodes.first() else {
+            return (S::from_f64(1.0), S::from_f64(0.02));
+        };
+        let pv = p.value();
+        if pv <= first.p_bar {
+            return (S::from_f64(first.bg_m3m3), S::from_f64(first.mu_g_cp));
+        }
+        let last_idx = nodes.len() - 1;
+        let last = &nodes[last_idx];
+        if pv >= last.p_bar {
+            let mu_g = if last_idx > 0 {
+                Self::extrapolated_gas_viscosity_generic(&nodes[last_idx - 1], last, p)
+            } else {
+                S::from_f64(last.mu_g_cp)
+            };
+            return (S::from_f64(last.bg_m3m3 * last.p_bar) / p, mu_g);
+        }
+        for pair in nodes.windows(2) {
+            let (r0, r1) = (&pair[0], &pair[1]);
+            if pv >= r0.p_bar && pv <= r1.p_bar {
+                let dp = r1.p_bar - r0.p_bar;
+                if dp < 1e-6 {
+                    return (S::from_f64(r0.bg_m3m3), S::from_f64(r0.mu_g_cp));
+                }
+                let t = (p - r0.p_bar) / dp;
+                let inv_bg = t * (1.0 / r1.bg_m3m3 - 1.0 / r0.bg_m3m3) + 1.0 / r0.bg_m3m3;
+                let inv_bg_mu = t
+                    * (1.0 / (r1.bg_m3m3 * r1.mu_g_cp) - 1.0 / (r0.bg_m3m3 * r0.mu_g_cp))
+                    + 1.0 / (r0.bg_m3m3 * r0.mu_g_cp);
+                return (S::from_f64(1.0) / inv_bg, inv_bg / inv_bg_mu);
+            }
+        }
+        (S::from_f64(last.bg_m3m3), S::from_f64(last.mu_g_cp))
     }
 
     #[cfg_attr(not(feature = "wasm"), allow(dead_code))]
@@ -265,6 +397,7 @@ impl PvtTable {
             row.bo_m3m3 = bo;
             row.mu_o_cp = mu;
         }
+        (row.bg_m3m3, row.mu_g_cp) = self.gas_props(p);
         row
     }
 
@@ -326,6 +459,13 @@ impl PvtTable {
     /// `S = f64` reproduces `interpolate` exactly, while `S = Ad<N>` yields the
     /// exact analytic derivatives of each interpolated field w.r.t. pressure.
     pub(crate) fn interpolate_saturated_generic<S: Scalar>(&self, p: S) -> SatProps<S> {
+        let mut props = self.interpolate_saturated_oil_generic(p);
+        (props.bg, props.mu_g) = self.gas_props_generic(p);
+        props
+    }
+
+    /// The saturated curve's Rs and oil fields; its gas fields are superseded by the gas curve.
+    fn interpolate_saturated_oil_generic<S: Scalar>(&self, p: S) -> SatProps<S> {
         let rows = &self.saturated_rows;
         if rows.is_empty() {
             return SatProps {
@@ -352,8 +492,9 @@ impl PvtTable {
         }
 
         let last_idx = rows.len() - 1;
-        // Above the last table pressure: constant Rs, Boyle-law Bg, and Bo/mu_o from the top
-        // branch's own undersaturated rows (#38), exactly as `interpolate` does.
+        // Above the last saturated pressure: constant Rs and Bo/mu_o from the top branch's own
+        // undersaturated rows (#38), exactly as `interpolate` does. The gas fields computed here
+        // are replaced by the gas curve's in `interpolate_saturated_generic`.
         if pv >= rows[last_idx].p_bar {
             let r = &rows[last_idx];
             // Bg = last.Bg * (last.p / p)
@@ -603,7 +744,7 @@ impl PvtTable {
 
     #[cfg(test)]
     pub(crate) fn d_bg_d_p(&self, p: f64) -> f64 {
-        let rows = &self.saturated_rows;
+        let rows = self.gas_nodes();
         if rows.is_empty() || p <= rows[0].p_bar {
             return 0.0;
         }
@@ -1454,5 +1595,129 @@ mod tests {
         let generic = table.interpolate_saturated_generic(200.0_f64);
         assert!((generic.bg - row.bg_m3m3).abs() < 1e-15);
         assert!((generic.mu_g - row.mu_g_cp).abs() < 1e-15);
+    }
+
+    /// #57: above the last row, gas viscosity continues the last segment's PVDG rule (linear in
+    /// `1/Bg` and `1/(Bg*mu_g)`), which is what OPM Flow evaluates there, instead of being held
+    /// flat. SPE1's table ends at 345.73 bar while its injector runs to 621 bar; published SPE1
+    /// has mu_g = 0.047 cP there, the flat value was 0.0309 and the continued rule gives 0.0424.
+    #[test]
+    fn gas_viscosity_continues_the_last_pvdg_segment_above_the_table() {
+        let row = |p_bar, rs_m3m3, bo_m3m3, mu_o_cp, bg_m3m3, mu_g_cp| PvtRow {
+            p_bar,
+            rs_m3m3,
+            bo_m3m3,
+            mu_o_cp,
+            bg_m3m3,
+            mu_g_cp,
+        };
+        // SPE1's two highest saturated rows (make_spe1_like_grid_sim).
+        let table = PvtTable::new(
+            vec![
+                row(276.79, 226.20, 1.695, 0.510, 0.00455, 0.0268),
+                row(345.73, 288.17, 1.827, 0.449, 0.00364, 0.0309),
+            ],
+            2.06e-4,
+        );
+
+        // Continuous at the last row.
+        assert!((table.interpolate(345.73).mu_g_cp - 0.0309).abs() < 1e-12);
+
+        // At 621.54 bar, by hand: 1/Bg runs 219.78 -> 274.73 over 68.94 bar, 1/(Bg mu_g)
+        // 8200.8 -> 8890.8, so 275.81 bar further on they reach 494.55 and 11651.4.
+        let above = table.interpolate(621.54).mu_g_cp;
+        assert!(
+            (above - 0.042446).abs() < 1e-5,
+            "mu_g at 621.54 bar: {above}"
+        );
+
+        // The generic (AD) path used by FIM gives the same value, and its derivative matches a
+        // central difference of the f64 path.
+        for p in [400.0, 621.54] {
+            let ad = table
+                .interpolate_saturated_generic(Ad::<1>::variable(p, 0))
+                .mu_g;
+            let f64_value = table.interpolate(p).mu_g_cp;
+            assert!(
+                (ad.value() - f64_value).abs() < 1e-14,
+                "p={p}: {} vs {f64_value}",
+                ad.value()
+            );
+            let h = 1e-4;
+            let fd =
+                (table.interpolate(p + h).mu_g_cp - table.interpolate(p - h).mu_g_cp) / (2.0 * h);
+            assert!(
+                (ad.d(0) - fd).abs() < 1e-9,
+                "p={p}: d mu_g/dp {} vs {fd}",
+                ad.d(0)
+            );
+        }
+    }
+
+    /// Where the continued line would leave the physical range (here `1/(Bg*mu_g)` falls to
+    /// zero), gas viscosity keeps the last row's value rather than turning negative or infinite.
+    #[test]
+    fn gas_viscosity_above_the_table_falls_back_where_the_line_turns_unphysical() {
+        let row = |p_bar, bg_m3m3, mu_g_cp| PvtRow {
+            p_bar,
+            rs_m3m3: p_bar * 0.1,
+            bo_m3m3: 1.1 + p_bar * 1e-4,
+            mu_o_cp: 1.0,
+            bg_m3m3,
+            mu_g_cp,
+        };
+        // 1/(Bg mu_g) falls from 10000 to 5000 over 100 bar, so it reaches zero 100 bar later.
+        let table = PvtTable::new(vec![row(100.0, 0.01, 0.01), row(200.0, 0.005, 0.04)], 1e-5);
+        assert!(table.interpolate(250.0).mu_g_cp > 0.04);
+        assert_eq!(table.interpolate(400.0).mu_g_cp, 0.04);
+        let ad = table.interpolate_saturated_generic(400.0_f64).mu_g;
+        assert_eq!(ad, 0.04);
+    }
+
+    /// #57: gas properties depend on pressure alone, so a table's rows above its bubble point
+    /// (constant Rs, as `generateBlackOilTable` and the dep_pvt tables write them) are gas nodes
+    /// like any other. They used to be ignored: above the highest bubble point Bg followed
+    /// Boyle's law from the bubble-point row and mu_g stayed at its value.
+    #[test]
+    fn gas_rows_above_the_bubble_point_are_used_for_gas() {
+        let row = |p_bar, rs_m3m3, bo_m3m3, bg_m3m3, mu_g_cp| PvtRow {
+            p_bar,
+            rs_m3m3,
+            bo_m3m3,
+            mu_o_cp: 1.0,
+            bg_m3m3,
+            mu_g_cp,
+        };
+        let r200 = row(200.0, 15.0, 1.12, 0.0045, 0.021);
+        let r250 = row(250.0, 15.0, 1.119, 0.0037, 0.024);
+        let table = PvtTable::new(
+            vec![
+                row(100.0, 5.0, 1.08, 0.01, 0.015),
+                row(150.0, 10.0, 1.10, 0.006, 0.018),
+                r200.clone(),
+                r250.clone(),
+            ],
+            1e-5,
+        );
+        let (bg, mu_g) = PvtTable::interpolate_gas_segment(&r200, &r250, 0.5);
+        let at = table.interpolate(225.0);
+        assert!((at.bg_m3m3 - bg).abs() < 1e-15 && (at.mu_g_cp - mu_g).abs() < 1e-15);
+        assert!(
+            (at.bg_m3m3 - 0.0045 * 200.0 / 225.0).abs() > 1e-5,
+            "not Boyle-law any more"
+        );
+        assert_eq!(
+            at.rs_m3m3, 15.0,
+            "Rs above the highest bubble point is unchanged"
+        );
+
+        let generic = table.interpolate_saturated_generic(Ad::<1>::variable(225.0, 0));
+        assert!((generic.bg.value() - bg).abs() < 1e-15);
+        assert!((generic.mu_g.value() - mu_g).abs() < 1e-15);
+        let h = 1e-4;
+        let fd = (table.interpolate(225.0 + h).mu_g_cp - table.interpolate(225.0 - h).mu_g_cp)
+            / (2.0 * h);
+        assert!((generic.mu_g.d(0) - fd).abs() < 1e-9);
+        assert!((table.d_bg_d_p(225.0) - generic.bg.d(0)).abs() < 1e-12);
     }
 }
