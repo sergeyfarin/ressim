@@ -24,6 +24,20 @@ const VOLUME_BALANCE_PRESSURE_TOLERANCE_BAR: f64 = 1e-4;
 const VOLUME_BALANCE_MIN_COMPRESSIBILITY: f64 = 1e-7;
 /// Converged when every implicit rate well meets its target to this rate [m³/day].
 const VOLUME_BALANCE_RATE_TOLERANCE_M3_DAY: f64 = 1e-6;
+/// Largest change in a cell's dissolved-gas ratio one substep may make, as a fraction of the
+/// oil's saturated Rs at the cell's pressure (#44).
+///
+/// Transport is explicit, so a substep produces oil at the Rs it started with. Below the bubble
+/// point Rs falls with pressure, and a substep that crosses it overstates the solution gas it
+/// produces. None of the other limits sees this: liberated gas is immobile until it reaches the
+/// critical gas saturation, so the saturation limit never trips, and a bubble-point crossing
+/// can be a few bar. On a depletion column through the bubble point, taking the whole 5-day
+/// report as one substep put cumulative gas 1.5% above the time-converged answer; this limit
+/// holds it to 0.2%.
+const MAX_RS_RELATIVE_CHANGE_PER_STEP: f64 = 0.05;
+/// Floor on the Rs [Sm³/Sm³] the change above is measured against, so nearly dead oil is not
+/// held to a vanishing absolute change.
+const RS_CHANGE_REFERENCE_FLOOR_M3M3: f64 = 1.0;
 
 /// Per-cell component changes over one substep, fluxes and wells included.
 #[derive(Clone, Debug, PartialEq)]
@@ -67,7 +81,7 @@ pub(crate) struct PressureStep {
     pub(crate) well_controls: Vec<Option<ResolvedWellControl>>,
     pub(crate) stable_dt_factor: f64,
     /// The part of `stable_dt_factor` that scales with dt: the saturation, well-throughput,
-    /// pressure and rate limits, without the fixed halving on a control-mode switch.
+    /// dissolved-gas, pressure and rate limits, without the fixed halving on a control-mode switch.
     pub(crate) change_factor: f64,
     /// Every linear solve converged and, in three-phase mode, so did the volume balance.
     pub(crate) converged: bool,
@@ -392,6 +406,32 @@ impl ReservoirSimulator {
             1.0
         };
 
+        // The change in dissolved gas the flash at the end of the substep will make.
+        let mut max_rs_rel_change = 0.0_f64;
+        if self.three_phase_mode
+            && let Some(table) = &self.pvt_table
+        {
+            for idx in 0..n_cells {
+                if self.pore_volume_m3(idx) <= 0.0 {
+                    continue;
+                }
+                let old = self.cell_masses(idx);
+                let flash = self.flash_cell(idx, p_new[idx], &deltas.applied_to(idx, &old));
+                let rs_reference = table
+                    .interpolate(self.pressure[idx])
+                    .rs_m3m3
+                    .max(self.rs[idx])
+                    .max(RS_CHANGE_REFERENCE_FLOOR_M3M3);
+                max_rs_rel_change =
+                    max_rs_rel_change.max((flash.rs - self.rs[idx]).abs() / rs_reference);
+            }
+        }
+        let rs_factor = if max_rs_rel_change > MAX_RS_RELATIVE_CHANGE_PER_STEP {
+            MAX_RS_RELATIVE_CHANGE_PER_STEP / max_rs_rel_change
+        } else {
+            1.0
+        };
+
         let mut max_pressure_change = 0.0;
         for idx in 0..n_cells {
             let dp = (p_new[idx] - self.pressure[idx]).abs();
@@ -461,6 +501,7 @@ impl ReservoirSimulator {
         // The factors that scale with dt, as opposed to the fixed halving on a control switch.
         let change_factor = sat_factor
             .min(well_throughput_factor)
+            .min(rs_factor)
             .min(pressure_factor)
             .min(rate_factor);
         let stable_dt_factor = change_factor

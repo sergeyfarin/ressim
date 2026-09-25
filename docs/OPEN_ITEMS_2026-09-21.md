@@ -162,6 +162,16 @@ eight small-direct decks. These were deliberately left out of the first version:
   cost several MB of reference fields in the repository. Not worth it while the gate takes 20 s
   locally.
 
+## 10. IMPES dissolved-gas limit is a constant, not a stability parameter (2026-09-25, #44)
+
+IMPES now cuts a substep whose flash would change any cell's Rs by more than 5% of the saturated
+Rs at the cell's pressure (`MAX_RS_RELATIVE_CHANGE_PER_STEP` in `impes/pressure.rs`). The other
+three limits (saturation, pressure, well rate) are set through `setStabilityParams`. This one was
+left out of it on purpose: a fourth argument changes the worker payload, the Python binding and
+every caller, and no scenario or user needs to tune it. It binds only on bo-1d among the eight
+small-direct decks and leaves the `dep_*` scenario tests unchanged. Close by adding it to
+`setStabilityParams` if a scenario ever needs a looser or tighter value.
+
 ## Closed this session, for the record
 
 - The import gates were blind to workspace package specifiers, so a cycle spanning two packages

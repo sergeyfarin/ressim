@@ -10,6 +10,7 @@
 
 use crate::ReservoirSimulator;
 use crate::pvt::{PvtRow, PvtTable};
+use crate::reporting::TimePointRates;
 
 const COLUMN_LENGTH_M: f64 = 1000.0;
 const COLUMN_WIDTH_M: f64 = 200.0;
@@ -300,15 +301,20 @@ fn physics_depletion_grid_convergence_fim() {
     );
 }
 
-/// Cumulative stock-tank oil production over the whole history [Sm³].
-fn cumulative_oil_sm3(sim: &ReservoirSimulator) -> f64 {
+/// Cumulative production of one history rate over the whole history [Sm³].
+fn cumulative_sm3(sim: &ReservoirSimulator, rate: fn(&TimePointRates) -> f64) -> f64 {
     let mut previous_time = 0.0;
     let mut cumulative = 0.0;
     for point in &sim.rate_history {
-        cumulative += point.total_production_oil * (point.time - previous_time);
+        cumulative += rate(point) * (point.time - previous_time);
         previous_time = point.time;
     }
     cumulative
+}
+
+/// Cumulative stock-tank oil production over the whole history [Sm³].
+fn cumulative_oil_sm3(sim: &ReservoirSimulator) -> f64 {
+    cumulative_sm3(sim, |point| point.total_production_oil)
 }
 
 /// #11/#37: IMPES and FIM agree on the depletion column, and IMPES conserves oil.
@@ -360,6 +366,49 @@ fn physics_depletion_impes_matches_fim_and_conserves_oil() {
         "IMPES Sg {:.6} vs FIM {:.6}",
         impes.sat_gas,
         fim.sat_gas
+    );
+}
+
+/// #44: IMPES's depletion answer does not depend on the report step.
+///
+/// Transport is explicit, so a substep produces oil at the Rs it started with. No other limit
+/// cut the step as cells crossed the bubble point (liberated gas stays below the critical
+/// saturation), so IMPES took each 5-day report as one substep and put cumulative gas 1.5%
+/// above its own answer at 0.5-day reports. The dissolved-gas change limit holds it to 0.05%.
+#[test]
+fn physics_depletion_impes_gas_production_is_independent_of_report_step() {
+    const REFINEMENT: usize = 10;
+    let nx = 10;
+    let mut coarse = make_black_oil_depletion_column_sim(nx, false);
+    for _ in 0..STEPS {
+        coarse.step(DT_DAYS);
+    }
+    let mut fine = make_black_oil_depletion_column_sim(nx, false);
+    for _ in 0..STEPS * REFINEMENT {
+        fine.step(DT_DAYS / REFINEMENT as f64);
+    }
+    for sim in [&coarse, &fine] {
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "{}",
+            sim.last_solver_warning
+        );
+    }
+
+    let gas = |sim: &ReservoirSimulator| cumulative_sm3(sim, |point| point.total_production_gas);
+    let (coarse_gas, fine_gas) = (gas(&coarse), gas(&fine));
+    let gap = (coarse_gas - fine_gas).abs() / fine_gas;
+    println!(
+        "FGPT {coarse_gas:.1} Sm3 over {} substeps at {DT_DAYS} d reports, {fine_gas:.1} Sm3 over {} at {} d: {:.3}%",
+        coarse.rate_history.len(),
+        fine.rate_history.len(),
+        DT_DAYS / REFINEMENT as f64,
+        100.0 * gap
+    );
+    assert!(
+        gap <= 0.005,
+        "cumulative gas moves {:.2}% between 5-day and 0.5-day reports",
+        100.0 * gap
     );
 }
 
