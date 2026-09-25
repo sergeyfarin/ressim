@@ -51,6 +51,25 @@
    "status": "explained",
    "ref": "crates/ressim-py/parity/compare_native.py, TOL",
    "note": "Same source compiled for two targets; the 1e-9 band is a floating-point courtesy, not a tolerance budget. The measured ~1e-12 is the expected size."
+  },
+  {
+   "section": "jutul",
+   "case": "dep-pvt-*",
+   "metric": [
+    "jutul_vs_flow.final_FGPR_rel_err",
+    "fim_vs_jutul.final_FGPR_rel_err"
+   ],
+   "status": "tracked",
+   "ref": "#55",
+   "note": "Gas rate spreads across all three simulators on the PVT-risk decks (FIM between JutulDarcy and Flow), while oil agrees exactly: consistent with differing PVT table-edge conventions (#35), not yet shown."
+  },
+  {
+   "section": "jutul",
+   "case": "ow-1d-96",
+   "metric": "fim_vs_jutul.final_FOPR_rel_err",
+   "status": "tracked",
+   "ref": "#55",
+   "note": "FIM's end-of-run oil rate differs from JutulDarcy while JutulDarcy and Flow agree; cumulative oil agrees with Flow to 0.05 %."
   }
  ]
 }

@@ -15,7 +15,8 @@ set -euo pipefail
 # long-horizon FIM cases and the compositional comparisons against committed flowexp_comp fixtures.
 # `full` (the default) adds everything that runs OPM Flow: the cross-solver scorecard, SPE1 against
 # Flow on the same grid, the Flow column of the depletion table, and the check that the
-# compositional fixtures still reproduce from flowexp_comp. A missing simulator is reported, never
+# compositional fixtures still reproduce from flowexp_comp. With Julia 1.12 (`juliaup add 1.12`)
+# it also runs JutulDarcy, a second independent simulator, on the same decks (tools/jutul). A missing simulator is reported, never
 # passed over in silence; a section run without one keeps its previous records on `update`.
 #
 # `update` refuses a dirty tree: a baseline has to name the commit it was measured on (AGENTS.md).
@@ -58,6 +59,16 @@ have_flow=""
 if [ "$tier" = full ] && command -v flow >/dev/null 2>&1 && python3 -c 'import opm.io' 2>/dev/null; then
     have_flow="$(flow --version 2>/dev/null | head -1)"
 fi
+# JutulDarcy, the second simulator, needs Julia 1.12 (tools/jutul/Project.toml).
+julia_cmd=()
+if [ "$tier" = full ]; then
+    for candidate in "${JULIA:-}" julia "$HOME/.juliaup/bin/julia"; do
+        [ -n "$candidate" ] && command -v "$candidate" >/dev/null 2>&1 || continue
+        if "$candidate" +1.12 --version >/dev/null 2>&1; then julia_cmd=("$candidate" +1.12); break; fi
+    done
+fi
+have_julia=""
+[ ${#julia_cmd[@]} -gt 0 ] && have_julia="$("${julia_cmd[@]}" --version)"
 flowexp_comp="${FLOWEXP_COMP:-$(cd "$repo_root/.." && pwd)/ressim-opm-build/opm-simulators/build/bin/flowexp_comp}"
 
 rm -rf "$run_dir"
@@ -143,7 +154,7 @@ if wanted three_phase; then
     cargo_bench -- --include-ignored --exact \
         tests::three_phase_acceptance::three_phase_acceptance_error_replay \
         tests::three_phase_acceptance::three_phase_gas_injection_matches_opm_flow_twin || rc=$?
-    ran_or_failed three_phase "$cmd" "$rc" "" ""
+    ran_or_failed three_phase "$cmd" "$rc" "" "$([ -n "$have_julia" ] && [ -n "$have_flow" ] || echo jutul)"
 fi
 
 # The cross-solver run comes before the depletion column, whose Flow values are the small-direct
@@ -191,6 +202,36 @@ EOF
         ran_or_failed depletion "$cmd; small-direct bo-1d-10/40 Flow output" "$rc" "" "" "flow=$have_flow"
     else
         ran_or_failed depletion "$cmd" "$rc" "" flow
+    fi
+fi
+
+# JutulDarcy on the small-direct decks (compared with the cross-solver run's Flow and FIM output)
+# and on the gas_drive deck (series, compared in benchmarks.py with the ResSim and Flow series the
+# Rust test records). Not SPE1: JutulDarcy ignores DRSDT, so it cannot run Case 1.
+if wanted jutul || wanted three_phase; then
+    if [ -n "$have_julia" ] && [ -n "$have_flow" ]; then
+        echo "== jutul"
+        decks="$run_dir/jutul-decks"
+        mkdir -p "$decks/gas_drive"
+        python3 -c "import sys; sys.path.insert(0, '$repo_root/tools/opm_flow')
+from opm_flow_tool.cases import GAS_DRIVE
+open('$decks/gas_drive/CASE.DATA', 'w').write(GAS_DRIVE.deck)"
+        specs=()
+        for d in "$repo_root"/opm/reference-decks/small-direct/*/CASE.DATA; do
+            specs+=("$(basename "$(dirname "$d")")=$d")
+        done
+        specs+=("gas_drive=$decks/gas_drive/CASE.DATA")
+        rc=0
+        "${julia_cmd[@]}" --project="$repo_root/tools/jutul" "$repo_root/tools/jutul/run_decks.jl" \
+            "$run_dir/jutul" "${specs[@]}" 2>&1 | grep -E '^jutul ' || rc=$?
+        python3 "$repo_root/tools/jutul/compare_jutul.py" --jutul-dir "$run_dir/jutul" \
+            --cross-dir "$cross_out" --records "$run_dir/records.jsonl" || rc=$?
+        jutul_version="$(python3 -c "import json,glob; print(json.load(open(sorted(glob.glob('$run_dir/jutul/*.json'))[0]))['jutuldarcy'])" 2>/dev/null || echo unknown)"
+        wanted jutul && ran_or_failed jutul "julia +1.12 --project=tools/jutul tools/jutul/run_decks.jl; python3 tools/jutul/compare_jutul.py" \
+            "$rc" "" "" "flow=$have_flow" "jutuldarcy=$jutul_version" "julia=$have_julia"
+    else
+        wanted jutul && status jutul skipped "tools/jutul/run_decks.jl" \
+            "needs Julia 1.12 and OPM Flow (tier $tier): $([ -n "$have_julia" ] || echo 'no julia +1.12') $([ -n "$have_flow" ] || echo 'no flow')" ""
     fi
 fi
 

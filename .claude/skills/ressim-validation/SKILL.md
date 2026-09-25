@@ -180,10 +180,13 @@ Benchmark records — `docs/BENCHMARKS.md` is generated, never typed (#54):
 
 ```bash
 bash scripts/benchmarks.sh check                 # measure every section, compare with docs/benchmarks/benchmarks.json
-bash scripts/benchmarks.sh check --tier fast     # without Flow / flowexp_comp (what CI has)
+bash scripts/benchmarks.sh check --tier fast     # without Flow / flowexp_comp / JutulDarcy (what CI has)
 bash scripts/benchmarks.sh update [--only spe1]  # re-record and re-render: on a COMMITTED tree only
 bash scripts/benchmarks.sh render --check        # page in sync with its records (no runs)
 ```
+
+The full tier runs JutulDarcy (`tools/jutul`, needs `juliaup add 1.12`; ~4 min of it is Julia
+compiling on first use of each model type) as a second simulator on the same decks.
 
 `check` fails when a banded error grows by more than a tenth of its band or leaves it, or when a
 recorded measurement disappears (a renamed test, a broken producer). Every other change is listed:

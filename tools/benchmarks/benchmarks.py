@@ -49,6 +49,7 @@ SECTIONS = {
     "parity": ("Native vs wasm bindings", "Each other"),
     "fim_wasm": ("FIM convergence, long horizons", "Substeps per report step"),
     "compositional": ("Compositional, matched timestep", "OPM flowexp_comp"),
+    "jutul": ("Second simulator on the same decks", "JutulDarcy vs Flow and FIM"),
 }
 
 # The long-horizon FIM cases, in page order: (case id, preset, grid, dt [d], report steps).
@@ -64,11 +65,20 @@ FIM_WASM_CASES = [
 ]
 
 # Units whose values are run-to-run noise, never drift: wall time and the share of it.
-TIMING_UNITS = {"ms", "share"}
+TIMING_UNITS = {"ms", "s", "share"}
 
 # A reference simulator a record depends on, by the text of its `reference`. A section run
 # without that simulator reports the records as not produced, not as regressed.
-ORACLES = {"flow": "OPM Flow"}
+ORACLES = {"flow": "OPM Flow", "jutul": "JutulDarcy"}
+
+# Series compared per section: (ours, theirs, metric prefix, reference). gas_drive's ResSim-vs-Flow
+# gap is already graded, with bands, by its own test, so the series add only the second simulator.
+SERIES_PAIRS = {
+    # Not against JutulDarcy: it ignores DRSDT, so it cannot run SPE1 Case 1 (tools/jutul).
+    "spe1": [("ressim", "flow", "vs_flow", "OPM Flow, same grid, hand-mapped deck")],
+    "three_phase": [("ressim", "jutul", "vs_jutul", "JutulDarcy, same deck (ignores STONE2)"),
+                    ("jutul", "flow", "jutul_vs_flow", "JutulDarcy vs OPM Flow, same deck (ignores STONE2)")],
+}
 
 
 # ---- provenance -------------------------------------------------------------------------------
@@ -172,26 +182,29 @@ def slug(case: str) -> str:
 
 
 def series_comparisons(records: list[dict]) -> list[dict]:
-    """ResSim series against Flow series of the same section, case and quantity: worst gap."""
+    """Worst signed relative gap between two sources' series of the same case and quantity, for
+    the pairs in SERIES_PAIRS. A pair whose series are absent (a simulator did not run) is skipped."""
     series = {(r["section"], r["case"], r["quantity"], r["source"]): r
               for r in records if r["kind"] == "series"}
     out = []
-    for (section, case, quantity, source), ours in sorted(series.items()):
-        theirs = series.get((section, case, quantity, "flow"))
-        if source != "ressim" or theirs is None:
-            continue
-        at_flow = dict(zip(theirs["t"], theirs["v"]))
-        worst, worst_t = 0.0, None
-        for t, v in zip(ours["t"], ours["v"]):
-            ref = at_flow.get(t)
-            if ref is None or abs(ref) < 1e-12:
+    for section, case, quantity in sorted({k[:3] for k in series}):
+        for ours_source, theirs_source, prefix, reference in SERIES_PAIRS.get(section, []):
+            ours = series.get((section, case, quantity, ours_source))
+            theirs = series.get((section, case, quantity, theirs_source))
+            if ours is None or theirs is None:
                 continue
-            gap = (v - ref) / abs(ref)
-            if abs(gap) > abs(worst):
-                worst, worst_t = gap, t
-        out.append(metric(section, case, f"vs_flow.{quantity}_rel_err", worst, unit="frac",
-                          reference="OPM Flow, same grid, hand-mapped deck", same_model=True,
-                          at="" if worst_t is None else f"t={worst_t:g} d"))
+            at_ref = dict(zip(theirs["t"], theirs["v"]))
+            worst, worst_t = 0.0, None
+            for t, v in zip(ours["t"], ours["v"]):
+                ref = at_ref.get(t)
+                if ref is None or abs(ref) < 1e-12:
+                    continue
+                gap = (v - ref) / abs(ref)
+                if abs(gap) > abs(worst):
+                    worst, worst_t = gap, t
+            out.append(metric(section, case, f"{prefix}.{quantity}_rel_err", worst, unit="frac",
+                              reference=reference, same_model=True,
+                              at="" if worst_t is None else f"t={worst_t:g} d"))
     return out
 
 
@@ -424,11 +437,14 @@ def render_spe1(s: Section) -> str:
     for case in ("10x10x3", "20x20x3"):
         rows.append([case] + [
             pct(s.value(case, f"published_{q}_rel_err")) for q in ("pressure", "oil_rate", "gor")
-        ] + [signed_pct(s.value(case, f"vs_flow.{q}_rel_err"), 2) for q in ("FPR", "FOPR", "WGOR")])
-    out += ["Characterization, no band: the published 10×10×3 series, and OPM Flow run on the same "
-            "grid (`tools/opm_flow/spe1_refinement_oracle.py`, 90-day checkpoints, signed "
-            "ResSim − Flow):", "",
-            table(["Grid", "vs published: p", "q_o", "GOR", "vs Flow: p", "q_o", "GOR"], rows)]
+        ])
+    out += ["Characterization against the published 10×10×3 series (no band):", "",
+            table(["Grid", "p", "q_o", "GOR"], rows), ""]
+    rows = [[case] + [signed_pct(s.value(case, f"vs_flow.{q}_rel_err"), 2) for q in ("FPR", "FOPR", "WGOR")]
+            for case in ("10x10x3", "20x20x3")]
+    out += ["Against OPM Flow run on the same grid (`tools/opm_flow/spe1_refinement_oracle.py`, "
+            "90-day checkpoints, worst signed ResSim − Flow):", "",
+            table(["Grid", "p", "q_o", "GOR"], rows)]
     return "\n".join(out)
 
 
@@ -446,6 +462,13 @@ def render_three_phase(s: Section) -> str:
     return "\n".join([
         s.stamp(), "", "**Solution gas drive** (`gas_drive`, 20 cells, FIM, 60 × 10 d; signed ResSim − Flow):", "",
         table(["Criterion", "Band", "Worst measured"], criteria_rows(s, "gas_drive", labels, signed=True)), "",
+        "Against JutulDarcy on the same deck (worst signed difference over the 11 checkpoints; "
+        "JutulDarcy ignores `STONE2`):", "",
+        table(["Pair", "p", "q_o", "GOR"],
+              [[label] + [signed_pct(s.value("gas_drive", f"{prefix}.{q}_rel_err"), 2)
+                          for q in ("FPR", "FOPR", "FGOR")]
+               for prefix, label in (("vs_jutul", "ResSim − JutulDarcy"),
+                                     ("jutul_vs_flow", "JutulDarcy − Flow"))]), "",
         "**1D gas injection** (`gas_injection`'s Flow twin, `small-direct/go-1d-50`; signed):", "",
         table(["Criterion", "Band", "Worst measured"],
               criteria_rows(s, "gas_injection (go-1d-50)", twin, signed=True)), "",
@@ -494,6 +517,25 @@ def render_cross_solver(s: Section) -> str:
     return "\n".join([s.stamp(), "", table(
         ["Case", "Simulator", "Substeps", "Newton", "Retries / cuts", "Wall ms", "max \\|Δp\\| bar",
          "max \\|ΔSw\\|", "max \\|ΔSg\\|", "Cumulatives vs Flow"], rows)])
+
+
+def render_jutul(s: Section) -> str:
+    rows = []
+    for case in s.cases():
+        ref = (s.get(case, "wall_s") or {}).get("reference", "")
+        ignored = ref.split("ignores ", 1)[1] if "ignores " in ref else "—"
+
+        def rates(prefix: str) -> str:
+            return ", ".join(f"{r['metric'].split('final_', 1)[1][:-len('_rel_err')]} "
+                             f"{signed_pct(r['value'], 2)}"
+                             for r in s.data["records"]
+                             if r["case"] == case and r["metric"].startswith(f"{prefix}.final_"))
+        rows.append([case, ignored, g(s.value(case, "jutul_vs_flow.worst.p")),
+                     g(s.value(case, "jutul_vs_flow.worst.sg") or s.value(case, "jutul_vs_flow.worst.sw"), 2),
+                     rates("jutul_vs_flow"), g(s.value(case, "fim_vs_jutul.worst.p")), rates("fim_vs_jutul")])
+    return "\n".join([s.stamp(), "", table(
+        ["Deck", "JutulDarcy ignores", "Jutul − Flow: max \\|Δp\\| bar", "max \\|ΔS\\|",
+         "final rates", "FIM − Jutul: max \\|Δp\\| bar", "final rates"], rows)])
 
 
 def render_parity(s: Section) -> str:
@@ -673,9 +715,15 @@ SCENARIO_SECTIONS = {
     "wf_bl1d": ["buckley"],
     "spe1_gas_injection": ["spe1"],
     "gas_drive": ["three_phase"],
-    "gas_injection": ["three_phase", "cross_solver"],
-    "dep_pvt": ["cross_solver"],
+    "gas_injection": ["three_phase", "cross_solver", "jutul"],
+    "dep_pvt": ["cross_solver", "jutul"],
     "comp_co2_1d": ["compositional"],
+}
+# The records, by (section, case pattern), that grade a scenario against a second simulator.
+SCENARIO_SECOND_SIMULATOR = {
+    "gas_drive": [("three_phase", "gas_drive")],
+    "gas_injection": [("jutul", "go-1d-50")],
+    "dep_pvt": [("jutul", "dep-pvt-*")],
 }
 REFINEMENT_DIMENSION = re.compile(r"grid|refine|resolution|timestep|time_truncation")
 
@@ -708,6 +756,14 @@ def scenario_catalog() -> list[dict]:
     return out
 
 
+def second_simulator(doc: dict, scenario: str) -> str:
+    for section, pattern in SCENARIO_SECOND_SIMULATOR.get(scenario, []):
+        records = doc["sections"].get(section, {}).get("records", [])
+        if any(fnmatch.fnmatchcase(r["case"], pattern) and "JutulDarcy" in r["reference"] for r in records):
+            return "JutulDarcy"
+    return "—"
+
+
 def render_coverage(doc: dict) -> str:
     rows, gaps, untested = [], [], []
     for c in scenario_catalog():
@@ -722,7 +778,7 @@ def render_coverage(doc: dict) -> str:
             "yes" if c["flow"] else "—",
             ", ".join(f"§{list(SECTIONS).index(s) + 1}" for s in c["sections"]) or "—",
             ", ".join(c["refinement"]) or "—",
-            "—",  # a second simulator: none wired in yet (#54 phase 3)
+            second_simulator(doc, c["key"]),
             "yes" if c["tested"] else "**none**",
         ])
     return "\n".join([
@@ -731,7 +787,8 @@ def render_coverage(doc: dict) -> str:
         "",
         f"**{len(gaps)} scenario(s) have no numerical reference** (neither a Flow artifact nor an engine "
         f"benchmark), only an analytical one or none: {', '.join(f'`{k}`' for k in gaps) or 'none'}. "
-        "No scenario has a second independent simulator yet. "
+        f"{sum(1 for c in scenario_catalog() if second_simulator(doc, c['key']) != '—')} scenario(s) "
+        "are graded against a second independent simulator. "
         f"{len(untested)} scenario(s) have no test file of their own, only the catalog-wide contract "
         f"tests: {', '.join(f'`{k}`' for k in untested) or 'none'}.",
     ])
@@ -743,6 +800,7 @@ RENDERERS = {
     "three_phase": render_three_phase,
     "depletion": render_depletion,
     "cross_solver": render_cross_solver,
+    "jutul": render_jutul,
     "parity": render_parity,
     "fim_wasm": render_fim_wasm,
     "compositional": render_compositional,

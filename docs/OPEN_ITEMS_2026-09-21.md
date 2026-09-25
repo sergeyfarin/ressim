@@ -149,12 +149,10 @@ eight small-direct decks. These were deliberately left out of the first version:
   `opm_small_direct.rs` does, then adding them as cases.
 - **The wasm target.** The harness runs natively. Native/wasm parity is
   `validate-native-binding.sh`'s job and has held to ~1e-13 since FIM-DIRECT-001.
-- **A second independent simulator.** Flow is the only external oracle, so a Flow defect or a
-  shared-convention error would go unnoticed. The recommendation is JutulDarcy.jl, which reads the
-  same `CASE.DATA` decks unchanged. It is not wired in yet. Julia 1.13 is installed
-  (`~/.juliaup/bin/julia`) and JutulDarcy is in the package cache but not the default environment,
-  so what remains is a pinned project under `tools/`. See #22. (The first version of this entry
-  said there was no Julia here; that was wrong.)
+- **A second independent simulator** is wired in since #54 phase 3: JutulDarcy runs the
+  small-direct decks and `gas_drive` in `benchmarks.sh`'s full tier (`BENCHMARKS.md` §9). What it
+  does not cover, deliberately: SPE1 (it ignores `DRSDT`, so it runs Case 2 physics), cumulatives
+  (its summary integrates end-of-step rates over report intervals), and compositional cases.
 - **SPE3 / SPE5.** They cannot run in ResSim yet: too many components, no compositional water
   phase, 1-D only, slow rate control, no schedules. The engine roadmap is #52 (#45–#51).
 - **CI.** CI has no Flow. A committed Flow-output cache would let CI run the check, but it would

@@ -43,6 +43,7 @@ Per section, the banded criterion closest to its band, and how much of the band 
 | Native vs wasm bindings | Each other | favorable-mobility (IMPES): rates_max_abs_diff 1.25e-10 abs | 1e-09 abs | 12% | `21f25f8` |
 | FIM convergence, long horizons | Substeps per report step | no banded criterion | — | — | `21f25f8` |
 | Compositional, matched timestep | OPM flowexp_comp | 1D plain: worst_pressure_diff 1.68 bar | 2 bar | 84% | `21f25f8` |
+| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | — |
 <!-- /GENERATED:summary -->
 
 ## Signals
@@ -93,6 +94,11 @@ together with everything below, and `benchmarks.sh check` warns about it.
 | depletion | 2 of 8 | — | FIM: pressure_finest_pair_gap | 15.5% | — |
 | parity | 0 of 15 | 15 | buckley-fim (FIM): rates_max_abs_diff | < 0.1 % | explained: crates/ressim-py/parity/compare_native.py, TOL |
 | compositional | 4 of 8 | — | 1D skin 60: cum_injection_rel_err | 2.7% | — |
+
+**Stale explanations** — entries in `explained.json` that match no record:
+
+- jutul / dep-pvt-* / ['jutul_vs_flow.final_FGPR_rel_err', 'fim_vs_jutul.final_FGPR_rel_err'] (#55)
+- jutul / ow-1d-96 / fim_vs_jutul.final_FOPR_rel_err (#55)
 <!-- /GENERATED:signals -->
 
 ## 1. Buckley–Leverett breakthrough (analytical)
@@ -150,12 +156,19 @@ Against the published series:
 | Oil material-balance drift | 1.0 % | 4.4e-05 % (t=3650 d) |
 | Gas material-balance drift | 1.0 % | 1.7e-04 % (t=3650 d) |
 
-Characterization, no band: the published 10×10×3 series, and OPM Flow run on the same grid (`tools/opm_flow/spe1_refinement_oracle.py`, 90-day checkpoints, signed ResSim − Flow):
+Characterization against the published 10×10×3 series (no band):
 
-| Grid | vs published: p | q_o | GOR | vs Flow: p | q_o | GOR |
-|---|---|---|---|---|---|---|
-| 10x10x3 | 1.60 % | 3.15 % | 4.31 % | -3.06 % | +2.73 % | +7.13 % |
-| 20x20x3 | 2.71 % | 6.33 % | 31.09 % | -3.03 % | +2.81 % | +7.17 % |
+| Grid | p | q_o | GOR |
+|---|---|---|---|
+| 10x10x3 | 1.60 % | 3.15 % | 4.31 % |
+| 20x20x3 | 2.71 % | 6.33 % | 31.09 % |
+
+Against OPM Flow run on the same grid (`tools/opm_flow/spe1_refinement_oracle.py`, 90-day checkpoints, worst signed ResSim − Flow):
+
+| Grid | p | q_o | GOR |
+|---|---|---|---|
+| 10x10x3 | -3.06 % | +2.73 % | +7.13 % |
+| 20x20x3 | -3.03 % | +2.81 % | +7.17 % |
 <!-- /GENERATED:spe1 -->
 
 Areal refinement (20×20×3) is a characterization, not a criterion: against the 10×10×3 published
@@ -192,6 +205,13 @@ bias is inside its band but unexplained (`THREE_PHASE_VALIDATION.md` §6).
 | Producer oil rate while reference ≥ 10 Sm³/d | 10.0 % | +4.609 % (t=20 d) |
 | Oil material-balance drift | 1.0 % | +6.3e-06 % (t=500 d) |
 | Gas material-balance drift | 1.0 % | +8.2e-05 % (t=500 d) |
+
+Against JutulDarcy on the same deck (worst signed difference over the 11 checkpoints; JutulDarcy ignores `STONE2`):
+
+| Pair | p | q_o | GOR |
+|---|---|---|---|
+| ResSim − JutulDarcy | — | — | — |
+| JutulDarcy − Flow | — | — | — |
 
 **1D gas injection** (`gas_injection`'s Flow twin, `small-direct/go-1d-50`; signed):
 
@@ -379,6 +399,37 @@ chart sourcing, #29).
 bash scripts/validate-compositional.sh reference   # skips with a note without flowexp_comp
 ```
 
+## 9. Second simulator: JutulDarcy
+
+[JutulDarcy](https://github.com/sintefmath/JutulDarcy.jl), an independent implementation in Julia,
+runs the same decks as Flow: the eight small-direct decks and `gas_drive`. When two independent
+codes agree and ResSim does not, the difference is ResSim's; when ResSim sits between them, the
+reference itself is uncertain. The pinned project is `tools/jutul` (JutulDarcy 0.3.7 on Julia
+1.12; it fails on 1.13). What it can and cannot referee:
+
+- **State and rates only.** JutulDarcy's summary cumulatives are the end-of-step rate times the
+  report interval, not an integral over its internal substeps, so they are wrong wherever rates
+  change within a report step. Compared: cell pressure and saturation fields at every report
+  step, end-of-run rates, and for `gas_drive` the FPR/FOPR/FGOR series (§3).
+- **Not SPE1.** It ignores `DRSDT`, so it cannot run Case 1; it would run Case 2 physics. The
+  bo-1d decks also set `DRSDT` and are shown, but not flagged as same-model gaps.
+- **`STONE2` is ignored.** Every deck that sets it has water at connate saturation, where
+  three-phase oil relative permeability reduces to the gas-oil table either way.
+- A one-line shim in `run_decks.jl` works around a 0.3.7 bug that fails any live-oil deck
+  starting with free gas (`gas_drive`); it changes no physics.
+
+<!-- GENERATED:jutul -->
+*Not measured yet.*
+
+| Deck | JutulDarcy ignores | Jutul − Flow: max \|Δp\| bar | max \|ΔS\| | final rates | FIM − Jutul: max \|Δp\| bar | final rates |
+|---|---|---|---|---|---|---|
+<!-- /GENERATED:jutul -->
+
+```bash
+juliaup add 1.12   # once
+julia +1.12 --project=tools/jutul tools/jutul/run_decks.jl /tmp/jutul bo-1d-10=opm/reference-decks/small-direct/bo-1d-10/CASE.DATA
+```
+
 ## Scenario-level references
 
 Most scenarios grade their own analytical or Flow reference in
@@ -404,10 +455,10 @@ time step, which is where discretization error shows.
 | `dep_decline` | depletion | — | — | timestep, grid_refinement | — | yes |
 | `dep_gas_pz` | gas-material-balance | yes | — | — | — | yes |
 | `dep_pss` | well-test | — | — | — | — | yes |
-| `dep_pvt` (withheld) | — | yes | §5 | — | — | yes |
+| `dep_pvt` (withheld) | — | yes | §5, §9 | — | — | yes |
 | `dep_welltest` | well-test | — | — | — | — | yes |
 | `gas_drive` | — | yes | §3 | — | — | yes |
-| `gas_injection` | gas-oil-bl | yes | §3, §5 | grid | — | yes |
+| `gas_injection` | gas-oil-bl | yes | §3, §5, §9 | grid | — | yes |
 | `spe1_gas_injection` | digitized-reference | yes | §2 | — | — | **none** |
 | `sweep_areal` | sweep | — | — | grid_resolution | — | **none** |
 | `sweep_combined` | sweep | — | — | — | — | **none** |
@@ -419,16 +470,15 @@ time step, which is where discretization error shows.
 | `wf_gravity_stability` | buckley-leverett | — | — | resolution | — | yes |
 | `wf_numerics` | buckley-leverett | yes | — | grid_refinement, time_truncation | — | yes |
 
-**10 scenario(s) have no numerical reference** (neither a Flow artifact nor an engine benchmark), only an analytical one or none: `dep_arps`, `dep_decline`, `dep_pss`, `dep_welltest`, `sweep_areal`, `sweep_combined`, `sweep_crossflow`, `sweep_vertical`, `wf_capillary`, `wf_gravity_stability`. No scenario has a second independent simulator yet. 3 scenario(s) have no test file of their own, only the catalog-wide contract tests: `spe1_gas_injection`, `sweep_areal`, `sweep_combined`.
+**10 scenario(s) have no numerical reference** (neither a Flow artifact nor an engine benchmark), only an analytical one or none: `dep_arps`, `dep_decline`, `dep_pss`, `dep_welltest`, `sweep_areal`, `sweep_combined`, `sweep_crossflow`, `sweep_vertical`, `wf_capillary`, `wf_gravity_stability`. 0 scenario(s) are graded against a second independent simulator. 3 scenario(s) have no test file of their own, only the catalog-wide contract tests: `spe1_gas_injection`, `sweep_areal`, `sweep_combined`.
 <!-- /GENERATED:coverage -->
 
 ## Not benchmarked
 
 - No three-phase analytical reference. Three-phase grading is numerical (Flow, SPE1).
 - No SPE case beyond SPE1 (SPE3, SPE5 and SPE9 are not run; the compositional roadmap is #52).
-- Flow is the only external simulator. A second one (JutulDarcy) is not wired in
-  (`OPEN_ITEMS_2026-09-21.md` §9, #54 phase 3). JutulDarcy 0.3.7 does not run under the installed
-  Julia 1.13 (`iteration is deliberately unsupported for CartesianIndex`); it needs Julia 1.12.
+- JutulDarcy (§9) is the second simulator for the small-direct decks and `gas_drive` only: not
+  SPE1 (it ignores `DRSDT`), not compositional, and not for cumulatives.
 - The large wasm presets (`opm/reference-decks/{gas-rate,water-*}`) are hand-mapped decks and are
   not on the cross-solver scorecard. Their history is in `SOLVER_COMPARISON_SUMMARY.md`.
 

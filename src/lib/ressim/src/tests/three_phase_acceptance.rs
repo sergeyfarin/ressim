@@ -299,9 +299,15 @@ fn three_phase_acceptance_error_replay() {
 
     // Signed (ResSim minus Flow), so a one-sided bias shows as one.
     let mut worst = [Worst::new(); 6];
+    // The checkpoint series, for the aggregator to compare against a second simulator (#54).
+    let mut series: [Vec<f64>; 4] = Default::default();
     for (t_days, ref_pressure, ref_oil_rate, ref_cumulative_oil, ref_gor) in OPM_GAS_DRIVE {
         step_to(&mut sim, t_days, 10.0);
         let point = sim.rate_history.last().expect("rate history");
+        series[0].push(point.avg_reservoir_pressure);
+        series[1].push(point.total_production_oil);
+        series[2].push(cumulative_oil_sc(&sim));
+        series[3].push(point.producing_gor);
         worst[0].update(
             (point.avg_reservoir_pressure - ref_pressure) / ref_pressure,
             t_days,
@@ -366,6 +372,32 @@ fn three_phase_acceptance_error_replay() {
             same_model: true,
             at: &found.at(),
         });
+    }
+
+    let times: Vec<f64> = OPM_GAS_DRIVE.iter().map(|row| row.0).collect();
+    let flow: [Vec<f64>; 4] = [
+        OPM_GAS_DRIVE.iter().map(|row| row.1).collect(),
+        OPM_GAS_DRIVE.iter().map(|row| row.2).collect(),
+        OPM_GAS_DRIVE.iter().map(|row| row.3).collect(),
+        OPM_GAS_DRIVE.iter().map(|row| row.4).collect(),
+    ];
+    for (index, quantity) in ["FPR", "FOPR", "FOPT", "FGOR"].into_iter().enumerate() {
+        bench_record::series(
+            "three_phase",
+            "gas_drive",
+            "ressim",
+            quantity,
+            &times,
+            &series[index],
+        );
+        bench_record::series(
+            "three_phase",
+            "gas_drive",
+            "flow",
+            quantity,
+            &times,
+            &flow[index],
+        );
     }
 
     let breakthrough_coarse = gas_breakthrough_time_days(20, 1.0, 40.0);
