@@ -111,18 +111,21 @@ Flow on both grids. Flow shows the same refinement effect: an earlier, sharper G
 
 | producing GOR [m³/m³] | 630 d | 720 d | 810 d | 1080 d | 1800 d | 3600 d |
 |---|---|---|---|---|---|---|
-| Flow 10×10 | 220.9 | 347.4 | 649.6 | 1305.6 | 1904.7 | 4148.2 |
+| Flow 10×10 | 220.5 | 360.3 | 659.3 | 1306.6 | 1850.6 | 3750.5 |
 | ResSim 10×10 | 221.4 | 368.3 | 695.9 | 1321.9 | 1871.2 | 3894.8 |
-| Flow 20×20 | 236.1 | 443.7 | 733.9 | 1328.9 | 1904.1 | 3997.1 |
+| Flow 20×20 | 238.9 | 450.0 | 745.7 | 1325.7 | 1848.7 | 3606.6 |
 | ResSim 20×20 | 241.7 | 475.5 | 781.9 | 1340.0 | 1881.5 | 3729.0 |
 
-ResSim tracks Flow equally well on both grids. The worst difference over 90–3600 d at 90-day
-checkpoints is pressure 3.06 % / 3.03 %, oil rate 2.73 % / 2.81 % and GOR 7.13 % / 7.17 %
-(10×10 / 20×20). Refinement therefore does not open a gap to an independent simulator. The 31 %
+ResSim tracks Flow equally well on both grids, and refinement does not open a gap to an
+independent simulator. The worst differences at 90-day checkpoints are generated in
+`BENCHMARKS.md` §2. The Flow rows above were re-measured on 2026-09-25, after #55 gave the deck
+the `ROCK`, full saturation tables and 621.54 bar PVDG row of `SPE1CASE1.DATA`. With those, it
+matches the published series to 0.45 % in pressure and 1.9 % in GOR, down from 3.0 % and 10.5 %. The 31 %
 GOR "error" at 730 d is the sharper front measured against a coarser grid, and stays a
 characterization, not a criterion.
 
-**Update 2026-09-25 (#55): that 3 % / 7 % gap to Flow is the hand-written deck's.** Written from
+**Update 2026-09-25 (#55): that 3 % / 7 % gap to Flow was the hand-written deck's** (since fixed,
+see above). Written from
 `make_spe1_acceptance_sim` itself (`opm/reference-decks/small-direct/spe1-10x10x3`), the same
 10×10×3 case agrees with Flow to pressure −0.15 %, oil rate −0.53 %, GOR −0.80 % and cumulative
 oil +0.04 %. The hand deck omits `ROCK` (Flow ran incompressible rock), which alone accounts for
