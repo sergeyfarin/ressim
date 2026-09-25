@@ -523,6 +523,9 @@ fn three_phase_gas_flood_phase_closure_holds_for_all_three_phases() {
     let mut injected_gas_sc = 0.0;
     let mut previous_time_days = 0.0;
     for _ in 0..30 {
+        // `step` records one rate point per accepted substep, so every new point is integrated;
+        // reading only the last would bill the whole step at its final substep's rate (#53).
+        let first_new_point = sim.rate_history.len();
         sim.step(1.0);
         assert!(
             sim.last_solver_warning.is_empty(),
@@ -531,9 +534,11 @@ fn three_phase_gas_flood_phase_closure_holds_for_all_three_phases() {
             sim.last_solver_warning
         );
 
+        for point in &sim.rate_history[first_new_point..] {
+            injected_gas_sc += point.total_injection.max(0.0) * (point.time - previous_time_days);
+            previous_time_days = point.time;
+        }
         let point = sim.rate_history.last().expect("rate history");
-        injected_gas_sc += point.total_injection.max(0.0) * (point.time - previous_time_days);
-        previous_time_days = point.time;
 
         for (phase, drift, denominator) in [
             ("oil", point.material_balance_error_oil_m3.abs(), stoiip_sm3),
