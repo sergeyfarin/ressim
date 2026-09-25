@@ -16,6 +16,7 @@ configure, not by what is worth checking; the gap is recorded in
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -143,6 +144,23 @@ def check_case(c: dict, reference: dict, failures: list[str]) -> None:
     )
     for note in observations:
         print(f"      {note}")
+    bench_record(name, "FIM" if c.get("fim") else "IMPES", strict, worst_cell, worst_rate, worst_grid)
+
+
+def bench_record(name: str, solver: str, strict: bool, cells: float, rates: float, grid: float) -> None:
+    """Append this case's worst differences to `$RESSIM_BENCH_OUT/records.jsonl` (#54), if set."""
+    out = os.environ.get("RESSIM_BENCH_OUT")
+    if not out:
+        return
+    Path(out).mkdir(parents=True, exist_ok=True)
+    with open(Path(out) / "records.jsonl", "a") as f:
+        for metric, value in (("cells_max_abs_diff", cells), ("rates_max_abs_diff", rates),
+                              ("grid_max_abs_diff", grid)):
+            f.write(json.dumps({
+                "kind": "metric", "section": "parity", "case": f"{name} ({solver})", "metric": metric,
+                "value": value, "band": TOL if strict else None, "unit": "abs",
+                "reference": "wasm bindings", "same_model": True, "at": "",
+            }) + "\n")
 
 
 def check_restore(c: dict, failures: list[str]) -> None:

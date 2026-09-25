@@ -15,6 +15,7 @@ Flow), like `compare_small_direct.py`:
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
@@ -54,6 +55,8 @@ def refine(deck: str) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--records", type=Path,
+                        help="append the 90-day series as benchmark records (#54) to this .jsonl")
     args = parser.parse_args()
     decks = {10: SPE1_GAS_INJECTION.deck, 20: refine(SPE1_GAS_INJECTION.deck)}
 
@@ -68,10 +71,19 @@ def main() -> None:
         )
         summary = ESmry(str(run / "CASE.SMSPEC"))
         time = np.array(summary["TIME"])
-        for t in range(90, 3651, 90):
-            i = int(np.argmin(abs(time - t)))
+        picked = [int(np.argmin(abs(time - t))) for t in range(90, 3651, 90)]
+        for i in picked:
             print(f"{nx:3d} {time[i]:7.1f} {summary['FPR'][i]:9.4f} {summary['FOPR'][i]:9.3f} "
                   f"{summary['WGOR:PROD'][i]:10.3f}")
+        if args.records:
+            with args.records.open("a") as f:
+                for quantity, key in (("FPR", "FPR"), ("FOPR", "FOPR"), ("WGOR", "WGOR:PROD")):
+                    values = np.array(summary[key])
+                    f.write(json.dumps({
+                        "kind": "series", "section": "spe1", "case": f"{nx}x{nx}x3", "source": "flow",
+                        "quantity": quantity, "t": [float(time[i]) for i in picked],
+                        "v": [float(values[i]) for i in picked],
+                    }) + "\n")
 
 
 if __name__ == "__main__":
