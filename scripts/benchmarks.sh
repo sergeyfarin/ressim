@@ -158,9 +158,9 @@ if wanted three_phase; then
 fi
 
 # The cross-solver run comes before the depletion column, whose Flow values are the small-direct
-# bo-1d decks' final reports.
+# bo-1d decks' final reports, and before JutulDarcy, which is compared with its Flow and FIM output.
 cross_out="$run_dir/cross"
-if wanted cross_solver || wanted depletion; then
+if wanted cross_solver || wanted depletion || wanted jutul; then
     if [ -n "$have_flow" ]; then
         echo "== cross_solver"
         set +e
