@@ -224,7 +224,7 @@ reference solving the same discrete model, and the commit it was measured on. Th
 <!-- GENERATED:summary -->
 | Area | Reference | Tightest criterion | Band | Band used | Largest same-model gap | Measured on |
 |---|---|---|---|---|---|---|
-| 1D waterflood breakthrough | Buckley-Leverett + Welge | BL-Case-A nx=24: breakthrough_rel_err 9.44 % | 25.0 % | 38% | — | `e1cf8e6` |
+| 1D waterflood breakthrough | Buckley-Leverett + Welge | BL-Case-A nx=24: breakthrough_rel_err 9.44 % | 15.0 % | 63% | — | `f7396a3` |
 | SPE1 Case 1, 10 years | Published SPE1 / Flow | 10x10x3: gor_rel_err 1.25 % | 12.0 % | 10% | 20x20x3: vs_flow.WGOR_rel_err +0.69 % (explained) | `e1cf8e6` |
 | Three-phase gas drive and injection | OPM Flow | gas_drive: oil_rate_rel_err 3.90 % | 8.0 % | 49% | gas_drive: vs_jutul.FOPR_rel_err +4.61 % (explained) | `e1cf8e6` |
 | Black-oil depletion column | Grid self-convergence, Flow | FIM: sat_gas_finest_pair_gap 1.20 % | 1.5 % | 80% | — | `e1cf8e6` |

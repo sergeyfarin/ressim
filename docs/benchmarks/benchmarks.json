@@ -2,7 +2,7 @@
  "sections": {
   "buckley": {
    "provenance": {
-    "commit": "e1cf8e6",
+    "commit": "f7396a3",
     "dirty": false,
     "date": "2026-09-25",
     "command": "cargo test --release --lib benchmark_buckley -- --include-ignored"
@@ -10,7 +10,7 @@
    "records": [
     {
      "at": "",
-     "band": 0.3,
+     "band": 0.15,
      "case": "BL-Case-B nx=24",
      "metric": "breakthrough_rel_err",
      "reference": "Buckley-Leverett + Welge",
@@ -40,7 +40,7 @@
     },
     {
      "at": "",
-     "band": 0.25,
+     "band": 0.15,
      "case": "BL-Case-A nx=24",
      "metric": "breakthrough_rel_err",
      "reference": "Buckley-Leverett + Welge",

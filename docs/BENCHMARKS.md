@@ -37,7 +37,7 @@ it is never the tightest criterion, and it can be the larger error (see Signals 
 <!-- GENERATED:summary -->
 | Area | Reference | Tightest criterion | Band | Band used | Largest same-model gap | Measured on |
 |---|---|---|---|---|---|---|
-| 1D waterflood breakthrough | Buckley-Leverett + Welge | BL-Case-A nx=24: breakthrough_rel_err 9.44 % | 25.0 % | 38% | — | `e1cf8e6` |
+| 1D waterflood breakthrough | Buckley-Leverett + Welge | BL-Case-A nx=24: breakthrough_rel_err 9.44 % | 15.0 % | 63% | — | `f7396a3` |
 | SPE1 Case 1, 10 years | Published SPE1 / Flow | 10x10x3: gor_rel_err 1.25 % | 12.0 % | 10% | 20x20x3: vs_flow.WGOR_rel_err +0.69 % (explained) | `e1cf8e6` |
 | Three-phase gas drive and injection | OPM Flow | gas_drive: oil_rate_rel_err 3.90 % | 8.0 % | 49% | gas_drive: vs_jutul.FOPR_rel_err +4.61 % (explained) | `e1cf8e6` |
 | Black-oil depletion column | Grid self-convergence, Flow | FIM: sat_gas_finest_pair_gap 1.20 % | 1.5 % | 80% | — | `e1cf8e6` |
@@ -95,7 +95,7 @@ commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
 
 | Section | Loose, open | Loose, explained | Loosest | Used | Status |
 |---|---|---|---|---|---|
-| buckley | 3 of 4 | — | BL-Case-B-dt0.50: report_interval_spread | 0.3% | — |
+| buckley | 2 of 4 | — | BL-Case-B-dt0.50: report_interval_spread | 0.3% | — |
 | spe1 | 6 of 6 | — | 10x10x3: plateau_rel_err | < 0.1 % | — |
 | three_phase | 5 of 9 | 2 | gas_drive: mb_drift_oil | < 0.1 % | — |
 | depletion | 2 of 8 | — | FIM: pressure_finest_pair_gap | 15.5% | — |
@@ -111,12 +111,12 @@ BHP-controlled wells, breakthrough at 1 % water cut, compared with the Welge sho
 upstream smearing, and refining the grid brings it closer to the reference.
 
 <!-- GENERATED:buckley -->
-*Measured on `e1cf8e6` (clean tree), 2026-09-25.*
+*Measured on `f7396a3` (clean tree), 2026-09-25.*
 
 | Case | PV_BT sim | PV_BT ref | Rel. error | Band |
 |---|---|---|---|---|
-| A | 0.5307 | 0.586 | -9.4 % | 25 % |
-| B | 0.4657 | 0.5074 | -8.2 % | 30 % |
+| A | 0.5307 | 0.586 | -9.4 % | 15 % |
+| B | 0.4657 | 0.5074 | -8.2 % | 15 % |
 
 Grid refinement (breakthrough error; nx = 96 and 192 from `benchmark_buckley_leverett_grid_sweep_replay`):
 
