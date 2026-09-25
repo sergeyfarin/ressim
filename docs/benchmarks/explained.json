@@ -7,7 +7,7 @@
    "metric": "vs_flow.*",
    "status": "tracked",
    "ref": "#57",
-   "note": "Against the fixed, published-SPE1 deck (#55). The gap is ResSim's SPE1 inputs, not the solver: gas viscosity held flat above 345.73 bar, no undersaturated oil viscosity rise, porosity referenced at 331 bar, uniform initial pressure. On a deck generated from the setup FIM matches Flow to <1 %."
+   "note": "Against the faithful published-SPE1 deck (#55). What remains is ResSim's SPE1 inputs, not the solver: porosity referenced at 331 bar rather than 14.7 psia, and a uniform initial pressure rather than hydrostatic. Gas viscosity above the table and the undersaturated oil branches were fixed in #57 (together; either alone skews the gas/oil mobility ratio). On a deck generated from the setup FIM matches Flow to <1 %."
   },
   {
    "section": "three_phase",
