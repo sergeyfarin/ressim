@@ -157,8 +157,12 @@ impl ReservoirSimulator {
     /// Install a PVT table and re-derive dissolved gas at the current cell pressures.
     pub fn apply_pvt_table(&mut self, rows: Vec<pvt::PvtRow>) -> Result<(), String> {
         let table = pvt::PvtTable::new(rows, self.pvt.c_o);
+        // The table's own oil at each cell's pressure: saturated below the highest bubble point,
+        // the top branch's Rs above it. The saturated curve continues above the table (#35), but
+        // a default must not dissolve more gas than the table's oil carries.
+        let rs_max = table.max_branch_rs();
         for i in 0..self.nx * self.ny * self.nz {
-            self.rs[i] = table.interpolate(self.pressure[i]).rs_m3m3;
+            self.rs[i] = table.interpolate(self.pressure[i]).rs_m3m3.min(rs_max);
         }
         self.pvt_table = Some(table);
         Ok(())

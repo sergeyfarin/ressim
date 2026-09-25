@@ -6198,6 +6198,40 @@ alone. The coherent bundle is: OPM's Rs_sat extrapolation, one Bo definition at 
 knot-derivative convention and boundary partials, evaluated together. The prize is Newton
 efficiency (substeps already match Flow), about 111 → 86 against Flow's 63.
 
+### FIM-KINK-002 — #35 convention 1: the saturated curve continues above the table (2026-09-25)
+
+**Hypothesis.** Holding Rs_sat flat above the last saturated row, where OPM extrapolates, is a
+physics difference as well as a Newton cost. Continuing the saturated curve coherently removes it
+without the stall FIM-KINK-001 recorded ("original + linear → both pinned at ~151 bar").
+
+**Oracle.** `small-direct/spe1-case2-10x10x3`: SPE1 with redissolution, written from
+`make_spe1_acceptance_sim`, with no `DRSDT`. Flow and JutulDarcy agree on it (worst cell 5 bar,
+GOR within 0.5 %), and ResSim did not: worst cell 112.5 bar, cumulative oil +5.8 %, GOR 829 vs
+230 at 1080 d. Flow's Rs reaches 428 m³/m³ near the injector, and ResSim's was capped at 288.2.
+
+**Change (one coherent bundle, `pvt.rs`).**
+- Above the last saturated row: Rs, 1/Bo and 1/(Bo·μo) continue the last saturated segment in
+  both the f64 and AD paths. #38's top-branch override now applies only to tables with a single
+  saturated row.
+- Oil richer than the top branch: the existing two-branch interpolation along the
+  saturated-pressure guide, extrapolated with t > 1. It reproduces the continued saturated
+  curve at the new bubble points.
+- The bubble-point inverse continues too.
+- Undersaturated c_o (IMPES storage) is read from the branch itself. Before, #38's table
+  compressibility reached only cells parked on the flat boundary.
+- `api.rs`: the default initial Rs is capped at the top branch's, so a table never gives more
+  dissolved gas than its oil carries.
+
+**Result.**
+- **Case 2 closes:** worst cell 2.3 bar, Sg 0.017, cumulative oil 0.02 %, gas 0.04 %. IMPES: cumulative oil 5.84 → 0.07 %.
+- **No stall:** bo-1d-10/40 run 22 substeps with Newton 84/91 unchanged. The 7-case wasm matrix is identical in substeps, Newton and retries.
+- **Newton cost:** +6/+4 on dep-pvt and +13 on Case 2, out of about 500–900.
+- **The earlier stall** predates #38. That fix gave the table one Bo at Rs_max, and this bundle continues Bo and μo with Rs, so there is no longer a jump in Rs at the table top.
+
+**Verdict.** PROMOTED as a physics convention.
+
+**Still open in #35.** J1's boundary partials (an undersaturated cell with Rs exactly at Rs_sat takes the saturated curve's derivatives), and the bo-1d Newton gap to Flow that goes with them (84 vs 51).
+
 ### #21 resolved — report-step sensitivity and the Flow oil bias are temporal plus deck mapping (2026-09-23)
 
 Master `654618f`. The "8–10% oil over-prediction" (Objective-1 gap, 2026-07) was an end-of-step

@@ -233,20 +233,28 @@ mod tests {
             ],
             sim.pvt.c_o,
         ));
-        // Above the last saturated row Rs_sat stays 15, so Rs = 15 at 175 bar is on the boundary.
+        // A gas-free cell exactly on the saturated boundary at 175 bar. Since #35 the saturated
+        // curve continues above its last row (Rs_sat(175) = 20), so the boundary is taken from
+        // the table rather than assumed to be the last row's 15.
+        let rs_on_boundary = sim
+            .pvt_table
+            .as_ref()
+            .map(|table| table.interpolate(175.0).rs_m3m3)
+            .unwrap();
+        assert!((rs_on_boundary - 20.0).abs() < 1e-12);
         assert!(sim.fim_opm_aligned_nonlinear);
         assert_eq!(
-            classify_cell_regime(&sim, 175.0, 0.0, 15.0, None),
+            classify_cell_regime(&sim, 175.0, 0.0, rs_on_boundary, None),
             HydrocarbonState::Undersaturated
         );
         assert_eq!(
-            classify_cell_regime(&sim, 175.0, 0.01, 15.0, None),
+            classify_cell_regime(&sim, 175.0, 0.01, rs_on_boundary, None),
             HydrocarbonState::Saturated,
             "free gas still means Sg"
         );
         sim.fim_opm_aligned_nonlinear = false;
         assert_eq!(
-            classify_cell_regime(&sim, 175.0, 0.0, 15.0, None),
+            classify_cell_regime(&sim, 175.0, 0.0, rs_on_boundary, None),
             HydrocarbonState::Saturated
         );
     }

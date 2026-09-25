@@ -84,26 +84,6 @@
    "status": "tracked",
    "ref": "#55",
    "note": "FIM's end-of-run oil rate differs from JutulDarcy while JutulDarcy and Flow agree; cumulative oil agrees with Flow to 0.05 %."
-  },
-  {
-   "section": "cross_solver",
-   "case": "spe1-case2-10x10x3",
-   "metric": [
-    "sparse.cum.*",
-    "dense.cum.*",
-    "impes.cum.*"
-   ],
-   "status": "tracked",
-   "ref": "#35",
-   "note": "SPE1 with redissolution: above the last saturated row (345.73 bar) ResSim holds Rs_sat at 288.17 while Flow and JutulDarcy extrapolate it (Rs reaches 428 near the injector by 1080 d), so ResSim dissolves less injected gas and breaks through years early. Flow and JutulDarcy agree with each other."
-  },
-  {
-   "section": "jutul",
-   "case": "spe1-case2-10x10x3",
-   "metric": "fim_vs_jutul.*",
-   "status": "tracked",
-   "ref": "#35",
-   "note": "Same cause as the cross_solver entry: the saturated-Rs convention above the table."
   }
  ]
 }

@@ -1,6 +1,6 @@
 {
   "caseKey": "dep_pvt_correlation",
-  "deckHash": "806e84b98a9fd5ded8a7e5c5292232d97ca1200fea1c189548641ce0f7c4bb9d",
+  "deckHash": "0d0c1170d55f0dc180519aced0c8788e012a624f40c7faaf09fe89a38e96533c",
   "flowVersion": "flow 2026.04",
   "generatedAt": "1970-01-01T00:00:00+00:00",
   "label": "PVT Model Risk (correlation c_o = 1.0e-4 /bar, base)",
@@ -3206,7 +3206,7 @@
         },
         {
           "x": 144.0,
-          "y": 75.12929
+          "y": 75.1293
         },
         {
           "x": 144.75,

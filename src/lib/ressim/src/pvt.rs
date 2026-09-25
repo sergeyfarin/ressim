@@ -110,6 +110,56 @@ impl PvtTable {
         }
     }
 
+    /// The saturated curve continued past its last row `r1` along the segment `r0 -> r1`: Rs,
+    /// `1/Bo` and `1/(Bo*mu_o)` linear in pressure, which is how OPM extrapolates PVTO (#35).
+    /// `None` where the continued line leaves the physical range (a non-positive inverse).
+    fn continued_saturated_oil(r0: &PvtRow, r1: &PvtRow, p: f64) -> Option<(f64, f64, f64)> {
+        let dp = r1.p_bar - r0.p_bar;
+        if dp < 1e-6 {
+            return None;
+        }
+        let t = (p - r0.p_bar) / dp;
+        let rs = r0.rs_m3m3 + t * (r1.rs_m3m3 - r0.rs_m3m3);
+        let inv_bo = 1.0 / r0.bo_m3m3 + t * (1.0 / r1.bo_m3m3 - 1.0 / r0.bo_m3m3);
+        let inv_bo_mu = 1.0 / (r0.bo_m3m3 * r0.mu_o_cp)
+            + t * (1.0 / (r1.bo_m3m3 * r1.mu_o_cp) - 1.0 / (r0.bo_m3m3 * r0.mu_o_cp));
+        (inv_bo > 0.0 && inv_bo_mu > 0.0).then(|| (rs, 1.0 / inv_bo, inv_bo / inv_bo_mu))
+    }
+
+    /// Generic (differentiable) mirror of [`Self::continued_saturated_oil`].
+    fn continued_saturated_oil_generic<S: Scalar>(
+        r0: &PvtRow,
+        r1: &PvtRow,
+        p: S,
+    ) -> Option<(S, S, S)> {
+        let dp = r1.p_bar - r0.p_bar;
+        if dp < 1e-6 {
+            return None;
+        }
+        let t = (p - r0.p_bar) / dp;
+        let rs = t * (r1.rs_m3m3 - r0.rs_m3m3) + r0.rs_m3m3;
+        let inv_bo = t * (1.0 / r1.bo_m3m3 - 1.0 / r0.bo_m3m3) + 1.0 / r0.bo_m3m3;
+        let inv_bo_mu = t * (1.0 / (r1.bo_m3m3 * r1.mu_o_cp) - 1.0 / (r0.bo_m3m3 * r0.mu_o_cp))
+            + 1.0 / (r0.bo_m3m3 * r0.mu_o_cp);
+        (inv_bo.value() > 0.0 && inv_bo_mu.value() > 0.0)
+            .then(|| (rs, inv_bo.recip(), inv_bo / inv_bo_mu))
+    }
+
+    /// Whether the saturated curve continues past its last row (it has a segment to continue).
+    /// Tables with one saturated row keep the flat-Rs convention, and #38's top-branch oil.
+    fn saturated_curve_continues(&self) -> bool {
+        self.saturated_rows.len() >= 2
+    }
+
+    /// The largest Rs the table's own oil carries: the top branch's. The default initial Rs
+    /// never exceeds it, whatever the saturated curve does above the table (#35).
+    pub(crate) fn max_branch_rs(&self) -> f64 {
+        self.oil_branches
+            .last()
+            .map(|branch| branch.rs_m3m3)
+            .unwrap_or(0.0)
+    }
+
     /// OPM/ECL PVTO interpolation is performed on `1/Bo` and `1/(Bo*mu_o)`.
     fn interpolate_oil_segment(r0: &PvtRow, r1: &PvtRow, t: f64) -> (f64, f64) {
         let inv_bo = (1.0 / r0.bo_m3m3) + t * (1.0 / r1.bo_m3m3 - 1.0 / r0.bo_m3m3);
@@ -318,8 +368,24 @@ impl PvtTable {
             let last = &rows[last_idx];
             let mut extrapolated = last.clone();
             extrapolated.p_bar = p;
-            extrapolated.bo_m3m3 = last.bo_m3m3 * f64::exp(-c_o * (p - last.p_bar));
             extrapolated.bg_m3m3 = last.bg_m3m3 * (last.p_bar / p);
+            // Above the last saturated row the saturated curve continues its last segment, as
+            // OPM extrapolates PVTO: Rs, 1/Bo and 1/(Bo*mu_o) linear in pressure (#35). With a
+            // single saturated row there is no segment to continue; Rs stays flat and Bo follows
+            // c_o, the previous convention.
+            let continued = (last_idx > 0)
+                .then(|| Self::continued_saturated_oil(&rows[last_idx - 1], last, p))
+                .flatten();
+            match continued {
+                Some((rs, bo, mu)) => {
+                    extrapolated.rs_m3m3 = rs;
+                    extrapolated.bo_m3m3 = bo;
+                    extrapolated.mu_o_cp = mu;
+                }
+                None => {
+                    extrapolated.bo_m3m3 = last.bo_m3m3 * f64::exp(-c_o * (p - last.p_bar));
+                }
+            }
             return extrapolated;
         }
 
@@ -393,6 +459,14 @@ impl PvtTable {
         if rs <= first.rs_m3m3 + PVTO_RS_TOLERANCE {
             return Some((first, first));
         }
+        if rs > last.rs_m3m3 + PVTO_RS_TOLERANCE && self.saturated_curve_continues() {
+            // Oil richer than the table's top branch exists only where the continued saturated
+            // curve dissolves it (#35). The last two branches extrapolate across Rs along the
+            // saturated-pressure guide (the interpolation below with t > 1), which reproduces the
+            // continued saturated curve at the new bubble points.
+            let n = self.oil_branches.len();
+            return Some((&self.oil_branches[n - 2], last));
+        }
         if rs >= last.rs_m3m3 - PVTO_RS_TOLERANCE {
             return Some((last, last));
         }
@@ -416,7 +490,12 @@ impl PvtTable {
     /// volume factors, one for `Rs = Rs_max` and another for `Rs` a hair below it.
     pub fn interpolate(&self, p: f64) -> PvtRow {
         let mut row = Self::interpolate_rows(&self.saturated_rows, p, self.c_o);
-        if let Some(top) = self.top_branch_above_bubble_point(p) {
+        // With a continued saturated curve, the saturated row above the table is oil at the
+        // continued Rs; the top branch's oil (Rs_max) is undersaturated there and is read by
+        // `interpolate_oil` (#35). Without one, #38's top-branch oil stands in.
+        if !self.saturated_curve_continues()
+            && let Some(top) = self.top_branch_above_bubble_point(p)
+        {
             let (bo, mu) = Self::branch_props(top, p, self.c_o);
             row.bo_m3m3 = bo;
             row.mu_o_cp = mu;
@@ -523,6 +602,19 @@ impl PvtTable {
             let r = &rows[last_idx];
             // Bg = last.Bg * (last.p / p)
             let bg = S::from_f64(r.bg_m3m3 * r.p_bar) / p;
+            // The saturated curve continues its last segment (#35), exactly as `interpolate_rows`.
+            if last_idx > 0
+                && let Some((rs, bo, mu_o)) =
+                    Self::continued_saturated_oil_generic(&rows[last_idx - 1], r, p)
+            {
+                return SatProps {
+                    rs,
+                    bo,
+                    bg,
+                    mu_o,
+                    mu_g: S::from_f64(r.mu_g_cp),
+                };
+            }
             let (bo, mu_o) = match self.top_branch_above_bubble_point(pv) {
                 Some(top) => Self::branch_props_generic(top, p, self.c_o),
                 None => (
@@ -662,8 +754,9 @@ impl PvtTable {
     /// Find the bubble-point pressure for a given dissolved-gas ratio.
     ///
     /// Inverse interpolation on the saturated Rs-vs-pressure curve.
-    /// Returns the lowest table pressure if `rs` is below the table minimum,
-    /// and the highest table pressure if `rs` exceeds the table maximum.
+    /// Returns the lowest table pressure if `rs` is below the table minimum. Above the table
+    /// maximum it continues the saturated curve's last segment (#35), the inverse of what
+    /// `interpolate` does there; a table with one saturated row returns its pressure.
     pub fn bubble_point_pressure(&self, rs: f64) -> f64 {
         if self.saturated_rows.is_empty() {
             return 0.0;
@@ -673,6 +766,14 @@ impl PvtTable {
         }
         let last = self.oil_branches.len() - 1;
         if rs >= self.oil_branches[last].rs_m3m3 {
+            if self.saturated_curve_continues() && last > 0 {
+                let (r0, r1) = (&self.oil_branches[last - 1], &self.oil_branches[last]);
+                let drs = r1.rs_m3m3 - r0.rs_m3m3;
+                if drs > 1e-12 {
+                    let t = (rs - r0.rs_m3m3) / drs;
+                    return r0.rows[0].p_bar + t * (r1.rows[0].p_bar - r0.rows[0].p_bar);
+                }
+            }
             return self.oil_branches[last].rows[0].p_bar;
         }
         for i in 0..last {
@@ -984,8 +1085,9 @@ impl ReservoirSimulator {
             let c_sat = self.saturated_c_o_eff(table, p);
 
             if rs_cell < rs_sat - 1e-6 {
-                let c_unsat = self.pvt.c_o;
                 let p_b = table.bubble_point_pressure(rs_cell);
+                let c_unsat =
+                    Self::undersaturated_c_o(table, p, p_b, rs_cell).unwrap_or(self.pvt.c_o);
                 let distance = p - p_b;
                 let margin = 5.0;
 
@@ -1001,6 +1103,20 @@ impl ReservoirSimulator {
         } else {
             self.pvt.c_o
         }
+    }
+
+    /// Undersaturated oil compressibility at `rs_cell` from the table's own oil (`interpolate_oil`),
+    /// evaluated at least a bar above the bubble point so the difference stays on the branch.
+    /// Branches with undersaturated rows give their own compressibility (#38); single-row branches
+    /// give `c_o`. It used to be `c_o` for every undersaturated cell, and #38's table compressibility
+    /// reached only cells parked on a flat Rs_sat above the table, which #35 removes.
+    fn undersaturated_c_o(table: &PvtTable, p: f64, p_b: f64, rs_cell: f64) -> Option<f64> {
+        let p_eval = p.max(p_b + 1.0);
+        let (bo, _) = table.interpolate_oil(p_eval, rs_cell);
+        let (bo_lo, _) = table.interpolate_oil(p_eval - 1.0, rs_cell);
+        let (bo_hi, _) = table.interpolate_oil(p_eval + 1.0, rs_cell);
+        let c = -(bo_hi - bo_lo) / (2.0 * bo);
+        (c.is_finite() && c > 0.0).then_some(c)
     }
 
     fn saturated_c_o_eff(&self, table: &PvtTable, p: f64) -> f64 {
@@ -1755,9 +1871,11 @@ mod tests {
             (at.bg_m3m3 - 0.0045 * 200.0 / 225.0).abs() > 1e-5,
             "not Boyle-law any more"
         );
-        assert_eq!(
-            at.rs_m3m3, 15.0,
-            "Rs above the highest bubble point is unchanged"
+        // Saturated Rs continues the last saturated segment (10 -> 15 over 150 -> 200 bar, #35).
+        assert!(
+            (at.rs_m3m3 - 17.5).abs() < 1e-12,
+            "Rs_sat at 225 bar: {}",
+            at.rs_m3m3
         );
 
         let generic = table.interpolate_saturated_generic(Ad::<1>::variable(225.0, 0));
