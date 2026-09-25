@@ -2391,6 +2391,29 @@ fn comp_depletion_bhp_trajectory_matches_opm_at_matched_timestep() {
         "only {two_phase} of the reference's steps are two-phase"
     );
 
+    crate::tests::bench_record::metric(crate::tests::bench_record::Metric {
+        section: "compositional",
+        case: "depletion BHP",
+        metric: "worst_pressure_diff",
+        value: worst_pressure.0,
+        band: Some(0.02),
+        unit: "bar",
+        reference: "OPM flowexp_comp, matched timestep",
+        same_model: true,
+        at: &worst_pressure.1,
+    });
+    crate::tests::bench_record::metric(crate::tests::bench_record::Metric {
+        section: "compositional",
+        case: "depletion BHP",
+        metric: "worst_sg_diff",
+        value: worst_saturation,
+        band: Some(5e-4),
+        unit: "frac",
+        reference: "OPM flowexp_comp, matched timestep",
+        same_model: true,
+        at: "",
+    });
+
     assert!(
         worst_pressure.0 < 0.02,
         "the BHP depletion paths disagree by {:.4} bar at {} at matched resolution",
@@ -2803,6 +2826,29 @@ fn comp_matched_1d_trajectory_agrees_with_opm() {
             cumulative * 100.0
         );
 
+        crate::tests::bench_record::metric(crate::tests::bench_record::Metric {
+            section: "compositional",
+            case: &format!("1D {label}"),
+            metric: "worst_pressure_diff",
+            value: worst.0,
+            band: Some(pressure_band),
+            unit: "bar",
+            reference: "OPM flowexp_comp, matched timestep",
+            same_model: true,
+            at: &worst.1,
+        });
+        crate::tests::bench_record::metric(crate::tests::bench_record::Metric {
+            section: "compositional",
+            case: &format!("1D {label}"),
+            metric: "cum_injection_rel_err",
+            value: cumulative,
+            band: Some(cumulative_band),
+            unit: "frac",
+            reference: "OPM flowexp_comp, matched timestep",
+            same_model: true,
+            at: "",
+        });
+
         assert!(
             worst.0 < pressure_band,
             "1D {label}: the trajectories disagree by {:.4} bar at {} at matched resolution",
@@ -3052,6 +3098,29 @@ fn comp_depletion_bhp_cumulative_production_matches_opm() {
         "the reference produced only {theirs_total} moles; the fixture looks wrong"
     );
     // The plan's target is 1%. This is the acceptance the ORAT fixture could not provide.
+    crate::tests::bench_record::metric(crate::tests::bench_record::Metric {
+        section: "compositional",
+        case: "depletion BHP",
+        metric: "cum_production_rel_err",
+        value: total_relative,
+        band: Some(0.01),
+        unit: "frac",
+        reference: "OPM flowexp_comp, matched timestep",
+        same_model: true,
+        at: "",
+    });
+    crate::tests::bench_record::metric(crate::tests::bench_record::Metric {
+        section: "compositional",
+        case: "depletion BHP",
+        metric: "cum_production_worst_component_rel_err",
+        value: worst_component.0,
+        band: Some(0.01),
+        unit: "frac",
+        reference: "OPM flowexp_comp, matched timestep",
+        same_model: true,
+        at: &format!("component {}", worst_component.1),
+    });
+
     assert!(
         total_relative < 0.01,
         "cumulative production differs by {:.4}%, above the plan's 1% target",
