@@ -12,6 +12,7 @@
 //! measured at the recorded baseline. Do not widen one to make a change pass.
 
 use crate::ReservoirSimulator;
+use crate::tests::bench_record::{self, Metric, Worst};
 use crate::tests::make_spe1_like_grid_sim;
 
 /// Field average reservoir pressure [bar] at yearly report times.
@@ -255,7 +256,12 @@ fn check_checkpoint(sim: &ReservoirSimulator, t_days: f64) -> CheckpointErrors {
     }
 }
 
-fn assert_material_balance(sim: &ReservoirSimulator, stoiip_sm3: f64, gas_in_place_sm3: f64) {
+/// Returns the oil and gas drifts it checked, as fractions.
+fn assert_material_balance(
+    sim: &ReservoirSimulator,
+    stoiip_sm3: f64,
+    gas_in_place_sm3: f64,
+) -> (f64, f64) {
     let point = sim.rate_history.last().expect("rate history");
     let oil_drift = point.material_balance_error_oil_m3.abs() / stoiip_sm3;
     assert!(
@@ -279,6 +285,7 @@ fn assert_material_balance(sim: &ReservoirSimulator, stoiip_sm3: f64, gas_in_pla
         gas_handled_sc,
         GAS_MATERIAL_BALANCE_TOLERANCE * 100.0
     );
+    (oil_drift, gas_drift)
 }
 
 /// Fast gate: the first reference year, where the producer must hold its surface-rate target,
@@ -323,6 +330,10 @@ fn spe1_full_horizon_matches_published_reference() {
         oil_rate: 0.0,
         gor: 0.0,
     };
+    let (mut worst_pressure, mut worst_oil_rate, mut worst_gor) =
+        (Worst::new(), Worst::new(), Worst::new());
+    let (mut worst_plateau, mut worst_mb_oil, mut worst_mb_gas) =
+        (Worst::new(), Worst::new(), Worst::new());
 
     for (t_days, _) in REF_PRESSURE_BAR {
         step_to(&mut sim, t_days, 30.0);
@@ -337,10 +348,16 @@ fn spe1_full_horizon_matches_published_reference() {
                 t_days,
                 point.total_production_oil
             );
+            worst_plateau.update(plateau_error, t_days);
         }
 
         let errors = check_checkpoint(&sim, t_days);
-        assert_material_balance(&sim, stoiip_sm3, gas_in_place_sm3);
+        let (mb_oil, mb_gas) = assert_material_balance(&sim, stoiip_sm3, gas_in_place_sm3);
+        worst_pressure.update(errors.pressure, t_days);
+        worst_oil_rate.update(errors.oil_rate, t_days);
+        worst_gor.update(errors.gor, t_days);
+        worst_mb_oil.update(mb_oil, t_days);
+        worst_mb_gas.update(mb_gas, t_days);
 
         println!(
             "t={:7.1} pressure_err={:6.3}% oil_rate_err={:6.3}% gor_err={:6.3}%",
@@ -360,6 +377,27 @@ fn spe1_full_horizon_matches_published_reference() {
         worst.oil_rate * 100.0,
         worst.gor * 100.0
     );
+
+    for (metric, found, band) in [
+        ("pressure_rel_err", worst_pressure, PRESSURE_TOLERANCE),
+        ("oil_rate_rel_err", worst_oil_rate, OIL_RATE_TOLERANCE),
+        ("gor_rel_err", worst_gor, GOR_TOLERANCE),
+        ("plateau_rel_err", worst_plateau, PLATEAU_TOLERANCE),
+        ("mb_drift_oil", worst_mb_oil, OIL_MATERIAL_BALANCE_TOLERANCE),
+        ("mb_drift_gas", worst_mb_gas, GAS_MATERIAL_BALANCE_TOLERANCE),
+    ] {
+        bench_record::metric(Metric {
+            section: "spe1",
+            case: "10x10x3",
+            metric,
+            value: found.value,
+            band: Some(band),
+            unit: "frac",
+            reference: "SPE1 published (Flow, SPE1CASE1)",
+            same_model: false,
+            at: &found.at(),
+        });
+    }
 }
 
 /// Characterization replay: how reference agreement changes when the same case is refined
@@ -377,6 +415,10 @@ fn spe1_areal_refinement_reference_error_replay() {
         let mut sim = make_spe1_acceptance_sim_at(nx);
         let stoiip_sm3 = stock_tank_oil_in_place_sm3(&sim);
         let gas_in_place_sm3 = gas_in_place_sm3(&sim);
+        let (mut raw_t, mut raw_fpr, mut raw_fopr, mut raw_wgor) =
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let (mut worst_pressure, mut worst_oil_rate, mut worst_gor) =
+            (Worst::new(), Worst::new(), Worst::new());
 
         // Errors against the published reference at its own yearly checkpoints, and raw values
         // every 90 days for the OPM Flow oracle at matched resolution,
@@ -393,6 +435,9 @@ fn spe1_areal_refinement_reference_error_replay() {
 
             if is_reference_checkpoint {
                 let errors = checkpoint_errors(&sim, t_days);
+                worst_pressure.update(errors.pressure, t_days);
+                worst_oil_rate.update(errors.oil_rate, t_days);
+                worst_gor.update(errors.gor, t_days);
                 println!(
                     "nx={:3} t={:7.1} pressure_err={:7.3}% oil_rate_err={:7.3}% gor_err={:7.3}%",
                     nx,
@@ -414,7 +459,36 @@ fn spe1_areal_refinement_reference_error_replay() {
                     point.total_production_oil,
                     point.producing_gor
                 );
+                raw_t.push(t_days);
+                raw_fpr.push(point.avg_reservoir_pressure);
+                raw_fopr.push(point.total_production_oil);
+                raw_wgor.push(point.producing_gor);
             }
+        }
+
+        // The refined grid is a characterization against the published 10x10x3 series, so no
+        // band. The series go to the aggregator, which grades them against Flow run on the same
+        // grid by `tools/opm_flow/spe1_refinement_oracle.py`.
+        let case = format!("{nx}x{nx}x3");
+        for (metric, found) in [
+            ("published_pressure_rel_err", worst_pressure),
+            ("published_oil_rate_rel_err", worst_oil_rate),
+            ("published_gor_rel_err", worst_gor),
+        ] {
+            bench_record::metric(Metric {
+                section: "spe1",
+                case: &case,
+                metric,
+                value: found.value,
+                band: None,
+                unit: "frac",
+                reference: "SPE1 published 10x10x3",
+                same_model: false,
+                at: &found.at(),
+            });
+        }
+        for (quantity, values) in [("FPR", &raw_fpr), ("FOPR", &raw_fopr), ("WGOR", &raw_wgor)] {
+            bench_record::series("spe1", &case, "ressim", quantity, &raw_t, values);
         }
     }
 }

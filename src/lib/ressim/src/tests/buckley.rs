@@ -1,3 +1,4 @@
+use super::bench_record::{self, Metric};
 use super::*;
 use std::time::Instant;
 
@@ -281,6 +282,13 @@ fn benchmark_buckley_leverett_case_a_favorable_mobility() {
         case.name, metrics.breakthrough_pv, metrics.reference_breakthrough_pv, rel_err
     );
 
+    record_breakthrough(
+        "BL-Case-A",
+        case.nx,
+        &metrics,
+        Some(case.rel_tol_breakthrough_pv),
+    );
+
     assert!(
         rel_err <= case.rel_tol_breakthrough_pv,
         "{} breakthrough PV mismatch too high: sim={:.4}, ref={:.4}, rel_err={:.3}, tol={:.3}",
@@ -306,6 +314,13 @@ fn benchmark_buckley_leverett_case_b_more_adverse_mobility() {
         case.name, metrics.breakthrough_pv, metrics.reference_breakthrough_pv, rel_err
     );
 
+    record_breakthrough(
+        "BL-Case-B",
+        case.nx,
+        &metrics,
+        Some(case.rel_tol_breakthrough_pv),
+    );
+
     assert!(
         rel_err <= case.rel_tol_breakthrough_pv,
         "{} breakthrough PV mismatch too high: sim={:.4}, ref={:.4}, rel_err={:.3}, tol={:.3}",
@@ -320,6 +335,33 @@ fn benchmark_buckley_leverett_case_b_more_adverse_mobility() {
 fn breakthrough_rel_err(metrics: &BuckleyMetrics) -> f64 {
     (metrics.breakthrough_pv - metrics.reference_breakthrough_pv)
         / metrics.reference_breakthrough_pv
+}
+
+/// Records a breakthrough against the Welge reference: the signed relative error (negative is
+/// early) and the two pore volumes it is made of.
+fn record_breakthrough(case_key: &str, nx: usize, metrics: &BuckleyMetrics, band: Option<f64>) {
+    let case = format!("{case_key} nx={nx}");
+    let welge = |metric, value, band, unit| {
+        bench_record::metric(Metric {
+            section: "buckley",
+            case: &case,
+            metric,
+            value,
+            band,
+            unit,
+            reference: "Buckley-Leverett + Welge",
+            same_model: false,
+            at: "",
+        })
+    };
+    welge(
+        "breakthrough_rel_err",
+        breakthrough_rel_err(metrics),
+        band,
+        "frac",
+    );
+    welge("pv_bt_sim", metrics.breakthrough_pv, None, "PV");
+    welge("pv_bt_ref", metrics.reference_breakthrough_pv, None, "PV");
 }
 
 /// IMPES chooses its own substeps, so the outer `step` size is only a report interval and must
@@ -346,6 +388,18 @@ fn benchmark_buckley_leverett_breakthrough_is_independent_of_report_interval() {
             coarse.name, fine.name, pv_coarse, pv_fine, spread
         );
 
+        bench_record::metric(Metric {
+            section: "buckley",
+            case: coarse.name,
+            metric: "report_interval_spread",
+            value: spread,
+            band: Some(0.01),
+            unit: "frac",
+            reference: fine.name,
+            same_model: true,
+            at: "",
+        });
+
         assert!(
             spread <= 0.01,
             "report interval moved breakthrough: {}={:.4}, {}={:.4}",
@@ -371,8 +425,12 @@ fn benchmark_buckley_leverett_grid_refinement_improves_alignment() {
             buckley_case_b("BL-Case-B-nx48", 48, 0.5, 4000),
         ),
     ] {
-        let err_coarse = breakthrough_rel_err(&run_buckley_case(&coarse));
-        let err_fine = breakthrough_rel_err(&run_buckley_case(&fine));
+        let (metrics_coarse, metrics_fine) = (run_buckley_case(&coarse), run_buckley_case(&fine));
+        // nx = 24 is recorded, with its band, by the Case A and B gates.
+        let case_key = &fine.name[..fine.name.len() - "-nx48".len()];
+        record_breakthrough(case_key, fine.nx, &metrics_fine, None);
+        let err_coarse = breakthrough_rel_err(&metrics_coarse);
+        let err_fine = breakthrough_rel_err(&metrics_fine);
 
         println!(
             "{} -> {}: rel_err {:.3} -> {:.3}",
@@ -395,6 +453,37 @@ fn benchmark_buckley_leverett_grid_refinement_improves_alignment() {
             fine.name,
             err_fine,
         );
+    }
+}
+
+/// Continues the refinement sequence past the default gate's nx = 48, so `docs/BENCHMARKS.md`
+/// §1 reports nx = 96 and 192 from a committed test rather than a one-off run. Asserts only
+/// that the front stays early and keeps closing on the Welge shock.
+///
+/// `cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
+///  benchmark_buckley_leverett_grid_sweep_replay -- --ignored --nocapture`
+#[test]
+#[ignore = "characterization replay: Buckley-Leverett at nx = 96 and 192, use --release"]
+fn benchmark_buckley_leverett_grid_sweep_replay() {
+    for (case_key, build) in [
+        (
+            "BL-Case-A",
+            buckley_case_a as fn(&'static str, usize, f64, usize) -> BuckleyCase,
+        ),
+        ("BL-Case-B", buckley_case_b),
+    ] {
+        let mut previous = f64::NEG_INFINITY;
+        for nx in [96, 192] {
+            let metrics = run_buckley_case(&build(case_key, nx, 0.5, 4000));
+            record_breakthrough(case_key, nx, &metrics, None);
+            let err = breakthrough_rel_err(&metrics);
+            println!("{case_key} nx={nx}: rel_err {err:.4}");
+            assert!(
+                err < 0.0 && err > previous,
+                "{case_key} nx={nx}: breakthrough should stay early and move closer, rel_err={err:.4}"
+            );
+            previous = err;
+        }
     }
 }
 

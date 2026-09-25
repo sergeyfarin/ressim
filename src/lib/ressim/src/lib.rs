@@ -240,6 +240,7 @@ pub struct ReservoirSimulator {
 pub(crate) mod tests {
     use super::*;
     use crate::well_control::WellControlDecision;
+    pub(crate) mod bench_record;
     mod buckley;
     mod geometry_api;
     mod opm_small_direct;

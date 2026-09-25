@@ -11,6 +11,7 @@
 use crate::ReservoirSimulator;
 use crate::pvt::{PvtRow, PvtTable};
 use crate::reporting::TimePointRates;
+use crate::tests::bench_record::{self, Metric};
 
 const COLUMN_LENGTH_M: f64 = 1000.0;
 const COLUMN_WIDTH_M: f64 = 200.0;
@@ -195,6 +196,63 @@ fn assert_converging(name: &str, values: [f64; 4], finest_pair_tolerance: f64) {
     );
 }
 
+/// Records each grid's field averages and, per quantity, the finest-pair gap (banded) and the
+/// larger of the two successive contraction ratios (banded by `CONTRACTION_RATIO`).
+fn record_column(solver: &str, results: &[ColumnAverages]) {
+    let record = |case: &str, metric: &str, value: f64, band: Option<f64>, unit: &str| {
+        bench_record::metric(Metric {
+            section: "depletion",
+            case,
+            metric,
+            value,
+            band,
+            unit,
+            reference: "grid self-convergence",
+            same_model: false,
+            at: "t=100 d",
+        })
+    };
+    for (nx, values) in REFINEMENT_LEVELS.iter().zip(results) {
+        let case = format!("{solver} nx={nx}");
+        record(&case, "avg_pressure", values.pressure_bar, None, "bar");
+        record(&case, "avg_sat_gas", values.sat_gas, None, "frac");
+    }
+    for (quantity, values, finest_band) in [
+        (
+            "pressure",
+            refinement_series(results, |values| values.pressure_bar),
+            FINEST_PAIR_TOLERANCE,
+        ),
+        (
+            "sat_gas",
+            refinement_series(results, |values| values.sat_gas),
+            FINEST_PAIR_TOLERANCE_SAT_GAS,
+        ),
+    ] {
+        let diffs = [
+            (values[1] - values[0]).abs(),
+            (values[2] - values[1]).abs(),
+            (values[3] - values[2]).abs(),
+        ];
+        let contraction = (diffs[1] / diffs[0]).max(diffs[2] / diffs[1]);
+        let finest_gap = diffs[2] / values[3].abs().max(1e-12);
+        record(
+            solver,
+            &format!("{quantity}_contraction"),
+            contraction,
+            Some(CONTRACTION_RATIO),
+            "ratio",
+        );
+        record(
+            solver,
+            &format!("{quantity}_finest_pair_gap"),
+            finest_gap,
+            Some(finest_band),
+            "frac",
+        );
+    }
+}
+
 fn assert_case_actually_liberates_gas(pressure: [f64; 4], rs: [f64; 4], sat_gas: [f64; 4]) {
     assert!(
         pressure[3] < BUBBLE_POINT_BAR,
@@ -247,6 +305,8 @@ fn physics_depletion_grid_convergence_impes() {
         );
     }
 
+    record_column("IMPES", &results);
+
     let pressure = refinement_series(&results, |values| values.pressure_bar);
     let rs = refinement_series(&results, |values| values.rs_sm3_sm3);
     let bo = refinement_series(&results, |values| values.bo_m3_sm3);
@@ -282,6 +342,8 @@ fn physics_depletion_grid_convergence_fim() {
             nx, values.pressure_bar, values.rs_sm3_sm3, values.bo_m3_sm3, values.sat_gas
         );
     }
+
+    record_column("FIM", &results);
 
     let pressure = refinement_series(&results, |values| values.pressure_bar);
     let rs = refinement_series(&results, |values| values.rs_sm3_sm3);

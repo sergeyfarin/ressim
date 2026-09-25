@@ -18,6 +18,7 @@
 
 use crate::ReservoirSimulator;
 use crate::pvt::{PvtRow, PvtTable};
+use crate::tests::bench_record::{self, Metric, Worst};
 use crate::tests::physics::fixtures::{
     make_3phase_gas_injection_sim, total_gas_inventory_sc_all_cells,
 };
@@ -296,9 +297,31 @@ fn three_phase_acceptance_error_replay() {
     let stoiip_sm3 = stock_tank_oil_in_place_sm3(&sim);
     let gas_in_place_sm3 = total_gas_inventory_sc_all_cells(&sim);
 
+    // Signed (ResSim minus Flow), so a one-sided bias shows as one.
+    let mut worst = [Worst::new(); 6];
     for (t_days, ref_pressure, ref_oil_rate, ref_cumulative_oil, ref_gor) in OPM_GAS_DRIVE {
         step_to(&mut sim, t_days, 10.0);
         let point = sim.rate_history.last().expect("rate history");
+        worst[0].update(
+            (point.avg_reservoir_pressure - ref_pressure) / ref_pressure,
+            t_days,
+        );
+        worst[1].update((point.producing_gor - ref_gor) / ref_gor, t_days);
+        worst[2].update(
+            (cumulative_oil_sc(&sim) - ref_cumulative_oil) / ref_cumulative_oil,
+            t_days,
+        );
+        if ref_oil_rate >= GAS_DRIVE_MIN_GRADED_OIL_RATE_SC_DAY {
+            worst[3].update(
+                (point.total_production_oil - ref_oil_rate) / ref_oil_rate,
+                t_days,
+            );
+        }
+        worst[4].update(point.material_balance_error_oil_m3 / stoiip_sm3, t_days);
+        worst[5].update(
+            point.material_balance_error_gas_m3 / gas_in_place_sm3,
+            t_days,
+        );
         let oil_rate_error = if ref_oil_rate >= GAS_DRIVE_MIN_GRADED_OIL_RATE_SC_DAY {
             format!(
                 "{:6.3}%",
@@ -319,11 +342,54 @@ fn three_phase_acceptance_error_replay() {
         );
     }
 
+    for ((metric, band), found) in [
+        ("pressure_rel_err", GAS_DRIVE_PRESSURE_TOLERANCE),
+        ("gor_rel_err", GAS_DRIVE_GOR_TOLERANCE),
+        ("cum_oil_rel_err", GAS_DRIVE_CUMULATIVE_OIL_TOLERANCE),
+        ("oil_rate_rel_err", GAS_DRIVE_OIL_RATE_TOLERANCE),
+        ("mb_drift_oil", GAS_DRIVE_OIL_MATERIAL_BALANCE_TOLERANCE),
+        ("mb_drift_gas", GAS_DRIVE_GAS_MATERIAL_BALANCE_TOLERANCE),
+    ]
+    .into_iter()
+    .zip(worst)
+    {
+        bench_record::metric(Metric {
+            section: "three_phase",
+            case: "gas_drive",
+            metric,
+            value: found.value,
+            band: Some(band),
+            unit: "frac",
+            reference: "OPM Flow, hand-mapped deck",
+            // The deck shares PVT, SCAL, grid and wells with the engine setup by construction
+            // (`docs/THREE_PHASE_VALIDATION.md`), so a gap is a finding, not resolution.
+            same_model: true,
+            at: &found.at(),
+        });
+    }
+
+    let breakthrough_coarse = gas_breakthrough_time_days(20, 1.0, 40.0);
+    let breakthrough_fine = gas_breakthrough_time_days(20, 0.5, 40.0);
     println!(
         "gas-flood breakthrough: dt=1.0 -> {:?} days, dt=0.5 -> {:?} days",
-        gas_breakthrough_time_days(20, 1.0, 40.0),
-        gas_breakthrough_time_days(20, 0.5, 40.0),
+        breakthrough_coarse, breakthrough_fine,
     );
+    for (case, found) in [
+        ("dt=1.0", breakthrough_coarse),
+        ("dt=0.5", breakthrough_fine),
+    ] {
+        bench_record::metric(Metric {
+            section: "three_phase",
+            case: &format!("gas_flood {case}"),
+            metric: "breakthrough_days",
+            value: found.unwrap_or(f64::NAN),
+            band: None,
+            unit: "d",
+            reference: "band 2-8 d (physics::gas_flood)",
+            same_model: false,
+            at: "",
+        });
+    }
 }
 
 /// The mechanism the case is named after: pressure must fall below the bubble point, the
@@ -591,6 +657,8 @@ fn three_phase_gas_injection_matches_opm_flow_twin() {
     let (mut oil, mut gas_produced, mut gas_injected) = (0.0, 0.0, 0.0);
     let mut previous_time = 0.0;
     let mut seen = 0;
+    let (mut worst_oil, mut worst_injected, mut worst_produced) =
+        (Worst::new(), Worst::new(), Worst::new());
     for (t_days, flow_oil, flow_gas_produced, flow_gas_injected) in OPM_GAS_INJECTION {
         while sim.time_days < t_days - 1e-9 {
             sim.step(2.0);
@@ -611,6 +679,17 @@ fn three_phase_gas_injection_matches_opm_flow_twin() {
         seen = sim.rate_history.len();
 
         let rel = |ours: f64, flow: f64| (ours - flow).abs() / flow;
+        worst_oil.update((oil - flow_oil) / flow_oil, t_days);
+        worst_injected.update(
+            (gas_injected - flow_gas_injected) / flow_gas_injected,
+            t_days,
+        );
+        if flow_gas_produced > 0.0 {
+            worst_produced.update(
+                (gas_produced - flow_gas_produced) / flow_gas_produced,
+                t_days,
+            );
+        }
         assert!(
             rel(oil, flow_oil) <= GAS_INJECTION_CUMULATIVE_TOLERANCE,
             "t={t_days}: FOPT {oil:.3} vs Flow {flow_oil:.3}"
@@ -630,6 +709,36 @@ fn three_phase_gas_injection_matches_opm_flow_twin() {
                 "t={t_days}: gas produced before Flow's breakthrough: {gas_produced:.3}"
             );
         }
+    }
+
+    for (metric, found, band) in [
+        (
+            "cum_oil_rel_err",
+            worst_oil,
+            GAS_INJECTION_CUMULATIVE_TOLERANCE,
+        ),
+        (
+            "cum_gas_injected_rel_err",
+            worst_injected,
+            GAS_INJECTION_CUMULATIVE_TOLERANCE,
+        ),
+        (
+            "cum_gas_produced_rel_err",
+            worst_produced,
+            GAS_INJECTION_GAS_PRODUCED_TOLERANCE,
+        ),
+    ] {
+        bench_record::metric(Metric {
+            section: "three_phase",
+            case: "gas_injection (go-1d-50)",
+            metric,
+            value: found.value,
+            band: Some(band),
+            unit: "frac",
+            reference: "OPM Flow, generated deck",
+            same_model: true,
+            at: &found.at(),
+        });
     }
 }
 
