@@ -713,15 +713,15 @@ def stale_sections(doc: dict) -> list[tuple[str, str, int]]:
 # scenario means adding it here.
 SCENARIO_SECTIONS = {
     "wf_bl1d": ["buckley"],
-    "spe1_gas_injection": ["spe1"],
-    "gas_drive": ["three_phase"],
+    "spe1_gas_injection": ["spe1", "cross_solver"],
+    "gas_drive": ["three_phase", "cross_solver", "jutul"],
     "gas_injection": ["three_phase", "cross_solver", "jutul"],
     "dep_pvt": ["cross_solver", "jutul"],
     "comp_co2_1d": ["compositional"],
 }
 # The records, by (section, case pattern), that grade a scenario against a second simulator.
 SCENARIO_SECOND_SIMULATOR = {
-    "gas_drive": [("three_phase", "gas_drive")],
+    "gas_drive": [("three_phase", "gas_drive"), ("jutul", "gas-drive-20")],
     "gas_injection": [("jutul", "go-1d-50")],
     "dep_pvt": [("jutul", "dep-pvt-*")],
 }

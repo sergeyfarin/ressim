@@ -475,9 +475,9 @@ time step, which is where discretization error shows.
 | `dep_pss` | well-test | — | — | — | — | yes |
 | `dep_pvt` (withheld) | — | yes | §5, §9 | — | JutulDarcy | yes |
 | `dep_welltest` | well-test | — | — | — | — | yes |
-| `gas_drive` | — | yes | §3 | — | JutulDarcy | yes |
+| `gas_drive` | — | yes | §3, §5, §9 | — | JutulDarcy | yes |
 | `gas_injection` | gas-oil-bl | yes | §3, §5, §9 | grid | JutulDarcy | yes |
-| `spe1_gas_injection` | digitized-reference | yes | §2 | — | — | **none** |
+| `spe1_gas_injection` | digitized-reference | yes | §2, §5 | — | — | **none** |
 | `sweep_areal` | sweep | — | — | grid_resolution | — | **none** |
 | `sweep_combined` | sweep | — | — | — | — | **none** |
 | `sweep_crossflow` | sweep | — | — | — | — | yes |
