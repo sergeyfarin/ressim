@@ -1,0 +1,56 @@
+{
+ "$comment": "Hand-curated. Marks a benchmark signal (same-model gap or near-band criterion) as explained or tracked so docs/BENCHMARKS.md shows it as known rather than open. `case` and `metric` are fnmatch patterns; `metric` may be a list of them. `explained` needs the mechanism and evidence in `ref`; `tracked` needs an open issue. See tools/benchmarks/benchmarks.py and #54.",
+ "entries": [
+  {
+   "section": "spe1",
+   "case": "*",
+   "metric": "vs_flow.*",
+   "status": "tracked",
+   "ref": "#55",
+   "note": "Same gap on both grids against a hand-mapped Flow deck; mapping vs model difference not yet separated."
+  },
+  {
+   "section": "three_phase",
+   "case": "gas_drive",
+   "metric": "*_rel_err",
+   "status": "tracked",
+   "ref": "#55",
+   "note": "Hand-mapped Flow deck; one-sided cumulative-oil bias, GOR low at early time."
+  },
+  {
+   "section": "cross_solver",
+   "case": "dep-pvt-*",
+   "metric": [
+    "sparse.cum.FGPT",
+    "dense.cum.FGPT"
+   ],
+   "status": "tracked",
+   "ref": "#55",
+   "note": "FIM (sparse, dense) gas production vs Flow on generated decks while oil agrees exactly; PVT table-edge conventions (#35) suspected, not shown."
+  },
+  {
+   "section": "compositional",
+   "case": "1D plain",
+   "metric": "worst_pressure_diff",
+   "status": "explained",
+   "ref": "COMPOSITIONAL_VALIDATION.md §8 (C12)",
+   "note": "The plain deck's sub-day TSTEPs are where flowexp_comp cut extra steps, so the matched-timestep comparison is only approximate there; the skin variant, without them, agrees to 0.0074 bar."
+  },
+  {
+   "section": "depletion",
+   "case": "*",
+   "metric": "sat_gas_finest_pair_gap",
+   "status": "explained",
+   "ref": "depletion_grid_convergence.rs, FINEST_PAIR_TOLERANCE_SAT_GAS (#11)",
+   "note": "The absolute grid error (~2.7e-4 at nx 20 to 40) is unchanged; the physical PVT table liberates less gas, so the relative gap rose while the contraction ratio stayed ~0.54."
+  },
+  {
+   "section": "parity",
+   "case": "*",
+   "metric": "*",
+   "status": "explained",
+   "ref": "crates/ressim-py/parity/compare_native.py, TOL",
+   "note": "Same source compiled for two targets; the 1e-9 band is a floating-point courtesy, not a tolerance budget. The measured ~1e-12 is the expected size."
+  }
+ ]
+}

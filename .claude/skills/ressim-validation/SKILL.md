@@ -192,6 +192,15 @@ the commit that moved it. To add a benchmark, record it from its test with
 `tests/bench_record.rs` (or append to `$RESSIM_BENCH_OUT/records.jsonl` from a script), then give
 its section a renderer in `tools/benchmarks/benchmarks.py`.
 
+The page's **Signals** and **Coverage** blocks are what should move priorities: same-model gaps to
+a reference that solves the same discrete model, criteria near their band, loose bands, and
+scenarios with no numerical reference. `python3 tools/benchmarks/benchmarks.py signals` prints them
+plus stale sections (`--strict` exits 1 when anything needs attention). A gap stops being flagged
+only through an entry in `docs/benchmarks/explained.json`: `tracked` with an open issue, or
+`explained` with the mechanism written where `ref` points. The Coverage grid reads the scenario
+catalog, so adding a scenario, a Flow artifact case or a refinement dimension needs
+`benchmarks.sh render` (CI's `render --check` fails otherwise).
+
 Agreement with Flow at the same time step is not accuracy: FIM and Flow share an implicit scheme
 and its time-step error. When FIM and IMPES disagree, `--refine` is the referee (see the
 small-direct README's "Referee" section, where refinement shows IMPES converging to Flow).
@@ -215,7 +224,8 @@ small-direct README's "Referee" section, where refinement shows IMPES converging
 `.github/workflows/pr-tests.yml` is the source of truth. As of 2026-09-25 it runs, in order:
 `pnpm install`, an explicit `scripts/build-wasm.sh`, lint, `check:cycles`, typecheck,
 `validate-solver-coverage.sh all`, the Buckley-Leverett benchmarks,
-`validate-compositional.sh thermo`, `validate-native-binding.sh`, the OPM artifact pipeline
+`validate-compositional.sh thermo`, `validate-native-binding.sh`,
+`benchmarks.sh check --tier fast` (benchmark records and the generated page), the OPM artifact pipeline
 pytest (`tools/opm_flow`), the full vitest suite via `pnpm run test:coverage`, `pnpm run build`,
 and a Playwright smoke test of the built bundle (`test:deployed` against `vite preview`).
 

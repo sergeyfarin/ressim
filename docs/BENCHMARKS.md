@@ -45,6 +45,65 @@ Per section, the banded criterion closest to its band, and how much of the band 
 | Compositional, matched timestep | OPM flowexp_comp | 1D plain: worst_pressure_diff 1.68 bar | 2 bar | 84% | `21f25f8` |
 <!-- /GENERATED:summary -->
 
+## Signals
+
+What should change priorities, computed from the committed records and
+[`benchmarks/explained.json`](benchmarks/explained.json). An entry there marks a signal as
+`explained` (the mechanism and evidence are written up where `ref` points) or `tracked` (an open
+issue owns it). An unexplained, untracked gap needs an issue. Staleness depends on the current
+commit, so it is not on this page: `python3 tools/benchmarks/benchmarks.py signals` prints it
+together with everything below, and `benchmarks.sh check` warns about it.
+
+<!-- GENERATED:signals -->
+**Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 9 unexplained and untracked, 14 tracked, 1 explained.
+
+| Section | Case | Metric | Value | Where | Status |
+|---|---|---|---|---|---|
+| cross_solver | bo-1d-10 | impes.cum.FGPT | +2.56 % |  | **unexplained, untracked** |
+| cross_solver | bo-1d-40 | impes.cum.FGPT | +2.27 % |  | **unexplained, untracked** |
+| cross_solver | dep-pvt-correlation | impes.cum.FGPT | +2.10 % |  | **unexplained, untracked** |
+| cross_solver | dep-pvt-lab-report | impes.cum.FGPT | +1.59 % |  | **unexplained, untracked** |
+| cross_solver | ow-1d-96 | impes.cum.FWPT | +4.84 % |  | **unexplained, untracked** |
+| cross_solver | ow-1d-96 | impes.cum.FWIT | +2.82 % |  | **unexplained, untracked** |
+| cross_solver | ow-2d-12x12 | impes.cum.FOPT | +2.25 % |  | **unexplained, untracked** |
+| cross_solver | ow-2d-12x12 | impes.cum.FWPT | +6.16 % |  | **unexplained, untracked** |
+| cross_solver | ow-2d-12x12 | impes.cum.FWIT | +3.18 % |  | **unexplained, untracked** |
+| spe1 | 10x10x3 | vs_flow.FOPR_rel_err | +2.73 % | t=3510 d | tracked: #55 |
+| spe1 | 10x10x3 | vs_flow.FPR_rel_err | -3.06 % | t=900 d | tracked: #55 |
+| spe1 | 10x10x3 | vs_flow.WGOR_rel_err | +7.13 % | t=810 d | tracked: #55 |
+| spe1 | 20x20x3 | vs_flow.FOPR_rel_err | +2.81 % | t=3600 d | tracked: #55 |
+| spe1 | 20x20x3 | vs_flow.FPR_rel_err | -3.03 % | t=900 d | tracked: #55 |
+| spe1 | 20x20x3 | vs_flow.WGOR_rel_err | +7.17 % | t=720 d | tracked: #55 |
+| three_phase | gas_drive | pressure_rel_err | +1.59 % | t=50 d | tracked: #55 |
+| three_phase | gas_drive | gor_rel_err | -6.08 % | t=10 d | tracked: #55 |
+| three_phase | gas_drive | cum_oil_rel_err | +4.31 % | t=600 d | tracked: #55 |
+| three_phase | gas_drive | oil_rate_rel_err | +4.61 % | t=20 d | tracked: #55 |
+| cross_solver | dep-pvt-correlation | sparse.cum.FGPT | +1.06 % |  | tracked: #55 |
+| cross_solver | dep-pvt-correlation | dense.cum.FGPT | +1.06 % |  | tracked: #55 |
+| cross_solver | dep-pvt-lab-report | sparse.cum.FGPT | +1.13 % |  | tracked: #55 |
+| cross_solver | dep-pvt-lab-report | dense.cum.FGPT | +1.13 % |  | tracked: #55 |
+| compositional | 1D plain | worst_pressure_diff | 1.68 bar | t = 0.19 d, cell 4: 59.4244 vs 61.1053 bar | explained: COMPOSITIONAL_VALIDATION.md §8 (C12) |
+
+**Near the band** — more than 70% of an acceptance band used, so one modest regression from failing:
+
+| Section | Case | Metric | Value | Band | Used | Status |
+|---|---|---|---|---|---|---|
+| compositional | 1D plain | worst_pressure_diff | 1.68 bar | 2 bar | 84% | explained: COMPOSITIONAL_VALIDATION.md §8 (C12) |
+| depletion | IMPES | sat_gas_finest_pair_gap | +1.21 % | 1.5 % | 80% | explained: depletion_grid_convergence.rs, FINEST_PAIR_TOLERANCE_SAT_GAS (#11) |
+| depletion | FIM | sat_gas_finest_pair_gap | +1.20 % | 1.5 % | 80% | explained: depletion_grid_convergence.rs, FINEST_PAIR_TOLERANCE_SAT_GAS (#11) |
+
+**Loose bands** — criteria using less than 33% of their band would not notice a threefold regression. Tighten one only with a written justification in the same commit.
+
+| Section | Loose, open | Loose, explained | Loosest | Used | Status |
+|---|---|---|---|---|---|
+| buckley | 3 of 4 | — | BL-Case-B-dt0.50: report_interval_spread | 0.3% | — |
+| spe1 | 3 of 6 | — | 10x10x3: plateau_rel_err | < 0.1 % | — |
+| three_phase | 5 of 9 | — | gas_drive: mb_drift_oil | < 0.1 % | — |
+| depletion | 2 of 8 | — | FIM: pressure_finest_pair_gap | 15.5% | — |
+| parity | 0 of 15 | 15 | buckley-fim (FIM): rates_max_abs_diff | < 0.1 % | explained: crates/ressim-py/parity/compare_native.py, TOL |
+| compositional | 4 of 8 | — | 1D skin 60: cum_injection_rel_err | 2.7% | — |
+<!-- /GENERATED:signals -->
+
 ## 1. Buckley–Leverett breakthrough (analytical)
 
 Owning document: [`P4_TWO_PHASE_BENCHMARKS.md`](P4_TWO_PHASE_BENCHMARKS.md). IMPES, 24 cells,
@@ -331,11 +390,46 @@ bash scripts/validate-compositional.sh reference   # skips with a note without f
 
 ## Scenario-level references
 
-Every scenario in the picker grades its own analytical or Flow reference in
+Most scenarios grade their own analytical or Flow reference in
 `src/lib/catalog/scenarios/<key>.test.ts`, run by `pnpm run test:scenarios` (part of
-`validate:product`). Those tests assert each case's claim, for example that `dep_pss` recovers the
+`validate:product`); the Coverage grid below lists the ones that have only the catalog-wide
+contract tests. Those tests assert each case's claim, for example that `dep_pss` recovers the
 Dietz shape factor within 3 % or that `wf_numerics` converges at first order. The bands are
 documented in each test. They are not restated here, because the test is the record.
+
+## Coverage
+
+Every scenario in the catalog, generated from `src/lib/catalog/scenarios/` and the OPM Flow
+artifact cases in `tools/opm_flow/opm_flow_tool/cases.py`. "Engine benchmark" is a section of this
+page that grades the scenario's physics; a scenario is mapped to one in `SCENARIO_SECTIONS`
+(`tools/benchmarks/benchmarks.py`). A refinement dimension is a sensitivity that varies grid or
+time step, which is where discretization error shows.
+
+<!-- GENERATED:coverage -->
+| Scenario | Analytical | OPM Flow artifact | Engine benchmark | Refinement dimension | Second simulator | Own `<key>.test.ts` |
+|---|---|---|---|---|---|---|
+| `comp_co2_1d` (withheld) | — | — | §8 | grid_refinement, timestep | — | yes |
+| `dep_arps` | depletion | — | — | — | — | yes |
+| `dep_decline` | depletion | — | — | timestep, grid_refinement | — | yes |
+| `dep_gas_pz` | gas-material-balance | yes | — | — | — | yes |
+| `dep_pss` | well-test | — | — | — | — | yes |
+| `dep_pvt` (withheld) | — | yes | §5 | — | — | yes |
+| `dep_welltest` | well-test | — | — | — | — | yes |
+| `gas_drive` | — | yes | §3 | — | — | yes |
+| `gas_injection` | gas-oil-bl | yes | §3, §5 | grid | — | yes |
+| `spe1_gas_injection` | digitized-reference | yes | §2 | — | — | **none** |
+| `sweep_areal` | sweep | — | — | grid_resolution | — | **none** |
+| `sweep_combined` | sweep | — | — | — | — | **none** |
+| `sweep_crossflow` | sweep | — | — | — | — | yes |
+| `sweep_vertical` | sweep | — | — | — | — | yes |
+| `wf_bl1d` | buckley-leverett | yes | §1 | — | — | yes |
+| `wf_capillary` | buckley-leverett | — | — | — | — | yes |
+| `wf_gravity` | buckley-leverett | yes | — | — | — | yes |
+| `wf_gravity_stability` | buckley-leverett | — | — | resolution | — | yes |
+| `wf_numerics` | buckley-leverett | yes | — | grid_refinement, time_truncation | — | yes |
+
+**10 scenario(s) have no numerical reference** (neither a Flow artifact nor an engine benchmark), only an analytical one or none: `dep_arps`, `dep_decline`, `dep_pss`, `dep_welltest`, `sweep_areal`, `sweep_combined`, `sweep_crossflow`, `sweep_vertical`, `wf_capillary`, `wf_gravity_stability`. No scenario has a second independent simulator yet. 3 scenario(s) have no test file of their own, only the catalog-wide contract tests: `spe1_gas_injection`, `sweep_areal`, `sweep_combined`.
+<!-- /GENERATED:coverage -->
 
 ## Not benchmarked
 

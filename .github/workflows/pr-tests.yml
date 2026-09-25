@@ -87,6 +87,14 @@ jobs:
       - name: Run native binding parity gate
         run: bash scripts/validate-native-binding.sh
 
+      # docs/BENCHMARKS.md is generated from docs/benchmarks/benchmarks.json (#54). The fast tier
+      # re-measures every section that needs no OPM Flow or flowexp_comp and fails when a banded
+      # error grows by more than a tenth of its band, leaves it, or is no longer produced; then it
+      # fails if the page differs from what its records generate. Flow-backed rows are reported as
+      # not checked, never as passed.
+      - name: Check benchmark records and the generated benchmark page (fast tier)
+        run: bash scripts/benchmarks.sh check --tier fast
+
       # The OPM artifact pipeline's unit contract, provenance and deck-hash checks (#20). Flow is
       # not needed: the tests read the committed artifacts and trimmed real summaries.
       - name: Run OPM artifact pipeline tests

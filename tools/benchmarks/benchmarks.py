@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import fnmatch
 import json
 import math
 import re
@@ -33,7 +34,10 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 RECORDS = REPO / "docs" / "benchmarks" / "benchmarks.json"
+EXPLAINED = REPO / "docs" / "benchmarks" / "explained.json"
 PAGE = REPO / "docs" / "BENCHMARKS.md"
+SCENARIOS = REPO / "src" / "lib" / "catalog" / "scenarios"
+OPM_CASES = REPO / "tools" / "opm_flow" / "opm_flow_tool" / "cases.py"
 
 # Section key -> (title for the summary, reference). Order is page order.
 SECTIONS = {
@@ -107,9 +111,12 @@ def cross_solver_records(report: dict) -> list[dict]:
             out.append(metric("cross_solver", case, f"flow.{key}", conv[key], unit="count",
                               reference="OPM Flow"))
         for run_id, run in entry["runs"].items():
+            # FIM and Flow share the implicit scheme; IMPES differs from both in time
+            # discretization, so its gap to Flow is expected, not a finding.
+            same = run.get("solver", "fim") == "fim"
             m = lambda name, value, unit: out.append(metric(  # noqa: E731
                 "cross_solver", case, f"{run_id}.{name}", value, unit=unit,
-                reference="OPM Flow, generated deck", same_model=True))
+                reference="OPM Flow, generated deck", same_model=same))
             for key in ("substeps", "newton", "retries"):
                 m(key, run["conv"][key], "count")
             m("wall_ms", run["wall_ms"], "ms")
@@ -279,6 +286,9 @@ def cmd_check(args: argparse.Namespace) -> int:
             elif abs(b - a) > 1e-9 * max(abs(a), 1.0):
                 notes.append(f"{label}: {a:.6g} -> {b:.6g}")
                 changed += 1
+    if RECORDS.exists():
+        for section, commit, count in stale_sections(json.loads(RECORDS.read_text())):
+            notes.append(f"{section}: recorded on {commit}, {count} engine commits ago; re-record with update")
     for n in notes:
         print(f"  note: {n}")
     for f in failures:
@@ -518,6 +528,215 @@ def render_compositional(s: Section) -> str:
     return "\n".join([s.stamp(), "", table(["Case", "Metric", "Measured", "Band", "Where"], rows)])
 
 
+# ---- signals ----------------------------------------------------------------------------------
+#
+# What should move priorities, computed from the committed records alone so that the page stays a
+# pure function of them. Staleness depends on HEAD and is printed by `signals`/`check` instead.
+
+NEAR_BAND = 0.70  # band used above this: one regression from failing
+LOOSE_BAND = 0.33  # band used below this: the band would miss a threefold regression
+# A same-model comparison differing by more than this is a finding until explained, by unit.
+GAP_THRESHOLD = {"frac": 0.01, "bar": 0.5}
+# Stale: engine commits since the section was measured.
+STALE_COMMITS = 10
+ENGINE_PATHS = ["src/lib/ressim/src", "crates", "tools/opm_flow", "opm", "scripts/fim-wasm-diagnostic.mjs"]
+
+
+def load_explained() -> list[dict]:
+    return json.loads(EXPLAINED.read_text())["entries"] if EXPLAINED.exists() else []
+
+
+def explanation(section: str, r: dict, explained: list[dict]) -> dict | None:
+    for e in explained:
+        metrics = e["metric"] if isinstance(e["metric"], list) else [e["metric"]]
+        if (e["section"] == section and fnmatch.fnmatchcase(r["case"], e["case"])
+                and any(fnmatch.fnmatchcase(r["metric"], m) for m in metrics)):
+            return e
+    return None
+
+
+def is_gap(r: dict) -> bool:
+    """A same-model difference large enough to be a finding: the two sides solve the same discrete
+    model, so it is neither discretization nor time-step error."""
+    name = r["metric"]
+    kind = name.endswith("_rel_err") or name.endswith("_diff") or ".cum." in name
+    threshold = GAP_THRESHOLD.get(r["unit"])
+    return (bool(r["same_model"]) and kind and threshold is not None
+            and isinstance(r["value"], (int, float)) and abs(r["value"]) > threshold)
+
+
+def band_used(r: dict) -> float | None:
+    if not r["band"] or not isinstance(r["value"], (int, float)) or math.isnan(r["value"]):
+        return None
+    return abs(r["value"]) / r["band"]
+
+
+def compute_signals(doc: dict, explained: list[dict]) -> dict:
+    out = {"gaps": [], "near": [], "loose": {}, "unused": []}
+    matched = set()
+    for section, data in doc["sections"].items():
+        loose = []
+        for r in data["records"]:
+            e = explanation(section, r, explained)
+            if e:
+                matched.add(id(e))
+            used = band_used(r)
+            if is_gap(r):
+                out["gaps"].append((section, r, e))
+            if used is not None and used > NEAR_BAND:
+                out["near"].append((section, r, e, used))
+            elif used is not None and used < LOOSE_BAND:
+                loose.append((r, used, e))
+        banded = sum(1 for r in data["records"] if band_used(r) is not None)
+        open_loose = [x for x in loose if x[2] is None]
+        if loose:
+            loosest = min(open_loose or loose, key=lambda x: x[1])
+            out["loose"][section] = (len(open_loose), len(loose) - len(open_loose), banded, loosest)
+    out["unused"] = [e for e in explained if id(e) not in matched]
+    return out
+
+
+def shown(r: dict) -> str:
+    if r["unit"] == "frac":
+        return signed_pct(r["value"], 2)
+    return f"{g(r['value'])} {r['unit']}"
+
+
+def status_cell(e: dict | None) -> str:
+    if e is None:
+        return "**unexplained, untracked**"
+    return f"{e['status']}: {e['ref']}"
+
+
+def render_signals(doc: dict) -> str:
+    sig = compute_signals(doc, load_explained())
+    out = []
+    gaps = sorted(sig["gaps"], key=lambda x: (x[2] is not None, x[2] and x[2]["status"] == "explained"))
+    open_gaps = [x for x in gaps if x[2] is None]
+    out.append(f"**Same-model gaps** — the reference solves the same discrete model, so a difference "
+               f"over {pct(GAP_THRESHOLD['frac'], 0)} (or {GAP_THRESHOLD['bar']} bar) is a finding "
+               f"until explained. {len(open_gaps)} unexplained and untracked, "
+               f"{sum(1 for x in gaps if x[2] and x[2]['status'] == 'tracked')} tracked, "
+               f"{sum(1 for x in gaps if x[2] and x[2]['status'] == 'explained')} explained.")
+    out.append("")
+    if gaps:
+        out.append(table(["Section", "Case", "Metric", "Value", "Where", "Status"],
+                         [[sec, r["case"], r["metric"], shown(r), r["at"] or "", status_cell(e)]
+                          for sec, r, e in gaps]))
+    else:
+        out.append("None.")
+    out.append("")
+    near = sorted(sig["near"], key=lambda x: -x[3])
+    out.append(f"**Near the band** — more than {NEAR_BAND:.0%} of an acceptance band used, so one "
+               "modest regression from failing:")
+    out.append("")
+    if near:
+        out.append(table(["Section", "Case", "Metric", "Value", "Band", "Used", "Status"],
+                         [[sec, r["case"], r["metric"], shown(r),
+                           pct(r["band"], 1) if r["unit"] == "frac" else f"{g(r['band'])} {r['unit']}",
+                           f"{used:.0%}", status_cell(e) if e else "—"] for sec, r, e, used in near]))
+    else:
+        out.append("None.")
+    out.append("")
+    out.append(f"**Loose bands** — criteria using less than {LOOSE_BAND:.0%} of their band would "
+               "not notice a threefold regression. Tighten one only with a written justification in "
+               "the same commit.")
+    out.append("")
+    rows = []
+    for section, (n, n_explained, banded, (r, used, e)) in sig["loose"].items():
+        rows.append([section, f"{n} of {banded}", str(n_explained) if n_explained else "—",
+                     f"{r['case']}: {r['metric']}", "< 0.1 %" if used < 0.001 else f"{used:.1%}",
+                     status_cell(e) if e else "—"])
+    out.append(table(["Section", "Loose, open", "Loose, explained", "Loosest", "Used", "Status"], rows)
+               if rows else "None.")
+    if sig["unused"]:
+        out += ["", "**Stale explanations** — entries in `explained.json` that match no record:", ""]
+        out += [f"- {e['section']} / {e['case']} / {e['metric']} ({e['ref']})" for e in sig["unused"]]
+    return "\n".join(out)
+
+
+def stale_sections(doc: dict) -> list[tuple[str, str, int]]:
+    out = []
+    for section, data in doc["sections"].items():
+        commit = data["provenance"]["commit"]
+        count = git("rev-list", "--count", f"{commit}..HEAD", "--", *ENGINE_PATHS)
+        if count.isdigit() and int(count) >= STALE_COMMITS:
+            out.append((section, commit, int(count)))
+    return out
+
+
+# ---- coverage ---------------------------------------------------------------------------------
+
+# Scenarios graded by an engine benchmark on this page, by section. Adding a benchmark for a
+# scenario means adding it here.
+SCENARIO_SECTIONS = {
+    "wf_bl1d": ["buckley"],
+    "spe1_gas_injection": ["spe1"],
+    "gas_drive": ["three_phase"],
+    "gas_injection": ["three_phase", "cross_solver"],
+    "dep_pvt": ["cross_solver"],
+    "comp_co2_1d": ["compositional"],
+}
+REFINEMENT_DIMENSION = re.compile(r"grid|refine|resolution|timestep|time_truncation")
+
+
+def scenario_catalog() -> list[dict]:
+    withheld_block = re.search(r"const WITHHELD_SCENARIOS[^=]*=\s*\[(.*?)\];",
+                               (SCENARIOS.parent / "scenarios.ts").read_text(), re.S)
+    withheld = set(re.findall(r"^\s*(\w+),", withheld_block.group(1), re.M)) if withheld_block else set()
+    flow = set(re.findall(r'scenario_key="(\w+)"', OPM_CASES.read_text())) if OPM_CASES.exists() else set()
+    out = []
+    for path in sorted(SCENARIOS.glob("*.ts")):
+        if path.name.endswith(".test.ts"):
+            continue
+        text = path.read_text()
+        key_match = re.search(r"^\s+key: '(\w+)'", text, re.M)
+        if not key_match:
+            continue
+        key_ = key_match.group(1)
+        methods = sorted(set(re.findall(r"analyticalMethod: '([^']+)'", text)) - {"none"})
+        dims = re.findall(r"^\s{12}key: '([^']+)'", text, re.M)
+        out.append({
+            "key": key_,
+            "withheld": path.stem in withheld,
+            "analytical": methods,
+            "flow": key_ in flow,
+            "refinement": [d for d in dims if REFINEMENT_DIMENSION.search(d)],
+            "sections": SCENARIO_SECTIONS.get(key_, []),
+            "tested": (SCENARIOS / f"{path.stem}.test.ts").exists(),
+        })
+    return out
+
+
+def render_coverage(doc: dict) -> str:
+    rows, gaps, untested = [], [], []
+    for c in scenario_catalog():
+        if not c["tested"]:
+            untested.append(c["key"])
+        numerical = c["flow"] or bool(c["sections"])
+        if not numerical:
+            gaps.append(c["key"])
+        rows.append([
+            f"`{c['key']}`" + (" (withheld)" if c["withheld"] else ""),
+            ", ".join(c["analytical"]) or "—",
+            "yes" if c["flow"] else "—",
+            ", ".join(f"§{list(SECTIONS).index(s) + 1}" for s in c["sections"]) or "—",
+            ", ".join(c["refinement"]) or "—",
+            "—",  # a second simulator: none wired in yet (#54 phase 3)
+            "yes" if c["tested"] else "**none**",
+        ])
+    return "\n".join([
+        table(["Scenario", "Analytical", "OPM Flow artifact", "Engine benchmark", "Refinement dimension",
+               "Second simulator", "Own `<key>.test.ts`"], rows),
+        "",
+        f"**{len(gaps)} scenario(s) have no numerical reference** (neither a Flow artifact nor an engine "
+        f"benchmark), only an analytical one or none: {', '.join(f'`{k}`' for k in gaps) or 'none'}. "
+        "No scenario has a second independent simulator yet. "
+        f"{len(untested)} scenario(s) have no test file of their own, only the catalog-wide contract "
+        f"tests: {', '.join(f'`{k}`' for k in untested) or 'none'}.",
+    ])
+
+
 RENDERERS = {
     "buckley": render_buckley,
     "spe1": render_spe1,
@@ -539,6 +758,10 @@ def render_page(page: str, doc: dict) -> str:
         name = m.group(2)
         if name == "summary":
             body = render_summary(sections)
+        elif name == "signals":
+            body = render_signals(doc)
+        elif name == "coverage":
+            body = render_coverage(doc)
         elif name in RENDERERS:
             body = RENDERERS[name](sections[name])
         else:
@@ -564,6 +787,33 @@ def cmd_render(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_signals(args: argparse.Namespace) -> int:
+    """The page's signals in plain text, plus staleness. Exit 1 with --strict when anything needs
+    attention: an unexplained gap, an unexplained near-band criterion, or a stale section."""
+    doc = json.loads(RECORDS.read_text())
+    sig = compute_signals(doc, load_explained())
+    attention = 0
+    for section, r, e in sig["gaps"]:
+        if e is None:
+            attention += 1
+            print(f"GAP      {section}/{r['case']}/{r['metric']}: {shown(r)} {r['at']} (vs {r['reference']})")
+        else:
+            print(f"gap      {section}/{r['case']}/{r['metric']}: {shown(r)} [{e['status']}: {e['ref']}]")
+    for section, r, e, used in sig["near"]:
+        if e is None:
+            attention += 1
+        tag = "NEAR" if e is None else "near"
+        note = "" if e is None else f" [{e['status']}: {e['ref']}]"
+        print(f"{tag:8} {section}/{r['case']}/{r['metric']}: {used:.0%} of band{note}")
+    for section, commit, count in stale_sections(doc):
+        attention += 1
+        print(f"STALE    {section}: measured on {commit}, {count} engine commits ago; run update")
+    for e in sig["unused"]:
+        print(f"note     explained.json entry matches nothing: {e['section']}/{e['case']}/{e['metric']}")
+    print(f"benchmark signals: {attention} needing attention")
+    return 1 if args.strict and attention else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -574,13 +824,16 @@ def main() -> int:
     p.add_argument("--run", type=Path, required=True)
     p = sub.add_parser("render")
     p.add_argument("--check", action="store_true")
+    p = sub.add_parser("signals")
+    p.add_argument("--strict", action="store_true", help="exit 1 when anything needs attention")
     sub.add_parser("plan-fim-wasm", help="print 'file preset grid dt steps' per FIM long-horizon case")
     args = parser.parse_args()
     if args.command == "plan-fim-wasm":
         for case, preset, grid, dt, steps in FIM_WASM_CASES:
             print(slug(case), preset, grid, dt, steps)
         return 0
-    return {"collect": cmd_collect, "check": cmd_check, "render": cmd_render}[args.command](args)
+    return {"collect": cmd_collect, "check": cmd_check, "render": cmd_render,
+            "signals": cmd_signals}[args.command](args)
 
 
 if __name__ == "__main__":
