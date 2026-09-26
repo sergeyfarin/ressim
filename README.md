@@ -224,15 +224,15 @@ reference solving the same discrete model, and the commit it was measured on. Th
 <!-- GENERATED:summary -->
 | Area | Reference | Tightest criterion | Band | Band used | Largest same-model gap | Measured on |
 |---|---|---|---|---|---|---|
-| 1D waterflood breakthrough | Buckley-Leverett + Welge | BL-Case-A nx=24: breakthrough_rel_err 9.44 % | 15.0 % | 63% | — | `6d8ee13` |
-| SPE1 Case 1, 10 years | Published SPE1 / Flow | 10x10x3: gor_rel_err 1.25 % | 12.0 % | 10% | 20x20x3: vs_flow.WGOR_rel_err +0.69 % (explained) | `6d8ee13` |
-| Three-phase gas drive and injection | OPM Flow | gas_drive: gor_rel_err 0.56 % | 1.0 % | 56% | gas_drive: vs_jutul.FOPR_rel_err +4.49 % (explained) | `6d8ee13` |
-| Black-oil depletion column | Grid self-convergence, Flow | FIM: sat_gas_finest_pair_gap 1.20 % | 1.5 % | 80% | — | `6d8ee13` |
-| Generated decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | sweep-combined: sparse.cum.FWPT +0.45 % | `6d8ee13` |
-| Native vs wasm bindings | Each other | favorable-mobility (IMPES): rates_max_abs_diff 1.25e-10 abs | 1e-09 abs | 12% | — | `a8be847` |
-| FIM convergence, long horizons | Substeps per report step | no banded criterion | — | — | — | `6d8ee13` |
-| Compositional, matched timestep | OPM flowexp_comp | 1D plain: worst_pressure_diff 1.68 bar | 2 bar | 84% | 1D plain: worst_pressure_diff 1.68 bar (explained) | `6d8ee13` |
-| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | dep-pvt-lab-report: fim_vs_jutul.final_FGPR_rel_err +1.31 % (explained) | `6d8ee13` |
+| 1D waterflood breakthrough | Buckley-Leverett + Welge | BL-Case-A nx=24: breakthrough_rel_err 9.44 % | 15.0 % | 63% | — | `ca747c1` |
+| SPE1 Case 1, 10 years | Published SPE1 / Flow | 10x10x3: gor_rel_err 1.38 % | 12.0 % | 11% | 10x10x3: vs_flow.WGOR_rel_err -0.85 % (explained) | `ca747c1` |
+| Three-phase gas drive and injection | OPM Flow | gas_drive: gor_rel_err 0.56 % | 1.0 % | 56% | gas_drive: vs_jutul.FOPR_rel_err +4.49 % (explained) | `ca747c1` |
+| Black-oil depletion column | Grid self-convergence, Flow | FIM: sat_gas_finest_pair_gap 1.20 % | 1.5 % | 80% | — | `ca747c1` |
+| Generated decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | sweep-combined: sparse.cum.FWPT +0.45 % | `ca747c1` |
+| Native vs wasm bindings | Each other | buckley-impes (IMPES): cells_max_abs_diff 0 abs | 1e-09 abs | 0% | — | `ca747c1` |
+| FIM convergence, long horizons | Substeps per report step | no banded criterion | — | — | — | `ca747c1` |
+| Compositional, matched timestep | OPM flowexp_comp | 1D plain: worst_pressure_diff 1.68 bar | 2 bar | 84% | 1D plain: worst_pressure_diff 1.68 bar (explained) | `ca747c1` |
+| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | dep-pvt-lab-report: fim_vs_jutul.final_FGPR_rel_err +1.31 % (explained) | `ca747c1` |
 <!-- /GENERATED:summary -->
 
 Scenario tests (`pnpm run test:scenarios`) also grade each case in the picker against its own
