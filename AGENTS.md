@@ -47,8 +47,11 @@ Claude Code discovers these automatically; other agents should open the file.
   plain Rust; `frontend.rs` (wasm) and `crates/ressim-py` (Python) are conversion shims holding no
   decisions. No `JsValue` or `PyObject` in the engine
   (`docs/ENGINE_PAYLOAD_BOUNDARY_DESIGN_2026-09-21.md`).
-- **No `cfg(target_arch)` in solver routing.** Native and wasm FIM agree to ~1e-13; see the
-  `fim-solver-debug` skill before touching the linear route.
+- **No `cfg(target_arch)` in solver routing, and no platform math in the engine.** Native and
+  wasm agree bit for bit on the parity matrix. Engine code calls `crate::math`, never
+  `f64::powf`/`exp`/`ln`/trig/`hypot` (glibc and wasm's libm differ in the last bit; #62), and
+  `clippy.toml` plus `validate-native-binding.sh` enforce it. See the `fim-solver-debug` skill
+  before touching the linear route.
 - **Worker messages are structured-cloneable.** Svelte `$state` values are Proxies and fail to
   clone; all sends go through `RuntimeStoreImpl.#post()` (applies `$state.snapshot()`), never
   `simWorker.postMessage` directly.

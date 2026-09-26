@@ -1,3 +1,4 @@
+use crate::math;
 use crate::{InjectedFluid, ReservoirSimulator, Well};
 
 /// Conversion factor from mD·m²/(m·cP) to m³/day/bar.
@@ -107,7 +108,7 @@ impl ReservoirSimulator {
         let r_eq =
             0.28 * f64::sqrt(
                 f64::sqrt(kx / ky) * self.dx.powi(2) + f64::sqrt(ky / kx) * self.dy.powi(2),
-            ) / ((kx / ky).powf(0.25) + (ky / kx).powf(0.25));
+            ) / (math::powf(kx / ky, 0.25) + math::powf(ky / kx, 0.25));
         if !r_eq.is_finite() || r_eq <= 0.0 {
             return Err(format!(
                 "Equivalent radius must be positive and finite, got: {}",
@@ -138,7 +139,7 @@ impl ReservoirSimulator {
             ));
         }
 
-        let denom = f64::ln(r_eq / well_radius) + skin;
+        let denom = math::ln(r_eq / well_radius) + skin;
         if !denom.is_finite() || denom.abs() <= f64::EPSILON {
             return Err(format!(
                 "Invalid PI denominator ln(r_eq/r_w)+skin = {}. Check well radius and skin.",

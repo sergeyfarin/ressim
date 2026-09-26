@@ -37,6 +37,7 @@ use super::eos::EosError;
 use super::flash::{FlashError, FlashState, PhaseState, flash};
 use super::specification::{FluidSpecification, SurfaceConditions};
 use crate::ad::Scalar;
+use crate::math;
 
 /// LBC's polynomial coefficients in reduced density.
 ///
@@ -167,16 +168,19 @@ pub fn lbc_viscosity<S: Scalar>(
         let c = spec.component(i);
         let p_ca = (c.critical_pressure_pa / 1.0e6) / MPA_PER_ATM;
         let mm = c.molar_mass_kg_per_mol * 1000.0;
-        let zeta = (c.critical_temperature_k / (mm.powi(3) * p_ca.powi(4))).powf(1.0 / 6.0);
+        let zeta = math::powf(
+            c.critical_temperature_k / (mm.powi(3) * p_ca.powi(4)),
+            1.0 / 6.0,
+        );
         let t_r = temperature_k / c.critical_temperature_k;
         let xrm = x[i] * mm.sqrt();
         // The correlation is piecewise in reduced temperature. The branch is selected on the
         // component's own `T_r`, which is a constant in this isothermal model, so no derivative
         // crosses the switch.
         let mys = if t_r <= 1.5 {
-            34.0e-5 * t_r.powf(0.94) / zeta
+            34.0e-5 * math::powf(t_r, 0.94) / zeta
         } else {
-            17.78e-5 * (4.58 * t_r - 1.67).powf(0.625) / zeta
+            17.78e-5 * math::powf(4.58 * t_r - 1.67, 0.625) / zeta
         };
         my0 = my0 + xrm * mys;
         sum_xrm = sum_xrm + xrm;

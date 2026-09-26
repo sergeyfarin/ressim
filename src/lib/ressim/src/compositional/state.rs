@@ -28,6 +28,7 @@
 //! recomputable from the primaries; nothing depends on it being present.
 
 use crate::fluid::flash::FlashState;
+use crate::math;
 use serde::{Deserialize, Serialize};
 
 use super::layout::CompositionalLayout;
@@ -446,7 +447,7 @@ impl RockView<'_> {
     /// Pore volume of a cell at pressure `p` [m³].
     pub fn pore_volume_m3(&self, cell: usize, pressure_bar: f64) -> f64 {
         self.pore_volume_ref_m3[cell]
-            * ((pressure_bar - self.reference_pressure_bar) * self.compressibility_per_bar).exp()
+            * math::exp((pressure_bar - self.reference_pressure_bar) * self.compressibility_per_bar)
     }
 
     pub fn cell_count(&self) -> usize {

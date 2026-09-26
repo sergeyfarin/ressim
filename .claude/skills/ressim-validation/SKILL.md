@@ -63,7 +63,7 @@ rather than hidden behind a default.
 | Scenario catalog (`src/lib/catalog/`) | `pnpm test` then `pnpm run typecheck` |
 | WASM API surface (`frontend.rs`, `lib.rs`, worker payloads) | `bash scripts/build-wasm.sh` + `pnpm run validate:product` |
 | Physics, PVT, wells, either timestep controller, or the small-system linear route — anything that can move an answer | the rows above **plus** `bash scripts/validate-cross-solver.sh` (every solver vs OPM Flow, scorecard ratchet; needs `flow`) **plus** `bash scripts/benchmarks.sh check` (every number on `docs/BENCHMARKS.md`, ~2–3 min) |
-| Engine payload boundary (`api.rs`, `frontend.rs`) or `crates/ressim-py` | the rows above **plus** `bash scripts/validate-native-binding.sh` (native vs browser bindings on a case matrix; ~1e-13 FIM, ~1e-12 IMPES) |
+| Engine payload boundary (`api.rs`, `frontend.rs`) or `crates/ressim-py` | the rows above **plus** `bash scripts/validate-native-binding.sh` (engine-math lint, then native vs browser bindings on a case matrix, bit-identical since #62) |
 | Compositional engine (`src/lib/ressim/src/compositional/`) | `bash scripts/validate-compositional.sh thermo`; `native` or `all` when OPM headers / `flowexp_comp` are available |
 | Styling, Tailwind config, `index.html`, Vite/build config | `pnpm run build` + `pnpm run test:deployed` against `pnpm run preview` — the only check that catches an unstyled page (a Tailwind content-glob miss raises no error anywhere) |
 

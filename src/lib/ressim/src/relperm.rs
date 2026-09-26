@@ -1,3 +1,4 @@
+use crate::math;
 use serde::{Deserialize, Serialize};
 
 use crate::ad::Scalar;
@@ -234,7 +235,7 @@ impl RockFluidPropsThreePhase {
             return interpolate_piecewise(&tables.swof, s_w, |row| row.sw, |row| row.krw);
         }
         let s_eff = ((s_w - self.s_wc) / (1.0 - self.s_wc - self.s_or)).clamp(0.0, 1.0);
-        self.k_rw_max * s_eff.powf(self.n_w)
+        self.k_rw_max * math::powf(s_eff, self.n_w)
     }
 
     pub fn d_k_rw_d_sw(&self, s_w: f64) -> f64 {
@@ -249,7 +250,7 @@ impl RockFluidPropsThreePhase {
         if !(0.0..1.0).contains(&s_eff) {
             return 0.0;
         }
-        self.k_rw_max * self.n_w * s_eff.powf(self.n_w - 1.0) / denom
+        self.k_rw_max * self.n_w * math::powf(s_eff, self.n_w - 1.0) / denom
     }
 
     /// Gas relative permeability — Corey-Brooks.
@@ -263,7 +264,7 @@ impl RockFluidPropsThreePhase {
             return 0.0;
         }
         let s_eff = ((s_g - self.s_gc) / denom).clamp(0.0, 1.0);
-        self.k_rg_max * s_eff.powf(self.n_g)
+        self.k_rg_max * math::powf(s_eff, self.n_g)
     }
 
     pub fn d_k_rg_d_sg(&self, s_g: f64) -> f64 {
@@ -278,7 +279,7 @@ impl RockFluidPropsThreePhase {
         if !(0.0..1.0).contains(&s_eff) {
             return 0.0;
         }
-        self.k_rg_max * self.n_g * s_eff.powf(self.n_g - 1.0) / denom
+        self.k_rg_max * self.n_g * math::powf(s_eff, self.n_g - 1.0) / denom
     }
 
     /// Oil relative permeability in oil-water 2-phase system (Sg = 0).
@@ -288,7 +289,7 @@ impl RockFluidPropsThreePhase {
             return interpolate_piecewise(&tables.swof, s_w, |row| row.sw, |row| row.krow);
         }
         let s_eff = ((1.0 - s_w - self.s_or) / (1.0 - self.s_wc - self.s_or)).clamp(0.0, 1.0);
-        self.k_ro_max * s_eff.powf(self.n_o)
+        self.k_ro_max * math::powf(s_eff, self.n_o)
     }
 
     pub fn d_k_ro_water_d_sw(&self, s_w: f64) -> f64 {
@@ -303,7 +304,7 @@ impl RockFluidPropsThreePhase {
         if !(0.0..1.0).contains(&s_eff) {
             return 0.0;
         }
-        -self.k_ro_max * self.n_o * s_eff.powf(self.n_o - 1.0) / denom
+        -self.k_ro_max * self.n_o * math::powf(s_eff, self.n_o - 1.0) / denom
     }
 
     /// Oil relative permeability in oil-gas 2-phase system (Sw = Swc).
@@ -318,7 +319,7 @@ impl RockFluidPropsThreePhase {
             return 0.0;
         }
         let s_eff = ((1.0 - self.s_wc - s_g - self.s_org) / denom).clamp(0.0, 1.0);
-        self.k_ro_max * s_eff.powf(self.n_o)
+        self.k_ro_max * math::powf(s_eff, self.n_o)
     }
 
     pub fn d_k_ro_gas_d_sg(&self, s_g: f64) -> f64 {
@@ -333,7 +334,7 @@ impl RockFluidPropsThreePhase {
         if !(0.0..1.0).contains(&s_eff) {
             return 0.0;
         }
-        -self.k_ro_max * self.n_o * s_eff.powf(self.n_o - 1.0) / denom
+        -self.k_ro_max * self.n_o * math::powf(s_eff, self.n_o - 1.0) / denom
     }
 
     /// Three-phase oil relative permeability — Stone II model.
@@ -491,7 +492,7 @@ impl RockFluidProps {
     /// Returns 0 for Sw <= Swc, krw_max for Sw >= 1-Sor
     pub fn k_rw(&self, s_w: f64) -> f64 {
         let s_eff = ((s_w - self.s_wc) / (1.0 - self.s_wc - self.s_or)).clamp(0.0, 1.0);
-        self.k_rw_max * s_eff.powf(self.n_w)
+        self.k_rw_max * math::powf(s_eff, self.n_w)
     }
 
     pub fn d_k_rw_d_sw(&self, s_w: f64) -> f64 {
@@ -503,7 +504,7 @@ impl RockFluidProps {
         if !(0.0..1.0).contains(&s_eff) {
             return 0.0;
         }
-        self.k_rw_max * self.n_w * s_eff.powf(self.n_w - 1.0) / denom
+        self.k_rw_max * self.n_w * math::powf(s_eff, self.n_w - 1.0) / denom
     }
 
     /// Oil relative permeability [dimensionless] using Corey-Brooks correlation
@@ -511,7 +512,7 @@ impl RockFluidProps {
     /// Returns 0 for Sw >= 1-Sor (critical water saturation), kro_max for Sw <= Swc
     pub fn k_ro(&self, s_w: f64) -> f64 {
         let s_eff = ((1.0 - s_w - self.s_or) / (1.0 - self.s_wc - self.s_or)).clamp(0.0, 1.0);
-        self.k_ro_max * s_eff.powf(self.n_o)
+        self.k_ro_max * math::powf(s_eff, self.n_o)
     }
 
     pub fn d_k_ro_d_sw(&self, s_w: f64) -> f64 {
@@ -523,7 +524,7 @@ impl RockFluidProps {
         if !(0.0..1.0).contains(&s_eff) {
             return 0.0;
         }
-        -self.k_ro_max * self.n_o * s_eff.powf(self.n_o - 1.0) / denom
+        -self.k_ro_max * self.n_o * math::powf(s_eff, self.n_o - 1.0) / denom
     }
 
     // ── Generic (differentiable) mirrors, see the three-phase block above ──────

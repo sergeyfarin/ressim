@@ -97,8 +97,10 @@ Known-reverted lever classes (do not re-try without new evidence): widening Newt
 - Linear solvers: `solvers/faer_sparse_lu.rs` (direct), `solvers/bicgstab.rs`; FIM-specific wiring under `fim/linear/`.
 - **Linear routing is the same on every target.** Small systems (≤ 512 rows) try sparse LU, then
   dense LU as a backup, then iterative CPR; `setFimDirectBackend` swaps the direct order. Do not
-  reintroduce a `cfg(target_arch)` into solver routing. Native and wasm FIM agree to ~1e-13 on the
-  parity matrix since FIM-DIRECT-001; before it they substepped differently (18 vs 4) because
+  reintroduce a `cfg(target_arch)` into solver routing. Native and wasm FIM agree bit for bit on
+  the parity matrix since #62 routed engine math through `crate::math` (the `libm` crate on every
+  target; glibc's `pow` is off by an ulp on some 257-knot relperm knots, and FIM turned that into
+  1.1e-4 bar), and to ~1e-13 since FIM-DIRECT-001; before it they substepped differently (18 vs 4) because
   roundoff of one sign in an inactive unknown made the Jacobian singular. A direct solve never
   returns exactly 0 for an unknown that should not move, so **never give a primary a slope that
   depends on which side of a clamp its roundoff lands**

@@ -1,4 +1,5 @@
 use crate::ReservoirSimulator;
+use crate::math;
 
 pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
     let mut time_stepped = 0.0;
@@ -156,13 +157,11 @@ fn sublinear_retry_factor(
     {
         return retry_factor;
     }
-    let exponent = (previous_factor / retry_factor).ln() / (trial_dt / previous_dt).ln();
+    let exponent = math::ln(previous_factor / retry_factor) / math::ln(trial_dt / previous_dt);
     if !exponent.is_finite() || exponent >= SATURATED_RESPONSE_EXPONENT {
         return retry_factor;
     }
-    retry_factor
-        .powf(1.0 / exponent.max(MIN_RESPONSE_EXPONENT))
-        .max(MIN_RETRY_FACTOR)
+    math::powf(retry_factor, 1.0 / exponent.max(MIN_RESPONSE_EXPONENT)).max(MIN_RETRY_FACTOR)
 }
 
 impl ReservoirSimulator {

@@ -10,6 +10,7 @@
 //! [`flash_cell`]: ReservoirSimulator::flash_cell
 
 use crate::ReservoirSimulator;
+use crate::math;
 
 /// One cell's component inventory at surface conditions [Sm³].
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -51,7 +52,9 @@ impl ReservoirSimulator {
     /// `Vp_ref · exp(c_r · (p − p_ref))`.
     pub(crate) fn pore_volume_at_pressure_m3(&self, id: usize, pressure_bar: f64) -> f64 {
         self.pore_volume_m3(id)
-            * ((pressure_bar - self.rock_reference_pressure_bar) * self.rock_compressibility).exp()
+            * math::exp(
+                (pressure_bar - self.rock_reference_pressure_bar) * self.rock_compressibility,
+            )
     }
 
     fn oil_fvf_at(&self, pressure_bar: f64, rs: f64) -> f64 {

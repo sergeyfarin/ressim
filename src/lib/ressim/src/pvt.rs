@@ -1,3 +1,4 @@
+use crate::math;
 use serde::{Deserialize, Serialize};
 
 use crate::ReservoirSimulator;
@@ -432,7 +433,7 @@ impl PvtTable {
                     extrapolated.mu_o_cp = mu;
                 }
                 None => {
-                    extrapolated.bo_m3m3 = last.bo_m3m3 * f64::exp(-c_o * (p - last.p_bar));
+                    extrapolated.bo_m3m3 = last.bo_m3m3 * math::exp(-c_o * (p - last.p_bar));
                 }
             }
             return extrapolated;
@@ -470,8 +471,8 @@ impl PvtTable {
         }
         if rows.len() == 1 {
             let row = &rows[0];
-            let bo = row.bo_m3m3 * f64::exp(-c_o * (p - row.p_bar));
-            let mu = row.mu_o_cp * f64::exp(c_o * (p - row.p_bar));
+            let bo = row.bo_m3m3 * math::exp(-c_o * (p - row.p_bar));
+            let mu = row.mu_o_cp * math::exp(c_o * (p - row.p_bar));
             return (bo, mu);
         }
         if p <= rows[0].p_bar {
@@ -497,8 +498,8 @@ impl PvtTable {
         let last = &rows[rows.len() - 1];
         let excess = p - last.p_bar;
         (
-            (last.bo_m3m3 * f64::exp(-c_o * excess)).max(1e-9),
-            last.mu_o_cp * f64::exp(c_o * excess),
+            (last.bo_m3m3 * math::exp(-c_o * excess)).max(1e-9),
+            last.mu_o_cp * math::exp(c_o * excess),
         )
     }
 

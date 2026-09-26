@@ -29,6 +29,7 @@
 
 use super::eos::{EosError, PhaseBranch, evaluate};
 use super::specification::FluidSpecification;
+use crate::math;
 
 /// Iteration cap for one trial-phase substitution loop. OPM uses 20000.
 const MAX_TRIAL_ITERATIONS: usize = 20_000;
@@ -112,9 +113,11 @@ pub fn wilson_k(spec: &FluidSpecification, pressure_pa: f64, temperature_k: f64)
     (0..spec.component_count())
         .map(|i| {
             let c = spec.component(i);
-            (5.3727 * (1.0 + c.acentric_factor) * (1.0 - c.critical_temperature_k / temperature_k))
-                .exp()
-                * (c.critical_pressure_pa / pressure_pa)
+            math::exp(
+                5.3727
+                    * (1.0 + c.acentric_factor)
+                    * (1.0 - c.critical_temperature_k / temperature_k),
+            ) * (c.critical_pressure_pa / pressure_pa)
         })
         .collect()
 }
@@ -211,12 +214,12 @@ fn run_trial(
             let ln_f_trial = trial_props.ln_phi[i] + safe_ln(normalized[i]);
             let ln_f_feed = feed_props.ln_phi[i] + safe_ln(z[i]);
             let ratio = match trial {
-                TrialPhase::VapourLike => (ln_f_feed - ln_f_trial).exp() / sum,
-                TrialPhase::LiquidLike => (ln_f_trial - ln_f_feed).exp() * sum,
+                TrialPhase::VapourLike => math::exp(ln_f_feed - ln_f_trial) / sum,
+                TrialPhase::LiquidLike => math::exp(ln_f_trial - ln_f_feed) * sum,
             };
             k[i] *= ratio;
             residual_norm += (ratio - 1.0) * (ratio - 1.0);
-            k_norm += k[i].ln() * k[i].ln();
+            k_norm += math::ln(k[i]) * math::ln(k[i]);
         }
 
         let trivial = k_norm < TRIVIAL_SOLUTION_TOLERANCE;
@@ -253,7 +256,7 @@ fn run_trial(
 /// the active-component policy in `specification.rs` requires. A *trace* component is untouched —
 /// this only fires on exact zero.
 fn safe_ln(x: f64) -> f64 {
-    if x == 0.0 { -700.0 } else { x.ln() }
+    if x == 0.0 { -700.0 } else { math::ln(x) }
 }
 
 /// Test the feed for stability at `(p, T, z)`.
@@ -296,7 +299,7 @@ pub fn test_stability(
     seeds.push(wilson.clone());
     // Michelsen's third seed: the cube root of Wilson, which probes closer to the feed and picks
     // up splits the full-strength estimate can overshoot.
-    seeds.push(wilson.iter().map(|k| k.cbrt()).collect());
+    seeds.push(wilson.iter().map(|&k| math::cbrt(k)).collect());
 
     let mut first_error = None;
     let mut any_trial_converged = false;

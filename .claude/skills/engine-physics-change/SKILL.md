@@ -43,6 +43,12 @@ Two places where one physical formula lives in **two implementations that must a
    ```
 2. **IMPES vs FIM public behavior.** Shared contracts are enforced by `*_on_both_solvers` tests in `src/lib/ressim/src/tests/`. A physics change that moves one solver but not the other will fail these — that is the test doing its job.
 
+**Engine math goes through `crate::math`** (`src/lib/ressim/src/math.rs`), never `f64::powf`,
+`exp`, `ln`, trig or `hypot`: those call the platform libm, which differs between glibc and the
+browser's wasm in the last bit, and FIM amplifies an ulp into a different Newton path (#62).
+`clippy.toml` disallows the `f64` methods in library code; `validate-native-binding.sh` runs the
+lint. `sqrt`, `powi` and `mul_add` are fine.
+
 Also duplicated across languages: the undersaturated `c_o = 1e-5 /bar` assumption exists in both `src/lib/physics/pvt.ts` and `src/lib/analytical/materialBalance.ts` (known gap, no regression guard yet). TS-side analytical formulas mirror Rust physics — check both sides when changing fractional-flow or PVT behavior.
 
 ## Test placement rules (from `src/lib/ressim/src/tests/README.md`)

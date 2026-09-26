@@ -3,8 +3,12 @@ set -euo pipefail
 
 # Native (non-WASM) consumer gate — S5 of docs/ARCHITECTURE_SPLIT_PLAN_2026-09-19.md.
 #
-# Checks three things, in order of what they would cost to get wrong:
+# Checks four things, in order of what they would cost to get wrong:
 #
+#   0. Engine library code calls no `f64` transcendental (`powf`, `exp`, `ln`, trig, `hypot`, ...):
+#      those call the platform libm, which is not bit-identical across targets (#62). The engine
+#      uses `crate::math` instead. The rule lives in src/lib/ressim/clippy.toml; this runs only
+#      that lint, so unrelated clippy findings cannot fail the gate.
 #   1. `ressim-py` links the engine with `default-features = false`, so no wasm-bindgen, js-sys or
 #      serde-wasm-bindgen appears in its dependency graph. This is what makes S4's feature gate a
 #      fact the compiler enforces rather than a convention.
@@ -16,10 +20,18 @@ set -euo pipefail
 #
 # Deliberately NOT a physics gate, and deliberately not in `validate:product`: it needs a Python
 # interpreter and the generated wasm bundle. Run it when touching crates/ressim-py, the engine's
-# `wasm` feature, or anything in frontend.rs.
+# `wasm` feature, anything in frontend.rs, or engine math (a new transcendental call site).
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 parity="$repo_root/crates/ressim-py/parity"
+
+echo "== 0. target-independent math"
+# Both feature sets: the browser build (default features) and the native one ressim-py links.
+for features in "" "--no-default-features"; do
+    ( cd "$repo_root/src/lib/ressim" && cargo clippy --quiet --lib $features -- \
+        -A clippy::all -A warnings -D clippy::disallowed_methods )
+done
+echo "gate ok: engine library code calls no platform transcendental (crate::math only)"
 
 echo "== 1. dependency isolation"
 graph="$(cargo tree --manifest-path "$repo_root/Cargo.toml" -p ressim-py -e normal 2>/dev/null || true)"

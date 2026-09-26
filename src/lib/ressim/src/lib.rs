@@ -31,6 +31,7 @@ mod fluid;
 mod frontend;
 mod grid;
 mod impes;
+mod math;
 mod mobility;
 mod pvt;
 mod relperm;

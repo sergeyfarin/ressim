@@ -1,3 +1,4 @@
+use crate::math;
 use std::f64;
 
 use nalgebra::{DMatrix, DVector};
@@ -1387,7 +1388,7 @@ fn apply_givens_rotation(a: f64, b: f64, cosine: f64, sine: f64) -> (f64, f64) {
 }
 
 fn compute_givens_rotation(a: f64, b: f64) -> (f64, f64) {
-    let radius = a.hypot(b);
+    let radius = math::hypot(a, b);
     if radius <= f64::EPSILON {
         (1.0, 0.0)
     } else {

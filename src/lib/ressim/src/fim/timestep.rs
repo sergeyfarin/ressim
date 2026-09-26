@@ -1,5 +1,6 @@
 use crate::ReservoirSimulator;
 use crate::fim::assembly::{FimAssemblyOptions, equation_offset};
+use crate::math;
 // See newton.rs: production assembly now goes through the AD assembler.
 use crate::fim::assembly_ad::assemble_fim_system_ad as assemble_fim_system;
 use crate::fim::flow_resv::begin_flow_resv_report_step_context;
@@ -475,9 +476,9 @@ fn opm_pid_dt(dt_days: f64, errors: [f64; 3]) -> f64 {
         f64::MAX
     } else {
         dt_days
-            * (errors[1] / e2).powf(0.075)
-            * (tol / e2).powf(0.175)
-            * (errors[1] * errors[1] / (errors[0] * e2)).powf(0.01)
+            * math::powf(errors[1] / e2, 0.075)
+            * math::powf(tol / e2, 0.175)
+            * math::powf(errors[1] * errors[1] / (errors[0] * e2), 0.01)
     }
 }
 

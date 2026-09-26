@@ -149,8 +149,8 @@ pnpm run test:deployed                    # Playwright, against `pnpm run previe
 ```
 
 Both run in PR CI. The first builds `crates/ressim-py` against the engine with its browser
-bindings switched off and compares the two clients. The two agree to about 1e-13 on FIM and 1e-12
-on IMPES. The second is the only check that would catch an unstyled page, because a Tailwind
+bindings switched off and compares the two clients. They agree bit for bit: the engine's
+transcendental math goes through one implementation on both targets (#62). The second is the only check that would catch an unstyled page, because a Tailwind
 content-glob miss raises no error anywhere.
 
 One gate is local only, because CI has no OPM Flow. Run it after any change that can move an

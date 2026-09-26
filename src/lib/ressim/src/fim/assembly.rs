@@ -1,3 +1,4 @@
+use crate::math;
 use nalgebra::DVector;
 use sprs::CsMat;
 #[cfg(test)]
@@ -590,7 +591,7 @@ fn pore_volume_at_state(
 ) -> f64 {
     let pore_volume_ref_m3 = sim.pore_volume_m3(cell_idx);
     let pressure_delta_bar = state.cell(cell_idx).pressure_bar - sim.rock_reference_pressure_bar;
-    pore_volume_ref_m3 * f64::exp(sim.rock_compressibility * pressure_delta_bar)
+    pore_volume_ref_m3 * math::exp(sim.rock_compressibility * pressure_delta_bar)
 }
 
 fn cell_component_inventory_sc(

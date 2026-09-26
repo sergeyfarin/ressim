@@ -26,6 +26,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde-wasm-bindgen = { version = "0.6.5", optional = true }
 console_error_panic_hook = { version = "0.1.7", optional = true }
 faer = { version = "0.24.4", default-features = false, features = ["std", "sparse-linalg"] }
+libm = "0.2.16"
 
 # For dense vectors (RHS, pressure vector) and CG solver utilities
 nalgebra = "0.35.0"

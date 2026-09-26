@@ -41,6 +41,7 @@
 use super::eos::{EosError, PhaseBranch, PhaseProperties, evaluate};
 use super::specification::FluidSpecification;
 use super::stability::{self, StabilityError, StabilityVerdict};
+use crate::math;
 
 /// Iteration cap for successive substitution on `K`.
 ///
@@ -395,7 +396,7 @@ pub fn flash(
             if z[i] == 0.0 {
                 continue;
             }
-            let ln_ratio = xn[i].ln() + liquid.ln_phi[i] - yn[i].ln() - vapour.ln_phi[i];
+            let ln_ratio = math::ln(xn[i]) + liquid.ln_phi[i] - math::ln(yn[i]) - vapour.ln_phi[i];
             residual = residual.max(ln_ratio.abs());
 
             // Successive substitution: K_i <- phi_i^L / phi_i^V. Equilibrium is
@@ -405,7 +406,7 @@ pub fn flash(
             // `K_i *= (x_i phi_i^L)/(y_i phi_i^V)` - and mixing the two forms leaves an extra
             // factor of `K` in the step, which drives `K` away from equilibrium toward the
             // degenerate split into two pure phases instead of toward it.
-            k[i] = (liquid.ln_phi[i] - vapour.ln_phi[i]).exp();
+            k[i] = math::exp(liquid.ln_phi[i] - vapour.ln_phi[i]);
             if !k[i].is_finite() || k[i] <= 0.0 {
                 return Err(FlashError::InvalidFeed {
                     reason: "an equilibrium ratio left the physical range",

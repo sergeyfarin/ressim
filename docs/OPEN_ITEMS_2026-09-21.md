@@ -17,9 +17,10 @@ split (sparse LU native, dense LU wasm), but that was the trigger rather than th
 whenever a direct solve left it at negative roundoff (`max_floor(0.0)` in
 `fim/properties.rs::cell_props_generic`). Every later Jacobian in the step was then exactly
 singular, and both LUs correctly refused it. Which backend's roundoff came out negative decided
-which target fragmented. Fixed and pinned by two tests; native and wasm now agree to **5.7e-14**
+which target fragmented. Fixed and pinned by two tests; native and wasm then agreed to **5.7e-14**
 on every parity case, all of which are strict. Full record:
-[`FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md` §9](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md).
+[`FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md` §9](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md). Since
+#62 (§10) they agree bit for bit: the platform libm was the last difference.
 
 **Routing unified (2026-09-22).** The routing no longer depends on the target. Small systems try
 sparse LU, then dense LU as a backup when sparse refuses, then iterative CPR. `setFimDirectBackend("dense")`
@@ -148,7 +149,7 @@ eight small-direct decks. These were deliberately left out of the first version:
   and `FIM_STATUS.md` as typed tables. Close by generating those decks from the simulator the way
   `opm_small_direct.rs` does, then adding them as cases.
 - **The wasm target.** The harness runs natively. Native/wasm parity is
-  `validate-native-binding.sh`'s job and has held to ~1e-13 since FIM-DIRECT-001.
+  `validate-native-binding.sh`'s job: ~1e-13 since FIM-DIRECT-001, bit-identical since #62.
 - **A second independent simulator** is wired in since #54 phase 3: JutulDarcy runs the
   small-direct decks and `gas_drive` in `benchmarks.sh`'s full tier (`BENCHMARKS.md` §9). What it
   does not cover, deliberately: SPE1 (it ignores `DRSDT`, so it runs Case 2 physics), cumulatives

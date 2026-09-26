@@ -20,6 +20,7 @@
 //! (compositional plan, C4) while owning no simulation state and no dependency on the black-oil
 //! solver. Nothing about the arithmetic changed in the move.
 
+use crate::math;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 /// Forward-mode dual number with `N` derivative slots.
@@ -64,7 +65,7 @@ impl<const N: usize> Ad<N> {
     }
 
     pub(crate) fn exp(self) -> Self {
-        let value = self.value.exp();
+        let value = math::exp(self.value);
         Self {
             value,
             deriv: self.deriv.map(|g| g * value),
@@ -74,7 +75,7 @@ impl<const N: usize> Ad<N> {
     pub(crate) fn ln(self) -> Self {
         let inv = 1.0 / self.value;
         Self {
-            value: self.value.ln(),
+            value: math::ln(self.value),
             deriv: self.deriv.map(|g| g * inv),
         }
     }
@@ -99,8 +100,8 @@ impl<const N: usize> Ad<N> {
 
     /// `self^p` for a constant exponent `p`.
     pub(crate) fn powf(self, p: f64) -> Self {
-        let value = self.value.powf(p);
-        let coef = p * self.value.powf(p - 1.0);
+        let value = math::powf(self.value, p);
+        let coef = p * math::powf(self.value, p - 1.0);
         Self {
             value,
             deriv: self.deriv.map(|g| g * coef),
@@ -367,16 +368,16 @@ impl Scalar for f64 {
         self
     }
     fn exp(self) -> Self {
-        f64::exp(self)
+        math::exp(self)
     }
     fn ln(self) -> Self {
-        f64::ln(self)
+        math::ln(self)
     }
     fn sqrt(self) -> Self {
         f64::sqrt(self)
     }
     fn powf(self, p: f64) -> Self {
-        f64::powf(self, p)
+        math::powf(self, p)
     }
     fn recip(self) -> Self {
         1.0 / self

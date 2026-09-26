@@ -1,3 +1,4 @@
+use crate::math;
 use serde::{Deserialize, Serialize};
 
 use crate::RockFluidProps;
@@ -47,7 +48,7 @@ impl CapillaryPressure {
         }
 
         // Brooks-Corey capillary pressure: P_c = P_entry * (S_eff)^(-1/lambda)
-        let pc = self.p_entry * s_eff.powf(-1.0 / self.lambda);
+        let pc = self.p_entry * math::powf(s_eff, -1.0 / self.lambda);
 
         pc.clamp(0.0, pc_max)
     }
@@ -63,7 +64,7 @@ impl CapillaryPressure {
             return 0.0;
         }
 
-        self.p_entry * (-1.0 / self.lambda) * s_eff.powf(-1.0 / self.lambda - 1.0) / denom
+        self.p_entry * (-1.0 / self.lambda) * math::powf(s_eff, -1.0 / self.lambda - 1.0) / denom
     }
 
     /// Generic (differentiable) mirror of [`Self::capillary_pressure`]. Branch
@@ -128,7 +129,7 @@ impl GasOilCapillaryPressure {
 
         // Brooks-Corey: P_cog = P_entry × S_o_eff^(−1/λ)
         // At s_eff = 1: pc = P_entry; decreases toward 0 only if s_eff > 1 (physically excluded)
-        let pc = self.p_entry * s_eff.powf(-1.0 / self.lambda);
+        let pc = self.p_entry * math::powf(s_eff, -1.0 / self.lambda);
         pc.clamp(0.0, pc_max)
     }
 
@@ -144,7 +145,7 @@ impl GasOilCapillaryPressure {
             return 0.0;
         }
 
-        self.p_entry * (1.0 / self.lambda) * s_eff.powf(-1.0 / self.lambda - 1.0) / denom
+        self.p_entry * (1.0 / self.lambda) * math::powf(s_eff, -1.0 / self.lambda - 1.0) / denom
     }
 
     /// Generic (differentiable) mirror of [`Self::capillary_pressure_og`].

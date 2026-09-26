@@ -34,6 +34,7 @@
 use super::specification::{EosVariant, FluidSpecification};
 use super::units::GAS_CONSTANT_J_PER_MOL_K;
 use crate::ad::Scalar;
+use crate::math;
 
 /// Which root of the cubic to take.
 ///
@@ -194,7 +195,7 @@ pub struct PhaseProperties {
 impl PhaseProperties {
     /// `phi_i`, for callers that want the coefficient rather than its log.
     pub fn fugacity_coefficient(&self, i: usize) -> f64 {
-        self.ln_phi[i].exp()
+        math::exp(self.ln_phi[i])
     }
 
     /// `f_i = x_i * phi_i * p`, in Pa.
@@ -254,13 +255,13 @@ fn cubic_roots(b: f64, c: f64, d: f64) -> Option<CubicRoots> {
         // without it a state a few ulps from a double root panics instead of returning a root.
         // Found by the C12 transport comparison, which visits far more states than any fixture.
         let acos_argument = (((3.0 * q) / (2.0 * p)) * (-3.0 / p).sqrt()).clamp(-1.0, 1.0);
-        let theta = (1.0 / 3.0) * acos_argument.acos();
+        let theta = (1.0 / 3.0) * math::acos(acos_argument);
         let r = 2.0 * (-p / 3.0).sqrt();
         let two_pi_3 = 2.0 * core::f64::consts::PI / 3.0;
         let mut z = [
-            r * theta.cos() + shift,
-            r * (theta - two_pi_3).cos() + shift,
-            r * (theta - 2.0 * two_pi_3).cos() + shift,
+            r * math::cos(theta) + shift,
+            r * math::cos(theta - two_pi_3) + shift,
+            r * math::cos(theta - 2.0 * two_pi_3) + shift,
         ];
         if z.iter().any(|v| !v.is_finite()) {
             // A typed failure rather than a panic: the caller turns this into
@@ -275,11 +276,11 @@ fn cubic_roots(b: f64, c: f64, d: f64) -> Option<CubicRoots> {
             // `acosh` needs an argument at least 1, which a positive discriminant guarantees
             // mathematically and roundoff can violate by an ulp. Same guard, same reason.
             let acosh_argument = (((-3.0 * q.abs()) / (2.0 * p)) * (-3.0 / p).sqrt()).max(1.0);
-            let theta = (1.0 / 3.0) * acosh_argument.acosh();
-            ((-2.0 * q.abs()) / q) * (-p / 3.0).sqrt() * theta.cosh()
+            let theta = (1.0 / 3.0) * math::acosh(acosh_argument);
+            ((-2.0 * q.abs()) / q) * (-p / 3.0).sqrt() * math::cosh(theta)
         } else if p > 0.0 {
-            let theta = (1.0 / 3.0) * (((3.0 * q) / (2.0 * p)) * (3.0 / p).sqrt()).asinh();
-            -2.0 * (p / 3.0).sqrt() * theta.sinh()
+            let theta = (1.0 / 3.0) * math::asinh(((3.0 * q) / (2.0 * p)) * (3.0 / p).sqrt());
+            -2.0 * (p / 3.0).sqrt() * math::sinh(theta)
         } else {
             // p == 0 with a positive discriminant forces q != 0; the source throws here.
             return None;

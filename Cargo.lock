@@ -1049,6 +1049,7 @@ dependencies = [
  "faer",
  "getrandom",
  "js-sys",
+ "libm",
  "nalgebra",
  "rand",
  "serde",

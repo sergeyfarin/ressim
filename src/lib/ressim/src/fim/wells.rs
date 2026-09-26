@@ -1,3 +1,4 @@
+use crate::math;
 use std::collections::HashMap;
 
 use crate::fim::state::FimState;
@@ -811,13 +812,13 @@ pub(crate) fn geometric_well_index(
 
     let r_eq = 0.28
         * f64::sqrt(f64::sqrt(kx / ky) * sim.dx.powi(2) + f64::sqrt(ky / kx) * sim.dy.powi(2))
-        / ((kx / ky).powf(0.25) + (ky / kx).powf(0.25));
+        / (math::powf(kx / ky, 0.25) + math::powf(ky / kx, 0.25));
     if !r_eq.is_finite() || r_eq <= well.well_radius {
         return None;
     }
 
     let k_avg = f64::sqrt(kx * ky);
-    let denom = f64::ln(r_eq / well.well_radius) + well.skin;
+    let denom = math::ln(r_eq / well.well_radius) + well.skin;
     if !k_avg.is_finite() || k_avg <= 0.0 || !denom.is_finite() || denom.abs() <= f64::EPSILON {
         return None;
     }
