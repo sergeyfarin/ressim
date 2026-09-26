@@ -237,12 +237,20 @@ def cmd_collect(args: argparse.Namespace) -> int:
     doc = json.loads(args.into.read_text()) if args.into.exists() else {"sections": {}}
     doc["$comment"] = ("Written by tools/benchmarks/benchmarks.py via scripts/benchmarks.sh update; "
                        "do not edit by hand. See docs/BENCHMARKS.md and #54.")
+    failed = []
     for section, s in status.items():
         if s["status"] != "ran" or s.get("missing"):
             # Keep the last measurement and its stamp: an absent oracle is not a new result, and
             # half a section would drop the half that needs it.
             why = s.get("note") or f"without {', '.join(s.get('missing', []))}"
             print(f"  {section}: {s['status']} ({why}); keeping the committed records")
+            kept = doc["sections"].get(section)
+            if s["status"] == "failed" and kept is not None:
+                # A failed gate is not an absent oracle: stamp it, so the kept records read as
+                # stale on the page and in `signals` instead of passing as current (#62: the
+                # parity section rode along on a8be847 for three re-records).
+                kept["provenance"]["failed_on"] = provenance(s["command"]) | {"note": why}
+                failed.append(section)
             continue
         if not by_section.get(section):
             raise SystemExit(f"{section} ran but produced no records; did a test filter stop matching?")
@@ -255,6 +263,8 @@ def cmd_collect(args: argparse.Namespace) -> int:
     doc["sections"] = {k: doc["sections"][k] for k in SECTIONS if k in doc["sections"]}
     args.into.parent.mkdir(parents=True, exist_ok=True)
     args.into.write_text(json.dumps(doc, indent=1) + "\n")
+    if failed:
+        print(f"  FAILED: {', '.join(failed)}; their records are stale and flagged under Signals")
     return 0
 
 
@@ -378,8 +388,11 @@ class Section:
             return "*Not measured yet.*"
         state = "dirty tree, provisional" if p["dirty"] else "clean tree"
         extra = "".join(f", {k} `{v}`" for k, v in p.items()
-                        if k not in ("commit", "dirty", "date", "command", "note"))
-        return f"*Measured on `{p['commit']}` ({state}), {p['date']}{extra}.*"
+                        if k not in ("commit", "dirty", "date", "command", "note", "failed_on"))
+        failed = p.get("failed_on")
+        failure = (f" **Its gate failed on `{failed['commit']}` ({failed['date']}: {failed['note']}), "
+                   "so these are the last good records, not a current measurement.**" if failed else "")
+        return f"*Measured on `{p['commit']}` ({state}), {p['date']}{extra}.*{failure}"
 
 
 def criteria_rows(s: Section, case: str, labels: list[tuple[str, str]], signed=False) -> list[list[str]]:
@@ -404,6 +417,8 @@ def render_summary(sections: dict[str, Section], explained: list[dict]) -> str:
                   and not math.isnan(r["value"])]
         p = s.data["provenance"]
         stamp = f"`{p['commit']}`" + (" (dirty)" if p and p["dirty"] else "") if p else "—"
+        if p and p.get("failed_on"):
+            stamp += f", **failed on `{p['failed_on']['commit']}`**"
         gaps = [r for r in s.data["records"] if gap_threshold(r) is not None]
         if gaps:
             r = max(gaps, key=lambda r: abs(r["value"]) / gap_threshold(r))
@@ -641,9 +656,11 @@ def band_used(r: dict) -> float | None:
 
 
 def compute_signals(doc: dict, explained: list[dict]) -> dict:
-    out = {"gaps": [], "near": [], "loose": {}, "unused": []}
+    out = {"gaps": [], "near": [], "loose": {}, "unused": [], "failed": []}
     matched = set()
     for section, data in doc["sections"].items():
+        if "failed_on" in data["provenance"]:
+            out["failed"].append((section, data["provenance"]))
         loose = []
         for r in data["records"]:
             e = explanation(section, r, explained)
@@ -680,6 +697,14 @@ def status_cell(e: dict | None) -> str:
 def render_signals(doc: dict) -> str:
     sig = compute_signals(doc, load_explained())
     out = []
+    if sig["failed"]:
+        out.append("**Failed on the last update** — the section's gate failed, so its records are "
+                   "the last good ones, not a current measurement:")
+        out.append("")
+        out.append(table(["Section", "Failed on", "Why", "Records from"],
+                         [[sec, f"`{p['failed_on']['commit']}` ({p['failed_on']['date']})",
+                           p["failed_on"]["note"], f"`{p['commit']}`"] for sec, p in sig["failed"]]))
+        out.append("")
     gaps = sorted(sig["gaps"], key=lambda x: (x[2] is not None, x[2] and x[2]["status"] == "explained"))
     open_gaps = [x for x in gaps if x[2] is None]
     out.append(f"**Same-model gaps** — the reference solves the same discrete model, so a difference "
@@ -897,6 +922,10 @@ def cmd_signals(args: argparse.Namespace) -> int:
         tag = "NEAR" if e is None else "near"
         note = "" if e is None else f" [{e['status']}: {e['ref']}]"
         print(f"{tag:8} {section}/{r['case']}/{r['metric']}: {used:.0%} of band{note}")
+    for section, p in sig["failed"]:
+        attention += 1
+        print(f"FAILED   {section}: gate failed on {p['failed_on']['commit']} ({p['failed_on']['note']}); "
+              f"records are from {p['commit']}")
     for section, commit, count in stale_sections(doc):
         attention += 1
         print(f"STALE    {section}: measured on {commit}, {count} engine commits ago; run update")
