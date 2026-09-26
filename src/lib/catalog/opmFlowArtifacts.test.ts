@@ -17,6 +17,7 @@ const PARSED_BASELINE = [
     'wf_bl1d', 'spe1_gas_injection', 'gas_drive', 'wf_gravity',
     'wf_numerics', 'wf_numerics_fine', 'dep_gas_pz', 'dep_gas_pz_geopressured',
     'gas_injection', 'dep_pvt_correlation', 'dep_pvt_lab_report',
+    'dep_pvt_petrosky_farshad', 'dep_pvt_al_marhoun',
     'sweep_areal', 'sweep_vertical', 'sweep_crossflow', 'sweep_combined',
     'wf_capillary', 'wf_gravity_stability',
 ];
@@ -28,6 +29,8 @@ describe('OPM Flow precomputed artifacts', () => {
         expect(artifacts.map((artifact) => artifact.scenarioKey).sort()).toEqual([
             'dep_gas_pz',
             'dep_gas_pz',
+            'dep_pvt',
+            'dep_pvt',
             'dep_pvt',
             'dep_pvt',
             'gas_drive',
@@ -149,6 +152,22 @@ describe('OPM Flow precomputed artifacts', () => {
         ]);
         expect(series[0]).toEqual(published);
         expect(series[1].sourceType).toBe('opm-flow-precomputed');
+    });
+
+    it('shows a dimension-scoped source only under the dimensions it names', () => {
+        const published = { panelKey: 'rates', label: 'Paper', curveKey: 'published-x', data: [{ x: 0, y: 1 }] };
+        const sources = [
+            { kind: 'published' as const, series: [published] },
+            { kind: 'opm-flow' as const, artifactKeys: ['wf_bl1d'], dimensionKeys: ['mobility'] },
+        ];
+        const artifactsUnder = (dimensionKey?: string | null) => new Set(
+            resolveScenarioReferenceSeries(sources, undefined, dimensionKey).map((s) => s.sourceArtifactKey ?? s.curveKey),
+        );
+        expect(artifactsUnder('mobility')).toEqual(new Set(['published-x', 'wf_bl1d']));
+        expect(artifactsUnder('sor')).toEqual(new Set(['published-x']));
+        expect(artifactsUnder(null)).toEqual(new Set(['published-x']));
+        // No dimension given: every declared source, for callers that enumerate them.
+        expect(artifactsUnder()).toEqual(new Set(['published-x', 'wf_bl1d']));
     });
 
     it('never resolves an artifact a scenario did not declare', () => {

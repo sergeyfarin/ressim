@@ -597,6 +597,13 @@ export type ScenarioReferenceSourceDef =
          */
         artifactVariantLabels?: Readonly<Record<string, string>>;
         /**
+         * The sensitivity dimensions these runs are rungs of. Omitted: every
+         * dimension. A ladder's Flow run means nothing beside a different
+         * ladder's curves, so a scenario with a Flow twin per rung scopes each
+         * one to the dimension it grades (`dep_pvt`).
+         */
+        dimensionKeys?: readonly string[];
+        /**
          * 'overlay' (default) — dashed reference beside the live simulation curves.
          * 'primary' — solid content; the artifact *is* the exhibit, for
          * `runMode: 'prerun-artifacts'` scenarios with no live run to compare to.
@@ -753,6 +760,7 @@ const SOURCE_SCENARIOS: Scenario[] = [
     dep_pss,
     dep_decline,
     dep_arps,
+    dep_pvt,
     dep_gas_pz,
     gas_injection,
     gas_drive,
@@ -767,15 +775,10 @@ const SOURCE_SCENARIOS: Scenario[] = [
  * withholding is a statement about what the catalog *offers*, not a soft
  * delete. Nothing enumerates these into the UI.
  *
- * `dep_pvt` ("PVT Model Risk — One Calibration Point") is withheld pending a
- * second sensitivity dimension. The 2026-08-02 redesign fixed its physics —
- * see its file header and `dep_pvt.test.ts` — but it ships one dimension where
- * every other case offers two to five, so there is nothing for a reader to
- * interrogate once they have seen the single ladder. Move it back into
- * `SOURCE_SCENARIOS` when that dimension exists.
+ * `dep_pvt` was withheld here from 2026-08-02 until it gained its second
+ * sensitivity dimension (#26).
  */
 const WITHHELD_SCENARIOS: Scenario[] = [
-    dep_pvt,
     // `comp_co2_1d` is withheld pending compositional curve sourcing in the chart stack.
     //
     // The scenario itself is complete and its engine path works end to end: the worker builds a

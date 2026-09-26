@@ -18,7 +18,6 @@ its milestone is closed. See [ROADMAP.md](ROADMAP.md) for the current order.
 
 - [#12 — Close remaining SPE1 and black-oil validation gaps](https://github.com/sergeyfarin/ressim/issues/12)
 - [#15 — Fix remaining chart correctness and presentation defects](https://github.com/sergeyfarin/ressim/issues/15)
-- [#26 — Give the withheld dep_pvt case a second sensitivity dimension](https://github.com/sergeyfarin/ressim/issues/26)
 - [#29 — Compositional model: C13 chart sourcing, then C14](https://github.com/sergeyfarin/ressim/issues/29)
 - [#52 — Run SPE5, then SPE3, on the compositional engine](https://github.com/sergeyfarin/ressim/issues/52)
 

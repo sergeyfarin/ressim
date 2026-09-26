@@ -12,6 +12,8 @@ import depGasPzGeopressuredArtifact from './opm-flow-results/dep_gas_pz_geopress
 import gasInjectionArtifact from './opm-flow-results/gas_injection.json';
 import depPvtCorrelationArtifact from './opm-flow-results/dep_pvt_correlation.json';
 import depPvtLabReportArtifact from './opm-flow-results/dep_pvt_lab_report.json';
+import depPvtPetroskyFarshadArtifact from './opm-flow-results/dep_pvt_petrosky_farshad.json';
+import depPvtAlMarhounArtifact from './opm-flow-results/dep_pvt_al_marhoun.json';
 import sweepArealArtifact from './opm-flow-results/sweep_areal.json';
 import sweepVerticalArtifact from './opm-flow-results/sweep_vertical.json';
 import sweepCrossflowArtifact from './opm-flow-results/sweep_crossflow.json';
@@ -100,6 +102,8 @@ const ARTIFACTS = [
     gasInjectionArtifact as OpmFlowArtifact,
     depPvtCorrelationArtifact as OpmFlowArtifact,
     depPvtLabReportArtifact as OpmFlowArtifact,
+    depPvtPetroskyFarshadArtifact as OpmFlowArtifact,
+    depPvtAlMarhounArtifact as OpmFlowArtifact,
     sweepArealArtifact as OpmFlowArtifact,
     sweepVerticalArtifact as OpmFlowArtifact,
     sweepCrossflowArtifact as OpmFlowArtifact,
@@ -194,13 +198,23 @@ function getOpmFlowArtifactSeriesByKeys(
  * This is the only path from a scenario to its non-simulation curves. There is
  * deliberately no scenarioKey-based lookup: an artifact appears on a chart only
  * because the scenario named it.
+ *
+ * `activeDimensionKey` drops the sources scoped to other dimensions. Leave it
+ * out to list every declared source, as the wiring tests do.
  */
 export function resolveScenarioReferenceSeries(
     sources: readonly ScenarioReferenceSourceDef[] | undefined,
     scenarioParams?: Record<string, unknown>,
+    activeDimensionKey?: string | null,
 ): PublishedReferenceSeries[] {
     if (!sources?.length) return [];
-    return sources.flatMap((source) => (
+    const shown = (source: ScenarioReferenceSourceDef) => (
+        activeDimensionKey === undefined
+        || source.kind !== 'opm-flow'
+        || !source.dimensionKeys
+        || (activeDimensionKey !== null && source.dimensionKeys.includes(activeDimensionKey))
+    );
+    return sources.filter(shown).flatMap((source) => (
         source.kind === 'published'
             ? [...source.series]
             : getOpmFlowArtifactSeriesByKeys(source.artifactKeys, {

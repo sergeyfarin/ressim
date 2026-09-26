@@ -34,7 +34,6 @@ Current numbers: [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md). Authoritative evide
 ## 2. Product and chart architecture
 
 - [#15 — Remaining chart correctness and presentation](https://github.com/sergeyfarin/ressim/issues/15)
-- [#26 — Second sensitivity dimension for the withheld `dep_pvt`](https://github.com/sergeyfarin/ressim/issues/26)
 
 #14 (typed output selection) is closed. The current design audit is
 `docs/CHART_ARCHITECTURE_REVIEW_2026-08-02.md`. Preserve the analytical method registry, declared

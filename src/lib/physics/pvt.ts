@@ -55,6 +55,37 @@ export function standingRs(p: number, sgGas: number, api: number, tempF: number)
 }
 
 /**
+ * A published bubble-point correlation, read backwards as the saturated Rs(p) curve below the
+ * bubble point. A flash test pins (P_b, Rs_b, Bo_b); it does not pin how the oil gives up its gas
+ * below P_b, and the correlations disagree about that.
+ */
+export type SaturatedRsCorrelation = 'standing' | 'petrosky-farshad' | 'al-marhoun';
+
+/**
+ * Rs(p) / Rs(p_b) below the bubble point, for one correlation normalised through the fluid's own
+ * bubble point. Each correlation is a P_b(Rs) relation whose gas-gravity, API and temperature
+ * factors multiply Rs (or p) as a constant, so they cancel in the ratio and only the pressure
+ * shape remains. Pressures in psia.
+ *
+ * - Standing (1947): P_b ∝ Rs^0.83, so (p/p_b)^(1/0.83).
+ * - Petrosky & Farshad (1993): P_b = 112.727·Rs^0.577421·(…) − 1391.051, so
+ *   ((p/112.727 + 12.340)/(p_b/112.727 + 12.340))^1.73184. The −1391 psia intercept means this
+ *   curve does not reach zero at atmospheric pressure (about 0.2 at 1 bar for p_b = 150 bar):
+ *   the correlation is fitted to reservoir pressures, not to the low-pressure tail.
+ * - Al-Marhoun (1988): P_b ∝ Rs^0.715082, so (p/p_b)^(1/0.715082).
+ */
+export function saturatedRsFraction(correlation: SaturatedRsCorrelation, pPsia: number, pbPsia: number): number {
+    switch (correlation) {
+        case 'standing':
+            return Math.pow(pPsia / pbPsia, 1.0 / 0.83);
+        case 'petrosky-farshad':
+            return Math.pow((pPsia / 112.727 + 12.340) / (pbPsia / 112.727 + 12.340), 1.73184);
+        case 'al-marhoun':
+            return Math.pow(pPsia / pbPsia, 1.0 / 0.715082);
+    }
+}
+
+/**
  * Standing (1947) Oil Formation Volume Factor
  * @param rs Solution GOR in scf/STB
  * @param sgGas Gas specific gravity
@@ -195,6 +226,10 @@ export function leeGonzalezEakinViscosity(p: number, z: number, tempR: number, s
  * @param pbBar Bubble point pressure (bar)
  * @param pMaxBar Maximum table pressure (bar)
  * @param points Number of points in the table
+ * @param undersaturatedCompressibilityPerBar c_o for Bo above the bubble point
+ * @param saturatedRsCorrelation Shape of Rs(p) below the bubble point. Every choice passes
+ *   through the same (P_b, Rs_b, Bo_b), which Standing sets; Bo and μ_o below P_b follow the
+ *   reshaped Rs through Standing's Bo(Rs) and Beggs–Robinson's μ(Rs).
  * @returns Array of PvtRow ordered by pressure ascending
  */
 export function generateBlackOilTable(
@@ -205,6 +240,7 @@ export function generateBlackOilTable(
     pMaxBar: number,
     points: number = 30,
     undersaturatedCompressibilityPerBar: number = DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR,
+    saturatedRsCorrelation: SaturatedRsCorrelation = 'standing',
 ): PvtRow[] {
     const tempF = cToF(tempC);
     const tempR = cToR(tempC);
@@ -244,7 +280,9 @@ export function generateBlackOilTable(
 
         if (pBar <= pbBar) {
             // Saturated
-            rs_scf = standingRs(pPsia, sgGas, api, tempF);
+            rs_scf = saturatedRsCorrelation === 'standing'
+                ? standingRs(pPsia, sgGas, api, tempF)
+                : rsMaxScf * saturatedRsFraction(saturatedRsCorrelation, pPsia, pbPsia);
             bo = standingBo(rs_scf, sgGas, sgOil, tempF);
             mu_o = beggsRobinsonSaturatedOilViscosity(muOd, rs_scf);
         } else {

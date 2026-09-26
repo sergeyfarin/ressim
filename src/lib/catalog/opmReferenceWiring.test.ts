@@ -65,16 +65,18 @@ const EXPECTED: Record<string, { artifacts: string[]; curveKeys: string[]; varia
         variantLabel: 'base',
     },
     dep_pvt: {
-        artifacts: ['dep_pvt_correlation', 'dep_pvt_lab_report'],
+        artifacts: ['dep_pvt_correlation', 'dep_pvt_lab_report', 'dep_pvt_petrosky_farshad', 'dep_pvt_al_marhoun'],
         curveKeys: [
             'opm-avg-pressure', 'opm-gor', 'opm-gas-rate', 'opm-cum-gas',
             'opm-lab-avg-pressure', 'opm-lab-gor', 'opm-lab-gas-rate', 'opm-lab-cum-gas',
+            'opm-pf-avg-pressure', 'opm-pf-gor', 'opm-pf-gas-rate', 'opm-pf-cum-gas',
+            'opm-am-avg-pressure', 'opm-am-gor', 'opm-am-gas-rate', 'opm-am-cum-gas',
         ],
     },
 };
 
 /**
- * Every scenario that can show an OPM reference: the picker's, plus withheld ones (`dep_pvt`),
+ * Every scenario that can show an OPM reference: the picker's, plus any withheld ones,
  * which stay resolvable by key and keep their references.
  */
 function scenariosWithReferences() {
@@ -104,15 +106,31 @@ describe('OPM Flow references on their scenarios (#20)', () => {
         }
     });
 
-    it('labels the two dep_pvt runs by the rung each one is', () => {
+    it('labels the four dep_pvt runs by the rung each one is', () => {
         const scenario = getScenario('dep_pvt')!;
         const series = resolveScenarioReferenceSeries(scenario.referenceSources, scenario.params);
+        const rungs: Record<string, string> = {
+            dep_pvt_correlation: 'base: c_o = 1.0e-4, Standing Rs',
+            dep_pvt_lab_report: 'c_o = 2.5e-4',
+            dep_pvt_petrosky_farshad: 'Petrosky–Farshad Rs',
+            dep_pvt_al_marhoun: 'Al-Marhoun Rs',
+        };
         for (const curve of series) {
-            const rung = curve.sourceArtifactKey === 'dep_pvt_lab_report' ? 'c_o = 2.5e-4' : 'c_o = 1.0e-4';
-            expect(curve.label, curve.curveKey).toContain(`(${rung})`);
+            expect(curve.label, curve.curveKey).toContain(`(${rungs[curve.sourceArtifactKey!]})`);
         }
-        // Distinct legend toggles, since neither run carries a variant suffix.
-        expect(new Set(series.map((curve) => curve.sourceArtifactLabel)).size).toBe(2);
+        // Distinct legend toggles, since no run carries a variant suffix.
+        expect(new Set(series.map((curve) => curve.sourceArtifactLabel)).size).toBe(4);
+    });
+
+    it('shows each dep_pvt run only beside the ladder it is a rung of', () => {
+        const scenario = getScenario('dep_pvt')!;
+        const shownUnder = (dimensionKey: string) => [...new Set(
+            resolveScenarioReferenceSeries(scenario.referenceSources, scenario.params, dimensionKey)
+                .map((curve) => curve.sourceArtifactKey),
+        )];
+        expect(shownUnder('pvt_model')).toEqual(['dep_pvt_correlation', 'dep_pvt_lab_report']);
+        expect(shownUnder('saturated_pvt'))
+            .toEqual(['dep_pvt_correlation', 'dep_pvt_petrosky_farshad', 'dep_pvt_al_marhoun']);
     });
 
     it('every declared reference lands on a panel its scenario draws', () => {
@@ -181,7 +199,8 @@ describe('committed OPM artifacts (#20)', () => {
         const fileBacked = listOpmFlowArtifacts().filter((artifact) => artifact.provenance.deckSource.endsWith('.DATA'));
         expect(fileBacked.map((artifact) => artifact.caseKey).sort())
             .toEqual([
-                'dep_pvt_correlation', 'dep_pvt_lab_report', 'gas_drive', 'gas_injection',
+                'dep_pvt_al_marhoun', 'dep_pvt_correlation', 'dep_pvt_lab_report', 'dep_pvt_petrosky_farshad',
+                'gas_drive', 'gas_injection',
                 'sweep_areal', 'sweep_combined', 'sweep_crossflow', 'sweep_vertical',
                 'wf_capillary', 'wf_gravity_stability',
             ]);

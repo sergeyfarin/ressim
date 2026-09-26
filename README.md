@@ -77,7 +77,7 @@ https://farin.nl/ressim - No installation required
 | Flow Regimes & Decline | Layered Depletion (Arps) | `dep_arps` | Spatial layered depletion approaching a late-time Dietz/Fetkovich superposition, plus a crossflow limitation study |
 | Material Balance & Drive Mechanism | Gas Reserves from p/z | `dep_gas_pz` | Dry-gas depletion against the p/z material-balance straight line; pore compressibility, compartmentalisation and how much history you have each inflate the reserves estimate; OPM Flow cross-check at both ends of the compressibility ladder |
 | Material Balance & Drive Mechanism | Solution Gas Drive | `gas_drive` | Saturated black-oil depletion — liberation, free-gas build-up and the GOR rise; graded against an OPM Flow reference (`docs/THREE_PHASE_VALIDATION.md` §2) |
-| Material Balance & Drive Mechanism | PVT Model Risk — One Calibration Point *(defined and tested; withheld from picker)* | `dep_pvt` | Two PVT representations constrained at one point; constant-rate blowdown, so unmeasured undersaturated compressibility shows up as a 2.5x difference in time to the bubble point; withheld until it has a second sensitivity dimension ([issue #26](https://github.com/sergeyfarin/ressim/issues/26)) |
+| Material Balance & Drive Mechanism | PVT Model Risk — One Calibration Point | `dep_pvt` | Constant-rate black-oil blowdown; every PVT table shares the one point a flash test pins. Above it, unmeasured undersaturated compressibility doubles the time to the bubble point; below it, the published Rs(p) correlation spreads producing GOR by ±20% at matched pressure. OPM Flow on every rung |
 | Published Benchmark Decks | SPE1 Black-Oil Benchmark | `spe1_gas_injection` | Published Eclipse and OPM Flow comparative-solution references |
 | Compositional *(defined and tested; withheld from picker)* | 1D Compositional CO₂ Flood | `comp_co2_1d` | Peng–Robinson compositional engine; withheld until the chart stack can plot compositional series ([issue #29](https://github.com/sergeyfarin/ressim/issues/29)) |
 
@@ -167,13 +167,13 @@ Full `cargo test` is not used as a gate, because FIM diagnostic tests can domina
 
 ### Status
 
-- 17 scenarios are offered in the picker across five physics-question groups. Two more,
-  `dep_pvt` and `comp_co2_1d`, are defined and tested but withheld from the picker (see the
-  inventory above).
+- 18 scenarios are offered in the picker across five physics-question groups. One more,
+  `comp_co2_1d`, is defined and tested but withheld from the picker (see the inventory above).
 - Every scenario declares its solver and says why. Gas, black-oil and capillary cases run FIM by
-  default (`gas_injection`, `gas_drive`, `spe1_gas_injection`, `dep_gas_pz`, `wf_capillary`). The
+  default (`gas_injection`, `gas_drive`, `spe1_gas_injection`, `dep_gas_pz`, `dep_pvt`,
+  `wf_capillary`). The
   other oil/water cases run IMPES. `wf_numerics` runs the two side by side.
-- OPM Flow references are precomputed offline and bundled as seventeen parsed artifacts. Every
+- OPM Flow references are precomputed offline and bundled as nineteen parsed artifacts. Every
   simulation in the browser runs in local WebAssembly.
 - The engine also builds as a native Python module (`crates/ressim-py`, PyO3), with its browser
   bindings switched off.

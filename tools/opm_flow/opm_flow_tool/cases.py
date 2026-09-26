@@ -1172,10 +1172,13 @@ GAS_INJECTION = OpmCase(
 
 
 def _dep_pvt_case(variant: str, label: str, key_prefix: str, rung: str) -> OpmCase:
-    """One rung of `dep_pvt`'s undersaturated-compressibility ladder.
+    """One rung of one of `dep_pvt`'s two PVT ladders.
 
-    Two cases because an artifact carries one run and the pair is the exhibit:
-    the same fluid below the bubble point, 2.4x apart in time to reach it.
+    One case per rung because an artifact carries one run. The base case is a
+    rung of both ladders: undersaturated compressibility (the lab-report rung:
+    the same fluid below the bubble point, 2x later to reach it) and the
+    saturated Rs(p) correlation (Petrosky-Farshad and Al-Marhoun: the same
+    fluid above the bubble point, fanning out below it).
     """
     deck_path = f"opm/reference-decks/small-direct/dep-pvt-{variant}/CASE.DATA"
     return OpmCase(
@@ -1198,10 +1201,16 @@ def _dep_pvt_case(variant: str, label: str, key_prefix: str, rung: str) -> OpmCa
 
 
 DEP_PVT_CORRELATION = _dep_pvt_case(
-    "correlation", "PVT Model Risk (correlation c_o = 1.0e-4 /bar, base)", "opm-", "c_o = 1.0e-4",
+    "correlation", "PVT Model Risk (base: c_o = 1.0e-4 /bar, Standing Rs)", "opm-", "base: c_o = 1.0e-4, Standing Rs",
 )
 DEP_PVT_LAB_REPORT = _dep_pvt_case(
     "lab-report", "PVT Model Risk (lab-report c_o = 2.5e-4 /bar)", "opm-lab-", "c_o = 2.5e-4",
+)
+DEP_PVT_PETROSKY_FARSHAD = _dep_pvt_case(
+    "petrosky-farshad", "PVT Model Risk (Petrosky–Farshad Rs below Pb)", "opm-pf-", "Petrosky–Farshad Rs",
+)
+DEP_PVT_AL_MARHOUN = _dep_pvt_case(
+    "al-marhoun", "PVT Model Risk (Al-Marhoun Rs below Pb)", "opm-am-", "Al-Marhoun Rs",
 )
 
 
@@ -1275,6 +1284,6 @@ WF_GRAVITY_STABILITY = _catalog_waterflood_case(
 CASES = {case.key: case for case in (
     WF_BL1D, SPE1_GAS_INJECTION, GAS_DRIVE, WF_GRAVITY,
     WF_NUMERICS, WF_NUMERICS_FINE, DEP_GAS_PZ, DEP_GAS_PZ_GEOPRESSURED,
-    GAS_INJECTION, DEP_PVT_CORRELATION, DEP_PVT_LAB_REPORT,
+    GAS_INJECTION, DEP_PVT_CORRELATION, DEP_PVT_LAB_REPORT, DEP_PVT_PETROSKY_FARSHAD, DEP_PVT_AL_MARHOUN,
     SWEEP_AREAL, SWEEP_VERTICAL, SWEEP_CROSSFLOW, SWEEP_COMBINED, WF_CAPILLARY, WF_GRAVITY_STABILITY,
 )}

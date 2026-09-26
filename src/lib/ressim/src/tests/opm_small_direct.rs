@@ -40,7 +40,7 @@ struct Case {
     report_dt_days: f64,
 }
 
-const CASES: [Case; 17] = [
+const CASES: [Case; 19] = [
     Case {
         key: "ow-1d-96",
         note: "wf_bl1d geometry: 96x1x1 waterflood, BHP injector/producer, M~2",
@@ -79,14 +79,26 @@ const CASES: [Case; 17] = [
     },
     Case {
         key: "dep-pvt-correlation",
-        note: "dep_pvt scenario base case: constant-rate black-oil blowdown through the bubble point, correlation c_o",
-        report_steps: 300,
+        note: "dep_pvt scenario base case: constant-rate black-oil blowdown through the bubble point, correlation c_o, Standing Rs",
+        report_steps: 480,
         report_dt_days: 0.75,
     },
     Case {
         key: "dep-pvt-lab-report",
         note: "dep_pvt scenario lab-report variant: the same blowdown with 2.5x the undersaturated c_o",
-        report_steps: 300,
+        report_steps: 480,
+        report_dt_days: 0.75,
+    },
+    Case {
+        key: "dep-pvt-petrosky-farshad",
+        note: "dep_pvt scenario saturated-branch variant: Petrosky-Farshad Rs(p) below the same bubble point",
+        report_steps: 480,
+        report_dt_days: 0.75,
+    },
+    Case {
+        key: "dep-pvt-al-marhoun",
+        note: "dep_pvt scenario saturated-branch variant: Al-Marhoun Rs(p) below the same bubble point",
+        report_steps: 480,
         report_dt_days: 0.75,
     },
     // #55: the two acceptance cases whose hand-written Flow decks disagree with ResSim, written
@@ -179,8 +191,10 @@ fn build(key: &str) -> ReservoirSimulator {
         "bo-1d-10" => black_oil_depletion(10),
         "bo-1d-40" => black_oil_depletion(40),
         "go-1d-50" => gas_injection_1d(),
-        "dep-pvt-correlation" => dep_pvt_column(false),
-        "dep-pvt-lab-report" => dep_pvt_column(true),
+        "dep-pvt-correlation" => dep_pvt_column(DepPvtRung::Correlation),
+        "dep-pvt-lab-report" => dep_pvt_column(DepPvtRung::LabReport),
+        "dep-pvt-petrosky-farshad" => dep_pvt_column(DepPvtRung::PetroskyFarshad),
+        "dep-pvt-al-marhoun" => dep_pvt_column(DepPvtRung::AlMarhoun),
         "gas-drive-20" => super::three_phase_acceptance::make_gas_drive_acceptance_sim(),
         "spe1-10x10x3" => super::spe1_acceptance::make_spe1_acceptance_sim(),
         "spe1-case2-10x10x3" => {
@@ -511,31 +525,47 @@ pub(super) fn gas_injection_1d() -> ReservoirSimulator {
     sim
 }
 
-/// The `dep_pvt` scenario's two PVT tables, exactly as `generateBlackOilTable` makes them.
+/// The `dep_pvt` scenario's four PVT tables, exactly as `generateBlackOilTable` makes them.
 /// `dep_pvt.test.ts` asserts the scenario still ships these rows, so a change to the correlation
 /// shows up there instead of as a deck that no longer matches the scenario.
 #[derive(serde::Deserialize)]
 struct DepPvtTables {
     correlation: Vec<PvtRow>,
     lab_report: Vec<PvtRow>,
+    petrosky_farshad: Vec<PvtRow>,
+    al_marhoun: Vec<PvtRow>,
 }
 
 const DEP_PVT_TABLES: &str =
     include_str!("../../../../../opm/reference-decks/small-direct/dep-pvt-tables.json");
 
+/// A rung of one of `dep_pvt`'s two ladders. The base case (`Correlation`) is on both.
+#[derive(Clone, Copy)]
+enum DepPvtRung {
+    /// Base: c_o = 1.0e-4 /bar above the bubble point, Standing's Rs(p) below it.
+    Correlation,
+    /// `pvt_lab_report`: c_o = 2.5e-4 /bar.
+    LabReport,
+    /// `sat_petrosky_farshad`: Petrosky-Farshad's Rs(p) below the bubble point.
+    PetroskyFarshad,
+    /// `sat_al_marhoun`: Al-Marhoun's Rs(p) below the bubble point.
+    AlMarhoun,
+}
+
 /// The `dep_pvt` catalog scenario (`src/lib/catalog/scenarios/dep_pvt.ts`), configured in the order
-/// the worker's `configureReservoirSimulator` applies its payload. `lab_report` selects the
-/// `pvt_lab_report` sensitivity variant: its own table and its own scalar `c_o`.
+/// the worker's `configureReservoirSimulator` applies its payload. `rung` selects a sensitivity
+/// variant: its own table, and for `LabReport` its own scalar `c_o`.
 ///
 /// The producer is on a surface-oil target of 3 Sm3/day. The scenario's 30 bar `producerBhp` is
 /// only the well's BHP target; a rate-controlled producer gets the worker's family BHP floor of 0.
-fn dep_pvt_column(lab_report: bool) -> ReservoirSimulator {
+fn dep_pvt_column(rung: DepPvtRung) -> ReservoirSimulator {
     let tables: DepPvtTables =
         serde_json::from_str(DEP_PVT_TABLES).expect("dep-pvt-tables.json parses");
-    let (rows, c_o) = if lab_report {
-        (tables.lab_report, 2.5e-4)
-    } else {
-        (tables.correlation, 1.0e-4)
+    let (rows, c_o) = match rung {
+        DepPvtRung::Correlation => (tables.correlation, 1.0e-4),
+        DepPvtRung::LabReport => (tables.lab_report, 2.5e-4),
+        DepPvtRung::PetroskyFarshad => (tables.petrosky_farshad, 1.0e-4),
+        DepPvtRung::AlMarhoun => (tables.al_marhoun, 1.0e-4),
     };
     let nx = 48;
     let mut sim = ReservoirSimulator::new(nx, 1, 1, 0.2);
@@ -544,7 +574,7 @@ fn dep_pvt_column(lab_report: bool) -> ReservoirSimulator {
     sim.set_fluid_properties(1.0, 0.5).unwrap();
     sim.set_fluid_compressibilities(c_o, 3e-6).unwrap();
     sim.apply_pvt_table(rows).unwrap();
-    sim.set_rock_properties(1e-6, 0.0, 1.1, 1.0).unwrap();
+    sim.set_rock_properties(5e-5, 0.0, 1.1, 1.0).unwrap();
     sim.set_fluid_densities(800.0, 1000.0).unwrap();
     sim.set_initial_pressure(280.0);
     sim.set_initial_saturation(0.1);

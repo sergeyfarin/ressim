@@ -12,8 +12,10 @@ path FIM-DIRECT-001 was about. These do.
 | `bo-1d-10` | 10×1×1 | 32 | `physics_depletion_grid_convergence_fim` at nx=10: depletion through the bubble point |
 | `bo-1d-40` | 40×1×1 | 122 | the same column at nx=40 |
 | `go-1d-50` | 50×1×1 | 152 | `gas_injection` base case: dead oil displaced by gas, both wells on BHP |
-| `dep-pvt-correlation` | 48×1×1 | 146 | `dep_pvt` base case: constant-rate (3 Sm³/d ORAT) blowdown through the bubble point |
+| `dep-pvt-correlation` | 48×1×1 | 146 | `dep_pvt` base case: constant-rate (3 Sm³/d ORAT) blowdown from 130 bar above the bubble point to ~90 below it |
 | `dep-pvt-lab-report` | 48×1×1 | 146 | the same with the lab-report table (2.5× the undersaturated c_o) |
+| `dep-pvt-petrosky-farshad` | 48×1×1 | 146 | the same with Petrosky–Farshad's Rs(p) below the bubble point (#26) |
+| `dep-pvt-al-marhoun` | 48×1×1 | 146 | the same with Al-Marhoun's Rs(p) below the bubble point (#26) |
 | `gas-drive-20` | 20×1×1 | 60 | `three_phase_acceptance` `gas_drive`: saturated solution-gas drive, BHP producer, redissolution on (#55) |
 | `spe1-10x10x3` | 10×10×3 | 900 | `spe1_acceptance` SPE1 Case 1: gravity, three layers, gas rate injector, ORAT producer with a BHP floor (#55) |
 | `spe1-case2-10x10x3` | 10×10×3 | 900 | the same with redissolution (Case 2): no `DRSDT`, so JutulDarcy runs the same model. Guards the saturated-Rs convention above the table: until #35 continued the saturated curve, ResSim was 112 bar and 5.8 % cumulative oil off Flow and JutulDarcy here |
@@ -42,8 +44,8 @@ A PVT table that is not a scalar input comes from a committed fixture both sides
 `dep-pvt-tables.json` is what `generateBlackOilTable` makes for `dep_pvt`, and `dep_pvt.test.ts`
 fails if the scenario stops shipping it.
 
-Ten of these decks are also the frontend's OPM references (`gas_drive`, `gas_injection`,
-`dep_pvt_correlation`, `dep_pvt_lab_report` and the six waterfloods in
+Twelve of these decks are also the frontend's OPM references (`gas_drive`, `gas_injection`, the
+four `dep_pvt_*` rungs and the six waterfloods in
 `tools/opm_flow/opm_flow_tool/cases.py`), which is why every deck requests FPR/FVIT (FGOR with gas,
 FWCT without) and writes a text summary (RUNSUM/SEPARATE). The artifact
 records the deck's SHA-256, so regenerating a deck without re-running Flow fails
@@ -213,7 +215,7 @@ worker's setup. Replay: the three commands at the top, with `--case go-1d-50`
 
 ### `dep_pvt` pair (#20, `91d3a21`)
 
-`dep-pvt-correlation` / `dep-pvt-lab-report` are the withheld `dep_pvt` scenario's two rungs, written by
+`dep-pvt-correlation` / `dep-pvt-lab-report` were the then-withheld `dep_pvt` scenario's two rungs, written by
 `opm_small_direct::dep_pvt_column` from `dep-pvt-tables.json`: a 48-cell column at 280 bar, 130 bar
 above the bubble point, produced at 3 Sm³/d stock-tank oil (`ORAT`, BHP floor unreachable) for 300 ×
 0.75 d. They are also the frontend's OPM references for `dep_pvt`.
@@ -534,3 +536,42 @@ On the corrected fluids FIM stays within 0.17 bar and 0.04 % cumulative gas of F
 gas-drive-20 the cumulative-oil gap at 10-day reports rises from 0.11 % to 0.32 %. With both
 simulators at 1-day reports (`--refine 1`) it is 0.03 %, so it is time-step error on a fluid that
 liberates 4.7× more gas.
+
+### `dep_pvt` gets its second ladder and a realistic c_f (#26, flow 2026.04)
+
+`dep_pvt` left the withheld list with a second sensitivity dimension, and its decks changed with
+it. Pore compressibility went from 1e-6 to 5e-5 /bar (Hall 1953 at 20 % porosity), and the run
+from 300 to 480 × 0.75 d, so the saturated leg is long enough to read: the base case now ends near
+60 bar, 90 bar below the bubble point. Two decks are new, `dep-pvt-petrosky-farshad` and
+`dep-pvt-al-marhoun`. Each keeps the base case's bubble point, Rs_b, Bo_b and undersaturated rows,
+and reshapes Rs(p) below the bubble point with that correlation. `dep-pvt-tables.json` carries all
+four tables. `dep_pvt.test.ts` asserts that the scenario still ships them, and that every rung's
+average pressure follows its Flow run at every report.
+
+Worst cell difference against Flow over every report
+(`bash scripts/validate-cross-solver.sh --markdown --case dep-pvt-…`):
+
+| Case | Simulator | Substeps | Newton | Retries / cuts | Wall ms | max \|Δp\| bar | max \|ΔSw\| | max \|ΔSg\| | Cumulatives vs Flow |
+|---|---|---|---|---|---|---|---|---|---|
+| dep-pvt-correlation | Flow | 480 | 968 | 0 |  | | | | |
+| | ResSim FIM sparse | 481 | 1472 | 0 | 733 | 0.179 | 4.3e-06 | 3.2e-05 | FOPT 0.00%, FGPT 0.04% |
+| | ResSim FIM dense | 481 | 1472 | 0 | 1018 | 0.179 | 4.3e-06 | 3.2e-05 | FOPT 0.00%, FGPT 0.04% |
+| | ResSim IMPES | 540 | — | — | 371 | 0.909 | 9.9e-07 | 0.0016 | FOPT 0.00%, FGPT 1.21% |
+| dep-pvt-lab-report | Flow | 480 | 970 | 0 |  | | | | |
+| | ResSim FIM sparse | 483 | 1466 | 1 | 736 | 0.154 | 3.2e-06 | 0.00011 | FOPT 0.00%, FGPT 0.02% |
+| | ResSim FIM dense | 483 | 1466 | 1 | 1065 | 0.154 | 3.2e-06 | 0.00011 | FOPT 0.00%, FGPT 0.02% |
+| | ResSim IMPES | 495 | — | — | 340 | 0.572 | 1.2e-06 | 0.00087 | FOPT 0.00%, FGPT 1.11% |
+| dep-pvt-petrosky-farshad | Flow | 480 | 967 | 0 |  | | | | |
+| | ResSim FIM sparse | 481 | 1459 | 0 | 725 | 0.179 | 4e-06 | 2.3e-05 | FOPT 0.00%, FGPT 0.04% |
+| | ResSim FIM dense | 481 | 1459 | 0 | 1027 | 0.179 | 4e-06 | 2.3e-05 | FOPT 0.00%, FGPT 0.04% |
+| | ResSim IMPES | 539 | — | — | 377 | 0.647 | 9.8e-07 | 0.0008 | FOPT 0.00%, FGPT 0.88% |
+| dep-pvt-al-marhoun | Flow | 480 | 969 | 0 |  | | | | |
+| | ResSim FIM sparse | 486 | 1477 | 3 | 768 | 0.179 | 4.6e-06 | 0.00016 | FOPT 0.00%, FGPT 0.04% |
+| | ResSim FIM dense | 486 | 1477 | 3 | 1066 | 0.179 | 4.6e-06 | 0.00016 | FOPT 0.00%, FGPT 0.04% |
+| | ResSim IMPES | 536 | — | — | 380 | 1.17 | 1.7e-06 | 0.002 | FOPT 0.00%, FGPT 1.37% |
+
+Wall times are single-core and vary between runs; the scorecard does not band them.
+
+The IMPES pressure gap on the base deck grew from 0.20 to 0.91 bar. That is time-step error on
+the longer saturated leg. At 10× finer reports (`--refine 0.075 --case dep-pvt-correlation`),
+IMPES is 0.13 bar and 0.17 % cumulative gas from Flow, and FIM 0.03 bar.

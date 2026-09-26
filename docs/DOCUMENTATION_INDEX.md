@@ -106,10 +106,10 @@ in `FIM_EXPERIMENT_REGISTRY.md`; the docs themselves are provenance, not live sp
 
 ## Current repo-level facts
 
-- `src/lib/catalog/scenarios/` is the primary scenario registry: **17 scenarios are offered in the
-  picker**. Two further definitions are resolvable and tested but explicitly withheld in
-  `scenarios.ts`: `dep_pvt` (pending a second sensitivity dimension, #26) and `comp_co2_1d`
-  (pending compositional chart sourcing, #29).
+- `src/lib/catalog/scenarios/` is the primary scenario registry: **18 scenarios are offered in the
+  picker**. One further definition is resolvable and tested but explicitly withheld in
+  `scenarios.ts`: `comp_co2_1d` (pending compositional chart sourcing, #29). `dep_pvt` was withheld
+  until it gained its second sensitivity dimension (#26).
 - `ScenarioPicker.svelte` is the only live case-selection surface, driven entirely by
   `scenarios.ts`. The legacy benchmark-family data and Custom Mode's preset/facet entries were
   archived in 2026-07 (`.archive/README.md`); compatibility types and empty stubs remain, but

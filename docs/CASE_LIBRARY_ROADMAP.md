@@ -223,7 +223,7 @@ One-at-a-time sensitivities (what a tornado chart encodes) miss interactions. Va
 
 ### 5.3 "Two fluid models, one calibration point" — PVT representation risk (no engine gap)
 
-**DONE (live case)** — shipped as `src/lib/catalog/scenarios/dep_pvt.ts`, dimension `pvt_model`. The OPM reference deck for this case is still missing (`TODO.md`).
+**DONE (live case)** — shipped as `src/lib/catalog/scenarios/dep_pvt.ts` with two dimensions, one per side of the calibration point: `pvt_model` (undersaturated c_o, above P_b) and `saturated_pvt` (Petrosky–Farshad / Standing / Al-Marhoun Rs(p), below P_b; #26). Every rung has an OPM Flow twin (`opm/reference-decks/small-direct/dep-pvt-*`).
 
 Correlation-based vs tabular black-oil PVT, both honoring the same initial bubble point and solution GOR, diverge in Rs(p)/Bo(p) away from the calibration point → different producing GOR and RF in blowdown. This is the in-envelope analog of the compositional-lumping question ("does a 5–7 component match reproduce the full-EOS forecast?") — same epistemic point, no compositional engine needed. Black-oil machinery (correlation + tabular modes) already exists. Reference: OPM Flow run with each PVT table.
 
