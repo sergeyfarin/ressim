@@ -49,8 +49,12 @@ the first step rather than first traversing an undersaturated leg.
 
 **Fluid.** `generateBlackOilTable(35 API, 0.75 gas gravity, 80 °C, Pb = 200 bar, Pmax = 300 bar,
 20 points, c_o = 1e-5/bar)` from `src/lib/physics/pvt.ts`, the scenario's own table, embedded in
-the Rust test as `gas_drive_pvt_rows`. SCAL is the scenario's Corey curves; the engine and the deck
-both use Stone II (`relperm.rs::k_ro_stone2`, `STONE2`).
+the Rust test as `gas_drive_pvt_rows`: Rs_b = 131.6 m³/m³ and Bo_b = 1.405 at 200 bar. Until #60 the
+generator's `standingRs` had its API/temperature exponent sign reversed, so this fluid carried
+28.2 m³/m³ (4.7× too lean for its own bubble point) and the oil-gravity ladder ran backwards. The
+engine, the deck and the Flow reference all read the same table, so the OPM comparison could not
+catch it. SCAL is the scenario's Corey curves; the engine and the deck both use Stone II
+(`relperm.rs::k_ro_stone2`, `STONE2`).
 
 **Reference.** `flow 2026.04` on `tools/opm_flow/opm_flow_tool/cases.py::GAS_DRIVE`. Since #55 its
 deck is `opm/reference-decks/small-direct/gas-drive-20`, written by `opm_small_direct.rs` from the
@@ -64,7 +68,8 @@ The parsed series are committed as `src/lib/catalog/opm-flow-results/gas_drive.j
 OPM curves are shown by default (#12). The scenario tests also check the solution-gas-drive story on
 the base rung: a saturated start (Rs = Rs_sat at 200 bar), liberation (each cell's Rs on the
 saturated curve at its pressure, mean Rs below 80 % of the bubble-point value by 300 d), and a
-producing GOR above ten times the solution GOR that rises every step (386 to 514 m³/m³).
+producing GOR above five times the solution GOR that rises every step (806 to 1237 m³/m³ over 300 d,
+6.1–9.4× the solution GOR; it was 386 to 514 against 28 m³/m³ on the lean fluid before #60).
 
 **Where.** `src/lib/ressim/src/tests/three_phase_acceptance.rs`.
 

@@ -29,7 +29,7 @@ use crate::tests::physics::fixtures::{
 /// reservoir starts saturated and drawdown liberates gas immediately.
 const GAS_DRIVE_BUBBLE_POINT_BAR: f64 = 200.0;
 /// Solution GOR at the bubble point [Sm³/Sm³].
-const GAS_DRIVE_INITIAL_RS: f64 = 28.24377;
+const GAS_DRIVE_INITIAL_RS: f64 = 131.58664;
 const GAS_DRIVE_PRODUCER_BHP_BAR: f64 = 100.0;
 const GAS_DRIVE_INITIAL_SW: f64 = 0.2;
 const GAS_DRIVE_INITIAL_SG: f64 = 0.08;
@@ -37,29 +37,30 @@ const GAS_DRIVE_INITIAL_SG: f64 = 0.08;
 /// The `gas_drive` scenario's PVT table, i.e. the output of
 /// `generateBlackOilTable(35 API, 0.75 gas gravity, 80 C, Pb = 200 bar, Pmax = 300 bar,
 /// 20 points, c_o = 1e-5/bar)`. The same 20 rows are emitted verbatim into the OPM deck's
-/// PVTO/PVDG, so engine and reference read identical fluid properties.
+/// PVTO/PVDG, so engine and reference read identical fluid properties. Regenerated for #60, when
+/// `standingRs` got its API/temperature exponent sign fixed (Rs_b 28.2 -> 131.6 m3/m3).
 fn gas_drive_pvt_rows() -> Vec<PvtRow> {
     const ROWS: [(f64, f64, f64, f64, f64, f64); 20] = [
-        (1.0000, 0.04771, 1.05365, 2.27850, 1.239768, 0.01254),
-        (15.7895, 1.32560, 1.05651, 2.17064, 0.076466, 0.01271),
-        (31.5789, 3.05563, 1.06041, 2.04252, 0.037254, 0.01299),
-        (47.3684, 4.98034, 1.06479, 1.91951, 0.024222, 0.01337),
-        (63.1579, 7.04348, 1.06953, 1.80582, 0.017742, 0.01382),
-        (78.9474, 9.21608, 1.07456, 1.70224, 0.013889, 0.01436),
-        (94.7368, 11.48009, 1.07984, 1.60842, 0.011355, 0.01498),
-        (110.5263, 13.82306, 1.08536, 1.52356, 0.009579, 0.01568),
-        (126.3158, 16.23581, 1.09109, 1.44676, 0.008280, 0.01646),
-        (142.1053, 18.71128, 1.09702, 1.37711, 0.007300, 0.01731),
-        (157.8947, 21.24384, 1.10314, 1.31381, 0.006546, 0.01821),
-        (173.6842, 23.82889, 1.10944, 1.25610, 0.005954, 0.01916),
-        (189.4737, 26.46258, 1.11590, 1.20334, 0.005483, 0.02014),
-        (200.0000, 28.24377, 1.12030, 1.17063, 0.005220, 0.02081),
-        (221.0526, 28.24377, 1.12007, 1.20424, 0.004791, 0.02214),
-        (236.8421, 28.24377, 1.11989, 1.23168, 0.004534, 0.02313),
-        (252.6316, 28.24377, 1.11971, 1.26092, 0.004318, 0.02412),
-        (268.4211, 28.24377, 1.11953, 1.29182, 0.004135, 0.02508),
-        (284.2105, 28.24377, 1.11936, 1.32430, 0.003978, 0.02603),
-        (300.0000, 28.24377, 1.11918, 1.35827, 0.003842, 0.02695),
+        (1.0000, 0.22227, 1.05404, 2.26301, 1.239768, 0.01254),
+        (15.7895, 6.17594, 1.06753, 1.85160, 0.076466, 0.01271),
+        (31.5789, 14.23606, 1.08634, 1.50971, 0.037254, 0.01299),
+        (47.3684, 23.20320, 1.10791, 1.26949, 0.024222, 0.01337),
+        (63.1579, 32.81530, 1.13170, 1.09589, 0.017742, 0.01382),
+        (78.9474, 42.93737, 1.15742, 0.96575, 0.013889, 0.01436),
+        (94.7368, 53.48532, 1.18489, 0.86495, 0.011355, 0.01498),
+        (110.5263, 64.40111, 1.21397, 0.78468, 0.009579, 0.01568),
+        (126.3158, 75.64203, 1.24455, 0.71928, 0.008280, 0.01646),
+        (142.1053, 87.17515, 1.27653, 0.66497, 0.007300, 0.01731),
+        (157.8947, 98.97425, 1.30986, 0.61913, 0.006546, 0.01821),
+        (173.6842, 111.01788, 1.34445, 0.57991, 0.005954, 0.01916),
+        (189.4737, 123.28815, 1.38026, 0.54596, 0.005483, 0.02014),
+        (200.0000, 131.58664, 1.40479, 0.52574, 0.005220, 0.02081),
+        (221.0526, 131.58664, 1.40449, 0.54083, 0.004791, 0.02214),
+        (236.8421, 131.58664, 1.40427, 0.55316, 0.004534, 0.02313),
+        (252.6316, 131.58664, 1.40405, 0.56629, 0.004318, 0.02412),
+        (268.4211, 131.58664, 1.40383, 0.58017, 0.004135, 0.02508),
+        (284.2105, 131.58664, 1.40361, 0.59475, 0.003978, 0.02603),
+        (300.0000, 131.58664, 1.40338, 0.61001, 0.003842, 0.02695),
     ];
 
     ROWS.iter()
@@ -172,37 +173,38 @@ fn stock_tank_oil_in_place_sm3(sim: &ReservoirSimulator) -> f64 {
 /// just above S_gc (#55), which moved these values by ≤ 0.1 %.
 /// Columns: time [days], FPR [bar], FOPR [Sm³/day], FOPT [Sm³], FGOR [Sm³/Sm³].
 const OPM_GAS_DRIVE: [(f64, f64, f64, f64, f64); 11] = [
-    (10.0, 172.6970, 40.80592, 686.7855, 457.6848),
-    (20.0, 160.6311, 27.55713, 986.8696, 458.9650),
-    (30.0, 152.0217, 22.22205, 1209.090, 460.3074),
-    (50.0, 139.4402, 16.21725, 1558.840, 464.1454),
-    (100.0, 121.2928, 8.743974, 2122.935, 478.9856),
-    (150.0, 111.9598, 4.895408, 2435.407, 493.7154),
-    (200.0, 106.8247, 2.772774, 2611.556, 503.9218),
-    (300.0, 102.2624, 0.9103365, 2769.243, 514.0430),
-    (400.0, 100.7609, 0.3049466, 2821.571, 517.5797),
-    (500.0, 100.2572, 0.1029140, 2839.172, 518.7874),
-    (600.0, 100.0871, 0.03482020, 2845.120, 519.1976),
+    (10.0, 171.4955, 47.63953, 829.5626, 1045.650),
+    (20.0, 158.9385, 32.04709, 1178.726, 1053.351),
+    (30.0, 150.0524, 25.85907, 1437.316, 1057.697),
+    (50.0, 137.2212, 18.89210, 1844.752, 1069.504),
+    (100.0, 118.9864, 9.811957, 2491.692, 1121.498),
+    (150.0, 109.9570, 5.105173, 2828.874, 1171.502),
+    (200.0, 105.2643, 2.668444, 3004.686, 1204.136),
+    (300.0, 101.4909, 0.7450863, 3145.649, 1233.640),
+    (400.0, 100.4269, 0.2123299, 3185.442, 1242.542),
+    (500.0, 100.1226, 0.06089768, 3196.822, 1245.124),
+    (600.0, 100.0352, 0.01749878, 3200.090, 1245.869),
 ];
 
 // Tightened in #55, when the reference moved from the hand-written deck to one generated from
 // this simulator. Against the old reference the worst errors were 1.6 / 6.1 / 4.3 / 4.6 %
 // (pressure / GOR / cumulative oil / oil rate), almost all of it the old deck's coarse SGOF.
-// Measured against the new one (flow 2026.04): 0.29 / 0.26 / 1.38 / 3.91 %. The oil-rate and
+// Measured against the new one (flow 2026.04): 0.29 / 0.26 / 1.38 / 3.91 %; re-run on the
+// corrected Standing fluid (#60, Rs_b 28 -> 132 m3/m3): 0.28 / 0.56 / 1.37 / 3.92 %. The oil-rate and
 // cumulative-oil worsts both sit at 20 d, in the steep first transient where the two simulators'
 // time steps differ; each band keeps 2-4x headroom over its measured error.
 
-/// Field average reservoir pressure. Measured 0.29 % (20 d).
+/// Field average reservoir pressure. Measured 0.28 % (20 d).
 const GAS_DRIVE_PRESSURE_TOLERANCE: f64 = 0.01;
-/// Producing gas-oil ratio. Measured 0.26 % (50 d).
+/// Producing gas-oil ratio. Measured 0.56 % (50 d).
 const GAS_DRIVE_GOR_TOLERANCE: f64 = 0.01;
 /// Cumulative surface oil. This is the load-bearing oil criterion over the whole horizon:
 /// the instantaneous rate decays below 1 Sm³/day, where a small absolute difference is a
-/// large relative one, but the integral stays well conditioned. Measured 1.38 % (20 d),
-/// 0.09 % by 600 d.
+/// large relative one, but the integral stays well conditioned. Measured 1.37 % (20 d),
+/// 0.32 % by 600 d.
 const GAS_DRIVE_CUMULATIVE_OIL_TOLERANCE: f64 = 0.03;
 /// Instantaneous producer oil rate, graded only while the reference rate is still
-/// meaningfully large (see `GAS_DRIVE_MIN_GRADED_OIL_RATE_SC_DAY`). Measured 3.91 % (20 d).
+/// meaningfully large (see `GAS_DRIVE_MIN_GRADED_OIL_RATE_SC_DAY`). Measured 3.92 % (20 d).
 const GAS_DRIVE_OIL_RATE_TOLERANCE: f64 = 0.08;
 /// Below this reference oil rate [Sm³/day] the instantaneous rate is not graded; cumulative
 /// oil carries the late-time comparison instead.

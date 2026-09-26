@@ -179,7 +179,9 @@ describe('dep_pvt — PVT-table representation risk', () => {
      * undersaturated reservoir depletes at dP/dt = -q_res/(V_p·c_t), so the
      * time to reach the bubble point scales with c_t = c_o·S_o + c_w·S_w +
      * c_rock. Measured 2026-08-02: c_t is 9.13e-5 and 2.263e-4 /bar (ratio
-     * 2.48) and the crossings land at 36 d and 88 d (ratio 2.4).
+     * 2.48) and the crossings land at 36 d and 88 d (ratio 2.4). On the
+     * corrected Standing fluid (#60), with its larger Bo pulling more reservoir
+     * volume per surface barrel, they land at 30.4 d and 75.75 d (ratio 2.49).
      *
      * The tolerance is deliberately loose. The claim under test is that the
      * *storage* argument governs, not that the simulator reproduces a
@@ -220,7 +222,8 @@ describe('dep_pvt — PVT-table representation risk', () => {
      * BHP-controlled 0.5 mD predecessor read 2.5-7.8 here instead of 1: the
      * near-well cells liberated gas while the average was still
      * undersaturated, and the tank under-counted the reservoir's energy
-     * eight-fold. Measured 2026-08-02 on the shipped design: 0.999-1.017.
+     * eight-fold. Measured 2026-08-02 on the shipped design: 0.999-1.017; on the
+     * corrected Standing fluid (#60): 0.9995-1.0235 and 0.9996-1.0137.
      */
     it('closes a tank material balance, so its average pressure is representative', async () => {
         await ensureWasmReady();
@@ -242,8 +245,12 @@ describe('dep_pvt — PVT-table representation risk', () => {
      * The reconvergence the description promises. Below the bubble point both
      * variants are the same fluid — identical Rs(P), Bo(P) — so the
      * average-pressure gap peaks as the faster variant crosses and then
-     * closes. Measured 2026-08-02 over the full 225 d run: 77.5 bar at
-     * t = 35 d, down to 14 bar at t = 169 d and 16.8 bar at the end.
+     * closes. Measured over the full 225 d run on the corrected Standing
+     * fluid (#60): 77.6 bar at t = 29.5 d, down to 6.8 bar at t = 121.5 d and
+     * 11.3 bar at the end (77.5 / 14 / 16.8 bar on the lean fluid before it).
+     *
+     * The two runs take different numbers of substeps, so their histories are
+     * compared at equal times, not row by row.
      */
     it('the average-pressure gap peaks near the bubble point and then closes', async () => {
         await ensureWasmReady();
@@ -251,7 +258,15 @@ describe('dep_pvt — PVT-table representation risk', () => {
         const correlation = buildAndRun(getScenarioWithVariantParams('dep_pvt', 'pvt_model', 'pvt_correlation'), STEPS);
         const lab = buildAndRun(getScenarioWithVariantParams('dep_pvt', 'pvt_model', 'pvt_lab_report'), STEPS);
 
-        const gap = correlation.points.map((p, i) => Math.abs(lab.points[i].avgPressure - p.avgPressure));
+        const labPressureAt = (time: number) => {
+            const next = lab.points.findIndex((point) => point.time >= time);
+            if (next <= 0) return lab.points[Math.max(next, 0)].avgPressure;
+            const [a, b] = [lab.points[next - 1], lab.points[next]];
+            return a.avgPressure + ((time - a.time) / (b.time - a.time)) * (b.avgPressure - a.avgPressure);
+        };
+        const gap = correlation.points
+            .filter((point) => point.time <= lab.points.at(-1)!.time)
+            .map((point) => Math.abs(labPressureAt(point.time) - point.avgPressure));
         const peakIndex = gap.indexOf(Math.max(...gap));
         const peak = gap[peakIndex];
         const final = gap[gap.length - 1];
@@ -276,14 +291,15 @@ describe('dep_pvt against OPM Flow (#20)', () => {
         expect(lab.pvtTable).toEqual(depPvtDeckTables.lab_report);
     });
 
-    it('Flow reaches the bubble point 2.4x later on the lab-report table, as ResSim does', () => {
+    it('Flow reaches the bubble point 2.5x later on the lab-report table, as ResSim does', () => {
         const crossing = (caseKey: string) => {
             const artifact = listOpmFlowArtifacts().find((candidate) => candidate.caseKey === caseKey)!;
             const pressure = artifact.series.find((series) => series.mnemonic === 'FPR')!;
             return pressure.data.find((point) => point.y < BUBBLE_POINT_BAR)!.x;
         };
-        // Measured (flow 2026.04): 36.0 d and 87.75 d; the scenario's own runs give 36 d and 88 d.
-        expect(crossing('dep_pvt_correlation')).toBeCloseTo(36, 0);
-        expect(crossing('dep_pvt_lab_report')).toBeCloseTo(88, 0);
+        // Measured (flow 2026.04, corrected Standing fluid #60): 30.75 d and 75.75 d on the 0.75 d
+        // report grid; the scenario's own runs give 30.4 d and 75.75 d.
+        expect(crossing('dep_pvt_correlation')).toBeCloseTo(30.75, 1);
+        expect(crossing('dep_pvt_lab_report')).toBeCloseTo(75.75, 1);
     });
 });

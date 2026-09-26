@@ -38,7 +38,12 @@ export function standingBubblePoint(rs: number, sgGas: number, api: number, temp
 }
 
 /**
- * Standing (1947) Solution Gas-Oil Ratio
+ * Standing (1947) Solution Gas-Oil Ratio: the inverse of `standingBubblePoint`,
+ * Rs = γg · (p · 10^(0.0125·API − 0.00091·T) / 18)^(1/0.83).
+ *
+ * The API/temperature factor multiplies the pressure. Until #60 it divided it,
+ * which made every generated fluid ~4.7x too lean for its own bubble point at
+ * 35 API / 80 C and made Rs fall with API gravity.
  * @param p Pressure in psia
  * @param sgGas Gas specific gravity
  * @param api Oil API gravity
@@ -46,7 +51,7 @@ export function standingBubblePoint(rs: number, sgGas: number, api: number, temp
  * @returns Rs in scf/STB
  */
 export function standingRs(p: number, sgGas: number, api: number, tempF: number): number {
-    return sgGas * Math.pow(p / (18.0 * Math.pow(10, 0.0125 * api - 0.00091 * tempF)), 1.0 / 0.83);
+    return sgGas * Math.pow((p / 18.0) * Math.pow(10, 0.0125 * api - 0.00091 * tempF), 1.0 / 0.83);
 }
 
 /**

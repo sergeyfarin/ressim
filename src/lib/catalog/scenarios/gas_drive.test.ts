@@ -86,12 +86,16 @@ function sampleAtPressure(params: Params, history: any[], pressureBar: number): 
 
 describe('gas_drive — critical gas saturation changes the drive, not the clock', () => {
     /**
-     * Measured 2026-08-02 at a matched 130 bar average pressure:
+     * Measured at a matched 130 bar average pressure on the corrected Standing
+     * fluid (#60, solution GOR 132 m3/m3):
      *
      *   s_gc   GOR [m3/m3]   Sg      oil RF
-     *   0.02   685           0.114   2.2 %
-     *   0.05   474           0.120   3.0 %
-     *   0.15   103           0.160   8.9 %
+     *   0.02   1326          0.183   3.5 %
+     *   0.05   1094          0.187   4.2 %
+     *   0.15    520          0.220   9.4 %
+     *
+     * On the lean fluid before #60 (solution GOR 28) it was GOR 685 / 474 / 103,
+     * Sg 0.114 / 0.120 / 0.160, RF 2.2 / 3.0 / 8.9 %.
      *
      * Contrast the ladder this replaced, on the same axis: GOR 459/463/460 and
      * Sg 0.106/0.109/0.110 across a 100x permeability range.
@@ -114,8 +118,10 @@ describe('gas_drive — critical gas saturation changes the drive, not the clock
         expect(low.gor).toBeGreaterThan(base.gor);
         expect(base.gor).toBeGreaterThan(high.gor);
         // …and the separation is large, not a rounding difference. The
-        // permeability ladder this replaced spanned 1.01x here.
-        expect(low.gor / high.gor).toBeGreaterThan(3);
+        // permeability ladder this replaced spanned 1.01x here. Measured 2.55x
+        // (6.6x before #60: with 4.7x more gas in solution, liberation adds
+        // gas on every rung, so trapping it moves the GOR by a smaller factor).
+        expect(low.gor / high.gor).toBeGreaterThan(2);
 
         // Retained gas is gas still in place doing work, so Sg is higher…
         expect(high.gasSaturation).toBeGreaterThan(base.gasSaturation);
@@ -177,10 +183,13 @@ describe('gas_drive — a saturated start that liberates gas and raises the GOR'
         const rsBubble = saturatedRs(params, Number(params.initialPressure));
         const gors = history.map((point) => Number(point.producing_gor));
 
-        // Measured 2026-09-24 (base rung, solution GOR 28 m³/m³): 386 at the first 10 d step,
-        // rising every step to 514 at 300 d. The declared free gas (Sg 0.08) is above critical
-        // (0.05), so it flows from the start, and liberation keeps adding to it.
-        for (const gor of gors) expect(gor).toBeGreaterThan(10 * rsBubble);
+        // Measured on the corrected Standing fluid (#60; base rung, solution GOR 132 m³/m³): 806
+        // at the first step, rising every step to 1237 at 300 d, i.e. 6.1-9.4x the solution GOR.
+        // The declared free gas (Sg 0.08) is above critical (0.05), so it flows from the start, and
+        // liberation keeps adding to it. The bound was 10x on the lean fluid before #60 (solution
+        // GOR 28, producing 386-514, 14-18x): the free-gas share is the same physics, but the oil
+        // now carries 4.7x more dissolved gas, so the ratio to it is smaller.
+        for (const gor of gors) expect(gor).toBeGreaterThan(5 * rsBubble);
         for (let i = 1; i < gors.length; i += 1) {
             expect(gors[i], `GOR fell at step ${i}`).toBeGreaterThan(gors[i - 1] * (1 - 0.005));
         }

@@ -518,3 +518,19 @@ refinement moves it (−2.19 % / −4.07 % at 0.075 d). Its producer pressure is
 Flow's at 76 d, before any free gas flows, which points at how the two read the PVT tables. That is
 a JutulDarcy–Flow difference on a deck where ResSim and Flow agree. It is recorded, but not pursued
 here.
+
+### Generated black-oil fluids corrected (#60, flow 2026.04)
+
+`generateBlackOilTable`'s `standingRs` had its API/temperature exponent sign reversed, so it was not
+the inverse of `standingBubblePoint`. Every generated fluid carried about 4.7× too little gas for
+its stated bubble point (dep-pvt: Rs_b 20.0 → 93.0 m³/m³; gas-drive-20: 28.2 → 131.6 m³/m³), and
+Rs fell with API gravity. The engine, these decks and Flow all read the same tables, so the
+same-model comparison agreed on the wrong oil. That is a limit of this harness: it checks the
+engine against Flow, not the fluid against its correlation. `src/lib/physics/pvt.test.ts` now pins
+the round trip.
+
+`dep-pvt-tables.json`, the three decks, their Flow artifacts and the Flow constants are regenerated.
+On the corrected fluids FIM stays within 0.17 bar and 0.04 % cumulative gas of Flow on dep-pvt. On
+gas-drive-20 the cumulative-oil gap at 10-day reports rises from 0.11 % to 0.32 %. With both
+simulators at 1-day reports (`--refine 1`) it is 0.03 %, so it is time-step error on a fluid that
+liberates 4.7× more gas.

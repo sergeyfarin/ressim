@@ -196,10 +196,12 @@ export const gas_drive: Scenario = {
          * Critical gas saturation is the textbook lever that changes the drive
          * itself rather than its clock, and it separates on exactly the axis
          * the perm ladder collapsed on. Measured at a matched 130 bar average
-         * pressure (scratch harness, 2026-08-02; the committed check is
-         * `gas_drive.test.ts`): GOR 685 / 474 / 103 m3/m3 and oil recovery
-         * 2.2% / 3.0% / 8.9% for s_gc = 0.02 / 0.05 / 0.15 — a 6.6x spread in
-         * GOR and a 4x spread in recovery at the same reservoir pressure.
+         * pressure (the committed check is `gas_drive.test.ts`), on the
+         * corrected Standing fluid (#60): GOR 1326 / 1094 / 520 m3/m3 and oil
+         * recovery 3.5% / 4.2% / 9.4% for s_gc = 0.02 / 0.05 / 0.15 — a 2.6x
+         * spread in GOR and a 2.7x spread in recovery at the same reservoir
+         * pressure. (On the 4.7x-too-lean fluid before #60: GOR 685 / 474 / 103,
+         * recovery 2.2 / 3.0 / 8.9%.)
          */
         {
             key: 's_gc',

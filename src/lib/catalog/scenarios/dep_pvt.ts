@@ -24,15 +24,15 @@ import { generateBlackOilTable } from '../../physics/pvt';
  * c_t is 9.1e-5/bar for the correlation table and 2.26e-4/bar for the lab
  * report — a factor 2.48 — and the depletion rate is inversely proportional
  * to it. The two fluid models therefore reach the bubble point at *measured*
- * 36 d and 88 d, a factor 2.4. Unmeasured undersaturated compressibility does
+ * 30 d and 76 d, a factor 2.49. Unmeasured undersaturated compressibility does
  * not bend the fluid; it rescales the clock.
  *
  * WHY IT RECONVERGES. Below the bubble point both variants are the same
  * fluid — identical Rs(P), Bo(P) — and liberated gas dominates c_t, so the
  * two trajectories stop diverging and close back up. Measured average-pressure
- * gap over the shipped 225 d run: 15 bar at t = 7 d, peaking at 77.5 bar at
- * t = 35 d (just as the fast variant crosses Pb), then falling back to 14 bar
- * at t = 169 d and 17 bar at the end. The residual is the offset banked above
+ * gap over the shipped 225 d run: 20 bar at t = 7 d, peaking at 77.6 bar at
+ * t = 29.5 d (just as the fast variant crosses Pb), then falling back to 6.8 bar
+ * at t = 121.5 d and 11 bar at the end. The residual is the offset banked above
  * the bubble point, not continuing disagreement.
  *
  * WHY THE PRODUCER IS RATE-CONTROLLED, AND WHY k IS 200 mD. Both exist to
@@ -44,7 +44,7 @@ import { generateBlackOilTable } from '../../physics/pvt';
  * and the Havlena-Odeh balance read N_mbe/N_volumetric = 2.5 to 7.8 instead of
  * 1 — the tank under-counted the reservoir's energy up to eight-fold. A
  * near-uniform-pressure reservoir drawn down at a constant rate closes that
- * balance to 0.9998-1.0166 (correlation) and 0.9995-1.0069 (lab report)
+ * balance to 0.9995-1.024 (correlation) and 0.9996-1.014 (lab report)
  * across the whole run, which is why the `gas` layout's material-balance
  * panels are shown here rather than hidden.
  *
@@ -59,7 +59,7 @@ import { generateBlackOilTable } from '../../physics/pvt';
  * Dietz depletion model used by dep_decline/dep_pss/dep_arps is an oil-only
  * PSS model that does not represent gas liberation. The undersaturated leg
  * *is* analytically predictable (the dP/dt relation above, which the measured
- * 36 d / 88 d crossings satisfy), and the on-chart material-balance ratio is
+ * 30 d / 76 d crossings satisfy), and the on-chart material-balance ratio is
  * a real quantitative self-check.
  */
 
@@ -100,15 +100,16 @@ export const dep_pvt: Scenario = {
         group: 'material-balance-drive',
         role: 'interpretation',
         caseMode: '3p',
-        parameterSummary: 'Constant-rate black-oil blowdown · two PVT tables share one calibration point · time to bubble point differs 2.4x',
+        parameterSummary: 'Constant-rate black-oil blowdown · two PVT tables share one calibration point · time to bubble point differs 2.5x',
     },
     description: 'Constant-rate blowdown of a black-oil reservoir starting 130 bar above the bubble point.',
-    analyticalMethodSummary: 'No closed-form overlay is drawn: the run crosses the bubble point, and the Dietz PSS depletion model used elsewhere in this catalog is oil-only and does not represent gas liberation. OPM Flow runs both fluid models, shown as the OPM Flow reference curves. Two further quantitative checks stand beside them. The undersaturated leg must obey dP/dt = -q_res/(V_p·c_t), and does — the 2.48x ratio in c_t between the two tables produces a measured 2.4x ratio in time-to-bubble-point. And the Havlena-Odeh material-balance ratio on the chart is a genuine self-check: it holds within 2% of 1.0 for the whole run.',
+    analyticalMethodSummary: 'No closed-form overlay is drawn: the run crosses the bubble point, and the Dietz PSS depletion model used elsewhere in this catalog is oil-only and does not represent gas liberation. OPM Flow runs both fluid models, shown as the OPM Flow reference curves. Two further quantitative checks stand beside them. The undersaturated leg must obey dP/dt = -q_res/(V_p·c_t), and does — the 2.48x ratio in c_t between the two tables produces a measured 2.49x ratio in time-to-bubble-point. And the Havlena-Odeh material-balance ratio on the chart is a genuine self-check: it holds within 2.5% of 1.0 for the whole run.',
     analyticalMethodReference: 'Standing (1947); McCain, "The Properties of Petroleum Fluids" (undersaturated oil compressibility 5-30e-6 psi^-1); Havlena & Odeh (1963), The Material Balance as an Equation of a Straight Line.',
     // OPM Flow on both rungs of the ladder: decks generated from this
     // scenario's own tables (opm/reference-decks/small-direct/dep-pvt-*). Flow
-    // reaches the bubble point at 36 d and 88 d as ResSim does, and the two
-    // agree within 0.31 bar anywhere in the reservoir at every report step.
+    // reaches the bubble point at 30.75 d and 75.75 d as ResSim does (30.4 d and
+    // 75.75 d), and FIM agrees with it within 0.17 bar anywhere in the reservoir
+    // at every report step.
     referenceSources: [{
         kind: 'opm-flow',
         artifactKeys: ['dep_pvt_correlation', 'dep_pvt_lab_report'],
@@ -211,7 +212,7 @@ export const dep_pvt: Scenario = {
         producerControlMode: 'rate',
         injectorBhp: 500,
         // Floor only — never reached: the minimum cell pressure at the end of
-        // the run is ~78 bar.
+        // the run is ~109 bar.
         producerBhp: 30,
         targetInjectorRate: 0,
         targetProducerRate: 3,
@@ -223,7 +224,7 @@ export const dep_pvt: Scenario = {
         well_radius: 0.1,
         well_skin: 0,
         // Numerics: 300 x 0.75 d = 225 d, long enough to carry the slower
-        // variant across the bubble point at 88 d and past the 169 d minimum
+        // variant across the bubble point at 76 d and past the 121.5 d minimum
         // of the average-pressure gap.
         fimEnabled: true,
         delta_t_days: 0.75,
@@ -243,14 +244,14 @@ export const dep_pvt: Scenario = {
                 {
                     key: 'pvt_correlation',
                     label: 'Correlation  (c_o = 1.0e-4/bar above Pb)',
-                    description: 'Correlation-derived undersaturated compressibility — base case. c_t = 9.1e-5/bar; bubble point reached at t = 36 d.',
+                    description: 'Correlation-derived undersaturated compressibility — base case. c_t = 9.1e-5/bar; bubble point reached at t = 30 d.',
                     paramPatch: {},
                     affectsAnalytical: false,
                 },
                 {
                     key: 'pvt_lab_report',
                     label: 'Lab Report  (c_o = 2.5e-4/bar above Pb)',
-                    description: 'A different, equally plausible undersaturated compressibility — 2.5x more storage above the bubble point, identical Rs/Bo at and below it. c_t = 2.26e-4/bar; bubble point reached at t = 88 d.',
+                    description: 'A different, equally plausible undersaturated compressibility — 2.5x more storage above the bubble point, identical Rs/Bo at and below it. c_t = 2.26e-4/bar; bubble point reached at t = 76 d.',
                     // FIM extrapolates a fixed-Rs undersaturated branch with
                     // scalar c_o; keep it consistent with the generated table.
                     paramPatch: { pvtTable: PVT_TABLE_LAB_REPORT, c_o: C_O_LAB_REPORT_PER_BAR },
