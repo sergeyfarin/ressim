@@ -172,7 +172,7 @@ small-direct decks and leaves the `dep_*` scenario tests unchanged. Close by add
 ## 11. JutulDarcy and Flow disagree on dep-pvt's free-gas rate; ResSim agrees with Flow (2026-09-26, #55)
 
 On the generated `dep-pvt-*` decks, JutulDarcy 0.3.7's final gas rate is −2.3 % and −4.5 % from
-Flow's. FIM is −0.22 % and −0.01 % from Flow. Denser SGOF and a 10× finer report step both leave the
+Flow's (−1.7 % and −1.9 % once #60 corrected the fluid to its stated bubble point). FIM is −0.22 % and −0.01 % from Flow. Denser SGOF and a 10× finer report step both leave the
 difference in place. JutulDarcy's producer pressure is already 0.07 bar off Flow's before any free
 gas flows, which points at how the two read the PVT tables. It was not pursued because it is a
 difference between two reference simulators on a deck where ResSim matches one of them, and

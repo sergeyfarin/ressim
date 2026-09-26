@@ -64,7 +64,7 @@
    ],
    "status": "explained",
    "ref": "opm/reference-decks/small-direct/README.md, \"Saturation tables: nodes above S_gc, and a table's own knots\" (#55); OPEN_ITEMS_2026-09-21.md §11",
-   "note": "Not a ResSim gap. On the fixed decks FIM matches Flow's final gas rate to -0.22 % / -0.01 %, and JutulDarcy 0.3.7 is -2.3 % / -4.5 % from both, unchanged by SGOF density or a 10x finer report step. Its producer pressure is already 0.07 bar off Flow before free gas flows, so the two reference simulators read the PVT tables differently. Not pursued (OPEN_ITEMS §11)."
+   "note": "Not a ResSim gap. On the fixed decks FIM matches Flow's final gas rate to -0.22 % / -0.01 %, and JutulDarcy 0.3.7 is -2.3 % / -4.5 % from both (-1.7 % / -1.9 % on the corrected Standing fluid, #60), unchanged by SGOF density or a 10x finer report step. Its producer pressure is already 0.07 bar off Flow before free gas flows, so the two reference simulators read the PVT tables differently. Not pursued (OPEN_ITEMS §11)."
   }
  ]
 }
