@@ -166,31 +166,31 @@ explicitly, the FIM path reads a component gas rate that already includes them.
 
 ## 5. Recorded baseline
 
-Committed revision `5c29e0e`, clean tree, measured 2026-09-25 (release). Solver FIM (the scenario
-default). Reference: `flow 2026.04`, deck hash
-`dff10045676a6f1c4a7923b81db196ebbff860900c5c36941be47ac5146d1d45`.
+Committed revision `b15fef0`, clean tree, measured 2026-09-26 (release). Solver FIM (the scenario
+default). Reference: `flow 2026.04` on the generated deck `gas-drive-20`, deck hash
+`aef748c7289e97f5def2b96cd36cdedd29b056d400a8e240a12e494e5ea3e1d2`.
 
 Verbatim summary from the characterization replay:
 
 ```
-t=  10.0 pressure_err= 0.801% oil_rate_err= 0.508% cum_oil_err= 1.054% gor_err= 6.076% mb_oil= 0.0000% mb_gas= 0.0000%
-t=  20.0 pressure_err= 1.426% oil_rate_err= 4.609% cum_oil_err= 0.492% gor_err= 5.855% mb_oil= 0.0000% mb_gas= 0.0000%
-t=  30.0 pressure_err= 1.523% oil_rate_err= 3.304% cum_oil_err= 0.203% gor_err= 5.724% mb_oil= 0.0000% mb_gas= 0.0000%
-t=  50.0 pressure_err= 1.588% oil_rate_err= 4.109% cum_oil_err= 0.982% gor_err= 5.445% mb_oil= 0.0000% mb_gas= 0.0001%
-t= 100.0 pressure_err= 1.299% oil_rate_err=     -- cum_oil_err= 2.462% gor_err= 4.109% mb_oil= 0.0000% mb_gas= 0.0001%
-t= 150.0 pressure_err= 0.839% oil_rate_err=     -- cum_oil_err= 3.386% gor_err= 2.634% mb_oil= 0.0000% mb_gas= 0.0001%
-t= 200.0 pressure_err= 0.496% oil_rate_err=     -- cum_oil_err= 3.858% gor_err= 1.569% mb_oil= 0.0000% mb_gas= 0.0001%
-t= 300.0 pressure_err= 0.175% oil_rate_err=     -- cum_oil_err= 4.177% gor_err= 0.535% mb_oil= 0.0000% mb_gas= 0.0001%
-t= 400.0 pressure_err= 0.063% oil_rate_err=     -- cum_oil_err= 4.266% gor_err= 0.237% mb_oil= 0.0000% mb_gas= 0.0001%
-t= 500.0 pressure_err= 0.023% oil_rate_err=     -- cum_oil_err= 4.298% gor_err= 0.147% mb_oil= 0.0000% mb_gas= 0.0001%
-t= 600.0 pressure_err= 0.008% oil_rate_err=     -- cum_oil_err= 4.310% gor_err= 0.117% mb_oil= 0.0000% mb_gas= 0.0001%
+t=  10.0 pressure_err= 0.002% oil_rate_err= 0.004% cum_oil_err= 0.005% gor_err= 0.022% mb_oil= 0.0000% mb_gas= 0.0000%
+t=  20.0 pressure_err= 0.284% oil_rate_err= 3.916% cum_oil_err= 1.366% gor_err= 0.203% mb_oil= 0.0000% mb_gas= 0.0000%
+t=  30.0 pressure_err= 0.199% oil_rate_err= 1.786% cum_oil_err= 0.799% gor_err= 0.408% mb_oil= 0.0000% mb_gas= 0.0000%
+t=  50.0 pressure_err= 0.116% oil_rate_err= 0.288% cum_oil_err= 0.500% gor_err= 0.559% mb_oil= 0.0000% mb_gas= 0.0000%
+t= 100.0 pressure_err= 0.052% oil_rate_err=     -- cum_oil_err= 0.393% gor_err= 0.485% mb_oil= 0.0000% mb_gas= 0.0000%
+t= 150.0 pressure_err= 0.028% oil_rate_err=     -- cum_oil_err= 0.360% gor_err= 0.379% mb_oil= 0.0000% mb_gas= 0.0000%
+t= 200.0 pressure_err= 0.016% oil_rate_err=     -- cum_oil_err= 0.343% gor_err= 0.334% mb_oil= 0.0000% mb_gas= 0.0000%
+t= 300.0 pressure_err= 0.005% oil_rate_err=     -- cum_oil_err= 0.328% gor_err= 0.294% mb_oil= 0.0000% mb_gas= 0.0000%
+t= 400.0 pressure_err= 0.002% oil_rate_err=     -- cum_oil_err= 0.324% gor_err= 0.277% mb_oil= 0.0000% mb_gas= 0.0000%
+t= 500.0 pressure_err= 0.001% oil_rate_err=     -- cum_oil_err= 0.322% gor_err= 0.273% mb_oil= 0.0000% mb_gas= 0.0000%
+t= 600.0 pressure_err= 0.000% oil_rate_err=     -- cum_oil_err= 0.322% gor_err= 0.271% mb_oil= 0.0000% mb_gas= 0.0000%
 gas-flood breakthrough: dt=1.0 -> Some(4.0) days, dt=0.5 -> Some(4.0) days
 ```
 
-Superseded: the provisional baseline on `a651c02` plus the then-uncommitted tests (2026-07-25).
-Its errors agree with the above to three decimals. Its balance drift was 0.0097 % oil and
-0.0080 % gas, and it is now at the 1e-6 level. The change that caused this was not isolated in
-this re-measurement.
+Superseded: the `5c29e0e` baseline (2026-09-25). It was measured against the hand-written deck
+before #55, whose coarse SGOF put the reference 4–6 % off this model, and on the lean fluid before
+#60. Its worst errors were 1.59 % pressure, 4.61 % oil rate, 4.31 % cumulative oil and 6.08 % GOR.
+Before that, the provisional `a651c02` baseline (2026-07-25) agreed with `5c29e0e` to three decimals.
 
 ### Replay
 
