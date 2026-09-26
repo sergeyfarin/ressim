@@ -32,17 +32,6 @@
    "note": "Time discretization inside the steep first 10-day report: the two simulators take different internal steps. With the deck at 1-day reports (OPM_SMALL_REPORT_DT=1) JutulDarcy 0.3.7 and Flow agree to <= 0.04 % on FOPR, FGPR, FPR and FGOR at every checkpoint from 10 to 600 d."
   },
   {
-   "section": "cross_solver",
-   "case": "dep-pvt-*",
-   "metric": [
-    "sparse.cum.FGPT",
-    "dense.cum.FGPT"
-   ],
-   "status": "explained",
-   "ref": "opm/reference-decks/small-direct/README.md, \"Saturation tables: nodes above S_gc, and a table's own knots\" (#55)",
-   "note": "The deck's SGOF, not the engine: 91 uniform nodes overstated Corey k_rg just above S_gc, where the producer sits once free gas flows. With geometric nodes above S_gc FIM's cumulative gas matches Flow to 0.07 % / 0.01 % (from -1.06 % / -1.13 %). Remove this entry once the section is re-recorded on the fixed decks."
-  },
-  {
    "section": "compositional",
    "case": "1D plain",
    "metric": "worst_pressure_diff",
