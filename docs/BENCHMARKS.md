@@ -41,11 +41,11 @@ it is never the tightest criterion, and it can be the larger error (see Signals 
 | SPE1 Case 1, 10 years | Published SPE1 / Flow | 10x10x3: gor_rel_err 1.25 % | 12.0 % | 10% | 20x20x3: vs_flow.WGOR_rel_err +0.69 % (explained) | `f7f65ab` |
 | Three-phase gas drive and injection | OPM Flow | gas_drive: oil_rate_rel_err 3.90 % | 8.0 % | 49% | gas_drive: vs_jutul.FOPR_rel_err +4.61 % (explained) | `f7f65ab` |
 | Black-oil depletion column | Grid self-convergence, Flow | FIM: sat_gas_finest_pair_gap 1.20 % | 1.5 % | 80% | — | `f7f65ab` |
-| Generated decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | dep-pvt-lab-report: dense.cum.FGPT +1.13 % (tracked) | `f7f65ab` |
+| Generated decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | dep-pvt-lab-report: dense.cum.FGPT +1.13 % (explained) | `f7f65ab` |
 | Native vs wasm bindings | Each other | favorable-mobility (IMPES): rates_max_abs_diff 1.25e-10 abs | 1e-09 abs | 12% | — | `f7f65ab` |
 | FIM convergence, long horizons | Substeps per report step | no banded criterion | — | — | — | `f7f65ab` |
 | Compositional, matched timestep | OPM flowexp_comp | 1D plain: worst_pressure_diff 1.68 bar | 2 bar | 84% | 1D plain: worst_pressure_diff 1.68 bar (explained) | `f7f65ab` |
-| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | dep-pvt-lab-report: jutul_vs_flow.final_FGPR_rel_err -4.14 % (tracked) | `f7f65ab` |
+| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | dep-pvt-lab-report: jutul_vs_flow.final_FGPR_rel_err -4.14 % (explained) | `f7f65ab` |
 <!-- /GENERATED:summary -->
 
 ## Signals
@@ -64,31 +64,31 @@ with the drift check and the signals. It comments there only when the state chan
 commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
 
 <!-- GENERATED:signals -->
-**Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 0 unexplained and untracked, 17 tracked, 4 explained.
+**Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 0 unexplained and untracked, 0 tracked, 21 explained.
 
 | Section | Case | Metric | Value | Where | Status |
 |---|---|---|---|---|---|
-| three_phase | gas_drive | jutul_vs_flow.FOPR_rel_err | -2.33 % | t=10 d | tracked: #55 |
-| cross_solver | dep-pvt-correlation | sparse.cum.FGPT | +1.06 % |  | tracked: #55 |
-| cross_solver | dep-pvt-correlation | dense.cum.FGPT | +1.06 % |  | tracked: #55 |
-| cross_solver | dep-pvt-lab-report | sparse.cum.FGPT | +1.13 % |  | tracked: #55 |
-| cross_solver | dep-pvt-lab-report | dense.cum.FGPT | +1.13 % |  | tracked: #55 |
-| jutul | dep-pvt-correlation | jutul_vs_flow.final_FGPR_rel_err | -2.21 % |  | tracked: #55 |
-| jutul | dep-pvt-correlation | fim_vs_jutul.final_FGPR_rel_err | +1.66 % |  | tracked: #55 |
-| jutul | dep-pvt-lab-report | jutul_vs_flow.final_FGPR_rel_err | -4.14 % |  | tracked: #55 |
-| jutul | dep-pvt-lab-report | fim_vs_jutul.final_FGPR_rel_err | +2.80 % |  | tracked: #55 |
-| jutul | ow-1d-96 | fim_vs_jutul.final_FOPR_rel_err | +1.46 % |  | tracked: #55 |
-| jutul | sweep-areal | fim_vs_jutul.final_FOPR_rel_err | +1.11 % |  | tracked: #55 |
-| jutul | sweep-combined | fim_vs_jutul.final_FOPR_rel_err | +1.04 % |  | tracked: #55 |
-| jutul | sweep-crossflow | fim_vs_jutul.final_FOPR_rel_err | +1.30 % |  | tracked: #55 |
-| jutul | sweep-vertical | fim_vs_jutul.final_FWIR_rel_err | +1.02 % |  | tracked: #55 |
-| jutul | sweep-vertical | fim_vs_jutul.final_FWPR_rel_err | +1.10 % |  | tracked: #55 |
-| jutul | wf-capillary | fim_vs_jutul.final_FOPR_rel_err | +1.17 % |  | tracked: #55 |
-| jutul | wf-gravity-stability | fim_vs_jutul.final_FOPR_rel_err | +1.73 % |  | tracked: #55 |
 | three_phase | gas_drive | cum_oil_rel_err | -1.37 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
 | three_phase | gas_drive | oil_rate_rel_err | +3.90 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
 | three_phase | gas_drive | vs_jutul.FOPR_rel_err | +4.61 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
+| three_phase | gas_drive | jutul_vs_flow.FOPR_rel_err | -2.33 % | t=10 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
+| cross_solver | dep-pvt-correlation | sparse.cum.FGPT | +1.06 % |  | explained: opm/reference-decks/small-direct/README.md, "Saturation tables: nodes above S_gc, and a table's own knots" (#55) |
+| cross_solver | dep-pvt-correlation | dense.cum.FGPT | +1.06 % |  | explained: opm/reference-decks/small-direct/README.md, "Saturation tables: nodes above S_gc, and a table's own knots" (#55) |
+| cross_solver | dep-pvt-lab-report | sparse.cum.FGPT | +1.13 % |  | explained: opm/reference-decks/small-direct/README.md, "Saturation tables: nodes above S_gc, and a table's own knots" (#55) |
+| cross_solver | dep-pvt-lab-report | dense.cum.FGPT | +1.13 % |  | explained: opm/reference-decks/small-direct/README.md, "Saturation tables: nodes above S_gc, and a table's own knots" (#55) |
 | compositional | 1D plain | worst_pressure_diff | 1.68 bar | t = 0.19 d, cell 4: 59.4244 vs 61.1053 bar | explained: COMPOSITIONAL_VALIDATION.md §8 (C12) |
+| jutul | dep-pvt-correlation | jutul_vs_flow.final_FGPR_rel_err | -2.21 % |  | explained: opm/reference-decks/small-direct/README.md, "Saturation tables: nodes above S_gc, and a table's own knots" (#55); OPEN_ITEMS_2026-09-21.md §11 |
+| jutul | dep-pvt-correlation | fim_vs_jutul.final_FGPR_rel_err | +1.66 % |  | explained: opm/reference-decks/small-direct/README.md, "Saturation tables: nodes above S_gc, and a table's own knots" (#55); OPEN_ITEMS_2026-09-21.md §11 |
+| jutul | dep-pvt-lab-report | jutul_vs_flow.final_FGPR_rel_err | -4.14 % |  | explained: opm/reference-decks/small-direct/README.md, "Saturation tables: nodes above S_gc, and a table's own knots" (#55); OPEN_ITEMS_2026-09-21.md §11 |
+| jutul | dep-pvt-lab-report | fim_vs_jutul.final_FGPR_rel_err | +2.80 % |  | explained: opm/reference-decks/small-direct/README.md, "Saturation tables: nodes above S_gc, and a table's own knots" (#55); OPEN_ITEMS_2026-09-21.md §11 |
+| jutul | ow-1d-96 | fim_vs_jutul.final_FOPR_rel_err | +1.46 % |  | explained: opm/reference-decks/small-direct/README.md, "FIM's 21-knot relperm table" (#55) |
+| jutul | sweep-areal | fim_vs_jutul.final_FOPR_rel_err | +1.11 % |  | explained: opm/reference-decks/small-direct/README.md, "FIM's 21-knot relperm table" (#55) |
+| jutul | sweep-combined | fim_vs_jutul.final_FOPR_rel_err | +1.04 % |  | explained: opm/reference-decks/small-direct/README.md, "FIM's 21-knot relperm table" (#55) |
+| jutul | sweep-crossflow | fim_vs_jutul.final_FOPR_rel_err | +1.30 % |  | explained: opm/reference-decks/small-direct/README.md, "FIM's 21-knot relperm table" (#55) |
+| jutul | sweep-vertical | fim_vs_jutul.final_FWIR_rel_err | +1.02 % |  | explained: opm/reference-decks/small-direct/README.md, "FIM's 21-knot relperm table" (#55) |
+| jutul | sweep-vertical | fim_vs_jutul.final_FWPR_rel_err | +1.10 % |  | explained: opm/reference-decks/small-direct/README.md, "FIM's 21-knot relperm table" (#55) |
+| jutul | wf-capillary | fim_vs_jutul.final_FOPR_rel_err | +1.17 % |  | explained: opm/reference-decks/small-direct/README.md, "FIM's 21-knot relperm table" (#55) |
+| jutul | wf-gravity-stability | fim_vs_jutul.final_FOPR_rel_err | +1.73 % |  | explained: opm/reference-decks/small-direct/README.md, "FIM's 21-knot relperm table" (#55) |
 
 **Near the band** — more than 70% of an acceptance band used, so one modest regression from failing:
 

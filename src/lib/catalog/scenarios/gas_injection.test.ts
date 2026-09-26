@@ -23,9 +23,9 @@ async function ensureWasmReady() {
  * deck, fails here.
  */
 const OPM_GAS_INJECTION: Array<[number, number, number, number]> = [
-    [100, 6167.734, 0, 6226.758],
-    [200, 15376.532, 3659.938, 19076.848],
-    [300, 20330.521, 28979.205, 49351.664],
+    [100, 6167.628, 0, 6226.662],
+    [200, 15379.979, 3657.553, 19077.826],
+    [300, 20331.672, 28986.195, 49359.785],
 ];
 
 describe('gas_injection against its OPM Flow twin (#12)', () => {

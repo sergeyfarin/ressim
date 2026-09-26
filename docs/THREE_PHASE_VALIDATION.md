@@ -55,7 +55,7 @@ both use Stone II (`relperm.rs::k_ro_stone2`, `STONE2`).
 **Reference.** `flow 2026.04` on `tools/opm_flow/opm_flow_tool/cases.py::GAS_DRIVE`. Since #55 its
 deck is `opm/reference-decks/small-direct/gas-drive-20`, written by `opm_small_direct.rs` from the
 test's own simulator (`make_gas_drive_acceptance_sim`): PVT and relperm are ResSim's functions
-sampled onto dense nodes (91 saturation points), so the deck cannot disagree with the engine about
+sampled onto dense nodes (91 saturation points, plus geometric nodes just above S_gc since #55), so the deck cannot disagree with the engine about
 its inputs. The hand-written deck it replaced sampled SGOF at ten nodes, and linear interpolation
 between them overstated k_rg by up to 41 % around the initial S_g = 0.08. That put the reference
 4–6 % off this model, and the "+4 % cumulative-oil bias" recorded here until then came from it.
@@ -94,6 +94,13 @@ reports (`validate-cross-solver.sh --refine 1 --case gas-drive-20`) the 20 d gap
 oil rate and −1.37 % cumulative oil to −0.48 % and +0.04 %, and by 50 d to 0.02–0.04 %. Neither
 simulator is time-converged there at 10-day reports: refining Flow alone moves its own 20 d oil rate
 from 27.6 to 26.1 Sm³/d. By 600 d cumulative oil agrees to 0.09 % at the scenario's own steps.
+
+**JutulDarcy against Flow on the same deck** (#55) has the same explanation. At the deck's 10-day
+reports they differ by −2.33 % in oil rate at 10 d, −0.68 % at 20 d, and ≤ 0.43 % from 30 d on:
+the two simulators choose different internal steps inside a steep first report. With the deck
+rewritten at 1-day reports (`OPM_SMALL_REPORT_DT=1`), JutulDarcy 0.3.7 and Flow agree to ≤ 0.04 %
+on FOPR, FGPR, FPR and FGOR at every checkpoint from 10 to 600 d. JutulDarcy ignores `STONE2`, but
+S_w stays at connate here, where Stone II reduces to k_rog, so that makes no difference.
 
 ## 3. Gas-front behavior
 

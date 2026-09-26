@@ -168,40 +168,41 @@ fn stock_tank_oil_in_place_sm3(sim: &ReservoirSimulator) -> f64 {
 /// `.RSM` and also committed as `src/lib/catalog/opm-flow-results/gas_drive.json`. Since #55 that
 /// deck is `opm/reference-decks/small-direct/gas-drive-20`, written by `opm_small_direct.rs` from
 /// [`make_gas_drive_acceptance_sim`] itself; the hand-written deck before it sampled SGOF at ten
-/// nodes and put the reference 4-6 % off this model.
+/// nodes and put the reference 4-6 % off this model. Re-run when that deck's SGOF gained nodes
+/// just above S_gc (#55), which moved these values by ≤ 0.1 %.
 /// Columns: time [days], FPR [bar], FOPR [Sm³/day], FOPT [Sm³], FGOR [Sm³/Sm³].
 const OPM_GAS_DRIVE: [(f64, f64, f64, f64, f64); 11] = [
-    (10.0, 172.6900, 40.80884, 686.7414, 457.7489),
-    (20.0, 160.6220, 27.55959, 986.8523, 459.0354),
-    (30.0, 152.0119, 22.22289, 1209.081, 460.3889),
-    (50.0, 139.4304, 16.21543, 1558.808, 464.2399),
-    (100.0, 121.2865, 8.740335, 2122.723, 479.0799),
-    (150.0, 111.9562, 4.893212, 2435.057, 493.7973),
-    (200.0, 106.8226, 2.771546, 2611.128, 503.9905),
-    (300.0, 102.2617, 0.9099436, 2768.746, 514.0984),
-    (400.0, 100.7607, 0.3048172, 2821.051, 517.6306),
-    (500.0, 100.2571, 0.1028707, 2838.645, 518.8369),
-    (600.0, 100.0870, 0.03480567, 2844.591, 519.2465),
+    (10.0, 172.6970, 40.80592, 686.7855, 457.6848),
+    (20.0, 160.6311, 27.55713, 986.8696, 458.9650),
+    (30.0, 152.0217, 22.22205, 1209.090, 460.3074),
+    (50.0, 139.4402, 16.21725, 1558.840, 464.1454),
+    (100.0, 121.2928, 8.743974, 2122.935, 478.9856),
+    (150.0, 111.9598, 4.895408, 2435.407, 493.7154),
+    (200.0, 106.8247, 2.772774, 2611.556, 503.9218),
+    (300.0, 102.2624, 0.9103365, 2769.243, 514.0430),
+    (400.0, 100.7609, 0.3049466, 2821.571, 517.5797),
+    (500.0, 100.2572, 0.1029140, 2839.172, 518.7874),
+    (600.0, 100.0871, 0.03482020, 2845.120, 519.1976),
 ];
 
 // Tightened in #55, when the reference moved from the hand-written deck to one generated from
 // this simulator. Against the old reference the worst errors were 1.6 / 6.1 / 4.3 / 4.6 %
 // (pressure / GOR / cumulative oil / oil rate), almost all of it the old deck's coarse SGOF.
-// Measured against the new one (flow 2026.04): 0.30 / 0.24 / 1.37 / 3.90 %. The oil-rate and
+// Measured against the new one (flow 2026.04): 0.29 / 0.26 / 1.38 / 3.91 %. The oil-rate and
 // cumulative-oil worsts both sit at 20 d, in the steep first transient where the two simulators'
 // time steps differ; each band keeps 2-4x headroom over its measured error.
 
-/// Field average reservoir pressure. Measured 0.30 % (20 d).
+/// Field average reservoir pressure. Measured 0.29 % (20 d).
 const GAS_DRIVE_PRESSURE_TOLERANCE: f64 = 0.01;
-/// Producing gas-oil ratio. Measured 0.24 % (50 d).
+/// Producing gas-oil ratio. Measured 0.26 % (50 d).
 const GAS_DRIVE_GOR_TOLERANCE: f64 = 0.01;
 /// Cumulative surface oil. This is the load-bearing oil criterion over the whole horizon:
 /// the instantaneous rate decays below 1 Sm³/day, where a small absolute difference is a
-/// large relative one, but the integral stays well conditioned. Measured 1.37 % (20 d),
+/// large relative one, but the integral stays well conditioned. Measured 1.38 % (20 d),
 /// 0.09 % by 600 d.
 const GAS_DRIVE_CUMULATIVE_OIL_TOLERANCE: f64 = 0.03;
 /// Instantaneous producer oil rate, graded only while the reference rate is still
-/// meaningfully large (see `GAS_DRIVE_MIN_GRADED_OIL_RATE_SC_DAY`). Measured 3.90 % (20 d).
+/// meaningfully large (see `GAS_DRIVE_MIN_GRADED_OIL_RATE_SC_DAY`). Measured 3.91 % (20 d).
 const GAS_DRIVE_OIL_RATE_TOLERANCE: f64 = 0.08;
 /// Below this reference oil rate [Sm³/day] the instantaneous rate is not graded; cumulative
 /// oil carries the late-time comparison instead.
@@ -679,16 +680,17 @@ fn three_phase_gas_flood_phase_closure_holds_for_all_three_phases() {
 /// `flow 2026.04` on `opm/reference-decks/small-direct/go-1d-50`, the `gas_injection` scenario's
 /// base case written from `opm_small_direct::gas_injection_1d()` (#12): (t [d], FOPT, FGPT, FGIT)
 /// [Sm³]. Gas breaks through between 170 and 180 d in both simulators. Re-baselined for #42, when
-/// table-less gas became compressible and the deck's PVDG followed.
+/// table-less gas became compressible and the deck's PVDG followed, and for #55, when the deck's
+/// SGOF gained nodes just above S_gc (≤ 0.03 % here).
 const OPM_GAS_INJECTION: [(f64, f64, f64, f64); 3] = [
-    (100.0, 6167.734, 0.000, 6226.758),
-    (200.0, 15376.532, 3659.938, 19076.848),
-    (300.0, 20330.521, 28979.205, 49351.664),
+    (100.0, 6167.628, 0.000, 6226.662),
+    (200.0, 15379.979, 3657.553, 19077.826),
+    (300.0, 20331.672, 28986.195, 49359.785),
 ];
 /// Oil produced and gas injected. Measured ≤ 0.046 % at every 20-day checkpoint (2026-09-24).
 const GAS_INJECTION_CUMULATIVE_TOLERANCE: f64 = 0.002;
 /// Gas produced, which starts at breakthrough and so is most sensitive to front timing.
-/// Measured 0.29 % at 200 d, 0.03 % at 300 d.
+/// Measured 0.22 % at 200 d, the worst checkpoint (re-run for #55; 0.29 % before).
 const GAS_INJECTION_GAS_PRODUCED_TOLERANCE: f64 = 0.015;
 
 /// #12: `gas_injection` against an independent simulator, not only its gas-oil fractional-flow

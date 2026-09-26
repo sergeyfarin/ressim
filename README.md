@@ -228,11 +228,11 @@ reference solving the same discrete model, and the commit it was measured on. Th
 | SPE1 Case 1, 10 years | Published SPE1 / Flow | 10x10x3: gor_rel_err 1.25 % | 12.0 % | 10% | 20x20x3: vs_flow.WGOR_rel_err +0.69 % (explained) | `f7f65ab` |
 | Three-phase gas drive and injection | OPM Flow | gas_drive: oil_rate_rel_err 3.90 % | 8.0 % | 49% | gas_drive: vs_jutul.FOPR_rel_err +4.61 % (explained) | `f7f65ab` |
 | Black-oil depletion column | Grid self-convergence, Flow | FIM: sat_gas_finest_pair_gap 1.20 % | 1.5 % | 80% | — | `f7f65ab` |
-| Generated decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | dep-pvt-lab-report: dense.cum.FGPT +1.13 % (tracked) | `f7f65ab` |
+| Generated decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | dep-pvt-lab-report: dense.cum.FGPT +1.13 % (explained) | `f7f65ab` |
 | Native vs wasm bindings | Each other | favorable-mobility (IMPES): rates_max_abs_diff 1.25e-10 abs | 1e-09 abs | 12% | — | `f7f65ab` |
 | FIM convergence, long horizons | Substeps per report step | no banded criterion | — | — | — | `f7f65ab` |
 | Compositional, matched timestep | OPM flowexp_comp | 1D plain: worst_pressure_diff 1.68 bar | 2 bar | 84% | 1D plain: worst_pressure_diff 1.68 bar (explained) | `f7f65ab` |
-| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | dep-pvt-lab-report: jutul_vs_flow.final_FGPR_rel_err -4.14 % (tracked) | `f7f65ab` |
+| Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | dep-pvt-lab-report: jutul_vs_flow.final_FGPR_rel_err -4.14 % (explained) | `f7f65ab` |
 <!-- /GENERATED:summary -->
 
 Scenario tests (`pnpm run test:scenarios`) also grade each case in the picker against its own

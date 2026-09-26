@@ -763,8 +763,20 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
 
     if three_phase {
         let scal = sim.scal_3p.as_ref().expect("three-phase case has scal_3p");
+        // A tabulated SCAL (SPE1's) is piecewise linear already: writing its own knots makes the
+        // deck exact, where uniform nodes alone cut its corners. On spe1-10x10x3 that took FIM's
+        // final pressure gap to Flow from 0.26 to 0.003 bar (#55).
+        let (sw_knots, sg_knots): (Vec<f64>, Vec<f64>) = match &scal.tables {
+            Some(t) => (
+                t.swof.iter().map(|r| r.sw).collect(),
+                t.sgof.iter().map(|r| r.sg).collect(),
+            ),
+            None => (Vec::new(), Vec::new()),
+        };
         d.push_str("STONE2\nSWOF\n");
-        for sw in saturation_nodes(scal.s_wc, 1.0, 91, &[1.0 - scal.s_or]) {
+        let mut sw_kinks = vec![1.0 - scal.s_or];
+        sw_kinks.extend(&sw_knots);
+        for sw in saturation_nodes(scal.s_wc, 1.0, 91, &sw_kinks) {
             let _ = writeln!(
                 d,
                 "  {sw:.8} {:.10e} {:.10e} 0",
@@ -774,7 +786,21 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
         }
         d.push_str("/\nSGOF\n");
         let sg_max = 1.0 - scal.s_wc;
-        for sg in saturation_nodes(0.0, sg_max, 91, &[scal.s_gc, 1.0 - scal.s_wc - scal.s_org]) {
+        let mut sg_kinks = vec![scal.s_gc, 1.0 - scal.s_wc - scal.s_org];
+        if scal.tables.is_some() {
+            sg_kinks.extend(&sg_knots);
+        } else {
+            // Corey k_rg rises from S_gc as a power law, so its chord over the first uniform
+            // interval overstates it without bound as S_g -> S_gc: 2.2x at S_gc + 0.002 with
+            // exponent 1.5. A depletion producer sits just above S_gc for months, and on dep_pvt
+            // that put Flow's cumulative gas 1.1 % above FIM's (#55). Geometric nodes over the
+            // first eight uniform intervals (ratio 2^(1/4), down to 2e-3 of the spacing) keep the
+            // chord within 0.3 % of the curve above S_gc + 2e-5.
+            let spacing = sg_max / 90.0;
+            sg_kinks
+                .extend((1..48).map(|k| scal.s_gc + 8.0 * spacing * 2f64.powf(-(k as f64) / 4.0)));
+        }
+        for sg in saturation_nodes(0.0, sg_max, 91, &sg_kinks) {
             let _ = writeln!(
                 d,
                 "  {sg:.8} {:.10e} {:.10e} 0",
@@ -1093,6 +1119,15 @@ fn opm_small_direct_run_ressim() {
         sim.set_fim_enabled(fim);
         if fim {
             sim.set_fim_direct_backend(backend.clone()).unwrap();
+            // Diagnostic: FIM's two-phase relperm table knot count (0 = exact Corey, the curve
+            // the deck carries). See the small-direct README, "FIM's 21-knot relperm table".
+            if let Ok(points) = std::env::var("OPM_SMALL_FIM_COREY_POINTS") {
+                sim.set_fim_corey_table_points(
+                    points
+                        .parse()
+                        .expect("OPM_SMALL_FIM_COREY_POINTS is a knot count"),
+                );
+            }
         }
         let started = Instant::now();
         let mut reports = Vec::new();

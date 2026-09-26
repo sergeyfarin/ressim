@@ -27,9 +27,9 @@
    "section": "three_phase",
    "case": "gas_drive",
    "metric": "jutul_vs_flow.*",
-   "status": "tracked",
-   "ref": "#55",
-   "note": "JutulDarcy and Flow on the same hand deck differ in oil rate during the steep first 20 days; time-step resolution suspected, not shown."
+   "status": "explained",
+   "ref": "THREE_PHASE_VALIDATION.md §2 (#55)",
+   "note": "Time discretization inside the steep first 10-day report: the two simulators take different internal steps. With the deck at 1-day reports (OPM_SMALL_REPORT_DT=1) JutulDarcy 0.3.7 and Flow agree to <= 0.04 % on FOPR, FGPR, FPR and FGOR at every checkpoint from 10 to 600 d."
   },
   {
    "section": "cross_solver",
@@ -38,9 +38,9 @@
     "sparse.cum.FGPT",
     "dense.cum.FGPT"
    ],
-   "status": "tracked",
-   "ref": "#55",
-   "note": "FIM (sparse, dense) gas production vs Flow on generated decks while oil agrees exactly; PVT table-edge conventions (#35) suspected, not shown."
+   "status": "explained",
+   "ref": "opm/reference-decks/small-direct/README.md, \"Saturation tables: nodes above S_gc, and a table's own knots\" (#55)",
+   "note": "The deck's SGOF, not the engine: 91 uniform nodes overstated Corey k_rg just above S_gc, where the producer sits once free gas flows. With geometric nodes above S_gc FIM's cumulative gas matches Flow to 0.07 % / 0.01 % (from -1.06 % / -1.13 %). Remove this entry once the section is re-recorded on the fixed decks."
   },
   {
    "section": "compositional",
@@ -73,33 +73,33 @@
     "jutul_vs_flow.final_FGPR_rel_err",
     "fim_vs_jutul.final_FGPR_rel_err"
    ],
-   "status": "tracked",
-   "ref": "#55",
-   "note": "Gas rate spreads across all three simulators on the PVT-risk decks (FIM between JutulDarcy and Flow), while oil agrees exactly: consistent with differing PVT table-edge conventions (#35), not yet shown."
+   "status": "explained",
+   "ref": "opm/reference-decks/small-direct/README.md, \"Saturation tables: nodes above S_gc, and a table's own knots\" (#55); OPEN_ITEMS_2026-09-21.md §11",
+   "note": "Not a ResSim gap. On the fixed decks FIM matches Flow's final gas rate to -0.22 % / -0.01 %, and JutulDarcy 0.3.7 is -2.3 % / -4.5 % from both, unchanged by SGOF density or a 10x finer report step. Its producer pressure is already 0.07 bar off Flow before free gas flows, so the two reference simulators read the PVT tables differently. Not pursued (OPEN_ITEMS §11)."
   },
   {
    "section": "jutul",
-   "case": "ow-1d-96",
-   "metric": "fim_vs_jutul.final_FOPR_rel_err",
-   "status": "tracked",
-   "ref": "#55",
-   "note": "FIM's end-of-run oil rate differs from JutulDarcy while JutulDarcy and Flow agree; cumulative oil agrees with Flow to 0.05 %."
+   "case": "ow-*",
+   "metric": "fim_vs_jutul.final_*_rel_err",
+   "status": "explained",
+   "ref": "opm/reference-decks/small-direct/README.md, \"FIM's 21-knot relperm table\" (#55)",
+   "note": "FIM's two-phase path evaluates relperm from a 21-knot linear table (DEFAULT_FIM_COREY_TABLE_POINTS, FIM-RELPERM-001); the deck's SWOF, Flow, JutulDarcy and IMPES use the exact Corey curve. The chord overstates convex k_ro, and at 90-99 % water cut that reads as +0.5-1.9 % in the final oil rate. Shown on fd036c3: with the exact curve (or 257 knots) FIM's final rates match Flow to <= 0.2 % on all nine oil-water decks at the same Newton cost; time refinement to 0.025 d does not remove it. Whether FIM should use a finer table: #59."
   },
   {
    "section": "jutul",
    "case": "wf-*",
    "metric": "fim_vs_jutul.final_*_rel_err",
-   "status": "tracked",
-   "ref": "#55",
-   "note": "FIM's end-of-run rates differ from JutulDarcy by 1.0-1.7 % while JutulDarcy and Flow agree to 0.1-0.6 %: the ow-1d-96 pattern on the oil-water decks added for #54. FIM final FOPR vs Flow, measured on 8dcde91: wf-capillary +1.09 %, wf-gravity-stability +1.90 %, sweep-crossflow +1.76 %, sweep-areal +0.54 %, sweep-vertical -0.14 %, sweep-combined -0.52 % (ow-1d-96 +1.38 %). Cumulatives agree with Flow to <= 0.7 %; at 90-99 % water cut the oil rate is a small remainder, so a water-cut shift of a few 1e-4 reads as 1-2 %. Mechanism not shown."
+   "status": "explained",
+   "ref": "opm/reference-decks/small-direct/README.md, \"FIM's 21-knot relperm table\" (#55)",
+   "note": "FIM's two-phase path evaluates relperm from a 21-knot linear table (DEFAULT_FIM_COREY_TABLE_POINTS, FIM-RELPERM-001); the deck's SWOF, Flow, JutulDarcy and IMPES use the exact Corey curve. The chord overstates convex k_ro, and at 90-99 % water cut that reads as +0.5-1.9 % in the final oil rate. Shown on fd036c3: with the exact curve (or 257 knots) FIM's final rates match Flow to <= 0.2 % on all nine oil-water decks at the same Newton cost; time refinement to 0.025 d does not remove it. Whether FIM should use a finer table: #59."
   },
   {
    "section": "jutul",
    "case": "sweep-*",
    "metric": "fim_vs_jutul.final_*_rel_err",
-   "status": "tracked",
-   "ref": "#55",
-   "note": "FIM's end-of-run rates differ from JutulDarcy by 1.0-1.7 % while JutulDarcy and Flow agree to 0.1-0.6 %: the ow-1d-96 pattern on the oil-water decks added for #54. FIM final FOPR vs Flow, measured on 8dcde91: wf-capillary +1.09 %, wf-gravity-stability +1.90 %, sweep-crossflow +1.76 %, sweep-areal +0.54 %, sweep-vertical -0.14 %, sweep-combined -0.52 % (ow-1d-96 +1.38 %). Cumulatives agree with Flow to <= 0.7 %; at 90-99 % water cut the oil rate is a small remainder, so a water-cut shift of a few 1e-4 reads as 1-2 %. Mechanism not shown."
+   "status": "explained",
+   "ref": "opm/reference-decks/small-direct/README.md, \"FIM's 21-knot relperm table\" (#55)",
+   "note": "FIM's two-phase path evaluates relperm from a 21-knot linear table (DEFAULT_FIM_COREY_TABLE_POINTS, FIM-RELPERM-001); the deck's SWOF, Flow, JutulDarcy and IMPES use the exact Corey curve. The chord overstates convex k_ro, and at 90-99 % water cut that reads as +0.5-1.9 % in the final oil rate. Shown on fd036c3: with the exact curve (or 257 knots) FIM's final rates match Flow to <= 0.2 % on all nine oil-water decks at the same Newton cost; time refinement to 0.025 d does not remove it. Whether FIM should use a finer table: #59. Exception: sweep-vertical's FWIR/FWPR rows (+1.0/+1.1 % against JutulDarcy) are mostly JutulDarcy's own -0.8 % from Flow; FIM is +0.24/+0.27 % from Flow there, -0.01 % with the exact curve."
   }
  ]
 }

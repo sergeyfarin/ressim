@@ -144,7 +144,7 @@ describe('OPM Flow references on their scenarios (#20)', () => {
         expect(mapReferenceTimesToXAxis(times, 'cumGas', curve.xAxisMap)).toBeNull();
         expect(mapReferenceTimesToXAxis(times, 'tD', curve.xAxisMap)).toBeNull();
         // The cumulative-injection axis is surface volume and uses FGIT, not the FVIT behind PVI.
-        expect(curve.xAxisMap?.cumulativeInjectionSm3?.at(-1)).toBeCloseTo(49351.664, 2);
+        expect(curve.xAxisMap?.cumulativeInjectionSm3?.at(-1)).toBeCloseTo(49359.78, 2);
         const pvi = mapReferenceTimesToXAxis(times, 'pvi', curve.xAxisMap)!;
         expect(pvi.at(-1)).toBeGreaterThan(0.4);
         expect(pvi.at(-1)).toBeLessThan(0.6);

@@ -396,3 +396,120 @@ The scenario side is graded too: `src/lib/catalog/opmFlowTwin.ts` runs each scen
 variant through the worker's own setup and compares it with the artifact. The bands, and what they
 measured, are in each scenario's `<key>.test.ts`. The per-solver numbers against Flow on these decks
 are in the scorecard (`--markdown`).
+
+### FIM's 21-knot relperm table explains the oil–water late-rate rows (#55, base `fd036c3`, flow 2026.04)
+
+On every two-phase deck FIM's end-of-run oil rate sat 0.5–1.9 % above Flow's, while JutulDarcy
+matched Flow to within 0.6 % and cumulatives matched to within 0.3 %. **This was not a solver
+difference or time-step error.** The two simulators were not solving the same relative
+permeability:
+
+- The deck's `SWOF` is ResSim's exact Corey curve at 161 nodes (spacing 0.0056 on `ow-1d-96`).
+- FIM's two-phase path evaluates relperm from a 21-knot piecewise-linear table
+  (`DEFAULT_FIM_COREY_TABLE_POINTS`, `FIM-RELPERM-001`, promoted 2026-07-23 for water-heavy
+  convergence). For a convex `k_ro` the chord lies above the curve. At 90–99 % water cut the oil
+  rate is a small remainder, so a chord error of ~0.5 % in `k_ro` becomes a 1–2 % oil-rate error.
+  IMPES uses the exact curve, as the deck does.
+
+**How it was found.** On `ow-1d-96`, Flow's `FOPR/FWPR` matches its producer cell's mobility
+ratio times `Bw/Bo` to a constant 0.99875 at every report. FIM's own ratio swings between that value
+and 1.005. It returns to the value exactly at S_w = 0.54, 0.58, 0.62, 0.66, which are the table's
+knots (spacing 0.8/20 = 0.04). Time refinement does not remove it. At 0.025-day reports
+(`--refine 0.025`) FIM's final oil rate is still +1.12 % off Flow, and its final |ΔS_w| is still
+0.0082 (at the injector end, in the table's last segment). IMPES falls to 0.0017.
+
+**The test.** Run FIM on the committed decks with the table replaced
+(`OPM_SMALL_FIM_COREY_POINTS`, a driver knob). The final `FOPR` is relative to Flow on the same
+deck, and the Newton count is FIM's total:
+
+| Deck | 21 knots (default) | 257 knots | Exact Corey | Final max \|ΔS_w\|, 21 knots → exact |
+|---|---|---|---|---|
+| ow-1d-96 | +1.38 % (376) | +0.15 % (377) | +0.15 % (377) | 0.0078 → 0.0002 |
+| ow-1d-50-adverse | +0.09 % (48) | −0.00 % (48) | −0.00 % (42) | 0.0034 → 0.0007 |
+| ow-2d-12x12 | +0.21 % (133) | −0.01 % (132) | −0.01 % (136) | 0.0079 → 0.0001 |
+| wf-capillary | +1.09 % (624) | −0.01 % (637) | −0.03 % (636) | 0.0095 → 0.0002 |
+| wf-gravity-stability | +1.90 % (468) | −0.01 % (471) | −0.02 % (471) | 0.0105 → 0.0005 |
+| sweep-crossflow | +1.76 % (1040) | +0.01 % (1034) | +0.00 % (1036) | 0.0112 → 0.0007 |
+| sweep-areal | +0.54 % (311) | +0.01 % (301) | −0.04 % (298) | 0.0102 → 0.0007 |
+| sweep-vertical | −0.14 % (972) | +0.00 % (967) | +0.00 % (968) | 0.0087 → 0.0002 |
+| sweep-combined | +0.90 % (357) | +0.19 % (346) | +0.13 % (356) | 0.0177 → 0.0043 |
+
+With the curve the deck carries, FIM matches Flow's final rates to within 0.2 % on all nine decks,
+and its final saturation to within 1e-3 on eight of them. Substep counts are unchanged, and Newton
+counts differ by at most 4 %. So the rows are **explained**: they measure the error of FIM's
+tabulation against the stated Corey model, and FIM and IMPES solve slightly different relperm
+models by design. One row is different: sweep-vertical's water rates sit +1.0 / +1.1 % from
+JutulDarcy, but FIM is only +0.24 / +0.27 % from Flow there. The rest is JutulDarcy's own −0.8 %
+from Flow.
+
+The earlier reading of this issue had the direction backwards. Flow and JutulDarcy were not the
+coarse tables here; FIM was.
+
+Whether FIM should use a finer table is a product question, not a reference one ([#59](https://github.com/sergeyfarin/ressim/issues/59)).
+`FIM-RELPERM-001` reports that its convergence gain survives at 257 knots. The table above shows
+that 257 knots removes the accuracy cost on these decks at no Newton cost. Changing
+`DEFAULT_FIM_COREY_TABLE_POINTS` still needs the wasm control matrix and a fresh knot sweep
+(`fim-solver-debug` skill).
+
+Replay (release; Flow output from `validate-cross-solver.sh`):
+
+```bash
+for pts in 0 21 257; do OPM_SMALL_FIM_COREY_POINTS=$pts OPM_SMALL_OUT=/tmp/relperm-$pts OPM_SMALL_SOLVER=fim \
+  OPM_SMALL_BACKEND=sparse OPM_SMALL_CASE=wf-capillary cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
+  --lib opm_small_direct_run_ressim -- --ignored --nocapture; done
+```
+
+### Saturation tables: nodes above S_gc, and a table's own knots (#55, base `fd036c3`, flow 2026.04)
+
+`dep-pvt-*` was the last same-model row open in #55. FIM matched Flow's oil exactly, but its
+cumulative gas was **1.06 % and 1.13 % below Flow's**. (The scorecard prints magnitudes, so it read
+as "+".) The gap opened only when the producer cell's S_g crossed S_gc = 0.05, near 130 d. Before
+that all four runs (Flow, FIM, IMPES, JutulDarcy) agree on gas rate to 0.9 %, and FIM to 0.00 %.
+
+**Mechanism: the deck's SGOF, not the engine.** The case's k_rg is Corey, ∝ (S_g − S_gc)^1.5.
+The writer sampled it at 91 uniform nodes (spacing 0.01). Just above S_gc the chord overstates a
+power law without bound: 2.2× at S_gc + 0.002. With exponent 1.5 it is still 4.5 % high in the
+interval from S_gc + 0.01 to + 0.02. A depletion producer sits in exactly that range for the rest of
+the run, so Flow flowed extra free gas. This is the `gas_drive` hand-deck defect again, in a
+generated deck and at a smaller scale.
+
+The writer now adds 47 geometric nodes over the first eight intervals above S_gc (ratio 2^(1/4),
+down to 2e-3 of the spacing). That keeps the chord within 0.3 % of the curve above S_gc + 2e-5. A
+first attempt that clustered only the first interval halved the gap but left −0.56 % / −0.35 %.
+A 10× time refinement of that deck (`--refine 0.075`) did not move it, and IMPES converged to FIM.
+The remainder was the next interval, not time error.
+
+**A tabulated SCAL is written at its own knots.** SPE1's SGOF is a piecewise-linear table (knots at
+S_g = 0.001, 0.02, 0.05, 0.12, …). Uniform nodes cut its corners. Its knots are now written
+exactly, and so are SWOF's, and no geometric nodes are added to it. Geometric nodes are not needed
+for a linear segment, and on SPE1 they changed Flow's answer on their own. Adding collinear nodes to
+the exact table, so that the function is identical, moved Flow by up to 0.022 in S_g and 1.3 bar
+during 90–630 d, with different Newton counts throughout. That is Flow's solution path responding
+to where its segments break. The practical consequence is that worst-over-reports metrics on SPE1
+carry about 0.02 S_g of Flow-side path sensitivity.
+
+**Result.** FIM against Flow, same decks (`validate-cross-solver.sh`), signed ResSim − Flow:
+
+| Case | Cumulative gas | Final gas rate | Final \|Δp\| (bar) |
+|---|---|---|---|
+| dep-pvt-correlation | −1.06 % → −0.07 % | −0.58 % → −0.22 % | 0.158 → 0.011 |
+| dep-pvt-lab-report | −1.13 % → −0.01 % | −1.45 % → −0.01 % | 0.111 → 0.012 |
+| spe1-10x10x3 | \|0.071\| % → \|0.002\| % | — | 0.256 → 0.003 |
+| spe1-case2-10x10x3 | \|0.040\| % → \|0.015\| % | — | 0.172 → 0.036 |
+
+SPE1 cumulatives are the scorecard's magnitudes. Its worst-over-reports values do not get worse
+(10×10×3: 0.71 → 0.54 bar, ΔS_g 0.0038 → 0.0038).
+
+IMPES improves as well: dep-pvt cumulative gas 2.10 % / 1.59 % → 1.12 % / 0.45 %. The rest of that
+is its own time error at 0.75-day reports: at 0.075 d it was 0.66 % / 0.39 % on the intermediate
+deck. bo-1d, go-1d-50 and gas-drive-20 move by at most 0.1 % in Flow's cumulatives and stay inside
+their scorecard bands. The frontend artifacts built from these decks (`gas_drive`, `gas_injection`,
+`dep_pvt_*`) and the Flow constants in `three_phase_acceptance.rs`, `gas_injection.test.ts` and
+`opmReferenceWiring.test.ts` were re-run from them.
+
+**JutulDarcy still differs, from both.** On the new decks JutulDarcy 0.3.7's final gas rate is
+−2.29 % / −4.46 % from Flow. FIM is at −0.22 % / −0.01 %. Neither SGOF density nor a 10× time
+refinement moves it (−2.19 % / −4.07 % at 0.075 d). Its producer pressure is already 0.07 bar off
+Flow's at 76 d, before any free gas flows, which points at how the two read the PVT tables. That is
+a JutulDarcy–Flow difference on a deck where ResSim and Flow agree. It is recorded, but not pursued
+here.
