@@ -65,30 +65,6 @@
    "status": "explained",
    "ref": "opm/reference-decks/small-direct/README.md, \"Saturation tables: nodes above S_gc, and a table's own knots\" (#55); OPEN_ITEMS_2026-09-21.md §11",
    "note": "Not a ResSim gap. On the fixed decks FIM matches Flow's final gas rate to -0.22 % / -0.01 %, and JutulDarcy 0.3.7 is -2.3 % / -4.5 % from both, unchanged by SGOF density or a 10x finer report step. Its producer pressure is already 0.07 bar off Flow before free gas flows, so the two reference simulators read the PVT tables differently. Not pursued (OPEN_ITEMS §11)."
-  },
-  {
-   "section": "jutul",
-   "case": "ow-*",
-   "metric": "fim_vs_jutul.final_*_rel_err",
-   "status": "explained",
-   "ref": "opm/reference-decks/small-direct/README.md, \"FIM's 21-knot relperm table\" (#55)",
-   "note": "FIM's two-phase path evaluates relperm from a 21-knot linear table (DEFAULT_FIM_COREY_TABLE_POINTS, FIM-RELPERM-001); the deck's SWOF, Flow, JutulDarcy and IMPES use the exact Corey curve. The chord overstates convex k_ro, and at 90-99 % water cut that reads as +0.5-1.9 % in the final oil rate. Shown on fd036c3: with the exact curve (or 257 knots) FIM's final rates match Flow to <= 0.2 % on all nine oil-water decks at the same Newton cost; time refinement to 0.025 d does not remove it. Whether FIM should use a finer table: #59."
-  },
-  {
-   "section": "jutul",
-   "case": "wf-*",
-   "metric": "fim_vs_jutul.final_*_rel_err",
-   "status": "explained",
-   "ref": "opm/reference-decks/small-direct/README.md, \"FIM's 21-knot relperm table\" (#55)",
-   "note": "FIM's two-phase path evaluates relperm from a 21-knot linear table (DEFAULT_FIM_COREY_TABLE_POINTS, FIM-RELPERM-001); the deck's SWOF, Flow, JutulDarcy and IMPES use the exact Corey curve. The chord overstates convex k_ro, and at 90-99 % water cut that reads as +0.5-1.9 % in the final oil rate. Shown on fd036c3: with the exact curve (or 257 knots) FIM's final rates match Flow to <= 0.2 % on all nine oil-water decks at the same Newton cost; time refinement to 0.025 d does not remove it. Whether FIM should use a finer table: #59."
-  },
-  {
-   "section": "jutul",
-   "case": "sweep-*",
-   "metric": "fim_vs_jutul.final_*_rel_err",
-   "status": "explained",
-   "ref": "opm/reference-decks/small-direct/README.md, \"FIM's 21-knot relperm table\" (#55)",
-   "note": "FIM's two-phase path evaluates relperm from a 21-knot linear table (DEFAULT_FIM_COREY_TABLE_POINTS, FIM-RELPERM-001); the deck's SWOF, Flow, JutulDarcy and IMPES use the exact Corey curve. The chord overstates convex k_ro, and at 90-99 % water cut that reads as +0.5-1.9 % in the final oil rate. Shown on fd036c3: with the exact curve (or 257 knots) FIM's final rates match Flow to <= 0.2 % on all nine oil-water decks at the same Newton cost; time refinement to 0.025 d does not remove it. Whether FIM should use a finer table: #59. Exception: sweep-vertical's FWIR/FWPR rows (+1.0/+1.1 % against JutulDarcy) are mostly JutulDarcy's own -0.8 % from Flow; FIM is +0.24/+0.27 % from Flow there, -0.01 % with the exact curve."
   }
  ]
 }
