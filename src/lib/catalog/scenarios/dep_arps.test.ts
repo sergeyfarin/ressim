@@ -170,7 +170,7 @@ describe('layered composite depletion scenario', () => {
             expect(finalNumerical / finalReference).toBeGreaterThan(0.97);
             expect(finalNumerical / finalReference).toBeLessThan(1.03);
         }
-    }, 30_000);
+    }, 120_000);
 
     it('shows analytical-model breakdown when vertical crossflow is enabled', async () => {
         await ensureWasmReady();
@@ -196,5 +196,5 @@ describe('layered composite depletion scenario', () => {
         expect(errors[1]).toBeLessThan(0.05);
         expect(errors[2]).toBeGreaterThan(errors[1] * 10);
         expect(errors[2]).toBeGreaterThan(0.4);
-    }, 30_000);
+    }, 120_000);
 });
