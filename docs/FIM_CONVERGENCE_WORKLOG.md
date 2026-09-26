@@ -6266,7 +6266,8 @@ chose `n` from July's `13..33` plateau. The question was whether that plateau st
 `n`.
 
 **Baseline.** Clean committed tree `4e85083`, wasm, default flavor (OpmAligned), `n=21`. It
-reproduces the 2026-09-15 long-horizon table exactly (substeps 23 / 27 / 20 / 22 / 22). One runner
+reproduces the 2026-09-15 long-horizon table to within one substep (heavy / gas-rate / 20x20x3 /
+22x22x1 / 23x23x1 = 23 / 27 / 20 / 22 / 22, against 23 / 27 / 20 / 23 / 22). One runner
 fix was needed first: `--corey-table-points 0` was ignored because `0` is falsy, so analytic Corey
 could not be selected. The fix changes nothing when the flag is omitted.
 
