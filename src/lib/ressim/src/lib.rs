@@ -91,10 +91,15 @@ impl FluidProperties {
 /// knots across `[s_wc, 1 - s_or]` and interpolates linearly, reproducing that treatment without
 /// changing the user-facing Corey parameters.
 ///
-/// `21` is the centre of the measured `13..33` plateau (`FIM-RELPERM-001`, worklog "WATER-020").
-/// Substep count versus knot count is chaotic outside that band, exactly as the `k`-sweep was in
-/// `FIM-DAMP-004`, so this value must be re-derived from a fresh sweep rather than nudged.
-pub const DEFAULT_FIM_COREY_TABLE_POINTS: usize = 21;
+/// The convergence gain comes from the piecewise-linear form, not from a coarse table, so the knot
+/// count is chosen for accuracy. `257` puts the table within ~4e-6 of the Corey curve the user set,
+/// the curve IMPES evaluates. The former `21` (the centre of July's `13..33` plateau) overstated
+/// convex `k_ro` by up to ~0.8 % between knots, which read as a 0.5-1.9 % high late oil rate at
+/// 90-99 % water cut against OPM Flow on the same model (#55). Re-swept on the current stack
+/// (#59, `FIM-RELPERM-002`): the control matrix and long horizons cost the same from 13 to 1025
+/// knots (112-118 substeps over five long horizons), so the July plateau no longer constrains it.
+/// Re-derive it from a fresh sweep if the linear solver or damping changes.
+pub const DEFAULT_FIM_COREY_TABLE_POINTS: usize = 257;
 
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 pub struct ReservoirSimulator {

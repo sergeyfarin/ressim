@@ -446,6 +446,11 @@ The earlier reading of this issue had the direction backwards. Flow and JutulDar
 coarse tables here; FIM was.
 
 Whether FIM should use a finer table is a product question, not a reference one ([#59](https://github.com/sergeyfarin/ressim/issues/59)).
+
+**Resolved by [#59](https://github.com/sergeyfarin/ressim/issues/59) (`FIM-RELPERM-002`, 2026-09-26):**
+the default is now 257 knots. A fresh sweep on the current stack found FIM's cost flat from 13 to
+1025 knots, so the knot count is chosen for accuracy. The scorecard's FIM rows on these decks are
+re-baselined with it.
 `FIM-RELPERM-001` reports that its convergence gain survives at 257 knots. The table above shows
 that 257 knots removes the accuracy cost on these decks at no Newton cost. Changing
 `DEFAULT_FIM_COREY_TABLE_POINTS` still needs the wasm control matrix and a fresh knot sweep

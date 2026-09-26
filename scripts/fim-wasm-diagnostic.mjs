@@ -117,8 +117,9 @@ Options:
   --gravity <bool>          true | false
   --capillary <bool>        true | false
   --capillary-entry <bar>   Brooks-Corey entry pressure when capillary is enabled
-  --corey-table-points <n>  evaluate relperm from an n-knot piecewise-linear table sampled
-                            from the Corey curves (OPM's SWOF representation); omit for analytic
+  --corey-table-points <n>  two-phase relperm from an n-knot piecewise-linear table sampled
+                            from the Corey curves (OPM's SWOF representation); 0 = analytic
+                            Corey; omit for the engine default (DEFAULT_FIM_COREY_TABLE_POINTS)
   --diagnostic <mode>       quiet | summary | outer | step
   --checkpoint-in <file>    Load simulator state checkpoint before running
   --checkpoint-out <file>   Save simulator state checkpoint after the run
@@ -757,7 +758,7 @@ async function main() {
   if (options.nestedWellSolve) {
     sim.setFimNestedWellSolve(true);
   }
-  if (options.coreyTablePoints) {
+  if (options.coreyTablePoints !== undefined) {
     sim.setFimCoreyTablePoints(options.coreyTablePoints);
   }
   // Correct flexible GMRES is the product default. Keep both switches so historical traces can

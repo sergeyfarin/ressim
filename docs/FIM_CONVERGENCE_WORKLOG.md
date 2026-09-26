@@ -6254,3 +6254,92 @@ ResSim's `exp(−c_o·300)`. The `wf_bl1d` report-step sensitivity is shared wit
 dt 2 → 0.05 in both), with ResSim within 0.1% of Flow at every rung from 1 day down. Full tables
 and replay commands: `docs/BLACK_OIL_VALIDATION.md` "#21". No solver change. Separate follow-up:
 the oil-FVF reference-pressure convention (#36).
+
+### FIM-RELPERM-002 — the relperm table's knot count, re-derived for accuracy (#59, 2026-09-26)
+
+**Why.** #55 showed that FIM-RELPERM-001's 21-knot table puts FIM's late oil rate 0.5–1.9 % high
+against the Corey curve the user sets. The small-direct decks, IMPES, Flow and JutulDarcy all use
+that curve. At 90–99 % water cut the chord's overstatement of a convex `k_ro` (up to ~0.8 % between
+knots, and more in the last segment before 1 − S_or) dominates a small remainder. FIM-RELPERM-001
+had already found the convergence gain in the piecewise-linear form, surviving at 257 knots, but
+chose `n` from July's `13..33` plateau. The question was whether that plateau still constrains
+`n`.
+
+**Baseline.** Clean committed tree `4e85083`, wasm, default flavor (OpmAligned), `n=21`. It
+reproduces the 2026-09-15 long-horizon table exactly (substeps 23 / 27 / 20 / 22 / 22). One runner
+fix was needed first: `--corey-table-points 0` was ignored because `0` is falsy, so analytic Corey
+could not be selected. The fix changes nothing when the flag is omitted.
+
+**Hypothesis.** On the current stack, substeps and Newton are insensitive to `n` over a wide
+range, so `n` can be chosen for accuracy. **Refuting observation:** a knot-count dependence like
+July's (a plateau with chaotic excursions). **Oracle:** the bounded matrix plus five long horizons
+(substeps, Newton, retries), and final FOPR and ΔS_w against Flow on the nine small-direct oil–water
+decks, whose `SWOF` is the exact Corey curve at 161+ nodes.
+
+**Sweep.** Summed over the five long horizons:
+
+| n | substeps | Newton | retries (all 11 cases) |
+|---|---|---|---|
+| analytic | 121 | 723 | 9 |
+| 13 / 21 / 33 / 41 | 114 | 659–672 | 5 |
+| 65 | 112 | 640 | 3 |
+| 97 / 129 / 161 | 115–117 | 640–675 | 5–7 |
+| 257 | 115 | 642 | 5 |
+| 513 / 1025 | 116–118 | 652–674 | 5–7 |
+
+The July knot chaos is gone: from 13 to 1025 knots the cost is flat within ±3 %. Analytic Corey is
+now only mildly worse (heavy dt1 8 substeps versus 4–5). In July it did not converge in 60 updates.
+The table's lookup is O(1) in `n`.
+
+**Accuracy** against Flow on the same decks (final FOPR; native):
+
+| | n=21 | n=65 | n=129 | n=257 | exact |
+|---|---|---|---|---|---|
+| worst deck | +1.90 % | +0.26 % | +0.21 % | +0.19 % | +0.15 % |
+| wf-gravity-stability | +1.90 % | +0.12 % | +0.02 % | −0.01 % | −0.02 % |
+| sweep-crossflow | +1.76 % | +0.23 % | +0.03 % | +0.01 % | +0.00 % |
+
+By `n=129` the table error is below everything else (the remaining 0.15–0.2 % on ow-1d-96 and
+sweep-combined is also there with exact Corey). **Promoted `n=257`**, which leaves 4× margin on the
+table error (~4e-6 absolute) at the same cost.
+
+**Matrix at the new default** (substeps / Newton / retries / outer ms, wasm, clean tree plus the
+change):
+
+| case | n=21 (baseline) | n=257 | analytic |
+|---|---|---|---|
+| water 20x20x3 dt.25 | 1 / 17 / 0/0/0 / 456 | 1 / 16 / 0/0/0 / 401 | 4 / 46 / 0/1/0 / 970 |
+| water 22x22x1 dt.25 | 3 / 41 / 0/1/0 / 357 | 3 / 42 / 0/1/0 / 357 | 3 / 42 / 0/1/0 / 338 |
+| water 23x23x1 dt.25 | 3 / 41 / 0/1/0 / 364 | 3 / 42 / 0/1/0 / 403 | 3 / 42 / 0/1/0 / 351 |
+| gas-rate 20x20x3 dt.25 | 1 / 10 / 0/0/0 / 425 | 1 / 10 / 0/0/0 / 439 | 1 / 10 / 0/0/0 / 439 |
+| gas-rate 10x10x3 6x.25 | 6 / 36 / 0/0/0 / 367 | 6 / 36 / 0/0/0 / 400 | 6 / 36 / 0/0/0 / 364 |
+| heavy 12x12x3 dt1 | 4 / 32 / 0/0/0 / 360 | 5 / 37 / 0/0/0 / 395 | 8 / 81 / 0/1/0 / 672 |
+| heavy 12x12x3 20x1 | 23 / 116 / 0/0/0 / 914 | 24 / 108 / 0/0/0 / 853 | 27 / 152 / 0/1/0 / 1159 |
+| gas-rate 10x10x3 24x.25 | 27 / 150 / 0/1/0 / 1235 | 27 / 150 / 0/1/0 / 1238 | 27 / 150 / 0/1/0 / 1260 |
+| water 20x20x3 20x.25 | 20 / 117 / 0/0/0 / 2683 | 20 / 109 / 0/0/0 / 2636 | 23 / 143 / 0/1/0 / 3194 |
+| water 22x22x1 20x.25 | 22 / 146 / 0/1/0 / 1058 | 22 / 135 / 0/1/0 / 988 | 22 / 137 / 0/1/0 / 958 |
+| water 23x23x1 20x.25 | 22 / 143 / 0/1/0 / 1199 | 22 / 140 / 0/1/0 / 1092 | 22 / 141 / 0/1/0 / 1109 |
+
+The default run is bit-identical to `--corey-table-points 257`. Gas is bit-identical to baseline,
+since the table touches only the two-phase branch. The heavy one-day case takes one more substep
+(4 → 5) and fewer Newton iterations over 20 days (116 → 108).
+
+**Cross-solver** (`validate-cross-solver.sh`): every oil–water deck improves. Final |Δp| falls
+4–75× (ow-2d-12x12 0.75 → 0.010 bar, sweep-crossflow 0.94 → 0.014, sweep-combined 1.31 → 0.29) and final |ΔS_w| falls 10–50×.
+Four rows regress, sweep-combined FWPT and FWIT (0.13 / 0.06 % → 0.45 / 0.39 %), and this is an
+unmasking:
+
+- exact Corey gives 0.40 / 0.34 %, and n = 65 / 129 / 257 converge onto it;
+- the gap is −2 % at 50 d and shrinks steadily;
+- with both simulators at 1-day reports (`--refine 1 --case sweep-combined`) FIM matches Flow to
+  0.03 % / 0.03 %.
+
+So the 5-day gap is the two simulators' different time-step error, which the 21-knot chord's extra
+water mobility happened to cancel. The scorecard is re-baselined for it with this justification.
+
+**Gates.** `validate-solver-coverage.sh all` (47 gates), the FIM locked baseline (3), Buckley-Leverett,
+and `pnpm run validate:product` (987 tests, including the FIM waterflood scenarios against their
+Flow twins).
+
+**Verdict: PROMOTED** (`FIM-RELPERM-002`). Re-sweep if the linear solver, damping or step
+controller changes.
