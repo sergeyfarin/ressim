@@ -552,6 +552,7 @@ impl PvtTable {
     /// IMPES cannot represent such a table, and FIM breaks on it just below the bubble point (#11,
     /// #39). On each saturated segment `dBo/dp` and `dRs/dp` are constant and `1/Bg` is linear in
     /// pressure (the PVDG rule), so the onset is solved exactly. Adjacent ranges are merged.
+    #[cfg(test)]
     pub fn thermodynamically_unstable_ranges(&self) -> Vec<(f64, f64)> {
         let mut ranges: Vec<(f64, f64)> = Vec::new();
         for pair in self.saturated_rows.windows(2) {

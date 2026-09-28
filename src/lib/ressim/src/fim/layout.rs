@@ -28,6 +28,7 @@ pub(crate) const CELL_BLOCK_SIZE: usize = 3;
 ///
 /// The discriminants are the column offsets and are load-bearing — `assembly.rs` and the CPR
 /// pressure restriction both rely on pressure being local column 0.
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CellPrimary {
     /// Cell pressure [bar]. The CPR coarse system is built from exactly this column.
@@ -42,7 +43,7 @@ pub(crate) enum CellPrimary {
 
 /// A cell's component conservation equations, in matrix **row** order within the cell block.
 ///
-/// Named separately from [`CellPrimary`] on purpose: rows are equations and columns are unknowns,
+/// Named separately from `CellPrimary` on purpose: rows are equations and columns are unknowns,
 /// and the fact that they currently share a block size is a property of this model, not a law.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CellEquation {
@@ -54,6 +55,7 @@ pub(crate) enum CellEquation {
     GasComponent = 2,
 }
 
+#[cfg(test)]
 impl CellPrimary {
     pub(crate) const ALL: [Self; CELL_BLOCK_SIZE] =
         [Self::Pressure, Self::WaterSaturation, Self::Hydrocarbon];
@@ -73,6 +75,7 @@ impl CellPrimary {
 }
 
 impl CellEquation {
+    #[cfg(test)]
     pub(crate) const ALL: [Self; CELL_BLOCK_SIZE] =
         [Self::Water, Self::OilComponent, Self::GasComponent];
 
@@ -80,6 +83,7 @@ impl CellEquation {
         self as usize
     }
 
+    #[cfg(test)]
     pub(crate) const fn from_local_index(local_eq: usize) -> Option<Self> {
         match local_eq {
             0 => Some(Self::Water),

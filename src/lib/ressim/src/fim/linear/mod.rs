@@ -48,6 +48,7 @@ pub(crate) enum FimDirectBackend {
 }
 
 impl FimDirectBackend {
+    #[cfg(test)]
     pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::Sparse => "sparse",
@@ -220,23 +221,13 @@ impl FimLinearBlockLayout {
         self.cell_block_count * self.cell_block_size
     }
 
-    /// Matrix column of `local_var` within `cell_idx`'s block.
+    /// `FIM-REPAIR-F7` (#22): the accessors the compositional plan's `EquationLayout` is checked
+    /// against, so it can ask what a row or column *means* instead of recovering it from `% 3`.
+    /// Test-only: production code addresses the block through `CELL_BLOCK_SIZE` directly.
     ///
-    /// `FIM-REPAIR-F7` (#22): the index accessors the compositional plan's `EquationLayout`
-    /// consumes. They exist so a caller can ask the layout where a unknown/equation lives, and
-    /// what a given row or column *means*, instead of open-coding `cell_idx * 3 + local_var` and
-    /// recovering meaning from `% 3`. Same arithmetic, named once.
-    pub(crate) const fn cell_unknown(self, cell_idx: usize, local_var: usize) -> usize {
-        cell_idx * self.cell_block_size + local_var
-    }
-
-    /// Matrix row of `local_eq` within `cell_idx`'s block.
-    pub(crate) const fn cell_equation(self, cell_idx: usize, local_eq: usize) -> usize {
-        cell_idx * self.cell_block_size + local_eq
-    }
-
     /// Splits a matrix column into `(cell_idx, local_var)`, or `None` when it addresses the
     /// well-BHP / perforation tail rather than a cell block.
+    #[cfg(test)]
     pub(crate) const fn split_cell_unknown(self, unknown_idx: usize) -> Option<(usize, usize)> {
         if unknown_idx >= self.cell_unknown_count() {
             return None;
@@ -247,14 +238,10 @@ impl FimLinearBlockLayout {
         ))
     }
 
-    /// Splits a matrix row into `(cell_idx, local_eq)`, or `None` for a tail row.
-    pub(crate) const fn split_cell_equation(self, equation_idx: usize) -> Option<(usize, usize)> {
-        self.split_cell_unknown(equation_idx)
-    }
-
     /// True when `column` is a cell's pressure column — the column the CPR coarse system is
     /// restricted onto. Answers "what does this column mean?" without an `index % 3` at the call
     /// site.
+    #[cfg(test)]
     pub(crate) fn is_cell_pressure_column(self, column: usize) -> bool {
         matches!(
             self.split_cell_unknown(column),

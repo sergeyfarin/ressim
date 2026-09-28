@@ -53,7 +53,7 @@ fn comp_eos_mixture_parameters_match_the_fixture() {
                 let p = mixture_params(&spec, state.pressure_pa, state.temperature_k, x)
                     .unwrap_or_else(|e| panic!("{}: mixture params failed: {e}", state.id));
 
-                for (label, ours, theirs) in [("A", p.a, phase.eos_A), ("B", p.b, phase.eos_B)] {
+                for (label, ours, theirs) in [("A", p.a, phase.eos_a), ("B", p.b, phase.eos_b)] {
                     let r = rel(ours, theirs);
                     if r > worst.0 {
                         worst = (
@@ -520,8 +520,8 @@ fn comp_eos_flash_free_states_match_the_fixture() {
                 .unwrap_or_else(|e| panic!("{}: {e}", state.id));
 
             for (label, ours, theirs) in [
-                ("A", params.a, state.eos_A.unwrap()),
-                ("B", params.b, state.eos_B.unwrap()),
+                ("A", params.a, state.eos_a.unwrap()),
+                ("B", params.b, state.eos_b.unwrap()),
             ] {
                 let r = rel(ours, theirs);
                 if r > worst.0 {

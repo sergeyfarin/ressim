@@ -47,10 +47,12 @@ them rather than re-deriving them; this document does not track who does.
 - **`fim/layout.rs`** — `CELL_BLOCK_SIZE`, `CellPrimary { Pressure, WaterSaturation, Hydrocarbon }`
   (matrix **column** order), `CellEquation { Water, OilComponent, GasComponent }` (matrix **row**
   order). Discriminants are load-bearing: CPR restricts its coarse system onto local column 0.
-- **`FimLinearBlockLayout`** (`fim/linear/mod.rs`) — `cell_unknown`, `cell_equation`,
-  `split_cell_unknown`, `split_cell_equation`, `is_cell_pressure_column`, computed from the
-  layout's own `cell_block_size` so a reduced system stays self-describing. This is the
-  equation-layout interface a second model binds to.
+- **`FimLinearBlockLayout`** (`fim/linear/mod.rs`) — `split_cell_unknown` and
+  `is_cell_pressure_column` (both `#[cfg(test)]`), computed from the layout's own
+  `cell_block_size` so a reduced system stays self-describing. The compositional engine
+  implements its own `cell_unknown`/`cell_equation`/`split_cell_equation` on
+  `CompositionalLayout` and binds to the shared layout through `to_linear_block_layout()`; the
+  unused shared copies of those three were removed.
 - **`FimLinearSolveReport`** (`fim/linear/mod.rs`) — `rhs_norm`, `final_residual_norm`,
   `reduction()`, `backend_used`, `used_fallback`, `failure_diagnostics`. F4 verified and tested
   that these always describe **the original full system and the correction actually returned**,

@@ -57,8 +57,10 @@ pub struct FixtureEosState {
     pub pressure_pa: f64,
     pub temperature_k: f64,
     pub x: Vec<f64>,
-    pub eos_A: Option<f64>,
-    pub eos_B: Option<f64>,
+    #[serde(rename = "eos_A")]
+    pub eos_a: Option<f64>,
+    #[serde(rename = "eos_B")]
+    pub eos_b: Option<f64>,
     pub smallest_root: Option<FixtureRoot>,
     pub largest_root: Option<FixtureRoot>,
 }
@@ -135,8 +137,10 @@ pub struct FixturePhase {
     pub molar_density: f64,
     pub mass_density: f64,
     pub z_factor: f64,
-    pub eos_A: f64,
-    pub eos_B: f64,
+    #[serde(rename = "eos_A")]
+    pub eos_a: f64,
+    #[serde(rename = "eos_B")]
+    pub eos_b: f64,
     pub viscosity: f64,
     pub fugacity_coefficient: Vec<f64>,
     pub dmolar_density_du: Vec<f64>,
