@@ -2,7 +2,7 @@ packages:
   - 'src/lib/*'
 
 minimumReleaseAgeExclude:
-  - '@types/node@26.1.0 || 26.6.2'
+  - '@types/node@26.1.0 || 26.6.2 || 26.6.4'
   - three@0.185.1
   - '@typescript-eslint/eslint-plugin@8.64.0 || 8.65.0'
   - '@typescript-eslint/parser@8.64.0 || 8.65.0'
