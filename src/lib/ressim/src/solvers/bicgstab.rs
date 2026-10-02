@@ -1,5 +1,3 @@
-use std::f64;
-
 use nalgebra::DVector;
 
 use sprs::CsMat;

@@ -1,5 +1,3 @@
-use std::f64;
-
 #[cfg(test)]
 use std::collections::HashSet;
 

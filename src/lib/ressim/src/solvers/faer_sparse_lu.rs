@@ -1,5 +1,3 @@
-use std::f64;
-
 use faer::Col;
 use faer::linalg::solvers::Solve;
 use faer::sparse::linalg::solvers::{Lu, SymbolicLu};

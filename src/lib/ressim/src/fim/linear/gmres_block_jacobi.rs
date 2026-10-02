@@ -1,5 +1,4 @@
 use crate::math;
-use std::f64;
 
 use nalgebra::{DMatrix, DVector};
 use sprs::{CsMat, TriMatI};

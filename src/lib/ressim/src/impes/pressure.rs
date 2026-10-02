@@ -1,6 +1,5 @@
 use nalgebra::DVector;
 use sprs::{CsMat, TriMatI};
-use std::f64;
 
 use crate::impes::closure::CellMasses;
 use crate::impes::wells::{MAX_ACTIVE_SET_PASSES, WellSystem};

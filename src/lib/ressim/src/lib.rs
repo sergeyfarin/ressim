@@ -16,7 +16,6 @@
 // - All calculations maintain consistency in these base units with no hidden conversions
 
 use serde::{Deserialize, Serialize};
-use std::f64;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
 
