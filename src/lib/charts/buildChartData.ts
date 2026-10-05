@@ -44,6 +44,8 @@ import {
 } from './analyticalMethodRegistry';
 import {
     appendSeries,
+    comparisonCaseKey,
+    comparisonCaseColorIndices,
     compactCaseLabel,
     createReferenceComparisonPanel,
     getLegendGrey,
@@ -59,7 +61,7 @@ import {
     type ReferenceComparisonTheme,
 } from './referenceChartTypes';
 import { buildPreviewSweepPanels, buildSweepPanels } from './sweepPanelBuilder';
-import { simulationCurvesForSet, resolveSimulationCurve } from './simulationCurves';
+import { DRIVE_INDEX_CURVES, simulationCurvesForSet, resolveSimulationCurve } from './simulationCurves';
 import { DEFAULT_SWEEP_METHOD } from '@ressim/analytical/sweepMethods';
 import type { AnalyticalMethod } from '../catalog/scenarios';
 
@@ -223,7 +225,9 @@ function emptyPanelMap(): ReferenceComparisonPanelMap {
         diagnostics: createReferenceComparisonPanel(),
         avg_water_sat: createReferenceComparisonPanel(),
         mbe_ooip: createReferenceComparisonPanel(),
-        drive_indices: createReferenceComparisonPanel(),
+        drive_compaction: createReferenceComparisonPanel(),
+        drive_oil_expansion: createReferenceComparisonPanel(),
+        drive_gas_cap: createReferenceComparisonPanel(),
         pz: createReferenceComparisonPanel(),
         pss_drawdown: createReferenceComparisonPanel(),
         pss_productivity: createReferenceComparisonPanel(),
@@ -257,7 +261,9 @@ function combinePanelMaps(input: {
         diagnostics: input.primary.diagnostics,
         avg_water_sat: input.primary.avg_water_sat,
         mbe_ooip: input.primary.mbe_ooip,
-        drive_indices: input.primary.drive_indices,
+        drive_compaction: input.primary.drive_compaction,
+        drive_oil_expansion: input.primary.drive_oil_expansion,
+        drive_gas_cap: input.primary.drive_gas_cap,
         pz: input.primary.pz,
         pss_drawdown: input.primary.pss_drawdown,
         pss_productivity: input.primary.pss_productivity,
@@ -363,6 +369,7 @@ function buildAnalyticalPreviewPanels(
     xAxisMode: ChartXAxisMode,
     analyticalMethod: AnalyticalMethod,
     theme: ReferenceComparisonTheme,
+    caseColorIndices: Record<string, number>,
 ): Record<ChartPanelKey, ReferenceComparisonPanel> {
     const panels: Record<ChartPanelKey, ReferenceComparisonPanel> = {
         rates: createReferenceComparisonPanel(),
@@ -371,7 +378,9 @@ function buildAnalyticalPreviewPanels(
         diagnostics: createReferenceComparisonPanel(),
         avg_water_sat: createReferenceComparisonPanel(),
         mbe_ooip: createReferenceComparisonPanel(),
-        drive_indices: createReferenceComparisonPanel(),
+        drive_compaction: createReferenceComparisonPanel(),
+        drive_oil_expansion: createReferenceComparisonPanel(),
+        drive_gas_cap: createReferenceComparisonPanel(),
         pz: createReferenceComparisonPanel(),
         pss_drawdown: createReferenceComparisonPanel(),
         pss_productivity: createReferenceComparisonPanel(),
@@ -397,10 +406,10 @@ function buildAnalyticalPreviewPanels(
         ? 'Analytical solution'
         : `Analytical solution (${variants.length})`;
 
-    variants.forEach((variant, index) => {
+    variants.forEach((variant) => {
         const curveSet = descriptor.fromParams!(variant.params, xAxisMode);
         if (!curveSet) return;
-        const color = multiVariant ? getReferenceComparisonCaseColor(index) : neutralColor;
+        const color = multiVariant ? getReferenceComparisonCaseColor(caseColorIndices[variant.variantKey]) : neutralColor;
         const prefix = multiVariant ? `${variant.label} — ` : '';
         const caseKey = multiVariant ? variant.variantKey : undefined;
         appendAnalyticalSlots(panels, descriptor, 'preview', curveSet, (slot) => ({
@@ -431,6 +440,7 @@ export function buildReferenceComparisonModel(input: {
      *  analytical solution (e.g. viscosity → fractional flow). Each result then
      *  gets its own analytical curve. False (default) → one shared reference. */
     analyticalPerVariant?: boolean;
+    caseOrder?: string[];
     /**
      * When provided and no results exist yet, render one analytical curve per
      * variant so the user can see the spread before running any simulations.
@@ -452,6 +462,9 @@ export function buildReferenceComparisonModel(input: {
 }): ReferenceComparisonModel {
     const family = input.family ?? null;
     const orderedResults = orderResults(input.results, input.previewVariantParams);
+    const caseColorIndices = comparisonCaseColorIndices(
+        orderedResults, input.previewVariantParams, input.pendingPreviewVariants, input.caseOrder,
+    );
     const referenceColor = getReferenceColor(input.theme ?? 'dark');
     const legendGrey = getLegendGrey(input.theme ?? 'dark');
     const analyticalMethod = family?.analyticalMethod ?? input.previewAnalyticalMethod ?? null;
@@ -478,7 +491,9 @@ export function buildReferenceComparisonModel(input: {
         diagnostics: createReferenceComparisonPanel(),
         avg_water_sat: createReferenceComparisonPanel(),
         mbe_ooip: createReferenceComparisonPanel(),
-        drive_indices: createReferenceComparisonPanel(),
+        drive_compaction: createReferenceComparisonPanel(),
+        drive_oil_expansion: createReferenceComparisonPanel(),
+        drive_gas_cap: createReferenceComparisonPanel(),
         pz: createReferenceComparisonPanel(),
         pss_drawdown: createReferenceComparisonPanel(),
         pss_productivity: createReferenceComparisonPanel(),
@@ -502,6 +517,7 @@ export function buildReferenceComparisonModel(input: {
                 );
                 return {
                     orderedResults,
+                    caseColorIndices,
                     previewCases: [],
                     panels: (() => {
                         appendPublishedReferenceSeries(panels, family, input.xAxisMode);
@@ -535,14 +551,16 @@ export function buildReferenceComparisonModel(input: {
                     input.xAxisMode,
                     input.previewAnalyticalMethod,
                     input.theme ?? 'dark',
+                    caseColorIndices,
                 );
                 // Expose multi-variant preview entries so the cases selector can
                 // render toggle buttons even before any simulations have completed.
                 const previewCases: ReferenceComparisonPreviewCase[] = variants.length > 1
-                    ? variants.map((v, i) => ({ key: v.variantKey, label: v.label, colorIndex: i }))
+                    ? variants.map((v) => ({ key: v.variantKey, label: v.label, colorIndex: caseColorIndices[v.variantKey] }))
                     : [];
                 return {
                     orderedResults,
+                    caseColorIndices,
                     previewCases,
                     panels: (() => {
                         appendPublishedReferenceSeries(previewPanels, family, input.xAxisMode);
@@ -551,6 +569,7 @@ export function buildReferenceComparisonModel(input: {
                             sweep: descriptor.producesSweepPanels
                                 ? buildPreviewSweepPanels({
                                     variants,
+                                    caseColorIndices,
                                     theme: input.theme ?? 'dark',
                                     geometry: family?.sweepGeometry ?? 'both',
                                     method: family?.sweepAnalyticalMethod ?? DEFAULT_SWEEP_METHOD,
@@ -565,6 +584,7 @@ export function buildReferenceComparisonModel(input: {
         appendPublishedReferenceSeries(panels, family, input.xAxisMode);
         return {
             orderedResults,
+            caseColorIndices,
             previewCases: [],
             panels: combinePanelMaps({ primary: panels }),
             axisMappingWarning: null,
@@ -576,10 +596,10 @@ export function buildReferenceComparisonModel(input: {
     );
     const baseResult = getBaseResult(orderedResults);
 
-    orderedResults.forEach((result, index) => {
+    orderedResults.forEach((result) => {
         const derived = derivedByKey.get(result.key);
         if (!derived) return;
-        const color = getReferenceComparisonCaseColor(index);
+        const color = getReferenceComparisonCaseColor(caseColorIndices[comparisonCaseKey(result)]);
         const tau = descriptor.definesCharacteristicTime ? computeDepletionTau(result.params) : null;
         const xValues = buildXAxisValues(derived, input.xAxisMode, tau);
         const defaultVisible = true;
@@ -592,14 +612,18 @@ export function buildReferenceComparisonModel(input: {
         // recovery curve was relabelled in the oil-rate branch only. The table
         // is `simulationCurves.ts`; the quantities it places are
         // `runQuantities.ts`.
-        const historyXAxis = interpolateXAxisAtTimes(derived.time, xValues, derived.historyTime);
+        const historyXAxis = interpolateXAxisAtTimes(derived.time, xValues, derived.historyTime, input.xAxisMode === 'logTime' ? undefined : 0);
         for (const curve of simulationCurvesForSet(descriptor.simulationCurveSet)) {
             const { label, property, values } = resolveSimulationCurve(curve, derived);
+            const axisValues = curve.axis === 'history' ? historyXAxis : xValues;
+            const anchor = curve.zeroAnchor && input.xAxisMode !== 'logTime'
+                && axisValues.length > 0 && Number(axisValues[0]) > 0
+                && values.some((value) => value !== null && Number.isFinite(value));
             appendSeries(panels[curve.panel], {
                 label: `${result.label} ${label}`,
                 curveKey: curve.curveKey,
-                caseKey: result.key,
-                toggleGroupKey: result.key,
+                caseKey: comparisonCaseKey(result),
+                toggleGroupKey: comparisonCaseKey(result),
                 toggleLabel: caseLabel,
                 legendSection: 'sim',
                 legendSectionLabel: LEGEND_SECTIONS.sim,
@@ -608,7 +632,7 @@ export function buildReferenceComparisonModel(input: {
                 yAxisID: 'y',
                 defaultVisible,
                 property,
-            }, curve.axis === 'history' ? historyXAxis : xValues, values);
+            }, anchor ? [0, ...axisValues] : axisValues, anchor ? [0, ...values] : values);
         }
 
         // Control-limit fractions accompany the well-pressure curves, so they
@@ -616,7 +640,7 @@ export function buildReferenceComparisonModel(input: {
         if (descriptor.simulationCurveSet !== 'water-cut') {
             appendBhpLimitDiagnostics(panels.control_limits, {
                 label: result.label,
-                caseKey: result.key,
+                caseKey: comparisonCaseKey(result),
                 toggleLabel: caseLabel,
                 borderWidth: simBorderWidth(result.variantKey),
                 defaultVisible,
@@ -640,8 +664,8 @@ export function buildReferenceComparisonModel(input: {
             appendSeries(panels.pss_drawdown, {
                 label: `${result.label} Numerical Drawdown`,
                 curveKey: 'pss-drawdown-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
+                caseKey: comparisonCaseKey(result),
+                toggleGroupKey: comparisonCaseKey(result),
                 toggleLabel: caseLabel,
                 legendSection: 'sim',
                 legendSectionLabel: LEGEND_SECTIONS.sim,
@@ -653,8 +677,8 @@ export function buildReferenceComparisonModel(input: {
             appendSeries(panels.pss_productivity, {
                 label: `${result.label} Numerical PI`,
                 curveKey: 'pss-productivity-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
+                caseKey: comparisonCaseKey(result),
+                toggleGroupKey: comparisonCaseKey(result),
                 toggleLabel: caseLabel,
                 legendSection: 'sim',
                 legendSectionLabel: LEGEND_SECTIONS.sim,
@@ -666,8 +690,8 @@ export function buildReferenceComparisonModel(input: {
             appendSeries(panels.pss_shape_factor, {
                 label: `${result.label} Inferred C_A`,
                 curveKey: 'pss-shape-factor-sim',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
+                caseKey: comparisonCaseKey(result),
+                toggleGroupKey: comparisonCaseKey(result),
                 toggleLabel: caseLabel,
                 legendSection: 'sim',
                 legendSectionLabel: LEGEND_SECTIONS.sim,
@@ -692,8 +716,8 @@ export function buildReferenceComparisonModel(input: {
             appendSeries(panels.mbe_ooip, {
                 label: `${result.label} MBE OOIP Ratio`,
                 curveKey: 'mbe-ooip-ratio',
-                caseKey: result.key,
-                toggleGroupKey: result.key,
+                caseKey: comparisonCaseKey(result),
+                toggleGroupKey: comparisonCaseKey(result),
                 toggleLabel: caseLabel,
                 legendSection: 'sim',
                 legendSectionLabel: LEGEND_SECTIONS.sim,
@@ -704,51 +728,28 @@ export function buildReferenceComparisonModel(input: {
             }, xValues, mbe.ooipRatio);
 
             // ── Drive mechanism indices ─────────────────────────────────────
-            appendSeries(panels.drive_indices, {
-                label: `${result.label} Drive: Compaction`,
-                curveKey: 'drive-compaction',
-                caseKey: result.key,
-                toggleGroupKey: `${result.key}-drive`,
-                toggleLabel: caseLabel,
-                legendSection: 'drive',
-                legendSectionLabel: LEGEND_SECTIONS.driveIndices,
-                color: '#e67e22',
-                borderWidth: SIM_BORDER_SECONDARY,
-                yAxisID: 'y',
-                defaultVisible: false,
-            }, xValues, mbe.driveCompaction);
-            appendSeries(panels.drive_indices, {
-                label: `${result.label} Drive: Oil Expansion`,
-                curveKey: 'drive-oil-expansion',
-                caseKey: result.key,
-                toggleGroupKey: `${result.key}-drive`,
-                toggleLabel: caseLabel,
-                legendSection: 'drive',
-                legendSectionLabel: LEGEND_SECTIONS.driveIndices,
-                color: '#27ae60',
-                borderWidth: SIM_BORDER_SECONDARY,
-                yAxisID: 'y',
-                defaultVisible: false,
-            }, xValues, mbe.driveOilExpansion);
-            appendSeries(panels.drive_indices, {
-                label: `${result.label} Drive: Free-Gas Expansion`,
-                curveKey: 'drive-gas-cap',
-                caseKey: result.key,
-                toggleGroupKey: `${result.key}-drive`,
-                toggleLabel: caseLabel,
-                legendSection: 'drive',
-                legendSectionLabel: LEGEND_SECTIONS.driveIndices,
-                color: '#2980b9',
-                borderWidth: SIM_BORDER_SECONDARY,
-                yAxisID: 'y',
-                defaultVisible: false,
-            }, xValues, mbe.driveGasCap);
+            for (const curve of DRIVE_INDEX_CURVES) {
+                appendSeries(panels[curve.panel], {
+                    label: `${result.label} Drive: ${curve.label}`,
+                    curveKey: curve.curveKey,
+                    caseKey: comparisonCaseKey(result),
+                    toggleGroupKey: comparisonCaseKey(result),
+                    toggleLabel: caseLabel,
+                    legendSection: 'drive',
+                    legendSectionLabel: LEGEND_SECTIONS.driveIndices,
+                    color,
+                    borderWidth: SIM_BORDER_SECONDARY,
+                    yAxisID: 'y',
+                    defaultVisible: false,
+                }, xValues, mbe[curve.diagnostic]);
+            }
         }
     });
 
     if (!baseResult) {
         return {
             orderedResults,
+            caseColorIndices,
             previewCases: [],
             panels: combinePanelMaps({ primary: panels }),
             axisMappingWarning: buildAnalyticalAxisWarning({
@@ -762,6 +763,7 @@ export function buildReferenceComparisonModel(input: {
     if (!baseDerived) {
         return {
             orderedResults,
+            caseColorIndices,
             previewCases: [],
             panels: combinePanelMaps({ primary: panels }),
             axisMappingWarning: buildAnalyticalAxisWarning({
@@ -797,7 +799,7 @@ export function buildReferenceComparisonModel(input: {
             // Per-result — either the analytical physics differs by case, or the
             // selected x-axis requires remapping the solution onto each completed
             // run's own time/injection history.
-            orderedResults.forEach((result, index) => {
+            orderedResults.forEach((result) => {
                 const derived = derivedByKey.get(result.key);
                 if (!derived) return;
                 const curveSet = descriptor.fromResult!(result, derived, input.xAxisMode);
@@ -809,20 +811,20 @@ export function buildReferenceComparisonModel(input: {
                     curveSet,
                     perCaseAnalyticalStyle({
                         label: result.label,
-                        caseKey: result.key,
-                        color: getReferenceComparisonCaseColor(index),
+                        caseKey: comparisonCaseKey(result),
+                        color: getReferenceComparisonCaseColor(caseColorIndices[comparisonCaseKey(result)]),
                     }),
                 );
             });
 
             // Analytical-only overlay for variants still queued/running. Color
-            // indices continue from orderedResults.length so each variant keeps
+            // indices follow declared case identity so each variant keeps
             // the same color from preview → in-progress → completed.
             if (input.pendingPreviewVariants?.length) {
                 if (usesRunMappedAnalyticalXAxis) {
                     hidesPendingAnalyticalWithoutMapping = true;
                 } else if (descriptor.fromParams) {
-                    input.pendingPreviewVariants.forEach((variant, i) => {
+                    input.pendingPreviewVariants.forEach((variant) => {
                         const curveSet = descriptor.fromParams!(variant.params, input.xAxisMode);
                         if (!curveSet) return;
                         appendAnalyticalSlots(
@@ -833,7 +835,7 @@ export function buildReferenceComparisonModel(input: {
                             perCaseAnalyticalStyle({
                                 label: variant.label,
                                 caseKey: variant.variantKey,
-                                color: getReferenceComparisonCaseColor(orderedResults.length + i),
+                                color: getReferenceComparisonCaseColor(caseColorIndices[variant.variantKey]),
                             }),
                         );
                     });
@@ -851,13 +853,10 @@ export function buildReferenceComparisonModel(input: {
             && ((input.analyticalPerVariant && !usesRunMappedAnalyticalXAxis)
                 || descriptor.producesSweepPanels))
             ? (() => {
-                const declOrder = new Map(
-                    (input.previewVariantParams ?? []).map((v, i) => [v.variantKey, i]),
-                );
                 return input.pendingPreviewVariants!.map((v) => ({
                     key: v.variantKey,
                     label: v.label,
-                    colorIndex: declOrder.get(v.variantKey) ?? orderedResults.length,
+                    colorIndex: caseColorIndices[v.variantKey],
                 }));
             })()
             : [];
@@ -865,9 +864,9 @@ export function buildReferenceComparisonModel(input: {
     const sweepPanels = descriptor.producesSweepPanels
         ? buildSweepPanels({
             orderedResults,
+            caseColorIndices,
             theme: input.theme ?? 'dark',
             pendingPreviewVariants: input.pendingPreviewVariants,
-            previewVariantParams: input.previewVariantParams,
             xAxisMode: input.xAxisMode,
             derivedByKey,
             geometry: family.sweepGeometry ?? 'both',
@@ -880,6 +879,7 @@ export function buildReferenceComparisonModel(input: {
 
     return {
         orderedResults,
+        caseColorIndices,
         previewCases: pendingPreviewCases,
         panels: combinePanelMaps({ primary: panels, sweep: sweepPanels }),
         axisMappingWarning: buildAnalyticalAxisWarning({

@@ -137,7 +137,9 @@ control_limits: injector-bhp-limited-sim,producer-bhp-limited-sim
 cumulative: cum-oil-sim
 cumulative_gas: cum-gas-sim
 diagnostics: avg-pressure-sim
-drive_indices: drive-compaction,drive-gas-cap,drive-oil-expansion
+drive_compaction: drive-compaction
+drive_gas_cap: drive-gas-cap
+drive_oil_expansion: drive-oil-expansion
 gas_rate: gas-rate-sim
 gor: gor-sim
 injection_rate: injection-rate-sim
@@ -156,7 +158,9 @@ control_limits: injector-bhp-limited-sim,producer-bhp-limited-sim
 cumulative: cum-oil-sim
 cumulative_gas: cum-gas-sim
 diagnostics: avg-pressure-sim
-drive_indices: drive-compaction,drive-gas-cap,drive-oil-expansion
+drive_compaction: drive-compaction
+drive_gas_cap: drive-gas-cap
+drive_oil_expansion: drive-oil-expansion
 gas_rate: gas-rate-sim
 gor: gor-sim
 injection_rate: injection-rate-sim
@@ -175,7 +179,9 @@ control_limits: injector-bhp-limited-sim,producer-bhp-limited-sim
 cumulative: cum-oil-reference,cum-oil-sim
 cumulative_gas: cum-gas-sim
 diagnostics: avg-pressure-reference,avg-pressure-sim
-drive_indices: drive-compaction,drive-gas-cap,drive-oil-expansion
+drive_compaction: drive-compaction
+drive_gas_cap: drive-gas-cap
+drive_oil_expansion: drive-oil-expansion
 gas_rate: gas-rate-sim
 gor: gor-sim
 injection_rate: injection-rate-sim
@@ -191,7 +197,9 @@ control_limits: injector-bhp-limited-sim,producer-bhp-limited-sim
 cumulative: cum-oil-reference,cum-oil-sim
 cumulative_gas: cum-gas-sim
 diagnostics: avg-pressure-reference,avg-pressure-sim
-drive_indices: drive-compaction,drive-gas-cap,drive-oil-expansion
+drive_compaction: drive-compaction
+drive_gas_cap: drive-gas-cap
+drive_oil_expansion: drive-oil-expansion
 gas_rate: gas-rate-sim
 gor: gor-sim
 injection_rate: injection-rate-sim
@@ -207,7 +215,9 @@ control_limits: injector-bhp-limited-sim,producer-bhp-limited-sim
 cumulative: cum-oil-sim
 cumulative_gas: cum-gas-sim,opm-am-cum-gas,opm-cum-gas,opm-lab-cum-gas,opm-pf-cum-gas
 diagnostics: avg-pressure-sim,opm-am-avg-pressure,opm-avg-pressure,opm-lab-avg-pressure,opm-pf-avg-pressure
-drive_indices: drive-compaction,drive-gas-cap,drive-oil-expansion
+drive_compaction: drive-compaction
+drive_gas_cap: drive-gas-cap
+drive_oil_expansion: drive-oil-expansion
 gas_rate: gas-rate-sim,opm-am-gas-rate,opm-gas-rate,opm-lab-gas-rate,opm-pf-gas-rate
 gor: gor-sim,opm-am-gor,opm-gor,opm-lab-gor,opm-pf-gor
 injection_rate: injection-rate-sim
@@ -223,7 +233,9 @@ control_limits: injector-bhp-limited-sim,producer-bhp-limited-sim
 cumulative: cum-oil-sim
 cumulative_gas: cum-gas-sim
 diagnostics: avg-pressure-reference,avg-pressure-sim,opm-avg-pressure,opm-geo-avg-pressure
-drive_indices: drive-compaction,drive-gas-cap,drive-oil-expansion
+drive_compaction: drive-compaction
+drive_gas_cap: drive-gas-cap
+drive_oil_expansion: drive-oil-expansion
 gas_rate: gas-rate-sim,opm-gas-rate,opm-geo-gas-rate
 gor: gor-sim
 injection_rate: injection-rate-sim
@@ -236,7 +248,7 @@ rates: oil-rate-sim
 recovery: recovery-factor-gas,recovery-factor-primary
 ── gas_injection
 control_limits: injector-bhp-limited-sim,producer-bhp-limited-sim
-cumulative: cum-oil-sim,opm-cum-oil
+cumulative: cum-oil-reference,cum-oil-sim,opm-cum-oil
 cumulative_gas: cum-gas-sim
 diagnostics: avg-pressure-sim,opm-avg-pressure
 gas_rate: gas-rate-sim
@@ -254,7 +266,9 @@ control_limits: injector-bhp-limited-sim,producer-bhp-limited-sim
 cumulative: cum-oil-sim,opm-cum-oil
 cumulative_gas: cum-gas-sim,opm-cum-gas
 diagnostics: avg-pressure-sim,opm-avg-pressure
-drive_indices: drive-compaction,drive-gas-cap,drive-oil-expansion
+drive_compaction: drive-compaction
+drive_gas_cap: drive-gas-cap
+drive_oil_expansion: drive-oil-expansion
 gas_rate: gas-rate-sim,opm-gas-rate
 gor: gor-sim,opm-gor
 injection_rate: injection-rate-sim

@@ -174,7 +174,7 @@ export function buildGasOilBLReference(
                     recoveryValues: analytical.recovery,
                     cumulativeLabel: 'Reference Solution Cum Oil',
                     cumulativeValues: analytical.cumulativeOil.map((value) => (
-                        Number.isFinite(value) && ooip > 1e-12 ? Number(value) * ooip : null
+                        Number.isFinite(value) && ooip > 1e-12 ? Number(value) * getPoreVolume(baseResult.params) : null
                     )),
                 },
                 diagnostics: null,

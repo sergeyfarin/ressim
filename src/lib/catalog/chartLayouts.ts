@@ -145,7 +145,7 @@ export const CHART_LAYOUTS: Record<string, ChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: true,
             logScale: false,
-            panelOrder: ['rates', 'recovery', 'cumulative', 'diagnostics', 'mbe_ooip', 'drive_indices'],
+            panelOrder: ['rates', 'recovery', 'cumulative', 'diagnostics', 'mbe_ooip', 'drive_compaction', 'drive_oil_expansion', 'drive_gas_cap'],
             panels: {
                 rates: {
                     title: 'Oil Rate',
@@ -179,9 +179,23 @@ export const CHART_LAYOUTS: Record<string, ChartLayoutConfig> = {
                     visible: true,
                     expanded: false,
                 },
-                drive_indices: {
-                    title: 'Material-Balance Drive Indices',
-                    curveKeys: ['drive-compaction', 'drive-oil-expansion', 'drive-gas-cap'],
+                drive_compaction: {
+                    title: 'Compaction Drive Index',
+                    curveKeys: ['drive-compaction'],
+                    scalePreset: 'fraction',
+                    visible: true,
+                    expanded: false,
+                },
+                drive_oil_expansion: {
+                    title: 'Oil Expansion Drive Index',
+                    curveKeys: ['drive-oil-expansion'],
+                    scalePreset: 'fraction',
+                    visible: true,
+                    expanded: false,
+                },
+                drive_gas_cap: {
+                    title: 'Free-Gas Expansion Drive Index',
+                    curveKeys: ['drive-gas-cap'],
                     scalePreset: 'fraction',
                     visible: true,
                     expanded: false,
@@ -197,7 +211,7 @@ export const CHART_LAYOUTS: Record<string, ChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: true,
             logScale: true,
-            panelOrder: ['rates', 'recovery', 'cumulative', 'diagnostics', 'mbe_ooip', 'drive_indices'],
+            panelOrder: ['rates', 'recovery', 'cumulative', 'diagnostics', 'mbe_ooip', 'drive_compaction', 'drive_oil_expansion', 'drive_gas_cap'],
             panels: {
                 rates: {
                     title: 'Oil Rate',
@@ -231,9 +245,23 @@ export const CHART_LAYOUTS: Record<string, ChartLayoutConfig> = {
                     visible: true,
                     expanded: false,
                 },
-                drive_indices: {
-                    title: 'Material-Balance Drive Indices',
-                    curveKeys: ['drive-compaction', 'drive-oil-expansion', 'drive-gas-cap'],
+                drive_compaction: {
+                    title: 'Compaction Drive Index',
+                    curveKeys: ['drive-compaction'],
+                    scalePreset: 'fraction',
+                    visible: true,
+                    expanded: false,
+                },
+                drive_oil_expansion: {
+                    title: 'Oil Expansion Drive Index',
+                    curveKeys: ['drive-oil-expansion'],
+                    scalePreset: 'fraction',
+                    visible: true,
+                    expanded: false,
+                },
+                drive_gas_cap: {
+                    title: 'Free-Gas Expansion Drive Index',
+                    curveKeys: ['drive-gas-cap'],
                     scalePreset: 'fraction',
                     visible: true,
                     expanded: false,
@@ -498,7 +526,7 @@ export const CHART_LAYOUTS: Record<string, ChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: true,
             logScale: false,
-            panelOrder: ['gor', 'recovery', 'rates', 'gas_rate', 'cumulative', 'cumulative_gas', 'diagnostics', 'mbe_ooip', 'drive_indices'],
+            panelOrder: ['gor', 'recovery', 'rates', 'gas_rate', 'cumulative', 'cumulative_gas', 'diagnostics', 'mbe_ooip', 'drive_compaction', 'drive_oil_expansion', 'drive_gas_cap'],
             panels: {
                 // Gas on its own axes. A solution-gas-drive case produces gas
                 // three orders of magnitude larger than its oil, so the two
@@ -534,9 +562,23 @@ export const CHART_LAYOUTS: Record<string, ChartLayoutConfig> = {
                     visible: true,
                     expanded: false,
                 },
-                drive_indices: {
-                    title: 'Material-Balance Drive Indices',
-                    curveKeys: ['drive-compaction', 'drive-oil-expansion', 'drive-gas-cap'],
+                drive_compaction: {
+                    title: 'Compaction Drive Index',
+                    curveKeys: ['drive-compaction'],
+                    scalePreset: 'fraction',
+                    visible: true,
+                    expanded: false,
+                },
+                drive_oil_expansion: {
+                    title: 'Oil Expansion Drive Index',
+                    curveKeys: ['drive-oil-expansion'],
+                    scalePreset: 'fraction',
+                    visible: true,
+                    expanded: false,
+                },
+                drive_gas_cap: {
+                    title: 'Free-Gas Expansion Drive Index',
+                    curveKeys: ['drive-gas-cap'],
                     scalePreset: 'fraction',
                     visible: true,
                     expanded: false,

@@ -74,9 +74,12 @@ function snapSharedXAxisRange(range: { min: number; max: number }): { min: numbe
     const step = getNiceStepSize(span);
     if (step <= 0) return range;
 
+    const residueTolerance = Math.max(1e-12, span * 1e-10);
+    const roundedMin = snapBoundaryToNiceValue(range.min, step);
+    const roundedMax = snapBoundaryToNiceValue(range.max, step);
     const snapped = {
-        min: snapBoundaryToNiceValue(range.min, step),
-        max: snapBoundaryToNiceValue(range.max, step),
+        min: roundedMin <= range.min + residueTolerance ? roundedMin : range.min,
+        max: roundedMax >= range.max - residueTolerance ? roundedMax : range.max,
     };
 
     return snapped.min < snapped.max ? snapped : range;

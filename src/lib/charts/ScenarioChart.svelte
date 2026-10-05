@@ -38,6 +38,10 @@
         activeDimensionKey,
         analyticalOption,
     }));
+    const caseOrder = $derived(
+        scenario?.sensitivities.find((dimension) => dimension.key === activeDimensionKey)
+            ?.variants.map((variant) => variant.key),
+    );
     const shouldRenderComparison = $derived(Boolean(scenario && comparisonFamily));
 </script>
 
@@ -49,7 +53,8 @@
         {analyticalPerVariant}
         {theme}
         historyWindow={scenario?.historyWindow ?? null}
-        previewVariantParams={runResults.length === 0 ? previewVariantParams : undefined}
+        {caseOrder}
+        {previewVariantParams}
         pendingPreviewVariants={runResults.length > 0 ? pendingPreviewVariants : undefined}
         previewBaseParams={runResults.length === 0 ? previewBaseParams : undefined}
         previewAnalyticalMethod={comparisonFamily.analyticalMethod}

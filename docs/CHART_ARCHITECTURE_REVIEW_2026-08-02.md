@@ -522,3 +522,37 @@ source (an imported deck, a bundled prerun exhibit replayed in 3D) is a new memb
 every builder then fails to type-check until it handles that source explicitly, which is the point.
 Ensemble or band features that summarise several runs belong with the chart stack's result-set
 path, not here.
+
+## 14. Correctness closeout (#15, 2026-10-05)
+
+The remaining presentation fixes use the current scenario chart path:
+
+- Drive mechanisms occupy separate compaction, oil-expansion and free-gas panels. Each
+  panel compares cases in their case colors; it no longer reuses a mechanism color for every run.
+- Preview, pending and completed curves and selector buttons share the variant identity and
+  declared palette index. `ScenarioChart` retains the declaration after results arrive, including
+  numerical studies whose analytical reference is shared. Hiding a preview survives completion.
+- Cumulative production, injection and recovery include their known zero origin, including
+  sweep recovery. Rates receive no fabricated initial sample. History-axis interpolation skips
+  missing samples, accepts unordered query times and uses an explicit zero origin. Range rounding
+  may remove floating residue but cannot trim a real endpoint.
+- Time-native pending references on cumulative/injection axes wait for a completed run's mapping.
+  Published references still use their own mappings and omit unsupported axes.
+- Gas-oil cumulative references now appear in all four slot contexts with consistent dimensional
+  volume (the unit-PV solution is multiplied by pore volume). Pending well-test overlays include
+  their controlled oil rate as well as pressure.
+- Spatial profiles summarize the displayed finite samples, and an oblique areal flood does not
+  receive a one-axis BL overlay. Existing flood-direction and sweep-diagonal tests remain in force.
+- Artifact-only results use the full grid width when the 3D card is absent. No offered scenario
+  currently uses `prerun-artifacts`; the layout condition has a wiring regression test.
+
+The old mixed-property *live waterflood diagnostics* panel was removed with the dead live path
+in step 0. The current waterflood layout has independent pressure, saturation, rate and volume
+panels; its single-property presentation is covered by a focused layout test. It needed no new
+panel split. This closes the historical scope through current-state checks, rather than restoring
+that deleted path.
+
+Focused contracts live in `referenceComparisonModel.test.ts`, `analyticalMethodRegistry.test.ts`,
+`axisAdapters.test.ts`, `xAxisRangePolicy.test.ts`, `spatialProfileModel.test.ts` and
+`appStoreDomainWiring.test.ts`. `tests/deployed/chart-identity.spec.ts` checks the real selector
+through preview-to-completion. These are chart contracts, not new scientific solver baselines.

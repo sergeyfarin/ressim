@@ -9,7 +9,7 @@ below describe the July tree, not a current defect list. GitHub Issues owns surv
 | 2 — log-time history divider | Closed as recorded below; history-divider contracts passed in the same replay |
 | 3 — scenario inventory | Superseded: README/index describe 18 offered cases and one withheld compositional case; `wf_bl1d_opm` is not in the offered catalog |
 | 4 — divider scope | Historical implementation boundary; no independent bug is established |
-| 5 — pre-run empty column | Retained for current-state verification in [#15](https://github.com/sergeyfarin/ressim/issues/15) |
+| 5 — pre-run empty column | Fixed under [#15](https://github.com/sergeyfarin/ressim/issues/15): the results grid uses two columns only when the 3D card is present; covered by a wiring test (no offered artifact-only case today) |
 | 6 — field-permeability single-run wiring | Owned by [#16](https://github.com/sergeyfarin/ressim/issues/16), with its first consuming case |
 
 Browser/3D verification after dependency changes remains [#24](https://github.com/sergeyfarin/ressim/issues/24).
@@ -136,4 +136,4 @@ scenario (Tavassoli / SPE10 layer / Egg).
 ## Current execution order
 
 Use [ROADMAP.md](../ROADMAP.md). This historical ranking no longer applies: findings 1–3 are
-fixed or superseded; finding 5 remains under #15 and finding 6 follows the first #16 case.
+fixed or superseded; finding 5 is covered by the #15 layout fix and finding 6 follows the first #16 case.

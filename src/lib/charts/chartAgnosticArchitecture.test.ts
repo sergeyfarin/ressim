@@ -68,7 +68,6 @@ describe('the builder does not name panels', () => {
     const PANELS_THE_BUILDER_MAY_STILL_NAME = new Set([
         'control_limits',
         'mbe_ooip',
-        'drive_indices',
         'pss_drawdown',
         'pss_productivity',
         'pss_shape_factor',

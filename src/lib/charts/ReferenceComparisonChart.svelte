@@ -42,6 +42,7 @@
         SCALE_SWEEP,
         getScalePresetConfig,
     } from './scalePresetRegistry';
+    import { comparisonCaseKey } from './referenceChartTypes';
     import { PANEL_DEFS, getPanelFallback } from './panelDefs';
     import { getAnalyticalMethodDescriptor } from './analyticalMethodRegistry';
     import type { AnalyticalMethod } from '../catalog/scenarios';
@@ -54,6 +55,7 @@
         layoutConfig = {},
         theme = 'dark',
         analyticalPerVariant = false,
+        caseOrder = undefined,
         previewVariantParams = undefined,
         pendingPreviewVariants = undefined,
         previewBaseParams = undefined,
@@ -65,6 +67,7 @@
         layoutConfig?: ChartLayoutConfig;
         theme?: 'dark' | 'light';
         analyticalPerVariant?: boolean;
+        caseOrder?: string[];
         /** Optional history/forecast divider marker (scenario-declared). */
         historyWindow?: HistoryWindow | null;
         /** Per-variant preview curves shown before any runs complete (analyticalPerVariant=true). */
@@ -107,6 +110,7 @@
     let panelExpanded = $state<Record<ChartPanelId, boolean>>(createDefaultPanelExpandedState());
     let visibleCaseKeys = $state<Record<string, boolean>>({});
     let caseSelectorSignature = $state('');
+    let caseSelectorFamilyKey = $state<string | null>(null);
     const MAX_RECOMMENDED_VISIBLE_CASES = 20;
 
     let nativeGutters = $state<Record<string, { left: number; right: number }>>({});
@@ -183,6 +187,7 @@
             xAxisMode,
             theme,
             analyticalPerVariant,
+            caseOrder,
             previewVariantParams,
             pendingPreviewVariants,
             previewBaseParams,
@@ -190,7 +195,7 @@
         }),
     );
     const visibleResults = $derived.by(() => {
-        return overlayModel.orderedResults.filter((result) => visibleCaseKeys[result.key] ?? true);
+        return overlayModel.orderedResults.filter((result) => visibleCaseKeys[comparisonCaseKey(result)] ?? true);
     });
     const caseVolumeWarning = $derived.by(() => {
         if (visibleResults.length <= MAX_RECOMMENDED_VISIBLE_CASES) return null;
@@ -200,13 +205,16 @@
     $effect(() => {
         // Track both completed results and pending/preview variant keys so toggling
         // works throughout the full lifecycle: pure preview → mid-sweep → completed.
-        const resultKeys = overlayModel.orderedResults.map((r) => r.key);
+        const resultKeys = overlayModel.orderedResults.map(comparisonCaseKey);
         const previewKeys = overlayModel.previewCases.map((c) => c.key);
         const allKeys = [...resultKeys, ...previewKeys];
         const nextSignature = allKeys.join('|');
-        if (caseSelectorSignature === nextSignature) return;
+        const nextFamilyKey = family?.key ?? null;
+        const sameFamily = caseSelectorFamilyKey === nextFamilyKey;
+        if (sameFamily && caseSelectorSignature === nextSignature) return;
 
-        const previousVisibility = visibleCaseKeys;
+        const previousVisibility = sameFamily ? visibleCaseKeys : {};
+        caseSelectorFamilyKey = nextFamilyKey;
         caseSelectorSignature = nextSignature;
         visibleCaseKeys = Object.fromEntries(
             allKeys.map((key) => [key, previousVisibility[key] ?? true]),
@@ -378,23 +386,23 @@
         {#if overlayModel.orderedResults.length + overlayModel.previewCases.length > 1}
             <div class="flex items-center gap-2 overflow-x-auto">
                 <span class="ui-section-kicker shrink-0 opacity-50">Cases</span>
-                {#each overlayModel.orderedResults as result, index}
+                {#each overlayModel.orderedResults as result}
                     <button
                         type="button"
-                        class={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${(visibleCaseKeys[result.key] ?? true)
+                        class={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${(visibleCaseKeys[comparisonCaseKey(result)] ?? true)
                             ? 'border-primary/40 bg-muted/25 text-foreground'
                             : 'border-border/70 bg-transparent text-muted-foreground opacity-60 hover:opacity-90'}`}
-                        onclick={() => toggleCaseVisibility(result.key)}
-                        title={`${(visibleCaseKeys[result.key] ?? true) ? 'Hide' : 'Show'} ${result.label}`}
+                        onclick={() => toggleCaseVisibility(comparisonCaseKey(result))}
+                        title={`${(visibleCaseKeys[comparisonCaseKey(result)] ?? true) ? 'Hide' : 'Show'} ${result.label}`}
                     >
                         {#if showPerCaseAnalyticalIndicator}
                             <!-- Dual indicator: dashed = analytical, solid = simulation -->
                             <svg width="14" height="9" class="overflow-visible shrink-0" viewBox="0 0 14 9">
                                 <line x1="0" y1="2" x2="14" y2="2"
-                                    stroke={getReferenceComparisonCaseColor(index)}
+                                    stroke={getReferenceComparisonCaseColor(overlayModel.caseColorIndices[comparisonCaseKey(result)])}
                                     stroke-width="1.4" stroke-dasharray="5,3" />
                                 <line x1="0" y1="7" x2="14" y2="7"
-                                    stroke={getReferenceComparisonCaseColor(index)}
+                                    stroke={getReferenceComparisonCaseColor(overlayModel.caseColorIndices[comparisonCaseKey(result)])}
                                     stroke-width={result.variantKey === null ? 2.0 : 1.6} />
                             </svg>
                         {:else}
@@ -404,7 +412,7 @@
                                     y1="1.5"
                                     x2="14"
                                     y2="1.5"
-                                    stroke={getReferenceComparisonCaseColor(index)}
+                                    stroke={getReferenceComparisonCaseColor(overlayModel.caseColorIndices[comparisonCaseKey(result)])}
                                     stroke-width={result.variantKey === null ? 2.8 : 2.2}
                                 />
                             </svg>

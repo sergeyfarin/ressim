@@ -461,7 +461,7 @@ describe('referenceComparisonModel', () => {
             xAxisMode: 'time',
         });
 
-        expect(model.panels.cumulative.series[0]?.[0]?.y).toBeCloseTo(18, 10);
+        expect(model.panels.cumulative.series[0]?.find((point) => point.x > 0)?.y).toBeCloseTo(18, 10);
     });
 
     it('builds a dedicated SPE1 GOR panel in the scenario layout', () => {
@@ -2080,4 +2080,118 @@ describe('referenceComparisonModel', () => {
         expect(getReferenceComparisonCaseColor(20)).toBe(getReferenceComparisonCaseColor(0));
         expect(getReferenceComparisonCaseColor(41)).toBe(getReferenceComparisonCaseColor(1));
     });
+});
+
+describe('issue #15 comparison contracts', () => {
+    it.each(['depletion', 'sweep'] as const)('keeps %s case identity and colors through out-of-order completion', (method) => {
+        const scenarioKey = method === 'sweep' ? 'sweep_areal' : 'dep_decline';
+        const base = buildScenarioRunSpec(scenarioKey);
+        const variants = ['first', 'second', 'third'].map((variantKey) => ({
+            variantKey, label: variantKey, params: base.params,
+        }));
+        const result = (key: string) => buildBenchmarkRunResult({
+            spec: { ...buildVariantSpec(base, key, key), key: `${scenarioKey}__study__${key}` },
+            rateHistory: [{ time: 1, total_production_oil: 10, total_production_liquid: 10,
+                total_injection: 10, total_injection_resv: 10, avg_reservoir_pressure: 200 }],
+            history: [], finalSnapshot: null,
+        });
+        const input = {
+            family: buildScenarioFamily(scenarioKey, { analyticalOverlayMode: 'per-result' }),
+            xAxisMode: (method === 'sweep' ? 'pvi' : 'time') as 'pvi' | 'time',
+            analyticalPerVariant: true, previewVariantParams: variants, previewAnalyticalMethod: method,
+        };
+        const preview = buildReferenceComparisonModel({ ...input, results: [] });
+        const partial = buildReferenceComparisonModel({ ...input, results: [result('second')],
+            pendingPreviewVariants: [variants[2], variants[0]] });
+        const complete = buildReferenceComparisonModel({ ...input,
+            results: [result('third'), result('second'), result('first')] });
+        for (const model of [preview, partial, complete]) {
+            expect(model.caseColorIndices).toEqual({ first: 0, second: 1, third: 2 });
+            for (const [panelKey, panel] of Object.entries(model.panels)) {
+                if (panelKey === 'control_limits') continue;
+                for (const curve of panel?.curves ?? []) {
+                    if (!curve.caseKey) continue;
+                    expect(curve.caseKey).not.toContain('__study__');
+                    expect(curve.color).toBe(getReferenceComparisonCaseColor(model.caseColorIndices[curve.caseKey]));
+                }
+            }
+        }
+        expect(partial.previewCases.map((entry) => [entry.key, entry.colorIndex]))
+            .toEqual([['third', 2], ['first', 0]]);
+    });
+
+    it('gives each drive mechanism its own case-colored panel', () => {
+        const spec = buildScenarioRunSpec('dep_decline');
+        const makeResult = (key: string) => buildBenchmarkRunResult({
+            spec: buildVariantSpec(spec, key, key),
+            rateHistory: [{ time: 10, total_production_oil: 100, total_production_liquid: 100,
+                total_injection: 0, avg_reservoir_pressure: 200 }],
+            history: [], finalSnapshot: null,
+        });
+        const model = buildReferenceComparisonModel({ family: buildScenarioFamily('dep_decline'),
+            results: [makeResult('a'), makeResult('b')], xAxisMode: 'time' });
+        for (const key of ['drive_compaction', 'drive_oil_expansion', 'drive_gas_cap'] as const) {
+            expect(model.panels[key].curves).toHaveLength(2);
+            expect(new Set(model.panels[key].curves.map((curve) => curve.curveKey)).size).toBe(1);
+            expect(model.panels[key].curves.map((curve) => curve.color))
+                .toEqual([getReferenceComparisonCaseColor(0), getReferenceComparisonCaseColor(1)]);
+        }
+    });
+
+    it('anchors cumulative quantities at zero without inventing an initial rate', () => {
+        const spec = buildScenarioRunSpec('wf_bl1d');
+        const result = buildBenchmarkRunResult({ spec, rateHistory: [
+            { time: 10, total_production_oil: 2, total_production_liquid: 2,
+                total_injection: 4, total_injection_resv: 4, avg_reservoir_pressure: 200 },
+        ], history: [], finalSnapshot: null });
+        for (const xAxisMode of ['time', 'cumInjection', 'logTime'] as const) {
+            const model = buildReferenceComparisonModel({ family: buildScenarioFamily('wf_bl1d'), results: [result], xAxisMode });
+            expect(model.panels.cumulative.series[0]?.[0]).toEqual(xAxisMode === 'logTime'
+                ? { x: 1, y: 20 } : { x: 0, y: 0 });
+            expect(model.panels.oil_rate.series[0]).toHaveLength(1);
+        }
+    });
+
+    it('hides time-native pending references on cumulative axes until mapped', () => {
+        const spec = buildScenarioRunSpec('dep_decline');
+        const model = buildReferenceComparisonModel({ family: buildScenarioFamily('dep_decline'),
+            results: [], previewAnalyticalMethod: 'depletion', previewBaseParams: spec.params, xAxisMode: 'cumGas' });
+        expect(model.panels.rates.curves).toEqual([]);
+        expect(model.axisMappingWarning).toContain('hidden');
+    });
+});
+
+it('uses the same dimensional gas-oil cumulative reference in preview and completed contexts', () => {
+    const spec = buildScenarioRunSpec('gas_injection');
+    const family = buildScenarioFamily('gas_injection', { analyticalOverlayMode: 'per-result' });
+    const variant = { variantKey: 'gas', label: 'gas', params: spec.params };
+    const preview = buildReferenceComparisonModel({ family, results: [], xAxisMode: 'pvi',
+        previewAnalyticalMethod: 'gas-oil-bl', previewVariantParams: [variant] });
+    const result = buildBenchmarkRunResult({ spec: buildVariantSpec(spec, 'gas', 'gas'),
+        rateHistory: buildSyntheticGasOilRateHistory(spec.params, 0.2) });
+    const completed = buildReferenceComparisonModel({ family, results: [result], xAxisMode: 'pvi' });
+    const index = completed.panels.cumulative.curves.findIndex((curve) => curve.curveKey === 'cum-oil-reference');
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect(completed.panels.cumulative.series[index]).toEqual(preview.panels.cumulative.series[0]);
+    const values = preview.panels.cumulative.series[0];
+    expect(values.some((point) => Number(point.y) > 1)).toBe(true); // m³, not unit-PV fractions
+});
+
+it('keeps waterflood pressure, rate, saturation and volume panels on single-property axes', () => {
+    const layout = getScenarioChartLayout(getScenario('wf_bl1d')!);
+    expect(layout.chart?.panels?.diagnostics?.curveKeys).toEqual(['avg-pressure-sim']);
+    expect(layout.chart?.panels?.diagnostics?.scalePreset).toBe('pressure');
+    expect(layout.chart?.panels?.avg_water_sat?.scalePreset).toBe('fraction');
+    expect(layout.chart?.panels?.oil_rate?.scalePreset).toBe('rates');
+});
+
+it('does not invent a zero recovery sample when the resource is absent', () => {
+    const spec = buildScenarioRunSpec('dep_decline', { initialGasSaturation: 0, blackOilEnabled: false });
+    const result = buildBenchmarkRunResult({ spec, rateHistory: [
+        { time: 10, total_production_oil: 2, total_production_liquid: 2,
+            total_injection: 0, avg_reservoir_pressure: 200 },
+    ] });
+    const model = buildReferenceComparisonModel({ family: buildScenarioFamily('dep_decline'), results: [result], xAxisMode: 'time' });
+    const gas = model.panels.recovery.curves.findIndex((curve) => curve.curveKey === 'recovery-factor-gas');
+    expect(model.panels.recovery.series[gas].every((point) => point.y === null)).toBe(true);
 });

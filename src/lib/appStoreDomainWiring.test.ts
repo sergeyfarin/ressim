@@ -95,3 +95,18 @@ describe('App store domain wiring', () => {
     );
   });
 });
+
+it('reserves a second results column only while the 3D card is present', () => {
+    expect(appSource).toContain('scenario.isPrerunScenario ? "" : "xl:grid-cols-2"');
+    expect(appSource).toContain('{#if !scenario.isPrerunScenario}');
+});
+
+it('retains case declaration order when completed results arrive', () => {
+    const chartSource = fs.readFileSync(path.join(__dirname, 'charts', 'ScenarioChart.svelte'), 'utf8');
+    expect(chartSource).toContain('{previewVariantParams}');
+    expect(chartSource).toContain('{caseOrder}');
+    expect(chartSource).not.toContain('previewVariantParams={runResults.length === 0');
+    const comparisonSource = fs.readFileSync(path.join(__dirname, 'charts', 'ReferenceComparisonChart.svelte'), 'utf8');
+    expect(comparisonSource).toContain('visibleCaseKeys[comparisonCaseKey(result)]');
+    expect(comparisonSource).toContain('toggleCaseVisibility(comparisonCaseKey(result))');
+});

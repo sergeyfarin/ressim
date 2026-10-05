@@ -245,7 +245,7 @@
         <section class="space-y-2 mt-2">
             <div><div class="ui-section-kicker">Results</div></div>
 
-            <div class="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
+            <div class={`grid grid-cols-1 gap-4 xl:items-start ${scenario.isPrerunScenario ? "" : "xl:grid-cols-2"}`}>
                 <div class="space-y-4">
                     <Card class="overflow-hidden">
                         {#if ScenarioChartComponent}

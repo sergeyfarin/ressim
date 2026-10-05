@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     axisDistances,
+    summarizeSpatialProfile,
     axisLength,
     buildFloodFrontOverlay,
     buildSpatialProfile,
@@ -364,5 +365,26 @@ describe('buildSweepDiagonalOverlay', () => {
     it('does not present a sweep diagonal reference on an orthogonal axis', () => {
         expect(buildSweepDiagonalOverlay({ ...base, axis: 'i' })).toBeNull();
         expect(buildSweepDiagonalOverlay({ ...base, property: 'pressure' })).toBeNull();
+    });
+});
+
+describe('spatial profile presentation regressions', () => {
+    it('summarizes only the selected profile and omits missing samples', () => {
+        const profile = buildSpatialProfile({ gridState: makeGrid(GRID), grid: GRID,
+            axis: 'i', fixedI: 0, fixedJ: 1, fixedK: 1, property: 'pressure' });
+        expect(summarizeSpatialProfile(profile)).toEqual([
+            { key: 'pressure', label: 'Pressure', min: 110, max: 113, mean: 111.5 },
+        ]);
+        profile.series[0].values = [null, NaN, 5, 7];
+        expect(summarizeSpatialProfile(profile)[0]).toMatchObject({ min: 5, max: 7, mean: 6 });
+        profile.series[0].values = [null, NaN];
+        expect(summarizeSpatialProfile(profile)).toEqual([]);
+    });
+
+    it('does not draw a one-axis BL reference for an oblique flood', () => {
+        expect(buildFloodFrontOverlay({ grid: GRID, axis: 'i', property: 'saturation_water',
+            rock: ROCK, fluid: FLUID, initialSaturation: 0.2, porosity: 0.2, injectedVolume: 50,
+            wells: { injector: { i: 0, j: 0, k: 0 }, producer: { i: 3, j: 2, k: 0 } },
+        })).toBeNull();
     });
 });

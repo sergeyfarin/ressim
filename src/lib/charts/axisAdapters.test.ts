@@ -277,9 +277,10 @@ describe('requiresRunMappedAnalyticalXAxis', () => {
         expect(requiresRunMappedAnalyticalXAxis('pvi', 'logTime')).toBe(true);
     });
 
-    it('returns false for a time-native solution on any axis', () => {
+    it('requires mappings for time-native solutions on volume axes', () => {
         expect(requiresRunMappedAnalyticalXAxis('time', 'time')).toBe(false);
-        expect(requiresRunMappedAnalyticalXAxis('time', 'pvi')).toBe(false);
+        expect(requiresRunMappedAnalyticalXAxis('time', 'pvi')).toBe(true);
+        expect(requiresRunMappedAnalyticalXAxis('time', 'cumGas')).toBe(true);
         expect(requiresRunMappedAnalyticalXAxis('time', 'logTime')).toBe(false);
     });
 
@@ -323,4 +324,22 @@ describe('buildAnalyticalAxisWarning', () => {
         expect(warning).toContain('remapped');
         expect(warning).toContain('hidden');
     });
+});
+
+describe('axis mapping regressions', () => {
+    it('handles unsorted target times and skips incomplete samples', () => {
+        expect(interpolateXAxisAtTimes([0, 10, 20], [0, null, 200], [20, 5, 0, 15]))
+            .toEqual([200, 50, 0, 150]);
+        expect(interpolateXAxisAtTimes([], [], [0])).toEqual([null]);
+    });
+});
+
+it('interpolates history axes from an explicit zero origin before the first report', () => {
+    expect(interpolateXAxisAtTimes([10, 20], [100, 200], [0, 5, 10, 20], 0))
+        .toEqual([0, 50, 100, 200]);
+});
+
+it('maps a positive PVI before the first report from the known zero origin', () => {
+    const derived = makeDerived({ time: [10, 20], pvi: [0.1, 0.2] });
+    expect(mapPviSeriesToXAxis([0, 0.05, 0.1], derived, 'time', null)).toEqual([0, 5, 10]);
 });

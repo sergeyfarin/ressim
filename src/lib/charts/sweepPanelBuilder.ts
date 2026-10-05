@@ -40,6 +40,7 @@ import type { ChartXAxisMode } from './chartLayoutConfig';
 import {
     appendSeries,
     appendXYSeries,
+    comparisonCaseKey,
     compactCaseLabel,
     createSweepPanels,
     finalizeSweepPanels,
@@ -289,11 +290,14 @@ function appendSimulationSweepCurves(
     const caseLabel = compactCaseLabel(result.label);
 
     if (simulation.rf.length > 0) {
+        if (xAxisMode !== 'logTime' && simulation.rf[0].x > 0) {
+            simulation.rf.unshift({ x: 0, y: 0 });
+        }
         appendXYSeries(panels.rf, {
             label: `${result.label} RF`,
             curveKey: 'sweep-rf-sim',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
+            caseKey: comparisonCaseKey(result),
+            toggleGroupKey: comparisonCaseKey(result),
             toggleLabel: caseLabel,
             legendSection: 'sim',
             legendSectionLabel: LEGEND_SECTIONS.sim,
@@ -308,8 +312,8 @@ function appendSimulationSweepCurves(
         appendXYSeries(panels.areal, {
             label: `${result.label} E_A`,
             curveKey: 'sweep-areal-sim',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
+            caseKey: comparisonCaseKey(result),
+            toggleGroupKey: comparisonCaseKey(result),
             toggleLabel: caseLabel,
             legendSection: 'sim',
             legendSectionLabel: LEGEND_SECTIONS.sim,
@@ -324,8 +328,8 @@ function appendSimulationSweepCurves(
         appendXYSeries(panels.vertical, {
             label: `${result.label} E_V`,
             curveKey: 'sweep-vertical-sim',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
+            caseKey: comparisonCaseKey(result),
+            toggleGroupKey: comparisonCaseKey(result),
             toggleLabel: caseLabel,
             legendSection: 'sim',
             legendSectionLabel: LEGEND_SECTIONS.sim,
@@ -340,8 +344,8 @@ function appendSimulationSweepCurves(
         appendXYSeries(panels.combined, {
             label: `${result.label} E_vol`,
             curveKey: 'sweep-combined-sim',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
+            caseKey: comparisonCaseKey(result),
+            toggleGroupKey: comparisonCaseKey(result),
             toggleLabel: caseLabel,
             legendSection: 'sim',
             legendSectionLabel: LEGEND_SECTIONS.sim,
@@ -356,8 +360,8 @@ function appendSimulationSweepCurves(
         appendXYSeries(panels.combinedMobileOil, {
             label: `${result.label} Mobile Oil Recovered`,
             curveKey: 'sweep-combined-mobile-oil-sim',
-            caseKey: result.key,
-            toggleGroupKey: result.key,
+            caseKey: comparisonCaseKey(result),
+            toggleGroupKey: comparisonCaseKey(result),
             toggleLabel: caseLabel,
             legendSection: 'sim',
             legendSectionLabel: LEGEND_SECTIONS.sim,
@@ -391,6 +395,7 @@ function emptyDerivedSeries(): DerivedRunSeries {
  */
 export function buildPreviewSweepPanels(input: {
     variants: AnalyticalPreviewVariant[];
+    caseColorIndices: Record<string, number>;
     theme: ReferenceComparisonTheme;
     geometry: SweepGeometry;
     method: SweepAnalyticalMethod;
@@ -400,8 +405,8 @@ export function buildPreviewSweepPanels(input: {
     const referenceColor = getReferenceColor(input.theme);
     const previewDerived = emptyDerivedSeries();
 
-    input.variants.forEach((variant, index) => {
-        const color = multiVariant ? getReferenceComparisonCaseColor(index) : referenceColor;
+    input.variants.forEach((variant) => {
+        const color = multiVariant ? getReferenceComparisonCaseColor(input.caseColorIndices[variant.variantKey]) : referenceColor;
         const label = variant.label || 'Analytical';
         appendAnalyticalSweepCurves(panels, {
             label,
@@ -429,8 +434,8 @@ export function buildPreviewSweepPanels(input: {
  */
 export function buildSweepPanels(input: {
     orderedResults: BenchmarkRunResult[];
+    caseColorIndices: Record<string, number>;
     pendingPreviewVariants?: AnalyticalPreviewVariant[];
-    previewVariantParams?: AnalyticalPreviewVariant[];
     theme: ReferenceComparisonTheme;
     xAxisMode: ChartXAxisMode;
     derivedByKey: Map<string, DerivedRunSeries>;
@@ -439,15 +444,15 @@ export function buildSweepPanels(input: {
 }): ReferenceComparisonSweepPanels {
     const panels = createSweepPanels();
 
-    input.orderedResults.forEach((result, index) => {
-        const color = getReferenceComparisonCaseColor(index);
+    input.orderedResults.forEach((result) => {
+        const color = getReferenceComparisonCaseColor(input.caseColorIndices[comparisonCaseKey(result)]);
         const derived = input.derivedByKey.get(result.key);
         if (!derived) return;
         const tau = computeDepletionTau(result.params);
         appendSimulationSweepCurves(panels, result, color, input.xAxisMode, tau, derived, input.geometry);
         appendAnalyticalSweepCurves(panels, {
             label: result.label,
-            caseKey: result.key,
+            caseKey: comparisonCaseKey(result),
             toggleLabel: compactCaseLabel(result.label),
             color,
             params: result.params,
@@ -461,16 +466,12 @@ export function buildSweepPanels(input: {
     });
 
     if (input.pendingPreviewVariants?.length && input.xAxisMode === 'pvi') {
-        const declarationOrder = new Map(
-            (input.previewVariantParams ?? []).map((variant, index) => [variant.variantKey, index]),
-        );
         const previewDerived = input.orderedResults[0]
             ? buildDerivedRunSeries(input.orderedResults[0])
             : emptyDerivedSeries();
 
-        input.pendingPreviewVariants.forEach((variant, fallbackIndex) => {
-            const colorIndex = declarationOrder.get(variant.variantKey)
-                ?? (input.orderedResults.length + fallbackIndex);
+        input.pendingPreviewVariants.forEach((variant) => {
+            const colorIndex = input.caseColorIndices[variant.variantKey];
             appendAnalyticalSweepCurves(panels, {
                 label: variant.label,
                 caseKey: variant.variantKey,

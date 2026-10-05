@@ -23,7 +23,7 @@ export type ChartXAxisMode =
  */
 export const KNOWN_PRIMARY_PANEL_IDS = [
     'rates', 'recovery', 'cumulative', 'diagnostics', 'avg_water_sat', 'mbe_ooip',
-    'drive_indices', 'pz', 'pss_drawdown', 'pss_productivity', 'pss_shape_factor',
+    'drive_compaction', 'drive_oil_expansion', 'drive_gas_cap', 'pz', 'pss_drawdown', 'pss_productivity', 'pss_shape_factor',
     'gor', 'volumes', 'oil_rate', 'gas_rate', 'injection_rate', 'producer_bhp', 'injector_bhp',
     'control_limits', 'cumulative_gas',
 ] as const;
@@ -60,7 +60,7 @@ export const DEFAULT_CHART_PANEL_ORDER: ChartPanelId[] = [
     'diagnostics',
     'avg_water_sat',
     'mbe_ooip',
-    'drive_indices',
+    'drive_compaction', 'drive_oil_expansion', 'drive_gas_cap',
     'pz',
     'pss_drawdown',
     'pss_productivity',

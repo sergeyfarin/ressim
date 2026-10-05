@@ -372,6 +372,8 @@ export function buildFloodFrontOverlay(input: {
     // `wf_gravity`'s vertical section, where the flood runs along I, a BL curve
     // drawn down K would look like a prediction of the gravity tongue's
     // saturation structure, which it emphatically is not.
+    if (input.wells && input.wells.injector.i !== input.wells.producer.i
+        && input.wells.injector.j !== input.wells.producer.j) return null;
     const displacementAxis = input.wells
         ? resolveDisplacementAxis(input.wells.injector, input.wells.producer)
         : input.axis;
@@ -559,4 +561,19 @@ export function buildSweepDiagonalOverlay(input: {
             ? 'Craig + Stiles + BL reference'
             : 'Craig + BL reference',
     };
+}
+
+/** Statistics of the displayed cells, excluding missing samples. */
+export function summarizeSpatialProfile(profile: SpatialProfileResult): Array<{
+    key: string; label: string; min: number; max: number; mean: number;
+}> {
+    return profile.series.flatMap((series) => {
+        const values = series.values.filter((value): value is number => value !== null && Number.isFinite(value));
+        if (values.length === 0) return [];
+        return [{
+            key: series.key, label: series.label,
+            min: Math.min(...values), max: Math.max(...values),
+            mean: values.reduce((sum, value) => sum + value, 0) / values.length,
+        }];
+    });
 }

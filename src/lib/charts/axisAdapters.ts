@@ -139,7 +139,11 @@ export function mapPviSeriesToXAxis(
             if (!Number.isFinite(domain) || !Number.isFinite(range)) continue;
             if (Math.abs((domain as number) - (targetPvi as number)) <= 1e-9) return Number(range);
             if ((domain as number) > (targetPvi as number)) {
-                if (previousIndex < 0) return Number(range);
+                if (previousIndex < 0) {
+                    return xAxisMode !== 'logTime' && Number(domain) > 0
+                        ? Number(targetPvi) / Number(domain) * Number(range)
+                        : Number(range);
+                }
                 const d0 = Number(derived.pvi[previousIndex]);
                 const r0 = Number(mappedAxis[previousIndex]);
                 const d1 = Number(domain);
@@ -159,7 +163,9 @@ export function mapPviSeriesToXAxis(
 
 /**
  * Interpolates an x-axis series (e.g. cumulative injection) at a set of
- * target time values, using a source (time, xAxis) pair as the domain.
+ * target time values, using chronological source (time, xAxis) samples.
+ * Queries may arrive in any order. Missing samples are skipped; originValue
+ * supplies an explicit t=0 anchor when the selected axis has a known origin.
  *
  * Used when an analytical solution is natively in time and must be sampled at
  * the same time points as the simulation history.
@@ -168,56 +174,34 @@ export function interpolateXAxisAtTimes(
     sourceTimes: Array<number | null>,
     sourceXAxis: Array<number | null>,
     targetTimes: Array<number | null>,
+    originValue?: number,
 ): Array<number | null> {
-    const result: Array<number | null> = [];
-    let previousIndex = -1;
-
-    for (const rawTarget of targetTimes) {
-        if (!Number.isFinite(rawTarget)) {
-            result.push(null);
-            continue;
-        }
-
-        const target = Number(rawTarget);
-        while (previousIndex + 1 < sourceTimes.length) {
-            const nextTime = sourceTimes[previousIndex + 1];
-            if (!Number.isFinite(nextTime) || Number(nextTime) < target) {
-                previousIndex += 1;
-                continue;
-            }
-            break;
-        }
-
-        if (previousIndex < 0) {
-            result.push(Number.isFinite(sourceXAxis[0]) ? Number(sourceXAxis[0]) : null);
-            continue;
-        }
-
-        if (previousIndex + 1 >= sourceTimes.length) {
-            result.push(Number.isFinite(sourceXAxis[previousIndex]) ? Number(sourceXAxis[previousIndex]) : null);
-            continue;
-        }
-
-        const x0 = sourceTimes[previousIndex];
-        const x1 = sourceTimes[previousIndex + 1];
-        const y0 = sourceXAxis[previousIndex];
-        const y1 = sourceXAxis[previousIndex + 1];
-
-        if (!Number.isFinite(x0) || !Number.isFinite(x1) || !Number.isFinite(y0) || !Number.isFinite(y1)) {
-            result.push(Number.isFinite(y0) ? Number(y0) : null);
-            continue;
-        }
-
-        if (Math.abs(Number(x1) - Number(x0)) <= 1e-12) {
-            result.push(Number(y1));
-            continue;
-        }
-
-        const fraction = (target - Number(x0)) / (Number(x1) - Number(x0));
-        result.push(Number(y0) + fraction * (Number(y1) - Number(y0)));
+    const samples = sourceTimes.flatMap((time, index) =>
+        Number.isFinite(time) && Number.isFinite(sourceXAxis[index])
+            ? [{ time: Number(time), value: Number(sourceXAxis[index]) }] : []);
+    if (originValue !== undefined && samples.length > 0 && samples[0].time > 0) {
+        samples.unshift({ time: 0, value: originValue });
     }
-
-    return result;
+    return targetTimes.map((rawTarget) => {
+        if (!Number.isFinite(rawTarget) || samples.length === 0) return null;
+        const target = Number(rawTarget);
+        const first = samples[0];
+        if (target <= first.time) return first.value;
+        if (target >= samples[samples.length - 1].time) return samples[samples.length - 1].value;
+        // Binary search keeps arbitrary query order from making long histories quadratic.
+        let lo = 1;
+        let hi = samples.length - 1;
+        while (lo < hi) {
+            const mid = Math.floor((lo + hi) / 2);
+            if (samples[mid].time < target) lo = mid + 1;
+            else hi = mid;
+        }
+        const next = samples[lo];
+        const previous = samples[lo - 1];
+        const span = next.time - previous.time;
+        if (span <= 1e-12) return next.value;
+        return previous.value + (target - previous.time) / span * (next.value - previous.value);
+    });
 }
 
 // ─── Reference-series axis mapping ────────────────────────────────────────────
@@ -301,14 +285,16 @@ export function mapReferenceTimesToXAxis(
  * Takes the solution's native axis rather than the method name: which methods
  * are PVI-native is declared once in `analyticalMethodRegistry.ts`, so this
  * module stays a leaf and cannot drift out of sync with the method list.
- * BL-family solutions are natively PVI; any non-PVI axis requires run-based
- * remapping. Depletion and well-test solutions are natively in time.
+ * BL-family solutions require run-based remapping away from PVI. Time-native
+ * solutions require it on volume axes; time, log time and characteristic time
+ * can be built without completed injection/production histories.
  */
 export function requiresRunMappedAnalyticalXAxis(
     nativeXAxis: 'pvi' | 'time' | null | undefined,
     xAxisMode: ChartXAxisMode,
 ): boolean {
-    return nativeXAxis === 'pvi' && xAxisMode !== 'pvi';
+    return nativeXAxis === 'pvi' ? xAxisMode !== 'pvi'
+        : nativeXAxis === 'time' && !['time', 'logTime', 'tD'].includes(xAxisMode);
 }
 
 /**

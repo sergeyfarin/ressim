@@ -169,7 +169,7 @@ export const dep_pvt: Scenario = {
      */
     chartLayoutPatch: {
         chart: {
-            panelOrder: ['diagnostics', 'mbe_ooip', 'gor', 'recovery', 'rates', 'cumulative', 'drive_indices'],
+            panelOrder: ['diagnostics', 'mbe_ooip', 'gor', 'recovery', 'rates', 'cumulative', 'drive_compaction', 'drive_oil_expansion', 'drive_gas_cap'],
             panels: {
                 mbe_ooip: { expanded: true },
             },
@@ -308,7 +308,7 @@ export const dep_pvt: Scenario = {
             analyticalOverlayMode: 'shared',
             chartLayoutPatchOverride: {
                 chart: {
-                    panelOrder: ['gor', 'diagnostics', 'cumulative_gas', 'mbe_ooip', 'recovery', 'rates', 'cumulative', 'drive_indices'],
+                    panelOrder: ['gor', 'diagnostics', 'cumulative_gas', 'mbe_ooip', 'recovery', 'rates', 'cumulative', 'drive_compaction', 'drive_oil_expansion', 'drive_gas_cap'],
                     panels: {
                         gor: { expanded: true },
                         cumulative_gas: { expanded: true },

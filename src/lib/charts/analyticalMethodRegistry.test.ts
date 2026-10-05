@@ -124,34 +124,14 @@ describe('analyticalMethodRegistry', () => {
         })).toBe('per-result');
     });
 
-    // These two slots are deliberately narrower than their siblings, preserving
-    // pre-registry behavior. See the TODO.md "analytical slot-context
-    // asymmetries" item — they are candidates to widen, not settled design.
-    it('keeps the gas-oil cumulative-oil reference shared-only', () => {
-        const descriptor = getAnalyticalMethodDescriptor('gas-oil-bl');
-        const cumulativeKeys = (context: 'shared' | 'per-result' | 'pending' | 'preview') =>
-            slotsForContext(descriptor, context).map((slot) => slot.curveKey);
-        expect(cumulativeKeys('shared')).toContain('cum-oil-reference');
-        expect(cumulativeKeys('per-result')).not.toContain('cum-oil-reference');
-        expect(cumulativeKeys('preview')).not.toContain('cum-oil-reference');
-    });
-
-    it('omits the well-test oil-rate reference for still-pending variants', () => {
-        const descriptor = getAnalyticalMethodDescriptor('well-test');
-        expect(slotsForContext(descriptor, 'pending').map((slot) => slot.curveKey))
-            .toEqual([
-                'producer-bhp-reference',
-                'pss-drawdown-reference',
-                'pss-productivity-reference',
-                'pss-shape-factor-reference',
-            ]);
-        expect(slotsForContext(descriptor, 'per-result').map((slot) => slot.curveKey))
-            .toEqual([
-                'producer-bhp-reference',
-                'oil-rate-reference',
-                'pss-drawdown-reference',
-                'pss-productivity-reference',
-                'pss-shape-factor-reference',
-            ]);
+    it('offers gas-oil cumulative and well-test oil rate in every overlay context', () => {
+        for (const [method, key] of [
+            ['gas-oil-bl', 'cum-oil-reference'], ['well-test', 'oil-rate-reference'],
+        ] as const) {
+            for (const context of ['shared', 'per-result', 'pending', 'preview'] as const) {
+                expect(slotsForContext(getAnalyticalMethodDescriptor(method), context)
+                    .map((slot) => slot.curveKey)).toContain(key);
+            }
+        }
     });
 });

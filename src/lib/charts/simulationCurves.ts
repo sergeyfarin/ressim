@@ -40,6 +40,8 @@ export type SimulationCurveDescriptor = {
      * so needs its own mapping.
      */
     axis?: 'run' | 'history';
+    /** This quantity is zero before the first report interval. */
+    zeroAnchor?: boolean;
 };
 
 const ALL_SETS = ['water-cut', 'gas-cut', 'oil-rate'] as const;
@@ -53,14 +55,14 @@ export const SIMULATION_CURVES: readonly SimulationCurveDescriptor[] = [
     { quantity: 'gas-cut', panel: 'rates', curveKey: 'gas-cut-sim', sets: ['gas-cut'] },
     { quantity: 'oil-rate', panel: 'rates', curveKey: 'oil-rate-sim', sets: ['oil-rate'] },
     { quantity: 'average-water-saturation', panel: 'avg_water_sat', curveKey: 'avg-water-sat', sets: ['water-cut'] },
-    { quantity: 'recovery-oil', panel: 'recovery', curveKey: 'recovery-factor-primary', sets: ALL_SETS },
-    { quantity: 'recovery-gas', panel: 'recovery', curveKey: 'recovery-factor-gas', sets: ['oil-rate'] },
-    { quantity: 'cumulative-oil', panel: 'cumulative', curveKey: 'cum-oil-sim', sets: ALL_SETS },
+    { zeroAnchor: true, quantity: 'recovery-oil', panel: 'recovery', curveKey: 'recovery-factor-primary', sets: ALL_SETS },
+    { zeroAnchor: true, quantity: 'recovery-gas', panel: 'recovery', curveKey: 'recovery-factor-gas', sets: ['oil-rate'] },
+    { zeroAnchor: true, quantity: 'cumulative-oil', panel: 'cumulative', curveKey: 'cum-oil-sim', sets: ALL_SETS },
     { quantity: 'oil-rate', panel: 'oil_rate', curveKey: 'oil-rate-sim', sets: ALL_SETS },
     { quantity: 'gas-rate', panel: 'gas_rate', curveKey: 'gas-rate-sim', sets: ALL_SETS },
-    { quantity: 'cumulative-gas', panel: 'cumulative_gas', curveKey: 'cum-gas-sim', sets: ALL_SETS },
+    { zeroAnchor: true, quantity: 'cumulative-gas', panel: 'cumulative_gas', curveKey: 'cum-gas-sim', sets: ALL_SETS },
     { quantity: 'injection-rate', panel: 'injection_rate', curveKey: 'injection-rate-sim', sets: ALL_SETS },
-    { quantity: 'cumulative-injection', panel: 'volumes', curveKey: 'cum-injection', sets: ['water-cut', 'gas-cut'] },
+    { zeroAnchor: true, quantity: 'cumulative-injection', panel: 'volumes', curveKey: 'cum-injection', sets: ['water-cut', 'gas-cut'] },
     { quantity: 'average-pressure', panel: 'diagnostics', curveKey: 'avg-pressure-sim', sets: ALL_SETS },
     { quantity: 'p-over-z', panel: 'pz', curveKey: 'p-over-z-sim', sets: ALL_SETS },
     { quantity: 'gor', panel: 'gor', curveKey: 'gor-sim', sets: ALL_SETS },
@@ -81,3 +83,10 @@ export function resolveSimulationCurve(
     const quantity = RUN_QUANTITIES[descriptor.quantity];
     return { label: quantity.label, property: quantity.property, values: quantity.source(derived) };
 }
+
+/** Material-balance diagnostics compare one mechanism across cases per panel. */
+export const DRIVE_INDEX_CURVES = [
+    { panel: 'drive_compaction', curveKey: 'drive-compaction', diagnostic: 'driveCompaction', label: 'Compaction' },
+    { panel: 'drive_oil_expansion', curveKey: 'drive-oil-expansion', diagnostic: 'driveOilExpansion', label: 'Oil Expansion' },
+    { panel: 'drive_gas_cap', curveKey: 'drive-gas-cap', diagnostic: 'driveGasCap', label: 'Free-Gas Expansion' },
+] as const;

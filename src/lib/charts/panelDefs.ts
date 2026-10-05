@@ -69,8 +69,23 @@ export const PANEL_DEFS: Record<KnownPrimaryPanelId | KnownSweepPanelId, ChartPa
         visible: false,
         expanded: false,
     },
-    drive_indices: {
-        title: 'Drive Indices',
+    drive_compaction: {
+        title: 'Compaction Drive Index',
+        curveKeys: ['drive-compaction'],
+        scalePreset: 'fraction',
+        visible: false,
+        expanded: false,
+    },
+    drive_oil_expansion: {
+        title: 'Oil Expansion Drive Index',
+        curveKeys: ['drive-oil-expansion'],
+        scalePreset: 'fraction',
+        visible: false,
+        expanded: false,
+    },
+    drive_gas_cap: {
+        title: 'Free-Gas Expansion Drive Index',
+        curveKeys: ['drive-gas-cap'],
         scalePreset: 'fraction',
         visible: false,
         expanded: false,

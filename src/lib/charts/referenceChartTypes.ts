@@ -37,6 +37,7 @@ export type ReferenceComparisonPanelMap = ReferenceComparisonPrimaryPanelMap & R
 
 export type ReferenceComparisonModel = {
     orderedResults: BenchmarkRunResult[];
+    caseColorIndices: Record<string, number>;
     /**
      * Preview/pending variant entries for the cases selector UI.
      * Populated when:
@@ -115,6 +116,27 @@ const CASE_COLORS = [
 
 export function getReferenceComparisonCaseColor(index: number): string {
     return CASE_COLORS[index % CASE_COLORS.length];
+}
+
+/** Identity shared by preview, pending and completed comparison curves. */
+export function comparisonCaseKey(result: BenchmarkRunResult): string {
+    return result.variantKey ?? result.key;
+}
+
+/** Palette indices follow the declared cases even when runs finish out of order. */
+export function comparisonCaseColorIndices(
+    results: BenchmarkRunResult[],
+    variants: AnalyticalPreviewVariant[] = [],
+    pending: AnalyticalPreviewVariant[] = [],
+    caseOrder: string[] = [],
+): Record<string, number> {
+    const keys = [...new Set([
+        ...caseOrder,
+        ...variants.map((variant) => variant.variantKey),
+        ...results.map(comparisonCaseKey),
+        ...pending.map((variant) => variant.variantKey),
+    ])];
+    return Object.fromEntries(keys.map((key, index) => [key, index]));
 }
 
 /** Neutral high-contrast color for single-variant reference curves. */

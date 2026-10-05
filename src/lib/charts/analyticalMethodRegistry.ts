@@ -51,6 +51,7 @@ import {
     computeWellTestFromParams,
     computeWellTestOnTimeAxis,
     hasDistinctBuckleyLeverettOverlays,
+    getPoreVolume,
     hasDistinctGasOilBLOverlays,
     resolveOverlayMode,
 } from './analyticalParamAdapters';
@@ -292,16 +293,12 @@ const gasOilBL: AnalyticalMethodDescriptor = {
             contexts: ALL_CONTEXTS,
         },
         {
-            // Shared-only, matching the pre-registry behavior. The per-case and
-            // preview contexts never drew a gas-oil cumulative-oil reference.
-            // Tracked in TODO.md as an asymmetry to resolve deliberately rather
-            // than silently during this consolidation.
             panelKey: 'cumulative',
             curveKey: 'cum-oil-reference',
             sharedLabel: 'Reference Solution Cum Oil',
             perCaseSuffix: ' Cum Oil',
             previewLabel: 'Analytical Cum Oil',
-            contexts: ['shared'],
+            contexts: ALL_CONTEXTS,
         },
     ],
     fromResult: (result, derived, xAxisMode) => fromOverlay(
@@ -318,6 +315,8 @@ const gasOilBL: AnalyticalMethodDescriptor = {
         return curveSet(curves.pviValues, {
             'gas-cut-reference': curves.gasCut,
             'recovery-factor-reference': curves.recovery,
+            'cum-oil-reference': curves.cumulativeOil.map((value) =>
+                value === null ? null : value * getPoreVolume(params)),
         });
     },
     resolveOverlayMode: ({ requested, paramSets }) => resolveOverlayMode({
@@ -434,16 +433,12 @@ const wellTest: AnalyticalMethodDescriptor = {
             contexts: ['shared', 'per-result', 'pending', 'preview'],
         },
         {
-            // No 'pending' context, matching the pre-registry behavior: a queued
-            // well-test variant drew only its flowing-BHP reference, never the
-            // controlled oil rate. Recorded in TODO.md alongside the gas-oil
-            // cumulative asymmetry.
             panelKey: 'oil_rate',
             curveKey: 'oil-rate-reference',
             sharedLabel: 'Reference Solution Oil Rate',
             perCaseSuffix: ' Oil Rate',
             previewLabel: 'Analytical Oil Rate',
-            contexts: ['shared', 'per-result', 'preview'],
+            contexts: ALL_CONTEXTS,
         },
         {
             panelKey: 'pss_drawdown',

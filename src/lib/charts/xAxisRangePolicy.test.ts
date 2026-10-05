@@ -97,3 +97,13 @@ describe('xAxisRangePolicy', () => {
         expect(range).toEqual({ min: 0.0001, max: 0.0002 });
     });
 });
+it('does not round a real endpoint inwards and truncate the data', () => {
+    expect(resolveSharedXAxisRange({
+        allSeries: [[{ x: 0.49, y: 1 }, { x: 9.51, y: 2 }]],
+        xAxisMode: 'cumGas', policy: { mode: 'data-extent' },
+    })).toEqual({ min: 0.49, max: 9.51 });
+    expect(resolveSharedXAxisRange({
+        allSeries: [[{ x: 0, y: 1 }, { x: 10.1, y: 2 }]],
+        xAxisMode: 'time', policy: { mode: 'data-extent' },
+    })?.max).toBeGreaterThanOrEqual(10.1);
+});

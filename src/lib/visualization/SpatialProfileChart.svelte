@@ -22,6 +22,7 @@
     } from "@ressim/charts/chart-helpers";
     import {
         axisLength,
+        summarizeSpatialProfile,
         buildFloodFrontOverlay,
         buildSpatialProfile,
         buildSweepDiagonalOverlay,
@@ -134,6 +135,8 @@
             property,
         }),
     );
+
+    const summary = $derived(summarizeSpatialProfile(profile));
 
     const frontOverlay = $derived.by(() => {
         const injectedVolume = cumulativeInjectedVolume(rateHistory, simTime);
@@ -365,6 +368,13 @@
         <div style="position: relative; height: min(28vh, 240px); width: 100%;">
             <canvas bind:this={canvas}></canvas>
         </div>
+
+        {#each summary as entry (entry.key)}
+            <p class="mt-2 text-[11px] opacity-80">
+                {entry.label}: {entry.min.toFixed(3)}–{entry.max.toFixed(3)},
+                mean {entry.mean.toFixed(3)}{property === "pressure" ? " bar" : ""}.
+            </p>
+        {/each}
 
         {#if frontOverlay}
             <div class="mt-2 text-[11px] opacity-80">
