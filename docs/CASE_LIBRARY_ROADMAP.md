@@ -6,7 +6,7 @@ Date: 2026-07-02; Tier 5 + enabler-gap sections added 2026-07-07; **Tier 7 gap a
 
 The tier tables are a sourcing/admission inventory. They include delivered cases and unadmitted
 ideas; an idea is not an instruction to add physics. Current order is in ROADMAP.md, with
-validation triage (#58/#63) before expansion. Analytical admission is #19, field/well enablers #16,
+two-phase conservation investigation (#63) before expansion; #58's probe contracts are repaired. Analytical admission is #19, field/well enablers #16,
 schedule/physics admission #17, dataset/band work #18, and compositional integration/expansion
 #29/#52. The comparison roadmap maps G1–G8 to their owning issues. Open a case-specific issue when
 a proposal gains a consuming case, valid reference and measurable acceptance criteria.

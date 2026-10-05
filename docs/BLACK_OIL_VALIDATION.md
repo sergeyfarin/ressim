@@ -400,9 +400,9 @@ tables.
   `src/lib/workers/configureSimulator.test.ts`, through the worker's own setup function rather
   than a test replica of it.
 
-## 4a. Ignored depletion probes — reproduced, not yet classified (#58)
+## 4a. Depletion probe contracts — classified and gated (#58)
 
-Replayed 2026-10-05 on clean committed
+Historical failure replay, before the #58 contract repair, on 2026-10-05 at clean committed
 `d4bbdd72cd50be279e2d4bfb87c3bb0dd893b84a`:
 
 ```bash
@@ -413,13 +413,69 @@ Result: **0 passed, 2 failed, 866 filtered out**. The liberation probe reports
 `coarse=89.239559, fine=80.020419, rel_diff=0.1152`; the late-time Dietz probe reports
 `max_rel_diff=2.0087`. Both are ignored diagnostics outside normal solver gates. This refreshes
 the older `2ccf4d1` reproduction in [#58](https://github.com/sergeyfarin/ressim/issues/58);
-the Dietz value changes slightly, while the classification remains open.
+the Dietz value changed slightly, and classification was still open at that historical replay.
 
-These failures establish the probe outcomes, not their cause or the shipped scenario's error.
-Before fixing physics or widening a band, match the analytical/Flow model assumptions and
-reporting, and refine timestep independently of grid. #63's two-phase conservation question is
-separate; no causal attribution to it is established. A retained probe needs a valid bounded
-contract and an appropriate gate, or a documented retirement reason.
+The historical command above targets the retired probes and requires that revision; it is
+not a current gate. Their old assertions did not establish a shipped-scenario physics defect.
+
+**Classification.** The liberation probe demanded 3% pressure agreement between 1-day and
+half-day steps through a rapid phase transition, without first establishing a resolved pair.
+Successive refinement contracts strongly while each run closes its component accounting.
+The replacement measures contraction and retains the original pressure/Sg endpoint bands on
+the 0.25/0.125-day pair. Water/oil/gas balances use the existing transition contract's
+1e-6 / 5e-3 / 1e-3 relative bands against initial inventory, rather than merely comparing two
+potentially compensating balance errors.
+
+The Dietz probe used a fixed-BHP distributed-reservoir run, a lumped exponential tank history,
+surface rather than reservoir rate, and `exp(2*EulerGamma)` instead of Dietz's
+`exp(EulerGamma)`. Its interpolated corner shape-factor helper also had no admitted source.
+These are obsolete reference assumptions: the shipped `dep_pss` now teaches constant-rate
+pseudo-steady productivity, not that exponential-history contract. The replacement fixes the
+oracle to a centred-square constant-rate run, computes `J = q_reservoir / (p_average - p_flowing)`
+after the transient and before BHP limitation, and inverts the Dietz relation for C_A.
+The source/assumptions are those documented by `depletionAnalytical.ts::dietzProductivityIndex`
+and the shipped `dep_pss.test.ts` (Dake's semi-steady inflow equation, tabulated C_A = 30.8828).
+
+**Tolerance justification.** No benchmark band is widened. The invalid 200% oil-rate and 12%
+pressure bands are retired with the tank-history oracle. The new independent
+shape-factor contract uses the same 3% band as the shipped scenario's geometry tests. The
+liberation 3% endpoint bands remain, now accompanied by refinement contraction and independent
+phase balances.
+
+**Committed replay.** Clean `e798685f25d2c88a9277150c31496c8fcf4a9a5b`, 2026-10-05:
+
+```bash
+cargo test --offline --release --manifest-path src/lib/ressim/Cargo.toml --lib -- --exact tests::physics::depletion_liberation::physics_depletion_liberation_timestep_refinement_converges_and_conserves_components tests::physics::depletion_oil::physics_depletion_oil_dep_pss_constant_rate_recovers_dietz_shape_factor --nocapture
+```
+
+Both tests pass and are no longer ignored. The liberation endpoints at 5 days are:
+
+| Report step (days) | Pressure (bar) | Sg |
+|---|---|---|
+| 1 | 89.239558664083 | 0.075125408945 |
+| 0.5 | 80.020418960224 | 0.075511510289 |
+| 0.25 | 80.000000536314 | 0.075716996135 |
+| 0.125 | 80.000000000000 | 0.075799294564 |
+
+The adjacent pressure gaps shrink from about 9.22 bar to 0.0204 bar to 5.36e-7 bar; Sg gaps
+also contract. Maximum oil/gas relative accounting errors are 3.011e-8 / 2.458e-6. The
+constant-rate Dietz control has six admitted PSS samples over days 5–6, with maximum C_A
+relative error 0.005841 (0.5841%), within its existing scenario band.
+
+Both contracts are included automatically by `validate-solver-coverage.sh shared`'s
+`tests::physics::` filter, hence by `all` and PR CI. A focused debug replay ran the pair in
+about 8 seconds before admission, so they are bounded everyday gates rather than unignored
+long-horizon acceptance runs.
+
+Repair validation passed: `validate-solver-coverage.sh all` (47 gates), the Buckley–Leverett
+filter (4 tests), and `pnpm run validate:product` (999 tests passed, 15 existing skips, plus
+typecheck/lint/cycle checks, IMPES coverage and build). Benchmark signals and generated-page
+consistency also passed. The clean release replay above records the committed numerical evidence.
+
+**Verdict and limits.** Probe/reference-contract repair; no production solver, timestep,
+physics or frontend behavior changes. This proves the stated self-convergence, conservation
+and constant-rate productivity contracts, not full Flow trajectory parity or a general error
+bound for coarse steps. #63 remains a separate two-phase IMPES conservation investigation.
 
 ## 5. FIM repair F6 applicability table (2026-09-15)
 

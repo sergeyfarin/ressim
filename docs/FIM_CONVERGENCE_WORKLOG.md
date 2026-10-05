@@ -6344,3 +6344,29 @@ Flow twins).
 
 **Verdict: PROMOTED** (`FIM-RELPERM-002`). Re-sweep if the linear solver, damping or step
 controller changes.
+
+
+## 2026-10-05 — #58 / FIM-ORACLE-058: depletion probe contracts
+
+**Question.** Do the two ignored-probe failures justify a physics or solver-policy change?
+**Oracles.** Successive report-step refinement with initial-inventory plus integrated-production
+component closure; independent tabulated Dietz C_A under its constant-rate PSS assumptions.
+Geometry, physical inputs and production solver/controller behavior are held fixed.
+
+The old liberation pair was unresolved: a 1-day step need not agree within 3% with 0.5 days.
+The old Dietz fixture was fixed BHP, while the shipped scenario uses rate control; its
+exponential tank-history oracle also used the wrong Euler factor and surface-volume rate.
+Exploratory instrumentation was removed. Its fixed-BHP ladder was provisional, not a promoted
+trajectory baseline, and no Flow-parity verdict follows from it.
+
+The retained tests now measure contraction/conservation and constant-rate PSS shape factor,
+with existing transition bands and the scenario's 3% C_A band. They are bounded non-ignored
+tests in the existing shared physics filter. The final clean committed replay is
+`e798685f25d2c88a9277150c31496c8fcf4a9a5b`; exact command, endpoints, C_A error and scope limits are in
+BLACK_OIL_VALIDATION.md §4a.
+
+**Verdict: PROMOTED — PROBE CONTRACT REPAIR.** No production physics, Newton, timestep or
+linear routing change. This does not refute a hypothetical physics error outside the measured
+contracts. #63 remains independent. Reopen on a retained-contract regression or an admitted
+independent trajectory disagreement, not by resurrecting the unsupported two-point/history
+thresholds.

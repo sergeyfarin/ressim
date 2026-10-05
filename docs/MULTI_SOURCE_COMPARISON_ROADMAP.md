@@ -138,8 +138,9 @@ settings, fanned. Zero new data sourcing, directly previews the SPE11 message.
 
 ## 4. Suggested order
 
-1. Follow the validation/chart priorities in [ROADMAP.md](../ROADMAP.md), including #58/#63;
-   do not promote a Dietz exhibit while its model/probe validity is unresolved.
+1. Follow the validation/chart priorities in [ROADMAP.md](../ROADMAP.md), including #63.
+   #58 now gates constant-rate Dietz productivity; it does not validate a fixed-BHP exponential
+   history or admit a new Dietz exhibit without its own matched assumptions.
 2. Reuse existing paired solver variants, then add comparable work metrics (#70) with an
    admitted A1/B1 consuming case.
 3. Admit A2 and F2/F3 only after their analytical assumptions and references are established.
