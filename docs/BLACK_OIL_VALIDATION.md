@@ -531,6 +531,43 @@ The mandatory native matrix continues to run IMPES on the same deck. Optimizing 
 transport is deferred: correctness and interactive access are provided without loosening a gate.
 
 
+### Committed repair measurements
+
+The identical depletion audit command above was reproduced on clean `c6f3c0e`.
+At the default compressibilities and 0.125 d interval, oil production was 505.154239573426 Sm³
+and inventory removal 505.154239573574 Sm³; oil drift / initial oil was −5.89e-16 and water
+drift / initial water −1.24e-15. The high-compressibility probe closed at the same scale.
+
+All 57 native captures (19 decks × three solver paths) were reproduced on that commit with
+`CROSS_SOLVER_OUT=/tmp/ressim-63-after bash scripts/validate-cross-solver.sh --update --markdown`.
+The wrapper was interrupted during Flow execution by a tool-session reset; the completed clean
+native captures were compared using the previously completed, hash-matched Flow cache:
+`uv run --no-project --python /usr/bin/python3 python tools/opm_flow/compare_small_direct.py --ressim-dir /tmp/ressim-63-after/ressim --flow-dir /tmp/ressim-63-before/flow --json /tmp/ressim-63-after/report.json --inventory-check --markdown --scorecard opm/reference-decks/small-direct/scorecard.json --write-scorecard`.
+No solver warnings were raised. Generated independent inventory errors:
+
+| Case | IMPES water / initial | IMPES oil / produced | IMPES gas / scale |
+|---|---|---|---|
+| bo-1d-10 | 5.184e-14 | 4.983e-12 | 1.390e-14 |
+| bo-1d-40 | 1.273e-15 | 8.228e-12 | 3.707e-14 |
+| dep-pvt-al-marhoun | 1.930e-14 | 0.000e+00 | 1.774e-14 |
+| dep-pvt-correlation | 3.032e-14 | 0.000e+00 | 7.837e-14 |
+| dep-pvt-lab-report | 4.358e-14 | 0.000e+00 | 7.250e-13 |
+| dep-pvt-petrosky-farshad | 2.499e-14 | 0.000e+00 | 3.789e-13 |
+| gas-drive-20 | 1.855e-13 | 1.595e-12 | 9.758e-13 |
+| go-1d-50 | 1.633e-13 | 1.696e-12 | 8.160e-13 |
+| ow-1d-50-adverse | 1.856e-11 | 7.905e-11 | 0.000e+00 |
+| ow-1d-96 | 1.611e-10 | 2.445e-11 | 0.000e+00 |
+| ow-2d-12x12 | 3.218e-11 | 8.725e-12 | 0.000e+00 |
+| spe1-10x10x3 | 2.879e-14 | 4.743e-13 | 6.497e-13 |
+| spe1-case2-10x10x3 | 3.178e-15 | 2.984e-13 | 9.291e-13 |
+| sweep-areal | 4.583e-12 | 5.416e-13 | 0.000e+00 |
+| sweep-combined | 5.280e-14 | 1.248e-13 | 0.000e+00 |
+| sweep-crossflow | 7.482e-12 | 6.559e-13 | 0.000e+00 |
+| sweep-vertical | 3.773e-11 | 7.696e-12 | 0.000e+00 |
+| wf-capillary | 2.896e-11 | 5.740e-12 | 0.000e+00 |
+| wf-gravity-stability | 8.405e-12 | 1.952e-12 | 0.000e+00 |
+
+
 ## 5. FIM repair F6 applicability table (2026-09-15)
 
 Evidence base for the **FIM-REPAIR-READY** decision in

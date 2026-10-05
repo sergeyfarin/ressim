@@ -1,9 +1,9 @@
 {
   "$comment": "Written by compare_small_direct.py --write-scorecard; do not edit by hand. Bands are BANDS in that script. See opm/reference-decks/small-direct/README.md.",
   "provenance": {
-    "commit": "90bde50",
+    "commit": "c6f3c0e",
     "dirty": false,
-    "date": "2026-09-26",
+    "date": "2026-10-05",
     "flow": "flow 2026.04",
     "command": "bash scripts/validate-cross-solver.sh --update"
   },
@@ -28,7 +28,7 @@
             "newton": 84
           },
           "warnings": 0,
-          "wall_ms": 10.1
+          "wall_ms": 9.8
         },
         "dense": {
           "metrics": {
@@ -44,7 +44,7 @@
             "newton": 93
           },
           "warnings": 0,
-          "wall_ms": 9.6
+          "wall_ms": 9.0
         },
         "impes": {
           "metrics": {
@@ -97,7 +97,7 @@
             "newton": 89
           },
           "warnings": 0,
-          "wall_ms": 30.8
+          "wall_ms": 31.3
         },
         "dense": {
           "metrics": {
@@ -113,7 +113,7 @@
             "newton": 90
           },
           "warnings": 0,
-          "wall_ms": 43.2
+          "wall_ms": 42.1
         },
         "impes": {
           "metrics": {
@@ -128,7 +128,7 @@
             "substeps": 27
           },
           "warnings": 0,
-          "wall_ms": 16.2
+          "wall_ms": 16.8
         }
       },
       "pairs": {
@@ -166,7 +166,7 @@
             "newton": 1477
           },
           "warnings": 0,
-          "wall_ms": 805.4
+          "wall_ms": 803.2
         },
         "dense": {
           "metrics": {
@@ -182,7 +182,7 @@
             "newton": 1477
           },
           "warnings": 0,
-          "wall_ms": 1121.2
+          "wall_ms": 1123.1
         },
         "impes": {
           "metrics": {
@@ -197,7 +197,7 @@
             "substeps": 536
           },
           "warnings": 0,
-          "wall_ms": 409.4
+          "wall_ms": 409.2
         }
       },
       "pairs": {
@@ -235,7 +235,7 @@
             "newton": 1472
           },
           "warnings": 0,
-          "wall_ms": 754.6
+          "wall_ms": 777.1
         },
         "dense": {
           "metrics": {
@@ -251,7 +251,7 @@
             "newton": 1472
           },
           "warnings": 0,
-          "wall_ms": 1113.0
+          "wall_ms": 1079.7
         },
         "impes": {
           "metrics": {
@@ -266,7 +266,7 @@
             "substeps": 540
           },
           "warnings": 0,
-          "wall_ms": 408.6
+          "wall_ms": 421.6
         }
       },
       "pairs": {
@@ -304,7 +304,7 @@
             "newton": 1466
           },
           "warnings": 0,
-          "wall_ms": 728.4
+          "wall_ms": 765.7
         },
         "dense": {
           "metrics": {
@@ -320,7 +320,7 @@
             "newton": 1466
           },
           "warnings": 0,
-          "wall_ms": 1077.3
+          "wall_ms": 1062.3
         },
         "impes": {
           "metrics": {
@@ -335,7 +335,7 @@
             "substeps": 495
           },
           "warnings": 0,
-          "wall_ms": 356.7
+          "wall_ms": 359.6
         }
       },
       "pairs": {
@@ -373,7 +373,7 @@
             "newton": 1459
           },
           "warnings": 0,
-          "wall_ms": 752.3
+          "wall_ms": 766.8
         },
         "dense": {
           "metrics": {
@@ -389,7 +389,7 @@
             "newton": 1459
           },
           "warnings": 0,
-          "wall_ms": 1043.4
+          "wall_ms": 1056.8
         },
         "impes": {
           "metrics": {
@@ -404,7 +404,7 @@
             "substeps": 539
           },
           "warnings": 0,
-          "wall_ms": 417.8
+          "wall_ms": 407.5
         }
       },
       "pairs": {
@@ -442,7 +442,7 @@
             "newton": 200
           },
           "warnings": 0,
-          "wall_ms": 43.6
+          "wall_ms": 45.0
         },
         "dense": {
           "metrics": {
@@ -458,7 +458,7 @@
             "newton": 200
           },
           "warnings": 0,
-          "wall_ms": 44.1
+          "wall_ms": 42.3
         },
         "impes": {
           "metrics": {
@@ -473,7 +473,7 @@
             "substeps": 111
           },
           "warnings": 0,
-          "wall_ms": 111.1
+          "wall_ms": 109.7
         }
       },
       "pairs": {
@@ -512,7 +512,7 @@
             "newton": 486
           },
           "warnings": 0,
-          "wall_ms": 156.4
+          "wall_ms": 146.9
         },
         "dense": {
           "metrics": {
@@ -529,7 +529,7 @@
             "newton": 486
           },
           "warnings": 0,
-          "wall_ms": 269.6
+          "wall_ms": 265.8
         },
         "impes": {
           "metrics": {
@@ -545,7 +545,7 @@
             "substeps": 213
           },
           "warnings": 0,
-          "wall_ms": 101.2
+          "wall_ms": 102.6
         }
       },
       "pairs": {
@@ -583,7 +583,7 @@
             "newton": 48
           },
           "warnings": 0,
-          "wall_ms": 11.1
+          "wall_ms": 11.2
         },
         "dense": {
           "metrics": {
@@ -599,22 +599,22 @@
             "newton": 48
           },
           "warnings": 0,
-          "wall_ms": 26.6
+          "wall_ms": 24.2
         },
         "impes": {
           "metrics": {
-            "p": 6.1492897806640485,
-            "sw": 0.04001377006041365,
+            "p": 6.025718513364069,
+            "sw": 0.04048588590301365,
             "sg": 0.0,
-            "final.p": 1.297992167421853,
-            "final.sw": 0.03245743119562733,
+            "final.p": 1.296841885221852,
+            "final.sw": 0.03268689564098218,
             "final.sg": 0.0,
-            "cum.FOPT": 0.0045339844764203645,
-            "cum.FWIT": 0.000834481579725739,
+            "cum.FOPT": 0.0027062430671736647,
+            "cum.FWIT": 0.0028002836179548706,
             "substeps": 28
           },
           "warnings": 0,
-          "wall_ms": 3.4
+          "wall_ms": 8.9
         }
       },
       "pairs": {
@@ -626,8 +626,8 @@
         },
         "sparse_vs_impes": {
           "invariant": false,
-          "p": 6.148685354499975,
-          "sw": 0.04057126277440001,
+          "p": 6.025114087199995,
+          "sw": 0.04104337861700001,
           "sg": 0.0
         }
       }
@@ -653,7 +653,7 @@
             "newton": 377
           },
           "warnings": 0,
-          "wall_ms": 165.9
+          "wall_ms": 165.0
         },
         "dense": {
           "metrics": {
@@ -670,23 +670,23 @@
             "newton": 377
           },
           "warnings": 0,
-          "wall_ms": 972.3
+          "wall_ms": 884.6
         },
         "impes": {
           "metrics": {
-            "p": 7.514663712168726,
-            "sw": 0.1914929297342125,
+            "p": 7.657816536668747,
+            "sw": 0.1942343686989125,
             "sg": 0.0,
-            "final.p": 0.7180106516281057,
-            "final.sw": 0.008271465105214482,
+            "final.p": 0.6348626355031115,
+            "final.sw": 0.008071154279514547,
             "final.sg": 0.0,
-            "cum.FOPT": 0.006433925510253027,
-            "cum.FWPT": 0.04837843144512128,
-            "cum.FWIT": 0.0281732632078358,
-            "substeps": 631
+            "cum.FOPT": 0.008482633805461215,
+            "cum.FWPT": 0.047803200209798086,
+            "cum.FWIT": 0.026953331628347982,
+            "substeps": 632
           },
           "warnings": 0,
-          "wall_ms": 128.9
+          "wall_ms": 379.4
         }
       },
       "pairs": {
@@ -698,8 +698,8 @@
         },
         "sparse_vs_impes": {
           "invariant": false,
-          "p": 7.665236382399996,
-          "sw": 0.1926143455107,
+          "p": 7.808389206900017,
+          "sw": 0.1953557844754,
           "sg": 0.0
         }
       }
@@ -725,7 +725,7 @@
             "newton": 132
           },
           "warnings": 0,
-          "wall_ms": 180.8
+          "wall_ms": 180.5
         },
         "dense": {
           "metrics": {
@@ -742,23 +742,23 @@
             "newton": 132
           },
           "warnings": 0,
-          "wall_ms": 1107.1
+          "wall_ms": 1047.4
         },
         "impes": {
           "metrics": {
-            "p": 23.938019271325004,
-            "sw": 0.15421811240766836,
+            "p": 24.270387141225,
+            "sw": 0.1540807427484684,
             "sg": 0.0,
-            "final.p": 1.7333324036968634,
-            "final.sw": 0.020384987538655364,
+            "final.p": 1.648148976056234,
+            "final.sw": 0.02017587564019352,
             "final.sg": 0.0,
-            "cum.FOPT": 0.022532366510802905,
-            "cum.FWPT": 0.061632976947058334,
-            "cum.FWIT": 0.031830286338024136,
-            "substeps": 225
+            "cum.FOPT": 0.024583549284963927,
+            "cum.FWPT": 0.0595542772137829,
+            "cum.FWIT": 0.030809102456739092,
+            "substeps": 227
           },
           "warnings": 0,
-          "wall_ms": 147.8
+          "wall_ms": 450.8
         }
       },
       "pairs": {
@@ -770,8 +770,8 @@
         },
         "sparse_vs_impes": {
           "invariant": false,
-          "p": 23.934970340300026,
-          "sw": 0.15421146255829998,
+          "p": 24.267338210200023,
+          "sw": 0.1540740928991,
           "sg": 0.0
         }
       }
@@ -797,7 +797,7 @@
             "newton": 476
           },
           "warnings": 0,
-          "wall_ms": 3494.0
+          "wall_ms": 3346.6
         },
         "dense": {
           "metrics": {
@@ -814,7 +814,7 @@
             "newton": 476
           },
           "warnings": 0,
-          "wall_ms": 3262.1
+          "wall_ms": 3314.8
         },
         "impes": {
           "metrics": {
@@ -830,7 +830,7 @@
             "substeps": 207
           },
           "warnings": 0,
-          "wall_ms": 6206.7
+          "wall_ms": 5932.6
         }
       },
       "pairs": {
@@ -869,7 +869,7 @@
             "newton": 521
           },
           "warnings": 0,
-          "wall_ms": 3395.0
+          "wall_ms": 3403.9
         },
         "dense": {
           "metrics": {
@@ -886,7 +886,7 @@
             "newton": 521
           },
           "warnings": 0,
-          "wall_ms": 3473.3
+          "wall_ms": 3355.9
         },
         "impes": {
           "metrics": {
@@ -902,7 +902,7 @@
             "substeps": 376
           },
           "warnings": 0,
-          "wall_ms": 12687.9
+          "wall_ms": 12013.0
         }
       },
       "pairs": {
@@ -941,7 +941,7 @@
             "newton": 301
           },
           "warnings": 0,
-          "wall_ms": 1466.8
+          "wall_ms": 1407.8
         },
         "dense": {
           "metrics": {
@@ -958,23 +958,23 @@
             "newton": 301
           },
           "warnings": 0,
-          "wall_ms": 1467.6
+          "wall_ms": 1425.5
         },
         "impes": {
           "metrics": {
-            "p": 20.142361327226553,
-            "sw": 0.17275620650456303,
+            "p": 20.17116480132657,
+            "sw": 0.17437366787096303,
             "sg": 0.0,
-            "final.p": 1.4586217862843682,
-            "final.sw": 0.007195911089796003,
+            "final.p": 1.3820272845687782,
+            "final.sw": 0.007158031106595963,
             "final.sg": 0.0,
-            "cum.FOPT": 0.005289860258104274,
-            "cum.FWPT": 0.026188929361827838,
-            "cum.FWIT": 0.020188676066848692,
-            "substeps": 1791
+            "cum.FOPT": 0.007254871655798201,
+            "cum.FWPT": 0.02602140021795002,
+            "cum.FWIT": 0.019343511455341914,
+            "substeps": 1797
           },
           "warnings": 0,
-          "wall_ms": 4691.3
+          "wall_ms": 16122.0
         }
       },
       "pairs": {
@@ -986,8 +986,8 @@
         },
         "sparse_vs_impes": {
           "invariant": false,
-          "p": 20.121642257899993,
-          "sw": 0.17266774246419997,
+          "p": 20.15044573200001,
+          "sw": 0.17428520383059998,
           "sg": 0.0
         }
       }
@@ -1013,7 +1013,7 @@
             "newton": 346
           },
           "warnings": 0,
-          "wall_ms": 14271.9
+          "wall_ms": 13620.6
         },
         "dense": {
           "metrics": {
@@ -1030,23 +1030,23 @@
             "newton": 346
           },
           "warnings": 0,
-          "wall_ms": 14042.8
+          "wall_ms": 13549.5
         },
         "impes": {
           "metrics": {
-            "p": 28.0601084264797,
-            "sw": 0.2294556422958104,
+            "p": 27.95454577477969,
+            "sw": 0.22944494123381037,
             "sg": 0.0,
-            "final.p": 2.3164530869937607,
-            "final.sw": 0.08853785544873116,
+            "final.p": 2.2654901984593607,
+            "final.sw": 0.09060126056343115,
             "final.sg": 0.0,
-            "cum.FOPT": 0.004171414461347808,
-            "cum.FWPT": 0.013026212418960433,
-            "cum.FWIT": 0.012632750712956437,
-            "substeps": 2133
+            "cum.FOPT": 0.005687664400645935,
+            "cum.FWPT": 0.013467590337916118,
+            "cum.FWIT": 0.012128854555257303,
+            "substeps": 2134
           },
           "warnings": 0,
-          "wall_ms": 32128.5
+          "wall_ms": 258695.1
         }
       },
       "pairs": {
@@ -1058,8 +1058,8 @@
         },
         "sparse_vs_impes": {
           "invariant": false,
-          "p": 31.446004339900014,
-          "sw": 0.2380632329063,
+          "p": 31.340441688200002,
+          "sw": 0.23805253184429997,
           "sg": 0.0
         }
       }
@@ -1085,7 +1085,7 @@
             "newton": 1034
           },
           "warnings": 0,
-          "wall_ms": 7388.1
+          "wall_ms": 6990.4
         },
         "dense": {
           "metrics": {
@@ -1102,23 +1102,23 @@
             "newton": 1034
           },
           "warnings": 0,
-          "wall_ms": 7533.8
+          "wall_ms": 7010.2
         },
         "impes": {
           "metrics": {
-            "p": 4.415410423728133,
-            "sw": 0.11178059694771025,
+            "p": 4.4292476419281,
+            "sw": 0.11409418318431025,
             "sg": 0.0,
-            "final.p": 0.2866315417281271,
-            "final.sw": 0.012500692766320487,
+            "final.p": 0.20994295798436724,
+            "final.sw": 0.01224801080742055,
             "final.sg": 0.0,
-            "cum.FOPT": 0.001701124323768844,
-            "cum.FWPT": 0.015945686648060616,
-            "cum.FWIT": 0.009563974759963954,
+            "cum.FOPT": 0.003356622712375245,
+            "cum.FWPT": 0.016005823310165732,
+            "cum.FWIT": 0.008688437819280904,
             "substeps": 707
           },
           "warnings": 0,
-          "wall_ms": 528.5
+          "wall_ms": 1497.5
         }
       },
       "pairs": {
@@ -1130,8 +1130,8 @@
         },
         "sparse_vs_impes": {
           "invariant": false,
-          "p": 4.5446780931000035,
-          "sw": 0.11495512439689998,
+          "p": 4.558515311299971,
+          "sw": 0.11726871063349997,
           "sg": 0.0
         }
       }
@@ -1157,7 +1157,7 @@
             "newton": 967
           },
           "warnings": 0,
-          "wall_ms": 6915.4
+          "wall_ms": 6523.1
         },
         "dense": {
           "metrics": {
@@ -1174,23 +1174,23 @@
             "newton": 967
           },
           "warnings": 0,
-          "wall_ms": 6923.6
+          "wall_ms": 6568.8
         },
         "impes": {
           "metrics": {
-            "p": 4.262536436931271,
-            "sw": 0.09642654244667914,
+            "p": 4.4027868970312625,
+            "sw": 0.09946280787687914,
             "sg": 0.0,
-            "final.p": 0.35531511749374545,
-            "final.sw": 0.009737147587907335,
+            "final.p": 0.29793676889374865,
+            "final.sw": 0.009155219631107325,
             "final.sg": 0.0,
-            "cum.FOPT": 0.00177281659963383,
-            "cum.FWPT": 0.015295636627427202,
-            "cum.FWIT": 0.011458208772330778,
-            "substeps": 540
+            "cum.FOPT": 0.003773786034337675,
+            "cum.FWPT": 0.015128170671142473,
+            "cum.FWIT": 0.010352911055537302,
+            "substeps": 541
           },
           "warnings": 0,
-          "wall_ms": 406.8
+          "wall_ms": 1092.4
         }
       },
       "pairs": {
@@ -1202,8 +1202,8 @@
         },
         "sparse_vs_impes": {
           "invariant": false,
-          "p": 3.76945639180002,
-          "sw": 0.0973453830653,
+          "p": 3.9186471865999692,
+          "sw": 0.10038164849549999,
           "sg": 0.0
         }
       }
@@ -1229,7 +1229,7 @@
             "newton": 637
           },
           "warnings": 0,
-          "wall_ms": 307.9
+          "wall_ms": 293.8
         },
         "dense": {
           "metrics": {
@@ -1246,23 +1246,23 @@
             "newton": 637
           },
           "warnings": 0,
-          "wall_ms": 1518.2
+          "wall_ms": 1509.2
         },
         "impes": {
           "metrics": {
-            "p": 0.478542714671903,
-            "sw": 0.05003401330955759,
+            "p": 0.48667325191877353,
+            "sw": 0.051083245698834545,
             "sg": 0.0,
-            "final.p": 0.030070329146894892,
-            "final.sw": 0.004078339333383085,
+            "final.p": 0.029664268946874017,
+            "final.sw": 0.0038679914857830955,
             "final.sg": 0.0,
-            "cum.FOPT": 0.003052730833583402,
-            "cum.FWPT": 0.016625948730858917,
-            "cum.FWIT": 0.012704744508469928,
-            "substeps": 795
+            "cum.FOPT": 0.0032742768338943507,
+            "cum.FWPT": 0.01676066032773042,
+            "cum.FWIT": 0.012699191472608128,
+            "substeps": 785
           },
           "warnings": 0,
-          "wall_ms": 161.3
+          "wall_ms": 429.1
         }
       },
       "pairs": {
@@ -1274,8 +1274,8 @@
         },
         "sparse_vs_impes": {
           "invariant": false,
-          "p": 0.4756471935000377,
-          "sw": 0.04995546220960001,
+          "p": 0.4847040466000294,
+          "sw": 0.05100761852750002,
           "sg": 0.0
         }
       }
@@ -1301,7 +1301,7 @@
             "newton": 472
           },
           "warnings": 0,
-          "wall_ms": 149.3
+          "wall_ms": 149.8
         },
         "dense": {
           "metrics": {
@@ -1318,23 +1318,23 @@
             "newton": 471
           },
           "warnings": 0,
-          "wall_ms": 382.3
+          "wall_ms": 370.5
         },
         "impes": {
           "metrics": {
-            "p": 1.6712114407562524,
-            "sw": 0.3018948555969607,
+            "p": 1.6687429274562362,
+            "sw": 0.3009364335257607,
             "sg": 0.0,
-            "final.p": 0.03844705250781999,
-            "final.sw": 0.0058215569672411815,
+            "final.p": 0.038495061707806144,
+            "final.sw": 0.005835106360341236,
             "final.sg": 0.0,
-            "cum.FOPT": 0.0034429020876978623,
-            "cum.FWPT": 0.004459387823692357,
-            "cum.FWIT": 0.00027156851861484516,
+            "cum.FOPT": 0.0033341856272093586,
+            "cum.FWPT": 0.004277711091823654,
+            "cum.FWIT": 0.0002715677322149572,
             "substeps": 532
           },
           "warnings": 0,
-          "wall_ms": 108.5
+          "wall_ms": 246.3
         }
       },
       "pairs": {
@@ -1346,8 +1346,8 @@
         },
         "sparse_vs_impes": {
           "invariant": false,
-          "p": 1.66435259779999,
-          "sw": 0.299712272641,
+          "p": 1.6618840844999738,
+          "sw": 0.2987538505698,
           "sg": 0.0
         }
       }
