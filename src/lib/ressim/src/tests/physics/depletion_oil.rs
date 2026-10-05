@@ -408,3 +408,39 @@ fn physics_depletion_oil_dep_pss_constant_rate_recovers_dietz_shape_factor() {
         "Dietz constant-rate PSS: {pss_samples} samples, max C_A relative error={max_shape_error:.6}"
     );
 }
+
+#[test]
+#[ignore = "explicit #63 inventory audit: scalar-PVT storage ladder on both solvers"]
+fn physics_depletion_two_phase_inventory_audit() {
+    use super::fixtures::cumulative_component_production_sc;
+    for (cr, cw) in [(0.0, 0.0), (1e-6, 3e-6), (1e-4, 4.5e-5)] {
+        for fim in [false, true] {
+            for dt in [0.5, 0.125] {
+                let mut sim =
+                    make_closed_depletion_single_cell_sim_with_storage(1e-5, cw, cr, 100.0);
+                sim.set_initial_saturation(0.3);
+                sim.set_fim_enabled(fim);
+                let initial = total_component_inventory_sc_all_cells(&sim);
+                for _ in 0..(5.0 / dt) as usize {
+                    sim.step(dt);
+                    assert!(
+                        sim.last_solver_warning.is_empty(),
+                        "{}",
+                        sim.last_solver_warning
+                    );
+                }
+                let inventory = total_component_inventory_sc_all_cells(&sim);
+                let produced = cumulative_component_production_sc(&sim);
+                eprintln!(
+                    "AUDIT cr={cr} cw={cw} fim={fim} dt={dt} p={} Sw={} oil_error={} water_error={} oil_produced={} oil_removed={}",
+                    sim.pressure[0],
+                    sim.sat_water[0],
+                    (inventory.oil_sc + produced.oil_sc - initial.oil_sc) / initial.oil_sc,
+                    (inventory.water_sc + produced.water_sc - initial.water_sc) / initial.water_sc,
+                    produced.oil_sc,
+                    initial.oil_sc - inventory.oil_sc
+                );
+            }
+        }
+    }
+}

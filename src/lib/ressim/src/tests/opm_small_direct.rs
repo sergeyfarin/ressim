@@ -1159,6 +1159,19 @@ fn opm_small_direct_run_ressim() {
                 );
             }
         }
+        // Independent inventory measurements: reporting MB alone used a different two-phase
+        // volume convention before #63. Keep these separate from the trajectory scorecard.
+        let inventory = |sim: &ReservoirSimulator| {
+            let mut total = [0.0; 3];
+            for cell in 0..sim.nx * sim.ny * sim.nz {
+                let masses = sim.cell_masses(cell);
+                total[0] += masses.water_sc;
+                total[1] += masses.oil_sc;
+                total[2] += masses.total_gas_sc();
+            }
+            total
+        };
+        let initial_inventory = inventory(&sim);
         let started = Instant::now();
         let mut reports = Vec::new();
         // A warning is recorded, not asserted: the comparison is where a run is judged, and a
@@ -1230,7 +1243,7 @@ fn opm_small_direct_run_ressim() {
             "{{\"case\":\"{}\",\"solver\":\"{solver}\",\"backend\":\"{}\",\"run\":\"{id}\",\
              \"wall_ms\":{wall_ms:.3},\"injected\":\"{}\",\"warnings\":{},\
              \"history_columns\":[\"t\",\"qo\",\"qw\",\"qg\",\"qwi\"],\
-             \"history\":[{}],\"reports\":[{}]}}\n",
+             \"history\":[{}],\"reports\":[{}],\"inventory_columns\":[\"water\",\"oil\",\"gas\"],\"initial_inventory_sc\":{},\"final_inventory_sc\":{}}}\n",
             case.key,
             if fim { backend.as_str() } else { "" },
             if sim.three_phase_mode && matches!(sim.injected_fluid, crate::InjectedFluid::Gas) {
@@ -1240,7 +1253,9 @@ fn opm_small_direct_run_ressim() {
             },
             serde_json::to_string(&warnings).expect("warnings serialize"),
             history.join(","),
-            reports.join(",")
+            reports.join(","),
+            json_array(&initial_inventory),
+            json_array(&inventory(&sim)),
         );
         std::fs::write(
             std::path::Path::new(&out).join(format!("{}.{id}.json", case.key)),
