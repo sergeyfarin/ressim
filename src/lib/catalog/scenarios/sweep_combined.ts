@@ -56,8 +56,8 @@ export const sweep_combined: Scenario = {
         requiresThreePhaseMode: false,
     },
     solverPolicy: {
-        defaultSolver: 'impes',
-        rationale: 'IMPES is the interactive default for the larger combined-sweep grid.',
+        defaultSolver: 'fim',
+        rationale: 'FIM avoids the small transport steps required by conservative IMPES on this layered grid.',
     },
     params: {
         // Fluid — M = 1 (favorable), the base case both dimensions run as
@@ -122,7 +122,7 @@ export const sweep_combined: Scenario = {
         well_radius: 0.1,
         well_skin: 0,
         // Numerics
-        fimEnabled: false,
+        fimEnabled: true,
         // Each run goes to about 3 PVI, past the chart's 2.5 PVI window. The
         // variants inject at very different rates (measured 2026-09-25: 2.5 PVI
         // at 296 d here, at 796 d for the unfavorable uniform case), so each

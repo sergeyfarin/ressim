@@ -444,3 +444,108 @@ fn physics_depletion_two_phase_inventory_audit() {
         }
     }
 }
+
+/// #63: compressive storage must not appear as produced oil or lost water.
+#[test]
+fn physics_depletion_two_phase_impes_conserves_compressible_components() {
+    use super::fixtures::cumulative_component_production_sc;
+    for (cr, cw) in [
+        (0.0, 0.0),
+        (1e-6, 0.0),
+        (0.0, 3e-6),
+        (1e-6, 3e-6),
+        (1e-4, 4.5e-5),
+    ] {
+        for initial_sw in [0.1, 0.3] {
+            for dt in [0.5, 0.125] {
+                let mut sim =
+                    make_closed_depletion_single_cell_sim_with_storage(1e-5, cw, cr, 100.0);
+                sim.set_fim_enabled(false);
+                sim.set_initial_saturation(initial_sw);
+                let initial = total_component_inventory_sc_all_cells(&sim);
+                for _ in 0..(5.0 / dt) as usize {
+                    sim.step(dt);
+                    assert!(
+                        sim.last_solver_warning.is_empty(),
+                        "{}",
+                        sim.last_solver_warning
+                    );
+                    assert!((sim.sat_water[0] + sim.sat_oil[0] - 1.0).abs() <= 1e-7);
+                }
+                let final_inventory = total_component_inventory_sc_all_cells(&sim);
+                let produced = cumulative_component_production_sc(&sim);
+                let water_error =
+                    (final_inventory.water_sc + produced.water_sc - initial.water_sc).abs();
+                let oil_error = (final_inventory.oil_sc + produced.oil_sc - initial.oil_sc).abs();
+                assert!(
+                    water_error <= 1e-9 * initial.water_sc,
+                    "cr={cr} cw={cw} Sw={initial_sw} dt={dt}: water error {water_error}"
+                );
+                assert!(
+                    oil_error <= 1e-9 * produced.oil_sc,
+                    "cr={cr} cw={cw} Sw={initial_sw} dt={dt}: oil error {oil_error}"
+                );
+                let last = sim.rate_history.last().expect("depletion report");
+                assert!(last.material_balance_error_m3 <= 1e-9 * initial.water_sc);
+                assert!(last.material_balance_error_oil_m3 <= 1e-9 * produced.oil_sc);
+            }
+        }
+    }
+}
+
+/// #63: internal water/oil fluxes conserve each component without any well accounting.
+#[test]
+fn physics_depletion_two_phase_impes_closed_redistribution_conserves_components() {
+    let mut sim = crate::ReservoirSimulator::new(2, 1, 1, 0.2);
+    sim.set_fim_enabled(false);
+    sim.set_cell_dimensions(20.0, 20.0, 10.0).unwrap();
+    sim.set_permeability_per_layer(vec![100.0], vec![100.0], vec![10.0])
+        .unwrap();
+    sim.set_initial_pressure(300.0);
+    sim.set_initial_saturation(0.3);
+    sim.set_fluid_compressibilities(1e-5, 4.5e-5).unwrap();
+    sim.set_rock_properties(1e-4, 0.2, 1.0, 1.0).unwrap();
+    sim.set_capillary_params(0.0, 2.0).unwrap();
+    sim.set_gravity_enabled(false);
+    sim.pressure[0] = 325.0;
+    sim.pressure[1] = 275.0;
+    let initial = total_component_inventory_sc_all_cells(&sim);
+    for _ in 0..10 {
+        sim.step(0.1);
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "{}",
+            sim.last_solver_warning
+        );
+    }
+    let final_inventory = total_component_inventory_sc_all_cells(&sim);
+    assert!((sim.pressure[0] - sim.pressure[1]).abs() < 1.0);
+    assert!((final_inventory.water_sc / initial.water_sc - 1.0).abs() <= 1e-10);
+    assert!((final_inventory.oil_sc / initial.oil_sc - 1.0).abs() <= 1e-10);
+}
+
+/// Two-phase oil tables prescribe Bo(p); their Rs metadata must not select a black-oil branch.
+#[test]
+fn physics_depletion_two_phase_table_inventory_uses_declared_oil_fvf() {
+    use crate::pvt::{PvtRow, PvtTable};
+    let mut sim = crate::ReservoirSimulator::new(1, 1, 1, 0.2);
+    sim.set_cell_dimensions(10.0, 10.0, 10.0).unwrap();
+    sim.set_initial_pressure(200.0);
+    sim.set_initial_saturation(0.3);
+    sim.pvt_table = Some(PvtTable::new(
+        [(100.0, 5.0, 1.2), (200.0, 10.0, 1.1), (300.0, 15.0, 1.0)]
+            .into_iter()
+            .map(|(p_bar, rs_m3m3, bo_m3m3)| PvtRow {
+                p_bar,
+                rs_m3m3,
+                bo_m3m3,
+                mu_o_cp: 1.0,
+                bg_m3m3: 0.01,
+                mu_g_cp: 0.02,
+            })
+            .collect(),
+        1e-5,
+    ));
+    let inventory = total_component_inventory_sc_all_cells(&sim);
+    assert!((inventory.oil_sc - 200.0 * 0.7 / 1.1).abs() <= 1e-10);
+}

@@ -155,6 +155,27 @@ def ressim_convergence(run: dict) -> dict:
     return {k: total(k) for k in ("substeps", "newton", "retries", "retry_newton")}
 
 
+def inventory_relative_error(run: dict, cum: dict) -> dict | None:
+    """Independent surface inventory plus production minus injection (#63).
+
+    Normalize oil by production, water by initial inventory and gas by its
+    largest inventory/throughput scale. Older records lack inventory capture.
+    """
+    if "initial_inventory_sc" not in run or "final_inventory_sc" not in run:
+        return None
+    initial = np.array(run["initial_inventory_sc"])
+    final = np.array(run["final_inventory_sc"])
+    produced = np.array([cum["FWPT"], cum["FOPT"], cum["FGPT"]])
+    injected = np.array([cum.get("FWIT", 0.0), 0.0, cum.get("FGIT", 0.0)])
+    scale = np.array([
+        max(abs(initial[0]), 1.0),
+        max(abs(produced[1]), 1.0),
+        max(abs(initial[2]), abs(produced[2]), abs(injected[2]), 1.0),
+    ])
+    error = np.abs(final + produced - injected - initial) / scale
+    return dict(zip(("water", "oil", "gas"), map(float, error)))
+
+
 def field_error(a: list[dict], b: list[dict]) -> dict:
     """Worst cell difference over all report steps, and at the final one."""
     worst = {"p": 0.0, "sw": 0.0, "sg": 0.0}
@@ -193,6 +214,7 @@ def compare_case(case: str, args: argparse.Namespace) -> dict:
             "conv": ressim_convergence(run),
             "wall_ms": run["wall_ms"],
             "warnings": run.get("warnings", []),
+            "inventory_relative_error": inventory_relative_error(run, cum),
             "vs_flow": field_error(fields, flow["fields"]),
             # A cumulative below 0.1% of the case's largest is a trace volume (immobile
             # connate water, pre-breakthrough water): a percentage of it means nothing. Oil is
@@ -363,6 +385,8 @@ def main() -> int:
     parser.add_argument("--case", action="append")
     parser.add_argument("--json", type=Path)
     parser.add_argument("--markdown", action="store_true", help="print tables ready for a README")
+    parser.add_argument("--inventory-check", action="store_true",
+                        help="require independent IMPES component accounting to close within 1e-8")
     parser.add_argument("--deck-dir", type=Path, default=DECKS,
                         help="decks written with OPM_SMALL_REPORT_DT, for a report-step ladder")
     parser.add_argument("--scorecard", type=Path)
@@ -382,6 +406,33 @@ def main() -> int:
         print_text(report)
     if args.json:
         args.json.write_text(json.dumps(report, indent=2) + "\n")
+
+    if args.inventory_check:
+        failures = []
+        checked = 0
+        if args.markdown:
+            print("\n| Case | IMPES water / initial | IMPES oil / produced | IMPES gas / scale |")
+            print("|---|---|---|---|")
+        for case, entry in report.items():
+            for run_id, run in entry["runs"].items():
+                if run["solver"] != "impes":
+                    continue
+                checked += 1
+                error = run["inventory_relative_error"]
+                if error is None:
+                    failures.append(f"{case}/{run_id}: missing independent inventory capture")
+                    continue
+                if args.markdown:
+                    print(f"| {case} | {error['water']:.3e} | {error['oil']:.3e} | {error['gas']:.3e} |")
+                for phase, value in error.items():
+                    if not np.isfinite(value) or value > 1e-8:
+                        failures.append(f"{case}/{run_id}: {phase} inventory error {value:.3e}")
+        if checked == 0:
+            failures.append("no IMPES run was checked")
+        if failures:
+            print("\nInventory check: FAILED\n" + "\n".join(failures))
+            return 1
+        print("\nInventory check: OK")
 
     if args.write_scorecard:
         if args.case:

@@ -1,11 +1,13 @@
-//! Three-phase IMPES mass closure: component masses in, saturations and fluid volume out.
+//! IMPES component mass closure: component masses in, saturations and fluid volume out.
 //!
+//! Two-phase IMPES transports surface water and oil and closes their volume constraint.
 //! Three-phase IMPES transports all four black-oil masses (water, stock-tank oil, free gas,
 //! dissolved gas) as surface volumes and recovers the cell state from them with [`flash_cell`].
 //! Nothing is a residual, so every component is conserved by construction. The only thing left
 //! for the pressure solve to satisfy is the volume constraint `V(p, N) = Vp(p)`. Before #37 oil
 //! was the residual `So = 1 − Sw − Sg`, and any mismatch between the pressure equation's storage
-//! term and this closure was booked silently as oil.
+//! term and this closure was booked silently as oil. #63 extends the conservative closure
+//! to two-phase mode, using its standalone oil FVF rather than a black-oil Rs branch.
 //!
 //! [`flash_cell`]: ReservoirSimulator::flash_cell
 
@@ -58,11 +60,7 @@ impl ReservoirSimulator {
     }
 
     fn oil_fvf_at(&self, pressure_bar: f64, rs: f64) -> f64 {
-        match &self.pvt_table {
-            Some(table) => table.interpolate_oil(pressure_bar, rs).0,
-            None => self.base_oil_fvf_generic(pressure_bar),
-        }
-        .max(1e-9)
+        self.get_b_o_for_rs(pressure_bar, rs).max(1e-9)
     }
 
     /// Component masses of cell `id` in its current state.
@@ -99,6 +97,18 @@ impl ReservoirSimulator {
     ) -> CellFlash {
         let pore_volume_m3 = self.pore_volume_at_pressure_m3(id, pressure_bar).max(1e-12);
         let oil_sc = masses.oil_sc.max(0.0);
+        if !self.three_phase_mode {
+            let water_volume = masses.water_sc.max(0.0) * self.water_fvf(pressure_bar);
+            let oil_volume = oil_sc * self.oil_fvf_at(pressure_bar, 0.0);
+            return CellFlash {
+                sw: water_volume / pore_volume_m3,
+                so: oil_volume / pore_volume_m3,
+                sg: 0.0,
+                rs: 0.0,
+                fluid_volume_m3: water_volume + oil_volume,
+                pore_volume_m3,
+            };
+        }
         let free_gas_sc = masses.free_gas_sc.max(0.0);
         let dissolved_gas_sc = masses.dissolved_gas_sc.max(0.0);
 

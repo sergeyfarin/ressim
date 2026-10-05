@@ -32,8 +32,13 @@ type VariantRun = {
 };
 
 /** Runs one variant of the column against the wasm core. */
-function runVariant(dimensionKey: string, variantKey: string): VariantRun {
-    const params = getScenarioWithVariantParams('wf_numerics', dimensionKey, variantKey);
+function runVariant(dimensionKey: string, variantKey: string, refinement = 1): VariantRun {
+    const params = { ...getScenarioWithVariantParams('wf_numerics', dimensionKey, variantKey) };
+    if (refinement > 1) {
+        params.nx = Number(params.nx) * refinement;
+        params.cellDx = Number(params.cellDx) / refinement;
+        params.producerI = Number(params.nx) - 1;
+    }
     const nx = Number(params.nx);
     const ny = Number(params.ny);
     const nz = Number(params.nz);
@@ -85,23 +90,51 @@ function runVariant(dimensionKey: string, variantKey: string): VariantRun {
     let cumulativeInjection = 0;
     let breakthroughPvi = Number.NaN;
     let recoveryAtOnePvi = 0;
+    let previousTime = 0;
+    let historyCount = 0;
     for (let step = 0; step < Number(params.steps); step += 1) {
         sim.step(dt);
-        const point = sim.getRateHistory().at(-1) as Record<string, number> | undefined;
-        const oilRate = Math.abs(Number(point?.total_production_oil ?? 0));
-        const liquidRate = Math.abs(Number(point?.total_production_liquid ?? 0));
-        const waterRate = Math.max(0, liquidRate - oilRate);
-        cumulativeOil += oilRate * dt;
-        cumulativeInjection += Math.abs(Number(point?.total_injection_reservoir ?? 0)) * dt;
-        const pvi = cumulativeInjection / poreVolume;
-        if (!Number.isFinite(breakthroughPvi) && liquidRate > 0 && waterRate / liquidRate > 0.01) {
-            breakthroughPvi = pvi;
+        // Rates describe accepted substeps, not an average over the requested report step.
+        // Integrating only the last rate biases recovery and hides front arrival (#63).
+        const history = sim.getRateHistory() as Array<Record<string, number>>;
+        for (const point of history.slice(historyCount)) {
+            const acceptedDt = Number(point.time) - previousTime;
+            previousTime = Number(point.time);
+            const oilRate = Math.abs(Number(point.total_production_oil));
+            const liquidRate = Math.abs(Number(point.total_production_liquid));
+            const waterRate = Math.max(0, liquidRate - oilRate);
+            const previousInjection = cumulativeInjection;
+            const previousOil = cumulativeOil;
+            cumulativeOil += oilRate * acceptedDt;
+            cumulativeInjection += Math.abs(Number(point.total_injection_reservoir)) * acceptedDt;
+            const pvi = cumulativeInjection / poreVolume;
+            if (!Number.isFinite(breakthroughPvi) && liquidRate > 0 && waterRate / liquidRate > 0.01) {
+                breakthroughPvi = pvi;
+            }
+            if (recoveryAtOnePvi === 0 && pvi >= 1) {
+                const fraction = (poreVolume - previousInjection) / (cumulativeInjection - previousInjection);
+                recoveryAtOnePvi = (previousOil + fraction * (cumulativeOil - previousOil)) / oilInPlace;
+            }
         }
-        if (recoveryAtOnePvi === 0 && pvi >= 1) {
-            recoveryAtOnePvi = cumulativeOil / oilInPlace;
-        }
+        historyCount = history.length;
     }
     const warning = sim.getLastSolverWarning();
+    if (!params.fimEnabled) {
+        // Independent scalar-PVT inventory oracle: this case has no PVT table.
+        // IMPES closes inventories by construction; FIM has separate Newton-residual contracts.
+        const pressure = sim.getPressures();
+        const oilSaturation = sim.getSatOil();
+        const cellPoreVolume = poreVolume / pressure.length;
+        let finalOilInPlace = 0;
+        for (let cell = 0; cell < pressure.length; cell += 1) {
+            const dp = pressure[cell] - Number(params.initialPressure);
+            const poreVolumeAtPressure = cellPoreVolume * Math.exp(Number(params.rock_compressibility) * dp);
+            const bo = Number(params.volume_expansion_o) * Math.exp(-Number(params.c_o) * dp);
+            finalOilInPlace += oilSaturation[cell] * poreVolumeAtPressure / bo;
+        }
+        expect(Math.abs(finalOilInPlace + cumulativeOil - oilInPlace) / Math.max(cumulativeOil, 1))
+            .toBeLessThan(1e-8);
+    }
     sim.free();
     return { breakthroughPvi, recoveryAtOnePvi, warning };
 }
@@ -172,8 +205,13 @@ describe('wf_numerics measured behaviour', () => {
             expect(ratio, `error ratio at rung ${i}`).toBeGreaterThan(1.7);
             expect(ratio, `error ratio at rung ${i}`).toBeLessThan(2.5);
         }
-        // The finest grid lands on the analytical answer to within one report step.
-        expect(errors.at(-1)!).toBeLessThan(0.005);
+        // #63: conserving compressible component inventories moves the coefficient of
+        // grid smearing. Keep the same accuracy band, and verify the asymptotic limit
+        // with one further halving rather than widening it to fit the offered 400-cell grid.
+        const refined = runVariant('grid_refinement', 'grid_400', 2);
+        expect(refined.warning).toBe('');
+        expect(refined.breakthroughPvi).toBeGreaterThan(ladder.at(-1)!.breakthroughPvi);
+        expect(bl.breakthroughPvi - refined.breakthroughPvi).toBeLessThan(0.005);
     }, 300_000);
 
     it('shows the stability limiter, not the report step, as the load-bearing control', async () => {
@@ -198,15 +236,12 @@ describe('wf_numerics measured behaviour', () => {
         const half = runVariant('time_truncation', 'dt_limiter_half');
         const off = runVariant('time_truncation', 'dt_limiter_off');
         expect(half.recoveryAtOnePvi).toBeGreaterThan(bl.recoveryAtOnePvi);
-        expect(off.recoveryAtOnePvi).toBeGreaterThan(mobileFraction);
-        // It used to happen silently; since 2026-08-01 the run says so. The
-        // detector is material balance, not the saturations — transport clamps
-        // those at the end points, so they look perfectly physical.
-        expect(off.warning).toContain('Material balance');
-        // The half-relaxed run is wrong without being mass-creating: it lands
-        // above the analytical curve, but volumes still balance, so it does not
-        // warn and should not. Being above an exact solution is a discretization
-        // error; inventing barrels is a different failure.
+        // The component closure no longer books storage mismatch as fictitious oil.
+        // Relaxed limits can still overpredict recovery through numerical error, but
+        // neither run may exceed the mobile-oil bound or falsely report lost balance.
+        expect(off.recoveryAtOnePvi).toBeGreaterThan(half.recoveryAtOnePvi);
+        expect(off.recoveryAtOnePvi).toBeLessThan(mobileFraction);
+        expect(off.warning).toBe('');
         expect(half.warning).toBe('');
     }, 300_000);
 
@@ -226,10 +261,9 @@ describe('wf_numerics measured behaviour', () => {
 
         // The steep-curve run is converged against its *own* analytical
         // solution; the coarse run is in error against the shared one.
-        // Recovery is surface oil over oil in place at Bo = b_o, which holds only if the engine's
-        // Bo equals b_o at the initial pressure. Until #36 it was 0.3% lower, and every recovery
-        // here read 0.3% high. The unbiased gaps are 0.0053 (steep) and 0.0057 (fine), against
-        // the >0.02 separation that is the actual claim, so 0.0075 keeps a factor of three.
+        // Recovery uses surface oil over the initial stock-tank oil inventory.
+        // Both fine-grid controls must approach their own analytical solution,
+        // with a substantially smaller gap than the coarse-grid separation.
         const steepBl = analyticalFor(3.5);
         expect(Math.abs(steep.recoveryAtOnePvi - steepBl.recoveryAtOnePvi)).toBeLessThan(0.0075);
         const baseBl = analyticalFor(2);

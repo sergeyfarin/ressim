@@ -131,11 +131,13 @@ The #11 fix left IMPES needing a pressure cap of a few bar through the bubble po
 booked storage errors as oil. #37 made three-phase IMPES conservative, and the fixture is back on
 the 75 bar default, 0.04 bar from Flow.
 
-**Still open, deliberately; now owned by [#63](https://github.com/sergeyfarin/ressim/issues/63):** two-phase IMPES keeps oil as the residual `1 − Sw` and moves water
-by volume on a fixed pore volume, so with `c_r` or `c_w` > 0 it books rock and water expansion
-as oil. It was left alone because every shipped IMPES scenario is two-phase and its
-Buckley–Leverett benchmarks and binding matrix are validated as they stand. The three-phase
-closure (`impes/closure.rs`) is the pattern to reuse if it is taken up.
+**Two-phase follow-up repaired by [#63](https://github.com/sergeyfarin/ressim/issues/63).**
+Water and oil are transported as surface components, with saturation recovered against
+pressure-dependent pore volume and FVF. The old residual-oil closure is removed. Independent
+inventory gates cover compressible depletion, closed redistribution and all small-direct IMPES
+cases. Baseline impact, matched Flow comparisons and timestep refinement are recorded in
+`BLACK_OIL_VALIDATION.md` §4b. The combined layered sweep uses FIM for interactive runtime;
+conservative IMPES remains a mandatory native reference path.
 
 ## 9. Cross-solver harness covers the small-direct black-oil decks only (2026-09-25, #22)
 

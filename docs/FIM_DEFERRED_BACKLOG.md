@@ -10,6 +10,7 @@ inject solver parameters or sensitivities.
 - Gas and black-oil scenarios default to FIM: `gas_injection`, `gas_drive`, `spe1_gas_injection`,
   `dep_gas_pz` and `dep_pvt` (offered since #26). `wf_capillary` also defaults to FIM, because FIM couples
   the capillary saturation gradient into the nonlinear solve.
+- `sweep_combined` also defaults to FIM: conservative IMPES requires many small transport steps on its layered grid (#63). The native matrix still gates both solvers.
 - The other oil/water scenarios default to IMPES and do not carry a generic solver sensitivity.
 - `wf_numerics`' `solver_formulation` dimension is the single public formulation comparison. It
   holds the 1D waterflood fixed and varies only `fimEnabled` and the report timestep (1 d and

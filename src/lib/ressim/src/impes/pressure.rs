@@ -10,7 +10,7 @@ use crate::{InjectedFluid, ReservoirSimulator};
 /// Conversion factor from mD·m²/(m·cP) to m³/day/bar.
 const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
-/// Newton iterations allowed for the three-phase volume balance before the substep is retried
+/// Newton iterations allowed for the IMPES component volume balance before the substep is retried
 /// at a smaller dt.
 const MAX_VOLUME_BALANCE_ITERATIONS: usize = 20;
 /// Converged when every cell's volume residual is worth less than this much pressure [bar],
@@ -41,10 +41,9 @@ const RS_CHANGE_REFERENCE_FLOOR_M3M3: f64 = 1.0;
 /// Per-cell component changes over one substep, fluxes and wells included.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct TransportDeltas {
-    /// Water [reservoir m³]. The two-phase path transports water by volume, and both paths use
-    /// it for the saturation-change timestep limit.
+    /// Water [reservoir m³], used for the saturation-change timestep limit.
     pub(crate) water_m3: Vec<f64>,
-    /// Water [Sm³]; the three-phase path conserves this.
+    /// Water [Sm³]; both formulations conserve this.
     pub(crate) water_sc: Vec<f64>,
     pub(crate) oil_sc: Vec<f64>,
     pub(crate) free_gas_sc: Vec<f64>,
@@ -82,7 +81,7 @@ pub(crate) struct PressureStep {
     /// The part of `stable_dt_factor` that scales with dt: the saturation, well-throughput,
     /// dissolved-gas, pressure and rate limits, without the fixed halving on a control-mode switch.
     pub(crate) change_factor: f64,
-    /// Every linear solve converged and, in three-phase mode, so did the volume balance.
+    /// Every linear solve and the component volume balance converged.
     pub(crate) converged: bool,
     pub(crate) linear_iterations: usize,
 }
@@ -322,29 +321,22 @@ impl ReservoirSimulator {
             x0 = solution.clone();
         }
         let well_controls = well_system.step_controls(&well_controls);
-        let cell_solution = DVector::from_iterator(n_cells, solution.iter().take(n_cells).copied());
-
-        let (p_new, deltas, well_controls, volume_balance_converged) = if self.three_phase_mode {
-            let (ext_rows, ext_cols, ext_vals, _, _) = &operator;
-            self.iterate_volume_balance(
-                solution,
-                &mut well_system,
-                &well_controls,
-                dt_days,
-                PressureOperator {
-                    rows: ext_rows,
-                    cols: ext_cols,
-                    vals: ext_vals,
-                    diag_positions: &diag_positions,
-                    accumulation: &accumulation,
-                },
-                &mut linear_converged,
-                &mut linear_iterations,
-            )
-        } else {
-            let deltas = self.transport_deltas(&cell_solution, &well_controls, dt_days);
-            (cell_solution, deltas, well_controls, true)
-        };
+        let (ext_rows, ext_cols, ext_vals, _, _) = &operator;
+        let (p_new, deltas, well_controls, volume_balance_converged) = self.iterate_volume_balance(
+            solution,
+            &mut well_system,
+            &well_controls,
+            dt_days,
+            PressureOperator {
+                rows: ext_rows,
+                cols: ext_cols,
+                vals: ext_vals,
+                diag_positions: &diag_positions,
+                accumulation: &accumulation,
+            },
+            &mut linear_converged,
+            &mut linear_iterations,
+        );
         let mut max_sat_change = 0.0;
 
         for idx in 0..n_cells {
@@ -593,6 +585,34 @@ impl ReservoirSimulator {
                         let dv_water_sc = dv_water * self.water_inverse_fvf(p_new[up_w]);
                         deltas.water_sc[id] -= dv_water_sc;
                         deltas.water_sc[nid] += dv_water_sc;
+                        if !self.three_phase_mode {
+                            // Two-phase oil has the same explicit upwind mobility as the
+                            // pressure operator, but its own potential (water includes Pc).
+                            let grav_o_old = self.gravity_head_bar(
+                                depth_i,
+                                depth_j,
+                                self.interface_density_barrier(
+                                    self.get_rho_o(self.pressure[id]),
+                                    self.get_rho_o(self.pressure[nid]),
+                                ),
+                            );
+                            let grav_o_new = self.gravity_head_bar(
+                                depth_i,
+                                depth_j,
+                                self.interface_density_barrier(
+                                    self.get_rho_o(p_new[id]),
+                                    self.get_rho_o(p_new[nid]),
+                                ),
+                            );
+                            let dphi_o_old = self.pressure[id] - self.pressure[nid] - grav_o_old;
+                            let dphi_o = p_new[id] - p_new[nid] - grav_o_new;
+                            let up_o = if dphi_o_old >= 0.0 { id } else { nid };
+                            let (_, lam_o) = self.phase_mobilities(up_o);
+                            let dv_oil_sc = geom_t * lam_o * dphi_o * dt_days
+                                / self.get_b_o_cell(up_o, p_new[up_o]).max(1e-9);
+                            deltas.oil_sc[id] -= dv_oil_sc;
+                            deltas.oil_sc[nid] += dv_oil_sc;
+                        }
                     }
                 }
             }
@@ -720,6 +740,15 @@ impl ReservoirSimulator {
                     self.frac_flow_water(id)
                 };
                 deltas.water_m3[id] -= q_m3 * fw;
+                deltas.water_sc[id] -= q_m3 * fw * self.water_inverse_fvf(p_new[id]);
+                if !w.injector {
+                    let producer = self.producer_control_state_from_resolved_control(
+                        w,
+                        control,
+                        &self.pressure,
+                    );
+                    deltas.oil_sc[id] -= q_m3 * (1.0 - fw) / producer.oil_fvf.max(1e-9);
+                }
                 continue;
             }
             // Withdrawals use exactly the conversions `record_step_report` applies, so the
@@ -750,7 +779,7 @@ impl ReservoirSimulator {
         deltas
     }
 
-    /// Drive the three-phase volume balance `V(p, N(p)) = Vp(p)` to convergence, starting from
+    /// Drive the component volume balance `V(p, N(p)) = Vp(p)` to convergence, starting from
     /// the linear pressure solve `p_initial`.
     ///
     /// `N(p)` is each cell's masses after this substep's transport at pressure `p`, and `V` is

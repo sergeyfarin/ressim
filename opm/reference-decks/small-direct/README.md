@@ -51,6 +51,13 @@ FWCT without) and writes a text summary (RUNSUM/SEPARATE). The artifact
 records the deck's SHA-256, so regenerating a deck without re-running Flow fails
 `opmReferenceWiring.test.ts`.
 
+Two-phase conservation was repaired in #63. Every IMPES capture includes independent initial
+and final surface inventories. The gate integrates all accepted substeps and checks inventory
+plus production minus injection at 1e-8 (water / initial, oil / production, gas / largest
+inventory or throughput). Missing or nonfinite evidence fails. This is separate from trajectory
+agreement with Flow. The deliberate scorecard replacement and timestep-refined referee are
+recorded in `docs/BLACK_OIL_VALIDATION.md` §4b; no trajectory bands were widened.
+
 ## Gate: `scripts/validate-cross-solver.sh`
 
 ```bash

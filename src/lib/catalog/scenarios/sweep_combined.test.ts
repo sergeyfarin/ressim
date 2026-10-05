@@ -10,10 +10,9 @@ describe('sweep_combined against its OPM Flow twin', () => {
      * The layered correlations assume sealed layers; these are sealed (k_v = 0.001 mD), and
      * Flow solves them as the scenario does.
      *
-     * The run is the scenario's default solver; FIM on the same deck is closer still (see the
-     * cross-solver scorecard). Measured 2026-09-25 over the shipped 75 report steps (375 d,
-     * ~3.2 PVI): oil 1.9 % worst / 0.42 % final, injection 1.3 %, breakthrough 20 d against
-     * 15 d (one report step), final water cut 0.9506 against 0.9499.
+     * FIM is the shipped default after #63: the conservative IMPES closure needs many
+     * small transport steps on this layered grid. Both solvers remain covered by the
+     * native cross-solver matrix; this test exercises the interactive default.
      */
     it('runs the shipped case to the Flow run of the same model', async () => {
         const comparison = await compareWithFlowTwin({

@@ -125,7 +125,10 @@ def check_case(c: dict, reference: dict, failures: list[str]) -> None:
 
     # Parity must be measured on a field that varies. A static field agrees trivially, and so does
     # a fully swept one.
-    swept = sum(1 for s in sim.sat_water() if s > c["s_wc"] + 1e-6)
+    # Compression changes Sw throughout the pressure field even ahead of displacement.
+    # One percentage point distinguishes the flood front from that background response;
+    # native/wasm equality still uses the unchanged 1e-9 band above (#63).
+    swept = sum(1 for s in sim.sat_water() if s > c["s_wc"] + 0.01)
     if not 2 <= swept < c["nx"]:
         sink.append(
             f"{name}: front swept {swept} of {c['nx']} cells; parity on a uniform field proves "

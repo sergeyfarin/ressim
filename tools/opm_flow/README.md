@@ -19,6 +19,10 @@ Both decks request `RUNSUM` + `SEPARATE` in their `SUMMARY` section, so a real `
 The parser's column-layout assumptions (fixed-width fields, uniform gap between columns, header/data separator found by scanning forward from the `TIME` row rather than taking the first dashed line in the page) were reverse-engineered from and validated against **real** `flow 2026.04` output — see `tests/fixtures/*.RSM`, which are trimmed excerpts of actual runs, not hand-authored samples. A different Flow version could format differently; if a future run disagrees, fix `summary.py` and its fixtures together against a fresh real run.
 
 Run the Python tests from this directory: `uv run pytest`.
+The small-direct inventory tests need Flow's system numpy/opm.io environment; from the repo root run
+`PYTHONPATH=tools/opm_flow uv run --no-project --python /usr/bin/python3 python -m unittest discover -s tools/opm_flow/tests -p test_small_direct_inventory.py`.
+They verify irregular accepted-step integration, surface water/gas injection, and missing or
+nonfinite inventory evidence. The artifact-only uv environment skips these optional tests.
 
 ## Known deck-physics caveat (2026-07-16)
 

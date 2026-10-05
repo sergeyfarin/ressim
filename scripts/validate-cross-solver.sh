@@ -35,7 +35,7 @@ scorecard="$repo_root/opm/reference-decks/small-direct/scorecard.json"
 work="${CROSS_SOLVER_OUT:-${TMPDIR:-/tmp}/ressim-cross-solver}"
 
 mode="--check"
-compare_args=()
+compare_args=(--inventory-check)
 cases=()
 refine=""
 while [ $# -gt 0 ]; do

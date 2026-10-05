@@ -27,7 +27,7 @@ Transmissibility: `T = 8.5269888e-3 × k[mD] × A[m²] × λ[1/cP] / L[m]` in m�
 
 - Shared physics (used by BOTH solvers): `relperm.rs`, `pvt.rs`, `mobility.rs`, `capillary.rs`, `well.rs`, `well_control.rs`, `grid.rs`, `reporting.rs`.
 - `step.rs` — thin dispatcher (IMPES vs FIM) + shared gas-split helpers. Keep it thin.
-- `impes/` — IMPES solver: `pressure.rs` (PCG), `transport.rs` (explicit saturation), `closure.rs` (three-phase flash), `timestep.rs`.
+- `impes/` — IMPES solver: `pressure.rs` (PCG), `transport.rs` (explicit saturation), `closure.rs` (component flash), `timestep.rs`.
 - `fim/` — fully implicit solver; ships in the gas, black-oil and capillary scenarios (read the `fim-solver-debug` skill before touching).
 - `compositional/` — separate Peng–Robinson engine; gated by `scripts/validate-compositional.sh`.
 - `api.rs` — the payload boundary: plain Rust types a consumer reads and supplies, over serde. **No target types** (`JsValue`, `PyObject`) here or anywhere else in the engine.
@@ -68,7 +68,7 @@ Naming: cross-solver contracts are `*_on_both_solvers`; physics regressions are 
 - No `unwrap()` in library code; explicit error handling.
 - `///` doc comments on public API; `cargo fmt` before committing.
 - New physics needs an oracle: an analytical solution, a conservation/invariant check, or a finite-difference Jacobian check — not just "runs without crashing". Existing patterns: FD Jacobian acceptance tests in `fim/assembly.rs`, Peaceman connection-law oracle in `tests/physics/wells_sources.rs`, closed-system inventory checks.
-- Material-balance caveat: in **two-phase IMPES**, oil is the residual phase (`So = 1 − Sw`), so its oil diagnostic checks reporting, not conservation. Don't claim oil MB validation there. Three-phase IMPES transports all four black-oil masses and flashes them (`impes/closure.rs`, #37); FIM solves an oil equation. On both, the oil MB diagnostic is a real conservation check.
+- Both IMPES modes transport surface water and oil and flash their pressure-dependent volumes (#63); three-phase also transports gas (#37). FIM solves component equations. Check independent final inventory plus accepted-substep production minus injection, not just the engine's own material-balance report. The cross-solver gate enforces this for every IMPES deck.
 
 ## Exposing new API to the frontend
 

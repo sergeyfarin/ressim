@@ -8,15 +8,14 @@ import { waterfloodBLDef } from '../analyticalAdapters';
  * fractional-flow solution does not carry, and measure the gap that opens.
  * This case switches nothing on: one dimension, incompressible-scale
  * compressibilities, no capillarity, no gravity, constant total rate. The
- * analytical solution is then exact for the equations being solved, so every
- * difference on the chart is the discretization — and it can be driven to zero
- * by refining, which is what makes it identifiable as such.
+ * analytical solution supplies the incompressible reference. The small storage
+ * terms are also checked against matched Flow inputs; numerical refinement
+ * must be distinguished from that physical-model approximation.
  *
- * The measurements are in the dimension descriptions. The headline is that
- * breakthrough error against BL halves each time the cell size halves
- * (0.131 / 0.061 / 0.031 / 0.016 / 0.006 / 0.001 PVI over 50 m to 1.25 m
- * cells), the first-order convergence that single-point upstream weighting
- * predicts.
+ * The grid ladder checks first-order convergence of breakthrough and recovery.
+ * #63's conservative component closure changes the former measured error
+ * coefficient; the test retains its accuracy band with a further validation
+ * refinement beyond the offered grid ladder.
  */
 export const wf_numerics: Scenario = {
     key: 'wf_numerics',
@@ -124,42 +123,42 @@ export const wf_numerics: Scenario = {
                 {
                     key: 'grid_10',
                     label: '10 cells  (Δx = 50 m)',
-                    description: 'Deliberately too coarse. Water arrives at 0.455 PVI, 22 % early, and the front is spread over most of the column. Nothing is wrong with the physics — this is what a field-scale cell does to a shock.',
+                    description: 'Deliberately coarse: water arrives early and the front spreads over much of the column. Compare refinement to distinguish this numerical smearing from the rock response.',
                     paramPatch: { nx: 10, cellDx: 50, producerI: 9 },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'grid_25',
                     label: '25 cells  (Δx = 20 m)',
-                    description: 'Breakthrough 0.525 PVI, error 0.061 — a little under half the 50 m error, for a little under half the cell size.',
+                    description: 'Smaller cells reduce the early-breakthrough error while preserving the physical model.',
                     paramPatch: { nx: 25, cellDx: 20, producerI: 24 },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'grid_50',
                     label: '50 cells  (Δx = 10 m, base)',
-                    description: 'The shipped resolution and a realistic one: breakthrough 0.555 PVI, recovery 0.707 at one pore volume injected. Still 5 % early on breakthrough, and 1 % low on recovery.',
+                    description: 'The shipped resolution still brings water through early and underpredicts recovery relative to the analytical solution.',
                     paramPatch: {},
                     affectsAnalytical: false,
                 },
                 {
                     key: 'grid_100',
                     label: '100 cells  (Δx = 5 m)',
-                    description: 'Breakthrough 0.570 PVI, error 0.016.',
+                    description: 'Refines the front while keeping the same physical domain and rock curve.',
                     paramPatch: { nx: 100, cellDx: 5, producerI: 99 },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'grid_200',
                     label: '200 cells  (Δx = 2.5 m)',
-                    description: 'Breakthrough 0.580 PVI, error 0.006 — within the 0.005 PVI that one report step resolves. Below this the measurement is limited by how often the run is sampled, not by the grid.',
+                    description: 'A fine-grid control. The breakthrough front approaches the analytical prediction as the grid is refined.',
                     paramPatch: { nx: 200, cellDx: 2.5, producerI: 199 },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'grid_400',
                     label: '400 cells  (Δx = 1.25 m)',
-                    description: 'The convergence endpoint: breakthrough 0.585 against the analytical 0.586, recovery 0.713 against 0.715. Off by default because it is by far the slowest run here — the cost of the last 0.005 PVI of accuracy is roughly 15x the base case.',
+                    description: 'The finest displayed grid approaches the analytical front more closely. Off by default because the smaller cells require many more transport steps.',
                     paramPatch: { nx: 400, cellDx: 1.25, producerI: 399 },
                     affectsAnalytical: false,
                     enabledByDefault: false,
@@ -175,42 +174,42 @@ export const wf_numerics: Scenario = {
                 {
                     key: 'dt_quarter',
                     label: 'Δt = 0.25 d',
-                    description: 'Four times the reporting resolution of the base case and essentially the same answer: breakthrough 0.550 PVI, recovery 0.709. Time truncation is not what limits this run.',
+                    description: 'Four times the reporting resolution of the base case gives similar recovery. Grid refinement has the larger effect here.',
                     paramPatch: { delta_t_days: 0.25, steps: 1040 },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'dt_base',
                     label: 'Δt = 1 d  (base)',
-                    description: 'Breakthrough 0.555 PVI, recovery 0.707.',
+                    description: 'The base report cadence, with stability-controlled internal steps.',
                     paramPatch: {},
                     affectsAnalytical: false,
                 },
                 {
                     key: 'dt_four',
                     label: 'Δt = 4 d',
-                    description: 'Recovery 0.698 — 1 % below the base case, for a quarter of the run time. The saturation limiter is absorbing most of the requested step.',
+                    description: 'The saturation limiter takes smaller internal steps, keeping recovery close to the base case despite the coarser report cadence.',
                     paramPatch: { delta_t_days: 4, steps: 65 },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'dt_ten',
                     label: 'Δt = 10 d',
-                    description: 'Recovery 0.691. Also the point where the report cadence itself becomes the measurement limit: one step is 0.05 PVI, so breakthrough can no longer be located more precisely than that.',
+                    description: 'The coarse report cadence can hide front arrival between displayed points. The engine still uses accepted substeps to control saturation changes.',
                     paramPatch: { delta_t_days: 10, steps: 26 },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'dt_limiter_half',
                     label: 'Δt = 4 d, limiter relaxed to ΔS ≤ 0.5',
-                    description: 'The first wrong result: recovery 0.733 at one pore volume injected, above the analytical 0.715 in a case that has no mechanism for beating it.',
+                    description: 'Relaxing the saturation limit overpredicts recovery against the analytical reference even though component inventories remain balanced.',
                     paramPatch: { delta_t_days: 4, steps: 65, max_sat_change_per_step: 0.5 },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'dt_limiter_off',
                     label: 'Δt = 4 d, limiter effectively off  (ΔS ≤ 1.0)',
-                    description: 'Recovery 0.936 of the oil in place, when only 0.889 of it is mobile — the run produces oil that is not there and reports breakthrough at 0.860 PVI.',
+                    description: 'The conservative component closure preserves the oil inventory, but the relaxed saturation limit can still overpredict recovery against the analytical solution. Mass balance and numerical accuracy are different checks.',
                     paramPatch: { delta_t_days: 4, steps: 65, max_sat_change_per_step: 1.0 },
                     affectsAnalytical: false,
                 },
@@ -225,21 +224,21 @@ export const wf_numerics: Scenario = {
                 {
                     key: 'dor_coarse',
                     label: 'Δx = 50 m, n_o = 2  (grid error)',
-                    description: 'The coarse grid on the benign rock curve: breakthrough 0.455 PVI, recovery 0.686 at one pore volume injected, against its own analytical 0.586 and 0.715.',
+                    description: 'The coarse grid on the benign rock curve brings water through early and underpredicts recovery against its analytical solution.',
                     paramPatch: { nx: 10, cellDx: 50, producerI: 9 },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'dor_fine',
                     label: 'Δx = 2.5 m, n_o = 2  (converged control)',
-                    description: 'The same rock on a converged grid: breakthrough 0.580 against 0.586, recovery 0.712 against 0.715. This is what the coarse run is trying to be.',
+                    description: 'The same rock on a fine grid approaches its analytical breakthrough and recovery. This is the control for the coarse-grid run.',
                     paramPatch: { nx: 200, cellDx: 2.5, producerI: 199 },
                     affectsAnalytical: false,
                 },
                 {
                     key: 'dor_steep',
                     label: 'Δx = 2.5 m, n_o = 3.5  (rock)',
-                    description: 'A converged grid with a steeper oil curve. Breakthrough 0.465 PVI — within 0.01 of the coarse run — but recovery 0.586, a tenth of the oil in place below it. Its own analytical solution predicts 0.468 and 0.589.',
+                    description: 'A fine grid with a steeper oil curve brings water through at nearly the same time as the coarse run, but recovers substantially less oil. Its own analytical solution confirms that the rock curve causes this change.',
                     paramPatch: { nx: 200, cellDx: 2.5, producerI: 199, n_o: 3.5 },
                     affectsAnalytical: true,
                 },

@@ -221,6 +221,7 @@ fn build(key: &str) -> ReservoirSimulator {
             perm_xy: vec![1000.0, 150.0, 5.0, 60.0, 40.0],
             perm_z: vec![0.001; 5],
             producer_ij: (20, 20),
+            fim: true,
             ..Waterflood::default()
         }),
         "wf-capillary" => catalog_waterflood(&Waterflood {

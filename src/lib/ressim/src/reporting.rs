@@ -464,7 +464,9 @@ impl ReservoirSimulator {
                             }
                         }
                     } else {
-                        total_injection += -q_m3_day * self.water_inverse_fvf(self.pressure[id]);
+                        let water_sc = -q_m3_day * self.water_inverse_fvf(self.pressure[id]);
+                        total_injection += water_sc;
+                        total_water_injection_sc += water_sc;
                         total_water_injection_reservoir += -q_m3_day;
                     }
                 } else {
@@ -503,13 +505,8 @@ impl ReservoirSimulator {
         self.cumulative_injection_m3 += total_water_injection_reservoir * dt_days;
         self.cumulative_production_m3 += total_prod_water_reservoir * dt_days;
 
-        // Three-phase IMPES conserves surface water (#37), like FIM; two-phase still moves
-        // water by reservoir volume. `actual_change_m3` is in the matching unit.
-        let net_water_added_m3 = if self.three_phase_mode {
-            (total_water_injection_sc - total_prod_water_sc) * dt_days
-        } else {
-            (total_water_injection_reservoir - total_prod_water_reservoir) * dt_days
-        };
+        // Both IMPES modes conserve surface water, matching the stored cell inventory.
+        let net_water_added_m3 = (total_water_injection_sc - total_prod_water_sc) * dt_days;
         self.cumulative_mb_error_m3 += net_water_added_m3 - actual_change_m3;
 
         let produced_oil_sc = total_prod_oil * dt_days;

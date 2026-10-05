@@ -361,15 +361,13 @@ regression guard (`materialBalance.test.ts`) asserts that the two stay equal, so
 overlay cannot silently disagree with the engine if one default moves. Scenarios that set
 their own value (SPE1 uses 2.06e-4 /bar) override it on both sides.
 
-**Material-balance diagnostics report each phase explicitly, with one structural limitation.**
-Water and gas cumulative errors are direct inventory comparisons, and oil is reported against
-stock-tank inventory depletion. In two-phase IMPES, oil *saturation* is still residual by
-construction (`S_o = 1 - S_w`), so there the oil diagnostic checks reporting/FVF closure rather
-than an independently transported oil equation. Three-phase IMPES has transported oil mass since
-#37, and FIM solves an oil mass equation, so on both of those the oil diagnostic is a genuine
-conservation check. The SPE1 acceptance criteria therefore grade
-oil and gas drift separately and normalize each against its own inventory. See
-`docs/THREE_PHASE_VALIDATION.md` section 4.
+**Material-balance diagnostics compare surface component inventories.** Both IMPES modes
+transport water and stock-tank oil explicitly and recover saturation from their volumes at the
+new pressure; three-phase also transports free and dissolved gas. FIM solves component equations.
+The water diagnostic uses surface injection minus production and actual surface inventory change.
+Independent cell inventories and accepted-substep cumulatives gate the IMPES paths (§4b), so the
+diagnostic cannot validate its own accounting convention. SPE1 grades oil and gas drift separately
+against their own inventories; see `THREE_PHASE_VALIDATION.md` section 4.
 
 **Gas redissolution is off in SPE1.** `gasRedissolutionEnabled: false` matches the reference
 deck's behavior for this case: liberated free gas does not re-enter solution when pressure
@@ -388,10 +386,7 @@ tables.
 - No SPE-style black-oil case beyond SPE1 (SPE9, volatile-oil style cases) is covered.
 - Current measured values for every criterion in this document are collected in
   [`BENCHMARKS.md`](BENCHMARKS.md).
-- [#63](https://github.com/sergeyfarin/ressim/issues/63) owns quantifying two-phase conservation:
-  two-phase IMPES still keeps oil as the residual `1 − Sw` and moves water by volume on a fixed
-  pore volume, so rock and water expansion there are booked as oil. Three-phase IMPES was made
-  conservative by #37 (section 2).
+- Two-phase IMPES conservation is repaired by [#63](https://github.com/sergeyfarin/ressim/issues/63); measured impact and remaining discretization limits are in §4b.
 - Saturated PVT tables with `dBo/dp > Bg·dRs/dp` are accepted, with a pre-run warning naming the
   unstable range since #39. They break IMPES and fragment FIM through that range (section 2).
 - SPE1 scenario wiring is covered (#12). Reference-panel placement is pinned in
@@ -475,7 +470,66 @@ consistency also passed. The clean release replay above records the committed nu
 **Verdict and limits.** Probe/reference-contract repair; no production solver, timestep,
 physics or frontend behavior changes. This proves the stated self-convergence, conservation
 and constant-rate productivity contracts, not full Flow trajectory parity or a general error
-bound for coarse steps. #63 remains a separate two-phase IMPES conservation investigation.
+bound for coarse steps. #63's separate two-phase IMPES conservation repair is recorded in §4b.
+
+
+## 4b. Compressible two-phase IMPES conservation (#63)
+
+The defect was reproduced on clean committed `81dbf8a` (2026-10-05), using
+`cargo test --offline --release --manifest-path src/lib/ressim/Cargo.toml physics_depletion_two_phase_inventory_audit -- --ignored --nocapture`.
+The independent oracle sums `Vp(p)·Sw/Bw(p)` and `Vp(p)·So/Bo(p)` over cells and integrates
+production over every accepted substep. It does not read the engine's MB diagnostic.
+
+At a 0.125 d report interval in the 5 d single-cell depletion probe, with
+`co=1e-5 /bar`, `cr=1e-6 /bar`, `cw=3e-6 /bar`, IMPES reported 505.399558 Sm³ oil
+but removed only 422.137502 Sm³ from inventory: 16.47% of production was unaccounted for.
+Water drift was −0.078645% of initial water. With `cr=1e-4 /bar`, `cw=4.5e-5 /bar`,
+the corresponding oil imbalance was 44.13% of production and water drift −0.790703%.
+Refining the report interval from 0.5 to 0.125 d did not remove these errors. FIM closed the
+same inventories near roundoff. These are closure errors, not evidence against FIM convergence
+or the #58 test contracts.
+
+Clean baseline native captures on the shipped waterflood twins used
+`OPM_SMALL_OUT=/tmp/ressim-63-inventory-before OPM_SMALL_SOLVER=impes cargo test --offline --release --manifest-path src/lib/ressim/Cargo.toml opm_small_direct_run_ressim -- --ignored --nocapture`.
+Across the seven shipped waterflood twins (1D, areal, vertical, crossflow, combined, capillary,
+gravity stability), absolute oil imbalance ranged from 0.0118% to 0.2283% of production;
+water drift ranged from 0.1270% to 2.6523% of initial inventory. Those inventory errors could
+coexist with an acceptable trajectory against Flow.
+
+The repair transports surface oil and water explicitly and applies the component volume
+constraint against pressure-dependent pore volume and FVF. Saturation is recovered from those
+volumes instead of declaring oil to be the residual. Two-phase table inventories use the
+standalone `Bo(p)` branch, not a black-oil dissolved-gas branch. Well withdrawals match the
+accepted-substep reporting conversion. Both IMPES water diagnostics now use surface units.
+
+Nonignored regressions in `tests/physics/depletion_oil.rs` cover rock-only, water-only, combined
+and stress compressibility, two starting saturations, two report intervals, a closed two-cell
+redistribution and tabular oil FVF. The numerical teaching-case harness integrates all accepted
+substeps and independently checks IMPES oil inventory even with its limiter relaxed. Its grid
+ladder retains the original convergence and accuracy limits; an additional 800-cell validation
+point establishes the endpoint after the closure changes the leading error coefficient.
+Native/browser parity retains the 1e-9 tolerance. Its displacement-front guard now excludes
+background compression smaller than one saturation percentage point.
+
+### Deliberate trajectory scorecard replacement
+
+The pre-repair scorecard (`90bde50`, 2026-09-26) is replaced deliberately, with **BANDS unchanged**.
+Three cumulative metrics exceed that old ratchet after the conservative repair: adverse 1D
+water injection, vertical-sweep oil and crossflow-sweep oil. Keeping the old nonconservative
+answer would preserve cancellation between closure error and discretization error.
+The matched-deck referee command was
+`CROSS_SOLVER_OUT=/tmp/ressim-63-referee bash scripts/validate-cross-solver.sh --refine 0.1 --case ow-1d-50-adverse --case sweep-vertical --case sweep-crossflow`.
+The refined comparisons reduce those cumulative differences and close independent inventories;
+the generated tables below record the referee, rather than claiming coarse-step agreement alone
+establishes accuracy. The full native matrix gates every IMPES inventory at 1e-8 of the stated
+scale and retains the existing Flow trajectory and sparse/dense agreement contracts.
+
+The combined layered case requires thousands of conservative IMPES transport substeps and
+exceeds the browser test's existing 300 s timeout. It now ships with FIM, whose matched Flow
+trajectory is already covered; its browser twin passes the unchanged bands and timeout.
+The mandatory native matrix continues to run IMPES on the same deck. Optimizing its explicit
+transport is deferred: correctness and interactive access are provided without loosening a gate.
+
 
 ## 5. FIM repair F6 applicability table (2026-09-15)
 
