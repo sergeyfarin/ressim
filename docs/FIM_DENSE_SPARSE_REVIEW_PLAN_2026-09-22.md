@@ -1,5 +1,14 @@
 # FIM dense/sparse review and interaction-aware repair plan
 
+> **Disposition 2026-10-05: historical execution plan.** S0/S1's inactive-unknown defect was
+> fixed (FIM-DIRECT-001); the second bubble-point fragmentation defect was fixed by the coupled
+> initialization/lifecycle change (FIM-BUBBLE-001, `3fdefa4`), and production routing was unified.
+> Native/wasm platform math was subsequently unified by #62. See OPEN_ITEMS §1/§1a and
+> FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md for the owning evidence. Do not restart S0 or the
+> historical fragmentation investigation from the handoff below. Remaining boundary-partials
+> work is [#35](https://github.com/sergeyfarin/ressim/issues/35); harness follow-ups are #22.
+> The oracle, interaction and evidence rules remain reusable.
+
 > **Status 2026-09-22 (later the same day): S0/S1 answered, first defect fixed.** A same-matrix
 > probe, both LUs on every forced-direct system plus an equilibrated SVD, located the first
 > divergence without the full capture sidecar. The LU backends agree to roundoff on every
@@ -281,9 +290,9 @@ Rerun the affected shortlist on the final clean implementation commit, record ex
 options and key output, update the registry/worklog/status and the owning issue, then remove or
 document the remaining diagnostic switches. Do not push or publish without authorization.
 
-## 4. Immediate handoff
+## 4. Historical handoff (superseded by the disposition above)
 
-**Next task is S0**, not a production backend swap, endpoint regularization, acceptance change
+**The original next task was S0**, not a production backend swap, endpoint regularization, acceptance change
 or restart of the old Flow research sequence. S1 follows only after a faithful first-divergence
 replay exists. S3's harness can be prepared independently, but no accuracy verdict precedes
 its completed-horizon and temporal-convergence checks.

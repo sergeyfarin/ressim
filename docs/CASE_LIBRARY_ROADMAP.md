@@ -2,12 +2,21 @@
 
 Date: 2026-07-02; Tier 5 + enabler-gap sections added 2026-07-07; **Tier 7 gap audit + Tier 5/6/E-status reconciliation 2026-07-24**. Companion to the `add-scenario` skill (`.claude/skills/add-scenario/`). This is the sourcing map for growing the scenario/case library: which cases to add, where their reference data comes from, and what each needs from the engine.
 
+## Execution ownership (reconciled 2026-10-05)
+
+The tier tables are a sourcing/admission inventory. They include delivered cases and unadmitted
+ideas; an idea is not an instruction to add physics. Current order is in ROADMAP.md, with
+validation triage (#58/#63) before expansion. Analytical admission is #19, field/well enablers #16,
+schedule/physics admission #17, dataset/band work #18, and compositional integration/expansion
+#29/#52. The comparison roadmap maps G1–G8 to their owning issues. Open a case-specific issue when
+a proposal gains a consuming case, valid reference and measurable acceptance criteria.
+
 ## Selection criteria
 
 A good ResSim case has, in priority order:
 
 1. **An independent reference** — analytical solution, published benchmark results, or an OPM Flow run (see `.claude/skills/opm-reference-pipeline/`). No reference → teaching-only, label it honestly.
-2. **Physics inside the engine's envelope** — 3D Cartesian grid, two-phase O/W (validated), three-phase O/W/G (validated — `docs/THREE_PHASE_VALIDATION.md`), black-oil PVT, Peaceman wells, gravity, Brooks-Corey capillary. **Not supported:** radial grids/LGR, aquifer models, well schedules, compositional, thermal, polymer/chemical EOR, dual porosity, horizontal wells.
+2. **Physics inside the engine's envelope** — 3D Cartesian grid, two-phase O/W (validated), three-phase O/W/G (validated — `docs/THREE_PHASE_VALIDATION.md`), black-oil PVT, Peaceman wells, gravity, Brooks-Corey capillary. **Outside this live black-oil case envelope:** radial grids/LGR, aquifer boundaries, scenario-declared schedule workflows (#17), thermal, polymer/chemical EOR, dual porosity and horizontal wells. A separate compositional engine is native-validated; its browser scenario awaits #29, with broader SPE capabilities tracked by #45–#52.
 3. **Browser-scale grid** — comfortably ≤ ~30k cells for interactive IMPES runs.
 4. **One clear teaching point** per sensitivity dimension.
 

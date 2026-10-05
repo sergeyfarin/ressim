@@ -1,13 +1,14 @@
 # Open items — 2026-09-21
 
-Base: `8945f75` plus the work of this session. One place to look for "what did we decide not to do
-yet, and why", so that a deliberate deferral is not mistaken later for an oversight.
+Original base: `8945f75` plus the work of that session. Tracking reconciled 2026-10-05.
+One place to look for "what did we decide not to do yet, and why", so that a deliberate deferral
+is not mistaken later for an oversight.
 
 Each item says what it is, why it was not done, and what would close it. Items owned by a specific
 document link there rather than being restated; this file is an index of debt, not a second copy
 of the reasoning.
 
-## 1. FIM substeps differently on wasm32 than on x86-64 — **root cause fixed 2026-09-22; one follow-up open**
+## 1. FIM substeps differently on wasm32 than on x86-64 — **root cause and follow-up closed**
 
 Was: the committed Buckley case A fixture took 4 substeps on wasm32 and 18 natively for its first
 1-day step, with 8.28 bar between them. A first analysis traced it to a `cfg(target_arch)` backend
@@ -58,36 +59,34 @@ for Y2b3. Evidence: worklog "FIM-BUBBLE-001".
 
 ## 1b. Bubble-point PVT boundary conventions (FIM-KINK-001 J1) — **open, coupled**
 
-The Jacobian sweep found one real defect cluster, at the bubble-point boundary of a live-oil
-table.
+Owned by [#35](https://github.com/sergeyfarin/ressim/issues/35). The remaining issue is the
+saturated derivative path selected when an undersaturated Rs primary sits exactly at Rs_sat(p).
+The former flat-Rs convention above the last table row is fixed (`1867ec0` / `fb662a8`,
+FIM-KINK-002), including the redissolving SPE1 Case 2 physics discrepancy. The generated-deck
+dep-pvt gas gap was separately fixed through #55's SGOF sampling; it is not evidence for J1.
 
-- A cell whose Rs primary sits exactly at Rs_sat(p) gets the saturated curve's derivatives:
-  d/dRs = 0 and the wrong d/dp.
-- Three table-edge conventions differ from OPM: the flat Rs_sat above the table, a two-way
-  definition of Bo at Rs_max, and the top-knot derivative.
-- Fixing any one alone either helps one grid and pins the other, or pins both.
-
-Only Newton efficiency is at stake here: substeps already match Flow, and the fix is worth about
-111 → 86 Newton against Flow's 63 on the 10-cell column. It is deferred as a bundle rather than
-patched piecewise. Evidence: worklog "FIM-KINK-001"; attempt diff on
-`experiment/fim-kink-j1-pvt-boundary`.
+The remaining Newton-efficiency gain is not measured. The old “111 → 86 against Flow 63”
+estimate predates later fixes and must not drive implementation. Read the current issue,
+registry and worklog before replaying the coupled convention matrix.
 
 ## 2. Cross-client coverage is bounded by the Python shim, not by test effort
 
-`ressim-py` binds **29** of the engine's **85** public API functions. Ten configuration knobs the
+Historical 2026-09-21 inventory: `ressim-py` bound **29** of the engine's **85** public API functions. Ten configuration knobs the
 scenario catalog relies on are unbound, among them `setThreePhaseModeEnabled`, `setGravityEnabled`,
 `setPermeabilityPerLayer`, `setInitialSaturationPerLayer`, `setWellSchedule`, `setTargetWellRates`,
 `setInjectedFluid` and `setRockProperties`.
 
-So "do all clients agree across the catalog's scenarios and sensitivities?" cannot be answered
-today: the native client cannot **express** 17 scenarios × 53 sensitivity variants. The parity
+Full catalog parity remains unestablished: the historical audit found the native client could
+not express 17 scenarios × 53 variants. Those counts are not a current catalog inventory. The parity
 matrix covers what it can — two solvers, two mobility ratios, two grid sizes — which is what
 found item 1.
 
-**To close:** bind the remaining configuration surface, then drive the matrix from the catalog's
-own scenario definitions rather than a hand-written case list.
+**Owner:** [#64](https://github.com/sergeyfarin/ressim/issues/64). Audit current missing bindings,
+then drive parity from the catalog's definitions rather than a hand-written case list.
 
 ## 3. Deletion candidate: `getFimStepStatsHistory`
+
+API decision owned by [#24](https://github.com/sergeyfarin/ressim/issues/24).
 
 No call site in live code; only `.archive/` prose. Ported rather than deleted in Phase 1 because
 the evidence behind the original "two dead functions" claim was **wrong about the other one** —
@@ -96,11 +95,15 @@ deliberate change rather than being folded into a refactor.
 
 ## 4. `api::GridState` carries no schema version
 
+Compatibility policy owned by [#65](https://github.com/sergeyfarin/ressim/issues/65).
+
 Now a one-line addition, since the type is named and in one place
 (`docs/ENGINE_PAYLOAD_BOUNDARY_DESIGN_2026-09-21.md` §6.2). Deferred because it is a *behaviour*
 decision — what should happen to a payload that lacks one — not a refactor.
 
 ## 5. Package `exports` are still `./*` wildcards
+
+Public-surface audit owned by [#66](https://github.com/sergeyfarin/ressim/issues/66).
 
 S2 left them open because nothing had yet shown what a second page needs. S3 then showed it: three
 modules out of 36 across five packages (`analytical/fractionalFlow`, `charts/ChartSubPanel.svelte`,
@@ -108,19 +111,19 @@ modules out of 36 across five packages (`analytical/fractionalFlow`, `charts/Cha
 `src/lib/packageBoundaries.test.ts` enforces entry-by-name in the meantime, but that is a test, not
 a build-level guarantee.
 
-## 6. Three.js moved 0.185.1 → 0.186.0 with no visual verification
+## 6. Three.js dependency updates need current visual verification (#24)
 
-Bumped in `adac71b`. The repo constraint calls Three.js pinned and the visualization
+Originally bumped to 0.186.0 in `adac71b`; `package.json` now pins 0.186.1 at `d4bbdd7`.
+The built-app visual check is owned by [#24](https://github.com/sergeyfarin/ressim/issues/24). The repo constraint calls Three.js pinned and the visualization
 "version-sensitive", and the only evidence the upgrade is safe is a suite that does not render.
 `visualization/` is also the area the split plan designates least portable. If a 3D rendering
 regression appears, this is the first place to look.
 
-## 7. Four pre-existing dead-code warnings in the Rust build
+## 7. Rust build warnings — **closed**
 
-`CellPrimary` and the `fim/linear` layout accessors are reported unused in **both** feature
-configurations. Pre-existing on master, unrelated to the feature split; surfaced here only because
-the no-default-features build made warnings worth reading. They are the layout surface the FIM
-repair published for reuse, so the fix is probably to consume or retire them, not to `allow` them.
+`b2acb85` gated test-only items, retired unused layout helpers and renamed EOS fixture fields;
+`7b26905` replaced the deprecated EPSILON constant. The release build for the #58 replay on
+clean `d4bbdd7` emitted no Rust warnings. The original feature-split warning note is historical.
 
 ## 8. IMPES depletion fixture ran with a 2 bar pressure cap (#11) — **closed by #37 (`30bde0d`)**
 
@@ -128,7 +131,7 @@ The #11 fix left IMPES needing a pressure cap of a few bar through the bubble po
 booked storage errors as oil. #37 made three-phase IMPES conservative, and the fixture is back on
 the 75 bar default, 0.04 bar from Flow.
 
-**Still open, deliberately:** two-phase IMPES keeps oil as the residual `1 − Sw` and moves water
+**Still open, deliberately; now owned by [#63](https://github.com/sergeyfarin/ressim/issues/63):** two-phase IMPES keeps oil as the residual `1 − Sw` and moves water
 by volume on a fixed pore volume, so with `c_r` or `c_w` > 0 it books rock and water expansion
 as oil. It was left alone because every shipped IMPES scenario is two-phase and its
 Buckley–Leverett benchmarks and binding matrix are validated as they stand. The three-phase
@@ -137,7 +140,8 @@ closure (`impes/closure.rs`) is the pattern to reuse if it is taken up.
 ## 9. Cross-solver harness covers the small-direct black-oil decks only (2026-09-25, #22)
 
 `scripts/validate-cross-solver.sh` gates FIM sparse, FIM dense and IMPES against OPM Flow on the
-eight small-direct decks. These were deliberately left out of the first version:
+committed small-direct case inventory. It has expanded beyond the initial eight decks.
+These were deliberately left out of the first version; #22 owns remaining harness work:
 
 - **Compositional.** `scripts/validate-compositional.sh reference` already checks against
   `flowexp_comp`, with its own fixtures and bands. It is not on the shared scorecard because its

@@ -1,5 +1,29 @@
 # Multi-Source Comparison Roadmap (2026-07-19)
 
+Status reconciled 2026-10-05. Exhibit tables are a proposal/sourcing inventory, not an execution
+tracker or evidence that a case is admissible. [ROADMAP.md](../ROADMAP.md) owns current sequencing;
+GitHub Issues owns delivery. Admit a named case and oracle before implementing a proposal.
+
+FIM is shipped, solver identity is present in `RunSpec`, and `wf_numerics` already offers
+IMPES/FIM variants. The July Wave-4 OPM panel-filter defect is fixed and contract-tested
+(see the review's current disposition); it is not a prerequisite to restart. The compositional
+engine is native-validated, while its public scenario still awaits #29 chart integration.
+
+| Enabler | Current execution owner |
+|---|---|
+| G1 — paired solvers/provenance | Partly delivered by existing solver variants and RunSpec.solver; scope any further paired sweep with the named #70 exhibit |
+| G2 — comparable work metrics | [#70](https://github.com/sergeyfarin/ressim/issues/70) |
+| G3 — non-OPM bundled-data conventions | [#18](https://github.com/sergeyfarin/ressim/issues/18) for published/lab/ensemble data; [#16](https://github.com/sergeyfarin/ressim/issues/16) for field permeability |
+| G4 — fan/band rendering | [#18](https://github.com/sergeyfarin/ressim/issues/18) |
+| G5 — seeded sampled run sets | [#67](https://github.com/sergeyfarin/ressim/issues/67) |
+| G6 — baseline-relative curves | [#68](https://github.com/sergeyfarin/ressim/issues/68) |
+| G7 — well schedules | [#17](https://github.com/sergeyfarin/ressim/issues/17), with compositional #50 |
+| G8 — observation pressure histories | [#69](https://github.com/sergeyfarin/ressim/issues/69) |
+
+Per-cell/per-layer porosity is still an admission question for H9: check current exposure and
+the aquifer reference before opening implementation scope. Do not infer a missing engine feature
+from this July proposal.
+
 What new *kinds* of comparison the app can host, built from combinations of six solution sources.
 This is the comparison-axis companion to `docs/CASE_LIBRARY_ROADMAP.md` (which catalogs cases);
 here the organizing idea is **which sources are compared and what the disagreement teaches**.
@@ -11,8 +35,8 @@ Not every source applies to every exhibit — the value is in choosing the right
 |---|--------|----------------------|--------------|
 | S1 | Analytical solution | Exact truth *within its assumptions*; exposes what the assumptions cost | TS analytical layer (BL/Welge, Dietz PSS, Fetkovich/Arps, Craig, Dykstra-Parsons/Stiles, gas-oil BL, MB diagnostics) |
 | S2 | WASM IMPES (live) | The app's interactive baseline; user can perturb it | Now |
-| S3 | WASM FIM (live) | Same physics, different time discretization — the only source that isolates *numerical scheme* while holding everything else fixed vs S2 | Soon (separate workstream; `fimEnabled` already plumbed end-to-end) |
-| S4 | OPM Flow (pre-run) | Industrial-grade reference; also the only in-house source for physics ResSim lacks (hysteresis, compositional, corner-point, aquifers) | Now (E7 class + parser + 2 artifacts) |
+| S3 | WASM FIM (live) | Implicit scheme; isolate time discretization only after matching the two solvers' admitted model conventions | Shipped under scenario-declared policy; numerical comparison variants already exist |
+| S4 | OPM Flow (pre-run) | Independent reference; can also illustrate physics outside the live case's envelope | 11 parsed committed artifacts; shown where a scenario declares a reference source |
 | S5 | Published results | External ground truth: digitized benchmark-paper curves (SPE1 Eclipse precedent), inter-simulator CSP datasets (SPE11), published lab experiments | Per-case curation |
 | S6 | Other sources | Everything fitted or borrowed: in-browser reduced-order models (CRM, Arps fits, MB straight-line), MRST textbook results, open field datasets (Norne/Volve/Egg), a second open simulator's published output | Mostly TS-implementable or data curation |
 
@@ -35,14 +59,14 @@ each residual is attributable.
 
 | Exhibit | Sources | Teaching point | Feasibility |
 |---|---|---|---|
-| A1. **BL waterflood four-way** (extend `wf_bl1d`) | S1+S2+S3+S4 | Welge sharp front vs two numerical-diffusion signatures vs OPM's upwinding — one chart, four provenance badges | Artifact bundled; needs FIM arrival + dual-solver run sets (gap G1) |
+| A1. **BL waterflood four-way** (extend `wf_bl1d`) | S1+S2+S3+S4 | Welge sharp front vs two numerical-diffusion signatures vs OPM's upwinding — one chart, four provenance badges | Artifact bundled; reuse admitted solver variants and complete comparable work display (#70) |
 | A2. **Dietz depletion four-way** (extend `dep_pss`) | S1+S2+S3+S4 | PSS decline constant reproduced four ways; shape-factor sensitivity as the analytical stressor | New OPM deck is trivial (bounded single-producer); rest exists |
-| A3. **Gas-oil BL three/four-way** (extend `gas_injection`) | S1+S2+S3(+S4) | High-mobility-ratio displacement — the case where IMPES visibly strains and FIM should shine | Deck exists conceptually; FIM-dependent |
+| A3. **Gas-oil BL three/four-way** (extend `gas_injection`) | S1+S2+S3(+S4) | High-mobility-ratio displacement — the case where IMPES visibly strains and FIM should shine | Flow validation twin exists (#12); a chart overlay is a separate admission decision |
 
 ### B. Solver duels — the scheme itself as the subject (S2↔S3, S1 as referee)
 
-Unlocked the moment FIM lands; the IMPES/FIM pair is the app's unique asset (no public tool lets
-you flip implicitness live in a browser).
+IMPES/FIM variants already exist in `wf_numerics`. Extend this surface with measured work
+metrics (#70) rather than treating FIM availability as a blocker.
 
 | Exhibit | Sources | Teaching point | Feasibility |
 |---|---|---|---|
@@ -54,7 +78,7 @@ you flip implicitness live in a browser).
 
 | Exhibit | Sources | Teaching point | Feasibility |
 |---|---|---|---|
-| C1. **SPE1 full-stack** (extend existing) | S2+S3+S4+S5 | Already has S2+S5+S4-artifact; add FIM when ready — the FIM workstream's own target case becomes a public exhibit | Blocked on review finding 1 (opm-* render) + FIM |
+| C1. **SPE1 full-stack** (extend existing) | S2+S3+S4+S5 | Published and OPM references plus live FIM are available; retain explicit solver/reference identity | Historical blockers cleared; any further paired exhibit needs admitted equivalent inputs |
 | C2. **SPE10 layer slice** | S2+S4+S5 | Single published layer (e.g. 36 or 59) as heterogeneity stress: per-cell perm (E1, landed) + OPM run + published upscaling results | E1 done; needs data download decision + G3 |
 | C3. **Tavassoli SPE-86883** (roadmap 5.4) | S1(MB)+S2+S5 | History-match non-uniqueness at field scale; E5 divider is the payoff feature | E1 done; needs field-perm store wiring (review finding 6) |
 
@@ -100,25 +124,25 @@ settings, fanned. Zero new data sourcing, directly previews the SPE11 message.
 
 ## 3. Engineering gaps this roadmap needs (beyond existing E-list)
 
-- **G1 — dual-solver run sets + solver provenance.** Run the same variant twice (IMPES + FIM) in
-  one sweep, and tag results so charts can style/badge them separately. Today
-  `ReferenceSourceType` has one `'simulation'`; the run spec carries `fimEnabled` but nothing
-  downstream distinguishes the two. Small, prerequisite for all of A/B.
+- **G1 — dual-solver run sets + solver provenance.** Partly delivered: `RunSpec.solver` names the
+  solver and `wf_numerics` declares paired solver variants. Admit any further all-variants ×
+  all-solvers sweep through the named exhibit, preserving model equivalence and result identity.
 - **G2 — run-metrics surfacing.** Wall time, accepted substeps, retry counts already exist in
   rate-history diagnostics; the solver-duel exhibits need them displayed per result (a small
   metrics strip, not a chart).
 - **G3 — bundled-data conventions for non-OPM sources.** `publishedReferenceSeries` handles
   digitized curves; per-cell perm fields (SPE10/Egg) and lab datasets need a documented
   bundling/attribution convention (+ the review-finding-6 store wiring for field perms).
-- **Prerequisite from the Wave-4 review:** finding 1 (opm-* curves filtered out of panels) blocks
-  every exhibit that shows an OPM artifact — fix first.
+- **Historical Wave-4 prerequisite cleared:** the panel filter retains published/artifact
+  sources. Remaining browser/visual verification belongs to #24, and current chart defects to #15.
 
 ## 4. Suggested order
 
-1. **Fix review finding 1** (blocks everything OPM-visible).
-2. **A2 Dietz four-way minus FIM** (trivial new deck, proves the ladder pattern) and
-   **F2/F3 fitted-proxy extensions** (pure TS) — deliverable before FIM lands.
-3. When FIM arrives: **G1 → A1 BL four-way → B1 timestep wall** (the app's signature exhibits).
+1. Follow the validation/chart priorities in [ROADMAP.md](../ROADMAP.md), including #58/#63;
+   do not promote a Dietz exhibit while its model/probe validity is unresolved.
+2. Reuse existing paired solver variants, then add comparable work metrics (#70) with an
+   admitted A1/B1 consuming case.
+3. Admit A2 and F2/F3 only after their analytical assumptions and references are established.
 4. **C2 SPE10 layer / C3 Tavassoli** (E1 is ready; close review finding 6 with them).
 5. **G ensembles + D physics-gap pairs** per the existing Tier-6 order (SPE11 first when data is
    sourced).
@@ -218,7 +242,7 @@ Pre-production framing: sparse data, discovery-well tests, volumetrics, analogs.
 
 ## 11. Amended order (addendum items only)
 
-Cheap, high-value, FIM-independent, data-independent first:
+Historical proposal ordering, subordinate to ROADMAP.md and current issue admission:
 **K1 bootstrap decline** and **I3 crossflow-vs-DP** (both nearly free) → **H1 drawdown ladder** +
 **H4 zero-flow equilibrium** (fundamentals shelf opens; H4 also becomes the cheapest FIM parity
 check later) → **I1 Chan plot** + **I5 wettability family** → **H7/K4 p/z misread** (first

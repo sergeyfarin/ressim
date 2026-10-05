@@ -42,16 +42,16 @@ under `.archive/`.
 
 ## FIM — current truth
 
-FIM ships in the user path since `b88ee28` (2026-07-24). Each scenario now declares its solver
-policy and rationale explicitly; catalog assembly only applies that declaration and adds the generic
-comparison sensitivity when requested. Convergence work on FIM remains developer-driven
+FIM ships in the user path since `b88ee28` (2026-07-24). Each scenario declares its solver
+policy, rationale and any comparison sensitivity explicitly; catalog assembly does not inject
+solver variants. Convergence work on FIM remains developer-driven
 (`docs/FIM_DEFERRED_BACKLOG.md`) — search
 the registry **by mechanism name** before proposing any convergence change.
 
 | Document | Use it for |
 |----------|------------|
 | `docs/FIM_STATUS.md` | Consolidated FIM state, blockers, validation entry points and source map. Its 2026-09-15 long-horizon baseline was re-measured on `5c29e0e` (`BENCHMARKS.md` §7); older gaps are provenance |
-| [FIM dense/sparse review and repair plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md) | Current small-system investigation: replay-option defects, full/reduced routing, separate time/grid convergence, paired correction oracles and interaction-aware repair gates. Next task: S0; no backend promotion |
+| [FIM dense/sparse review and repair plan](FIM_DENSE_SPARSE_REVIEW_PLAN_2026-09-22.md) | Historical investigation and reusable replay/oracle rules. S0/S1, bubble-point fragmentation and routing unification are superseded by delivered fixes; see its 2026-10-05 disposition. Current remaining partials: #35 |
 | [FIM repair execution plan](FIM_REPAIR_EXECUTION_PLAN_2026-09-14.md) | F0–F8 repair order, issue mapping, exact gates and the solver-interface handoff. Completed record, preserved as issued — read its documentation-boundary note before citing it |
 | [FIM repair handoff](FIM_REPAIR_HANDOFF_2026-09-15.md) | What F0–F8 repaired, the validated envelope, reusable layout surface, final regression replay and release-equivalence measurement; see its 2026-09-18 qualification |
 | [FIM repair audit](FIM_REPAIR_AUDIT_2026-09-18.md) | Independent review of `f5838eb` and 2026-09-19 follow-up: repaired commit/retry coverage, corrected evidence claims, and named open scientific gates |
@@ -87,7 +87,7 @@ issues #21–#23). Kept because they are prescriptive and not yet superseded.
 | `docs/CASE_LIBRARY_ROADMAP.md` | Sourcing map for new scenarios: SPE benchmarks, field datasets, textbook cases |
 | `docs/MULTI_SOURCE_COMPARISON_ROADMAP.md` | Comparison-axis roadmap across analytical/IMPES/FIM/OPM/published sources |
 | `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` | 2026-07 comparison-architecture findings and forward plan |
-| `docs/WAVE4_REVIEW_2026-07-19.md` | Open post-Wave-4 review findings (ranked). **Untracked** — its findings were pointed at `TODO.md` checkboxes that no longer exist after the 2026-08-02 tracker migration, and finding 1 is an unverified BLOCKER. Needs an issue or a verification pass before it can be archived |
+| `docs/WAVE4_REVIEW_2026-07-19.md` | Historical findings with 2026-10-05 dispositions. The OPM panel-filter defect is fixed and contract-tested; surviving layout/field-wiring work is #15/#16, and browser verification is #24 |
 | `AGENTS.md` | Agent instructions: the only always-loaded file (`CLAUDE.md` imports it) and the skill list |
 | `.claude/skills/README.md` | How to use the workflow skills and what belongs in a skill vs `AGENTS.md` vs `docs/` |
 

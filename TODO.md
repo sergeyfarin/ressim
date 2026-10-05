@@ -14,12 +14,16 @@ checkbox tracker. Do not add task narratives or completed-work history here.
 The limited public release ([#8](https://github.com/sergeyfarin/ressim/issues/8)) is deployed and
 its milestone is closed. See [ROADMAP.md](ROADMAP.md) for the current order.
 
-### High priority
+### Next
 
-- [#12 — Close remaining SPE1 and black-oil validation gaps](https://github.com/sergeyfarin/ressim/issues/12)
+- [#58 — Classify failing ignored depletion probes](https://github.com/sergeyfarin/ressim/issues/58)
+- [#63 — Quantify compressible two-phase IMPES conservation](https://github.com/sergeyfarin/ressim/issues/63)
 - [#15 — Fix remaining chart correctness and presentation defects](https://github.com/sergeyfarin/ressim/issues/15)
 - [#29 — Compositional model: C13 chart sourcing, then C14](https://github.com/sergeyfarin/ressim/issues/29)
-- [#52 — Run SPE5, then SPE3, on the compositional engine](https://github.com/sergeyfarin/ressim/issues/52)
+- [#52 — Run SPE5, then SPE3, after their enablers](https://github.com/sergeyfarin/ressim/issues/52)
+
+#12's remaining second black-oil envelope case is blocked on #16/#17. The roadmap owns the full
+order; this list is a dashboard, not a second execution tracker.
 
 ## Tracking rules
 

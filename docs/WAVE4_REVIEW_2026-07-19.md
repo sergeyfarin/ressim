@@ -1,9 +1,27 @@
 # Post-Wave-4 Review — Waves 0–4 (2026-07-19)
 
-Status: **open findings, to fix**. Ranked findings from the full-stack self-review after Wave 4
-(E5 history/forecast divider, E7 pre-run artifact class, E1 per-cell permeability).
-Tracker checkboxes live in `TODO.md` ("Post-Wave-4 review" section); this file is the
-self-contained record with mechanisms and fix directions.
+Status: **historical review, reconciled 2026-10-05**. The dated mechanisms and measurements
+below describe the July tree, not a current defect list. GitHub Issues owns surviving work:
+
+| Finding | Current disposition |
+|---|---|
+| 1 — artifact curves filtered out | Fixed in `selectPanelEntries`: published/artifact sources survive the curve-key filter. Focused contracts passed on clean `d4bbdd7`; this does not establish a browser-wide rendering verdict |
+| 2 — log-time history divider | Closed as recorded below; history-divider contracts passed in the same replay |
+| 3 — scenario inventory | Superseded: README/index describe 18 offered cases and one withheld compositional case; `wf_bl1d_opm` is not in the offered catalog |
+| 4 — divider scope | Historical implementation boundary; no independent bug is established |
+| 5 — pre-run empty column | Retained for current-state verification in [#15](https://github.com/sergeyfarin/ressim/issues/15) |
+| 6 — field-permeability single-run wiring | Owned by [#16](https://github.com/sergeyfarin/ressim/issues/16), with its first consuming case |
+
+Browser/3D verification after dependency changes remains [#24](https://github.com/sergeyfarin/ressim/issues/24).
+Verification on clean `d4bbdd72cd50be279e2d4bfb87c3bb0dd893b84a`:
+
+```bash
+pnpm exec vitest run src/lib/charts/chartPanelSelection.test.ts src/lib/charts/referenceComparisonModel.test.ts src/lib/charts/historyDivider.test.ts
+```
+
+Result: **3 files, 63 tests passed**. In particular, the panel-selection contract retains additive
+published and OPM curves outside the configured keys. The historical empty-panel table below is
+not a current reproduction.
 
 Two claims from earlier sessions are **superseded** by finding 1: Wave 1's "OPM overlays render
 through the real production code path" and the 2026-07-17 review's "dead-well artifact data now
@@ -12,7 +30,7 @@ the render level.
 
 ---
 
-## 1. BLOCKER (cross-wave): OPM artifact curves have never rendered in any chart panel
+## 1. Historical blocker: OPM artifact curves filtered out — mechanism fixed
 
 **Symptom.** The E7 demonstrator `wf_bl1d_opm` renders an empty chart. The `wf_bl1d` and
 `spe1_gas_injection` OPM overlays have never been visible either.
@@ -101,7 +119,7 @@ scenario (Tavassoli / SPE10 layer / Egg).
 
 ---
 
-## Verified clean (no action)
+## Historical verification on the July tree
 
 - Wave 0 guardrails unchanged and green (CI impes gate, PVT constant, doc banners).
 - Wave 1 parser + regenerated artifacts: physically sane post-Fix-1; 14/14 pytest.
@@ -115,10 +133,7 @@ scenario (Tavassoli / SPE10 layer / Egg).
   `nav.isPrerunScenario`; no auto-run path bypasses it.
 - Full gates: typecheck, lint, vitest (654 passed / 18 tracked skips), `pnpm run build`.
 
-## Recommended fix order
+## Current execution order
 
-1. Finding 1 (blocker) — also decides whether `wf_bl1d_opm` earns its catalog slot; land with the
-   post-filter render regression test.
-2. Finding 2 (E5 logTime boundary transform).
-3. Findings 3–5 in one docs/UI sweep, during the overdue `pnpm run dev` visual spot-check.
-4. Finding 6 rides with the first field-perm scenario.
+Use [ROADMAP.md](../ROADMAP.md). This historical ranking no longer applies: findings 1–3 are
+fixed or superseded; finding 5 remains under #15 and finding 6 follows the first #16 case.

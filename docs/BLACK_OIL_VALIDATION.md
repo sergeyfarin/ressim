@@ -388,7 +388,8 @@ tables.
 - No SPE-style black-oil case beyond SPE1 (SPE9, volatile-oil style cases) is covered.
 - Current measured values for every criterion in this document are collected in
   [`BENCHMARKS.md`](BENCHMARKS.md).
-- Two-phase IMPES still keeps oil as the residual `1 − Sw` and moves water by volume on a fixed
+- [#63](https://github.com/sergeyfarin/ressim/issues/63) owns quantifying two-phase conservation:
+  two-phase IMPES still keeps oil as the residual `1 − Sw` and moves water by volume on a fixed
   pore volume, so rock and water expansion there are booked as oil. Three-phase IMPES was made
   conservative by #37 (section 2).
 - Saturated PVT tables with `dBo/dp > Bg·dRs/dp` are accepted, with a pre-run warning naming the
@@ -398,6 +399,27 @@ tables.
   completion layer, physical-well id, surface-rate target and BHP limit are checked in
   `src/lib/workers/configureSimulator.test.ts`, through the worker's own setup function rather
   than a test replica of it.
+
+## 4a. Ignored depletion probes — reproduced, not yet classified (#58)
+
+Replayed 2026-10-05 on clean committed
+`d4bbdd72cd50be279e2d4bfb87c3bb0dd893b84a`:
+
+```bash
+cargo test --offline --release --manifest-path src/lib/ressim/Cargo.toml --lib -- --include-ignored --exact tests::physics::depletion_liberation::physics_depletion_liberation_timestep_refinement_keeps_transition_accounting_stable tests::physics::depletion_oil::physics_depletion_oil_dep_pss_late_time_matches_dietz_reference_smoke --nocapture
+```
+
+Result: **0 passed, 2 failed, 866 filtered out**. The liberation probe reports
+`coarse=89.239559, fine=80.020419, rel_diff=0.1152`; the late-time Dietz probe reports
+`max_rel_diff=2.0087`. Both are ignored diagnostics outside normal solver gates. This refreshes
+the older `2ccf4d1` reproduction in [#58](https://github.com/sergeyfarin/ressim/issues/58);
+the Dietz value changes slightly, while the classification remains open.
+
+These failures establish the probe outcomes, not their cause or the shipped scenario's error.
+Before fixing physics or widening a band, match the analytical/Flow model assumptions and
+reporting, and refine timestep independently of grid. #63's two-phase conservation question is
+separate; no causal attribution to it is established. A retained probe needs a valid bounded
+contract and an appropriate gate, or a documented retirement reason.
 
 ## 5. FIM repair F6 applicability table (2026-09-15)
 

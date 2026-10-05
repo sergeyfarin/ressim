@@ -20,9 +20,23 @@ The [milestone](https://github.com/sergeyfarin/ressim/milestone/1) has no open i
 
 ## 1. Scientific validation and closure
 
-- [#12 — SPE1 and black-oil scenario validation gaps](https://github.com/sergeyfarin/ressim/issues/12)
-- [#22 — One cross-solver harness and scorecard against OPM Flow](https://github.com/sergeyfarin/ressim/issues/22)
-- [#35 — Bubble-point PVT conventions cost ~30 % Newton (FIM-KINK-001 J1)](https://github.com/sergeyfarin/ressim/issues/35)
+Current execution order (reconciled 2026-10-05):
+
+1. [#58 — Classify the failing ignored depletion probes](https://github.com/sergeyfarin/ressim/issues/58).
+   Both failures reproduce on clean `d4bbdd7`; distinguish physics, model assumptions and probe
+   validity before changing a solver or tolerance (BLACK_OIL_VALIDATION.md §4a).
+2. [#63 — Quantify two-phase IMPES conservation with compressible rock/water](https://github.com/sergeyfarin/ressim/issues/63).
+   Shipped cases use these terms, but their error magnitude is not established. This is a separate
+   investigation; no causal link to #58 is assumed.
+3. [#15 — Shipped chart correctness](https://github.com/sergeyfarin/ressim/issues/15), then
+   [#29 — Complete compositional chart/product integration](https://github.com/sergeyfarin/ressim/issues/29).
+4. [#35 — Remaining bubble-point boundary partials](https://github.com/sergeyfarin/ressim/issues/35).
+   The above-table physics convention is fixed; the remaining Newton-efficiency gain needs measurement.
+
+[#12](https://github.com/sergeyfarin/ressim/issues/12) now owns only a second SPE-style black-oil case,
+blocked on schedules (#17) and multi-well product support (#16); its immediately actionable
+validation items are complete. [#22](https://github.com/sergeyfarin/ressim/issues/22) owns remaining
+harness/seam work, including compositional scorecard integration and roundoff-sensitive bands.
 
 Closed since the last revision of this list: #10 (gravity wells), #11 (FIM/IMPES depletion,
 an unstable PVT table), #13 (CI), #21 (Flow oil bias, no solver defect), #36–#39, #42–#44.
@@ -45,6 +59,10 @@ simplifying orchestration.
 - [#16 — Field permeability and multi-well patterns](https://github.com/sergeyfarin/ressim/issues/16)
 - [#17 — Declarative schedules and deferred physics](https://github.com/sergeyfarin/ressim/issues/17)
 - [#18 — Ensemble bands and curated pre-run exhibits](https://github.com/sergeyfarin/ressim/issues/18)
+- [#67 — Seeded sampled run sets (G5)](https://github.com/sergeyfarin/ressim/issues/67)
+- [#68 — Incremental curves against a baseline (G6)](https://github.com/sergeyfarin/ressim/issues/68)
+- [#69 — Observation-cell pressure histories (G8)](https://github.com/sergeyfarin/ressim/issues/69)
+- [#70 — Comparable per-run solver work metrics (G2)](https://github.com/sergeyfarin/ressim/issues/70)
 
 These capabilities land only with a consuming case and a validation source. Detailed case admission,
 Tier 7 IDs, and enabler dependencies remain in `docs/CASE_LIBRARY_ROADMAP.md`.
@@ -80,6 +98,12 @@ The registry and worklog own experiment detail. Missing backend-neutral diagnost
 
 - [#24 — UI-audit and developer-maintenance debt](https://github.com/sergeyfarin/ressim/issues/24)
 - [#31 — `scripts/debug-spe1-*.ts` do not run under Node ESM](https://github.com/sergeyfarin/ressim/issues/31)
+- [#64 — Python configuration coverage and catalog-driven parity](https://github.com/sergeyfarin/ressim/issues/64)
+- [#65 — Saved GridState versioning/compatibility](https://github.com/sergeyfarin/ressim/issues/65)
+- [#66 — Explicit workspace package exports](https://github.com/sergeyfarin/ressim/issues/66)
+
+#24 also owns the outstanding built-app 3D verification after dependency updates. Older model-only
+test results do not close that visual check.
 
 Maintenance work should remain causally scoped and must not bundle speculative solver or chart
 redesigns.

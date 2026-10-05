@@ -8,7 +8,7 @@ Declared completely in each module under `src/lib/catalog/scenarios/`; catalog a
 inject solver parameters or sensitivities.
 
 - Gas and black-oil scenarios default to FIM: `gas_injection`, `gas_drive`, `spe1_gas_injection`,
-  `dep_gas_pz` (and the withheld `dep_pvt`). `wf_capillary` also defaults to FIM, because FIM couples
+  `dep_gas_pz` and `dep_pvt` (offered since #26). `wf_capillary` also defaults to FIM, because FIM couples
   the capillary saturation gradient into the nonlinear solve.
 - The other oil/water scenarios default to IMPES and do not carry a generic solver sensitivity.
 - `wf_numerics`' `solver_formulation` dimension is the single public formulation comparison. It
@@ -20,6 +20,10 @@ inject solver parameters or sensitivities.
 - Every scenario carries a `solverPolicy` with a user-visible rationale, surfaced in scenario cards and run labels.
 
 ## Later FIM Work
+
+Execution ownership is #35 for remaining bubble-point boundary partials, #22 for harness/seam
+follow-ups, and #23 for parked research. Use ROADMAP.md for priority; historical fragmentation
+plans do not reopen delivered fixes.
 
 - Nonlinear stabilization and acceptance policy aligned against OPM Flow traces.
 - FIM/OPM side-by-side diagnostic reproduction for waterflood, gas, and SPE1-style cases.

@@ -1,5 +1,11 @@
 # Chart Architecture Review — 2026-08-02
 
+Current disposition (2026-10-05): this dated audit's counts, file sizes and duplication findings
+describe its original revision. Read the completion records below before treating a proposed
+step as open. #14's output-selection boundary is delivered; surviving correctness work is #15
+and compositional curve sourcing is #29. New band/sampling/metrics/baseline/observation work is
+owned by #18/#67/#70/#68/#69, with consuming-case admission required.
+
 Audit of how far the chart layer actually is from "a scenario declares what it plots; the chart
 layer knows nothing about reservoirs." Requested after the material-balance work kept forcing edits
 to shared chart files for what should have been scenario-local decisions.
