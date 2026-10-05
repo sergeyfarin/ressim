@@ -515,8 +515,8 @@ background compression smaller than one saturation percentage point.
 
 The pre-repair scorecard (`90bde50`, 2026-09-26) is replaced deliberately, with **BANDS unchanged**.
 Three cumulative metrics exceed that old ratchet after the conservative repair: adverse 1D
-water injection, vertical-sweep oil and crossflow-sweep oil. We infer partial cancellation between closure and discretization error from the smaller old
-coarse differences and their post-repair reduction under refinement. That inference does not
+water injection, vertical-sweep oil and crossflow-sweep oil. We infer partial cancellation
+between closure and discretization error from the smaller old coarse differences and their post-repair reduction under refinement. That inference does not
 justify retaining the nonconservative answer.
 The matched-deck referee command was
 `CROSS_SOLVER_OUT=/tmp/ressim-63-referee bash scripts/validate-cross-solver.sh --refine 0.1 --case ow-1d-50-adverse --case sweep-vertical --case sweep-crossflow`.
@@ -528,7 +528,10 @@ scale and retains the existing Flow trajectory and sparse/dense agreement contra
 The combined layered case requires thousands of conservative IMPES transport substeps and
 exceeds the browser test's existing 300 s timeout. It now ships with FIM, whose matched Flow
 trajectory is already covered; its browser twin passes the unchanged bands and timeout.
-The mandatory native matrix continues to run IMPES on the same deck. Profiling its component-volume correction is tracked separately by [#71](https://github.com/sergeyfarin/ressim/issues/71): the substep count is almost unchanged, so the added solve/closure work must be measured. Correctness and interactive access are provided without loosening a gate.
+The mandatory native matrix continues to run IMPES on the same deck. Profiling its component-volume
+correction is tracked separately by [#71](https://github.com/sergeyfarin/ressim/issues/71): the
+substep count is almost unchanged, so the added solve/closure work must be measured. Correctness
+and interactive access are provided without loosening a gate.
 
 
 The Buckley–Leverett records from `ca747c1` are also deliberately replaced. The Case B
@@ -580,6 +583,47 @@ No solver warnings were raised. Generated independent inventory errors:
 | sweep-vertical | 3.773e-11 | 7.696e-12 | 0.000e+00 |
 | wf-capillary | 2.896e-11 | 5.740e-12 | 0.000e+00 |
 | wf-gravity-stability | 8.405e-12 | 1.952e-12 | 0.000e+00 |
+
+
+### Committed timestep-refined referee
+
+Reproduced on clean `0284bde` with
+`CROSS_SOLVER_OUT=/tmp/ressim-63-referee bash scripts/validate-cross-solver.sh --refine 0.1 --case ow-1d-50-adverse --case sweep-vertical --case sweep-crossflow --markdown`.
+All nine runs completed without warnings and passed the independent IMPES inventory gate.
+The cumulative differences shrink relative to the coarse comparisons; the cellwise differences
+in the table remain part of the measured envelope. These results support the deliberate coarse
+scorecard replacement, without claiming exact field agreement or extrapolating to other cases.
+Generated output:
+
+| Case | Simulator | Substeps | Newton | Retries / cuts | Wall ms | max \|Δp\| bar | max \|ΔSw\| | max \|ΔSg\| | Cumulatives vs Flow |
+|---|---|---|---|---|---|---|---|---|---|
+| ow-1d-50-adverse | Flow | 31 | 64 | 0 |  | | | | |
+| | ResSim FIM sparse | 30 | 92 | 0 | 42 | 1.16 | 0.0012 | 0 | FOPT 0.00%, FWIT 0.00% |
+| | ResSim FIM dense | 30 | 92 | 0 | 55 | 1.16 | 0.0012 | 0 | FOPT 0.00%, FWIT 0.00% |
+| | ResSim IMPES | 41 | — | — | 16 | 5.85 | 0.018 | 0 | FOPT 0.11%, FWIT 0.12% |
+| sweep-vertical | Flow | 1501 | 3004 | 0 |  | | | | |
+| | ResSim FIM sparse | 1500 | 4502 | 0 | 48858 | 1.19 | 0.0016 | 0 | FOPT 0.00%, FWPT 0.00%, FWIT 0.00% |
+| | ResSim FIM dense | 1500 | 4502 | 0 | 38231 | 1.19 | 0.0016 | 0 | FOPT 0.00%, FWPT 0.00%, FWIT 0.00% |
+| | ResSim IMPES | 2298 | — | — | 3765 | 13.4 | 0.036 | 0 | FOPT 0.09%, FWPT 0.49%, FWIT 0.32% |
+| sweep-crossflow | Flow | 3101 | 6204 | 0 |  | | | | |
+| | ResSim FIM sparse | 3100 | 9303 | 0 | 82910 | 1.21 | 0.0011 | 0 | FOPT 0.00%, FWPT 0.01%, FWIT 0.00% |
+| | ResSim FIM dense | 3100 | 9303 | 0 | 78450 | 1.21 | 0.0011 | 0 | FOPT 0.00%, FWPT 0.01%, FWIT 0.00% |
+| | ResSim IMPES | 3118 | — | — | 5423 | 13.5 | 0.025 | 0 | FOPT 0.05%, FWPT 0.27%, FWIT 0.15% |
+
+| Case | Pair | max \|Δp\| bar | max \|ΔSw\| | max \|ΔSg\| |
+|---|---|---|---|---|
+| ow-1d-50-adverse | sparse vs dense | 1e-10 | 0 | 0 |
+| ow-1d-50-adverse | sparse vs impes | 5.8 | 0.018 | 0 |
+| sweep-vertical | sparse vs dense | 0 | 0 | 0 |
+| sweep-vertical | sparse vs impes | 13 | 0.036 | 0 |
+| sweep-crossflow | sparse vs dense | 0 | 0 | 0 |
+| sweep-crossflow | sparse vs impes | 13 | 0.025 | 0 |
+
+| Case | IMPES water / initial | IMPES oil / produced | IMPES gas / scale |
+|---|---|---|---|
+| ow-1d-50-adverse | 4.429e-11 | 2.055e-10 | 0.000e+00 |
+| sweep-vertical | 7.291e-12 | 2.018e-12 | 0.000e+00 |
+| sweep-crossflow | 2.811e-11 | 3.153e-12 | 0.000e+00 |
 
 
 ## 5. FIM repair F6 applicability table (2026-09-15)
