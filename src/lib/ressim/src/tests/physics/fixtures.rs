@@ -18,7 +18,6 @@ pub(super) const DEP_PSS_WELL_SKIN: f64 = 0.0;
 
 #[derive(Clone, Debug)]
 pub(super) struct DepletionSnapshot {
-    pub(super) time_days: f64,
     pub(super) oil_rate_sc_day: f64,
     pub(super) cumulative_oil_sc: f64,
     pub(super) avg_pressure_bar: f64,
@@ -141,7 +140,6 @@ pub(super) fn collect_depletion_snapshots(sim: &ReservoirSimulator) -> Vec<Deple
             previous_time_days = point.time;
             cumulative_oil_sc += point.total_production_oil * dt_days;
             DepletionSnapshot {
-                time_days: point.time,
                 oil_rate_sc_day: point.total_production_oil,
                 cumulative_oil_sc,
                 avg_pressure_bar: point.avg_reservoir_pressure,

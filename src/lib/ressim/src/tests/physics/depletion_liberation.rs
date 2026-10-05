@@ -251,82 +251,72 @@ fn physics_depletion_liberation_undersaturated_rs_stays_constant() {
     }
 }
 
+// #58: a 1-day backward-Euler trajectory is not a converged pressure oracle through
+// this rapid phase transition. Require successive refinement to contract, and retain
+// the original 3% endpoint bands only on the resolved pair. No timestep policy changes.
 #[test]
-#[ignore = "explicit refinement probe: liberation-through-bubble-point should stay stable under coarse-vs-fine timesteps"]
-fn physics_depletion_liberation_timestep_refinement_keeps_transition_accounting_stable() {
-    let mut coarse = make_below_bubble_point_flash_sim(false);
-    coarse.set_fim_enabled(true);
-    coarse
-        .set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0])
-        .unwrap();
-    coarse
-        .set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0])
-        .unwrap();
-    coarse.set_gravity_enabled(false);
-    coarse.set_stability_params(0.05, 75.0, 0.75);
-    coarse.add_well(0, 0, 0, 80.0, 0.1, 0.0, false).unwrap();
+fn physics_depletion_liberation_timestep_refinement_converges_and_conserves_components() {
+    let mut endpoints = Vec::new();
+    for dt in [1.0, 0.5, 0.25, 0.125] {
+        let mut sim = make_below_bubble_point_flash_sim(false);
+        sim.set_fim_enabled(true);
+        sim.set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0])
+            .unwrap();
+        sim.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0])
+            .unwrap();
+        sim.set_gravity_enabled(false);
+        sim.set_stability_params(0.05, 75.0, 0.75);
+        sim.add_well(0, 0, 0, 80.0, 0.1, 0.0, false).unwrap();
+        let initial = total_component_inventory_sc_all_cells(&sim);
 
-    let mut fine = make_below_bubble_point_flash_sim(false);
-    fine.set_fim_enabled(true);
-    fine.set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0])
-        .unwrap();
-    fine.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0])
-        .unwrap();
-    fine.set_gravity_enabled(false);
-    fine.set_stability_params(0.05, 75.0, 0.75);
-    fine.add_well(0, 0, 0, 80.0, 0.1, 0.0, false).unwrap();
+        for _ in 0..(5.0 / dt) as usize {
+            sim.step(dt);
+            assert!(
+                sim.last_solver_warning.is_empty(),
+                "liberation dt={dt} emitted warning: {}",
+                sim.last_solver_warning
+            );
+        }
+        assert!((sim.time_days - 5.0).abs() <= 1e-9);
+        assert!(sim.pressure[0] < 150.0 && sim.sat_gas[0] > 0.0);
+        let inventory = total_component_inventory_sc_all_cells(&sim);
+        let produced = cumulative_component_production_sc(&sim);
+        let water_error = (inventory.water_sc + produced.water_sc - initial.water_sc).abs()
+            / initial.water_sc.max(1.0);
+        let oil_error =
+            (inventory.oil_sc + produced.oil_sc - initial.oil_sc).abs() / initial.oil_sc.max(1.0);
+        let gas_error =
+            (inventory.gas_sc + produced.gas_sc - initial.gas_sc).abs() / initial.gas_sc.max(1.0);
+        // Same phase-accounting bands as the existing transition balance contract.
+        assert!(water_error <= 1e-6, "dt={dt}: water balance {water_error}");
+        assert!(oil_error <= 5e-3, "dt={dt}: oil balance {oil_error}");
+        assert!(gas_error <= 1e-3, "dt={dt}: gas balance {gas_error}");
+        eprintln!(
+            "liberation dt={dt}: p={:.12}, Sg={:.12}, oil_MB={oil_error:.3e}, gas_MB={gas_error:.3e}",
+            sim.pressure[0], sim.sat_gas[0]
+        );
+        endpoints.push((sim.pressure[0], sim.sat_gas[0]));
+    }
 
-    for _ in 0..5 {
-        coarse.step(1.0);
+    let gaps: Vec<_> = endpoints
+        .windows(2)
+        .map(|pair| ((pair[0].0 - pair[1].0).abs(), (pair[0].1 - pair[1].1).abs()))
+        .collect();
+    for pair in gaps.windows(2) {
         assert!(
-            coarse.last_solver_warning.is_empty(),
-            "coarse liberation refinement case emitted solver warning at t={}: {}",
-            coarse.time_days,
-            coarse.last_solver_warning
+            pair[1].0 < pair[0].0,
+            "pressure refinement must contract: {gaps:?}"
+        );
+        assert!(
+            pair[1].1 < pair[0].1,
+            "Sg refinement must contract: {gaps:?}"
         );
     }
-    for _ in 0..10 {
-        fine.step(0.5);
-        assert!(
-            fine.last_solver_warning.is_empty(),
-            "fine liberation refinement case emitted solver warning at t={}: {}",
-            fine.time_days,
-            fine.last_solver_warning
-        );
-    }
-
-    let coarse_final = total_component_inventory_sc_all_cells(&coarse);
-    let fine_final = total_component_inventory_sc_all_cells(&fine);
-    let coarse_produced = cumulative_component_production_sc(&coarse);
-    let fine_produced = cumulative_component_production_sc(&fine);
-
-    let coarse_gas_accounted = coarse_final.gas_sc + coarse_produced.gas_sc;
-    let fine_gas_accounted = fine_final.gas_sc + fine_produced.gas_sc;
-    let gas_accounted_rel_diff =
-        ((coarse_gas_accounted - fine_gas_accounted) / fine_gas_accounted.max(1e-12)).abs();
-    let sg_abs_diff = (coarse.sat_gas[0] - fine.sat_gas[0]).abs();
-    let pressure_rel_diff =
-        ((coarse.pressure[0] - fine.pressure[0]) / fine.pressure[0].max(1e-12)).abs();
-
+    let finest = endpoints.last().expect("four refinement endpoints");
+    let fine_gap = gaps.last().expect("three refinement pairs");
     assert!(
-        gas_accounted_rel_diff <= 0.03,
-        "liberation transition gas accounting drift too large under timestep refinement: coarse={:.6}, fine={:.6}, rel_diff={:.4}",
-        coarse_gas_accounted,
-        fine_gas_accounted,
-        gas_accounted_rel_diff
+        fine_gap.0 / finest.0 <= 0.03,
+        "resolved pressure gap: {fine_gap:?}"
     );
-    assert!(
-        sg_abs_diff <= 0.03,
-        "liberation transition free-gas saturation drift too large under timestep refinement: coarse={:.6}, fine={:.6}, abs_diff={:.6}",
-        coarse.sat_gas[0],
-        fine.sat_gas[0],
-        sg_abs_diff
-    );
-    assert!(
-        pressure_rel_diff <= 0.03,
-        "liberation transition pressure drift too large under timestep refinement: coarse={:.6}, fine={:.6}, rel_diff={:.4}",
-        coarse.pressure[0],
-        fine.pressure[0],
-        pressure_rel_diff
-    );
+    assert!(fine_gap.1 <= 0.03, "resolved Sg gap: {fine_gap:?}");
 }

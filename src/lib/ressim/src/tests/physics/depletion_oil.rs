@@ -2,7 +2,6 @@ const DEP_PSS_SWC: f64 = 0.1;
 const DEP_PSS_SOR: f64 = 0.1;
 const DEP_PSS_NO: f64 = 2.0;
 const DIETZ_CA_SQUARE_CENTER: f64 = 30.8828;
-const DIETZ_CA_SQUARE_CORNER: f64 = 0.5598;
 const EULER_GAMMA: f64 = 0.577_215_664_9;
 const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
@@ -13,49 +12,24 @@ fn kro_at_initial_sw() -> f64 {
     (1.0 - effective_sw).powf(DEP_PSS_NO)
 }
 
-fn dietz_shape_factor(producer_i: usize, producer_j: usize) -> f64 {
-    let cx = 10.0;
-    let cy = 10.0;
-    let dx = ((producer_i as f64 - cx).abs() / cx).clamp(0.0, 1.0);
-    let dy = ((producer_j as f64 - cy).abs() / cy).clamp(0.0, 1.0);
-    let d = dx.max(dy);
-    (DIETZ_CA_SQUARE_CENTER.ln() * (1.0 - d) + DIETZ_CA_SQUARE_CORNER.ln() * d).exp()
-}
-
-fn dietz_pss_reference(time_days: f64, producer_i: usize, producer_j: usize) -> (f64, f64) {
-    let pore_volume_m3 = super::fixtures::DEP_PSS_LENGTH_M
-        * super::fixtures::DEP_PSS_WIDTH_M
-        * super::fixtures::DEP_PSS_HEIGHT_M
-        * super::fixtures::DEP_PSS_POROSITY;
-    let drainage_area_m2 = super::fixtures::DEP_PSS_LENGTH_M * super::fixtures::DEP_PSS_WIDTH_M;
-    let shape_factor = dietz_shape_factor(producer_i, producer_j);
-    let kro = kro_at_initial_sw();
-    let denominator = 0.5
-        * ((4.0 * drainage_area_m2)
-            / (shape_factor
-                * (2.0 * EULER_GAMMA).exp()
-                * super::fixtures::DEP_PSS_WELL_RADIUS_M
-                * super::fixtures::DEP_PSS_WELL_RADIUS_M))
-            .ln();
-    let productivity_index = (DARCY_METRIC_FACTOR
+// Dietz's gamma is exp(Euler-Mascheroni), not exp(2*gamma). This is the
+// constant-rate PSS relation in depletionAnalytical.ts (Dake's semi-steady inflow
+// equation), inverted using reservoir-volume rate and the reported flowing BHP.
+fn dietz_shape_factor_from_productivity(productivity: f64) -> f64 {
+    let area = super::fixtures::DEP_PSS_LENGTH_M * super::fixtures::DEP_PSS_WIDTH_M;
+    let conductance = DARCY_METRIC_FACTOR
         * 2.0
         * std::f64::consts::PI
         * super::fixtures::DEP_PSS_PERM_MD
         * super::fixtures::DEP_PSS_HEIGHT_M
-        * (kro / super::fixtures::DEP_PSS_MU_O_CP))
-        / (denominator + super::fixtures::DEP_PSS_WELL_SKIN).max(1e-9);
-    let total_compressibility = (1.0 - super::fixtures::DEP_PSS_INITIAL_SW)
-        * super::fixtures::DEP_PSS_C_O_BAR_INV
-        + super::fixtures::DEP_PSS_INITIAL_SW * super::fixtures::DEP_PSS_C_W_BAR_INV
-        + super::fixtures::DEP_PSS_C_ROCK_BAR_INV;
-    let tau_days = (pore_volume_m3 * total_compressibility) / productivity_index.max(1e-12);
-    let q0 = productivity_index
-        * (super::fixtures::DEP_PSS_INITIAL_PRESSURE_BAR
-            - super::fixtures::DEP_PSS_PRODUCER_BHP_BAR);
-    let oil_rate_sc_day = q0 * (-time_days / tau_days.max(1e-9)).exp();
-    let avg_pressure_bar =
-        super::fixtures::DEP_PSS_PRODUCER_BHP_BAR + oil_rate_sc_day / productivity_index.max(1e-12);
-    (oil_rate_sc_day, avg_pressure_bar)
+        * kro_at_initial_sw()
+        / super::fixtures::DEP_PSS_MU_O_CP;
+    4.0 * area
+        / (crate::math::exp(EULER_GAMMA)
+            * super::fixtures::DEP_PSS_WELL_RADIUS_M.powi(2)
+            * crate::math::exp(
+                2.0 * (conductance / productivity - super::fixtures::DEP_PSS_WELL_SKIN),
+            ))
 }
 
 use super::fixtures::{
@@ -387,44 +361,50 @@ fn physics_depletion_oil_dep_pss_timestep_refinement_is_locally_stable() {
     );
 }
 
+// #58: the old fixed-BHP exponential tank-history comparison was not the
+// shipped dep_pss contract. Measure constant-rate PSS productivity after the
+// distributed transient, before the BHP floor, as the catalog does.
 #[test]
-#[ignore = "diagnostic analytical probe: characterize late-time dep_pss vs Dietz drift while the model-alignment gap remains open"]
-fn physics_depletion_oil_dep_pss_late_time_matches_dietz_reference_smoke() {
-    let sim = make_dep_pss_like_sim(0.2, 40);
-    let snapshots = collect_depletion_snapshots(&sim);
-    let late_time: Vec<_> = snapshots
-        .iter()
-        .filter(|snapshot| snapshot.time_days >= 5.0)
-        .collect();
-
-    assert!(
-        !late_time.is_empty(),
-        "late-time depletion window should not be empty"
-    );
-
-    let mut max_rate_rel_diff = 0.0_f64;
-    let mut max_pressure_rel_diff = 0.0_f64;
-
-    for snapshot in late_time {
-        let (reference_rate, reference_pressure) = dietz_pss_reference(snapshot.time_days, 10, 10);
-        let rate_rel_diff =
-            ((snapshot.oil_rate_sc_day - reference_rate) / reference_rate.max(1e-12)).abs();
-        let pressure_rel_diff = ((snapshot.avg_pressure_bar - reference_pressure)
-            / reference_pressure.max(1e-12))
-        .abs();
-
-        max_rate_rel_diff = max_rate_rel_diff.max(rate_rel_diff);
-        max_pressure_rel_diff = max_pressure_rel_diff.max(pressure_rel_diff);
+fn physics_depletion_oil_dep_pss_constant_rate_recovers_dietz_shape_factor() {
+    let mut sim = make_dep_pss_like_sim(0.2, 0);
+    sim.set_rel_perm_props(DEP_PSS_SWC, DEP_PSS_SOR, 2.0, DEP_PSS_NO, 1.0, 1.0)
+        .unwrap();
+    sim.set_well_control_modes("pressure".to_string(), "rate".to_string());
+    sim.set_target_well_rates(0.0, 10.0).unwrap();
+    sim.set_well_bhp_limits(100.0, 500.0).unwrap();
+    let mut pss_samples = 0;
+    let mut max_shape_error = 0.0_f64;
+    for _ in 0..30 {
+        sim.step(0.2);
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "{}",
+            sim.last_solver_warning
+        );
+        if sim.time_days < 5.0 {
+            continue;
+        }
+        let point = sim.rate_history.last().expect("PSS history");
+        let bhp = sim.wells[0].flowing_bhp.expect("reported flowing BHP");
+        assert!(bhp > 100.0, "PSS sample must remain rate-controlled");
+        assert_eq!(point.producer_bhp_limited_fraction, 0.0);
+        let rate = point.total_production_liquid_reservoir;
+        assert!((rate - 10.0).abs() <= 1e-6, "reservoir-volume rate: {rate}");
+        let drawdown = point.avg_reservoir_pressure - bhp;
+        assert!(drawdown > 0.0);
+        let shape = dietz_shape_factor_from_productivity(rate / drawdown);
+        assert!(shape.is_finite() && shape > 0.0);
+        max_shape_error = max_shape_error.max((shape / DIETZ_CA_SQUARE_CENTER - 1.0).abs());
+        pss_samples += 1;
     }
-
+    assert!(pss_samples >= 5, "need a PSS window, not one endpoint");
+    // Same independent shape-factor band as dep_pss.test.ts. The retired 200%
+    // oil-rate band graded an exponential history under different assumptions.
     assert!(
-        max_rate_rel_diff <= 2.00,
-        "dep_pss late-time Dietz oil-rate drift exceeded the current diagnostic envelope: max_rel_diff={:.4}",
-        max_rate_rel_diff,
+        max_shape_error <= 0.03,
+        "Dietz shape-factor error: {max_shape_error}"
     );
-    assert!(
-        max_pressure_rel_diff <= 0.12,
-        "dep_pss late-time Dietz pressure drift exceeded the current diagnostic envelope: max_rel_diff={:.4}",
-        max_pressure_rel_diff,
+    eprintln!(
+        "Dietz constant-rate PSS: {pss_samples} samples, max C_A relative error={max_shape_error:.6}"
     );
 }
