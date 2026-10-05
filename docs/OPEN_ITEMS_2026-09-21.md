@@ -137,7 +137,7 @@ pressure-dependent pore volume and FVF. The old residual-oil closure is removed.
 inventory gates cover compressible depletion, closed redistribution and all small-direct IMPES
 cases. Baseline impact, matched Flow comparisons and timestep refinement are recorded in
 `BLACK_OIL_VALIDATION.md` §4b. The combined layered sweep uses FIM for interactive runtime;
-conservative IMPES remains a mandatory native reference path.
+conservative IMPES remains a mandatory native reference path. Profiling its added component-volume correction cost is deferred to [#71](https://github.com/sergeyfarin/ressim/issues/71), because the validated FIM default restores interactive access without weakening conservation.
 
 ## 9. Cross-solver harness covers the small-direct black-oil decks only (2026-09-25, #22)
 

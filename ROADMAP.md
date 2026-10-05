@@ -22,12 +22,9 @@ The [milestone](https://github.com/sergeyfarin/ressim/milestone/1) has no open i
 
 Current execution order (reconciled 2026-10-05):
 
-1. [#63 — Quantify two-phase IMPES conservation with compressible rock/water](https://github.com/sergeyfarin/ressim/issues/63).
-   Shipped cases use these terms, but their error magnitude is not established. This is a separate
-   investigation; no causal link to #58 is assumed.
-2. [#15 — Shipped chart correctness](https://github.com/sergeyfarin/ressim/issues/15), then
+1. [#15 — Shipped chart correctness](https://github.com/sergeyfarin/ressim/issues/15), then
    [#29 — Complete compositional chart/product integration](https://github.com/sergeyfarin/ressim/issues/29).
-3. [#35 — Remaining bubble-point boundary partials](https://github.com/sergeyfarin/ressim/issues/35).
+2. [#35 — Remaining bubble-point boundary partials](https://github.com/sergeyfarin/ressim/issues/35).
    The above-table physics convention is fixed; the remaining Newton-efficiency gain needs measurement.
 
 [#12](https://github.com/sergeyfarin/ressim/issues/12) now owns only a second SPE-style black-oil case,
@@ -38,6 +35,12 @@ harness/seam work, including compositional scorecard integration and roundoff-se
 [#58](https://github.com/sergeyfarin/ressim/issues/58) is resolved by replacing the unsupported
 coarse-pair and exponential-history assertions with bounded, gated conservation/refinement and
 constant-rate Dietz contracts. Evidence and limits: BLACK_OIL_VALIDATION.md §4a.
+
+[#63](https://github.com/sergeyfarin/ressim/issues/63) repairs compressible two-phase IMPES
+conservation; independent inventories and matched Flow evidence are in BLACK_OIL_VALIDATION.md
+§4b. The combined sweep uses its validated FIM path for interactive runtime.
+[#71](https://github.com/sergeyfarin/ressim/issues/71) separately owns profiling conservative IMPES
+volume-correction cost; it follows the user-facing chart work rather than blocking it.
 
 Closed since the last revision of this list: #10 (gravity wells), #11 (FIM/IMPES depletion,
 an unstable PVT table), #13 (CI), #21 (Flow oil bias, no solver defect), #36–#39, #42–#44.

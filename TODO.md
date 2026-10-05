@@ -16,7 +16,6 @@ its milestone is closed. See [ROADMAP.md](ROADMAP.md) for the current order.
 
 ### Next
 
-- [#63 — Quantify compressible two-phase IMPES conservation](https://github.com/sergeyfarin/ressim/issues/63)
 - [#15 — Fix remaining chart correctness and presentation defects](https://github.com/sergeyfarin/ressim/issues/15)
 - [#29 — Compositional model: C13 chart sourcing, then C14](https://github.com/sergeyfarin/ressim/issues/29)
 - [#52 — Run SPE5, then SPE3, after their enablers](https://github.com/sergeyfarin/ressim/issues/52)

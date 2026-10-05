@@ -511,12 +511,13 @@ point establishes the endpoint after the closure changes the leading error coeff
 Native/browser parity retains the 1e-9 tolerance. Its displacement-front guard now excludes
 background compression smaller than one saturation percentage point.
 
-### Deliberate trajectory scorecard replacement
+### Deliberate trajectory and benchmark record replacement
 
 The pre-repair scorecard (`90bde50`, 2026-09-26) is replaced deliberately, with **BANDS unchanged**.
 Three cumulative metrics exceed that old ratchet after the conservative repair: adverse 1D
-water injection, vertical-sweep oil and crossflow-sweep oil. Keeping the old nonconservative
-answer would preserve cancellation between closure error and discretization error.
+water injection, vertical-sweep oil and crossflow-sweep oil. We infer partial cancellation between closure and discretization error from the smaller old
+coarse differences and their post-repair reduction under refinement. That inference does not
+justify retaining the nonconservative answer.
 The matched-deck referee command was
 `CROSS_SOLVER_OUT=/tmp/ressim-63-referee bash scripts/validate-cross-solver.sh --refine 0.1 --case ow-1d-50-adverse --case sweep-vertical --case sweep-crossflow`.
 The refined comparisons reduce those cumulative differences and close independent inventories;
@@ -527,9 +528,22 @@ scale and retains the existing Flow trajectory and sparse/dense agreement contra
 The combined layered case requires thousands of conservative IMPES transport substeps and
 exceeds the browser test's existing 300 s timeout. It now ships with FIM, whose matched Flow
 trajectory is already covered; its browser twin passes the unchanged bands and timeout.
-The mandatory native matrix continues to run IMPES on the same deck. Optimizing its explicit
-transport is deferred: correctness and interactive access are provided without loosening a gate.
+The mandatory native matrix continues to run IMPES on the same deck. Profiling its component-volume correction is tracked separately by [#71](https://github.com/sergeyfarin/ressim/issues/71): the substep count is almost unchanged, so the added solve/closure work must be measured. Correctness and interactive access are provided without loosening a gate.
 
+
+The Buckley–Leverett records from `ca747c1` are also deliberately replaced. The Case B
+report-interval spread grows past the old record's ratchet after the component closure changes
+its time discretization error, while remaining inside the unchanged accuracy criterion. All five
+Buckley–Leverett acceptance tests pass. The full benchmark producer suite reproduced every other
+section; only this recorded ratchet required replacement. Values and original bands are generated
+in [`BENCHMARKS.md`](BENCHMARKS.md), not copied into this document. The changed Buckley and
+cross-solver sections were regenerated from clean `8ddab61` with
+`BENCH_OUT=/tmp/ressim-63-bench-update bash scripts/benchmarks.sh update --only buckley --only cross_solver`.
+The completed full run (`BENCH_OUT=/tmp/ressim-63-bench-final bash scripts/benchmarks.sh check`)
+is checked again against those replacement records with
+`uv run --no-project --python /usr/bin/python3 python tools/benchmarks/benchmarks.py check --run /tmp/ressim-63-bench-final`.
+This rechecks all nine captured sections, including Flow, 20 JutulDarcy runs, native/browser
+parity, FIM WASM controls and the reproduced compositional fixtures; no engine changes intervene.
 
 ### Committed repair measurements
 
