@@ -291,16 +291,23 @@
 
     const resolvedPanels = $derived.by(() => {
         const panelOrder = layoutConfig?.chart?.panelOrder ?? DEFAULT_CHART_PANEL_ORDER;
+        // A panel group the model expanded (one panel per component of a compositional run)
+        // takes the group's place in the order and its layout; each member keeps its own title.
+        const slots = panelOrder.flatMap((layoutKey) => {
+            const members = overlayModel.panelGroups[layoutKey];
+            return members
+                ? members.map((member) => ({ panelKey: member.id, layoutKey, title: member.title }))
+                : [{ panelKey: layoutKey, layoutKey, title: undefined as string | undefined }];
+        });
 
-        return panelOrder
-            .map((panelKey) => {
-                const fallback = panelFallbacks[panelKey] ?? getPanelFallback(panelKey);
-                const panelLayout = resolveChartPanelLayout({
-                    override: layoutConfig?.chart?.panels?.[panelKey],
-                    fallback,
-                });
+        return slots
+            .map(({ panelKey, layoutKey, title }) => {
+                const fallback = panelFallbacks[layoutKey] ?? getPanelFallback(layoutKey);
+                const layoutOverride = layoutConfig?.chart?.panels?.[layoutKey];
+                const override = title ? { ...layoutOverride, title } : layoutOverride;
+                const panelLayout = resolveChartPanelLayout({ override, fallback });
                 const panelDefinition = resolveChartPanelDefinition({
-                    override: layoutConfig?.chart?.panels?.[panelKey],
+                    override,
                     fallback,
                     entries: buildPanelEntries(panelKey),
                     getScalePresetConfig,
@@ -308,7 +315,7 @@
 
                 return {
                     key: panelKey,
-                    chartId: `comparison-${panelKey.replaceAll('_', '-')}`,
+                    chartId: `comparison-${panelKey.replace(/[^A-Za-z0-9]+/g, '-')}`,
                     title: panelDefinition.title,
                     curves: panelDefinition.curves,
                     series: panelDefinition.series.map((series, index) => (
@@ -316,14 +323,20 @@
                             || panelDefinition.curves[index]?.curveKey?.endsWith('-sim'))
                             ? suppressLeadingOutliers(
                                 series,
-                                layoutConfig?.chart?.panels?.[panelKey]?.suppressLeadingOutliers,
+                                layoutOverride?.suppressLeadingOutliers,
                             )
                             : series
                     )),
                     scales: panelDefinition.scales,
                     allowLogToggle: panelDefinition.allowLogToggle || panelLayout.allowLogToggle,
                     visible: panelLayout.visible,
+                    // A group member has no seeded state until it is toggled; it starts from
+                    // its group's layout. Binding an absent key would hand the panel `undefined`.
                     expanded: panelExpanded[panelKey] ?? panelLayout.expanded,
+                    logScale: panelLogScale[panelKey]
+                        ?? layoutOverride?.logScale
+                        ?? layoutConfig?.chart?.logScale
+                        ?? false,
                 };
             })
             .filter((panel) => panel.visible && panel.curves.length > 0);
@@ -466,12 +479,18 @@
         <ChartSubPanel
             panelId={panel.chartId}
             title={panel.title}
-            bind:expanded={panelExpanded[panel.key]}
+            bind:expanded={
+                () => panel.expanded,
+                (value) => { panelExpanded[panel.key] = value; }
+            }
             curves={panel.curves}
             seriesData={panel.series}
             scaleConfigs={panel.scales}
             {theme}
-            bind:logScale={panelLogScale[panel.key]}
+            bind:logScale={
+                () => panel.logScale,
+                (value) => { panelLogScale[panel.key] = value; }
+            }
             allowLogToggle={layoutConfig?.chart?.allowLogScale ?? panel.allowLogToggle}
             xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}

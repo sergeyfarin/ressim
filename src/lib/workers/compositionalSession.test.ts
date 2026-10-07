@@ -36,8 +36,13 @@ function config(): CompositionalCaseConfig {
   };
 }
 
-/** An engine that advances a clock and can be told to fail at a given step. */
-function fakeEngine(options: { failAtStep?: number; failKind?: string } = {}): CompositionalEngine {
+/**
+ * An engine that advances a clock and can be told to fail at a given step, or to accept at most
+ * `maxDtDays` of any step it is asked for — which is what the real engine does after a cut.
+ */
+function fakeEngine(
+  options: { failAtStep?: number; failKind?: string; maxDtDays?: number } = {},
+): CompositionalEngine {
   let time = 0;
   let step = 0;
   const snapshot = (): CompositionalSnapshot => ({
@@ -66,9 +71,10 @@ function fakeEngine(options: { failAtStep?: number; failKind?: string } = {}): C
           failure: { kind: options.failKind ?? 'Flash', message: 'the flash did not resolve' },
         };
       }
-      time += dtDays;
+      const accepted = Math.min(dtDays, options.maxDtDays ?? Infinity);
+      time += accepted;
       return {
-        accepted_dt_days: dtDays,
+        accepted_dt_days: accepted,
         time_days: time,
         attempts: 1,
         newton_iterations: 3,
@@ -96,30 +102,30 @@ function factory(engine: CompositionalEngine): CompositionalEngineFactory {
 }
 
 describe('CompositionalSession', () => {
-  it('runs a batch and reports a snapshot per step by default', () => {
+  it('runs a batch and reports a snapshot per step by default', async () => {
     const session = CompositionalSession.create(factory(fakeEngine()), config());
     const seen: number[] = [];
-    const stop = session.run({ steps: 4, dtDays: 0.5 }, (snapshot) => seen.push(snapshot.time_days));
+    const stop = await session.run({ steps: 4, dtDays: 0.5 }, (snapshot) => seen.push(snapshot.time_days));
 
     expect(stop).toEqual({ reason: 'completed', completedSteps: 4 });
     expect(seen).toEqual([0.5, 1, 1.5, 2]);
     expect(session.timeDays).toBe(2);
   });
 
-  it('honours snapshotEvery, and always reports the final step', () => {
+  it('honours snapshotEvery, and always reports the final step', async () => {
     const session = CompositionalSession.create(factory(fakeEngine()), config());
     const seen: number[] = [];
-    session.run({ steps: 5, dtDays: 1, snapshotEvery: 2 }, (snapshot) =>
+    await session.run({ steps: 5, dtDays: 1, snapshotEvery: 2 }, (snapshot) =>
       seen.push(snapshot.time_days),
     );
     // Steps 2 and 4 by the interval, and step 5 because it is the last.
     expect(seen).toEqual([2, 4, 5]);
   });
 
-  it('ends the batch on a failed step and reports where it got to', () => {
+  it('ends the batch on a failed step and reports where it got to', async () => {
     const session = CompositionalSession.create(factory(fakeEngine({ failAtStep: 2 })), config());
     const seen: number[] = [];
-    const stop = session.run({ steps: 10, dtDays: 0.5 }, (snapshot) =>
+    const stop = await session.run({ steps: 10, dtDays: 0.5 }, (snapshot) =>
       seen.push(snapshot.time_days),
     );
 
@@ -133,20 +139,20 @@ describe('CompositionalSession', () => {
     expect(seen[seen.length - 1]).toBe(1);
   });
 
-  it('does not advance past a failure', () => {
+  it('does not advance past a failure', async () => {
     const engine = fakeEngine({ failAtStep: 1 });
     const stepSpy = vi.spyOn(engine, 'step');
     const session = CompositionalSession.create(factory(engine), config());
-    session.run({ steps: 20, dtDays: 0.5 }, () => {});
+    await session.run({ steps: 20, dtDays: 0.5 }, () => {});
     // One good step, one that fails, and then it stops asking.
     expect(stepSpy).toHaveBeenCalledTimes(2);
   });
 
-  it('stops when asked, before taking the next step', () => {
+  it('stops when asked, before taking the next step', async () => {
     const engine = fakeEngine();
     const session = CompositionalSession.create(factory(engine), config());
     let calls = 0;
-    const stop = session.run({ steps: 10, dtDays: 1 }, () => {
+    const stop = await session.run({ steps: 10, dtDays: 1 }, () => {
       calls += 1;
       if (calls === 2) {
         session.requestStop();
@@ -154,6 +160,41 @@ describe('CompositionalSession', () => {
     });
     expect(stop.reason).toBe('user');
     expect(stop.completedSteps).toBe(2);
+  });
+
+  it('reaches every report time when the engine accepts a cut step', async () => {
+    // The engine accepts at most 0.2 d of each request, as it does after cutting a step. A report
+    // step is simulated time, so each one takes several calls and still lands on its time.
+    const engine = fakeEngine({ maxDtDays: 0.2 });
+    const stepSpy = vi.spyOn(engine, 'step');
+    const session = CompositionalSession.create(factory(engine), config());
+    const seen: number[] = [];
+    const stop = await session.run({ steps: 4, dtDays: 0.5 }, (snapshot) => seen.push(snapshot.time_days));
+
+    expect(stop).toEqual({ reason: 'completed', completedSteps: 4 });
+    expect(seen.map((t) => Number(t.toFixed(9)))).toEqual([0.5, 1, 1.5, 2]);
+    expect(session.timeDays).toBeCloseTo(2, 12);
+    // The remainder is requested, not a fresh full step: 0.2 + 0.2 + 0.1 per report step.
+    expect(stepSpy.mock.calls.slice(0, 3).map(([dt]) => Number(dt.toFixed(9)))).toEqual([0.5, 0.3, 0.1]);
+  });
+
+  it('continues from the engine clock, so a second batch reports at its own times', async () => {
+    const session = CompositionalSession.create(factory(fakeEngine()), config());
+    await session.run({ steps: 2, dtDays: 1 }, () => {});
+    const seen: number[] = [];
+    await session.run({ steps: 2, dtDays: 1 }, (snapshot) => seen.push(snapshot.time_days));
+    expect(seen).toEqual([3, 4]);
+  });
+
+  it('yields after every report step, so a stop request can arrive mid-batch', async () => {
+    const session = CompositionalSession.create(factory(fakeEngine()), config());
+    let yields = 0;
+    const stop = await session.run({ steps: 10, dtDays: 1 }, () => {}, async () => {
+      yields += 1;
+      // What the worker's message handler does when the stop message lands during a yield.
+      if (yields === 3) session.requestStop();
+    });
+    expect(stop).toEqual({ reason: 'user', completedSteps: 3 });
   });
 
   it('restores from a checkpoint and keeps its config', () => {

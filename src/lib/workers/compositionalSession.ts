@@ -111,16 +111,30 @@ export class CompositionalSession {
   /**
    * Run a batch, reporting snapshots as it goes.
    *
+   * A report step is `dtDays` of **simulated time**, not one engine call. The engine's `step(dt)`
+   * may cut `dt` and accept the smaller step — it reports what it accepted and returns — so one
+   * call does not always reach the report time. Counting calls as report steps left every snapshot
+   * after the first cut early by the cut's remainder, and a refined grid that cuts often ended its
+   * run days short of the horizon (40 cells over 400 × 0.05 d stopped at 16.6 d, not 20). The loop
+   * below steps on the remainder until the report time is reached.
+   *
    * A failed step **ends the batch and is reported**, rather than being retried here: the engine's
    * timestep lifecycle already cuts and retries internally, so a failure that reaches this point
    * means it exhausted that. Continuing past it would be advancing a run whose last accepted state
    * is not what the caller thinks it is.
+   *
+   * `yieldControl` is awaited after every report step. The worker passes one that occasionally
+   * yields to its event loop, which is the only way a stop request can arrive mid-batch.
    */
-  run(
+  async run(
     options: CompositionalRunOptions,
     onSnapshot: (snapshot: CompositionalSnapshot, stepIndex: number) => void,
-  ): CompositionalRunStop {
+    yieldControl?: () => Promise<void>,
+  ): Promise<CompositionalRunStop> {
     const snapshotEvery = Math.max(1, Math.floor(options.snapshotEvery ?? 1));
+    // Below this, the remainder is round-off in the clock, not time still to simulate.
+    const tolerance = options.dtDays * 1e-9;
+    const startDays = this.#engine.getTime();
     this.#stopRequested = false;
 
     for (let step = 0; step < options.steps; step += 1) {
@@ -129,22 +143,28 @@ export class CompositionalSession {
         return { reason: 'user', completedSteps: step };
       }
 
-      const outcome = this.#engine.step(options.dtDays);
-      if (outcome.accepted_dt_days === null) {
-        const failure = outcome.failure ?? { kind: 'Unknown', message: 'the step did not succeed' };
-        // Report the last accepted state, so a UI shows where it actually got to.
-        onSnapshot(this.#engine.getSnapshot(), step);
-        return {
-          reason: 'failed',
-          completedSteps: step,
-          failure: { ...failure, timeDays: outcome.time_days },
-        };
+      const targetDays = startDays + (step + 1) * options.dtDays;
+      let remaining = targetDays - this.#engine.getTime();
+      while (remaining > tolerance) {
+        const outcome = this.#engine.step(remaining);
+        if (outcome.accepted_dt_days === null) {
+          const failure = outcome.failure ?? { kind: 'Unknown', message: 'the step did not succeed' };
+          // Report the last accepted state, so a UI shows where it actually got to.
+          onSnapshot(this.#engine.getSnapshot(), step);
+          return {
+            reason: 'failed',
+            completedSteps: step,
+            failure: { ...failure, timeDays: outcome.time_days },
+          };
+        }
+        remaining = targetDays - this.#engine.getTime();
       }
 
       const isLast = step === options.steps - 1;
       if (isLast || (step + 1) % snapshotEvery === 0) {
         onSnapshot(this.#engine.getSnapshot(), step);
       }
+      await yieldControl?.();
     }
 
     return { reason: 'completed', completedSteps: options.steps };

@@ -416,8 +416,8 @@ Owning document: [`COMPOSITIONAL_VALIDATION.md`](COMPOSITIONAL_VALIDATION.md) §
 resolution, from the committed fixtures. The full tier also re-derives those fixtures from a
 locally built `flowexp_comp` and checks they still reproduce. The plain 1D deck's band is loose on
 purpose: its sub-day `TSTEP`s are where the reference cut extra steps, so matching is approximate
-there. The compositional engine is not yet offered in the app (`comp_co2_1d` is withheld pending
-chart sourcing, #29).
+there. In the app the compositional engine runs as `comp_co2_1d`, which plots its own
+compositional quantities (#29).
 
 <!-- GENERATED:compositional -->
 *Measured on `ca747c1` (clean tree), 2026-09-26.*
@@ -509,7 +509,7 @@ time step, which is where discretization error shows.
 <!-- GENERATED:coverage -->
 | Scenario | Analytical | OPM Flow artifact | Engine benchmark | Refinement dimension | Second simulator | Own `<key>.test.ts` |
 |---|---|---|---|---|---|---|
-| `comp_co2_1d` (withheld) | — | — | §8 | grid_refinement, timestep | — | yes |
+| `comp_co2_1d` | — | — | §8 | grid_refinement, timestep | — | yes |
 | `dep_arps` | depletion | — | — | — | — | yes |
 | `dep_decline` | depletion | — | — | timestep, grid_refinement | — | yes |
 | `dep_gas_pz` | gas-material-balance | yes | — | — | — | yes |

@@ -631,6 +631,53 @@ export const CHART_LAYOUTS: Record<string, ChartLayoutConfig> = {
             },
         },
     },
+
+    // A compositional run. None of the black-oil panels applies — there is no oil rate, GOR or
+    // p/z to plot — so this layout names only the compositional panels, which
+    // `charts/compositionalCurves.ts` fills. `comp_inventory` and `comp_net_injected` are panel
+    // groups: each expands to one panel per component of the run's fluid.
+    compositional: {
+        chart: {
+            xAxisMode: 'time',
+            xAxisOptions: ['time', 'logTime'],
+            xAxisRangePolicy: { mode: 'data-extent' },
+            allowLogScale: true,
+            logScale: false,
+            panelOrder: [
+                'comp_inventory', 'comp_vapour_saturation', 'comp_two_phase', 'comp_pressure',
+                'comp_net_injected', 'comp_conservation',
+            ],
+            panels: {
+                // What the flood has done to the reservoir's contents: CO₂ stored, the resident
+                // components displaced. The headline exhibit, so it opens expanded.
+                comp_inventory: { scalePreset: 'moles', expanded: true },
+                comp_vapour_saturation: {
+                    title: 'Average Vapour Saturation',
+                    scalePreset: 'fraction',
+                    expanded: true,
+                },
+                comp_two_phase: {
+                    title: 'Two-Phase Cell Fraction',
+                    scalePreset: 'fraction',
+                    expanded: false,
+                },
+                comp_pressure: {
+                    title: 'Average Pressure',
+                    scalePreset: 'pressure',
+                    expanded: false,
+                },
+                comp_net_injected: { scalePreset: 'moles', expanded: false },
+                // The run judged against itself: inventory change against what the wells moved.
+                // A run that stops conserving shows here rather than only in a Rust test.
+                comp_conservation: {
+                    title: 'Component Conservation Error',
+                    scalePreset: 'relative_error',
+                    allowLogToggle: true,
+                    expanded: false,
+                },
+            },
+        },
+    },
 };
 
 function mergeObjectMap<T extends Record<string, unknown>>(

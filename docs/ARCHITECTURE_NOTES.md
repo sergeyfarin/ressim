@@ -5,8 +5,10 @@ This document tracks active architectural decisions that are still relevant. His
 ## Current Architecture Snapshot
 
 - `src/lib/catalog/scenarios.ts` is the primary scenario registry.
-- There are 19 scenario definitions under `src/lib/catalog/scenarios/`: 18 offered in the picker,
-  and `comp_co2_1d` withheld.
+- There are 19 scenario definitions under `src/lib/catalog/scenarios/`, all offered in the picker.
+  `comp_co2_1d` runs on the compositional engine; its results carry a `CompositionalRunRecord`
+  and the chart stack sources them through `charts/compositionalCurves.ts`, never through the
+  black-oil `DerivedRunSeries`.
 - `ScenarioCapabilities` is the main routing contract for analytical behavior, chart defaults, injector presence, sweep geometry, and three-phase gating.
 - Custom Mode was removed from the production UI in 2026-07 (`.archive/README.md`).
 - The legacy benchmark-family layer is a stub: `benchmarkCases.ts` returns no families, and

@@ -124,6 +124,35 @@ export const SCALE_GOR = {
     },
 };
 
+/**
+ * Component amounts. Not anchored at zero: net injected moles are signed — positive for what the
+ * wells put in, negative for what they took out.
+ */
+export const SCALE_MOLES = {
+    y: {
+        type: 'linear',
+        display: true,
+        position: 'left',
+        alignToPixels: true,
+        title: { display: true, text: 'Amount (mol)' },
+        ticks: { count: 6 },
+        _auto: true,
+    },
+};
+
+/** A dimensionless relative error, such as a conservation residual. */
+export const SCALE_RELATIVE_ERROR = {
+    y: {
+        type: 'linear',
+        display: true,
+        position: 'left',
+        alignToPixels: true,
+        title: { display: true, text: 'Relative error' },
+        ticks: { count: 6 },
+        _auto: true,
+    },
+};
+
 export const SCALE_FRACTION = {
     y: {
         type: 'linear',
@@ -231,6 +260,8 @@ export function getScalePresetConfig(scalePreset: ChartScalePreset): Record<stri
     if (scalePreset === 'gor') return SCALE_GOR;
     if (scalePreset === 'diagnostics') return DIAGNOSTICS_SCALES;
     if (scalePreset === 'fraction') return SCALE_FRACTION;
+    if (scalePreset === 'moles') return SCALE_MOLES;
+    if (scalePreset === 'relative_error') return SCALE_RELATIVE_ERROR;
     if (scalePreset === 'recovery') return RECOVERY_SCALES;
     if (scalePreset === 'cumulative_volumes') return SCALE_CUMULATIVE_VOLUMES;
     if (scalePreset === 'cumulative') return SCALE_CUMULATIVE;

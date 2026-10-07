@@ -79,7 +79,7 @@ https://farin.nl/ressim - No installation required
 | Material Balance & Drive Mechanism | Solution Gas Drive | `gas_drive` | Saturated black-oil depletion — liberation, free-gas build-up and the GOR rise; graded against an OPM Flow reference (`docs/THREE_PHASE_VALIDATION.md` §2) |
 | Material Balance & Drive Mechanism | PVT Model Risk — One Calibration Point | `dep_pvt` | Constant-rate black-oil blowdown; every PVT table shares the one point a flash test pins. Above it, unmeasured undersaturated compressibility doubles the time to the bubble point; below it, the published Rs(p) correlation spreads producing GOR by ±20% at matched pressure. OPM Flow on every rung |
 | Published Benchmark Decks | SPE1 Black-Oil Benchmark | `spe1_gas_injection` | Published Eclipse and OPM Flow comparative-solution references |
-| Compositional *(defined and tested; withheld from picker)* | 1D Compositional CO₂ Flood | `comp_co2_1d` | Peng–Robinson compositional engine; withheld until the chart stack can plot compositional series ([issue #29](https://github.com/sergeyfarin/ressim/issues/29)) |
+| Published Benchmark Decks | 1D Compositional CO₂ Flood | `comp_co2_1d` | OPM's `1D_COMP` deck on the Peng–Robinson compositional engine: components in place, net injected, vapour saturation and a conservation check per case, across grid and timestep ladders. No analytical overlay exists; validated against OPM `flowexp_comp` (`docs/COMPOSITIONAL_VALIDATION.md` §8) |
 
 ## Reading The Results — Model Validity Notes
 
@@ -167,8 +167,8 @@ Full `cargo test` is not used as a gate, because FIM diagnostic tests can domina
 
 ### Status
 
-- 18 scenarios are offered in the picker across five physics-question groups. One more,
-  `comp_co2_1d`, is defined and tested but withheld from the picker (see the inventory above).
+- 19 scenarios are offered in the picker across five physics-question groups, one of them
+  (`comp_co2_1d`) on the compositional engine.
 - Every scenario declares its solver and says why. Gas, black-oil and capillary cases run FIM by
   default (`gas_injection`, `gas_drive`, `spe1_gas_injection`, `dep_gas_pz`, `dep_pvt`,
   `wf_capillary`). The
@@ -327,8 +327,8 @@ priorities are:
 1. Close the remaining SPE1 and black-oil scenario validation gaps
    ([#12](https://github.com/sergeyfarin/ressim/issues/12)) and the chart presentation defects
    ([#15](https://github.com/sergeyfarin/ressim/issues/15)).
-2. Bring the compositional engine into the app: chart sourcing for `comp_co2_1d`
-   ([#29](https://github.com/sergeyfarin/ressim/issues/29)), then SPE5 and SPE3
+2. Finish the compositional product path — per-cell composition views for `comp_co2_1d`
+   ([#29](https://github.com/sergeyfarin/ressim/issues/29)) — then SPE5 and SPE3
    ([#52](https://github.com/sergeyfarin/ressim/issues/52)).
 3. Add scenario enablers only with consuming cases and independent references.
 4. Keep the FIM OPM-parity frontier parked behind product validation unless a user-visible defect

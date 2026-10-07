@@ -25,6 +25,9 @@ import { buildBenchmarkRunResult } from '../benchmarkRunModel';
 import type { BenchmarkRunSpec } from '../benchmarkRunModel';
 import { buildReferenceComparisonModel } from './buildChartData';
 import { getPoreVolume } from '@ressim/quantities/reservoirVolumes';
+import { buildRunResult, type RunSpec } from '../scenario/runModel';
+import { buildCompositionalRunRecord } from '../compositional/runRecord';
+import type { CompositionalCaseConfig, CompositionalSnapshot } from '../compositional/types';
 
 /** A deterministic, physics-free rate history with every field the builder reads. */
 function syntheticRateHistory(params: Record<string, any>) {
@@ -50,6 +53,45 @@ function syntheticRateHistory(params: Record<string, any>) {
             producing_gor: 200 + 300 * (1 - decay),
         };
     });
+}
+
+/** The component ids each pinned fluid reports (`fluid/pinned.rs`). */
+const PINNED_COMPONENT_IDS: Record<string, string[]> = {
+    'pinned-ternary': ['CO2', 'C1', 'C10'],
+    'pinned-binary': ['C1', 'C10'],
+};
+
+/** A deterministic, physics-free compositional run with every field the series reads. */
+function syntheticCompositionalSnapshots(config: CompositionalCaseConfig): CompositionalSnapshot[] {
+    const componentIds = PINNED_COMPONENT_IDS[config.fluid];
+    const cells = config.grid.cells;
+    return Array.from({ length: 12 }, (_, step) => ({
+        time_days: step,
+        component_ids: componentIds,
+        pressure: Array.from({ length: cells }, () => config.initial_pressure_bar - step),
+        composition: config.initial_composition.map((z) => Array.from({ length: cells }, () => z)),
+        phase_state: Array.from({ length: cells }, () => 'two-phase'),
+        vapour_saturation: Array.from({ length: cells }, () => step / 12),
+        inventory: componentIds.map(() => 100 + step),
+        cumulative_well_moles: [componentIds.map(() => step)],
+    }));
+}
+
+/** The run each scenario's engine produces: a rate history, or a compositional record. */
+function syntheticResult(spec: BenchmarkRunSpec) {
+    if (spec.params.fluidModel === 'compositional') {
+        const config = spec.params.compositional as CompositionalCaseConfig;
+        return buildRunResult({
+            spec: spec as RunSpec,
+            rateHistory: [],
+            compositional: buildCompositionalRunRecord({
+                config,
+                snapshots: syntheticCompositionalSnapshots(config),
+                stop: { reason: 'completed', message: '' },
+            }),
+        });
+    }
+    return buildBenchmarkRunResult({ spec, rateHistory: syntheticRateHistory(spec.params) });
 }
 
 function runSpecFor(scenarioKey: string): BenchmarkRunSpec {
@@ -91,11 +133,7 @@ function familyFor(scenarioKey: string): BenchmarkFamily {
 
 /** `panel:curveKey,curveKey` for every panel that emitted anything, sorted. */
 function digest(scenarioKey: string): string {
-    const spec = runSpecFor(scenarioKey);
-    const result = buildBenchmarkRunResult({
-        spec,
-        rateHistory: syntheticRateHistory(spec.params),
-    });
+    const result = syntheticResult(runSpecFor(scenarioKey));
     const model = buildReferenceComparisonModel({
         family: familyFor(scenarioKey),
         results: [result],
@@ -132,7 +170,7 @@ describe('buildReferenceComparisonModel — emitted panel/curve structure', () =
             const spec = runSpecFor(scenario.key);
             const model = buildReferenceComparisonModel({
                 family: familyFor(scenario.key),
-                results: [buildBenchmarkRunResult({ spec, rateHistory: syntheticRateHistory(spec.params) })],
+                results: [syntheticResult(spec)],
                 xAxisMode: 'time',
             });
             for (const panel of Object.values(model.panels)) {
@@ -167,7 +205,7 @@ describe('buildReferenceComparisonModel — emitted panel/curve structure', () =
             const spec = runSpecFor(scenario.key);
             const model = buildReferenceComparisonModel({
                 family: familyFor(scenario.key),
-                results: [buildBenchmarkRunResult({ spec, rateHistory: syntheticRateHistory(spec.params) })],
+                results: [syntheticResult(spec)],
                 xAxisMode: 'time',
             });
             for (const [panelKey, panel] of Object.entries(model.panels)) {

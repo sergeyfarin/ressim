@@ -164,6 +164,7 @@ describe('analytical caveats describe the model actually being run', () => {
         gas_injection: [],
         gas_drive: ['analytical-disabled'],
         spe1_gas_injection: ['analytical-disabled'],
+        comp_co2_1d: ['analytical-disabled'],
     };
 
     it('raises exactly the caveats each scenario earns', () => {

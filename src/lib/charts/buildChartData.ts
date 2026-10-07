@@ -62,6 +62,7 @@ import {
 } from './referenceChartTypes';
 import { buildPreviewSweepPanels, buildSweepPanels } from './sweepPanelBuilder';
 import { DRIVE_INDEX_CURVES, simulationCurvesForSet, resolveSimulationCurve } from './simulationCurves';
+import { compositionalCurvesForRun, type PanelGroupMember } from './compositionalCurves';
 import { DEFAULT_SWEEP_METHOD } from '@ressim/analytical/sweepMethods';
 import type { AnalyticalMethod } from '../catalog/scenarios';
 
@@ -252,8 +253,10 @@ function emptyPanelMap(): ReferenceComparisonPanelMap {
 function combinePanelMaps(input: {
     primary: ReferenceComparisonPrimaryPanelMap;
     sweep?: ReferenceComparisonSweepPanels;
+    extra?: Record<string, ReferenceComparisonPanel>;
 }): ReferenceComparisonPanelMap {
     return {
+        ...input.extra,
         ...emptyPanelMap(),
         rates: input.primary.rates,
         recovery: input.primary.recovery,
@@ -519,6 +522,7 @@ export function buildReferenceComparisonModel(input: {
                     orderedResults,
                     caseColorIndices,
                     previewCases: [],
+                    panelGroups: {},
                     panels: (() => {
                         appendPublishedReferenceSeries(panels, family, input.xAxisMode);
                         return combinePanelMaps({ primary: panels });
@@ -562,6 +566,7 @@ export function buildReferenceComparisonModel(input: {
                     orderedResults,
                     caseColorIndices,
                     previewCases,
+                    panelGroups: {},
                     panels: (() => {
                         appendPublishedReferenceSeries(previewPanels, family, input.xAxisMode);
                         return combinePanelMaps({
@@ -586,20 +591,58 @@ export function buildReferenceComparisonModel(input: {
             orderedResults,
             caseColorIndices,
             previewCases: [],
+            panelGroups: {},
             panels: combinePanelMaps({ primary: panels }),
             axisMappingWarning: null,
         };
     }
 
+    // A compositional run has no black-oil series; it is never derived, so nothing downstream
+    // (analytical overlays, sweep panels, MBE) can read one for it.
     const derivedByKey = new Map<string, DerivedRunSeries>(
-        orderedResults.map((result) => [result.key, getDerivedRunSeries(result)]),
+        orderedResults
+            .filter((result) => !result.compositional)
+            .map((result) => [result.key, getDerivedRunSeries(result)]),
     );
     const baseResult = getBaseResult(orderedResults);
+    const extraPanels: Record<string, ReferenceComparisonPanel> = {};
+    const panelGroups: Record<string, PanelGroupMember[]> = {};
 
     orderedResults.forEach((result) => {
+        const color = getReferenceComparisonCaseColor(caseColorIndices[comparisonCaseKey(result)]);
+
+        // ── Compositional runs ──────────────────────────────────────────────
+        // Sourced from the run's own compositional series into panels of their
+        // own (`compositionalCurves.ts`). None of the black-oil sections below
+        // applies, and none of their curve keys may appear for this run.
+        if (result.compositional) {
+            for (const curve of compositionalCurvesForRun(result.compositional, input.xAxisMode)) {
+                if (curve.group) {
+                    const members = (panelGroups[curve.group.group] ??= []);
+                    if (!members.some((member) => member.id === curve.group!.id)) {
+                        members.push({ id: curve.group.id, title: curve.group.title });
+                    }
+                }
+                appendSeries((extraPanels[curve.panel] ??= createReferenceComparisonPanel()), {
+                    label: `${result.label} ${curve.label}`,
+                    curveKey: curve.curveKey,
+                    caseKey: comparisonCaseKey(result),
+                    toggleGroupKey: comparisonCaseKey(result),
+                    toggleLabel: compactCaseLabel(result.label),
+                    legendSection: 'sim',
+                    legendSectionLabel: LEGEND_SECTIONS.sim,
+                    color,
+                    borderWidth: simBorderWidth(result.variantKey),
+                    yAxisID: 'y',
+                    defaultVisible: true,
+                    property: curve.property,
+                }, curve.xValues, curve.values);
+            }
+            return;
+        }
+
         const derived = derivedByKey.get(result.key);
         if (!derived) return;
-        const color = getReferenceComparisonCaseColor(caseColorIndices[comparisonCaseKey(result)]);
         const tau = descriptor.definesCharacteristicTime ? computeDepletionTau(result.params) : null;
         const xValues = buildXAxisValues(derived, input.xAxisMode, tau);
         const defaultVisible = true;
@@ -751,7 +794,8 @@ export function buildReferenceComparisonModel(input: {
             orderedResults,
             caseColorIndices,
             previewCases: [],
-            panels: combinePanelMaps({ primary: panels }),
+            panelGroups,
+            panels: combinePanelMaps({ primary: panels, extra: extraPanels }),
             axisMappingWarning: buildAnalyticalAxisWarning({
                 usesRunMappedAnalyticalXAxis,
                 hidesPendingAnalyticalWithoutMapping,
@@ -765,7 +809,8 @@ export function buildReferenceComparisonModel(input: {
             orderedResults,
             caseColorIndices,
             previewCases: [],
-            panels: combinePanelMaps({ primary: panels }),
+            panelGroups,
+            panels: combinePanelMaps({ primary: panels, extra: extraPanels }),
             axisMappingWarning: buildAnalyticalAxisWarning({
                 usesRunMappedAnalyticalXAxis,
                 hidesPendingAnalyticalWithoutMapping,
@@ -881,7 +926,8 @@ export function buildReferenceComparisonModel(input: {
         orderedResults,
         caseColorIndices,
         previewCases: pendingPreviewCases,
-        panels: combinePanelMaps({ primary: panels, sweep: sweepPanels }),
+        panelGroups,
+        panels: combinePanelMaps({ primary: panels, sweep: sweepPanels, extra: extraPanels }),
         axisMappingWarning: buildAnalyticalAxisWarning({
             usesRunMappedAnalyticalXAxis,
             hidesPendingAnalyticalWithoutMapping,

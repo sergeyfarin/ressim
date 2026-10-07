@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { COMPOSITIONAL_CASE_SCHEMA } from '../../compositional/types';
 import type { CompositionalCaseConfig } from '../../compositional/types';
-import { getScenario } from '../scenarios';
+import { getScenario, listScenarios } from '../scenarios';
 import { comp_co2_1d } from './comp_co2_1d';
 
 const base = comp_co2_1d.params.compositional as CompositionalCaseConfig;
@@ -14,12 +14,13 @@ function patchedCase(dimension: string, variant: string): CompositionalCaseConfi
 }
 
 describe('comp_co2_1d', () => {
-    it('is defined but withheld from the picker', () => {
-        // It is reachable by key — its engine path works — but it is not offered, because
-        // `buildChartData` cannot yet source compositional curves and every panel would be empty.
-        // See WITHHELD_SCENARIOS in scenarios.ts.
-        expect(getScenario('comp_co2_1d')).toBeTruthy();
+    it('is offered in the picker, on its own compositional chart layout', () => {
+        // Withheld until the chart stack could source compositional curves (#29). Its layout names
+        // only compositional panels, so no black-oil curve key can appear under it.
+        expect(listScenarios().map((scenario) => scenario.key)).toContain('comp_co2_1d');
+        expect(getScenario('comp_co2_1d')).toBe(comp_co2_1d);
         expect(comp_co2_1d.catalog.group).toBe('published-benchmark-decks');
+        expect(comp_co2_1d.chartLayoutKey).toBe('compositional');
     });
 
     it('carries a compositional case behind the fluid-model discriminator', () => {

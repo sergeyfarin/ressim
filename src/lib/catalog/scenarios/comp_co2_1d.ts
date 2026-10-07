@@ -146,7 +146,7 @@ export const comp_co2_1d: Scenario = {
         'Simulation-only — no analytical overlay, and none is possible. There is no closed-form solution for multicomponent two-phase displacement with interphase mass transfer; a Buckley–Leverett curve assumes immiscible phases of fixed composition, which is the assumption this case is built to violate. The reference is an independent simulator instead: OPM’s flowexp_comp, agreeing to 0.0074 bar at matched temporal resolution.',
     analyticalMethodReference:
         'Case: OPM/opm-tests compositional/1D_COMP.DATA, © 2024 SINTEF Digital / TNO, Open Database License. Validation: docs/COMPOSITIONAL_VALIDATION.md §8 (C12), against OPM flowexp_comp release/2026.04/final.',
-    chartLayoutKey: 'gas',
+    chartLayoutKey: 'compositional',
     capabilities: {
         analyticalMethod: 'none',
         hasInjector: true,

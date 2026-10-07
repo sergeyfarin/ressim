@@ -1,6 +1,7 @@
 import { calculateDepletionAnalyticalProduction } from '@ressim/analytical/depletionAnalytical';
 import { calculateAnalyticalProduction, computeWelgeMetrics } from '@ressim/analytical/fractionalFlow';
 import { buildCreatePayloadFromState } from './buildCreatePayload';
+import type { CompositionalRunRecord } from './compositional/runRecord';
 import {
     toFiniteNumber,
     getLayerThicknesses,
@@ -107,6 +108,11 @@ export type BenchmarkRunResult = {
     referenceComparison: BenchmarkReferenceComparison;
     comparisonOutputs: BenchmarkComparisonOutputs;
     comparisonMeaning: string;
+    /**
+     * Present for a compositional run, whose quantities are not black-oil ones. Its black-oil
+     * series above are empty, and the chart stack sources this run from here instead.
+     */
+    compositional?: CompositionalRunRecord;
 };
 
 const EMPTY_COMPARISON_OUTPUTS: BenchmarkComparisonOutputs = {

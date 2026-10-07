@@ -7,6 +7,7 @@
  * tiny construction/mutation helpers.
  */
 
+import type { PanelGroupMember } from './compositionalCurves';
 import type { CurveConfig } from './chartTypes';
 import { chartPropertyForCurveConfig } from './curvePropertyRegistry';
 import type { XYPoint } from './axisAdapters';
@@ -31,7 +32,14 @@ export type ReferenceComparisonSweepPanels = {
 
 export type ReferenceComparisonPrimaryPanelMap = Record<ChartPanelKey, ReferenceComparisonPanel>;
 export type ReferenceComparisonAuxiliaryPanelMap = Record<ChartAuxiliaryPanelKey, ReferenceComparisonPanel | null>;
-export type ReferenceComparisonPanelMap = ReferenceComparisonPrimaryPanelMap & ReferenceComparisonAuxiliaryPanelMap;
+/**
+ * Panels outside the fixed record, keyed by open panel id — the compositional panels and the
+ * members of expanded panel groups (`compositionalCurves.ts`).
+ */
+export type ReferenceComparisonExtraPanelMap = Record<string, ReferenceComparisonPanel | null | undefined>;
+export type ReferenceComparisonPanelMap = ReferenceComparisonExtraPanelMap
+    & ReferenceComparisonPrimaryPanelMap
+    & ReferenceComparisonAuxiliaryPanelMap;
 
 // ─── Model output type ────────────────────────────────────────────────────────
 
@@ -47,6 +55,11 @@ export type ReferenceComparisonModel = {
      */
     previewCases: ReferenceComparisonPreviewCase[];
     panels: ReferenceComparisonPanelMap;
+    /**
+     * Panel groups this model expanded, by group id: a layout that names the group gets one panel
+     * per member in its place, in this order.
+     */
+    panelGroups: Record<string, PanelGroupMember[]>;
     axisMappingWarning: string | null;
 };
 

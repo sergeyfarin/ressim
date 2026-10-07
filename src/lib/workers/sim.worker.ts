@@ -1,8 +1,10 @@
 import initWasm, { CompositionalSimulator, ReservoirSimulator, set_panic_hook } from '../ressim/pkg/simulator.js';
 import type { SimulatorCreatePayload, WorkerRunPayload } from '../simulator-types';
-import type {
-  CompositionalCaseConfig,
-  CompositionalCheckpoint,
+import {
+  describeCompositionalError,
+  isCompositionalConfigError,
+  type CompositionalCaseConfig,
+  type CompositionalCheckpoint,
 } from '../compositional/types';
 import { isCompositionalCreate } from '../compositional/createPayload';
 import {
@@ -31,6 +33,8 @@ let activeCreatePayload: SimulatorCreatePayload | null = null;
  * never both exist — `create` disposes whichever was there.
  */
 let compositional: CompositionalSession | null = null;
+/** True while a compositional batch is stepping, so `stop` knows which run to ask. */
+let compositionalRunning = false;
 
 /** The generated bindings type every payload as `any`; this is where those types come back. */
 const compositionalFactory: CompositionalEngineFactory = {
@@ -82,6 +86,11 @@ function postStopped(batchStart: number, stepMsTotal: number, completedSteps: nu
 }
 
 function formatWorkerError(error: unknown): string {
+  // The compositional engine refuses a case with a structured reason, not an `Error`; `String()`
+  // of it would reach the user as "[object Object]".
+  if (isCompositionalConfigError(error)) {
+    return describeCompositionalError(error);
+  }
   const raw = error instanceof Error ? error.message : String(error);
   const lower = raw.toLowerCase();
 
@@ -157,6 +166,10 @@ self.onmessage = async (event) => {
 
   try {
     if (type === 'stop') {
+      if (compositionalRunning) {
+        compositional?.requestStop();
+        return;
+      }
       if (isRunning) {
         stopRequested = true;
         post('warning', { message: 'Stopping simulation after current chunk…' });
@@ -210,10 +223,24 @@ self.onmessage = async (event) => {
       const { steps = 1, dtDays = 1, snapshotEvery } = payload ?? {};
       const batchStart = performance.now();
       let snapshotsSent = 0;
-      const stop = compositional.run({ steps, dtDays, snapshotEvery }, (data, stepIndex) => {
-        snapshotsSent += 1;
-        post('compositionalState', { data, stepIndex });
-      });
+      // Yield on a time budget rather than every report step: a zero-delay timeout costs a few
+      // milliseconds in a browser, which is most of a small case's step.
+      let lastYield = performance.now();
+      const yieldControl = async () => {
+        if (performance.now() - lastYield < 16) return;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        lastYield = performance.now();
+      };
+      compositionalRunning = true;
+      let stop;
+      try {
+        stop = await compositional.run({ steps, dtDays, snapshotEvery }, (data, stepIndex) => {
+          snapshotsSent += 1;
+          post('compositionalState', { data, stepIndex });
+        }, yieldControl);
+      } finally {
+        compositionalRunning = false;
+      }
       post('compositionalStopped', {
         reason: stop.reason,
         completedSteps: stop.completedSteps,
@@ -399,6 +426,7 @@ self.onmessage = async (event) => {
   } catch (error) {
     isRunning = false;
     stopRequested = false;
+    compositionalRunning = false;
     post('error', { message: formatWorkerError(error) });
   }
 };

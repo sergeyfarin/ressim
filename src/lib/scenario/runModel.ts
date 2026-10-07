@@ -1,3 +1,4 @@
+import type { CompositionalRunRecord } from '../compositional/runRecord';
 import {
     buildBenchmarkCreatePayload,
     buildBenchmarkRunResult,
@@ -249,11 +250,13 @@ export function buildRunResult(input: {
     rateHistory: RateHistoryPoint[];
     history?: SimulatorSnapshot[];
     finalSnapshot?: SimulatorSnapshot | null;
+    compositional?: CompositionalRunRecord;
 }): RunResult {
     const result = buildBenchmarkRunResult(input as Parameters<typeof buildBenchmarkRunResult>[0]) as RunResult;
     return {
         ...result,
         referenceSource: input.spec.referenceSource,
+        ...(input.compositional ? { compositional: input.compositional } : {}),
     };
 }
 

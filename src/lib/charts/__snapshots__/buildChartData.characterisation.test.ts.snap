@@ -292,5 +292,16 @@ oil_rate: oil-rate-sim,opm-oil-rate,published-oil-rate
 producer_bhp: opm-producer-bhp,producer-bhp-sim,published-producer-bhp
 pz: p-over-z-sim
 rates: oil-rate-sim
-recovery: recovery-factor-gas,recovery-factor-primary"
+recovery: recovery-factor-gas,recovery-factor-primary
+── comp_co2_1d
+comp_conservation: comp-conservation-residual-sim
+comp_inventory_C10: comp-inventory-C10-sim
+comp_inventory_C1: comp-inventory-C1-sim
+comp_inventory_CO2: comp-inventory-CO2-sim
+comp_net_injected_C10: comp-net-well-moles-C10-sim
+comp_net_injected_C1: comp-net-well-moles-C1-sim
+comp_net_injected_CO2: comp-net-well-moles-CO2-sim
+comp_pressure: comp-average-pressure-sim
+comp_two_phase: comp-two-phase-cell-fraction-sim
+comp_vapour_saturation: comp-average-vapour-saturation-sim"
 `;

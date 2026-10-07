@@ -12,6 +12,13 @@ import {
 } from '../catalog/benchmarkCases';
 import { buildBenchmarkRunSpecs } from '../benchmarkRunModel';
 import { CompositionalRunState } from '../compositional/runState';
+import { isCompositionalCreate } from '../compositional/createPayload';
+import {
+    buildCompositionalRunRecord,
+    compositionalWellState,
+    toSpatialSnapshot,
+    type CompositionalRunRecord,
+} from '../compositional/runRecord';
 import type {
     CompositionalCaseConfig,
     CompositionalCheckpoint,
@@ -127,6 +134,11 @@ class RuntimeStoreImpl {
     convergenceHitCaseName = $state('');
     latestStepSolverWarning = $state('');
     referenceConvergenceWarnings = $state<string[]>([]);
+    /**
+     * Why compositional runs in the current set ended early, one line per case, already in the
+     * reservoir vocabulary `describeCompositionalStop` produces.
+     */
+    compositionalStopMessages = $state<string[]>([]);
     vizRevision = $state(0);
     modelReinitNotice = $state('');
     modelNeedsReinit = $state(false);
@@ -293,7 +305,7 @@ class RuntimeStoreImpl {
         }
     }
 
-    finalizeActiveReferenceRun() {
+    finalizeActiveReferenceRun(compositional?: CompositionalRunRecord) {
         if (!this.activeReferenceRunSpec) return null;
 
         const result = buildRunResult({
@@ -301,6 +313,7 @@ class RuntimeStoreImpl {
             rateHistory: this.rateHistory,
             history: this.history,
             finalSnapshot: this.captureCurrentFinalSnapshot(),
+            compositional,
         });
 
         this.referenceRunResults = resolveRunComparisons([
@@ -352,6 +365,21 @@ class RuntimeStoreImpl {
         const payload = buildCreatePayloadForRun(nextSpec);
         this.lastCreateSignature = JSON.stringify(payload);
         this.#post({ type: 'create', payload });
+        if (isCompositionalCreate(payload)) {
+            // Same queue, same spec, the compositional engine's own run message. Its snapshots
+            // land in `this.compositional`; `#onCompositionalMessage` finalizes the case.
+            this.workerRunning = true;
+            this.compositional.markRunning();
+            this.#post({
+                type: 'compositionalRun',
+                payload: {
+                    steps: nextSpec.steps,
+                    dtDays: nextSpec.deltaTDays,
+                    snapshotEvery: nextSpec.historyInterval,
+                },
+            });
+            return true;
+        }
         this.#post({
             type: 'run',
             payload: {
@@ -586,6 +614,7 @@ class RuntimeStoreImpl {
         // fields below. `handleMessage` declines anything that is not its own, so this forwards
         // everything and changes nothing for a black-oil run.
         if (this.compositional.handleMessage(message)) {
+            this.#onCompositionalMessage(message);
             return;
         }
 
@@ -714,6 +743,69 @@ class RuntimeStoreImpl {
             }
             if (this.pendingAutoReinit) this.pendingAutoReinit = false;
         }
+    }
+
+    /**
+     * Run-set bookkeeping for a compositional case, after `this.compositional` has taken the
+     * message. Mirrors the black-oil `state` / `batchComplete` / `stopped` handling: progress per
+     * report step, then finalize the case and start the next one.
+     */
+    #onCompositionalMessage(message: WorkerMessage): void {
+        if (message.type === 'compositionalState') {
+            if (!message.config && this.currentRunTotalSteps > 0 && message.stepIndex !== undefined) {
+                this.currentRunStepsCompleted = message.stepIndex + 1;
+            }
+            return;
+        }
+        if (message.type !== 'compositionalStopped') return;
+
+        this.workerRunning = false;
+        this.stopPending = false;
+        this.runCompleted = true;
+        this.currentRunTotalSteps = 0;
+        this.currentRunStepsCompleted = 0;
+        const spec = this.activeReferenceRunSpec;
+        if (!this.referenceSweepRunning || !spec) return;
+
+        if (message.reason === 'user') {
+            // As for a black-oil set: a stop ends the set and the case in flight is not kept.
+            this.referenceSweepRunning = false;
+            this.referenceRunQueue = [];
+            this.activeReferenceRunSpec = null;
+            this.#nav?.restoreActiveReferenceBaseDisplay();
+            this.runtimeWarning = `Run set stopped after ${this.referenceRunsCompleted} completed run(s).`;
+            return;
+        }
+
+        const config = this.compositional.config;
+        if (!config) return;
+        const record = buildCompositionalRunRecord({
+            config: $state.snapshot(config) as typeof config,
+            // Detached from the reactive state, which the next case's create resets.
+            snapshots: $state.snapshot(this.compositional.snapshots) as typeof this.compositional.snapshots,
+            stop: { reason: message.reason === 'failed' ? 'failed' : 'completed', message: message.message },
+        });
+        // The 3D view and the spatial profile read the black-oil per-cell vocabulary; the record's
+        // own snapshots stay the source for everything compositional.
+        const wells = compositionalWellState(config);
+        this.history = record.snapshots.map((snapshot) => toSpatialSnapshot(snapshot, wells));
+        this.currentIndex = this.history.length - 1;
+        this.simTime = record.snapshots.at(-1)?.time_days ?? 0;
+        if (message.reason === 'failed') {
+            // The partial run is kept: where it got to is the useful part of a failure.
+            this.compositionalStopMessages = [
+                ...this.compositionalStopMessages,
+                `${spec.label}: ${message.message}`,
+            ];
+        }
+        this.finalizeActiveReferenceRun(record);
+        if (this.referenceRunQueue.length > 0) {
+            this.startQueuedReferenceRun();
+            return;
+        }
+        this.referenceSweepRunning = false;
+        this.#nav?.restoreActiveReferenceBaseDisplay();
+        this.runtimeWarning = this.compositionalStopMessages.join(' ');
     }
 
     /**
@@ -890,6 +982,15 @@ class RuntimeStoreImpl {
 
     runSteps() {
         if (this.#nav?.isPrerunScenario) return;
+        // The interactive step loop is the black-oil engine's. A compositional case always runs
+        // through the scenario run set, which needs at least one case to run.
+        const scenarioKey = this.#nav?.activeScenarioObject?.key;
+        if (scenarioKey && isCompositionalCreate(this.buildCreatePayload())) {
+            if (!this.runScenarioSet(scenarioKey, null, []) && !this.runtimeError) {
+                this.runtimeError = 'Select at least one case to run.';
+            }
+            return;
+        }
         this.runSimulationBatch(
             this.#params.steps,
             this.#params.userHistoryInterval ?? this.#params.defaultHistoryInterval,
@@ -959,6 +1060,7 @@ class RuntimeStoreImpl {
         this.referenceRunQueue = specs.map((spec) => coerceRunSpec(spec));
         this.runtimeError = '';
         this.runtimeWarning = '';
+        this.compositionalStopMessages = [];
         return this.startQueuedReferenceRun();
     }
 

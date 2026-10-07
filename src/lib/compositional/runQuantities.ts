@@ -21,6 +21,8 @@ export interface CompositionalRunQuantity {
   unit: string;
   /** Classification for the single-property-per-panel rule. */
   property: string;
+  /** The component a per-component quantity is about; absent for whole-grid quantities. */
+  component?: string;
   source: (series: CompositionalRunSeries) => Array<number | null>;
 }
 
@@ -67,7 +69,7 @@ export function compositionalRunQuantities(
     },
     {
       id: `${COMPOSITIONAL_QUANTITY_PREFIX}conservation-residual`,
-      label: 'Conservation Residual',
+      label: 'Conservation Error',
       unit: '',
       property: 'diagnostic',
       source: (s) => s.conservationResidual,
@@ -80,6 +82,7 @@ export function compositionalRunQuantities(
       label: `${component} In Place`,
       unit: 'mol',
       property: 'component-inventory',
+      component,
       source: (s) => s.componentInventory[index] ?? [],
     });
     quantities.push({
@@ -87,6 +90,7 @@ export function compositionalRunQuantities(
       label: `${component} Net Injected`,
       unit: 'mol',
       property: 'component-well-moles',
+      component,
       source: (s) => s.componentNetWellMoles[index] ?? [],
     });
   });

@@ -45,9 +45,7 @@ describe('scenario sensitivities', () => {
     });
 
     it('provides analytical method metadata for every canonical scenario', () => {
-        // 18 offered; `comp_co2_1d` is defined but withheld from the catalog — see
-        // WITHHELD_SCENARIOS in scenarios.ts.
-        expect(listScenarios()).toHaveLength(18);
+        expect(listScenarios()).toHaveLength(19);
         for (const scenario of listScenarios()) {
             expect(scenario.analyticalMethodSummary.length, scenario.key).toBeGreaterThan(10);
             expect(scenario.analyticalMethodReference.length, scenario.key).toBeGreaterThan(5);
@@ -677,6 +675,8 @@ describe('scenario capability validation', () => {
             gas_injection: 'saturation_gas',
             gas_drive: 'saturation_gas',
             spe1_gas_injection: 'saturation_gas',
+            // The CO₂ front is the vapour phase advancing; vapour is shown as gas saturation.
+            comp_co2_1d: 'saturation_gas',
             // This formulation comparison is a two-phase waterflood.
         } as const;
 
