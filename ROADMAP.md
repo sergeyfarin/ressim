@@ -20,12 +20,15 @@ The [milestone](https://github.com/sergeyfarin/ressim/milestone/1) has no open i
 
 ## 1. Scientific validation and closure
 
-Current execution order (reconciled 2026-10-05):
+Current execution order (reconciled 2026-10-07):
 
-1. [#15 — Shipped chart correctness](https://github.com/sergeyfarin/ressim/issues/15), then
-   [#29 — Complete compositional chart/product integration](https://github.com/sergeyfarin/ressim/issues/29).
-2. [#35 — Remaining bubble-point boundary partials](https://github.com/sergeyfarin/ressim/issues/35).
+1. [#35 — Remaining bubble-point boundary partials](https://github.com/sergeyfarin/ressim/issues/35).
    The above-table physics convention is fixed; the remaining Newton-efficiency gain needs measurement.
+2. [#29 — Per-cell composition views](https://github.com/sergeyfarin/ressim/issues/29), the last
+   C13 item. Compositional chart sourcing shipped in `1490f34` and `comp_co2_1d` is offered.
+
+[#15](https://github.com/sergeyfarin/ressim/issues/15) (shipped chart correctness) closed with
+`9db0a28`.
 
 [#12](https://github.com/sergeyfarin/ressim/issues/12) now owns only a second SPE-style black-oil case,
 blocked on schedules (#17) and multi-well product support (#16); its immediately actionable
@@ -51,10 +54,11 @@ Current numbers: [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md). Authoritative evide
 
 ## 2. Product and chart architecture
 
-- [#15 — Remaining chart correctness and presentation](https://github.com/sergeyfarin/ressim/issues/15)
+- [#29 — Per-cell composition views](https://github.com/sergeyfarin/ressim/issues/29) in the 3D view and
+  spatial profile; compositional run panels are sourced through `charts/compositionalCurves.ts`.
 
-#14 (typed output selection) is closed. The current design audit is
-`docs/CHART_ARCHITECTURE_REVIEW_2026-08-02.md`. Preserve the analytical method registry, declared
+#15 (chart correctness and presentation) and #14 (typed output selection) are closed. The current
+design audit is `docs/CHART_ARCHITECTURE_REVIEW_2026-08-02.md`. Preserve the analytical method registry, declared
 reference sources, scenario-agnostic routing, and single-property panel contracts while
 simplifying orchestration.
 

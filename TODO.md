@@ -16,8 +16,8 @@ its milestone is closed. See [ROADMAP.md](ROADMAP.md) for the current order.
 
 ### Next
 
-- [#15 — Fix remaining chart correctness and presentation defects](https://github.com/sergeyfarin/ressim/issues/15)
-- [#29 — Compositional model: C13 chart sourcing, then C14](https://github.com/sergeyfarin/ressim/issues/29)
+- [#35 — FIM black-oil: saturated-derivative partials at the bubble-point boundary](https://github.com/sergeyfarin/ressim/issues/35)
+- [#29 — Compositional model: per-cell composition views (C13 remainder)](https://github.com/sergeyfarin/ressim/issues/29)
 - [#52 — Run SPE5, then SPE3, after their enablers](https://github.com/sergeyfarin/ressim/issues/52)
 
 #12's remaining second black-oil envelope case is blocked on #16/#17. The roadmap owns the full

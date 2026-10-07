@@ -324,9 +324,9 @@ page" is demonstrated rather than asserted; see `docs/ARCHITECTURE_SPLIT_PLAN_20
 The limited public release is deployed. See `ROADMAP.md` for current ordering. The next
 priorities are:
 
-1. Close the remaining SPE1 and black-oil scenario validation gaps
-   ([#12](https://github.com/sergeyfarin/ressim/issues/12)) and the chart presentation defects
-   ([#15](https://github.com/sergeyfarin/ressim/issues/15)).
+1. Close the remaining black-oil validation gaps: bubble-point boundary partials
+   ([#35](https://github.com/sergeyfarin/ressim/issues/35)) and the second SPE-style case
+   ([#12](https://github.com/sergeyfarin/ressim/issues/12), blocked on #16/#17).
 2. Finish the compositional product path — per-cell composition views for `comp_co2_1d`
    ([#29](https://github.com/sergeyfarin/ressim/issues/29)) — then SPE5 and SPE3
    ([#52](https://github.com/sergeyfarin/ressim/issues/52)).
