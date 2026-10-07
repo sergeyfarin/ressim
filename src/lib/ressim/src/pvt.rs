@@ -16,6 +16,9 @@ pub(crate) struct SatProps<S> {
 }
 
 const PVTO_RS_TOLERANCE: f64 = 1e-6;
+/// Relative distance below a branch's first row that counts as roundoff on the bubble-point
+/// boundary rather than a pressure genuinely below it. See `on_branch_or_above`.
+const BUBBLE_POINT_ROUNDOFF_BAR: f64 = 1e-9;
 
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -182,9 +185,14 @@ impl PvtTable {
         // The continued bubble-point line, the inverse of the continued Rs_sat (linear).
         let p_b = (rs - r0.rs_m3m3) * ((r1.p_bar - r0.p_bar) / drs) + r0.p_bar;
         let saturated = self.interpolate_saturated_oil_generic(p_b);
+        // Below its own bubble point this oil is not undersaturated, so the excess is clamped at
+        // zero. On the boundary itself the excess is roundoff of either sign: hold the value and
+        // keep the undersaturated slope there, as `on_branch_or_above` does for the branches.
         let excess = p - p_b;
         let excess = if excess.value() > 0.0 {
             excess
+        } else if -excess.value() <= BUBBLE_POINT_ROUNDOFF_BAR * p_b.value().abs().max(1.0) {
+            excess + S::from_f64(-excess.value())
         } else {
             S::from_f64(0.0)
         };
@@ -510,6 +518,15 @@ impl PvtTable {
             return Some((first, first));
         }
         if rs >= last.rs_m3m3 - PVTO_RS_TOLERANCE {
+            // On the top knot itself, the segment to its left, as at every other knot (OPM's
+            // `LeftExtreme`). Taking the top branch alone made Bo and μo flat in Rs there, so an
+            // undersaturated cell at the top branch's Rs had d/dRs = 0 although leaner oil
+            // interpolates down and richer oil follows the continued fill (#35 convention 3). At
+            // t = 1 the pair gives the top branch's own values.
+            let n = self.oil_branches.len();
+            if n >= 2 && rs <= last.rs_m3m3 + PVTO_RS_TOLERANCE {
+                return Some((&self.oil_branches[n - 2], last));
+            }
             return Some((last, last));
         }
 
@@ -731,7 +748,9 @@ impl PvtTable {
         }
 
         let pv = p.value();
-        if pv <= rows[0].p_bar {
+        // Strictly below the first row only. At the row the first segment gives the same value
+        // and the undersaturated slope, which is the one a cell on the boundary needs.
+        if pv < rows[0].p_bar {
             return (S::from_f64(rows[0].bo_m3m3), S::from_f64(rows[0].mu_o_cp));
         }
 
@@ -755,6 +774,41 @@ impl PvtTable {
         (bo, mu)
     }
 
+    /// Whether Bo and μo come from the saturated curve rather than the undersaturated branches:
+    /// only for strictly supersaturated Rs (#35, FIM-KINK-001 J1).
+    ///
+    /// Rs *on* the boundary used to take the saturated curve too. Its value is right there, but
+    /// its derivatives are the curve's, as if Rs moved with pressure. A cell whose primary is Rs
+    /// holds Rs fixed, and the Sg → Rs switch places it exactly on this boundary, so its
+    /// accumulation Jacobian lost dBo/dRs (0 against a finite difference of about −100 on
+    /// `bo-1d-10`) and had the wrong dBo/dp. That is OPM's convention too: an Rs-primary cell
+    /// reads the undersaturated table whatever its Rs.
+    ///
+    /// For a saturated cell, whose Rs is Rs_sat(p), this is a reformulation rather than a change:
+    /// the branches reproduce the saturated curve along the boundary (both are linear in 1/Bo and
+    /// 1/(Bo·μo) between the same knots), so the value and the derivative along the curve agree.
+    fn saturated_curve_applies(rs: f64, rs_sat: f64) -> bool {
+        rs > rs_sat + PVTO_RS_TOLERANCE
+    }
+
+    /// A pressure at which a branch is read on the bubble-point boundary.
+    ///
+    /// On the boundary the evaluation pressure is the branch's first row, give or take roundoff,
+    /// and below that row the branch is flat. Roundoff of one sign would then zero the pressure
+    /// derivative and of the other keep it, so the Jacobian would depend on which side the
+    /// arithmetic landed (FIM-DIRECT-001's lesson). Within roundoff of the row, the value is held
+    /// at the row and the slope kept from the undersaturated side. A pressure genuinely below
+    /// the row is left alone.
+    fn on_branch_or_above<S: Scalar>(p: S, branch: &PvtOilBranch) -> S {
+        let first = branch.rows[0].p_bar;
+        let below = first - p.value();
+        if below > 0.0 && below <= BUBBLE_POINT_ROUNDOFF_BAR * first.abs().max(1.0) {
+            p + S::from_f64(below)
+        } else {
+            p
+        }
+    }
+
     /// Generic mirror of [`Self::interpolate_oil`] (undersaturation-aware Bo, mu_o).
     pub(crate) fn interpolate_oil_generic<S: Scalar>(&self, p: S, rs: S) -> (S, S) {
         if self.saturated_rows.is_empty() {
@@ -763,7 +817,7 @@ impl PvtTable {
         let sat = self.interpolate_saturated_generic(p);
         let rs_sat = sat.rs.value();
 
-        if rs.value() >= rs_sat - 1e-6 {
+        if Self::saturated_curve_applies(rs.value(), rs_sat) {
             return (sat.bo, sat.mu_o);
         }
 
@@ -772,7 +826,8 @@ impl PvtTable {
         }
 
         if let Some((low, high)) = self.branch_bounds(rs.value()) {
-            let (bo_low, mu_low) = Self::branch_props_generic(low, p, self.c_o);
+            let (bo_low, mu_low) =
+                Self::branch_props_generic(low, Self::on_branch_or_above(p, low), self.c_o);
             if (high.rs_m3m3 - low.rs_m3m3).abs() <= PVTO_RS_TOLERANCE {
                 return (bo_low, mu_low);
             }
@@ -783,8 +838,9 @@ impl PvtTable {
             // Rs knot, selects OPM's left-segment derivative convention.
             let t = (rs - low.rs_m3m3) / (high.rs_m3m3 - low.rs_m3m3);
             let pressure_shift = high.rows[0].p_bar - low.rows[0].p_bar;
-            let p_low = p - t * pressure_shift;
-            let p_high = p + (S::from_f64(1.0) - t) * pressure_shift;
+            let p_low = Self::on_branch_or_above(p - t * pressure_shift, low);
+            let p_high =
+                Self::on_branch_or_above(p + (S::from_f64(1.0) - t) * pressure_shift, high);
             let (bo_low, mu_low) = Self::branch_props_generic(low, p_low, self.c_o);
             let (bo_high, mu_high) = Self::branch_props_generic(high, p_high, self.c_o);
             let inv_bo = t * (bo_high.recip() - bo_low.recip()) + bo_low.recip();
@@ -850,7 +906,7 @@ impl PvtTable {
         let sat_row = self.interpolate(p);
         let rs_sat = sat_row.rs_m3m3;
 
-        if rs >= rs_sat - 1e-6 {
+        if Self::saturated_curve_applies(rs, rs_sat) {
             return (sat_row.bo_m3m3, sat_row.mu_o_cp);
         }
 
@@ -1630,6 +1686,160 @@ mod tests {
 
         assert!((ad.0.d(0) - fd_bo).abs() < 1e-8);
         assert!((ad.1.d(0) - fd_mu).abs() < 1e-8);
+    }
+
+    /// The three-branch table of `pvto_rs_knot_uses_left_extreme_guided_derivative`: saturated
+    /// rows at 50, 150 and 250 bar (Rs 20, 80, 140), each branch with one undersaturated row.
+    fn three_branch_table() -> PvtTable {
+        let row = |p_bar, rs_m3m3, bo_m3m3, mu_o_cp, bg_m3m3, mu_g_cp| PvtRow {
+            p_bar,
+            rs_m3m3,
+            bo_m3m3,
+            mu_o_cp,
+            bg_m3m3,
+            mu_g_cp,
+        };
+        PvtTable::new(
+            vec![
+                row(50.0, 20.0, 1.10, 1.00, 0.02, 0.015),
+                row(350.0, 20.0, 1.0675, 1.030, 0.02, 0.015),
+                row(150.0, 80.0, 1.25, 0.70, 0.008, 0.018),
+                row(350.0, 80.0, 1.2252, 0.714, 0.008, 0.018),
+                row(250.0, 140.0, 1.40, 0.50, 0.005, 0.022),
+                row(350.0, 140.0, 1.3861, 0.505, 0.005, 0.022),
+            ],
+            1e-4,
+        )
+    }
+
+    /// #35 convention 3: undersaturated oil at the top branch's own Rs takes the segment to its
+    /// left, as every other knot does. It used to read the top branch alone, which is flat in Rs:
+    /// d/dRs was 0 although leaner oil interpolates down to the next branch.
+    #[test]
+    fn pvto_top_rs_knot_uses_the_left_segment_derivative() {
+        let table = three_branch_table();
+        let (p, rs) = (300.0, 140.0);
+        let ad = table.interpolate_oil_generic(Ad::<1>::constant(p), Ad::<1>::variable(rs, 0));
+        let h = 1e-4;
+        let at_knot = table.interpolate_oil(p, rs);
+        let from_left = table.interpolate_oil(p, rs - h);
+
+        // The knot's value is still the top branch's.
+        let top_alone = PvtTable::branch_props(table.oil_branches.last().unwrap(), p, 1e-4);
+        assert!((at_knot.0 - top_alone.0).abs() < 1e-12);
+        assert!((ad.0.value() - at_knot.0).abs() < 1e-12);
+
+        let fd_bo = (at_knot.0 - from_left.0) / h;
+        let fd_mu = (at_knot.1 - from_left.1) / h;
+        assert!(
+            fd_bo.abs() > 1e-4,
+            "the left segment is not flat in Rs: {fd_bo}"
+        );
+        assert!(
+            (ad.0.d(0) - fd_bo).abs() < 1e-7,
+            "ad {} fd {fd_bo}",
+            ad.0.d(0)
+        );
+        assert!(
+            (ad.1.d(0) - fd_mu).abs() < 1e-7,
+            "ad {} fd {fd_mu}",
+            ad.1.d(0)
+        );
+    }
+
+    /// #35 / FIM-KINK-001 J1: an undersaturated cell whose Rs primary sits exactly on the
+    /// bubble-point boundary, where the Sg → Rs switch places it. It used to take the saturated
+    /// curve, whose derivatives treat Rs as moving with pressure: d/dRs = 0 and the wrong d/dp.
+    /// It now reads the undersaturated branches, which give the same value and the partials of
+    /// oil whose Rs is held fixed — the undersaturated side's, as OPM's Rs-primary cell does.
+    #[test]
+    fn undersaturated_oil_on_the_bubble_point_keeps_its_partial_derivatives() {
+        let table = three_branch_table();
+        let p = 200.0;
+        let rs = table.interpolate(p).rs_m3m3; // 110: on the boundary
+        let ad_rs = table.interpolate_oil_generic(Ad::<1>::constant(p), Ad::<1>::variable(rs, 0));
+        let ad_p = table.interpolate_oil_generic(Ad::<1>::variable(p, 0), Ad::<1>::constant(rs));
+
+        // Same value as the saturated curve: the boundary did not move.
+        let saturated = table.interpolate(p);
+        assert!((ad_rs.0.value() - saturated.bo_m3m3).abs() < 1e-12);
+        assert!((ad_rs.1.value() - saturated.mu_o_cp).abs() < 1e-12);
+
+        // d/dRs from leaner (undersaturated) oil, d/dp from higher (undersaturated) pressure.
+        let h = 1e-5;
+        let at = table.interpolate_oil(p, rs);
+        let leaner = table.interpolate_oil(p, rs - h);
+        let higher = table.interpolate_oil(p + h, rs);
+        let fd_dbo_drs = (at.0 - leaner.0) / h;
+        let fd_dbo_dp = (higher.0 - at.0) / h;
+        assert!(fd_dbo_drs.abs() > 1e-4, "{fd_dbo_drs}");
+        assert!(
+            (ad_rs.0.d(0) - fd_dbo_drs).abs() < 1e-6,
+            "ad {} fd {fd_dbo_drs}",
+            ad_rs.0.d(0)
+        );
+        assert!(
+            (ad_p.0.d(0) - fd_dbo_dp).abs() < 1e-6,
+            "ad {} fd {fd_dbo_dp}",
+            ad_p.0.d(0)
+        );
+        // Undersaturated oil shrinks under pressure; the saturated curve's slope has the other sign.
+        assert!(ad_p.0.d(0) < 0.0);
+
+        // A saturated cell, whose Rs is Rs_sat(p), still follows the saturated curve's total
+        // derivative: the branches reproduce that curve along the boundary.
+        let p_var = Ad::<1>::variable(p, 0);
+        let rs_sat = table.interpolate_saturated_generic(p_var).rs;
+        let along = table.interpolate_oil_generic(p_var, rs_sat);
+        let fd_curve =
+            (table.interpolate(p + h).bo_m3m3 - table.interpolate(p - h).bo_m3m3) / (2.0 * h);
+        assert!(
+            (along.0.d(0) - fd_curve).abs() < 1e-6,
+            "ad {} fd {fd_curve}",
+            along.0.d(0)
+        );
+    }
+
+    /// On the boundary a branch is read at its own first row give or take roundoff, and below that
+    /// row it is flat. The derivatives must not depend on which side the roundoff fell
+    /// (FIM-DIRECT-001's lesson): a hair on either side gives the same partials.
+    #[test]
+    fn bubble_point_partials_do_not_depend_on_the_sign_of_roundoff() {
+        let table = three_branch_table();
+        let p = 200.0;
+        let rs = table.interpolate(p).rs_m3m3;
+        let partials = |rs: f64| {
+            let by_rs =
+                table.interpolate_oil_generic(Ad::<1>::constant(p), Ad::<1>::variable(rs, 0));
+            let by_p =
+                table.interpolate_oil_generic(Ad::<1>::variable(p, 0), Ad::<1>::constant(rs));
+            [by_rs.0.d(0), by_rs.1.d(0), by_p.0.d(0), by_p.1.d(0)]
+        };
+        let exact = partials(rs);
+        for nudged in [
+            rs * (1.0 + 4.0 * f64::EPSILON),
+            rs * (1.0 - 4.0 * f64::EPSILON),
+        ] {
+            for (a, b) in exact.iter().zip(partials(nudged)) {
+                assert!((a - b).abs() <= 1e-9 * a.abs().max(1.0), "{a} vs {b}");
+            }
+        }
+        // The same at the top branch's bubble point, through the continued (richer-oil) path.
+        let p_top = 250.0;
+        let rs_top = table.interpolate(p_top).rs_m3m3;
+        let at = |rs: f64| {
+            table
+                .interpolate_oil_generic(Ad::<1>::variable(p_top, 0), Ad::<1>::constant(rs))
+                .0
+                .d(0)
+        };
+        let reference = at(rs_top);
+        for nudged in [
+            rs_top * (1.0 + 4.0 * f64::EPSILON),
+            rs_top * (1.0 - 4.0 * f64::EPSILON),
+        ] {
+            assert!((at(nudged) - reference).abs() <= 1e-9 * reference.abs().max(1.0));
+        }
     }
 
     /// #38: above the highest bubble point, oil at `Rs = Rs_max` and oil a hair below it are the

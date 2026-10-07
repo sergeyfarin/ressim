@@ -6242,6 +6242,66 @@ FIM trajectories are unchanged.
 
 **Still open in #35.** J1's boundary partials (an undersaturated cell with Rs exactly at Rs_sat takes the saturated curve's derivatives), and the bo-1d Newton gap to Flow that goes with them (84 vs 51).
 
+### FIM-KINK-003 — J1 boundary partials and the top-knot convention (#35, 2026-10-07)
+
+**Hypothesis.** With convention 1 in (FIM-KINK-002), J1's remaining defect is local: an
+undersaturated cell on the bubble-point boundary reads the saturated curve, so it loses dBo/dRs and
+gets the curve's dBo/dp. Fixing those partials, alone, recovers a measurable share of the bo-1d
+Newton gap to Flow (84 vs 51). #35 asked for this number before the bundle was picked up.
+
+**Oracle.** The FD Jacobian audit (`FIM_JAC_AUDIT`) on every Newton assembly of `bo-1d-10`, and
+Newton counts from `validate-cross-solver.sh` against Flow on the black-oil small-direct decks.
+Both measure what the hypothesis is about: the audit tests the partials directly, and the
+scorecard measures the Newton effect at matched substeps.
+
+**What the audit showed first.** On the current tree the 2026-09-23 signature appeared in a
+different place. The deck's top branch (Rs 15) has an undersaturated row, so cells at Rs = 15
+above its 150-bar bubble point are undersaturated oil *on the top Rs knot*. `branch_bounds` read the
+top branch alone there, which is flat in Rs: AD d/dRs = 0 against one-sided FDs of −242 and −299
+(`kink-neither` oil/Rs ×156, `WRONG` gas/Rs ×83). That is convention 3 of #35 (AD flat at the top
+knot, OPM the left segment).
+
+**Change (`pvt.rs`, f64 and AD alike).**
+- The saturated curve applies only to strictly supersaturated Rs. On or below the boundary the
+  undersaturated branches apply. They reproduce the saturated value and its derivative along the
+  curve (both are linear in 1/Bo and 1/(Bo·μo) over the same knots), so a saturated cell is
+  unchanged, and an Rs-primary cell gets its partials. OPM's Rs-primary cell reads the 2-D table.
+- At the top Rs knot, `branch_bounds` returns the segment to its left (OPM `LeftExtreme`), as at
+  every other knot. At t = 1 that is the top branch's value.
+- A roundoff guard: a boundary evaluation lands at a branch's first row ± roundoff, and below that
+  row the branch is flat. Within 1e-9 relative of the row, the value is held there and the
+  undersaturated slope kept (`on_branch_or_above`; the same in the richer-oil excess). A pressure
+  genuinely below the row is untouched. This is the FIM-DIRECT-001 rule: no slope that depends on
+  the sign of roundoff.
+
+**Result** (provisional, dirty tree; confirmed after commit below).
+- Audit, bo-1d-10: the oil/Rs `kink-neither` and gas/Rs `WRONG` entries are gone. At the knot AD
+  now takes one side (the left). The remaining `WRONG` gas/p and perf/p entries are off-diagonal
+  neighbour-pressure terms where AD matches one side (J2, upwind), present at baseline.
+- Newton, FIM sparse vs Flow, before → after:
+
+| Deck | Before | Boundary only | Bundle | Flow |
+|---|---|---|---|---|
+| bo-1d-10 | 84 | 80 | 81 | 51 |
+| bo-1d-40 | 89 | 75 | 78 | 54 |
+| dep-pvt (4 decks) | 1459–1477 | 1450–1453 | 1450–1453 | 967–970 |
+| spe1-10x10x3 | 476 | 469 | 469 | 306 |
+| spe1-case2-10x10x3 | 521 | 520 | 520 | 337 |
+
+  Substeps stay at Flow's. The dep-pvt al-marhoun / lab-report retries (3 / 1) go to 0 and their
+  substeps to 481. Worst-cell Δp/ΔSg and cumulatives vs Flow are unchanged on every deck.
+- The wasm control matrix and the two long horizons are bit-identical to the clean tree.
+- IMPES reads the f64 mirror, whose values move by at most |dBo/dRs|·1e-6 (the tolerance
+  window). SPE1 IMPES went 207 → 210 substeps; its final-report ΔSg vs Flow moved 0.0099 → 0.0209
+  and its final Δp 2.16 → 0.77 bar, with the worst over the run unchanged (24.26 bar, 0.109). Reverting
+  only the f64 gate restores IMPES exactly and leaves FIM's numbers unchanged. The mirror cannot
+  stay behind: the AD/legacy parity gates fail when f64 and AD disagree on the boundary.
+
+**Verdict.** PROMOTED as an OPM derivative convention: the partials are right and match OPM. As
+a Newton lever it is small. J1 accounts for 4–12 % of the bo-1d / SPE1 gap, so the 1.5–1.7×
+Newton ratio to Flow is mostly elsewhere, not in the PVT table edge. Convention 2 (two Bo values
+at Rs_max) did not reappear in the audit after #38 and convention 1.
+
 ### #21 resolved — report-step sensitivity and the Flow oil bias are temporal plus deck mapping (2026-09-23)
 
 Master `654618f`. The "8–10% oil over-prediction" (Objective-1 gap, 2026-07) was an end-of-step
