@@ -6,13 +6,14 @@
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
+    import type { SpatialProperty } from "./lib/visualization/spatialProperty";
 
     // ---------- Stores ----------
     const { params, runtime, nav: scenario } = createSimulationStore();
 
     // ---------- UI-only state ----------
     let theme: "dark" | "light" = $state("light");
-    let showProperty: "pressure" | "saturation_water" | "saturation_oil" | "saturation_gas" | "saturation_ternary" = $state("pressure");
+    let showProperty: SpatialProperty = $state("pressure");
     let legendFixedMin = $state(0);
     let legendFixedMax = $state(1);
 

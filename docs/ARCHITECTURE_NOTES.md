@@ -8,7 +8,9 @@ This document tracks active architectural decisions that are still relevant. His
 - There are 19 scenario definitions under `src/lib/catalog/scenarios/`, all offered in the picker.
   `comp_co2_1d` runs on the compositional engine; its results carry a `CompositionalRunRecord`
   and the chart stack sources them through `charts/compositionalCurves.ts`, never through the
-  black-oil `DerivedRunSeries`.
+  black-oil `DerivedRunSeries`. Its per-cell state reaches the 3D view and spatial profile as a
+  `GridState` with an optional `composition`; `visualization/spatialProperty.ts` is the one
+  property selector both views share, and offers one mole fraction per component.
 - `ScenarioCapabilities` is the main routing contract for analytical behavior, chart defaults, injector presence, sweep geometry, and three-phase gating.
 - Custom Mode was removed from the production UI in 2026-07 (`.archive/README.md`).
 - The legacy benchmark-family layer is a stub: `benchmarkCases.ts` returns no families, and

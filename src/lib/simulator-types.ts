@@ -255,6 +255,14 @@ export interface GridState {
   sat_water: Float64Array;
   sat_oil: Float64Array;
   sat_gas: Float64Array;
+  /** Overall mole fractions per component; only a compositional run has them. */
+  composition?: GridComposition;
+}
+
+export interface GridComposition {
+  componentIds: string[];
+  /** `values[component][cell]`, in `componentIds` order. */
+  values: Float64Array[];
 }
 
 export interface WellStateEntry {

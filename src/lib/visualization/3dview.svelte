@@ -32,15 +32,18 @@
     import ToggleGroup from "@ressim/primitives/ToggleGroup.svelte";
     import { fitPerspectiveCameraToBox } from "./cameraFit";
     import type { PressureDisplayRange } from "./spatialViewModel";
+    import {
+        compositionComponentId,
+        compositionIndex,
+        spatialPropertyOptions,
+        spatialPropertyValues,
+        type PhaseSpatialProperty,
+        type SpatialProperty,
+    } from "./spatialProperty";
 
     type HistoryEntry = SimulatorSnapshot;
 
-    type PropertyKey =
-        | "pressure"
-        | "saturation_water"
-        | "saturation_oil"
-        | "saturation_gas"
-        | "saturation_ternary";
+    type PropertyKey = SpatialProperty;
 
     type RgbTriplet = [number, number, number];
     type OklabTriplet = [number, number, number];
@@ -129,7 +132,8 @@
 
     // Fixed color ranges per property to keep legend stable
     // Pressure is intentionally auto-scaled from current values for better contrast.
-    const fixedRanges: Record<PropertyKey, { min: number; max: number }> = {
+    // Composition properties are mole fractions and fall back to [0, 1].
+    const fixedRanges: Record<PhaseSpatialProperty, { min: number; max: number }> = {
         pressure: { min: 0, max: 1000 },
         saturation_water: { min: 0, max: 1 },
         saturation_oil: { min: 0, max: 1 },
@@ -138,7 +142,7 @@
     };
 
     const propertyDisplay: Record<
-        PropertyKey,
+        PhaseSpatialProperty,
         { label: string; unit: string; decimals: number }
     > = {
         pressure: { label: "Pressure", unit: "bar", decimals: 2 },
@@ -164,13 +168,8 @@
         },
     };
 
-    const showPropertyOptions: Array<{ value: PropertyKey; label: string }> = [
-        { value: "pressure", label: "Pressure" },
-        { value: "saturation_water", label: "Water Sat" },
-        { value: "saturation_oil", label: "Oil Sat" },
-        { value: "saturation_gas", label: "Gas Sat" },
-        { value: "saturation_ternary", label: "Ternary Sat" },
-    ];
+    // A compositional grid offers one property per component and no water.
+    $: showPropertyOptions = spatialPropertyOptions(activeGrid);
 
     let groupSummary = "";
 
@@ -381,17 +380,7 @@
         index: number,
         property: PropertyKey,
     ): number {
-        if (!grid) return NaN;
-        if (property === "pressure")
-            return Number(grid.pressure?.[index] ?? NaN);
-        if (property === "saturation_water")
-            return Number(grid.sat_water?.[index] ?? NaN);
-        if (property === "saturation_oil")
-            return Number(grid.sat_oil?.[index] ?? NaN);
-        if (property === "saturation_gas")
-            return Number(grid.sat_gas?.[index] ?? NaN);
-        if (property === "saturation_ternary") return NaN;
-        return NaN;
+        return Number(spatialPropertyValues(grid, property)?.[index] ?? NaN);
     }
 
     function getPhaseSaturations(
@@ -448,7 +437,7 @@
         min: number;
         max: number;
     } {
-        const fixed = fixedRanges[property] ?? { min: 0, max: 1 };
+        const fixed = fixedRanges[property as PhaseSpatialProperty] ?? { min: 0, max: 1 };
 
         function roundLegendBound(val: number, isMax: boolean): number {
             if (!Number.isFinite(val) || val === 0) return val;
@@ -506,7 +495,7 @@
             return { min, max };
         }
 
-        if (property === "saturation_ternary") {
+        if (property === "saturation_ternary" || compositionIndex(property) !== null) {
             return fixed;
         }
 
@@ -563,7 +552,7 @@
     }
 
     function formatLegendValue(property: PropertyKey, value: number): string {
-        const decimals = propertyDisplay[property]?.decimals ?? 3;
+        const decimals = getPropertyDisplay(property).decimals;
         return Number.isFinite(value) ? value.toFixed(decimals) : "n/a";
     }
 
@@ -572,8 +561,16 @@
         unit: string;
         decimals: number;
     } {
+        const componentId = compositionComponentId(activeGrid, property);
+        if (compositionIndex(property) !== null) {
+            return {
+                label: `Mole Fraction z ${componentId ?? ""}`.trimEnd(),
+                unit: "fraction",
+                decimals: 3,
+            };
+        }
         return (
-            propertyDisplay[property] ?? {
+            propertyDisplay[property as PhaseSpatialProperty] ?? {
                 label: "Property",
                 unit: "-",
                 decimals: 3,
@@ -585,7 +582,7 @@
         property: PropertyKey,
         values: number[],
     ): { min: number; max: number } {
-        const fixed = fixedRanges[property] ?? { min: 0, max: 1 };
+        const fixed = fixedRanges[property as PhaseSpatialProperty] ?? { min: 0, max: 1 };
         const userMin = Number(legendFixedMin);
         const userMax = Number(legendFixedMax);
         if (
@@ -797,7 +794,7 @@
             return `${property}|${dimsKey}|${s_wc}|${s_or}`;
         }
 
-        if (property === "saturation_ternary") {
+        if (property === "saturation_ternary" || compositionIndex(property) !== null) {
             return `${property}|${dimsKey}`;
         }
 
@@ -1101,7 +1098,16 @@
                         "<br>" +
                         (showProperty === "saturation_gas" || highlightAllPhases
                             ? bold(sgLabel)
-                            : sgLabel);
+                            : sgLabel) +
+                        (currentGrid.composition?.componentIds ?? [])
+                            .map((id, component) => {
+                                const z = Number(
+                                    currentGrid.composition?.values[component]?.[cellIndex] ?? NaN,
+                                );
+                                const zLabel = `z ${id}: ${Number.isFinite(z) ? z.toFixed(3) : "n/a"}`;
+                                return "<br>" + (compositionIndex(showProperty) === component ? bold(zLabel) : zLabel);
+                            })
+                            .join("");
                     tooltipX = x + 10;
                     tooltipY = y + 10;
                     tooltipVisible = true;
@@ -1278,7 +1284,7 @@
         }
         instancedMesh.instanceColor.needsUpdate = true;
 
-        const fixed = fixedRanges[property] ?? { min: 0, max: 1 };
+        const fixed = fixedRanges[property as PhaseSpatialProperty] ?? { min: 0, max: 1 };
         legendMin = fixed.min;
         legendMax = fixed.max;
         if (isTernaryBlend(property)) {

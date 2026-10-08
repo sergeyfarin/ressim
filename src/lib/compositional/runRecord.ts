@@ -69,7 +69,8 @@ export function compositionalWellState(config: CompositionalCaseConfig): WellSta
  * The case has two hydrocarbon phases and no water, so the vapour saturation is the gas
  * saturation, the liquid takes the rest, and water is zero everywhere. That is a relabelling of the
  * engine's own values, not a model: nothing is recomputed. A cell whose flash did not resolve has
- * no saturation, and it stays not-a-number rather than being filled in.
+ * no saturation, and it stays not-a-number rather than being filled in. The overall composition
+ * rides along unchanged, so each component can be shown per cell.
  */
 export function toSpatialSnapshot(
   snapshot: CompositionalSnapshot,
@@ -84,6 +85,10 @@ export function toSpatialSnapshot(
     sat_water: new Float64Array(cells),
     sat_oil: Float64Array.from(satGas, (sv) => (Number.isFinite(sv) ? 1 - sv : Number.NaN)),
     sat_gas: satGas,
+    composition: {
+      componentIds: [...snapshot.component_ids],
+      values: snapshot.composition.map((values) => Float64Array.from(values)),
+    },
   };
   return { time: snapshot.time_days, grid, wells };
 }

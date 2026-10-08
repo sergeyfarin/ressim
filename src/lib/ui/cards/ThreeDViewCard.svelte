@@ -3,6 +3,7 @@
     import type { BenchmarkRunResult } from '../../benchmarkRunModel';
     import Button from '../controls/Button.svelte';
     import SpatialProfileChart from '../../visualization/SpatialProfileChart.svelte';
+    import { resolveSpatialProperty, type SpatialProperty } from '../../visualization/spatialProperty';
 
     type ThreeDViewComponentType = typeof import('../../visualization/3dview.svelte').default;
 
@@ -15,7 +16,7 @@
         activePrimaryComparisonResultKey: string | null;
         theme: 'dark' | 'light';
         vizRevision: number;
-        showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' | 'saturation_gas' | 'saturation_ternary';
+        showProperty: SpatialProperty;
         legendFixedMin: number;
         legendFixedMax: number;
         onApplyHistoryIndex: (index: number) => void;
@@ -41,6 +42,13 @@
         onSelectResult,
         onClearResult,
     }: Props = $props();
+
+    // A property the shown grid cannot offer (a component of another fluid, water on a compositional
+    // grid) falls back to one it can, for the 3D view and the profile together.
+    $effect(() => {
+        const resolved = resolveSpatialProperty(showProperty, selectedOutput3D.gridState);
+        if (resolved !== showProperty) showProperty = resolved;
+    });
 
     function applyHistorySlider(event: Event): void {
         const nextIndex = Number((event.currentTarget as HTMLInputElement).value);

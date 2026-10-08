@@ -21,6 +21,7 @@ import type { RockProps, FluidProps } from '@ressim/analytical/fractionalFlow';
 import type { Scenario } from '../catalog/scenarios';
 import { resolvePressureDisplayRange, type PressureDisplayRange } from '../visualization/spatialViewModel';
 import type { SpatialProfileReference } from '../visualization/spatialProfileModel';
+import type { SpatialProperty } from '../visualization/spatialProperty';
 import { getLayerPermeabilities } from '@ressim/charts/analyticalParamAdapters';
 
 export type OutputScenarioMode = 'waterflood' | 'depletion' | 'none';
@@ -128,8 +129,7 @@ export type Output3DSelection = {
     sourceLabel: string;
 };
 
-export type Output3DProperty =
-    'pressure' | 'saturation_water' | 'saturation_oil' | 'saturation_gas' | 'saturation_ternary';
+export type Output3DProperty = SpatialProperty;
 
 const numberArray = (value: unknown): number[] =>
     Array.isArray(value) ? value.map((entry) => Number(entry)) : [];

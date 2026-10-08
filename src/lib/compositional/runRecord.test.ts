@@ -50,6 +50,11 @@ describe('toSpatialSnapshot', () => {
         expect(Number.isNaN(spatial.grid.sat_gas[4])).toBe(true);
         expect(Number.isNaN(spatial.grid.sat_oil[4])).toBe(true);
     });
+
+    it('carries the overall composition per component, in the engine order', () => {
+        expect(spatial.grid.composition?.componentIds).toEqual(['CO2', 'C1', 'C10']);
+        expect(spatial.grid.composition?.values.map((values) => [...values])).toEqual(snapshot.composition);
+    });
 });
 
 describe('buildCompositionalRunRecord', () => {

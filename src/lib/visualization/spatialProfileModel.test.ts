@@ -172,6 +172,45 @@ describe('buildSpatialProfile', () => {
         expect(profile.series[0].values).toEqual([0, 11, 12, 23]);
         expect(profile.distances.at(-1)).toBeCloseTo(50, 8);
     });
+
+    it('profiles one component of a compositional grid as a mole fraction', () => {
+        const column: SpatialProfileGrid = { nx: 3, ny: 1, nz: 1, cellDx: 10, cellDy: 10, cellDz: 10 };
+        const compositional: GridState = {
+            pressure: Float64Array.from([140, 100, 60]),
+            sat_water: new Float64Array(3),
+            sat_oil: Float64Array.from([0.2, 0.7, 1]),
+            sat_gas: Float64Array.from([0.8, 0.3, 0]),
+            composition: {
+                componentIds: ['CO2', 'C1', 'C10'],
+                values: [
+                    Float64Array.from([0.9, 0.4, 0.1]),
+                    Float64Array.from([0.05, 0.3, 0.3]),
+                    Float64Array.from([0.05, 0.3, Number.NaN]),
+                ],
+            },
+        };
+        const co2 = buildSpatialProfile({
+            gridState: compositional, grid: column, axis: 'i', fixedI: 0, fixedJ: 0, fixedK: 0,
+            property: 'composition_0',
+        });
+        expect(co2.series).toEqual([{ key: 'composition_0', label: 'Mole Fraction z CO2', values: [0.9, 0.4, 0.1] }]);
+        expect(co2.valueLabel).toBe('Mole Fraction z CO2');
+        expect(co2.valueRange).toEqual([0, 1]);
+
+        const c10 = buildSpatialProfile({
+            gridState: compositional, grid: column, axis: 'i', fixedI: 0, fixedJ: 0, fixedK: 0,
+            property: 'composition_2',
+        });
+        // A cell without a value stays a hole rather than being filled in.
+        expect(c10.series[0].values).toEqual([0.05, 0.3, null]);
+
+        // A black-oil grid has no components: a stale selector draws nothing, not another property.
+        const stale = buildSpatialProfile({
+            gridState, grid: GRID, axis: 'i', fixedI: 0, fixedJ: 0, fixedK: 0,
+            property: 'composition_0',
+        });
+        expect(stale.series[0].values).toEqual([null, null, null, null]);
+    });
 });
 
 describe('buildFloodFrontOverlay', () => {

@@ -14,6 +14,13 @@
 import type { GridState, RateHistoryPoint } from '../simulator-types';
 import { buildLayerThicknesses } from './spatialViewModel';
 import {
+    compositionComponentId,
+    compositionIndex,
+    spatialPropertyValues,
+    type PhaseSpatialProperty,
+    type SpatialProperty,
+} from './spatialProperty';
+import {
     computeWelgeMetrics,
     dfw_dSw,
     type FluidProps,
@@ -38,15 +45,10 @@ export type SpatialProfileReference =
     };
 
 /**
- * The property to profile. Deliberately the same union as the 3D view's
+ * The property to profile. Deliberately the same type as the 3D view's
  * `showProperty` so the two share one selector.
  */
-export type SpatialProfileProperty =
-    | 'pressure'
-    | 'saturation_water'
-    | 'saturation_oil'
-    | 'saturation_gas'
-    | 'saturation_ternary';
+export type SpatialProfileProperty = SpatialProperty;
 
 export type SpatialProfileSeries = {
     key: string;
@@ -93,13 +95,13 @@ const AXIS_LABELS: Record<SpatialProfileAxis, string> = {
     'well-path': 'Distance from injector to producer (m)',
 };
 
-const SATURATION_SERIES: Record<
-    Exclude<SpatialProfileProperty, 'pressure' | 'saturation_ternary'>,
-    { key: keyof GridState; label: string }
+const SATURATION_LABELS: Record<
+    Exclude<PhaseSpatialProperty, 'pressure' | 'saturation_ternary'>,
+    string
 > = {
-    saturation_water: { key: 'sat_water', label: 'Water Saturation Sw' },
-    saturation_oil: { key: 'sat_oil', label: 'Oil Saturation So' },
-    saturation_gas: { key: 'sat_gas', label: 'Gas Saturation Sg' },
+    saturation_water: 'Water Saturation Sw',
+    saturation_oil: 'Oil Saturation So',
+    saturation_gas: 'Gas Saturation Sg',
 };
 
 function clampIndex(value: number, count: number): number {
@@ -179,24 +181,28 @@ export function buildSpatialProfile(input: {
 
     const isPressure = property === 'pressure';
     const isTernary = property === 'saturation_ternary';
-    const wanted: Array<{ key: keyof GridState; label: string; seriesKey: string }> = isPressure
-        ? [{ key: 'pressure', label: 'Pressure', seriesKey: 'pressure' }]
+    const isComposition = compositionIndex(property) !== null;
+    const wanted: Array<{ property: SpatialProperty; label: string }> = isPressure
+        ? [{ property, label: 'Pressure' }]
         : isTernary
             // The 3D view blends all three saturations into one colour; a 1D
             // profile can just draw them, which is strictly more readable.
             ? (['saturation_water', 'saturation_oil', 'saturation_gas'] as const).map((name) => ({
-                key: SATURATION_SERIES[name].key,
-                label: SATURATION_SERIES[name].label,
-                seriesKey: name,
+                property: name,
+                label: SATURATION_LABELS[name],
             }))
-            : [{
-                key: SATURATION_SERIES[property].key,
-                label: SATURATION_SERIES[property].label,
-                seriesKey: property,
-            }];
+            : isComposition
+                ? [{
+                    property,
+                    label: `Mole Fraction z ${compositionComponentId(input.gridState, property) ?? ''}`.trimEnd(),
+                }]
+                : [{
+                    property,
+                    label: SATURATION_LABELS[property as keyof typeof SATURATION_LABELS],
+                }];
 
     const emptySeries = wanted.map((entry) => ({
-        key: entry.seriesKey,
+        key: entry.property,
         label: entry.label,
         values: Array.from({ length: count }, () => null as number | null),
     }));
@@ -217,7 +223,7 @@ export function buildSpatialProfile(input: {
     const fixedK = clampIndex(input.fixedK, nz);
 
     const series = wanted.map((entry) => {
-        const source = input.gridState?.[entry.key] as Float64Array | undefined;
+        const source = spatialPropertyValues(input.gridState, entry.property);
         const values: Array<number | null> = [];
         for (let step = 0; step < count; step += 1) {
             const i = axis === 'well-path' ? path[step].i : axis === 'i' ? step : fixedI;
@@ -236,7 +242,7 @@ export function buildSpatialProfile(input: {
                 ? samples.reduce((sum, raw) => sum + Number(raw), 0) / samples.length
                 : null);
         }
-        return { key: entry.seriesKey, label: entry.label, values };
+        return { key: entry.property, label: entry.label, values };
     });
 
     return { ...base, series };

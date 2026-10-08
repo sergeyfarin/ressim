@@ -322,3 +322,24 @@ describe('pore volumes injected (#43)', () => {
         expect(result.pviSeries).toEqual([null, null]);
     });
 });
+
+describe('stored spatial history (#29)', () => {
+    it('keeps a compositional grid\'s composition, detached from the source arrays', () => {
+        const [spec] = buildScenarioRunSpecs({ scenarioKey: 'comp_co2_1d', dimensionKey: 'grid_refinement', variantKeys: ['grid_5'] });
+        const co2 = Float64Array.from([0.9, 0.1]);
+        const grid = {
+            pressure: Float64Array.from([140, 60]),
+            sat_water: new Float64Array(2),
+            sat_oil: Float64Array.from([0.4, 1]),
+            sat_gas: Float64Array.from([0.6, 0]),
+            composition: { componentIds: ['CO2', 'C10'], values: [co2, Float64Array.from([0.1, 0.9])] },
+        };
+        const result = buildBenchmarkRunResult({ spec, rateHistory: [], history: [{ time: 1, grid, wells: [] }] });
+        const stored = result.history[0].grid.composition;
+        expect(stored?.componentIds).toEqual(['CO2', 'C10']);
+        expect(stored?.values.map((values) => [...values])).toEqual([[0.9, 0.1], [0.1, 0.9]]);
+        co2[0] = 0;
+        expect(stored?.values[0][0]).toBe(0.9);
+        expect(result.finalSnapshot?.grid.composition?.componentIds).toEqual(['CO2', 'C10']);
+    });
+});

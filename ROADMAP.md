@@ -25,8 +25,9 @@ Current execution order (reconciled 2026-10-08):
 1. [#72 — The remaining 1.5× Newton gap to Flow](https://github.com/sergeyfarin/ressim/issues/72) on
    the black-oil decks, at matched substeps. A diagnosis first: #35 closed the PVT table-edge
    conventions (FIM-KINK-002/003) and they account for only 4–12 % of it.
-2. [#29 — Per-cell composition views](https://github.com/sergeyfarin/ressim/issues/29), the last
-   C13 item. Compositional chart sourcing shipped in `1490f34` and `comp_co2_1d` is offered.
+2. [#52 — Run SPE5, then SPE3](https://github.com/sergeyfarin/ressim/issues/52), after their
+   enablers. C13 ([#29](https://github.com/sergeyfarin/ressim/issues/29)) is complete: chart
+   sourcing shipped in `1490f34`, per-cell composition views after it.
 
 [#15](https://github.com/sergeyfarin/ressim/issues/15) (shipped chart correctness) closed with
 `9db0a28`.
@@ -55,8 +56,9 @@ Current numbers: [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md). Authoritative evide
 
 ## 2. Product and chart architecture
 
-- [#29 — Per-cell composition views](https://github.com/sergeyfarin/ressim/issues/29) in the 3D view and
-  spatial profile; compositional run panels are sourced through `charts/compositionalCurves.ts`.
+#29 (compositional chart sourcing and per-cell composition views) is closed: run panels are
+sourced through `charts/compositionalCurves.ts`, and the 3D view and spatial profile share one
+property selector, `visualization/spatialProperty.ts`, which offers one mole fraction per component.
 
 #15 (chart correctness and presentation) and #14 (typed output selection) are closed. The current
 design audit is `docs/CHART_ARCHITECTURE_REVIEW_2026-08-02.md`. Preserve the analytical method registry, declared
@@ -87,10 +89,9 @@ admission requirements, not cleanup after publication.
 
 ## 4a. Compositional engine
 
-The native engine is validated against OPM `flowexp_comp` (`docs/COMPOSITIONAL_VALIDATION.md`).
-Next, in order:
+The native engine is validated against OPM `flowexp_comp` (`docs/COMPOSITIONAL_VALIDATION.md`),
+and C13's product integration is complete (#29). Next:
 
-- [#29 — C13: compositional chart sourcing, then product integration](https://github.com/sergeyfarin/ressim/issues/29)
 - [#52 — Run SPE5, then SPE3](https://github.com/sergeyfarin/ressim/issues/52), which needs
   [#45](https://github.com/sergeyfarin/ressim/issues/45)–[#51](https://github.com/sergeyfarin/ressim/issues/51)
   (components, immiscible water, 3-D and gravity, rate control, a sparse linear route, schedules,

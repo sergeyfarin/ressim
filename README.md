@@ -327,8 +327,8 @@ priorities are:
 1. Close the remaining black-oil gaps: FIM's Newton cost against Flow at matched substeps
    ([#72](https://github.com/sergeyfarin/ressim/issues/72)) and the second SPE-style case
    ([#12](https://github.com/sergeyfarin/ressim/issues/12), blocked on #16/#17).
-2. Finish the compositional product path — per-cell composition views for `comp_co2_1d`
-   ([#29](https://github.com/sergeyfarin/ressim/issues/29)) — then SPE5 and SPE3
+2. Extend the compositional engine, whose `comp_co2_1d` product path is complete
+   ([#29](https://github.com/sergeyfarin/ressim/issues/29)), to SPE5 and then SPE3
    ([#52](https://github.com/sergeyfarin/ressim/issues/52)).
 3. Add scenario enablers only with consuming cases and independent references.
 4. Keep the FIM OPM-parity frontier parked behind product validation unless a user-visible defect

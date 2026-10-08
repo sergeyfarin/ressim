@@ -32,6 +32,15 @@ test('a compositional run set draws compositional panels and no black-oil ones',
   // Both cases completed and are selectable by their own labels.
   await expect(page.locator('button[title="Hide 1D Compositional CO₂ Flood — 0.25 d"]')).toBeVisible()
   await expect(page.locator('button[title="Hide 1D Compositional CO₂ Flood — 0.05 d"]')).toBeVisible()
+
+  // The spatial views offer each component's mole fraction, and no water on a water-free grid.
+  const spatial = page.getByTestId('three-d-view-card')
+  for (const label of ['z CO2', 'z C1', 'z C10']) {
+    await expect(spatial.getByRole('button', { name: label, exact: true })).toBeVisible()
+  }
+  await expect(spatial.getByRole('button', { name: 'Water Sat', exact: true })).toHaveCount(0)
+  await spatial.getByRole('button', { name: 'z CO2', exact: true }).click()
+  await expect(spatial.getByText('Mole Fraction z CO2 Profile')).toBeVisible()
   expect(errors).toEqual([])
 })
 

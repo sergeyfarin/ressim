@@ -190,6 +190,12 @@ function cloneSimulatorSnapshot(snapshot: SimulatorSnapshot | null | undefined):
             sat_water: new Float64Array(snapshot.grid.sat_water),
             sat_oil: new Float64Array(snapshot.grid.sat_oil),
             sat_gas: new Float64Array(snapshot.grid.sat_gas),
+            ...(snapshot.grid.composition ? {
+                composition: {
+                    componentIds: [...snapshot.grid.composition.componentIds],
+                    values: snapshot.grid.composition.values.map((values) => new Float64Array(values)),
+                },
+            } : {}),
         },
         wells: snapshot.wells.map((well) => Object.fromEntries(
             Object.entries(well).map(([key, value]) => [key, clonePlainValue(value)]),
