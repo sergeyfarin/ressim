@@ -20,10 +20,11 @@ The [milestone](https://github.com/sergeyfarin/ressim/milestone/1) has no open i
 
 ## 1. Scientific validation and closure
 
-Current execution order (reconciled 2026-10-07):
+Current execution order (reconciled 2026-10-08):
 
-1. [#35 — Remaining bubble-point boundary partials](https://github.com/sergeyfarin/ressim/issues/35).
-   The above-table physics convention is fixed; the remaining Newton-efficiency gain needs measurement.
+1. [#72 — The remaining 1.5× Newton gap to Flow](https://github.com/sergeyfarin/ressim/issues/72) on
+   the black-oil decks, at matched substeps. A diagnosis first: #35 closed the PVT table-edge
+   conventions (FIM-KINK-002/003) and they account for only 4–12 % of it.
 2. [#29 — Per-cell composition views](https://github.com/sergeyfarin/ressim/issues/29), the last
    C13 item. Compositional chart sourcing shipped in `1490f34` and `comp_co2_1d` is offered.
 
