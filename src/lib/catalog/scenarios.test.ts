@@ -667,8 +667,9 @@ describe('scenario capability validation', () => {
             dep_pss: 'pressure',
             dep_decline: 'pressure',
             dep_arps: 'pressure',
-            // Skin changes flowing BHP, not the rate-controlled pressure field.
-            dep_welltest: null,
+            // Pressure is the only field a single-phase well test changes. Skin moves the
+            // flowing BHP rather than this field, which is physics, not a reason to show nothing.
+            dep_welltest: 'pressure',
             // Black-oil depletion is a gas-liberation exhibit, unlike the oil-only depletion cases.
             dep_pvt: 'saturation_gas',
             dep_gas_pz: 'pressure',

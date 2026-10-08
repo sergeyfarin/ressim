@@ -116,15 +116,31 @@ describe('the live source', () => {
         expect(output.replayTime).toBe(1.5);
     });
 
-    it('opens gas saturation only for a three-phase gas flood', () => {
+    const withParams = (params: Record<string, unknown>) => resolveOutputSource({
+        selected: null,
+        selectedScenarioMode: 'none',
+        live: { ...live, params: { ...live.params, ...params } },
+    });
+    const undeclared = { default3DScalar: null } as Scenario['capabilities'];
+
+    it('opens the scenario\'s declared property, even with gas injected', () => {
+        // A gas reservoir's blowdown (dep_gas_pz) injects nothing but names gas as its fluid.
         const caps = { default3DScalar: 'pressure' } as Scenario['capabilities'];
-        expect(defaultOutput3DProperty(source, caps)).toBe('pressure');
-        const threePhase = resolveOutputSource({
-            selected: null,
-            selectedScenarioMode: 'none',
-            live: { ...live, params: { ...live.params, threePhaseModeEnabled: true } },
-        });
-        expect(defaultOutput3DProperty(threePhase, caps)).toBe('saturation_gas');
+        expect(defaultOutput3DProperty(withParams({ threePhaseModeEnabled: true }), caps)).toBe('pressure');
+        expect(defaultOutput3DProperty(
+            withParams({ threePhaseModeEnabled: true, injectorEnabled: false }),
+            caps,
+        )).toBe('pressure');
+    });
+
+    it('falls back to gas saturation only for an undeclared three-phase gas flood', () => {
+        expect(defaultOutput3DProperty(source, undeclared)).toBeNull();
+        expect(defaultOutput3DProperty(withParams({ threePhaseModeEnabled: true }), undeclared))
+            .toBe('saturation_gas');
+        expect(defaultOutput3DProperty(
+            withParams({ threePhaseModeEnabled: true, injectorEnabled: false }),
+            undeclared,
+        )).toBeNull();
     });
 
     it('declares a sweep reference only for an areal or combined sweep scenario', () => {

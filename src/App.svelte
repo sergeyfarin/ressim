@@ -53,7 +53,10 @@
     // ---------- Effects ----------
     $effect(() => { scenario.reconcileComparisonSelection(); });
 
+    // Entering a scenario opens its declared property, even when it equals the previous scenario's
+    // default and the user had picked another one in between.
     $effect(() => {
+        void scenario.activeScenarioKey;
         if (scenario.default3DProperty) {
             showProperty = scenario.default3DProperty;
         }

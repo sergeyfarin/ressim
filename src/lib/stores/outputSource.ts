@@ -204,15 +204,20 @@ export function buildOutput3D(
     };
 }
 
-/** The 3D property to open on: gas saturation for a gas flood, else the scenario's declared one. */
+/**
+ * The 3D property to open on: the scenario's declared one. Only a scenario that declares none falls
+ * back to gas saturation for an active gas injector. `injectedFluid` alone does not make a gas
+ * flood — a gas reservoir's blowdown sets it with no injector, and wants pressure.
+ */
 export function defaultOutput3DProperty(
     source: OutputSource,
     capabilities: Scenario['capabilities'] | undefined,
 ): Output3DProperty | null {
+    const declared = capabilities?.default3DScalar as Output3DProperty | null | undefined;
+    if (declared) return declared;
     const p = source.params;
-    const gasFlood = source.kind === 'result'
-        ? p.injectedFluid === 'gas'
-        : p.injectedFluid === 'gas' && p.threePhaseModeEnabled === true;
-    if (gasFlood) return 'saturation_gas';
-    return (capabilities?.default3DScalar as Output3DProperty | undefined) ?? null;
+    const gasFlood = p.injectedFluid === 'gas'
+        && p.injectorEnabled !== false
+        && (source.kind === 'result' || p.threePhaseModeEnabled === true);
+    return gasFlood ? 'saturation_gas' : null;
 }

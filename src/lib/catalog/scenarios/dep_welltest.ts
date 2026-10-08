@@ -74,11 +74,11 @@ export const dep_welltest: Scenario = {
     capabilities: {
         analyticalMethod: 'well-test',
         hasInjector: false,
-        // Skin is the default sensitivity, and under rate control it changes
-        // flowing BHP without changing the reservoir pressure field. A default
-        // pressure view would therefore show three effectively identical
-        // spatial results and imply that the sensitivity has no effect.
-        default3DScalar: null,
+        // Pressure is the only field a single-phase well test changes; the
+        // saturations are uniform. Under rate control skin moves the flowing
+        // BHP, not the reservoir pressure field, so the skin rungs look alike
+        // here — that is the physics, and the BHP chart is where skin shows.
+        default3DScalar: 'pressure',
         spatialProfile: { defaultAxis: 'i', wellPathLabel: 'Diagonal' },
         requiresThreePhaseMode: false,
     },
