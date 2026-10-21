@@ -16,6 +16,10 @@ use crate::ReservoirSimulator;
 use crate::ad::{Ad, Scalar};
 use crate::fim::state::HydrocarbonState;
 
+/// How far apart, relative to Rs, the DRSDT0 cap and Rs_sat may be and still count as the
+/// tie at a step's first iteration: a few ulps of roundoff, far below any physical Rs change.
+const DRSDT0_TIE_RELATIVE_TOLERANCE: f64 = 1e-12;
+
 /// Derived cell fluid properties as differentiable scalars.
 pub(crate) struct CellProps<S> {
     pub(crate) so: S,
@@ -91,7 +95,19 @@ pub(crate) fn cell_props_generic<S: Scalar>(
             let sg = hydrocarbon_var;
             let mut rs = table.interpolate_saturated_generic(p).rs;
             if let Some(base_rs) = drsdt0_base_rs {
-                rs = rs.min_ceil(base_rs);
+                // DRSDT0: Rs = min(Rs_max, Rs_sat(p)) with Rs_max the cell's last Rs. At the
+                // first iteration of a step p is unchanged, so the two are equal and the cap
+                // sits exactly on the state. OPM's `min(RsMax, RsSat)` keeps Rs_sat's slope on
+                // that tie. Here `sim.rs` comes from the f64 table path and Rs_sat from the AD
+                // one, which can differ by an ulp; a strict comparison then drops dRs/dp at
+                // random cells and costs a Newton iteration (#72). Within roundoff the value is
+                // still the cap, and the slope is Rs_sat's.
+                let tie = DRSDT0_TIE_RELATIVE_TOLERANCE * base_rs.abs().max(1.0);
+                rs = if rs.value() > base_rs + tie {
+                    S::from_f64(base_rs)
+                } else {
+                    rs + S::from_f64(rs.value().min(base_rs) - rs.value())
+                };
             }
             let so = raw_total_hc - sg;
             let (bo, _mu_o) = table.interpolate_oil_generic(p, rs);
@@ -599,5 +615,46 @@ mod tests {
         let sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         assert!(!sim.three_phase_mode);
         accumulation_gate_with(&sim, HydrocarbonState::Saturated, 300.0, 0.2, 0.05, None);
+    }
+
+    /// #72: at a step's first iteration the DRSDT0 cap equals Rs_sat(p), but the stored cap
+    /// comes from the f64 table path and Rs_sat from the AD one, so they can differ by an ulp.
+    /// Either way the value is the cap and the slope is Rs_sat's, as on OPM's exact tie.
+    #[test]
+    fn drsdt0_cap_keeps_rs_sat_slope_within_roundoff_of_the_tie() {
+        let sim = three_phase_sim();
+        let p = 150.0;
+        let rs_sat = sim.pvt_table.as_ref().unwrap().interpolate(p).rs_m3m3;
+        let slope = 0.1; // (20 - 10) / (200 - 100)
+        for base_rs in [
+            rs_sat,
+            rs_sat * (1.0 - f64::EPSILON),
+            rs_sat * (1.0 + f64::EPSILON),
+        ] {
+            let props = cell_props_generic(
+                &sim,
+                HydrocarbonState::Saturated,
+                Ad::<3>::variable(p, 0),
+                Ad::<3>::constant(0.2),
+                Ad::<3>::constant(0.1),
+                Some(base_rs),
+            );
+            assert_eq!(props.rs.value(), rs_sat.min(base_rs));
+            assert!(
+                (props.rs.deriv()[0] - slope).abs() < 1e-12,
+                "base {base_rs:e}"
+            );
+        }
+        // A cap clearly below Rs_sat is a real cap: constant.
+        let props = cell_props_generic(
+            &sim,
+            HydrocarbonState::Saturated,
+            Ad::<3>::variable(p, 0),
+            Ad::<3>::constant(0.2),
+            Ad::<3>::constant(0.1),
+            Some(rs_sat - 1e-6),
+        );
+        assert_eq!(props.rs.value(), rs_sat - 1e-6);
+        assert_eq!(props.rs.deriv()[0], 0.0);
     }
 }

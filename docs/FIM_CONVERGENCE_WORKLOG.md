@@ -6302,6 +6302,81 @@ a Newton lever it is small. J1 accounts for 4–12 % of the bo-1d / SPE1 gap, so
 Newton ratio to Flow is mostly elsewhere, not in the PVT table edge. Convention 2 (two Bo values
 at Rs_max) did not reappear in the audit after #38 and convention 1.
 
+### FIM-NEWTON-GAP-001 — the bo-1d / SPE1 Newton gap to Flow at matched substeps (#72, 2026-10-21)
+
+**Question.** #72: ResSim FIM takes Flow's substeps on the black-oil small-direct decks but
+1.44–1.59× its Newton iterations. Where do the extra iterations fall, and why?
+
+**Oracle.** Flow's own `CASE.INFOSTEP` / `CASE.INFOITER` (2026.04, from
+`validate-cross-solver.sh`) against the native FIM trace of the same deck
+(`FIM_TRACE_FILE=… FIM_TRACE_DT_BELOW=1e9` on `opm_small_direct_run_ressim`, `OPM_SMALL_CASE=bo-1d-10`),
+substep by substep and iteration by iteration. Both report the same CNV/MB quantities. Baseline
+on clean `d0a9337`: bo-1d-10 22/81 substeps/Newton vs Flow 22/51.
+
+**Finding 1: the two Newton counts are different quantities.** Flow's `NewtIt` counts
+iterations that solve and update (`BlackoilModel::nonlinearIterationNewton` sets
+`total_newton_iterations = 1` only when the linearization is not converged); the converging
+linearization adds 0. ResSim's `newton_iterations` is `iteration + 1` at the converged
+linearization, so it counts linearizations: one more per substep. On substep 0 of bo-1d-10 the two
+trajectories are the same to 2–3 digits at every iteration (MB oil 9.245e-4 → 1.5e-3 → 6.6e-5 →
+8.2e-6 → converged at index 4 on both), and ResSim reports 5 where Flow reports 4. Of the 30
+iterations in the bo-1d-10 gap, 22 are this offset. The same count drives the OPM iteration-count
+timestep controller (`opm_iteration_count_dt`), so ResSim grows dt as if each substep had taken
+one more iteration than Flow's controller would see (t = 10 on bo-1d-10: growth 2.2 from 5,
+where Flow's 4 gives 2.6). This is not changed here; see "Open" below.
+
+**Finding 2: the remaining 8 were one Jacobian defect (DRSDT0 cap on the sign of roundoff).**
+Corrected for the offset, ResSim needed 3 updates where Flow needed 2 on seven late 5-day steps,
+all saturated (no phase switch). On those steps the iteration-0 residual matched Flow's to 4
+digits (t = 25: MB oil/gas 6.424e-4 / 4.049e-5 on both), yet after one undamped, unchopped update
+Flow had 9.3e-7 / 1.4e-5 and ResSim 2.5e-4 / 3.9e-4 at cell 0. Cell 0's gas accumulation is linear in
+(p, Sg) across all three iterates (fit within 0.1 %), so the update itself was wrong. The FD audit
+on that assembly: gas@cell0 d/dp has AD = fwd = 475 against bwd = 12,626; the
+accumulation term alone, 475 vs 12,626.
+
+The deck has redissolution off (DRSDT 0), so a saturated cell has Rs = min(Rs_sat(p), Rs_last).
+At iteration 0 p is the previous p, so the two are equal and the cap sits exactly on the state.
+OPM's `min(RsMax, RsSat)` (`blackoilintensivequantities.hh`, DenseAd `min(scalar, Eval)`)
+returns RsSat with its derivative unless RsMax is strictly smaller, and `lastRs_` comes from the same
+evaluation, so the tie is exact and OPM always takes the depletion-side slope. ResSim stores
+`sim.rs` from the f64 table path (`PvtTable::interpolate`) and evaluates Rs_sat on the AD path
+(`interpolate_saturated_generic`). `Ad / f64` computes its value as `value * (1/rhs)` (`ad.rs`),
+so the two differ by one ulp at some pressures. A probe counted 16 of 206 tie evaluations on
+bo-1d-10 with Rs_sat one ulp (1.78e-15) above the cap. Those cells took `min_const`'s constant
+branch, dropped dRs/dp, and the update under-liberated gas. This is the FIM-DIRECT-001 /
+FIM-BUBBLE-001 rule again.
+
+**Change (`fim/properties.rs`).** The saturated arm keeps the capped value but takes Rs_sat's slope
+whenever Rs_sat is within 1e-12 relative of the cap (`DRSDT0_TIE_RELATIVE_TOLERANCE`), as OPM does
+on its tie. A cap clearly below Rs_sat is still a constant. Values are unchanged, so the f64 mirror,
+IMPES and the AD/legacy parity gates are untouched. Unit test:
+`drsdt0_cap_keeps_rs_sat_slope_within_roundoff_of_the_tie`.
+
+**Result** (dirty tree on `d0a9337`; scorecard re-baselined on the commit). FIM sparse = dense, substeps and
+every accuracy metric vs Flow unchanged on all 19 decks:
+
+| Deck | Newton before | after | Flow | after − substeps (Flow's convention) |
+|---|---|---|---|---|
+| bo-1d-10 | 81 | 74 | 51 | 52 |
+| bo-1d-40 | 78 | 76 | 54 | 54 |
+| spe1-10x10x3 | 469 | 454 | 306 | 330 |
+| spe1-case2-10x10x3 (redissolution on) | 520 | 520 | 337 | 396 |
+| dep-pvt (4 decks, redissolution on) | 1450–1453 | unchanged | 967–970 | 969–972 |
+
+On bo-1d-10 every 5-day step now takes Flow's 2 updates; the one left over is t = 5 → 10, where
+gas appears in cell 3. On dep-pvt and bo-1d-40, counted Flow's way, ResSim and Flow
+agree to within 2 iterations. Most of the "1.5×" on those decks was the counting convention.
+
+**Verdict.** Finding 1 DIAGNOSTIC; the cap fix PROMOTED (an OPM tie convention, Jacobian
+correctness). The ratio in #72 was not like-for-like.
+
+**Open.** (a) The controller is fed the linearization count where OPM feeds updates. Aligning it
+can move substeps on every FIM deck, so it needs its own experiment, and the scorecard
+should report Newton in Flow's convention. (b) After the offset, the SPE1 pair is still 1.08× (Case 1) and
+1.18× (Case 2) Flow's updates; that is the residual gap #72 now targets. (c) The `Ad / f64` value is not the f64
+quotient; making it exact would make the AD and f64 paths bit-identical, but it moves every FIM
+trajectory by ulps.
+
 ### #21 resolved — report-step sensitivity and the Flow oil bias are temporal plus deck mapping (2026-09-23)
 
 Master `654618f`. The "8–10% oil over-prediction" (Objective-1 gap, 2026-07) was an end-of-step
