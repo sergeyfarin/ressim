@@ -3,6 +3,3 @@ packages:
 
 # Drop minimumReleaseAgeExclude entries the lockfile no longer resolves.
 minimumReleaseAgeExcludePrune: true
-
-minimumReleaseAgeExclude:
-  - '@types/node@26.6.4'

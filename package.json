@@ -34,22 +34,22 @@
     "opm:artifacts": "uv run --directory tools/opm_flow python -m opm_flow_tool.cli build-artifacts"
   },
   "devDependencies": {
-    "@playwright/test": "1.63.0",
+    "@playwright/test": "1.64.1",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@tailwindcss/postcss": "4.3.3",
-    "@types/node": "26.6.4",
+    "@types/node": "26.6.5",
     "@types/three": "0.186.0",
-    "@typescript-eslint/eslint-plugin": "8.71.0",
-    "@typescript-eslint/parser": "8.71.0",
-    "@vitest/coverage-v8": "5.0.3",
+    "@typescript-eslint/eslint-plugin": "8.72.0",
+    "@typescript-eslint/parser": "8.72.0",
+    "@vitest/coverage-v8": "5.0.5",
     "autoprefixer": "10.6.1",
-    "eslint": "10.11.0",
-    "eslint-plugin-svelte": "3.23.0",
-    "svelte": "5.57.1",
+    "eslint": "10.13.0",
+    "eslint-plugin-svelte": "3.23.1",
+    "svelte": "5.57.2",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
-    "vite": "8.3.3",
-    "vitest": "5.0.3"
+    "vite": "8.3.4",
+    "vitest": "5.0.5"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "5.3.0",
