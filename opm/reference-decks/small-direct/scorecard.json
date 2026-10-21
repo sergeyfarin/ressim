@@ -1,9 +1,9 @@
 {
   "$comment": "Written by compare_small_direct.py --write-scorecard; do not edit by hand. Bands are BANDS in that script. See opm/reference-decks/small-direct/README.md.",
   "provenance": {
-    "commit": "d26c6c1",
+    "commit": "e685f1b",
     "dirty": false,
-    "date": "2026-10-07",
+    "date": "2026-10-21",
     "flow": "flow 2026.04",
     "command": "bash scripts/validate-cross-solver.sh --update"
   },
@@ -16,35 +16,35 @@
       "runs": {
         "sparse": {
           "metrics": {
-            "p": 0.0007948197093696763,
-            "sw": 1.366496465982081e-08,
-            "sg": 9.784047355909653e-07,
-            "final.p": 0.0005121291328009647,
-            "final.sw": 1.1602057189974424e-08,
-            "final.sg": 9.248134079480053e-07,
-            "cum.FOPT": 1.4964657305969145e-06,
-            "cum.FGPT": 3.92391730368343e-08,
+            "p": 0.0003655548828191968,
+            "sw": 1.371136465477818e-08,
+            "sg": 5.548590379482465e-07,
+            "final.p": 0.00032811583281500134,
+            "final.sw": 1.1659857190871037e-08,
+            "final.sg": 5.548590379482465e-07,
+            "cum.FOPT": 1.2443554114977743e-05,
+            "cum.FGPT": 1.1155777971832396e-05,
             "substeps": 22,
-            "newton": 81
+            "newton": 74
           },
           "warnings": 0,
-          "wall_ms": 11.0
+          "wall_ms": 13.6
         },
         "dense": {
           "metrics": {
-            "p": 0.0006516009671884149,
-            "sw": 1.3672964663258291e-08,
-            "sg": 8.408569854879977e-07,
-            "final.p": 0.0005294638999941981,
-            "final.sw": 1.162235720164606e-08,
-            "final.sg": 8.052135801496496e-07,
-            "cum.FOPT": 2.322078901055552e-06,
-            "cum.FGPT": 6.790684745832928e-07,
+            "p": 0.0003655548828191968,
+            "sw": 1.371136465477818e-08,
+            "sg": 5.548590379482465e-07,
+            "final.p": 0.00032811583281500134,
+            "final.sw": 1.1659857190871037e-08,
+            "final.sg": 5.548590379482465e-07,
+            "cum.FOPT": 1.2443554114977743e-05,
+            "cum.FGPT": 1.1155777971832396e-05,
             "substeps": 22,
-            "newton": 79
+            "newton": 74
           },
           "warnings": 0,
-          "wall_ms": 8.9
+          "wall_ms": 14.5
         },
         "impes": {
           "metrics": {
@@ -59,15 +59,15 @@
             "substeps": 25
           },
           "warnings": 0,
-          "wall_ms": 4.8
+          "wall_ms": 6.4
         }
       },
       "pairs": {
         "sparse_vs_dense": {
           "invariant": true,
-          "p": 0.0003919556999960605,
-          "sw": 1.176000130609367e-10,
-          "sg": 1.3287935900010983e-06
+          "p": 9.99875737761613e-11,
+          "sw": 0.0,
+          "sg": 1.0000680839006293e-14
         },
         "sparse_vs_impes": {
           "invariant": false,
@@ -85,35 +85,35 @@
       "runs": {
         "sparse": {
           "metrics": {
-            "p": 0.2740137762296797,
-            "sw": 7.986289060624152e-08,
-            "sg": 0.0003316504765487442,
-            "final.p": 0.011344829910939325,
-            "final.sw": 1.626067062943104e-08,
-            "final.sg": 1.582924840370578e-05,
-            "cum.FOPT": 0.0005247678940548465,
-            "cum.FGPT": 0.0011413379149925297,
+            "p": 0.2740018246296927,
+            "sw": 7.985939060040081e-08,
+            "sg": 0.00033161458695874467,
+            "final.p": 0.010986735310950735,
+            "final.sw": 1.6291570634208163e-08,
+            "final.sg": 1.379486905545707e-05,
+            "cum.FOPT": 0.0005398071045825234,
+            "cum.FGPT": 0.0011571921194405547,
             "substeps": 22,
-            "newton": 78
+            "newton": 76
           },
           "warnings": 0,
-          "wall_ms": 31.4
+          "wall_ms": 51.2
         },
         "dense": {
           "metrics": {
-            "p": 0.27404907002969026,
-            "sw": 7.98734906132248e-08,
-            "sg": 0.00033167071740874444,
-            "final.p": 0.011593285110933493,
-            "final.sw": 1.6243470637999913e-08,
-            "final.sg": 2.000087914713969e-05,
-            "cum.FOPT": 0.0005180403238694605,
-            "cum.FGPT": 0.0011344857246451691,
+            "p": 0.2740018246296927,
+            "sw": 7.985939060040081e-08,
+            "sg": 0.00033161458695874467,
+            "final.p": 0.010986735310950735,
+            "final.sw": 1.6291570634208163e-08,
+            "final.sg": 1.379486905545707e-05,
+            "cum.FOPT": 0.0005398071045825234,
+            "cum.FGPT": 0.0011571921194405547,
             "substeps": 22,
-            "newton": 75
+            "newton": 76
           },
           "warnings": 0,
-          "wall_ms": 39.5
+          "wall_ms": 63.9
         },
         "impes": {
           "metrics": {
@@ -128,21 +128,21 @@
             "substeps": 27
           },
           "warnings": 0,
-          "wall_ms": 20.6
+          "wall_ms": 30.2
         }
       },
       "pairs": {
         "sparse_vs_dense": {
           "invariant": true,
-          "p": 0.0008847484000114036,
-          "sw": 2.6560000032649356e-10,
-          "sg": 1.627920801000257e-05
+          "p": 0.0,
+          "sw": 0.0,
+          "sg": 1.000241556248227e-14
         },
         "sparse_vs_impes": {
           "invariant": false,
           "p": 0.5162558090000005,
           "sw": 1.548878000023901e-07,
-          "sg": 0.00047373714765
+          "sg": 0.00047368713846999977
         }
       }
     },
@@ -166,7 +166,7 @@
             "newton": 1452
           },
           "warnings": 0,
-          "wall_ms": 941.4
+          "wall_ms": 1651.3
         },
         "dense": {
           "metrics": {
@@ -182,7 +182,7 @@
             "newton": 1452
           },
           "warnings": 0,
-          "wall_ms": 1207.0
+          "wall_ms": 2724.8
         },
         "impes": {
           "metrics": {
@@ -197,7 +197,7 @@
             "substeps": 536
           },
           "warnings": 0,
-          "wall_ms": 490.2
+          "wall_ms": 766.8
         }
       },
       "pairs": {
@@ -235,7 +235,7 @@
             "newton": 1450
           },
           "warnings": 0,
-          "wall_ms": 957.8
+          "wall_ms": 1493.9
         },
         "dense": {
           "metrics": {
@@ -251,7 +251,7 @@
             "newton": 1450
           },
           "warnings": 0,
-          "wall_ms": 1210.3
+          "wall_ms": 2121.6
         },
         "impes": {
           "metrics": {
@@ -266,7 +266,7 @@
             "substeps": 540
           },
           "warnings": 0,
-          "wall_ms": 507.4
+          "wall_ms": 1230.2
         }
       },
       "pairs": {
@@ -304,7 +304,7 @@
             "newton": 1453
           },
           "warnings": 0,
-          "wall_ms": 936.5
+          "wall_ms": 1479.9
         },
         "dense": {
           "metrics": {
@@ -320,7 +320,7 @@
             "newton": 1453
           },
           "warnings": 0,
-          "wall_ms": 1206.4
+          "wall_ms": 2674.1
         },
         "impes": {
           "metrics": {
@@ -335,7 +335,7 @@
             "substeps": 495
           },
           "warnings": 0,
-          "wall_ms": 428.2
+          "wall_ms": 1067.4
         }
       },
       "pairs": {
@@ -373,7 +373,7 @@
             "newton": 1450
           },
           "warnings": 0,
-          "wall_ms": 955.7
+          "wall_ms": 1432.1
         },
         "dense": {
           "metrics": {
@@ -389,7 +389,7 @@
             "newton": 1450
           },
           "warnings": 0,
-          "wall_ms": 1220.0
+          "wall_ms": 2721.2
         },
         "impes": {
           "metrics": {
@@ -404,7 +404,7 @@
             "substeps": 539
           },
           "warnings": 0,
-          "wall_ms": 491.6
+          "wall_ms": 777.6
         }
       },
       "pairs": {
@@ -442,7 +442,7 @@
             "newton": 200
           },
           "warnings": 0,
-          "wall_ms": 54.0
+          "wall_ms": 84.6
         },
         "dense": {
           "metrics": {
@@ -458,7 +458,7 @@
             "newton": 200
           },
           "warnings": 0,
-          "wall_ms": 49.6
+          "wall_ms": 83.0
         },
         "impes": {
           "metrics": {
@@ -473,7 +473,7 @@
             "substeps": 111
           },
           "warnings": 0,
-          "wall_ms": 130.4
+          "wall_ms": 180.8
         }
       },
       "pairs": {
@@ -512,7 +512,7 @@
             "newton": 486
           },
           "warnings": 0,
-          "wall_ms": 145.1
+          "wall_ms": 252.0
         },
         "dense": {
           "metrics": {
@@ -529,7 +529,7 @@
             "newton": 486
           },
           "warnings": 0,
-          "wall_ms": 266.6
+          "wall_ms": 448.9
         },
         "impes": {
           "metrics": {
@@ -545,7 +545,7 @@
             "substeps": 213
           },
           "warnings": 0,
-          "wall_ms": 101.7
+          "wall_ms": 176.6
         }
       },
       "pairs": {
@@ -583,7 +583,7 @@
             "newton": 48
           },
           "warnings": 0,
-          "wall_ms": 12.7
+          "wall_ms": 17.9
         },
         "dense": {
           "metrics": {
@@ -599,7 +599,7 @@
             "newton": 48
           },
           "warnings": 0,
-          "wall_ms": 24.9
+          "wall_ms": 50.0
         },
         "impes": {
           "metrics": {
@@ -614,7 +614,7 @@
             "substeps": 28
           },
           "warnings": 0,
-          "wall_ms": 10.0
+          "wall_ms": 14.1
         }
       },
       "pairs": {
@@ -653,7 +653,7 @@
             "newton": 377
           },
           "warnings": 0,
-          "wall_ms": 181.0
+          "wall_ms": 275.6
         },
         "dense": {
           "metrics": {
@@ -670,7 +670,7 @@
             "newton": 377
           },
           "warnings": 0,
-          "wall_ms": 893.1
+          "wall_ms": 1738.5
         },
         "impes": {
           "metrics": {
@@ -686,7 +686,7 @@
             "substeps": 632
           },
           "warnings": 0,
-          "wall_ms": 373.6
+          "wall_ms": 599.4
         }
       },
       "pairs": {
@@ -725,7 +725,7 @@
             "newton": 132
           },
           "warnings": 0,
-          "wall_ms": 175.5
+          "wall_ms": 363.8
         },
         "dense": {
           "metrics": {
@@ -742,7 +742,7 @@
             "newton": 132
           },
           "warnings": 0,
-          "wall_ms": 1073.0
+          "wall_ms": 2052.3
         },
         "impes": {
           "metrics": {
@@ -758,7 +758,7 @@
             "substeps": 227
           },
           "warnings": 0,
-          "wall_ms": 462.5
+          "wall_ms": 707.0
         }
       },
       "pairs": {
@@ -784,37 +784,37 @@
       "runs": {
         "sparse": {
           "metrics": {
-            "p": 1.0450806347937487,
-            "sw": 1.123061421605398e-05,
-            "sg": 0.0073581346008301796,
-            "final.p": 0.006763866662481632,
-            "final.sw": 1.5301670477918528e-07,
-            "final.sg": 0.0005534248412668585,
-            "cum.FOPT": 0.00016082184798550688,
-            "cum.FGPT": 3.3065051688464045e-05,
-            "cum.FGIT": 1.5417343360030178e-08,
+            "p": 1.0450806049937569,
+            "sw": 1.1230613816054502e-05,
+            "sg": 0.007358134504830194,
+            "final.p": 0.006582956862473566,
+            "final.sw": 1.6982310477309248e-07,
+            "final.sg": 0.0005723866921668597,
+            "cum.FOPT": 0.00016354040736617237,
+            "cum.FGPT": 3.3914018607967585e-05,
+            "cum.FGIT": 1.5713103933484392e-08,
             "substeps": 124,
-            "newton": 469
+            "newton": 454
           },
           "warnings": 0,
-          "wall_ms": 3676.8
+          "wall_ms": 5902.1
         },
         "dense": {
           "metrics": {
-            "p": 1.0450806347937487,
-            "sw": 1.123061421605398e-05,
-            "sg": 0.0073581346008301796,
-            "final.p": 0.006763866662481632,
-            "final.sw": 1.5301670477918528e-07,
-            "final.sg": 0.0005534248412668585,
-            "cum.FOPT": 0.00016082184798550688,
-            "cum.FGPT": 3.3065051688464045e-05,
-            "cum.FGIT": 1.5417343360030178e-08,
+            "p": 1.0450806049937569,
+            "sw": 1.1230613816054502e-05,
+            "sg": 0.007358134504830194,
+            "final.p": 0.006582956862473566,
+            "final.sw": 1.6982310477309248e-07,
+            "final.sg": 0.0005723866921668597,
+            "cum.FOPT": 0.00016354040736617237,
+            "cum.FGPT": 3.3914018607967585e-05,
+            "cum.FGIT": 1.5713103933484392e-08,
             "substeps": 124,
-            "newton": 469
+            "newton": 454
           },
           "warnings": 0,
-          "wall_ms": 3419.0
+          "wall_ms": 6513.2
         },
         "impes": {
           "metrics": {
@@ -830,7 +830,7 @@
             "substeps": 210
           },
           "warnings": 0,
-          "wall_ms": 6340.5
+          "wall_ms": 9938.5
         }
       },
       "pairs": {
@@ -842,9 +842,9 @@
         },
         "sparse_vs_impes": {
           "invariant": false,
-          "p": 24.16681108559999,
-          "sw": 0.00026056492409999576,
-          "sg": 0.10919789934463
+          "p": 24.1670631156,
+          "sw": 0.0002605676646999927,
+          "sg": 0.10919941139753
         }
       }
     },
@@ -869,7 +869,7 @@
             "newton": 520
           },
           "warnings": 0,
-          "wall_ms": 3801.2
+          "wall_ms": 6140.6
         },
         "dense": {
           "metrics": {
@@ -886,7 +886,7 @@
             "newton": 520
           },
           "warnings": 0,
-          "wall_ms": 3568.1
+          "wall_ms": 6219.3
         },
         "impes": {
           "metrics": {
@@ -902,7 +902,7 @@
             "substeps": 376
           },
           "warnings": 0,
-          "wall_ms": 12544.7
+          "wall_ms": 21090.7
         }
       },
       "pairs": {
@@ -941,7 +941,7 @@
             "newton": 301
           },
           "warnings": 0,
-          "wall_ms": 1421.2
+          "wall_ms": 2743.5
         },
         "dense": {
           "metrics": {
@@ -958,7 +958,7 @@
             "newton": 301
           },
           "warnings": 0,
-          "wall_ms": 1398.5
+          "wall_ms": 2499.6
         },
         "impes": {
           "metrics": {
@@ -974,7 +974,7 @@
             "substeps": 1797
           },
           "warnings": 0,
-          "wall_ms": 16526.3
+          "wall_ms": 27338.8
         }
       },
       "pairs": {
@@ -1013,7 +1013,7 @@
             "newton": 346
           },
           "warnings": 0,
-          "wall_ms": 13690.2
+          "wall_ms": 24446.5
         },
         "dense": {
           "metrics": {
@@ -1030,7 +1030,7 @@
             "newton": 346
           },
           "warnings": 0,
-          "wall_ms": 13840.7
+          "wall_ms": 24970.6
         },
         "impes": {
           "metrics": {
@@ -1046,7 +1046,7 @@
             "substeps": 2134
           },
           "warnings": 0,
-          "wall_ms": 265179.9
+          "wall_ms": 394227.7
         }
       },
       "pairs": {
@@ -1085,7 +1085,7 @@
             "newton": 1034
           },
           "warnings": 0,
-          "wall_ms": 7320.1
+          "wall_ms": 12786.3
         },
         "dense": {
           "metrics": {
@@ -1102,7 +1102,7 @@
             "newton": 1034
           },
           "warnings": 0,
-          "wall_ms": 7183.1
+          "wall_ms": 14053.2
         },
         "impes": {
           "metrics": {
@@ -1118,7 +1118,7 @@
             "substeps": 707
           },
           "warnings": 0,
-          "wall_ms": 1499.1
+          "wall_ms": 2509.3
         }
       },
       "pairs": {
@@ -1157,7 +1157,7 @@
             "newton": 967
           },
           "warnings": 0,
-          "wall_ms": 6616.7
+          "wall_ms": 12776.5
         },
         "dense": {
           "metrics": {
@@ -1174,7 +1174,7 @@
             "newton": 967
           },
           "warnings": 0,
-          "wall_ms": 6582.4
+          "wall_ms": 12790.5
         },
         "impes": {
           "metrics": {
@@ -1190,7 +1190,7 @@
             "substeps": 541
           },
           "warnings": 0,
-          "wall_ms": 1108.7
+          "wall_ms": 1785.0
         }
       },
       "pairs": {
@@ -1229,7 +1229,7 @@
             "newton": 637
           },
           "warnings": 0,
-          "wall_ms": 308.9
+          "wall_ms": 459.1
         },
         "dense": {
           "metrics": {
@@ -1246,7 +1246,7 @@
             "newton": 637
           },
           "warnings": 0,
-          "wall_ms": 1528.1
+          "wall_ms": 2972.8
         },
         "impes": {
           "metrics": {
@@ -1262,7 +1262,7 @@
             "substeps": 785
           },
           "warnings": 0,
-          "wall_ms": 422.8
+          "wall_ms": 509.3
         }
       },
       "pairs": {
@@ -1301,7 +1301,7 @@
             "newton": 472
           },
           "warnings": 0,
-          "wall_ms": 151.1
+          "wall_ms": 236.4
         },
         "dense": {
           "metrics": {
@@ -1318,7 +1318,7 @@
             "newton": 471
           },
           "warnings": 0,
-          "wall_ms": 382.6
+          "wall_ms": 722.8
         },
         "impes": {
           "metrics": {
@@ -1334,7 +1334,7 @@
             "substeps": 532
           },
           "warnings": 0,
-          "wall_ms": 248.0
+          "wall_ms": 300.7
         }
       },
       "pairs": {
