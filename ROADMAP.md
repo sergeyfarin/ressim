@@ -44,8 +44,10 @@ constant-rate Dietz contracts. Evidence and limits: BLACK_OIL_VALIDATION.md §4a
 [#63](https://github.com/sergeyfarin/ressim/issues/63) repairs compressible two-phase IMPES
 conservation; independent inventories and matched Flow evidence are in BLACK_OIL_VALIDATION.md
 §4b. The combined sweep uses its validated FIM path for interactive runtime.
-[#71](https://github.com/sergeyfarin/ressim/issues/71) separately owns profiling conservative IMPES
-volume-correction cost; it follows the user-facing chart work rather than blocking it.
+[#71](https://github.com/sergeyfarin/ressim/issues/71) profiles and reduces conservative IMPES
+volume-correction cost by removing scale-dependent LU fallback and redundant closure work.
+The [controlled replays](docs/IMPES_VOLUME_CLOSURE_PROFILE.md) retain the conservation and Flow
+contracts; the combined-sweep FIM default remains unchanged.
 
 Closed since the last revision of this list: #10 (gravity wells), #11 (FIM/IMPES depletion,
 an unstable PVT table), #13 (CI), #21 (Flow oil bias, no solver defect), #36–#39, #42–#44.

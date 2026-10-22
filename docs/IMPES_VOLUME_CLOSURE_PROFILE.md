@@ -73,3 +73,88 @@ The independent 1e-8 inventory gate and trajectory/work ratchet remain owned by
 [small-direct scorecard](../opm/reference-decks/small-direct/README.md). Scientific benchmark
 values remain generated in [BENCHMARKS.md](BENCHMARKS.md). The native/browser parity fixture
 now includes a 24×24 IMPES case, crossing the 512-row iterative-solver threshold.
+
+
+## Paired replay results on committed revisions
+
+The [machine-readable measurements](benchmarks/impes-volume-closure-profile.json) contain
+binary SHA-256 identifiers, phase timings/calls, inventory errors and report deltas. Tables in
+this document are rendered from those measurements. The baseline is committed `160822f` and
+the optimization is committed `1f22b82`. This establishes the #71 runtime comparison; the
+#63 historical wall times remain context.
+
+Each process was pinned to CPU 9. Solver coverage and the full benchmark workload used CPUs
+0–8; the first baseline also overlapped the final product gate. This was a shared host, and
+background work accounts for part of the timing spread. The two full pairs ran in baseline /
+optimized order. Ten small-waterflood pairs ran between them, alternating baseline-first and
+optimized-first order. Every run used the full original report schedule.
+
+| Replay | Baseline (s) | Optimized (s) | Speedup |
+|---|---:|---:|---:|
+| Combined, pair 1 | 407.5 | 222.2 | 1.83× |
+| Combined, pair 2 | 383.7 | 222.3 | 1.73× |
+| 12×12 waterflood, median of ten | 0.584 | 0.517 | 1.13× |
+
+Both combined pairs retain all 75 reports, 2,134 accepted substeps, identical per-report
+substep counts, 4,420 pressure trials, 14,380 corrections and zero warnings. Sparse-LU calls
+fall from 13,110 to zero; transport evaluations fall from 22,992 to 18,800. Worst report pressure
+difference is 2.01e-10 bar (rounded upward); worst water-saturation difference is 1.30e-12.
+The independently integrated water/oil inventory errors stay below 1.5e-13 of their stated
+scales. All ten small pairs retain 40 reports and 227 substeps and are exactly equal after
+removing wall time from their captures. Every optimized small run is faster than its paired
+baseline.
+
+Build each revision on a clean tree with `cargo test --release --manifest-path
+src/lib/ressim/Cargo.toml --lib --no-run` and save the printed release test executable before
+switching revisions. The saved local copies were `before-backends` and `after`; their hashes
+are recorded in the JSON. The full measurement invocation for the first baseline was:
+
+```bash
+OPM_SMALL_PROFILE=1 OPM_SMALL_SOLVER=impes OPM_SMALL_CASE=sweep-combined \
+  OPM_SMALL_OUT=/tmp/ressim-71/timing/before-1 \
+  taskset -c 9 /tmp/ressim-71/before-backends \
+  opm_small_direct_run_ressim --ignored --nocapture \
+  > /tmp/ressim-71/timing/before-1.log 2>&1
+```
+
+The optimized invocation substitutes `/tmp/ressim-71/after` and `after-1` in the output paths.
+The second pair uses suffix `-2`. Small pairs use `OPM_SMALL_CASE=ow-2d-12x12` and output/log
+paths under `/tmp/ressim-71/timing/small/{before,after}-{1..10}`. The original schedules are
+75 × 5 days for combined and 40 × 0.25 day for the small waterflood.
+
+## Acceptance gates
+
+The implementation passed:
+
+- `cargo test --manifest-path src/lib/ressim/Cargo.toml --lib solvers::` — ten solver contracts,
+  including the small-RHS regression and true-residual oracle.
+- `bash scripts/validate-solver-coverage.sh all` — 48 executing gate filters, including the
+  newly gated `solvers::` module; no ignore-only filter is accepted.
+- `cargo test --manifest-path src/lib/ressim/Cargo.toml benchmark_buckley -- --nocapture`.
+- `bash scripts/validate-cross-solver.sh` — complete Flow trajectory/work scorecard and
+  independent 1e-8 inventories, with the committed scorecard unchanged.
+- `bash scripts/validate-native-binding.sh` — all six strict cases have zero array, rate and
+  grid differences, including the 576-cell iterative case; restore also passes.
+- `pnpm run validate:product` — 1,042 frontend/scenario tests pass, 15 are skipped, followed by
+  the IMPES bucket and production build. Node subprocess tests require execution outside the
+  sandbox that returned `spawnSync EPERM`; the unrestricted full gate passes.
+- `bash scripts/benchmarks.sh check` with the full default tier — all nine sections ran,
+  including 20 JutulDarcy decks, the FIM WASM matrix and rederived `flowexp_comp` fixtures.
+
+The full committed replay was run with:
+
+```bash
+WASM_PACK_CACHE=/tmp/ressim-71-wasm-pack UV_CACHE_DIR=/tmp/ressim-71-uv \
+  BENCH_OUT=/tmp/ressim-71-benchmarks taskset -c 0-8 \
+  bash scripts/benchmarks.sh check
+```
+
+Its collected records replace the generated benchmark snapshot from `6c65d8f` with `1f22b82`,
+so the page represents this implementation and the expanded parity matrix. They were collected
+on the clean committed tree using `tools/benchmarks/benchmarks.py collect --run
+/tmp/ressim-71-benchmarks` and `render`, the same collection/render steps used by
+`benchmarks.sh update`. All prior bands are unchanged. The collected run checks green against
+the new records and `bash scripts/benchmarks.sh render --check` passes.
+
+These are native runtime measurements. The combined-sweep FIM default remains in place;
+changing that policy requires separate browser validation.

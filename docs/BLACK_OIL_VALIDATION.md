@@ -525,13 +525,13 @@ the generated tables below record the referee, rather than claiming coarse-step 
 establishes accuracy. The full native matrix gates every IMPES inventory at 1e-8 of the stated
 scale and retains the existing Flow trajectory and sparse/dense agreement contracts.
 
-The combined layered case requires thousands of conservative IMPES transport substeps and
-exceeds the browser test's existing 300 s timeout. It now ships with FIM, whose matched Flow
+At the #63 repair, the combined layered case required thousands of conservative IMPES transport
+substeps and exceeded the browser test's existing 300 s timeout. It ships with FIM, whose matched Flow
 trajectory is already covered; its browser twin passes the unchanged bands and timeout.
-The mandatory native matrix continues to run IMPES on the same deck. Profiling its component-volume
-correction is tracked separately by [#71](https://github.com/sergeyfarin/ressim/issues/71): the
-substep count is almost unchanged, so the added solve/closure work must be measured. Correctness
-and interactive access are provided without loosening a gate.
+The mandatory native matrix continues to run IMPES on the same deck. [#71](https://github.com/sergeyfarin/ressim/issues/71)
+profiles and reduces the component-volume correction cost while retaining the same work and
+trajectory contracts. [Controlled replay evidence](IMPES_VOLUME_CLOSURE_PROFILE.md) records the
+baseline, eliminated LU fallback, and validation. The FIM product default remains unchanged.
 
 
 The Buckley–Leverett records from `ca747c1` are also deliberately replaced. The Case B

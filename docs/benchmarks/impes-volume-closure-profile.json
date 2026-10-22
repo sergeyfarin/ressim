@@ -1,0 +1,303 @@
+{
+  "date": "2026-10-22",
+  "before_commit": "160822f20a73c6a324578480322782cae6262289",
+  "after_commit": "1f22b82bc821aaf0f925a84148c101c93677c17c",
+  "binary_sha256": {
+    "before": "074eaad97f181e463e307b3a538fdf169b400fcd0a207d23d4af800c2585c379",
+    "after": "c2a9792cbbd304fdb3fc6204aa87c2b1758817d1a608cd61c6fec9c2a172a166"
+  },
+  "cpu_affinity": [
+    9
+  ],
+  "profile_enabled": true,
+  "context": "Native release; full benchmarks/solver coverage on CPUs 0-8. First before run also overlapped the final product gate. Small pairs alternate execution order.",
+  "combined": {
+    "1": {
+      "before": {
+        "wall_ms": 407486.406,
+        "reports": 75,
+        "report_dt_days": 5.0,
+        "final_time_days": 375.0,
+        "substeps": 2134,
+        "warnings": [],
+        "inventory": {
+          "water_over_initial": 5.939557236068103e-14,
+          "oil_over_produced": 1.247752821138692e-13
+        },
+        "phases": {
+          "correction matrix": {
+            "calls": 14380,
+            "wall_ms": 15676.6
+          },
+          "correction solve": {
+            "calls": 14380,
+            "wall_ms": 281742.356
+          },
+          "flash and storage": {
+            "calls": 18572,
+            "wall_ms": 6364.694
+          },
+          "initial matrix and solve": {
+            "calls": 4420,
+            "wall_ms": 21552.145
+          },
+          "linear BiCGSTAB": {
+            "calls": 18800,
+            "wall_ms": 105751.487
+          },
+          "linear sparse LU": {
+            "calls": 13110,
+            "wall_ms": 191952.336
+          },
+          "pressure assembly": {
+            "calls": 4420,
+            "wall_ms": 19789.108
+          },
+          "transport and FVF": {
+            "calls": 22992,
+            "wall_ms": 59030.546
+          }
+        }
+      },
+      "after": {
+        "wall_ms": 222187.113,
+        "reports": 75,
+        "report_dt_days": 5.0,
+        "final_time_days": 375.0,
+        "substeps": 2134,
+        "warnings": [],
+        "inventory": {
+          "water_over_initial": 1.3858966884158908e-13,
+          "oil_over_produced": 1.4229820308870082e-13
+        },
+        "phases": {
+          "correction matrix": {
+            "calls": 14380,
+            "wall_ms": 5265.225
+          },
+          "correction solve": {
+            "calls": 14380,
+            "wall_ms": 120644.539
+          },
+          "flash and storage": {
+            "calls": 18572,
+            "wall_ms": 6059.204
+          },
+          "initial matrix and solve": {
+            "calls": 4420,
+            "wall_ms": 21208.463
+          },
+          "linear BiCGSTAB": {
+            "calls": 18800,
+            "wall_ms": 135577.174
+          },
+          "pressure assembly": {
+            "calls": 4420,
+            "wall_ms": 18686.273
+          },
+          "transport and FVF": {
+            "calls": 18800,
+            "wall_ms": 47256.913
+          }
+        }
+      },
+      "max_report_delta": {
+        "p": 2.000319909711834e-10,
+        "sw": 1.2999878951092114e-12,
+        "sg": 0.0,
+        "rs": 0.0
+      },
+      "speedup": 1.8339785800268262
+    },
+    "2": {
+      "before": {
+        "wall_ms": 383711.232,
+        "reports": 75,
+        "report_dt_days": 5.0,
+        "final_time_days": 375.0,
+        "substeps": 2134,
+        "warnings": [],
+        "inventory": {
+          "water_over_initial": 5.939557236068103e-14,
+          "oil_over_produced": 1.247752821138692e-13
+        },
+        "phases": {
+          "correction matrix": {
+            "calls": 14380,
+            "wall_ms": 14719.971
+          },
+          "correction solve": {
+            "calls": 14380,
+            "wall_ms": 265662.015
+          },
+          "flash and storage": {
+            "calls": 18572,
+            "wall_ms": 5925.07
+          },
+          "initial matrix and solve": {
+            "calls": 4420,
+            "wall_ms": 20293.975
+          },
+          "linear BiCGSTAB": {
+            "calls": 18800,
+            "wall_ms": 99501.372
+          },
+          "linear sparse LU": {
+            "calls": 13110,
+            "wall_ms": 181176.252
+          },
+          "pressure assembly": {
+            "calls": 4420,
+            "wall_ms": 18639.78
+          },
+          "transport and FVF": {
+            "calls": 22992,
+            "wall_ms": 55313.832
+          }
+        }
+      },
+      "after": {
+        "wall_ms": 222270.706,
+        "reports": 75,
+        "report_dt_days": 5.0,
+        "final_time_days": 375.0,
+        "substeps": 2134,
+        "warnings": [],
+        "inventory": {
+          "water_over_initial": 1.3858966884158908e-13,
+          "oil_over_produced": 1.4229820308870082e-13
+        },
+        "phases": {
+          "correction matrix": {
+            "calls": 14380,
+            "wall_ms": 5220.365
+          },
+          "correction solve": {
+            "calls": 14380,
+            "wall_ms": 120846.816
+          },
+          "flash and storage": {
+            "calls": 18572,
+            "wall_ms": 6079.534
+          },
+          "initial matrix and solve": {
+            "calls": 4420,
+            "wall_ms": 21075.196
+          },
+          "linear BiCGSTAB": {
+            "calls": 18800,
+            "wall_ms": 135701.0
+          },
+          "pressure assembly": {
+            "calls": 4420,
+            "wall_ms": 18677.872
+          },
+          "transport and FVF": {
+            "calls": 18800,
+            "wall_ms": 47293.1
+          }
+        }
+      },
+      "max_report_delta": {
+        "p": 2.000319909711834e-10,
+        "sw": 1.2999878951092114e-12,
+        "sg": 0.0,
+        "rs": 0.0
+      },
+      "speedup": 1.7263238998305068
+    }
+  },
+  "small_waterflood": {
+    "before": {
+      "wall_ms": [
+        591.89,
+        579.779,
+        587.774,
+        566.563,
+        577.703,
+        568.245,
+        627.537,
+        608.185,
+        831.245,
+        579.306
+      ],
+      "median_wall_ms": 583.7764999999999,
+      "reports": 40,
+      "report_dt_days": 0.25,
+      "final_time_days": 10.0,
+      "substeps": 227,
+      "warning_count": 0,
+      "max_inventory_error": {
+        "water_over_initial": 3.21847437589895e-11,
+        "oil_over_produced": 8.724589991100317e-12
+      }
+    },
+    "after": {
+      "wall_ms": [
+        519.044,
+        479.848,
+        515.949,
+        508.091,
+        472.717,
+        551.699,
+        547.28,
+        536.751,
+        559.418,
+        506.313
+      ],
+      "median_wall_ms": 517.4965,
+      "reports": 40,
+      "report_dt_days": 0.25,
+      "final_time_days": 10.0,
+      "substeps": 227,
+      "warning_count": 0,
+      "max_inventory_error": {
+        "water_over_initial": 3.21847437589895e-11,
+        "oil_over_produced": 8.724589991100317e-12
+      }
+    },
+    "exactly_equal_excluding_wall_ms": true
+  },
+  "exploratory_profile": {
+    "commit": "c0604f366a34a491915a22979084cea42433e838",
+    "context": "Overlapped other compilation and validation; phase attribution only.",
+    "run": {
+      "wall_ms": 447972.967,
+      "reports": 75,
+      "report_dt_days": 5.0,
+      "final_time_days": 375.0,
+      "substeps": 2134,
+      "warnings": [],
+      "inventory": {
+        "water_over_initial": 5.939557236068103e-14,
+        "oil_over_produced": 1.247752821138692e-13
+      },
+      "phases": {
+        "correction matrix": {
+          "calls": 14380,
+          "wall_ms": 16955.93
+        },
+        "correction solve": {
+          "calls": 14380,
+          "wall_ms": 308889.32
+        },
+        "flash and storage": {
+          "calls": 18572,
+          "wall_ms": 6889.978
+        },
+        "initial matrix and solve": {
+          "calls": 4420,
+          "wall_ms": 24545.731
+        },
+        "pressure assembly": {
+          "calls": 4420,
+          "wall_ms": 22180.191
+        },
+        "transport and FVF": {
+          "calls": 22992,
+          "wall_ms": 64684.018
+        }
+      }
+    }
+  }
+}
