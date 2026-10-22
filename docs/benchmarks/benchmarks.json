@@ -2,9 +2,9 @@
  "sections": {
   "buckley": {
    "provenance": {
-    "commit": "a64ca51",
+    "commit": "d34a723",
     "dirty": false,
-    "date": "2026-10-21",
+    "date": "2026-10-22",
     "command": "cargo test --release --lib benchmark_buckley -- --include-ignored"
    },
    "records": [
@@ -110,16 +110,6 @@
     },
     {
      "at": "",
-     "band": 0.01,
-     "case": "BL-Case-B-dt0.50",
-     "metric": "report_interval_spread",
-     "reference": "BL-Case-B-dt0.25",
-     "same_model": true,
-     "unit": "frac",
-     "value": 0.0018286936788209803
-    },
-    {
-     "at": "",
      "band": null,
      "case": "BL-Case-A nx=96",
      "metric": "breakthrough_rel_err",
@@ -147,6 +137,16 @@
      "same_model": false,
      "unit": "PV",
      "value": 0.5860002205410954
+    },
+    {
+     "at": "",
+     "band": 0.01,
+     "case": "BL-Case-B-dt0.50",
+     "metric": "report_interval_spread",
+     "reference": "BL-Case-B-dt0.25",
+     "same_model": true,
+     "unit": "frac",
+     "value": 0.0018286936788209803
     },
     {
      "at": "",
@@ -272,9 +272,9 @@
   },
   "spe1": {
    "provenance": {
-    "commit": "a64ca51",
+    "commit": "d34a723",
     "dirty": false,
-    "date": "2026-10-21",
+    "date": "2026-10-22",
     "command": "cargo test --release --lib -- --include-ignored --exact tests::spe1_acceptance::spe1_full_horizon_matches_published_reference tests::spe1_acceptance::spe1_areal_refinement_reference_error_replay; python3 tools/opm_flow/spe1_refinement_oracle.py",
     "flow": "flow 2026.04"
    },
@@ -287,7 +287,7 @@
      "reference": "SPE1 published 10x10x3",
      "same_model": false,
      "unit": "frac",
-     "value": 0.0009310486870253825
+     "value": 0.0008980274515944892
     },
     {
      "at": "t=2190 d",
@@ -297,7 +297,7 @@
      "reference": "SPE1 published 10x10x3",
      "same_model": false,
      "unit": "frac",
-     "value": 0.0031238908154513296
+     "value": 0.0029878625341084293
     },
     {
      "at": "t=730 d",
@@ -307,7 +307,7 @@
      "reference": "SPE1 published 10x10x3",
      "same_model": false,
      "unit": "frac",
-     "value": 0.012160179578466702
+     "value": 0.013953863865437073
     },
     {
      "at": "t=1460 d",
@@ -317,7 +317,7 @@
      "reference": "SPE1 published (Flow, SPE1CASE1)",
      "same_model": false,
      "unit": "frac",
-     "value": 0.0008788405794784243
+     "value": 0.0008438586547821469
     },
     {
      "at": "t=2190 d",
@@ -327,7 +327,7 @@
      "reference": "SPE1 published (Flow, SPE1CASE1)",
      "same_model": false,
      "unit": "frac",
-     "value": 0.003105895651972545
+     "value": 0.0029665643606470167
     },
     {
      "at": "t=730 d",
@@ -337,7 +337,7 @@
      "reference": "SPE1 published (Flow, SPE1CASE1)",
      "same_model": false,
      "unit": "frac",
-     "value": 0.013791818029407007
+     "value": 0.01580991194230559
     },
     {
      "at": "t=730 d",
@@ -347,7 +347,7 @@
      "reference": "SPE1 published (Flow, SPE1CASE1)",
      "same_model": false,
      "unit": "frac",
-     "value": 2.6868274151101024e-09
+     "value": 2.7938452237706826e-09
     },
     {
      "at": "t=1825 d",
@@ -357,7 +357,7 @@
      "reference": "SPE1 published (Flow, SPE1CASE1)",
      "same_model": false,
      "unit": "frac",
-     "value": 3.5099482864038236e-07
+     "value": 6.450792157581132e-07
     },
     {
      "at": "t=2555 d",
@@ -367,7 +367,7 @@
      "reference": "SPE1 published (Flow, SPE1CASE1)",
      "same_model": false,
      "unit": "frac",
-     "value": 2.0556318284830643e-06
+     "value": 1.1299657441658065e-06
     },
     {
      "at": "t=1095 d",
@@ -377,7 +377,7 @@
      "reference": "SPE1 published 10x10x3",
      "same_model": false,
      "unit": "frac",
-     "value": 0.012222116236095999
+     "value": 0.01218691205372538
     },
     {
      "at": "t=1095 d",
@@ -387,7 +387,7 @@
      "reference": "SPE1 published 10x10x3",
      "same_model": false,
      "unit": "frac",
-     "value": 0.06551820632415153
+     "value": 0.06558902264196656
     },
     {
      "at": "t=730 d",
@@ -397,12 +397,12 @@
      "reference": "SPE1 published 10x10x3",
      "same_model": false,
      "unit": "frac",
-     "value": 0.2380821530874114
+     "value": 0.2373982976520552
     },
     {
      "case": "10x10x3",
      "metric": "vs_flow.FOPR_rel_err",
-     "value": 0.002360417897913678,
+     "value": 0.0027806977694334366,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, same grid, hand-mapped deck",
@@ -412,7 +412,7 @@
     {
      "case": "10x10x3",
      "metric": "vs_flow.FPR_rel_err",
-     "value": -0.0008106029231384089,
+     "value": -0.0007985172467490417,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, same grid, hand-mapped deck",
@@ -422,7 +422,7 @@
     {
      "case": "10x10x3",
      "metric": "vs_flow.WGOR_rel_err",
-     "value": -0.008559655379762547,
+     "value": -0.01113537711699935,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, same grid, hand-mapped deck",
@@ -432,7 +432,7 @@
     {
      "case": "20x20x3",
      "metric": "vs_flow.FOPR_rel_err",
-     "value": 0.005669062416139324,
+     "value": 0.005611228883220507,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, same grid, hand-mapped deck",
@@ -442,7 +442,7 @@
     {
      "case": "20x20x3",
      "metric": "vs_flow.FPR_rel_err",
-     "value": -0.0020179226506091713,
+     "value": -0.001988967718009615,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, same grid, hand-mapped deck",
@@ -452,7 +452,7 @@
     {
      "case": "20x20x3",
      "metric": "vs_flow.WGOR_rel_err",
-     "value": 0.006929642830205139,
+     "value": 0.0067060506149385175,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, same grid, hand-mapped deck",
@@ -463,9 +463,9 @@
   },
   "three_phase": {
    "provenance": {
-    "commit": "a64ca51",
+    "commit": "d34a723",
     "dirty": false,
-    "date": "2026-10-21",
+    "date": "2026-10-22",
     "command": "cargo test --release --lib -- --include-ignored --exact tests::three_phase_acceptance::three_phase_acceptance_error_replay tests::three_phase_acceptance::three_phase_gas_injection_matches_opm_flow_twin"
    },
    "records": [
@@ -643,9 +643,9 @@
   },
   "depletion": {
    "provenance": {
-    "commit": "a64ca51",
+    "commit": "d34a723",
     "dirty": false,
-    "date": "2026-10-21",
+    "date": "2026-10-22",
     "command": "cargo test --release --lib physics_depletion_grid_convergence_; small-direct bo-1d-10/40 Flow output",
     "flow": "flow 2026.04"
    },
@@ -934,9 +934,9 @@
   },
   "cross_solver": {
    "provenance": {
-    "commit": "a64ca51",
+    "commit": "d34a723",
     "dirty": false,
-    "date": "2026-10-21",
+    "date": "2026-10-22",
     "command": "bash scripts/validate-cross-solver.sh",
     "flow": "flow 2026.04"
    },
@@ -1004,7 +1004,7 @@
     {
      "case": "bo-1d-10",
      "metric": "sparse.wall_ms",
-     "value": 11.466,
+     "value": 14.446,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -1104,7 +1104,7 @@
     {
      "case": "bo-1d-10",
      "metric": "dense.wall_ms",
-     "value": 10.873,
+     "value": 17.586,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -1204,7 +1204,7 @@
     {
      "case": "bo-1d-10",
      "metric": "impes.wall_ms",
-     "value": 5.483,
+     "value": 5.851,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -1394,7 +1394,7 @@
     {
      "case": "bo-1d-40",
      "metric": "sparse.wall_ms",
-     "value": 37.866,
+     "value": 62.553,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -1494,7 +1494,7 @@
     {
      "case": "bo-1d-40",
      "metric": "dense.wall_ms",
-     "value": 50.699,
+     "value": 81.112,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -1594,7 +1594,7 @@
     {
      "case": "bo-1d-40",
      "metric": "impes.wall_ms",
-     "value": 25.915,
+     "value": 29.392,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -1784,7 +1784,7 @@
     {
      "case": "dep-pvt-al-marhoun",
      "metric": "sparse.wall_ms",
-     "value": 1047.007,
+     "value": 1075.346,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -1884,7 +1884,7 @@
     {
      "case": "dep-pvt-al-marhoun",
      "metric": "dense.wall_ms",
-     "value": 1502.504,
+     "value": 2459.769,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -1984,7 +1984,7 @@
     {
      "case": "dep-pvt-al-marhoun",
      "metric": "impes.wall_ms",
-     "value": 634.106,
+     "value": 736.216,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -2174,7 +2174,7 @@
     {
      "case": "dep-pvt-correlation",
      "metric": "sparse.wall_ms",
-     "value": 1001.956,
+     "value": 1149.31,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -2274,7 +2274,7 @@
     {
      "case": "dep-pvt-correlation",
      "metric": "dense.wall_ms",
-     "value": 1461.052,
+     "value": 2066.075,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -2374,7 +2374,7 @@
     {
      "case": "dep-pvt-correlation",
      "metric": "impes.wall_ms",
-     "value": 627.984,
+     "value": 713.774,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -2564,7 +2564,7 @@
     {
      "case": "dep-pvt-lab-report",
      "metric": "sparse.wall_ms",
-     "value": 1002.821,
+     "value": 1060.595,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -2664,7 +2664,7 @@
     {
      "case": "dep-pvt-lab-report",
      "metric": "dense.wall_ms",
-     "value": 1596.788,
+     "value": 2206.953,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -2764,7 +2764,7 @@
     {
      "case": "dep-pvt-lab-report",
      "metric": "impes.wall_ms",
-     "value": 516.883,
+     "value": 613.759,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -2954,7 +2954,7 @@
     {
      "case": "dep-pvt-petrosky-farshad",
      "metric": "sparse.wall_ms",
-     "value": 1020.242,
+     "value": 1287.242,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -3054,7 +3054,7 @@
     {
      "case": "dep-pvt-petrosky-farshad",
      "metric": "dense.wall_ms",
-     "value": 1453.567,
+     "value": 2190.341,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -3154,7 +3154,7 @@
     {
      "case": "dep-pvt-petrosky-farshad",
      "metric": "impes.wall_ms",
-     "value": 623.873,
+     "value": 808.43,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -3344,7 +3344,7 @@
     {
      "case": "gas-drive-20",
      "metric": "sparse.wall_ms",
-     "value": 56.905,
+     "value": 64.105,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -3444,7 +3444,7 @@
     {
      "case": "gas-drive-20",
      "metric": "dense.wall_ms",
-     "value": 61.679,
+     "value": 102.597,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -3544,7 +3544,7 @@
     {
      "case": "gas-drive-20",
      "metric": "impes.wall_ms",
-     "value": 172.333,
+     "value": 156.35,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -3734,7 +3734,7 @@
     {
      "case": "go-1d-50",
      "metric": "sparse.wall_ms",
-     "value": 159.185,
+     "value": 203.221,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -3844,7 +3844,7 @@
     {
      "case": "go-1d-50",
      "metric": "dense.wall_ms",
-     "value": 368.566,
+     "value": 552.251,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -3954,7 +3954,7 @@
     {
      "case": "go-1d-50",
      "metric": "impes.wall_ms",
-     "value": 126.127,
+     "value": 165.736,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -4154,7 +4154,7 @@
     {
      "case": "ow-1d-50-adverse",
      "metric": "sparse.wall_ms",
-     "value": 13.176,
+     "value": 19.513,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -4254,7 +4254,7 @@
     {
      "case": "ow-1d-50-adverse",
      "metric": "dense.wall_ms",
-     "value": 32.953,
+     "value": 49.179,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -4354,7 +4354,7 @@
     {
      "case": "ow-1d-50-adverse",
      "metric": "impes.wall_ms",
-     "value": 10.955,
+     "value": 15.11,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -4544,7 +4544,7 @@
     {
      "case": "ow-1d-96",
      "metric": "sparse.wall_ms",
-     "value": 190.049,
+     "value": 258.627,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -4654,7 +4654,7 @@
     {
      "case": "ow-1d-96",
      "metric": "dense.wall_ms",
-     "value": 1321.745,
+     "value": 2050.417,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -4764,7 +4764,7 @@
     {
      "case": "ow-1d-96",
      "metric": "impes.wall_ms",
-     "value": 463.801,
+     "value": 577.335,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -4964,7 +4964,7 @@
     {
      "case": "ow-2d-12x12",
      "metric": "sparse.wall_ms",
-     "value": 204.427,
+     "value": 258.269,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -5074,7 +5074,7 @@
     {
      "case": "ow-2d-12x12",
      "metric": "dense.wall_ms",
-     "value": 1432.53,
+     "value": 1893.293,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -5184,7 +5184,7 @@
     {
      "case": "ow-2d-12x12",
      "metric": "impes.wall_ms",
-     "value": 558.087,
+     "value": 681.825,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -5354,7 +5354,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "sparse.substeps",
-     "value": 124,
+     "value": 123,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -5364,7 +5364,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "sparse.newton",
-     "value": 454,
+     "value": 450,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -5384,7 +5384,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "sparse.wall_ms",
-     "value": 3713.336,
+     "value": 4424.477,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -5404,7 +5404,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "sparse.worst.p",
-     "value": 1.0450806049937569,
+     "value": 1.8118296863937644,
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
@@ -5414,7 +5414,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "sparse.worst.sw",
-     "value": 1.1230613816054502e-05,
+     "value": 1.9494817516063634e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5424,7 +5424,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "sparse.worst.sg",
-     "value": 0.007358134504830194,
+     "value": 0.012724320518530174,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5434,7 +5434,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "sparse.cum.FOPT",
-     "value": 0.00016354040736617237,
+     "value": 0.00025978382197350345,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5444,7 +5444,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "sparse.cum.FGPT",
-     "value": 3.3914018607967585e-05,
+     "value": 5.1540831532400686e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5454,7 +5454,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "sparse.cum.FGIT",
-     "value": 1.5713103933484392e-08,
+     "value": 1.4816522388709959e-08,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5464,7 +5464,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "dense.substeps",
-     "value": 124,
+     "value": 123,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -5474,7 +5474,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "dense.newton",
-     "value": 454,
+     "value": 450,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -5494,7 +5494,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "dense.wall_ms",
-     "value": 4095.506,
+     "value": 4584.311,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -5514,7 +5514,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "dense.worst.p",
-     "value": 1.0450806049937569,
+     "value": 1.8118296863937644,
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
@@ -5524,7 +5524,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "dense.worst.sw",
-     "value": 1.1230613816054502e-05,
+     "value": 1.9494817516063634e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5534,7 +5534,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "dense.worst.sg",
-     "value": 0.007358134504830194,
+     "value": 0.012724320518530174,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5544,7 +5544,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "dense.cum.FOPT",
-     "value": 0.00016354040736617237,
+     "value": 0.00025978382197350345,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5554,7 +5554,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "dense.cum.FGPT",
-     "value": 3.3914018607967585e-05,
+     "value": 5.1540831532400686e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5564,7 +5564,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "dense.cum.FGIT",
-     "value": 1.5713103933484392e-08,
+     "value": 1.4816522388709959e-08,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5604,7 +5604,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "impes.wall_ms",
-     "value": 8247.902,
+     "value": 8772.7,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -5714,7 +5714,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "pair.sparse_vs_impes.p",
-     "value": 24.1670631156,
+     "value": 24.102411665700004,
      "band": null,
      "unit": "bar",
      "reference": "sparse_vs_impes",
@@ -5724,7 +5724,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "pair.sparse_vs_impes.sw",
-     "value": 0.0002605676646999927,
+     "value": 0.00025986983900000427,
      "band": null,
      "unit": "frac",
      "reference": "sparse_vs_impes",
@@ -5734,7 +5734,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "pair.sparse_vs_impes.sg",
-     "value": 0.10919941139753,
+     "value": 0.10929567280943,
      "band": null,
      "unit": "frac",
      "reference": "sparse_vs_impes",
@@ -5774,7 +5774,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "sparse.substeps",
-     "value": 124,
+     "value": 123,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -5784,7 +5784,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "sparse.newton",
-     "value": 520,
+     "value": 508,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -5804,7 +5804,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "sparse.wall_ms",
-     "value": 4193.845,
+     "value": 4649.351,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -5824,7 +5824,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "sparse.worst.p",
-     "value": 2.315416672515653,
+     "value": 0.34693006329064247,
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
@@ -5834,7 +5834,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "sparse.worst.sw",
-     "value": 2.49606883810094e-05,
+     "value": 3.7773557746423325e-06,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5844,7 +5844,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "sparse.worst.sg",
-     "value": 0.017595688048577834,
+     "value": 0.008711952799808118,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5854,7 +5854,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "sparse.cum.FOPT",
-     "value": 0.00046312115727661137,
+     "value": 6.309332343979914e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5864,7 +5864,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "sparse.cum.FGPT",
-     "value": 0.0001502533390702517,
+     "value": 9.330898475921687e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5874,7 +5874,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "sparse.cum.FGIT",
-     "value": 4.994549433773489e-09,
+     "value": 3.31331054679453e-09,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5884,7 +5884,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "dense.substeps",
-     "value": 124,
+     "value": 123,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -5894,7 +5894,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "dense.newton",
-     "value": 520,
+     "value": 508,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -5914,7 +5914,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "dense.wall_ms",
-     "value": 4294.568,
+     "value": 4221.101,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -5934,7 +5934,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "dense.worst.p",
-     "value": 2.315416672515653,
+     "value": 0.34693006329064247,
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
@@ -5944,7 +5944,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "dense.worst.sw",
-     "value": 2.49606883810094e-05,
+     "value": 3.7773557746423325e-06,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5954,7 +5954,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "dense.worst.sg",
-     "value": 0.017595688048577834,
+     "value": 0.008711952799808118,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5964,7 +5964,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "dense.cum.FOPT",
-     "value": 0.00046312115727661137,
+     "value": 6.309332343979914e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5974,7 +5974,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "dense.cum.FGPT",
-     "value": 0.0001502533390702517,
+     "value": 9.330898475921687e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -5984,7 +5984,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "dense.cum.FGIT",
-     "value": 4.994549433773489e-09,
+     "value": 3.31331054679453e-09,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6024,7 +6024,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "impes.wall_ms",
-     "value": 16389.293,
+     "value": 19600.218,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -6134,7 +6134,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "pair.sparse_vs_impes.p",
-     "value": 21.774909286100012,
+     "value": 21.313063612799965,
      "band": null,
      "unit": "bar",
      "reference": "sparse_vs_impes",
@@ -6144,7 +6144,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "pair.sparse_vs_impes.sw",
-     "value": 0.00023441412329999745,
+     "value": 0.00022943744810000055,
      "band": null,
      "unit": "frac",
      "reference": "sparse_vs_impes",
@@ -6154,7 +6154,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "pair.sparse_vs_impes.sg",
-     "value": 0.06254940114569998,
+     "value": 0.06493249070629997,
      "band": null,
      "unit": "frac",
      "reference": "sparse_vs_impes",
@@ -6204,7 +6204,7 @@
     {
      "case": "sweep-areal",
      "metric": "sparse.newton",
-     "value": 301,
+     "value": 298,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -6224,7 +6224,7 @@
     {
      "case": "sweep-areal",
      "metric": "sparse.wall_ms",
-     "value": 1625.509,
+     "value": 1830.515,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -6244,7 +6244,7 @@
     {
      "case": "sweep-areal",
      "metric": "sparse.worst.p",
-     "value": 0.20455597470623843,
+     "value": 0.06927553276875642,
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
@@ -6254,7 +6254,7 @@
     {
      "case": "sweep-areal",
      "metric": "sparse.worst.sw",
-     "value": 0.00550464440949211,
+     "value": 0.0006352192251614097,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6274,7 +6274,7 @@
     {
      "case": "sweep-areal",
      "metric": "sparse.cum.FOPT",
-     "value": 4.1180134667578374e-05,
+     "value": 3.001440262311202e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6284,7 +6284,7 @@
     {
      "case": "sweep-areal",
      "metric": "sparse.cum.FWPT",
-     "value": 0.0002619033339734308,
+     "value": 0.00022836918213383083,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6294,7 +6294,7 @@
     {
      "case": "sweep-areal",
      "metric": "sparse.cum.FWIT",
-     "value": 0.00018394047190959216,
+     "value": 0.0001584896287648941,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6314,7 +6314,7 @@
     {
      "case": "sweep-areal",
      "metric": "dense.newton",
-     "value": 301,
+     "value": 298,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -6334,7 +6334,7 @@
     {
      "case": "sweep-areal",
      "metric": "dense.wall_ms",
-     "value": 1697.8,
+     "value": 1601.229,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -6354,7 +6354,7 @@
     {
      "case": "sweep-areal",
      "metric": "dense.worst.p",
-     "value": 0.20455597470623843,
+     "value": 0.06927553276875642,
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
@@ -6364,7 +6364,7 @@
     {
      "case": "sweep-areal",
      "metric": "dense.worst.sw",
-     "value": 0.00550464440949211,
+     "value": 0.0006352192251614097,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6384,7 +6384,7 @@
     {
      "case": "sweep-areal",
      "metric": "dense.cum.FOPT",
-     "value": 4.1180134667578374e-05,
+     "value": 3.001440262311202e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6394,7 +6394,7 @@
     {
      "case": "sweep-areal",
      "metric": "dense.cum.FWPT",
-     "value": 0.0002619033339734308,
+     "value": 0.00022836918213383083,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6404,7 +6404,7 @@
     {
      "case": "sweep-areal",
      "metric": "dense.cum.FWIT",
-     "value": 0.00018394047190959216,
+     "value": 0.0001584896287648941,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6444,7 +6444,7 @@
     {
      "case": "sweep-areal",
      "metric": "impes.wall_ms",
-     "value": 20333.113,
+     "value": 27164.93,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -6554,7 +6554,7 @@
     {
      "case": "sweep-areal",
      "metric": "pair.sparse_vs_impes.p",
-     "value": 20.15044573200001,
+     "value": 20.151751721200014,
      "band": null,
      "unit": "bar",
      "reference": "sparse_vs_impes",
@@ -6564,7 +6564,7 @@
     {
      "case": "sweep-areal",
      "metric": "pair.sparse_vs_impes.sw",
-     "value": 0.17428520383059998,
+     "value": 0.1742696733902,
      "band": null,
      "unit": "frac",
      "reference": "sparse_vs_impes",
@@ -6644,7 +6644,7 @@
     {
      "case": "sweep-combined",
      "metric": "sparse.wall_ms",
-     "value": 17412.813,
+     "value": 23336.406,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -6664,7 +6664,7 @@
     {
      "case": "sweep-combined",
      "metric": "sparse.worst.p",
-     "value": 3.4605063863921828,
+     "value": 3.3782066880921775,
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
@@ -6674,7 +6674,7 @@
     {
      "case": "sweep-combined",
      "metric": "sparse.worst.sw",
-     "value": 0.11410422180468904,
+     "value": 0.11278598273498905,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6694,7 +6694,7 @@
     {
      "case": "sweep-combined",
      "metric": "sparse.cum.FOPT",
-     "value": 0.0006157871598123582,
+     "value": 0.0006110269016650308,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6704,7 +6704,7 @@
     {
      "case": "sweep-combined",
      "metric": "sparse.cum.FWPT",
-     "value": 0.00454773971924318,
+     "value": 0.004517237772153987,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6714,7 +6714,7 @@
     {
      "case": "sweep-combined",
      "metric": "sparse.cum.FWIT",
-     "value": 0.00387290434885638,
+     "value": 0.0038468133259371186,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6754,7 +6754,7 @@
     {
      "case": "sweep-combined",
      "metric": "dense.wall_ms",
-     "value": 19160.753,
+     "value": 21770.849,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -6774,7 +6774,7 @@
     {
      "case": "sweep-combined",
      "metric": "dense.worst.p",
-     "value": 3.4605063863921828,
+     "value": 3.3782066880921775,
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
@@ -6784,7 +6784,7 @@
     {
      "case": "sweep-combined",
      "metric": "dense.worst.sw",
-     "value": 0.11410422180468904,
+     "value": 0.11278598273498905,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6804,7 +6804,7 @@
     {
      "case": "sweep-combined",
      "metric": "dense.cum.FOPT",
-     "value": 0.0006157871598123582,
+     "value": 0.0006110269016650308,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6814,7 +6814,7 @@
     {
      "case": "sweep-combined",
      "metric": "dense.cum.FWPT",
-     "value": 0.00454773971924318,
+     "value": 0.004517237772153987,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6824,7 +6824,7 @@
     {
      "case": "sweep-combined",
      "metric": "dense.cum.FWIT",
-     "value": 0.00387290434885638,
+     "value": 0.0038468133259371186,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -6864,7 +6864,7 @@
     {
      "case": "sweep-combined",
      "metric": "impes.wall_ms",
-     "value": 358588.228,
+     "value": 478693.242,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -6974,7 +6974,7 @@
     {
      "case": "sweep-combined",
      "metric": "pair.sparse_vs_impes.p",
-     "value": 31.340441688200002,
+     "value": 31.261337484699993,
      "band": null,
      "unit": "bar",
      "reference": "sparse_vs_impes",
@@ -6984,7 +6984,7 @@
     {
      "case": "sweep-combined",
      "metric": "pair.sparse_vs_impes.sw",
-     "value": 0.23805253184429997,
+     "value": 0.2373439810688,
      "band": null,
      "unit": "frac",
      "reference": "sparse_vs_impes",
@@ -7034,7 +7034,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "sparse.substeps",
-     "value": 313,
+     "value": 312,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -7044,7 +7044,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "sparse.newton",
-     "value": 1034,
+     "value": 1031,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -7064,7 +7064,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "sparse.wall_ms",
-     "value": 8733.265,
+     "value": 11731.93,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -7084,7 +7084,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "sparse.worst.p",
-     "value": 1.7663772607437522,
+     "value": 1.761158572643751,
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
@@ -7094,7 +7094,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "sparse.worst.sw",
-     "value": 0.052164654045995795,
+     "value": 0.05147556848049584,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -7114,7 +7114,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "sparse.cum.FOPT",
-     "value": 3.970725279901242e-05,
+     "value": 4.000272475562205e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -7124,7 +7124,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "sparse.cum.FWPT",
-     "value": 7.60603768977653e-05,
+     "value": 8.025169703361896e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -7134,7 +7134,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "sparse.cum.FWIT",
-     "value": 5.724791449027605e-05,
+     "value": 5.91883191026489e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -7144,7 +7144,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "dense.substeps",
-     "value": 313,
+     "value": 312,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -7154,7 +7154,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "dense.newton",
-     "value": 1034,
+     "value": 1031,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -7174,7 +7174,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "dense.wall_ms",
-     "value": 10032.264,
+     "value": 10335.984,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -7194,7 +7194,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "dense.worst.p",
-     "value": 1.7663772607437522,
+     "value": 1.761158572643751,
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
@@ -7204,7 +7204,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "dense.worst.sw",
-     "value": 0.052164654045995795,
+     "value": 0.05147556848049584,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -7224,7 +7224,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "dense.cum.FOPT",
-     "value": 3.970725279901242e-05,
+     "value": 4.000272475562205e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -7234,7 +7234,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "dense.cum.FWPT",
-     "value": 7.60603768977653e-05,
+     "value": 8.025169703361896e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -7244,7 +7244,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "dense.cum.FWIT",
-     "value": 5.724791449027605e-05,
+     "value": 5.91883191026489e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -7284,7 +7284,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "impes.wall_ms",
-     "value": 1919.927,
+     "value": 2540.88,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -7394,7 +7394,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "pair.sparse_vs_impes.p",
-     "value": 4.558515311299971,
+     "value": 4.560824628099965,
      "band": null,
      "unit": "bar",
      "reference": "sparse_vs_impes",
@@ -7404,7 +7404,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "pair.sparse_vs_impes.sw",
-     "value": 0.11726871063349997,
+     "value": 0.11725414375959997,
      "band": null,
      "unit": "frac",
      "reference": "sparse_vs_impes",
@@ -7484,7 +7484,7 @@
     {
      "case": "sweep-vertical",
      "metric": "sparse.wall_ms",
-     "value": 8336.73,
+     "value": 9368.62,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -7594,7 +7594,7 @@
     {
      "case": "sweep-vertical",
      "metric": "dense.wall_ms",
-     "value": 8747.163,
+     "value": 8339.248,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -7704,7 +7704,7 @@
     {
      "case": "sweep-vertical",
      "metric": "impes.wall_ms",
-     "value": 1501.01,
+     "value": 1753.786,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -7874,7 +7874,7 @@
     {
      "case": "wf-capillary",
      "metric": "sparse.substeps",
-     "value": 202,
+     "value": 201,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -7884,7 +7884,7 @@
     {
      "case": "wf-capillary",
      "metric": "sparse.newton",
-     "value": 637,
+     "value": 636,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -7904,7 +7904,7 @@
     {
      "case": "wf-capillary",
      "metric": "sparse.wall_ms",
-     "value": 335.223,
+     "value": 473.105,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -7924,7 +7924,7 @@
     {
      "case": "wf-capillary",
      "metric": "sparse.worst.p",
-     "value": 0.033933584378132764,
+     "value": 0.011194380006259053,
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
@@ -7934,7 +7934,7 @@
     {
      "case": "wf-capillary",
      "metric": "sparse.worst.sw",
-     "value": 0.008039421921377743,
+     "value": 0.00657387018650811,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -7954,7 +7954,7 @@
     {
      "case": "wf-capillary",
      "metric": "sparse.cum.FOPT",
-     "value": 1.2759773410414358e-05,
+     "value": 1.71857980428139e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -7964,7 +7964,7 @@
     {
      "case": "wf-capillary",
      "metric": "sparse.cum.FWPT",
-     "value": 2.5194156872687875e-06,
+     "value": 2.2590704130019755e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -7974,7 +7974,7 @@
     {
      "case": "wf-capillary",
      "metric": "sparse.cum.FWIT",
-     "value": 6.298487870830385e-06,
+     "value": 2.5176961893317612e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -7984,7 +7984,7 @@
     {
      "case": "wf-capillary",
      "metric": "dense.substeps",
-     "value": 202,
+     "value": 201,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -7994,7 +7994,7 @@
     {
      "case": "wf-capillary",
      "metric": "dense.newton",
-     "value": 637,
+     "value": 629,
      "band": null,
      "unit": "count",
      "reference": "OPM Flow, generated deck",
@@ -8014,7 +8014,7 @@
     {
      "case": "wf-capillary",
      "metric": "dense.wall_ms",
-     "value": 2187.936,
+     "value": 2424.381,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -8034,7 +8034,7 @@
     {
      "case": "wf-capillary",
      "metric": "dense.worst.p",
-     "value": 0.033933584378132764,
+     "value": 0.00934822337814012,
      "band": null,
      "unit": "bar",
      "reference": "OPM Flow, generated deck",
@@ -8044,7 +8044,7 @@
     {
      "case": "wf-capillary",
      "metric": "dense.worst.sw",
-     "value": 0.00656304658280811,
+     "value": 0.004985912702683393,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -8064,7 +8064,7 @@
     {
      "case": "wf-capillary",
      "metric": "dense.cum.FOPT",
-     "value": 1.3333251416180358e-05,
+     "value": 1.739030541420212e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -8074,7 +8074,7 @@
     {
      "case": "wf-capillary",
      "metric": "dense.cum.FWPT",
-     "value": 5.521390214354728e-07,
+     "value": 2.6987881338980608e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -8084,7 +8084,7 @@
     {
      "case": "wf-capillary",
      "metric": "dense.cum.FWIT",
-     "value": 7.831463405989141e-06,
+     "value": 2.8289649723252924e-05,
      "band": null,
      "unit": "frac",
      "reference": "OPM Flow, generated deck",
@@ -8124,7 +8124,7 @@
     {
      "case": "wf-capillary",
      "metric": "impes.wall_ms",
-     "value": 501.585,
+     "value": 618.142,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -8204,7 +8204,7 @@
     {
      "case": "wf-capillary",
      "metric": "pair.sparse_vs_dense.p",
-     "value": 0.015152496499979407,
+     "value": 0.01638744349997978,
      "band": null,
      "unit": "bar",
      "reference": "sparse_vs_dense",
@@ -8214,7 +8214,7 @@
     {
      "case": "wf-capillary",
      "metric": "pair.sparse_vs_dense.sw",
-     "value": 0.007692561682209997,
+     "value": 0.008783936169030004,
      "band": null,
      "unit": "frac",
      "reference": "sparse_vs_dense",
@@ -8234,7 +8234,7 @@
     {
      "case": "wf-capillary",
      "metric": "pair.sparse_vs_impes.p",
-     "value": 0.4847040466000294,
+     "value": 0.48714888250003696,
      "band": null,
      "unit": "bar",
      "reference": "sparse_vs_impes",
@@ -8244,7 +8244,7 @@
     {
      "case": "wf-capillary",
      "metric": "pair.sparse_vs_impes.sw",
-     "value": 0.05100761852750002,
+     "value": 0.05104680977820003,
      "band": null,
      "unit": "frac",
      "reference": "sparse_vs_impes",
@@ -8324,7 +8324,7 @@
     {
      "case": "wf-gravity-stability",
      "metric": "sparse.wall_ms",
-     "value": 172.375,
+     "value": 295.086,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -8434,7 +8434,7 @@
     {
      "case": "wf-gravity-stability",
      "metric": "dense.wall_ms",
-     "value": 502.742,
+     "value": 675.304,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -8544,7 +8544,7 @@
     {
      "case": "wf-gravity-stability",
      "metric": "impes.wall_ms",
-     "value": 292.207,
+     "value": 385.412,
      "band": null,
      "unit": "ms",
      "reference": "OPM Flow, generated deck",
@@ -8685,9 +8685,9 @@
   },
   "parity": {
    "provenance": {
-    "commit": "a64ca51",
+    "commit": "d34a723",
     "dirty": false,
-    "date": "2026-10-21",
+    "date": "2026-10-22",
     "command": "bash scripts/validate-native-binding.sh"
    },
    "records": [
@@ -8845,9 +8845,9 @@
   },
   "fim_wasm": {
    "provenance": {
-    "commit": "a64ca51",
+    "commit": "d34a723",
     "dirty": false,
-    "date": "2026-10-21",
+    "date": "2026-10-22",
     "command": "node scripts/fim-wasm-diagnostic.mjs --preset <P> --grid <G> --dt <D> --steps <N> --diagnostic quiet --json",
     "node": "v24.21.0"
    },
@@ -8945,7 +8945,7 @@
     {
      "case": "water-pressure 20x20x3 dt 0.25",
      "metric": "fim_ms",
-     "value": 3640,
+     "value": 4049,
      "band": null,
      "unit": "ms",
      "reference": "wasm build",
@@ -8955,7 +8955,7 @@
     {
      "case": "water-pressure 20x20x3 dt 0.25",
      "metric": "linear_share",
-     "value": 0.5423076923076923,
+     "value": 0.5455668066189182,
      "band": null,
      "unit": "share",
      "reference": "wasm build",
@@ -8995,7 +8995,7 @@
     {
      "case": "water-pressure 22x22x1 dt 0.25",
      "metric": "newton",
-     "value": 115,
+     "value": 114,
      "band": null,
      "unit": "count",
      "reference": "wasm build",
@@ -9055,7 +9055,7 @@
     {
      "case": "water-pressure 22x22x1 dt 0.25",
      "metric": "fim_ms",
-     "value": 1237,
+     "value": 1666,
      "band": null,
      "unit": "ms",
      "reference": "wasm build",
@@ -9065,7 +9065,7 @@
     {
      "case": "water-pressure 22x22x1 dt 0.25",
      "metric": "linear_share",
-     "value": 0.5157639450282943,
+     "value": 0.4909963985594238,
      "band": null,
      "unit": "share",
      "reference": "wasm build",
@@ -9165,7 +9165,7 @@
     {
      "case": "water-pressure 23x23x1 dt 0.25",
      "metric": "fim_ms",
-     "value": 1387,
+     "value": 1847,
      "band": null,
      "unit": "ms",
      "reference": "wasm build",
@@ -9175,7 +9175,7 @@
     {
      "case": "water-pressure 23x23x1 dt 0.25",
      "metric": "linear_share",
-     "value": 0.4996395097332372,
+     "value": 0.5062263129399025,
      "band": null,
      "unit": "share",
      "reference": "wasm build",
@@ -9195,7 +9195,7 @@
     {
      "case": "water-pressure 12x12x3 dt 1 (heavy)",
      "metric": "substeps",
-     "value": 24,
+     "value": 23,
      "band": null,
      "unit": "count",
      "reference": "wasm build",
@@ -9205,7 +9205,7 @@
     {
      "case": "water-pressure 12x12x3 dt 1 (heavy)",
      "metric": "ratio",
-     "value": 1.2,
+     "value": 1.15,
      "band": null,
      "unit": "ratio",
      "reference": "wasm build",
@@ -9215,7 +9215,7 @@
     {
      "case": "water-pressure 12x12x3 dt 1 (heavy)",
      "metric": "newton",
-     "value": 108,
+     "value": 103,
      "band": null,
      "unit": "count",
      "reference": "wasm build",
@@ -9275,7 +9275,7 @@
     {
      "case": "water-pressure 12x12x3 dt 1 (heavy)",
      "metric": "fim_ms",
-     "value": 1230,
+     "value": 1253,
      "band": null,
      "unit": "ms",
      "reference": "wasm build",
@@ -9285,7 +9285,7 @@
     {
      "case": "water-pressure 12x12x3 dt 1 (heavy)",
      "metric": "linear_share",
-     "value": 0.4682926829268293,
+     "value": 0.4604948124501197,
      "band": null,
      "unit": "share",
      "reference": "wasm build",
@@ -9385,7 +9385,7 @@
     {
      "case": "gas-rate 10x10x3 dt 0.25",
      "metric": "fim_ms",
-     "value": 1783,
+     "value": 1934,
      "band": null,
      "unit": "ms",
      "reference": "wasm build",
@@ -9395,7 +9395,7 @@
     {
      "case": "gas-rate 10x10x3 dt 0.25",
      "metric": "linear_share",
-     "value": 0.22826696578799777,
+     "value": 0.22130299896587383,
      "band": null,
      "unit": "share",
      "reference": "wasm build",
@@ -9435,7 +9435,7 @@
     {
      "case": "gas-pressure 10x10x3 dt 0.25",
      "metric": "newton",
-     "value": 145,
+     "value": 148,
      "band": null,
      "unit": "count",
      "reference": "wasm build",
@@ -9495,7 +9495,7 @@
     {
      "case": "gas-pressure 10x10x3 dt 0.25",
      "metric": "fim_ms",
-     "value": 2255,
+     "value": 2531,
      "band": null,
      "unit": "ms",
      "reference": "wasm build",
@@ -9505,7 +9505,7 @@
     {
      "case": "gas-pressure 10x10x3 dt 0.25",
      "metric": "linear_share",
-     "value": 0.22926829268292684,
+     "value": 0.23548004741209008,
      "band": null,
      "unit": "share",
      "reference": "wasm build",
@@ -9605,7 +9605,7 @@
     {
      "case": "sweep-areal 21x21x1 dt 0.25",
      "metric": "fim_ms",
-     "value": 502,
+     "value": 607,
      "band": null,
      "unit": "ms",
      "reference": "wasm build",
@@ -9615,7 +9615,7 @@
     {
      "case": "sweep-areal 21x21x1 dt 0.25",
      "metric": "linear_share",
-     "value": 0.42231075697211157,
+     "value": 0.4085667215815486,
      "band": null,
      "unit": "share",
      "reference": "wasm build",
@@ -9626,33 +9626,13 @@
   },
   "compositional": {
    "provenance": {
-    "commit": "a64ca51",
+    "commit": "d34a723",
     "dirty": false,
-    "date": "2026-10-21",
+    "date": "2026-10-22",
     "command": "cargo test --release --lib -- comp_matched_1d_trajectory_agrees_with_opm comp_depletion_bhp_trajectory_matches_opm_at_matched_timestep comp_depletion_bhp_cumulative_production_matches_opm; bash scripts/validate-compositional.sh reference",
     "note": "fixtures reproduce from flowexp_comp"
    },
    "records": [
-    {
-     "at": "",
-     "band": 0.01,
-     "case": "depletion BHP",
-     "metric": "cum_production_rel_err",
-     "reference": "OPM flowexp_comp, matched timestep",
-     "same_model": true,
-     "unit": "frac",
-     "value": 0.000407124358167655
-    },
-    {
-     "at": "component 2",
-     "band": 0.01,
-     "case": "depletion BHP",
-     "metric": "cum_production_worst_component_rel_err",
-     "reference": "OPM flowexp_comp, matched timestep",
-     "same_model": true,
-     "unit": "frac",
-     "value": 0.0008786575748230271
-    },
     {
      "at": "t = 2.0 d: 91.7794 vs 91.7889 bar",
      "band": 0.02,
@@ -9672,6 +9652,26 @@
      "same_model": true,
      "unit": "frac",
      "value": 0.0001813902171702575
+    },
+    {
+     "at": "",
+     "band": 0.01,
+     "case": "depletion BHP",
+     "metric": "cum_production_rel_err",
+     "reference": "OPM flowexp_comp, matched timestep",
+     "same_model": true,
+     "unit": "frac",
+     "value": 0.000407124358167655
+    },
+    {
+     "at": "component 2",
+     "band": 0.01,
+     "case": "depletion BHP",
+     "metric": "cum_production_worst_component_rel_err",
+     "reference": "OPM flowexp_comp, matched timestep",
+     "same_model": true,
+     "unit": "frac",
+     "value": 0.0008786575748230271
     },
     {
      "at": "t = 5.11 d, cell 3: 97.2283 vs 97.2357 bar",
@@ -9717,9 +9717,9 @@
   },
   "jutul": {
    "provenance": {
-    "commit": "a64ca51",
+    "commit": "d34a723",
     "dirty": false,
-    "date": "2026-10-21",
+    "date": "2026-10-22",
     "command": "julia +1.12 --project=tools/jutul tools/jutul/run_decks.jl; python3 tools/jutul/compare_jutul.py",
     "flow": "flow 2026.04",
     "jutuldarcy": "0.3.7",
@@ -9829,7 +9829,7 @@
     {
      "case": "bo-1d-10",
      "metric": "wall_s",
-     "value": 35.86593198776245,
+     "value": 45.17393207550049,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
@@ -9939,7 +9939,7 @@
     {
      "case": "bo-1d-40",
      "metric": "wall_s",
-     "value": 0.1562488079071045,
+     "value": 0.3350989818572998,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
@@ -10029,7 +10029,7 @@
     {
      "case": "dep-pvt-al-marhoun",
      "metric": "wall_s",
-     "value": 8.950416088104248,
+     "value": 12.741932153701782,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7, ignores STONE2",
@@ -10119,7 +10119,7 @@
     {
      "case": "dep-pvt-correlation",
      "metric": "wall_s",
-     "value": 3.1678619384765625,
+     "value": 3.381232976913452,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7, ignores STONE2",
@@ -10229,7 +10229,7 @@
     {
      "case": "dep-pvt-lab-report",
      "metric": "wall_s",
-     "value": 2.6961050033569336,
+     "value": 3.2787511348724365,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7, ignores STONE2",
@@ -10339,7 +10339,7 @@
     {
      "case": "dep-pvt-petrosky-farshad",
      "metric": "wall_s",
-     "value": 2.4187350273132324,
+     "value": 3.051508903503418,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7, ignores STONE2",
@@ -10429,7 +10429,7 @@
     {
      "case": "gas-drive-20",
      "metric": "wall_s",
-     "value": 8.103031158447266,
+     "value": 9.7203049659729,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7, ignores STONE2",
@@ -10559,7 +10559,7 @@
     {
      "case": "go-1d-50",
      "metric": "wall_s",
-     "value": 68.19898796081543,
+     "value": 85.83106708526611,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7, ignores STONE2",
@@ -10669,7 +10669,7 @@
     {
      "case": "ow-1d-50-adverse",
      "metric": "wall_s",
-     "value": 64.58068490028381,
+     "value": 83.61431097984314,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7",
@@ -10799,7 +10799,7 @@
     {
      "case": "ow-1d-96",
      "metric": "wall_s",
-     "value": 1.7746570110321045,
+     "value": 2.540113925933838,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7",
@@ -10929,7 +10929,7 @@
     {
      "case": "ow-2d-12x12",
      "metric": "wall_s",
-     "value": 0.43105196952819824,
+     "value": 0.5774600505828857,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7",
@@ -10989,7 +10989,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "fim_vs_jutul.worst.p",
-     "value": 136.16218129603465,
+     "value": 136.17500172063467,
      "band": null,
      "unit": "bar",
      "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
@@ -10999,7 +10999,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "fim_vs_jutul.worst.sw",
-     "value": 0.0014699729408446244,
+     "value": 0.0014701122300446318,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
@@ -11009,7 +11009,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "fim_vs_jutul.worst.sg",
-     "value": 0.3567987419555,
+     "value": 0.3567352294175,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
@@ -11029,7 +11029,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "fim_vs_jutul.final_FGPR_rel_err",
-     "value": -0.05996594686579851,
+     "value": -0.059961286051333836,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
@@ -11039,7 +11039,7 @@
     {
      "case": "spe1-10x10x3",
      "metric": "wall_s",
-     "value": 9.875712871551514,
+     "value": 13.672820091247559,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7, ignores STONE2, DRSDT",
@@ -11099,7 +11099,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "fim_vs_jutul.worst.p",
-     "value": 5.425815166785526,
+     "value": 6.401876503485539,
      "band": null,
      "unit": "bar",
      "reference": "JutulDarcy 0.3.7, ignores STONE2",
@@ -11109,7 +11109,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "fim_vs_jutul.worst.sw",
-     "value": 5.8373446969267606e-05,
+     "value": 6.886263856926977e-05,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7, ignores STONE2",
@@ -11119,7 +11119,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "fim_vs_jutul.worst.sg",
-     "value": 0.03008496992137128,
+     "value": 0.03519985146296128,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7, ignores STONE2",
@@ -11139,7 +11139,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "fim_vs_jutul.final_FGPR_rel_err",
-     "value": 0.0018904841510381414,
+     "value": 0.0019521154164261248,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7, ignores STONE2",
@@ -11149,7 +11149,7 @@
     {
      "case": "spe1-case2-10x10x3",
      "metric": "wall_s",
-     "value": 2.140410900115967,
+     "value": 3.0228281021118164,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7, ignores STONE2",
@@ -11219,7 +11219,7 @@
     {
      "case": "sweep-areal",
      "metric": "fim_vs_jutul.worst.p",
-     "value": 4.736392699346368,
+     "value": 4.553033905074301,
      "band": null,
      "unit": "bar",
      "reference": "JutulDarcy 0.3.7",
@@ -11229,7 +11229,7 @@
     {
      "case": "sweep-areal",
      "metric": "fim_vs_jutul.worst.sw",
-     "value": 0.050357407723836484,
+     "value": 0.04990416782493651,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11249,7 +11249,7 @@
     {
      "case": "sweep-areal",
      "metric": "fim_vs_jutul.final_FOPR_rel_err",
-     "value": 0.005798316399645233,
+     "value": 0.0057058663410406605,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11259,7 +11259,7 @@
     {
      "case": "sweep-areal",
      "metric": "fim_vs_jutul.final_FWIR_rel_err",
-     "value": -0.001094969394963079,
+     "value": -0.0010793109567208265,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11269,7 +11269,7 @@
     {
      "case": "sweep-areal",
      "metric": "fim_vs_jutul.final_FWPR_rel_err",
-     "value": -0.0014254919815061406,
+     "value": -0.0014046569900728013,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11279,7 +11279,7 @@
     {
      "case": "sweep-areal",
      "metric": "wall_s",
-     "value": 14.6548330783844,
+     "value": 18.64821219444275,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7",
@@ -11349,7 +11349,7 @@
     {
      "case": "sweep-combined",
      "metric": "fim_vs_jutul.worst.p",
-     "value": 4.550084767608951,
+     "value": 4.508750178708965,
      "band": null,
      "unit": "bar",
      "reference": "JutulDarcy 0.3.7",
@@ -11359,7 +11359,7 @@
     {
      "case": "sweep-combined",
      "metric": "fim_vs_jutul.worst.sw",
-     "value": 0.09005009807313555,
+     "value": 0.08873185900343555,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11379,7 +11379,7 @@
     {
      "case": "sweep-combined",
      "metric": "fim_vs_jutul.final_FOPR_rel_err",
-     "value": 0.0033727627867872834,
+     "value": 0.0033597063914232368,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11389,7 +11389,7 @@
     {
      "case": "sweep-combined",
      "metric": "fim_vs_jutul.final_FWIR_rel_err",
-     "value": -0.0005807501386950954,
+     "value": -0.0005781767196062303,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11399,7 +11399,7 @@
     {
      "case": "sweep-combined",
      "metric": "fim_vs_jutul.final_FWPR_rel_err",
-     "value": -0.0007859387383142867,
+     "value": -0.0007825463087703175,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11409,7 +11409,7 @@
     {
      "case": "sweep-combined",
      "metric": "wall_s",
-     "value": 8.255970001220703,
+     "value": 10.15691089630127,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7",
@@ -11479,7 +11479,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "fim_vs_jutul.worst.p",
-     "value": 3.2519504073744088,
+     "value": 3.24637013617442,
      "band": null,
      "unit": "bar",
      "reference": "JutulDarcy 0.3.7",
@@ -11489,7 +11489,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "fim_vs_jutul.worst.sw",
-     "value": 0.0697181340841243,
+     "value": 0.06902904851862435,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11509,7 +11509,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "fim_vs_jutul.final_FOPR_rel_err",
-     "value": -0.00438797860332564,
+     "value": -0.004383331507718946,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11519,7 +11519,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "fim_vs_jutul.final_FWIR_rel_err",
-     "value": 0.0026462848501500953,
+     "value": 0.0026454038994739378,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11529,7 +11529,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "fim_vs_jutul.final_FWPR_rel_err",
-     "value": 0.003071359314093041,
+     "value": 0.0030701528944433016,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11539,7 +11539,7 @@
     {
      "case": "sweep-crossflow",
      "metric": "wall_s",
-     "value": 1.9819529056549072,
+     "value": 3.146270990371704,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7",
@@ -11669,7 +11669,7 @@
     {
      "case": "sweep-vertical",
      "metric": "wall_s",
-     "value": 2.225494861602783,
+     "value": 3.143728017807007,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7",
@@ -11739,7 +11739,7 @@
     {
      "case": "wf-capillary",
      "metric": "fim_vs_jutul.worst.p",
-     "value": 0.146089750130443,
+     "value": 0.14245916259102387,
      "band": null,
      "unit": "bar",
      "reference": "JutulDarcy 0.3.7",
@@ -11749,7 +11749,7 @@
     {
      "case": "wf-capillary",
      "metric": "fim_vs_jutul.worst.sw",
-     "value": 0.01104763673994974,
+     "value": 0.011248850800255727,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11769,7 +11769,7 @@
     {
      "case": "wf-capillary",
      "metric": "fim_vs_jutul.final_FOPR_rel_err",
-     "value": 0.0006283100129773662,
+     "value": 0.0006846077723766976,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11779,7 +11779,7 @@
     {
      "case": "wf-capillary",
      "metric": "fim_vs_jutul.final_FWIR_rel_err",
-     "value": -0.00018153171698787344,
+     "value": -0.00018964799479167193,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11789,7 +11789,7 @@
     {
      "case": "wf-capillary",
      "metric": "fim_vs_jutul.final_FWPR_rel_err",
-     "value": -0.000206222286353423,
+     "value": -0.00021630222431531535,
      "band": null,
      "unit": "frac",
      "reference": "JutulDarcy 0.3.7",
@@ -11799,7 +11799,7 @@
     {
      "case": "wf-capillary",
      "metric": "wall_s",
-     "value": 14.974213123321533,
+     "value": 20.78671884536743,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7",
@@ -11929,7 +11929,7 @@
     {
      "case": "wf-gravity-stability",
      "metric": "wall_s",
-     "value": 1.229675054550171,
+     "value": 1.6459219455718994,
      "band": null,
      "unit": "s",
      "reference": "JutulDarcy 0.3.7",
