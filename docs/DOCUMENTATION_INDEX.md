@@ -34,6 +34,7 @@ under `.archive/`.
 | `docs/UNIT_REFERENCE.md` | Quick unit lookup card |
 | `docs/TRANSMISSIBILITY_FACTOR.md` | Derivation of the transmissibility conversion factor |
 | `docs/P4_TWO_PHASE_BENCHMARKS.md` | Buckley-Leverett benchmark methodology and tolerances |
+| [IMPES volume-closure profiling](IMPES_VOLUME_CLOSURE_PROFILE.md) | #71 phase attribution, iterative breakdown mechanism, controlled runtime replay and validation |
 | `docs/BLACK_OIL_VALIDATION.md` | SPE1 acceptance criteria, depletion grid convergence, black-oil solver safeguards |
 | `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase implementation details and remaining validation gaps |
 | `docs/SCENARIO_TERMINATION_POLICY.md` | Early-stop policy syntax, conditions, runtime behavior |

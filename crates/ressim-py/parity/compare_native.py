@@ -129,9 +129,10 @@ def check_case(c: dict, reference: dict, failures: list[str]) -> None:
     # One percentage point distinguishes the flood front from that background response;
     # native/wasm equality still uses the unchanged 1e-9 band above (#63).
     swept = sum(1 for s in sim.sat_water() if s > c["s_wc"] + 0.01)
-    if not 2 <= swept < c["nx"]:
+    cell_count = c["nx"] * c["ny"] * c["nz"]
+    if not 2 <= swept < cell_count:
         sink.append(
-            f"{name}: front swept {swept} of {c['nx']} cells; parity on a uniform field proves "
+            f"{name}: front swept {swept} of {cell_count} cells; parity on a uniform field proves "
             "nothing. Retune this case's step count in cases.json."
         )
 
@@ -143,7 +144,7 @@ def check_case(c: dict, reference: dict, failures: list[str]) -> None:
     mark = "" if strict else "  KNOWN CROSS-TARGET DIVERGENCE"
     print(
         f"  {name:<22} {solver}  cells {worst_cell:.2e}  rates {worst_rate:.2e}  "
-        f"grid {worst_grid:.2e}  front {swept}/{c['nx']}{mark}"
+        f"grid {worst_grid:.2e}  front {swept}/{cell_count}{mark}"
     )
     for note in observations:
         print(f"      {note}")

@@ -52,6 +52,16 @@
       "strict": true
     },
     {
+      "id": "large-impes",
+      "why": "A 24x24 grid crosses the 512-row IMPES iterative threshold. Volume corrections must meet the same relative residual and native/browser contract when their RHS shrinks (#71).",
+      "nx": 24,
+      "ny": 24,
+      "steps": 1,
+      "fim": false,
+      "strict": true,
+      "dt_days": 0.05
+    },
+    {
       "id": "coarse-grid",
       "why": "A different cell count changes array sizes across the boundary, and grid refinement is a numerics sensitivity in its own right. Short step because 12 highly permeable cells sweep in well under a day, and parity measured on a uniform field proves nothing (front lands at 5 of 12).",
       "nx": 12,

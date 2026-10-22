@@ -233,6 +233,60 @@ mod tests {
     }
 
     #[test]
+    fn ilu0_bicgstab_small_corrections_meet_true_relative_residual() {
+        // Closure corrections shrink as Newton converges. Changing the RHS units/scale must
+        // not cause an absolute dot-product cutoff to reject the same relative solve.
+        let side = 24;
+        let n = side * side;
+        let mut tri = TriMatI::<f64, usize>::new((n, n));
+        for row in 0..n {
+            tri.add_triplet(row, row, 4.01);
+            for neighbor in [
+                (row % side > 0).then(|| row - 1),
+                (row % side + 1 < side).then_some(row + 1),
+                row.checked_sub(side),
+                (row + side < n).then_some(row + side),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                tri.add_triplet(row, neighbor, -1.0);
+            }
+        }
+        let matrix = tri.to_csr();
+        let inverse_diagonal = DVector::from_element(n, 1.0 / 4.01);
+        let initial_guess = DVector::zeros(n);
+        for scale in [1.0, 1e-4, 1e-8, 1e-12] {
+            let expected = DVector::from_iterator(
+                n,
+                (0..n).map(|row| scale * (1.0 + (row % side) as f64 / side as f64)),
+            );
+            let rhs = cs_mat_mul_vec(&matrix, &expected);
+            let result = solve_linear_system(
+                LinearSolverKind::BiCgStab,
+                LinearSolveParams {
+                    matrix: &matrix,
+                    rhs: &rhs,
+                    preconditioner_inv_diag: &inverse_diagonal,
+                    initial_guess: &initial_guess,
+                    tolerance: 1e-9,
+                    max_iterations: 1000,
+                },
+            );
+            assert!(
+                result.converged,
+                "RHS scale {scale}: iterative solve failed"
+            );
+            assert!(result.solution.iter().all(|value| value.is_finite()));
+            let reduction = relative_residual_ratio(&matrix, &rhs, &result.solution);
+            assert!(
+                reduction <= 1e-9,
+                "RHS scale {scale}: reduction {reduction}"
+            );
+        }
+    }
+
+    #[test]
     fn default_solver_solves_small_nonsymmetric_system() {
         let (matrix, rhs, m_inv_diag, x0) = small_nonsymmetric_system();
         let result = solve_with_default(LinearSolveParams {

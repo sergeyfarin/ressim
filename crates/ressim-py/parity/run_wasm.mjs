@@ -53,7 +53,7 @@ for (const override of spec.cases) {
     const c = { ...spec.base, ...override }
     results[c.id] = runCase(c)
     console.log(
-        `  ${c.id.padEnd(22)} ${c.nx} cells, ${c.steps} steps, ${c.fim ? 'FIM' : 'IMPES'}` +
+        `  ${c.id.padEnd(22)} ${c.nx * c.ny * c.nz} cells, ${c.steps} steps, ${c.fim ? 'FIM' : 'IMPES'}` +
             `${c.strict ? '' : '  (non-strict)'}`,
     )
 }

@@ -136,7 +136,12 @@ pub(super) fn solve(params: &LinearSolveParams<'_>) -> LinearSolveResult {
         iter_count = it + 1;
 
         let rho = r_hat.dot(&r);
-        if !rho.is_finite() || rho.abs() < f64::EPSILON {
+        // These products carry the scale of the RHS (rho and t·t are quadratic).
+        // Machine epsilon is not an absolute breakdown threshold: closure Newton RHSs
+        // become small while still requiring the same relative residual reduction (#71).
+        // A nonzero finite denominator is usable; true-residual validation below guards
+        // roundoff/stagnation, and an actual breakdown retains the LU fallback.
+        if !rho.is_finite() || rho == 0.0 {
             converged = false;
             break;
         }
@@ -151,7 +156,7 @@ pub(super) fn solve(params: &LinearSolveParams<'_>) -> LinearSolveResult {
         let p_hat = apply_preconditioner(&p);
         v = cs_mat_mul_vec(params.matrix, &p_hat);
         let r_hat_dot_v = r_hat.dot(&v);
-        if !r_hat_dot_v.is_finite() || r_hat_dot_v.abs() < f64::EPSILON {
+        if !r_hat_dot_v.is_finite() || r_hat_dot_v == 0.0 {
             converged = false;
             break;
         }
@@ -166,12 +171,12 @@ pub(super) fn solve(params: &LinearSolveParams<'_>) -> LinearSolveResult {
         let s_hat = apply_preconditioner(&s);
         let t = cs_mat_mul_vec(params.matrix, &s_hat);
         let t_dot_t = t.dot(&t);
-        if !t_dot_t.is_finite() || t_dot_t.abs() < f64::EPSILON {
+        if !t_dot_t.is_finite() || t_dot_t == 0.0 {
             converged = false;
             break;
         }
         omega = t.dot(&s) / t_dot_t;
-        if !omega.is_finite() || omega.abs() < f64::EPSILON {
+        if !omega.is_finite() || omega == 0.0 {
             converged = false;
             break;
         }
@@ -181,6 +186,12 @@ pub(super) fn solve(params: &LinearSolveParams<'_>) -> LinearSolveResult {
         rho_prev = rho;
     }
 
+    // Recursive Krylov residuals can drift. Apply the same full-system acceptance contract
+    // as sparse LU before the caller can accept this correction instead of falling back.
+    let residual_ratio = (params.rhs - cs_mat_mul_vec(params.matrix, &x)).norm() / rhs_norm;
+    converged &= residual_ratio.is_finite()
+        && residual_ratio <= params.tolerance
+        && x.iter().all(|value| value.is_finite());
     LinearSolveResult {
         solution: x,
         converged,

@@ -821,6 +821,9 @@ impl ReservoirSimulator {
         let mut vals = operator.vals.to_vec();
         let mut residual = DVector::<f64>::zeros(n);
         let mut diag_inv = DVector::<f64>::zeros(n);
+        // The active set and off-diagonal entries are fixed throughout this closure.
+        // Build CSR on the first correction and replace only the storage diagonal thereafter.
+        let mut correction_matrix: Option<CsMat<f64>> = None;
         for idx in 0..vals.len() {
             let row = operator.rows[idx];
             if row >= n_cells && row == operator.cols[idx] && vals[idx].abs() > f64::EPSILON {
@@ -837,7 +840,7 @@ impl ReservoirSimulator {
 
         for _ in 0..MAX_VOLUME_BALANCE_ITERATIONS {
             well_system.set_bhps(&x);
-            let (p, deltas, _) = finish(&x, well_system);
+            let (p, deltas, controls) = finish(&x, well_system);
             #[cfg(test)]
             let flash_profile = super::profile::span("flash and storage");
             let mut worst = 0.0_f64;
@@ -868,27 +871,33 @@ impl ReservoirSimulator {
                 wells_converged &= r.abs() <= VOLUME_BALANCE_RATE_TOLERANCE_M3_DAY;
             }
             if !worst.is_finite() {
-                let (p, deltas, controls) = finish(&x, well_system);
                 return (p, deltas, controls, false);
             }
             if worst <= VOLUME_BALANCE_PRESSURE_TOLERANCE_BAR && wells_converged {
-                let (p, deltas, controls) = finish(&x, well_system);
                 return (p, deltas, controls, true);
             }
 
             #[cfg(test)]
             let matrix_profile = super::profile::span("correction matrix");
-            let mut tri = TriMatI::<f64, usize>::new((n, n));
-            for idx in 0..vals.len() {
-                tri.add_triplet(operator.rows[idx], operator.cols[idx], vals[idx]);
+            let matrix = correction_matrix.get_or_insert_with(|| {
+                let mut tri = TriMatI::<f64, usize>::new((n, n));
+                for idx in 0..vals.len() {
+                    tri.add_triplet(operator.rows[idx], operator.cols[idx], vals[idx]);
+                }
+                tri.to_csr()
+            });
+            for id in 0..n_cells {
+                *matrix
+                    .get_mut(id, id)
+                    .expect("pressure operator has every cell's storage diagonal") =
+                    vals[operator.diag_positions[id]];
             }
-            let matrix: CsMat<f64> = tri.to_csr();
             #[cfg(test)]
             drop(matrix_profile);
             #[cfg(test)]
             let solve_profile = super::profile::span("correction solve");
             let correction = solve_with_default(LinearSolveParams {
-                matrix: &matrix,
+                matrix,
                 rhs: &residual,
                 preconditioner_inv_diag: &diag_inv,
                 initial_guess: &DVector::zeros(n),
@@ -900,7 +909,6 @@ impl ReservoirSimulator {
             drop(solve_profile);
             if !correction.converged {
                 *linear_converged = false;
-                let (p, deltas, controls) = finish(&x, well_system);
                 return (p, deltas, controls, false);
             }
             x += correction.solution;
