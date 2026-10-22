@@ -1196,17 +1196,19 @@ fn opm_small_direct_run_ressim() {
                     .last_fim_step_stats
                     .clone()
                     .expect("FIM step records stats");
+                // Flow's convention (`NewtIt`): updates, not linearizations, so the converging
+                // check of each substep is not counted (#72).
                 let newton: usize = stats
                     .accepted_rungs
                     .iter()
                     .flatten()
-                    .map(|r| r.newton_iterations)
+                    .map(|r| r.newton_updates)
                     .sum();
                 let retry_newton: usize = stats
                     .retry_rungs
                     .iter()
                     .flatten()
-                    .map(|r| r.newton_iterations)
+                    .map(|r| r.newton_updates)
                     .sum();
                 format!(
                     "\"retries\":{},\"newton\":{newton},\"retry_newton\":{retry_newton}",

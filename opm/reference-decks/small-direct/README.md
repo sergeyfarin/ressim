@@ -81,6 +81,11 @@ It fails when:
 Bands are `BANDS` in `tools/opm_flow/compare_small_direct.py`. Each is a relative allowance plus an
 absolute floor, so roundoff on a near-zero baseline is not a failure.
 
+Newton is counted in Flow's convention on both sides: iterations that solve and update, as in
+Flow's `NewtIt`, so the check that finds a substep converged adds nothing. ResSim reports its
+`newton_updates`. Until #72 the ResSim column counted linearizations, one more per substep, so
+Newton numbers in the dated tables below and in older docs read about one per substep high.
+
 Improvements past the band are printed. Record them with `--update` and commit the scorecard with
 the change that earned them. Its `provenance` then names the commit, the Flow version and the
 command. Flow output is cached per deck SHA-256, so a warm check takes about 20 s.

@@ -142,6 +142,9 @@ pub struct FimAcceptedRungStats {
     pub substep: u32,
     pub dt_days: f64,
     pub newton_iterations: usize,
+    /// Newton updates in OPM Flow's convention (`NewtIt`): the converging linearization adds 0.
+    #[serde(default)]
+    pub newton_updates: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linear_backend: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -164,6 +167,9 @@ pub struct FimRetryRungStats {
     pub substep: u32,
     pub dt_days: f64,
     pub newton_iterations: usize,
+    /// Newton updates in OPM Flow's convention (`NewtIt`): the converging linearization adds 0.
+    #[serde(default)]
+    pub newton_updates: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linear_backend: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

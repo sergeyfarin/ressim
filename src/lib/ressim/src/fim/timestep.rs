@@ -1375,6 +1375,7 @@ impl ReservoirSimulator {
                         substep: substeps,
                         dt_days: trial_dt,
                         newton_iterations: report.newton_iterations,
+                        newton_updates: report.newton_updates,
                         linear_backend: report
                             .last_linear_report
                             .as_ref()
@@ -1617,6 +1618,7 @@ impl ReservoirSimulator {
                         substep: substeps,
                         dt_days: trial_dt,
                         newton_iterations: report.newton_iterations,
+                        newton_updates: report.newton_updates,
                         linear_backend: report
                             .last_linear_report
                             .as_ref()
