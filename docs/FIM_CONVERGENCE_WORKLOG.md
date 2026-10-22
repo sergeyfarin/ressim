@@ -6377,6 +6377,64 @@ should report Newton in Flow's convention. (b) After the offset, the SPE1 pair i
 quotient; making it exact would make the AD and f64 paths bit-identical, but it moves every FIM
 trajectory by ulps.
 
+### FIM-NEWTON-GAP-002 — the OPM timestep controller reads Flow's Newton count (#72, 2026-10-22)
+
+**Hypothesis.** FIM-NEWTON-GAP-001 found that `opm_iteration_count_dt` is fed ResSim's
+linearization count, one more per substep than the solve-and-update count OPM's
+`PIDAndIterationCountTimeStepControl` receives (`total_newton_iterations`). On steps where the
+iteration limiter binds, ResSim therefore grows dt less than Flow (bo-1d-10 t = 10: 2.2 from a
+count of 5, against Flow's 2.6 from 4). Feeding it the update count should bring ResSim's dt
+sequence closer to Flow's.
+
+**Oracle.** The dt sequence itself: per-substep (t, dt) from the small-direct driver's history
+against Flow 2026.04 `CASE.INFOSTEP`, on 11 small-direct decks, before (`35ba1e3`) and after. A
+falsifying result is no deck closer to Flow, or substeps rising. Held constant: PID half,
+growth ceilings, acceptance, damping, linear route.
+
+**Change.** `FimStepReport::newton_updates`, set to `iteration` on the OpmAligned
+accept-on-entry return and to the iteration cap on the post-loop accept (OPM's count at
+`newton_max_iter`); every other return copies `newton_iterations`, so Legacy is unchanged. The
+OpmAligned branch of the accepted-step growth decision reads it. `newton_iterations` keeps its
+meaning: its `== 1` checks mean "converged without an update".
+
+**Result** (dirty tree on `35ba1e3`; scorecard re-baselined on the commit).
+
+| Deck | substeps (Flow) | steps with Flow's (t, dt), before → after | mean \|dt rel diff\| before → after |
+|---|---|---|---|
+| spe1-case2-10x10x3 | 124 → 123 (123) | 120 → 122 | 0.0107 → 0.0000 |
+| wf-capillary | 202 → 201 (201) | 200 → 201 | 0.0051 → 0.0000 |
+| sweep-areal | 82 → 82 (82) | 80 → 81 | 0.0034 → 0.0000 |
+| spe1-10x10x3 | 124 → 123 (124) | 121 → 120 | 0.0118 → 0.0262 |
+| bo-1d-10/40, dep-pvt-correlation, gas-drive-20, go-1d-50, ow-1d-96, ow-2d-12x12 | unchanged | unchanged | unchanged |
+
+Newton: SPE1 Case 2 520 → 508, sweep-areal 301 → 298, SPE1 454 → 450, sweep-crossflow
+1034 → 1031, wf-capillary 637 → 636. Same-dt agreement with Flow: SPE1 Case 2 worst Δp 2.32 →
+0.35 bar, Sg 0.0176 → 0.0087; sweep-areal Δp 0.20 → 0.07 bar, Sw 0.0055 → 0.0006; **SPE1 Case 1
+worst Δp 1.05 → 1.81 bar, Sg 0.0074 → 0.0127** (a scorecard regression, accepted below).
+
+Wasm control matrix: heavy water 12x12x3 dt 1 5 → 4 substeps (min dt 0.035 → 0.167); 22x22x1
+and 23x23x1 keep 3 substeps / 1 retry with a slightly different dt split; the rest identical.
+Long horizons: water 12x12x3 24 → 23 substeps, gas-rate 10x10x3 and water 22x22x1 / 23x23x1 /
+20x20x3 unchanged in substeps and retries. `benchmarks.sh check` within every band; SPE1 vs the
+published reference: pressure 0.093 → 0.090 %, oil rate 0.312 → 0.299 %, GOR 1.22 → 1.40 %
+(band 12 %).
+
+**Why SPE1 Case 1 moves away.** Its first substep agrees with Flow through iteration 2; at
+iteration 3 ResSim converges (MB oil 8.5e-10) while Flow's oil MB rises 2.2e-7 → 2.4e-6 and it
+needs a fourth update. With a faithful count ResSim grows by the 3.0 ceiling and Flow by 2.6, so
+the sequences part at substep 1. Before, the +1 offset made ResSim's 3 read as Flow's 4 by
+accident. The controller is now OPM's; the divergence is a Newton-trajectory difference on that
+substep, and the worst-cell metric compares two different dt sequences, not accuracy. Accepted
+as a same-dt regression; `--refine` on spe1-10x10x3 was not run.
+
+**Verdict.** PROMOTED (OPM controller input convention). Hypothesis supported on 3 decks,
+neutral on 7, contradicted on SPE1 Case 1 for the stated Newton-trajectory reason.
+
+**Open.** The scorecard still reports `newton_iterations` (linearizations); reporting
+`newton_updates` would print Newton in Flow's convention. The SPE1 first-substep iteration-3
+difference is unexplained.
+
+
 ### #21 resolved — report-step sensitivity and the Flow oil bias are temporal plus deck mapping (2026-09-23)
 
 Master `654618f`. The "8–10% oil over-prediction" (Objective-1 gap, 2026-07) was an end-of-step

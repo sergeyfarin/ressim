@@ -1272,9 +1272,10 @@ impl ReservoirSimulator {
                         let rel_change =
                             opm_relative_change(&previous_state, &report.accepted_state);
                         opm_pid_errors = [opm_pid_errors[1], opm_pid_errors[2], rel_change];
+                        // OPM feeds its controller the updates, not the linearizations (#72).
                         opm_accepted_step_growth_decision(
                             trial_dt,
-                            report.newton_iterations,
+                            report.newton_updates,
                             opm_pid_errors,
                             retry_count,
                         )
@@ -2910,6 +2911,7 @@ mod tests {
             accepted_state: FimState::from_simulator(&ReservoirSimulator::new(1, 1, 1, 0.2)),
             converged: false,
             newton_iterations: 1,
+            newton_updates: 1,
             final_residual_inf_norm: 1.0,
             final_material_balance_inf_norm: 1.0,
             final_update_inf_norm: 0.0,

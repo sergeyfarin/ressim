@@ -626,3 +626,22 @@ fn fim_repair_multi_completion_gravity_stays_physical_on_both_solvers() {
         );
     }
 }
+
+/// #72: an OpmAligned accept checks convergence before solving, so the converging
+/// linearization applies no update. OPM's `total_newton_iterations` (what its iteration-count
+/// controller reads) counts only the updates; `newton_iterations` counts the linearizations.
+#[test]
+fn opm_aligned_accept_counts_updates_like_opm() {
+    let mut sim = three_phase_lifecycle_fixture();
+    let previous_state = FimState::from_simulator(&sim);
+    let options = FimNewtonOptions {
+        nonlinear_flavor: FimNonlinearFlavor::OpmAligned,
+        max_saturation_change: 0.2,
+        max_pressure_change_bar: 200.0,
+        ..FimNewtonOptions::default()
+    };
+    let report = run_fim_timestep(&mut sim, &previous_state, &previous_state, 0.05, &options);
+    assert!(report.converged);
+    assert!(report.newton_iterations < options.max_newton_iterations);
+    assert_eq!(report.newton_updates + 1, report.newton_iterations);
+}
