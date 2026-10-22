@@ -1180,6 +1180,12 @@ fn opm_small_direct_run_ressim() {
         // diagnostic that aborts on the first warning hides everything after it.
         let mut warnings: Vec<String> = Vec::new();
         let (report_steps, report_dt_days) = report_schedule(case);
+        // Profiling may inspect a prefix without changing the deck/report timestep. Such a
+        // capture is diagnostic only; the comparison gate requires the complete schedule.
+        let report_steps = std::env::var("OPM_SMALL_REPORT_LIMIT")
+            .ok()
+            .map(|limit| limit.parse::<usize>().expect("report limit is an integer"))
+            .map_or(report_steps, |limit| limit.min(report_steps));
         for _ in 0..report_steps {
             let history_before = sim.rate_history.len();
             sim.step(report_dt_days);

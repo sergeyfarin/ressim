@@ -73,6 +73,11 @@ pub(crate) fn solve_linear_system(
     kind: LinearSolverKind,
     params: LinearSolveParams<'_>,
 ) -> LinearSolveResult {
+    #[cfg(test)]
+    let _profile = crate::impes::profile::span(match kind {
+        LinearSolverKind::FaerSparseLu => "linear sparse LU",
+        LinearSolverKind::BiCgStab => "linear BiCGSTAB",
+    });
     match kind {
         LinearSolverKind::FaerSparseLu => faer_sparse_lu::solve(&params),
         LinearSolverKind::BiCgStab => bicgstab::solve(&params),
