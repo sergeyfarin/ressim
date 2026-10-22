@@ -1173,6 +1173,7 @@ fn opm_small_direct_run_ressim() {
             total
         };
         let initial_inventory = inventory(&sim);
+        crate::impes::profile::reset(std::env::var_os("OPM_SMALL_PROFILE").is_some());
         let started = Instant::now();
         let mut reports = Vec::new();
         // A warning is recorded, not asserted: the comparison is where a run is judged, and a
@@ -1228,6 +1229,7 @@ fn opm_small_direct_run_ressim() {
             ));
         }
         let wall_ms = started.elapsed().as_secs_f64() * 1e3;
+        crate::impes::profile::report();
         let history: Vec<String> = sim
             .rate_history
             .iter()

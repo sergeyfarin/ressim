@@ -112,6 +112,9 @@ impl ReservoirSimulator {
         }
         let dt_days = delta_t_days.max(1e-12);
 
+        #[cfg(test)]
+        let assembly_profile = super::profile::span("pressure assembly");
+
         let mut rows: Vec<usize> = Vec::with_capacity(n_cells * 7);
         let mut cols: Vec<usize> = Vec::with_capacity(n_cells * 7);
         let mut vals: Vec<f64> = Vec::with_capacity(n_cells * 7);
@@ -288,6 +291,10 @@ impl ReservoirSimulator {
         // Solve with the active well terms, then let the solution revise which completions
         // flow and which implicit wells hit their BHP limit, until both settle
         // (`impes/wells.rs`, #10).
+        #[cfg(test)]
+        drop(assembly_profile);
+        #[cfg(test)]
+        let initial_profile = super::profile::span("initial matrix and solve");
         let mut x0 = well_system.initial_guess(&self.pressure);
         let mut linear_converged = true;
         let mut linear_iterations = 0;
@@ -320,6 +327,8 @@ impl ReservoirSimulator {
             }
             x0 = solution.clone();
         }
+        #[cfg(test)]
+        drop(initial_profile);
         let well_controls = well_system.step_controls(&well_controls);
         let (ext_rows, ext_cols, ext_vals, _, _) = &operator;
         let (p_new, deltas, well_controls, volume_balance_converged) = self.iterate_volume_balance(
@@ -518,6 +527,8 @@ impl ReservoirSimulator {
         well_controls: &[Option<ResolvedWellControl>],
         dt_days: f64,
     ) -> TransportDeltas {
+        #[cfg(test)]
+        let _profile = super::profile::span("transport and FVF");
         let n_cells = self.nx * self.ny * self.nz;
         let mut deltas = TransportDeltas::zeros(n_cells);
 
@@ -827,6 +838,8 @@ impl ReservoirSimulator {
         for _ in 0..MAX_VOLUME_BALANCE_ITERATIONS {
             well_system.set_bhps(&x);
             let (p, deltas, _) = finish(&x, well_system);
+            #[cfg(test)]
+            let flash_profile = super::profile::span("flash and storage");
             let mut worst = 0.0_f64;
             for id in 0..n_cells {
                 let masses = deltas.applied_to(id, &old_masses[id]);
@@ -847,6 +860,8 @@ impl ReservoirSimulator {
                 };
             }
             // Implicit wells: `Σ q_k − Q`, the right-hand side of the well rows' Newton step.
+            #[cfg(test)]
+            drop(flash_profile);
             let mut wells_converged = true;
             for (g, r) in well_system.rate_residuals(self, &p).into_iter().enumerate() {
                 residual[n_cells + g] = r;
@@ -861,11 +876,17 @@ impl ReservoirSimulator {
                 return (p, deltas, controls, true);
             }
 
+            #[cfg(test)]
+            let matrix_profile = super::profile::span("correction matrix");
             let mut tri = TriMatI::<f64, usize>::new((n, n));
             for idx in 0..vals.len() {
                 tri.add_triplet(operator.rows[idx], operator.cols[idx], vals[idx]);
             }
             let matrix: CsMat<f64> = tri.to_csr();
+            #[cfg(test)]
+            drop(matrix_profile);
+            #[cfg(test)]
+            let solve_profile = super::profile::span("correction solve");
             let correction = solve_with_default(LinearSolveParams {
                 matrix: &matrix,
                 rhs: &residual,
@@ -875,6 +896,8 @@ impl ReservoirSimulator {
                 max_iterations: 1000,
             });
             *linear_iterations += correction.iterations;
+            #[cfg(test)]
+            drop(solve_profile);
             if !correction.converged {
                 *linear_converged = false;
                 let (p, deltas, controls) = finish(&x, well_system);
