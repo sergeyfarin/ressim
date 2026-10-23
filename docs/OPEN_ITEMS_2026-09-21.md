@@ -69,20 +69,28 @@ The remaining Newton-efficiency gain is not measured. The old “111 → 86 agai
 estimate predates later fixes and must not drive implementation. Read the current issue,
 registry and worklog before replaying the coupled convention matrix.
 
-## 2. Cross-client coverage is bounded by the Python shim, not by test effort
+## 2. Cross-client coverage: catalog-driven since #64; compositional and FIM toggles stay unbound
 
-Historical 2026-09-21 inventory: `ressim-py` bound **29** of the engine's **85** public API functions. Ten configuration knobs the
-scenario catalog relies on are unbound, among them `setThreePhaseModeEnabled`, `setGravityEnabled`,
-`setPermeabilityPerLayer`, `setInitialSaturationPerLayer`, `setWellSchedule`, `setTargetWellRates`,
-`setInjectedFluid` and `setRockProperties`.
+Resolved for the black-oil catalog by [#64](https://github.com/sergeyfarin/ressim/issues/64).
+`ressim-py` now binds every setter the worker's `configureReservoirSimulator` can call, and
+`scripts/validate-native-binding.sh` replays every black-oil catalog run (185 runs, 135 distinct
+engine setups) through both bindings from the worker's own recorded calls, requiring bit
+identity. A catalog configuration the shim cannot express now fails that gate by name. The
+matrix, its bounds and the current coverage are in
+[`crates/ressim-py/parity/CONFIGURATION_COVERAGE.md`](../crates/ressim-py/parity/CONFIGURATION_COVERAGE.md).
 
-Full catalog parity remains unestablished: the historical audit found the native client could
-not express 17 scenarios × 53 variants. Those counts are not a current catalog inventory. The parity
-matrix covers what it can — two solvers, two mobility ratios, two grid sizes — which is what
-found item 1.
+Deliberately not done:
 
-**Owner:** [#64](https://github.com/sergeyfarin/ressim/issues/64). Audit current missing bindings,
-then drive parity from the catalog's definitions rather than a hand-written case list.
+- **`CompositionalSimulator` is not bound.** `comp_co2_1d` (7 runs) is the only catalog scenario
+  on it, and `scripts/validate-compositional.sh` owns its native check. Binding a second engine
+  class is its own piece of work, with no consumer asking for it yet.
+- **The eight FIM experiment toggles are not bound** (`setFimOpmAlignedNonlinear`,
+  `setFimNestedWellSolve`, `setFimTrueFgmres`, `setFimFlowLifecycle`, `setFimFlowResvInjector`,
+  `setFimOpmEndpointRelperm`, `setFimCoreyTablePoints`, `setFimOpmWaterHeavySwof`). No catalog
+  case or worker path sets them; bind one when a native experiment needs it.
+- **Catalog runs replay a prefix**, two steps of at most 0.1 day, not their full horizon. Parity
+  is a property of the binding; the full horizons are the scenario tests' and the cross-solver
+  gate's.
 
 ## 3. Deletion candidate: `getFimStepStatsHistory`
 

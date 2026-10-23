@@ -144,7 +144,7 @@ the wasm control matrix stay out of PR CI and are run explicitly;
 Two gates sit outside `validate:*` because they need more than a Rust toolchain and Node:
 
 ```bash
-bash scripts/validate-native-binding.sh   # native (PyO3) vs browser bindings on a case matrix
+bash scripts/validate-native-binding.sh   # native (PyO3) vs browser bindings: a case matrix plus every black-oil catalog run
 pnpm run test:deployed                    # Playwright, against `pnpm run preview`
 ```
 
