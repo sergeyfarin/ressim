@@ -6445,7 +6445,7 @@ iterations match Flow's to two digits until iteration 2, where Flow's gas MB is 
 and ResSim's 2.4e-7 with the same CNV: the error left by the linear solve is global (it sums), not
 local.
 
-**Oracle and ablation** (native, committed tree `6a49d2c`, FIM sparse, Newton in Flow's
+**Oracle and ablation** (native, committed tree `091aea2`, whose FIM code is `6a49d2c`'s (#71 between them touched only IMPES), FIM sparse, Newton in Flow's
 convention; the driver's new `OPM_SMALL_FIM_FLOW_LIFECYCLE` switch runs FIM-Y2D6 unchanged):
 
 | Deck | default | forced exact solve | Y2D6 Flow lifecycle | Y2D6 with quasi-IMPES weights | true-IMPES in production CPR | Flow |
@@ -6471,7 +6471,7 @@ to CPR (above the direct threshold); a cell whose storage block is singular keep
 storage-block helper lost its native-only gate, so wasm runs the same code
 (`validate-native-binding.sh` OK). Small systems keep their direct solve and are bit-identical.
 
-**Result** (dirty tree on `6a49d2c`; scorecard re-baselined on the commit). Cross-solver gate OK:
+**Result** (dirty tree on `091aea2`; scorecard re-baselined on the commit). Cross-solver gate OK:
 every direct-route deck unchanged; Newton falls on every iterative deck (table, last two columns;
 sweep-combined 268 → 211 vs Flow 275) with substeps unchanged or at Flow's (SPE1 123 → 124 = Flow).
 SPE1 Case 1 same-dt worst Δp 1.81 → 1.16 bar (most of FIM-NEWTON-GAP-002's accepted regression
