@@ -204,17 +204,25 @@ impl PhaseProperties {
     }
 }
 
-/// `f(w)` for unmodified Peng–Robinson. `eos/PRParams.hpp`.
+/// `f(w)` for the given variant. `eos/PRParams.hpp::calcOmegaA`.
 ///
-/// The `PRCORR` branch of that header swaps this for a quartic when `w > 0.49`. V1 pins `PR`, so
-/// this is the only branch, and [`EosVariant`] has one variant for the same reason.
-fn pr_f_omega(acentric_factor: f64) -> f64 {
-    0.37464 + acentric_factor * (1.54226 + acentric_factor * (-0.26992))
+/// The corrected branch is taken for `w > 0.49` exactly as that header does
+/// (`!modified || omega <= 0.49` selects the original polynomial).
+fn pr_f_omega(variant: EosVariant, acentric_factor: f64) -> f64 {
+    let w = acentric_factor;
+    match variant {
+        EosVariant::PengRobinsonCorrected if w > 0.49 => {
+            0.379642 + w * (1.48503 + w * (-0.164423 + w * 0.016666))
+        }
+        EosVariant::PengRobinson | EosVariant::PengRobinsonCorrected => {
+            0.37464 + w * (1.54226 + w * (-0.26992))
+        }
+    }
 }
 
 /// `Omega_A(T, i)`. `eos/PRParams.hpp::calcOmegaA`.
-fn pr_omega_a(reduced_temperature: f64, acentric_factor: f64) -> f64 {
-    let tmp = 1.0 + pr_f_omega(acentric_factor) * (1.0 - reduced_temperature.sqrt());
+fn pr_omega_a(variant: EosVariant, reduced_temperature: f64, acentric_factor: f64) -> f64 {
+    let tmp = 1.0 + pr_f_omega(variant, acentric_factor) * (1.0 - reduced_temperature.sqrt());
     0.457_235_529 * tmp * tmp
 }
 
@@ -329,7 +337,7 @@ pub fn mixture_params_generic<S: Scalar>(
     temperature_k: f64,
     x: &[S],
 ) -> Result<MixtureParams<S>, EosError> {
-    let EosVariant::PengRobinson = spec.eos();
+    let variant = spec.eos();
 
     let p_value = pressure_pa.value();
     if !p_value.is_finite() || p_value <= 0.0 || !temperature_k.is_finite() || temperature_k <= 0.0
@@ -367,7 +375,7 @@ pub fn mixture_params_generic<S: Scalar>(
         let c = spec.component(i);
         let p_r = pressure_pa / c.critical_pressure_pa;
         let t_r = temperature_k / c.critical_temperature_k;
-        let omega_a = pr_omega_a(t_r, c.acentric_factor);
+        let omega_a = pr_omega_a(variant, t_r, c.acentric_factor);
         a_i.push(p_r * (omega_a / (t_r * t_r)));
         b_i.push(p_r * (PR_OMEGA_B / t_r));
     }

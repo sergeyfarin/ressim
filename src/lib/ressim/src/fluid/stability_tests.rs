@@ -11,11 +11,7 @@ use super::specification::FluidSpecification;
 use super::stability::{StabilityVerdict, test_stability, wilson_k};
 
 fn spec_for(system: &FixtureSystem) -> FluidSpecification {
-    match system.num_components {
-        2 => pinned::binary().unwrap(),
-        3 => pinned::ternary().unwrap(),
-        n => panic!("no pinned specification for {n} components"),
-    }
+    fixture::spec_for(system)
 }
 
 /// Every flashed state's verdict, against OPM's.
@@ -57,8 +53,13 @@ fn comp_stability_verdict_matches_the_fixture_on_every_state() {
         }
     }
 
-    assert_eq!(two_phase, 36, "the fixture's two-phase count changed");
-    assert_eq!(single_phase, 18, "the fixture's single-phase count changed");
+    // Binary and ternary, then SPE5 (#45).
+    assert_eq!(two_phase, 36 + 13, "the fixture's two-phase count changed");
+    assert_eq!(
+        single_phase,
+        18 + 16,
+        "the fixture's single-phase count changed"
+    );
     assert!(
         disagreements.is_empty(),
         "stability verdicts disagree with OPM on {} of 47 states:\n{}",
@@ -256,7 +257,7 @@ fn comp_stability_unstable_verdict_returns_a_usable_k_estimate() {
             checked += 1;
         }
     }
-    assert_eq!(checked, 36);
+    assert_eq!(checked, 36 + 13);
 }
 
 #[test]

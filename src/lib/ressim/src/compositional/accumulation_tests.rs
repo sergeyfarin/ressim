@@ -54,6 +54,17 @@ fn regimes() -> Vec<(&'static str, FluidSpecification, CompositionalCellState)> 
             pinned::ternary().unwrap(),
             cell(150.0, &[0.1, 0.891]),
         ),
+        // SPE5's initial oil (#45): six components, nonzero interactions, PRCORR.
+        (
+            "spe5 two-phase",
+            pinned::spe5().unwrap(),
+            cell(130.0, &[0.50, 0.03, 0.07, 0.20, 0.15]),
+        ),
+        (
+            "spe5 liquid",
+            pinned::spe5().unwrap(),
+            cell(250.0, &[0.50, 0.03, 0.07, 0.20, 0.15]),
+        ),
     ]
 }
 

@@ -216,7 +216,7 @@ fn comp_layout_leaves_the_black_oil_block_size_alone() {
 
 #[test]
 fn comp_layout_rejects_unsupported_component_counts() {
-    for n in [0usize, 1, MAX_COMPONENTS + 1, 10] {
+    for n in [0usize, 1, MAX_COMPONENTS + 1, 64] {
         assert!(matches!(
             CompositionalLayout::new(n, 4, 0, 0),
             Err(LayoutError::UnsupportedComponentCount { .. })

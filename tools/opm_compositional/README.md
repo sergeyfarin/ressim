@@ -57,11 +57,11 @@ checkouts on this machine; the three commit hashes in
 [`COMPOSITIONAL_READINESS_ASSESSMENT_2026-09-14.md`](../../docs/COMPOSITIONAL_READINESS_ASSESSMENT_2026-09-14.md)
 are upstream citations, not local artifacts.
 
-OPM is GPL-2-or-later. `ptflash_harness.cpp` and `two_component_fluid_system.hh` are ResSim's own
-code that includes those headers; the OPM copyright notices remain in the headers themselves. No
+OPM is GPL-2-or-later. `ptflash_harness.cpp`, `two_component_fluid_system.hh` and
+`spe5_fluid_system.hh` are ResSim's own code that includes those headers; the OPM copyright notices remain in the headers themselves. No
 OPM source file is vendored into this repository.
 
-## The two fluids
+## The three fluids
 
 **Ternary — `Opm::ThreeComponentFluidSystem`, used unmodified.** CO2 / C1 / C10, from
 `/usr/include/opm/material/fluidsystems/ThreeComponentFluidSystem.hh` (SINTEF, 2022). It supplies
@@ -75,6 +75,16 @@ and the obvious shortcut — run the ternary with `z_CO2 = 0` — does not work 
 class declares OPM's own `C1` and `C10` component classes as a system and delegates every
 property to them, reusing OPM's EOS, parameter cache and viscosity model unchanged. It introduces
 no fluid data.
+
+**SPE5 — `ressim::Spe5HydrocarbonFluidSystem` (#45).** C1 / C3 / C6 / C10 / C15 / C20, the six
+hydrocarbons of `/usr/include/opm/material/fluidsystems/Spe5FluidSystem.hpp`. That class cannot
+be flashed as it stands — it has its own parameter cache rather than `PTFlashParameterCache`, a
+water component, and no `criticalVolume()` for LBC — so `spe5_fluid_system.hh` declares the six
+as a system and delegates every property, the nonzero interaction coefficients included, to the
+header with the index offset by one. The only conversion is the critical volume's unit (m³/mol
+in the header, m³/kmol for LBC). It is flashed with `PRCORR`, which is the header's `useSpe5`
+relation, at 160 °F (Killough & Kossack 1987) and at a flash tolerance of 1e-12; see
+`docs/COMPOSITIONAL_VALIDATION.md` §1 and §3a for both choices.
 
 Because the ternary's trace-CO2 state and the binary's matching state must agree, the fixture has
 a built-in cross-check: `ternary_trace_co2` (z = [1e-6, 0.6, 0.399999]) returns L = 0.730698 and
@@ -173,9 +183,9 @@ is the contrast that makes the test meaningful.
 
 ## Output
 
-One JSON object with two `systems` entries (binary first, then ternary), each carrying its
-component table, interaction matrix, a list of flash-free `eos_states`, and a list of flashed
-`states`. Units are SI throughout —
+One JSON object (schema `/3`) with three `systems` entries (binary, ternary, SPE5), each carrying
+its EOS type, flash tolerance, component table, interaction matrix, a list of flash-free
+`eos_states`, and a list of flashed `states`. Units are SI throughout —
 Pa, K, mol, m³, kg, Pa·s — and stated in the `units` field. Critical volume is m³/kmol, matching
 how `LBC.hpp` consumes `criticalVolume()` (it divides by 1000).
 

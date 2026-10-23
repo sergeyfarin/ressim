@@ -231,6 +231,12 @@ pub fn face_flux(
         2 => face_flux_sized::<2, 4>(spec, relperm, geom_t, gravity, &i, &j),
         3 => face_flux_sized::<3, 6>(spec, relperm, geom_t, gravity, &i, &j),
         4 => face_flux_sized::<4, 8>(spec, relperm, geom_t, gravity, &i, &j),
+        5 => face_flux_sized::<5, 10>(spec, relperm, geom_t, gravity, &i, &j),
+        6 => face_flux_sized::<6, 12>(spec, relperm, geom_t, gravity, &i, &j),
+        7 => face_flux_sized::<7, 14>(spec, relperm, geom_t, gravity, &i, &j),
+        8 => face_flux_sized::<8, 16>(spec, relperm, geom_t, gravity, &i, &j),
+        9 => face_flux_sized::<9, 18>(spec, relperm, geom_t, gravity, &i, &j),
+        10 => face_flux_sized::<10, 20>(spec, relperm, geom_t, gravity, &i, &j),
         count => Err(FluxError::UnsupportedComponentCount { count }),
     }
 }

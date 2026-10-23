@@ -39,12 +39,9 @@ use crate::fim::linear::FimLinearBlockLayout;
 /// Smallest supported component count.
 pub const MIN_COMPONENTS: usize = 2;
 
-/// Largest supported component count.
-///
-/// The pinned V1 fluids stop at 3. Four is admitted so C7 can carry a **layout-only** N=4 case,
-/// which is what exposes an assumption that three components happen to satisfy — an offset written
-/// as `+ 2` rather than `+ (n - 1)` passes every N=3 test and fails here.
-pub const MAX_COMPONENTS: usize = 4;
+/// Largest supported component count: the fluid specification's, re-exported so the layout and
+/// the fluid can never disagree about it. See [`crate::fluid::specification::MAX_COMPONENTS`].
+pub use crate::fluid::specification::MAX_COMPONENTS;
 
 /// A cell's primary unknowns, in matrix **column** order within its block.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

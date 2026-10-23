@@ -41,8 +41,10 @@
 #include <opm/material/densead/Math.hpp>
 #include <opm/input/eclipse/EclipseState/Compositional/CompositionalConfig.hpp>
 
+#include "spe5_fluid_system.hh"
 #include "two_component_fluid_system.hh"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <iomanip>
@@ -352,6 +354,8 @@ static void emit_system(std::ostream& os, const std::string& system_name,
     os << "    {\n";
     os << "      \"system\": \"" << system_name << "\",\n";
     os << "      \"num_components\": " << NC << ",\n";
+    os << "      \"eos\": \"" << (eos_type == EOSType::PRCORR ? "PRCORR" : "PR") << "\",\n";
+    os << "      \"flash_tolerance\": " << num(tol) << ",\n";
 
     os << "      \"components\": [\n";
     for (int i = 0; i < NC; ++i) {
@@ -637,12 +641,79 @@ int main(int argc, char** argv)
               "C12 depletion path, single-phase liquid: the accumulation term's own molar density");
     }
 
+    // SPE5 (#45). `Opm::Spe5FluidSystem`'s six hydrocarbons, flashed with PRCORR: see
+    // spe5_fluid_system.hh for why that is the header's `useSpe5` relation. The header carries no
+    // temperature; 160 F is the reservoir temperature of Killough & Kossack (1987), "Fifth SPE
+    // Comparative Solution Project: Evaluation of Miscible Flood Simulators", SPE 16000, and is
+    // written as the Fahrenheit expression so it stays traceable to that source. The initial oil
+    // and injection gas compositions are from the same paper.
+    using Spe5 = ressim::Spe5HydrocarbonFluidSystem<Scalar>;
+    const Scalar T5 = (160.0 + 459.67) * 5.0 / 9.0;
+    const std::array<Scalar, 6> spe5_oil = {0.50, 0.03, 0.07, 0.20, 0.15, 0.05};
+    // The paper's injection gas is C1 0.77 / C3 0.20 / C6 0.03 with no heavier component. PTFlash
+    // cannot flash an exact zero (README.md, "Oracle domain limits"), so the three heavy fractions
+    // are 1e-6 each, taken from C1. That is a trace of each, not the paper's gas.
+    const std::array<Scalar, 6> spe5_gas = {0.77 - 3e-6, 0.20, 0.03, 1e-6, 1e-6, 1e-6};
+    std::vector<Case<6>> t6;
+    auto add6 = [&](const std::string& id, Scalar p_bar, Scalar t_k,
+                    const std::array<Scalar, 6>& z) { t6.push_back(Case<6>{id, p_bar * 1e5, t_k, z}); };
+    // The initial oil, depleted through its bubble point. 4000 psia is the initial pressure.
+    for (const Scalar p : {20.0, 50.0, 100.0, 130.0, 150.0, 170.0, 200.0, 4000.0 * 0.068947573}) {
+        add6("spe5_oil_p" + std::to_string(static_cast<int>(p)), p, T5, spe5_oil);
+    }
+    // Oil diluted with injection gas, at the initial pressure and at 3000 psia: the mixing that
+    // decides whether the displacement is miscible, and where two-phase states sit nearest a
+    // critical point.
+    for (const Scalar psia : {3000.0, 4000.0}) {
+        for (int k = 1; k <= 9; ++k) {
+            const Scalar f = k / 10.0;
+            std::array<Scalar, 6> z{};
+            for (int i = 0; i < 6; ++i) {
+                z[i] = (1.0 - f) * spe5_oil[i] + f * spe5_gas[i];
+            }
+            add6("spe5_mix" + std::to_string(static_cast<int>(psia)) + "_g" + std::to_string(k),
+                 psia * 0.068947573, T5, z);
+        }
+    }
+    add6("spe5_gas_p276", 4000.0 * 0.068947573, T5, spe5_gas);
+    // Surface conditions, `STCOND 15.0 1.0`: what the surface conversion separates.
+    // The second is a producer's stream after gas breakthrough, equal moles of oil and injection
+    // gas. The injection gas alone is deliberately absent: with its 1e-6 heavy traces it condenses
+    // a liquid fraction of 1.6e-6 at surface, which OPM resolves and ResSim's unaccelerated
+    // substitution does not (residual 5.5e-9 after 5000 iterations). That is a flash limitation
+    // with its own issue, not a property of the SPE5 fluid.
+    add6("spe5_stcond_oil", 1.0, 288.15, spe5_oil);
+    {
+        std::array<Scalar, 6> z{};
+        for (int i = 0; i < 6; ++i) {
+            z[i] = 0.5 * spe5_oil[i] + 0.5 * spe5_gas[i];
+        }
+        add6("spe5_stcond_breakthrough", 1.0, 288.15, z);
+    }
+
+    std::vector<EosCase<6>> e6;
+    auto adde6 = [&](const std::string& id, Scalar p_bar, Scalar t_k,
+                     const std::array<Scalar, 6>& x, const std::string& note) {
+        e6.push_back(EosCase<6>{id, p_bar * 1e5, t_k, x, note});
+    };
+    // Pure n-hexane at 160 F is subcritical (Tc = 507.4 K) with a vapour pressure near 1 bar, so
+    // the isotherm has three real roots around it.
+    for (const Scalar p : {0.2, 0.5, 1.0, 2.0, 5.0}) {
+        adde6("eos_spe5_pure_c6_p" + std::to_string(static_cast<int>(p * 10)) + "dbar", p, T5,
+              {0.0, 0.0, 1.0, 0.0, 0.0, 0.0},
+              "pure n-hexane, subcritical: expect three real roots near its vapour pressure");
+    }
+    // Pure C20 takes the PRCORR quartic (w = 0.85); a direct EOS check of that branch alone.
+    for (const Scalar p : {1.0, 100.0}) {
+        adde6("eos_spe5_pure_c20_p" + std::to_string(static_cast<int>(p)), p, T5,
+              {0.0, 0.0, 0.0, 0.0, 0.0, 1.0}, "pure C20: the PRCORR f(w) branch");
+    }
+    adde6("eos_spe5_oil_ideal_limit", 0.001, T5, spe5_oil, "ideal-gas limit");
+
     std::ostream& os = std::cout;
     os << "{\n";
-    os << "  \"schema\": \"ressim-compositional-ptflash-fixture/2\",\n";
+    os << "  \"schema\": \"ressim-compositional-ptflash-fixture/3\",\n";
     os << "  \"generator\": \"tools/opm_compositional/ptflash_harness.cpp\",\n";
-    os << "  \"eos\": \"PR\",\n";
-    os << "  \"flash_tolerance\": " << num(tol) << ",\n";
     os << "  \"flash_method_chain\": [";
     for (size_t i = 0; i < methods.size(); ++i) {
         os << (i ? ", " : "") << "\"" << methods[i] << "\"";
@@ -660,7 +731,14 @@ int main(int argc, char** argv)
     emit_system<Binary>(os, "ressim::TwoComponentFluidSystem", t2, e2, eos_type, tol, methods,
                         false);
     emit_system<Ternary>(os, "Opm::ThreeComponentFluidSystem", t3, e3, eos_type, tol, methods,
-                         true);
+                         false);
+    // 1e-12 rather than the default: at 1e-9, `spe5_oil_p150` (0.04 vapour just below the bubble
+    // point) converges far enough for the split but not for its derivatives, which then differ
+    // from the tighter answer by 9e-10. At 1e-12 every SPE5 state agrees with ResSim's
+    // derivatives to ~1e-11. Newton cannot reach 1e-12 on most two-phase SPE5 states, so those
+    // are resolved by the `ssi` fallback, which `method_used` records per state.
+    emit_system<Spe5>(os, "ressim::Spe5HydrocarbonFluidSystem", t6, e6, EOSType::PRCORR,
+                      std::min(tol, Scalar(1e-12)), methods, true);
     os << "  ]\n";
     os << "}\n";
     return 0;

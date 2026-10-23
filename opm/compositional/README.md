@@ -11,8 +11,9 @@ C2–C5 tasks. It is **generated**, never hand-edited.
 | Environment, checksum, source commit | `manifest.json` |
 | Admission targets and results | [`docs/COMPOSITIONAL_VALIDATION.md`](../../docs/COMPOSITIONAL_VALIDATION.md) |
 
-**53 flashed states** across two fluid systems (C1/C10 binary, CO2/C1/C10 ternary): 35 two-phase,
-15 single-liquid, 3 single-vapour, over three isotherms, with bubble and dew crossings, trace
+**83 flashed states** across three fluid systems (C1/C10 binary, CO2/C1/C10 ternary, and the
+six-component SPE5 fluid from #45): 49 two-phase, 30 single-liquid, 4 single-vapour, over four
+isotherms, with bubble and dew crossings, trace
 components and analytic derivatives with respect to `[p, z_0 .. z_(N-2)]`.
 
 Two of those are **surface** states — `ternary_stcond_*`, at 1 bar and 288.15 K, which is the
@@ -24,7 +25,7 @@ surface separation is a flash at 1 bar and nothing else in this fixture is. C5's
 external reference until C12's depletion case needed one; both states passed every existing
 comparison unchanged, with no widened tolerance.
 
-**28 flash-free EOS states**, evaluating the cubic directly with no stability test. Seven are
+**36 flash-free EOS states** (28 binary/ternary, 8 SPE5), evaluating the cubic directly with no stability test. Seven are
 genuinely multi-root. They exist because *none* of the flashed states has three real roots, so
 without them the root-labelling rule would be untested; they also cover pure components, which
 PTFlash cannot flash but the EOS evaluates fine.

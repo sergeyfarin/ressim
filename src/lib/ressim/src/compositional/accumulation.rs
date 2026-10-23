@@ -215,6 +215,12 @@ pub fn cell_accumulation(
         2 => inventory_jacobian::<2>(rock, cell_index, cell, &state, &derivatives)?,
         3 => inventory_jacobian::<3>(rock, cell_index, cell, &state, &derivatives)?,
         4 => inventory_jacobian::<4>(rock, cell_index, cell, &state, &derivatives)?,
+        5 => inventory_jacobian::<5>(rock, cell_index, cell, &state, &derivatives)?,
+        6 => inventory_jacobian::<6>(rock, cell_index, cell, &state, &derivatives)?,
+        7 => inventory_jacobian::<7>(rock, cell_index, cell, &state, &derivatives)?,
+        8 => inventory_jacobian::<8>(rock, cell_index, cell, &state, &derivatives)?,
+        9 => inventory_jacobian::<9>(rock, cell_index, cell, &state, &derivatives)?,
+        10 => inventory_jacobian::<10>(rock, cell_index, cell, &state, &derivatives)?,
         count => return Err(AccumulationError::UnsupportedComponentCount { count }),
     };
 

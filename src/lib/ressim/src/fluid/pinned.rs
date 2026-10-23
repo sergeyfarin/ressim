@@ -1,4 +1,5 @@
-//! The two fluids V1 supports, as pinned by C0 (`docs/COMPOSITIONAL_VALIDATION.md` §1).
+//! The pinned fluids: C0's binary and ternary (`docs/COMPOSITIONAL_VALIDATION.md` §1) and the SPE5
+//! hydrocarbon fluid (#45).
 //!
 //! Every number below was read out of the installed OPM 2026.04 headers, with the owning header
 //! named next to it. None was chosen, fitted or rounded here. The reference fixture in
@@ -10,21 +11,39 @@
 //! does not ship as a system; the plan uses it as the N=2 reduction, and the harness declares the
 //! matching C++ system for the same reason.
 //!
-//! The interaction matrix is all zeros for both, because
+//! The interaction matrix is all zeros for those two, because
 //! `ThreeComponentFluidSystem::interactionCoefficient()` returns `0.0` unconditionally. That is
 //! that source's stated modelling choice and is citable as such. It is **not** a default: a fluid
 //! with nonzero binary interactions needs its own source before it can be added here.
+//!
+//! [`spe5`] is that case. `Opm::Spe5FluidSystem` is its source, for the components and for the
+//! nonzero interactions alike; the harness flashes it through
+//! `tools/opm_compositional/spe5_fluid_system.hh`, which delegates every property to that header.
+//!
+//! Temperature belongs to each fluid, not to the crate: every constructor below names its own.
 
 use super::specification::{
     Component, EosVariant, FluidSpecError, FluidSpecification, ViscosityModel,
 };
 
-/// The reservoir temperature both pinned fluids are specified at: 150 °C.
+use super::units::OPM_GAS_CONSTANT_J_PER_MOL_K;
+
+/// The temperature [`binary`] and [`ternary`] are specified at: 150 °C.
 ///
 /// Matches the primary isotherm of the C0 fixture. The fixture's second isotherm, 333.15 K, exists
 /// to prove temperature actually reaches the EOS and is not a hard-coded constant; it is a test
 /// condition, not a second pinned fluid.
-pub const PINNED_RESERVOIR_TEMPERATURE_K: f64 = 423.15;
+const C0_RESERVOIR_TEMPERATURE_K: f64 = 423.15;
+
+/// The SPE5 reservoir temperature: 160 °F.
+///
+/// Not in `Spe5FluidSystem.hpp`, which takes temperature from its caller. The value is the
+/// reservoir temperature of Killough, J.E. & Kossack, C.A. (1987), "Fifth Comparative Solution
+/// Project: Evaluation of Miscible Flood Simulators", SPE 16000, Ninth SPE Symposium on Reservoir
+/// Simulation, San Antonio — the paper the header itself cites. Written as the Fahrenheit
+/// conversion, the same way the header writes its Rankine critical temperatures, so it stays
+/// traceable to that source; the harness uses the same expression.
+pub const SPE5_RESERVOIR_TEMPERATURE_K: f64 = (160.0 + 459.67) * 5.0 / 9.0;
 
 /// Methane. `/usr/include/opm/material/components/C1.hpp`.
 fn c1() -> Component {
@@ -68,6 +87,39 @@ fn co2() -> Component {
     }
 }
 
+/// psia to Pa, exactly as `Spe5FluidSystem.hpp` writes it.
+const SPE5_PA_PER_PSI: f64 = 6894.7573;
+
+/// One SPE5 hydrocarbon, transcribed from `Spe5FluidSystem.hpp`.
+///
+/// The header gives critical temperature in Rankine (`x*5/9`), critical pressure in psia, and the
+/// critical volume as `Z_c R T_c / p_c` in m³/mol with OPM's own `R`. Each is reproduced as that
+/// expression, in the header's evaluation order, so the result is the header's double and not a
+/// rounded copy of it; the critical volume is then scaled to the m³/kmol this crate stores.
+fn spe5_component(
+    id: &str,
+    molar_mass_kg_per_mol: f64,
+    critical_temperature_rankine: f64,
+    critical_pressure_psia: f64,
+    critical_z: f64,
+    acentric_factor: f64,
+) -> Component {
+    let critical_temperature_k = critical_temperature_rankine * 5.0 / 9.0;
+    let critical_pressure_pa = critical_pressure_psia * SPE5_PA_PER_PSI;
+    Component {
+        id: id.to_string(),
+        molar_mass_kg_per_mol,
+        critical_temperature_k,
+        critical_pressure_pa,
+        critical_volume_m3_per_kmol: critical_z
+            * OPM_GAS_CONSTANT_J_PER_MOL_K
+            * critical_temperature_k
+            / critical_pressure_pa
+            * 1e3,
+        acentric_factor,
+    }
+}
+
 fn zero_interaction(n: usize) -> Vec<Vec<f64>> {
     vec![vec![0.0; n]; n]
 }
@@ -82,7 +134,7 @@ pub fn binary() -> Result<FluidSpecification, FluidSpecError> {
         zero_interaction(2),
         EosVariant::PengRobinson,
         ViscosityModel::LohrenzBrayClark,
-        PINNED_RESERVOIR_TEMPERATURE_K,
+        C0_RESERVOIR_TEMPERATURE_K,
         None,
     )
 }
@@ -97,7 +149,48 @@ pub fn ternary() -> Result<FluidSpecification, FluidSpecError> {
         zero_interaction(3),
         EosVariant::PengRobinson,
         ViscosityModel::LohrenzBrayClark,
-        PINNED_RESERVOIR_TEMPERATURE_K,
+        C0_RESERVOIR_TEMPERATURE_K,
+        None,
+    )
+}
+
+/// The SPE5 hydrocarbon fluid: `[C1, C3, C6, C10, C15, C20]`. `Opm::Spe5FluidSystem`.
+///
+/// The order is the header's `C1Idx..C20Idx` with `H2OIdx` removed — water is not part of the
+/// compositional model — so a fixture state's arrays index straight into this specification.
+///
+/// The interactions are the header's `interactionCoefficient`: `k(C1, C15) = k(C1, C20) = 0.05`,
+/// `k(C3, C15) = k(C3, C20) = 0.005`, zero otherwise. The EOS is
+/// [`EosVariant::PengRobinsonCorrected`], the header's `useSpe5` relation: C15 and C20 have
+/// `w > 0.49` and take the 1978 `f(w)`. The header's constant phase viscosities are not carried:
+/// viscosity is LBC, as for every pinned fluid, and the fixture's viscosities are LBC's.
+///
+/// Surface conditions are `None`, as for the C0 fluids; a case that reports surface volumes
+/// attaches its own `STCOND`.
+pub fn spe5() -> Result<FluidSpecification, FluidSpecError> {
+    let components = vec![
+        spe5_component("C1", 16.04e-3, 343.0, 667.8, 0.290, 0.0130),
+        spe5_component("C3", 44.10e-3, 665.7, 616.3, 0.277, 0.1524),
+        spe5_component("C6", 86.18e-3, 913.4, 436.9, 0.264, 0.3007),
+        spe5_component("C10", 142.29e-3, 1111.8, 304.0, 0.257, 0.4885),
+        spe5_component("C15", 206.00e-3, 1270.0, 200.0, 0.245, 0.6500),
+        spe5_component("C20", 282.00e-3, 1380.0, 162.0, 0.235, 0.8500),
+    ];
+    let n = components.len();
+    let mut interaction = zero_interaction(n);
+    // Indices into the order above: C1 = 0, C3 = 1, C15 = 4, C20 = 5.
+    for (light, k) in [(0usize, 0.05), (1usize, 0.005)] {
+        for heavy in [4usize, 5usize] {
+            interaction[light][heavy] = k;
+            interaction[heavy][light] = k;
+        }
+    }
+    FluidSpecification::new(
+        components,
+        interaction,
+        EosVariant::PengRobinsonCorrected,
+        ViscosityModel::LohrenzBrayClark,
+        SPE5_RESERVOIR_TEMPERATURE_K,
         None,
     )
 }

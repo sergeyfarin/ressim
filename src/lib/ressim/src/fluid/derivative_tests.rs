@@ -16,11 +16,7 @@ use super::pinned;
 use super::specification::FluidSpecification;
 
 fn spec_for(system: &FixtureSystem) -> FluidSpecification {
-    match system.num_components {
-        2 => pinned::binary().unwrap(),
-        3 => pinned::ternary().unwrap(),
-        n => panic!("no pinned specification for {n} components"),
-    }
+    fixture::spec_for(system)
 }
 
 /// A relative error against a declared absolute scale, so a derivative that is legitimately near
@@ -39,7 +35,9 @@ fn rel_to_scale(ours: f64, theirs: f64, scale: f64) -> f64 {
 fn comp_derivatives_match_the_fixture_on_every_two_phase_state() {
     let f = fixture::load();
     let mut worst_beta = (0.0f64, String::new());
+    let mut worst_beta_spe5 = (0.0f64, String::new());
     let mut worst_x = (0.0f64, String::new());
+    let mut worst_x_spe5 = (0.0f64, String::new());
     let mut checked = 0;
 
     for system in &f.systems {
@@ -69,8 +67,13 @@ fn comp_derivatives_match_the_fixture_on_every_two_phase_state() {
                 let scale = if v == 0 { 1e-9 } else { 1e-2 };
                 // dbeta = -dL.
                 let e = rel_to_scale(d.dbeta[v], -dl[v], scale);
-                if e > worst_beta.0 {
-                    worst_beta = (e, format!("{}/dbeta/du{v}", state.id));
+                let worst = if n == 6 {
+                    &mut worst_beta_spe5
+                } else {
+                    &mut worst_beta
+                };
+                if e > worst.0 {
+                    *worst = (e, format!("{}/dbeta/du{v}", state.id));
                 }
                 checked += 1;
             }
@@ -84,8 +87,13 @@ fn comp_derivatives_match_the_fixture_on_every_two_phase_state() {
                         [(d.dx[i][v], dx[i][v], "dx"), (d.dy[i][v], dy[i][v], "dy")]
                     {
                         let e = rel_to_scale(ours, theirs, scale);
-                        if e > worst_x.0 {
-                            worst_x = (e, format!("{}/{tag}{i}/du{v}", state.id));
+                        let worst = if n == 6 {
+                            &mut worst_x_spe5
+                        } else {
+                            &mut worst_x
+                        };
+                        if e > worst.0 {
+                            *worst = (e, format!("{}/{tag}{i}/du{v}", state.id));
                         }
                         checked += 1;
                     }
@@ -100,6 +108,26 @@ fn comp_derivatives_match_the_fixture_on_every_two_phase_state() {
         "dbeta/du disagrees with OPM: worst {:e} at {}",
         worst_beta.0,
         worst_beta.1
+    );
+    // SPE5 is held to 1e-8 on `dbeta/du`, `dx/du` and `dy/du`, with the binary and ternary still
+    // at 1e-9 and 2e-9 (#45). The worst is 7.8e-9 (`dbeta/du4`; `dx4/du2` is 6.0e-9) at
+    // `spe5_mix3000_g9`, the most gas-rich mixture at 3000 psia and the nearest state
+    // to the critical region, where `dbeta/dz` reaches 6.5: the absolute gap is 3-6e-9 on every
+    // column, about 1e-9 of the derivative's own size. It does not move when OPM's flash is
+    // tightened from 1e-9 to 1e-12, so it is not the oracle's convergence, and a centred finite
+    // difference on ResSim's flash is noisier (5e-8) than the gap, so neither side can be
+    // preferred. Every other SPE5 state agrees to 3e-10 or better.
+    assert!(
+        worst_beta_spe5.0 < 1e-8,
+        "SPE5 dbeta/du disagrees with OPM: worst {:e} at {}",
+        worst_beta_spe5.0,
+        worst_beta_spe5.1
+    );
+    assert!(
+        worst_x_spe5.0 < 1e-8,
+        "SPE5 dx/du or dy/du disagrees with OPM: worst {:e} at {}",
+        worst_x_spe5.0,
+        worst_x_spe5.1
     );
     // 2e-9 rather than `dbeta/du`'s 1e-9, and the difference is coverage rather than a
     // regression. The bound was 1e-9 until the fixture gained `ternary_bhpdep_*` — four
@@ -277,7 +305,8 @@ fn comp_derivatives_dependent_component_has_derivative_minus_one() {
         }
     }
     assert_eq!(
-        checked, 18,
+        checked,
+        18 + 16,
         "every single-phase fixture state must be covered"
     );
 }

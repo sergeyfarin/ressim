@@ -20,8 +20,6 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize)]
 pub struct Fixture {
     pub schema: String,
-    pub eos: String,
-    pub flash_tolerance: f64,
     pub systems: Vec<FixtureSystem>,
 }
 
@@ -29,6 +27,10 @@ pub struct Fixture {
 pub struct FixtureSystem {
     pub system: String,
     pub num_components: usize,
+    /// OPM's `EOSType` for this system: `PR` for the binary and ternary, `PRCORR` for SPE5.
+    pub eos: String,
+    /// The PTFlash tolerance the system's states were solved to: 1e-9, or 1e-12 for SPE5.
+    pub flash_tolerance: f64,
     pub components: Vec<FixtureComponent>,
     pub binary_interaction: Vec<Vec<f64>>,
     /// Flash-free EOS evaluations. See [`FixtureEosState`].
@@ -194,16 +196,38 @@ pub fn load() -> Fixture {
     let raw = include_str!("../../../../../opm/compositional/ptflash_fixtures.json");
     let fixture: Fixture = serde_json::from_str(raw).expect("C0 fixture must parse");
     assert_eq!(
-        fixture.schema, "ressim-compositional-ptflash-fixture/2",
+        fixture.schema, "ressim-compositional-ptflash-fixture/3",
         "fixture schema changed; update this reader deliberately rather than loosening the check"
     );
-    assert_eq!(fixture.eos, "PR", "V1 pins unmodified Peng-Robinson");
     assert_eq!(
         fixture.systems.len(),
-        2,
-        "expected the binary and ternary systems"
+        3,
+        "expected the binary, ternary and SPE5 systems"
     );
+    for system in &fixture.systems {
+        let expected = if system.num_components == 6 {
+            "PRCORR"
+        } else {
+            "PR"
+        };
+        assert_eq!(
+            system.eos, expected,
+            "{} was generated with an unexpected EOS",
+            system.system
+        );
+    }
     fixture
+}
+
+/// The pinned specification a fixture system was generated from.
+pub fn spec_for(system: &FixtureSystem) -> super::specification::FluidSpecification {
+    match system.num_components {
+        2 => super::pinned::binary(),
+        3 => super::pinned::ternary(),
+        6 => super::pinned::spe5(),
+        n => panic!("no pinned specification for {n} components"),
+    }
+    .expect("pinned specification")
 }
 
 /// The binary (C1/C10) system.
@@ -220,4 +244,12 @@ pub fn ternary_system(f: &Fixture) -> &FixtureSystem {
         .iter()
         .find(|s| s.num_components == 3)
         .expect("ternary system")
+}
+
+/// The SPE5 (six hydrocarbon) system.
+pub fn spe5_system(f: &Fixture) -> &FixtureSystem {
+    f.systems
+        .iter()
+        .find(|s| s.num_components == 6)
+        .expect("SPE5 system")
 }

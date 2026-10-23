@@ -2,11 +2,16 @@
 //!
 //! Unit-conversion tests (`comp_units_*`) live next to the code they test in `units.rs`.
 
-use super::pinned::{self, PINNED_RESERVOIR_TEMPERATURE_K};
+use super::fixture;
+use super::pinned;
 use super::specification::{
     Component, ComponentActivity, EosVariant, FluidSpecError, FluidSpecification, MAX_COMPONENTS,
     OverallComposition, SurfaceConditions, ViscosityModel,
 };
+
+/// The temperature the synthetic specifications below are built at. It is the C0 isotherm, but
+/// nothing here depends on that: these tests are about validation, not thermodynamics.
+const TEST_TEMPERATURE_K: f64 = 423.15;
 
 fn comp(id: &str) -> Component {
     Component {
@@ -26,7 +31,7 @@ fn spec_of(components: Vec<Component>) -> Result<FluidSpecification, FluidSpecEr
         vec![vec![0.0; n]; n],
         EosVariant::PengRobinson,
         ViscosityModel::LohrenzBrayClark,
-        PINNED_RESERVOIR_TEMPERATURE_K,
+        TEST_TEMPERATURE_K,
         None,
     )
 }
@@ -38,54 +43,100 @@ fn spec_of(components: Vec<Component>) -> Result<FluidSpecification, FluidSpecEr
 /// The committed fixture is the single source of truth for the pinned fluid data. If a constant in
 /// `pinned.rs` is ever edited without regenerating the fixture — or vice versa — this fails, which
 /// is the only automated link between the Rust constants and the OPM headers they were read from.
+///
+/// Every system is checked against the specification it was generated from: components, the full
+/// interaction matrix, and the EOS variant. The SPE5 constants are compared to 1 ulp-scale
+/// tolerances because they are the header's own expressions, evaluated in the header's order.
 #[test]
 fn comp_spec_pinned_fluids_match_the_c0_fixture() {
-    let fixture = include_str!("../../../../../opm/compositional/ptflash_fixtures.json");
-
-    // A dependency-free extraction: find each system's component block and pull the named numbers.
-    // Adding a JSON crate to the wasm build for one test would be a poor trade.
-    let field = |block: &str, key: &str| -> f64 {
-        let at = block
-            .find(&format!("\"{key}\": "))
-            .unwrap_or_else(|| panic!("fixture block is missing {key}: {block}"));
-        let rest = &block[at + key.len() + 4..];
-        let end = rest
-            .find(|c: char| !(c.is_ascii_digit() || c == '.' || c == 'e' || c == '-' || c == '+'))
-            .unwrap_or(rest.len());
-        rest[..end]
-            .parse()
-            .unwrap_or_else(|_| panic!("fixture value for {key} is not a number: {}", &rest[..end]))
-    };
-
-    for spec in [pinned::binary().unwrap(), pinned::ternary().unwrap()] {
-        for c in spec.components() {
-            let marker = format!("\"name\": \"{}\"", c.id);
-            let at = fixture
-                .find(&marker)
-                .unwrap_or_else(|| panic!("fixture has no component named {}", c.id));
-            let block = &fixture[at..at + 320];
-
+    let f = fixture::load();
+    for system in &f.systems {
+        let spec = fixture::spec_for(system);
+        assert_eq!(spec.component_count(), system.num_components);
+        for (c, theirs) in spec.components().iter().zip(&system.components) {
+            assert_eq!(c.id, theirs.name, "{}: component order", system.system);
             let checks: [(&str, f64, f64); 5] = [
-                ("molar_mass_kg_per_mol", c.molar_mass_kg_per_mol, 1e-15),
-                ("critical_temperature_k", c.critical_temperature_k, 1e-12),
-                ("critical_pressure_pa", c.critical_pressure_pa, 1e-9),
+                (
+                    "molar_mass_kg_per_mol",
+                    c.molar_mass_kg_per_mol,
+                    theirs.molar_mass_kg_per_mol,
+                ),
+                (
+                    "critical_temperature_k",
+                    c.critical_temperature_k,
+                    theirs.critical_temperature_k,
+                ),
+                (
+                    "critical_pressure_pa",
+                    c.critical_pressure_pa,
+                    theirs.critical_pressure_pa,
+                ),
                 (
                     "critical_volume_m3_per_kmol",
                     c.critical_volume_m3_per_kmol,
-                    1e-15,
+                    theirs.critical_volume_m3_per_kmol,
                 ),
-                ("acentric_factor", c.acentric_factor, 1e-15),
+                ("acentric_factor", c.acentric_factor, theirs.acentric_factor),
             ];
-            for (key, ours, tol) in checks {
-                let theirs = field(block, key);
+            for (key, ours, theirs) in checks {
                 assert!(
-                    (ours - theirs).abs() <= tol * theirs.abs().max(1.0),
-                    "{}: {key} is {ours} in pinned.rs but {theirs} in the C0 fixture",
+                    (ours - theirs).abs() <= 4.0 * f64::EPSILON * theirs.abs(),
+                    "{} {}: {key} is {ours} in pinned.rs but {theirs} in the fixture",
+                    system.system,
                     c.id
                 );
             }
         }
+        for i in 0..system.num_components {
+            for j in 0..system.num_components {
+                assert_eq!(
+                    spec.interaction(i, j),
+                    system.binary_interaction[i][j],
+                    "{}: k[{i}][{j}]",
+                    system.system
+                );
+            }
+        }
+        let eos = match spec.eos() {
+            EosVariant::PengRobinson => "PR",
+            EosVariant::PengRobinsonCorrected => "PRCORR",
+        };
+        assert_eq!(eos, system.eos, "{}: EOS variant", system.system);
     }
+}
+
+/// The SPE5 interactions, stated against the header rather than the fixture, so a regenerated
+/// fixture that dropped them would not pass by agreeing with a pinned fluid that also lost them.
+#[test]
+fn comp_spec_spe5_interactions_are_the_headers() {
+    let spec = pinned::spe5().unwrap();
+    let ids: Vec<_> = spec.components().iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(ids, ["C1", "C3", "C6", "C10", "C15", "C20"]);
+    let k =
+        |a: &str, b: &str| spec.interaction(spec.index_of(a).unwrap(), spec.index_of(b).unwrap());
+    for heavy in ["C15", "C20"] {
+        assert_eq!(k("C1", heavy), 0.05);
+        assert_eq!(k(heavy, "C1"), 0.05);
+        assert_eq!(k("C3", heavy), 0.005);
+        assert_eq!(k(heavy, "C3"), 0.005);
+    }
+    let nonzero = (0..6)
+        .flat_map(|i| (0..6).map(move |j| (i, j)))
+        .filter(|&(i, j)| spec.interaction(i, j) != 0.0)
+        .count();
+    assert_eq!(nonzero, 8, "only C1/C3 against C15/C20 interact");
+    assert_eq!(spec.eos(), EosVariant::PengRobinsonCorrected);
+}
+
+/// Temperature is part of each pinned fluid. The C0 fluids keep 423.15 K exactly; SPE5 is 160 °F
+/// (Killough & Kossack 1987), which is 344.26 K.
+#[test]
+fn comp_spec_pinned_temperatures_belong_to_each_fluid() {
+    assert_eq!(pinned::binary().unwrap().reservoir_temperature_k(), 423.15);
+    assert_eq!(pinned::ternary().unwrap().reservoir_temperature_k(), 423.15);
+    let t = pinned::spe5().unwrap().reservoir_temperature_k();
+    assert_eq!(t, pinned::SPE5_RESERVOIR_TEMPERATURE_K);
+    assert!((t - 344.261_111_111).abs() < 1e-8, "{t}");
 }
 
 /// Component order is load-bearing: the fixture's `z`, `x` and `y` arrays index straight into it.
@@ -119,10 +170,11 @@ fn comp_spec_pinned_component_order_matches_opm() {
 fn comp_spec_pinned_fluids_declare_surface_conditions_unpinned() {
     assert!(pinned::binary().unwrap().surface().is_none());
     assert!(pinned::ternary().unwrap().surface().is_none());
+    assert!(pinned::spe5().unwrap().surface().is_none());
 }
 
 #[test]
-fn comp_spec_pinned_interactions_are_symmetric_zero() {
+fn comp_spec_c0_interactions_are_symmetric_zero() {
     for spec in [pinned::binary().unwrap(), pinned::ternary().unwrap()] {
         for i in 0..spec.component_count() {
             for j in 0..spec.component_count() {
@@ -150,12 +202,15 @@ fn comp_spec_rejects_unsupported_component_counts() {
         spec_of(too_many).unwrap_err(),
         FluidSpecError::UnsupportedComponentCount { count }
     );
-    // N=4 is permitted by the type even though no pinned fluid uses it: C7 needs a synthetic
-    // four-component layout to expose hidden three-component assumptions.
-    let four: Vec<_> = (0..MAX_COMPONENTS)
+    // The bound itself is admitted.
+    let at_bound: Vec<_> = (0..MAX_COMPONENTS)
         .map(|i| comp(&format!("C{i}")))
         .collect();
-    assert!(spec_of(four).is_ok());
+    assert!(spec_of(at_bound).is_ok());
+    assert_eq!(
+        MAX_COMPONENTS, 10,
+        "#45 raised the bound to 10; change it deliberately"
+    );
 }
 
 #[test]
@@ -231,7 +286,7 @@ fn comp_spec_rejects_bad_interaction_matrices() {
             k,
             EosVariant::PengRobinson,
             ViscosityModel::LohrenzBrayClark,
-            PINNED_RESERVOIR_TEMPERATURE_K,
+            TEST_TEMPERATURE_K,
             None,
         )
     };
@@ -446,7 +501,7 @@ fn comp_spec_permutation_carries_the_interaction_matrix() {
         k,
         EosVariant::PengRobinson,
         ViscosityModel::LohrenzBrayClark,
-        PINNED_RESERVOIR_TEMPERATURE_K,
+        TEST_TEMPERATURE_K,
         None,
     )
     .unwrap();

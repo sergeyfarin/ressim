@@ -14,11 +14,7 @@ use super::units::GAS_CONSTANT_J_PER_MOL_K;
 
 /// The specification matching a fixture system, built from the committed `pinned` fluids.
 fn spec_for(system: &FixtureSystem) -> FluidSpecification {
-    match system.num_components {
-        2 => pinned::binary().unwrap(),
-        3 => pinned::ternary().unwrap(),
-        n => panic!("no pinned specification for {n} components"),
-    }
+    fixture::spec_for(system)
 }
 
 fn rel(a: f64, b: f64) -> f64 {
@@ -243,7 +239,8 @@ fn comp_eos_fugacity_coefficients_match_the_fixture() {
     }
 
     assert!(
-        checked == 286,
+        // 286 from the binary and ternary, 348 from SPE5 (#45).
+        checked == 286 + 348,
         "expected every branch of every state, compared {checked}"
     );
     assert!(

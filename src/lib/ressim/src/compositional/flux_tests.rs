@@ -373,6 +373,14 @@ fn comp_flux_jacobian_matches_finite_differences_on_both_neighbours() {
             140.0,
             vec![0.25, 0.45],
         ),
+        (
+            "spe5 two-phase upstream",
+            pinned::spe5().unwrap(),
+            130.0,
+            vec![0.50, 0.03, 0.07, 0.20, 0.15],
+            110.0,
+            vec![0.45, 0.04, 0.07, 0.21, 0.16],
+        ),
     ];
 
     let mut worst = (0.0f64, String::new());

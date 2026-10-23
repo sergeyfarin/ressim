@@ -12,11 +12,7 @@ use super::transport::{
 use super::units;
 
 fn spec_for(system: &FixtureSystem) -> FluidSpecification {
-    match system.num_components {
-        2 => pinned::binary().unwrap(),
-        3 => pinned::ternary().unwrap(),
-        n => panic!("no pinned specification for {n} components"),
-    }
+    fixture::spec_for(system)
 }
 
 /// The pinned fluids with surface conditions attached, which is what the surface flash needs.
@@ -176,7 +172,7 @@ fn comp_transport_liquid_is_more_viscous_than_vapour() {
             }
         }
     }
-    assert_eq!(checked, 36);
+    assert_eq!(checked, 36 + 13);
 }
 
 /// An absent phase has no viscosity. Zero would be worse than nothing: a mobility calculation
@@ -277,7 +273,7 @@ fn comp_transport_saturations_reconstruct_from_moles_and_molar_volumes() {
         }
     }
 
-    assert_eq!(checked, 36);
+    assert_eq!(checked, 36 + 13);
     assert!(
         worst_gap > 0.3,
         "saturation and beta never differ by much ({worst_gap}); the distinction this test exists \
@@ -605,4 +601,86 @@ fn comp_transport_uses_each_phases_own_density() {
         "the liquid viscosity does not depend on the liquid's own density"
     );
     assert!(mu_v.unwrap() < mu_l.unwrap());
+}
+
+/// The surface conversion on the six-component SPE5 fluid, against OPM's own flash at
+/// `STCOND 15.0 1.0` (#45).
+///
+/// Two streams: the initial oil, and a producer's stream after gas breakthrough. Both split at
+/// surface, and the check is the quantity a surface rate is made of — moles and volume per phase
+/// — not only the split. The volumes are OPM's molar volumes converted to the SI gas constant,
+/// the one exact correction the fixture needs (see `fixture::FixturePhase::molar_volume_si`).
+#[test]
+fn comp_surface_separation_matches_opm_on_the_spe5_fluid() {
+    let f = fixture::load();
+    let system = fixture::spe5_system(&f);
+    let base = pinned::spe5().unwrap();
+    let n = base.component_count();
+    let spec = FluidSpecification::new(
+        base.components().to_vec(),
+        (0..n)
+            .map(|i| (0..n).map(|j| base.interaction(i, j)).collect())
+            .collect(),
+        base.eos(),
+        base.viscosity_model(),
+        base.reservoir_temperature_k(),
+        Some(SurfaceConditions {
+            pressure_pa: 1.0e5,
+            temperature_k: 288.15,
+        }),
+    )
+    .unwrap();
+
+    let mut checked = 0;
+    for id in ["spe5_stcond_oil", "spe5_stcond_breakthrough"] {
+        let state = system
+            .states
+            .iter()
+            .find(|s| s.id == id)
+            .unwrap_or_else(|| panic!("fixture has no {id}"));
+        assert_eq!(state.present_phase, "two_phase", "{id}");
+        assert_eq!(state.pressure_pa, 1.0e5);
+        assert_eq!(state.temperature_k, 288.15);
+
+        let total = 1000.0;
+        let stream: Vec<f64> = state.z.iter().map(|z| z * total).collect();
+        let out = surface_separation(&spec, &stream).unwrap();
+        assert_eq!(out.phase_state, PhaseState::TwoPhase, "{id}");
+
+        let beta = state.beta_vapour.unwrap();
+        assert!(
+            (out.vapour_moles / total - beta).abs() < 1e-9,
+            "{id}: vapour mole fraction {} against OPM's {beta}",
+            out.vapour_moles / total
+        );
+        let liquid = state.liquid.as_ref().unwrap();
+        let vapour = state.vapour.as_ref().unwrap();
+        let opm_liquid_volume = total * (1.0 - beta) * liquid.molar_volume_si();
+        let opm_vapour_volume = total * beta * vapour.molar_volume_si();
+        assert!(
+            rel(out.liquid_volume, opm_liquid_volume) < 1e-8,
+            "{id}: surface liquid {} m3 against OPM's {opm_liquid_volume}",
+            out.liquid_volume
+        );
+        assert!(
+            rel(out.vapour_volume, opm_vapour_volume) < 1e-8,
+            "{id}: surface gas {} m3 against OPM's {opm_vapour_volume}",
+            out.vapour_volume
+        );
+        for i in 0..n {
+            let recovered = out.liquid_component_moles[i] + out.vapour_component_moles[i];
+            assert!(
+                (recovered - stream[i]).abs() <= 1e-9 * total,
+                "{id}: component {i} not conserved"
+            );
+            let opm_liquid = total * (1.0 - beta) * state.x_liquid.as_ref().unwrap()[i];
+            assert!(
+                (out.liquid_component_moles[i] - opm_liquid).abs() <= 1e-8 * total,
+                "{id}: component {i} surface-liquid moles {} against OPM's {opm_liquid}",
+                out.liquid_component_moles[i]
+            );
+        }
+        checked += 1;
+    }
+    assert_eq!(checked, 2);
 }

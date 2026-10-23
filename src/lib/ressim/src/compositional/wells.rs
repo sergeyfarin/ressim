@@ -279,6 +279,12 @@ pub fn source_at_bhp(
         2 => source_sized::<2>(spec, relperm, well, completion, cell, bhp_bar),
         3 => source_sized::<3>(spec, relperm, well, completion, cell, bhp_bar),
         4 => source_sized::<4>(spec, relperm, well, completion, cell, bhp_bar),
+        5 => source_sized::<5>(spec, relperm, well, completion, cell, bhp_bar),
+        6 => source_sized::<6>(spec, relperm, well, completion, cell, bhp_bar),
+        7 => source_sized::<7>(spec, relperm, well, completion, cell, bhp_bar),
+        8 => source_sized::<8>(spec, relperm, well, completion, cell, bhp_bar),
+        9 => source_sized::<9>(spec, relperm, well, completion, cell, bhp_bar),
+        10 => source_sized::<10>(spec, relperm, well, completion, cell, bhp_bar),
         count => Err(WellError::UnsupportedComponentCount { count }),
     }
 }
@@ -322,12 +328,18 @@ fn source_sized<const N: usize>(
     cell: &CompositionalCellState,
     bhp_bar: f64,
 ) -> Result<WellSource, WellError> {
-    // Slots: 0 = p_cell, 1..N = independent z, N = bhp. `Ad` needs a const size, so the four
-    // supported component counts are instantiated explicitly.
+    // Slots: 0 = p_cell, 1..N = independent z, N = bhp. `Ad` needs a const size, so every
+    // supported component count is instantiated explicitly.
     match N {
         2 => source_ad::<2, 3>(spec, relperm, well, completion, cell, bhp_bar),
         3 => source_ad::<3, 4>(spec, relperm, well, completion, cell, bhp_bar),
         4 => source_ad::<4, 5>(spec, relperm, well, completion, cell, bhp_bar),
+        5 => source_ad::<5, 6>(spec, relperm, well, completion, cell, bhp_bar),
+        6 => source_ad::<6, 7>(spec, relperm, well, completion, cell, bhp_bar),
+        7 => source_ad::<7, 8>(spec, relperm, well, completion, cell, bhp_bar),
+        8 => source_ad::<8, 9>(spec, relperm, well, completion, cell, bhp_bar),
+        9 => source_ad::<9, 10>(spec, relperm, well, completion, cell, bhp_bar),
+        10 => source_ad::<10, 11>(spec, relperm, well, completion, cell, bhp_bar),
         count => Err(WellError::UnsupportedComponentCount { count }),
     }
 }

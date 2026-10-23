@@ -41,6 +41,8 @@ mod api_tests;
 #[cfg(test)]
 mod assembly_tests;
 #[cfg(test)]
+mod cost_tests;
+#[cfg(test)]
 mod flux_tests;
 #[cfg(test)]
 mod gravity_tests;

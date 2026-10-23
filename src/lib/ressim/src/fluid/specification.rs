@@ -149,12 +149,15 @@ impl core::fmt::Display for FluidSpecError {
     }
 }
 
-/// Upper bound on component count for V1.
+/// Upper bound on component count, and the only place it is set (#45).
 ///
-/// Not a physical limit — a scope limit. The plan delivers N=2 and N=3 and requires an N=4
-/// layout-only test to expose hidden three-component assumptions, so the type permits 4 while the
-/// pinned fluids stop at 3.
-pub const MAX_COMPONENTS: usize = 4;
+/// Not a physical limit — a scope limit. SPE5 needs six hydrocarbon components and a lumped SPE3
+/// about nine, so ten covers the roadmap with one to spare. The engine instantiates its
+/// const-generic AD kernels (flash derivatives, accumulation, face flux, wells) for every count in
+/// `2..=MAX_COMPONENTS`; raising this means adding those match arms, which the
+/// `comp_layout_*` and `comp_spec_*` tests at the bound will catch if forgotten.
+/// `docs/COMPOSITIONAL_VALIDATION.md` records the measured per-cell cost at N=6 and N=10.
+pub const MAX_COMPONENTS: usize = 10;
 
 /// Default tolerance on `sum(z) - 1`.
 ///
@@ -165,16 +168,21 @@ pub const DEFAULT_COMPOSITION_SUM_TOLERANCE: f64 = 1.0e-10;
 
 /// The equation of state.
 ///
-/// One variant on purpose. V1 pins unmodified Peng–Robinson, which is what
-/// `opm/compositional/ptflash_fixtures.json` was generated with. Because this is a tagged enum,
-/// a serialized specification carrying any other variant fails to deserialize rather than being
-/// silently reinterpreted — which is the actual protection wanted, and the reason it is an enum
-/// rather than an implicit assumption.
+/// Both variants are Peng–Robinson with OPM's `PRParams.hpp` constants; they differ only in
+/// `f(w)`. Because this is a tagged enum, a serialized specification carrying any other variant
+/// fails to deserialize rather than being silently reinterpreted — which is the actual protection
+/// wanted, and the reason it is an enum rather than an implicit assumption.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EosVariant {
     /// Peng–Robinson with `f(w) = 0.37464 + 1.54226 w - 0.26992 w^2`, `Omega_A = 0.457235529`,
-    /// `Omega_B = 0.077796074`, `m1, m2 = 1 +/- sqrt(2)`.
+    /// `Omega_B = 0.077796074`, `m1, m2 = 1 +/- sqrt(2)`. OPM's `PR`; the binary and ternary
+    /// fixtures were generated with it.
     PengRobinson,
+    /// [`Self::PengRobinson`] with the 1978 quartic
+    /// `f(w) = 0.379642 + 1.48503 w - 0.164423 w^2 + 0.016666 w^3` for `w > 0.49`. OPM's `PRCORR`
+    /// (`PRParams::calcOmegaA(modified = true)`), and the relation `PengRobinsonParamsMixture`
+    /// applies on its `useSpe5` path; the SPE5 fixture was generated with it.
+    PengRobinsonCorrected,
 }
 
 /// The viscosity correlation.

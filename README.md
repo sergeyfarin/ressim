@@ -193,8 +193,10 @@ Full `cargo test` is not used as a gate, because FIM diagnostic tests can domina
 - Per-layer initial conditions: water saturation, gas saturation, and cell thickness can be specified per z-layer for scenarios with gas caps or non-uniform geology.
 - Adaptive timestep checks based on saturation change, pressure change, and well-rate change
   limits, plus, in IMPES, a limit on the dissolved-gas change per substep.
-- A separate isothermal compositional engine (Peng–Robinson EOS, two or three components, phase
-  appearance and disappearance, compositional wells). It is validated natively against OPM's
+- A separate isothermal compositional engine (Peng–Robinson EOS, two to ten components with
+  binary interactions, phase appearance and disappearance, compositional wells). Pinned fluids:
+  a C1/C10 binary, a CO₂/C1/C10 ternary, and the six-component SPE5 fluid from OPM's
+  `Spe5FluidSystem`. It is validated natively against OPM's
   compositional simulator and not yet offered in the app.
 
 ### Analytical and Diagnostic Surfaces

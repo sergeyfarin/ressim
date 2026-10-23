@@ -10,11 +10,7 @@ use super::specification::FluidSpecification;
 use super::stability::wilson_k;
 
 fn spec_for(system: &FixtureSystem) -> FluidSpecification {
-    match system.num_components {
-        2 => pinned::binary().unwrap(),
-        3 => pinned::ternary().unwrap(),
-        n => panic!("no pinned specification for {n} components"),
-    }
+    fixture::spec_for(system)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -153,7 +149,7 @@ fn comp_flash_matches_the_fixture_on_every_state() {
         }
     }
 
-    assert_eq!(two_phase, 36);
+    assert_eq!(two_phase, 36 + 13);
     assert!(
         worst_beta.0 < 1e-8,
         "vapour fraction disagrees: worst absolute error {:e} at {}",
@@ -352,8 +348,8 @@ fn comp_flash_single_phase_is_a_success_with_an_exact_phase_amount() {
             }
         }
     }
-    assert_eq!(liquid_states, 15);
-    assert_eq!(vapour_states, 3);
+    assert_eq!(liquid_states, 15 + 15);
+    assert_eq!(vapour_states, 3 + 1);
 }
 
 /// Saturation is a volume fraction and `beta` is a mole fraction. They are equal only when both
@@ -389,15 +385,21 @@ fn comp_flash_vapour_saturation_is_not_the_vapour_mole_fraction() {
                 state.id
             );
 
-            // The vapour is the less dense phase, so it always occupies more volume than its mole
-            // fraction would suggest.
-            assert!(
+            // The vapour occupies more volume than its mole fraction suggests exactly when it has
+            // the larger molar volume. That is usual but not universal: SPE5 near its bubble point
+            // has a methane vapour with *more* moles per m³ than the C10-C20 oil (and a fifth of
+            // its mass density), so the direction follows the molar densities rather than being
+            // assumed.
+            let vapour_molar_volume_larger =
+                r.vapour.as_ref().unwrap().molar_density < r.liquid.as_ref().unwrap().molar_density;
+            assert_eq!(
                 sv > r.beta,
-                "{}: S_V = {sv} is not above beta = {}; the vapour is the lighter phase",
+                vapour_molar_volume_larger,
+                "{}: S_V = {sv} and beta = {} are ordered against the phase molar volumes",
                 state.id,
                 r.beta
             );
-            worst_gap = worst_gap.max(sv - r.beta);
+            worst_gap = worst_gap.max((sv - r.beta).abs());
 
             // And the mixture molar volume must reproduce the phase split.
             let v = r.mixture_molar_volume();
@@ -406,7 +408,7 @@ fn comp_flash_vapour_saturation_is_not_the_vapour_mole_fraction() {
             assert!((v - expected).abs() / expected < 1e-15, "{}", state.id);
         }
     }
-    assert_eq!(checked, 36);
+    assert_eq!(checked, 36 + 13);
     assert!(
         worst_gap > 0.1,
         "S_V and beta never differ materially; this test is not exercising its case"
@@ -554,8 +556,10 @@ fn comp_flash_uses_the_correct_branch_for_each_phase() {
             if r.phase_state == PhaseState::TwoPhase {
                 let l = r.liquid.as_ref().unwrap();
                 let v = r.vapour.as_ref().unwrap();
+                // Mass density, not molar: a methane-rich vapour can hold more moles per m³ than
+                // a heavy oil (SPE5 at 150 bar does), but never more mass.
                 assert!(
-                    l.molar_density > v.molar_density,
+                    l.mass_density > v.mass_density,
                     "{}: the liquid is not the denser phase",
                     state.id
                 );

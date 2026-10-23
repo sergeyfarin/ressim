@@ -34,8 +34,9 @@ scope and would need a different thermodynamic model, not a parameter change.
 
 ## 1. The pinned fluid
 
-Two fluid systems, both sourced entirely from the installed OPM 2026.04 packages. No property
-below was chosen, fitted or rounded by ResSim.
+Three fluid systems, all sourced entirely from the installed OPM 2026.04 packages. No property
+below was chosen, fitted or rounded by ResSim. Each carries its own temperature
+(`FluidSpecification::reservoir_temperature_k`); there is no crate-wide one (#45).
 
 ### Ternary (N=3) — `Opm::ThreeComponentFluidSystem`
 
@@ -57,9 +58,52 @@ C1 and C10 only, components 1 and 2 above with the same values. Declared in
 system and its stability test cannot handle `z = 0` (see §4). It delegates every property to
 OPM's own component classes and introduces no data.
 
+### SPE5 (N=6) — `ressim::Spe5HydrocarbonFluidSystem` over `Opm::Spe5FluidSystem` (#45)
+
+`/usr/include/opm/material/fluidsystems/Spe5FluidSystem.hpp`, `libopm-common-dev 2026.04-1~noble`,
+citing Killough & Kossack (1987). Its six hydrocarbons in the header's order, `H2OIdx` dropped:
+water is not part of this model. `tools/opm_compositional/spe5_fluid_system.hh` declares them as a
+PTFlash system and delegates every property to the header, offset by one; `pinned::spe5()` writes
+each constant as the header's own expression in the header's evaluation order, and the fixture
+test holds every one to 4 ulp.
+
+| Index | Component | MW [kg/mol] | Tc [K] | pc [Pa] | Z_c | ω |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | C1 | 16.04e-3 | 343.0·5/9 | 667.8 psia | 0.290 | 0.0130 |
+| 1 | C3 | 44.10e-3 | 665.7·5/9 | 616.3 psia | 0.277 | 0.1524 |
+| 2 | C6 | 86.18e-3 | 913.4·5/9 | 436.9 psia | 0.264 | 0.3007 |
+| 3 | C10 | 142.29e-3 | 1111.8·5/9 | 304.0 psia | 0.257 | 0.4885 |
+| 4 | C15 | 206.00e-3 | 1270.0·5/9 | 200.0 psia | 0.245 | 0.6500 |
+| 5 | C20 | 282.00e-3 | 1380.0·5/9 | 162.0 psia | 0.235 | 0.8500 |
+
+psia is `x · 6894.7573` Pa as the header writes it. The critical volume is `Z_c R T_c / p_c` with
+OPM's `R = 8.314472`, in m³/mol in the header and m³/kmol here.
+
+**Interactions** are the header's `interactionCoefficient`: `k(C1, C15) = k(C1, C20) = 0.05`,
+`k(C3, C15) = k(C3, C20) = 0.005`, zero for every other pair.
+
+**EOS** is `PRCORR` (`EosVariant::PengRobinsonCorrected`). `Spe5FluidSystem` builds its
+parameters with `PengRobinsonParamsMixture<…, useSpe5 = true>`; that template flag is unused in
+the 2026.04 header, and the SPE5 relation it names is the body's `f(w)` switch to the 1978
+quartic above `w = 0.49`, which is exactly `PRParams::calcOmegaA(modified = true)`. C15 and C20
+take the quartic; no component sits at 0.49, so the header's `< 0.49` and PRParams' `<= 0.49`
+agree. One difference is recorded rather than reproduced: the SPE5 mixture truncates
+`Omega_A = 0.4572355` and `Omega_B = 0.0777961`, while PRParams, and so PTFlash and this crate,
+use `0.457235529` and `0.077796074` — 6e-8 and 3e-7 relative. ResSim follows the flash oracle.
+
+**Temperature** is 160 °F, `(160 + 459.67) · 5/9 = 344.261 K`, the reservoir temperature of
+Killough, J.E. & Kossack, C.A. (1987), *Fifth Comparative Solution Project: Evaluation of Miscible
+Flood Simulators*, SPE 16000, Ninth SPE Symposium on Reservoir Simulation. The header takes
+temperature from its caller and does not carry it. The fixture's initial oil (`0.50, 0.03, 0.07,
+0.20, 0.15, 0.05`), injection gas (`0.77, 0.20, 0.03`) and 4000 psia initial pressure are from
+the same paper.
+
+**Not carried:** the header's constant phase viscosities (0.0170 cP gas, 0.208 cP oil, 0.7 cP
+water). Viscosity is LBC for every pinned fluid, and the fixture's SPE5 viscosities are OPM's LBC.
+
 ### Binary interaction matrix
 
-All zeros, for both systems. `ThreeComponentFluidSystem::interactionCoefficient()` returns `0.0`
+All zeros, for the binary and ternary. `ThreeComponentFluidSystem::interactionCoefficient()` returns `0.0`
 unconditionally. This is that source's explicit modelling choice, which is what makes it citable.
 Zero BIPs are never a default, and a future fluid with nonzero BIPs needs its own source.
 
@@ -77,7 +121,8 @@ m1, m2         = 1 + sqrt(2), 1 - sqrt(2)
 
 `PRCORR` swaps `f(w)` for a quartic when `w > 0.49`. C10's `w = 0.488` sits just under that, so
 PR and PRCORR coincide on this fluid. That coincidence is not a reason to leave the variant
-unpinned — V1 is PR.
+unpinned — the binary and ternary are PR. SPE5 is PRCORR (above), and the fixture records the
+variant per system.
 
 Fugacity coefficient, from `eos/CubicEOS.hpp`:
 
@@ -103,7 +148,7 @@ LBC also reads the compressibility factor off the fluid state; it is not derived
 
 | | |
 | --- | --- |
-| Reservoir temperature | 423.15 K (150 °C), fixed |
+| Reservoir temperature | 423.15 K (150 °C) for the binary and ternary; 344.261 K (160 °F) for SPE5 |
 | Second fixture isotherm | 333.15 K (60 °C) — proves temperature reaches the EOS |
 | Pressure envelope | 10–500 bar (1e6–5e7 Pa) |
 | Surface conditions | **not yet pinned** — owed by C5, see §6 |
@@ -148,7 +193,7 @@ bash tools/opm_compositional/generate.sh --check  # verify the committed fixture
 
 | | |
 | --- | --- |
-| Harness | `tools/opm_compositional/ptflash_harness.cpp`, `two_component_fluid_system.hh` |
+| Harness | `tools/opm_compositional/ptflash_harness.cpp`, `two_component_fluid_system.hh`, `spe5_fluid_system.hh` |
 | Fixture | `opm/compositional/ptflash_fixtures.json` |
 | Provenance | `opm/compositional/manifest.json` — compiler, package versions, sha256, source commit |
 | Packages | `libopm-common-dev` / `libopm-simulators-dev` 2026.04-1~noble, `libdune-common-dev` 2.11.0-1~noble |
@@ -170,6 +215,38 @@ pure n-decane below its vapour pressure at `T_r = 0.685`, plus C10-rich binary a
 mixtures in the same region. Pure methane is supercritical there and gives one root at every
 pressure, which is the contrast that makes the test meaningful. They also cover pure components,
 which PTFlash cannot flash at all (§4, limit 1) but the EOS evaluates without difficulty.
+
+**SPE5, added with schema `/3` (#45): 29 flashed states** — 13 two-phase, 15 single-liquid, 1
+single-vapour — and 8 flash-free EOS states (pure n-hexane through its vapour pressure, pure C20
+on the PRCORR branch, the ideal-gas limit). The flashed states are the initial oil depleted
+through its bubble point (20–276 bar), the oil diluted 10–90% with injection gas at 3000 and
+4000 psia, the injection gas at 4000 psia, and two `STCOND 15.0 1.0` surface streams. The
+binary and ternary sections are byte-identical to schema `/2` apart from two keys every system
+now carries: `eos` and `flash_tolerance`.
+
+SPE5 is flashed at **1e-12**, not 1e-9. At 1e-9 `spe5_oil_p150` — 4% vapour just below the
+bubble point, where OPM's `ssi+newton` throws and its plain `ssi` fallback answers — converges
+far enough for the split but not for its derivatives, which then sit 9e-10 from the tighter
+answer; at 1e-12 OPM moves onto ResSim's to 2e-12. Newton cannot reach 1e-12 on most two-phase
+SPE5 states, so `method_used` records `ssi` for them.
+
+Three things SPE5 found:
+
+- **A test invariant that was only true of light fluids.** "The liquid has the larger molar
+  density" holds for every C0 state and fails at SPE5 near its bubble point, where the methane
+  vapour has more moles per m³ than the C10–C20 oil and a fifth of its mass density. ResSim and
+  OPM agree on both densities; the tests now compare mass density, and the saturation-versus-`beta`
+  test follows the molar volumes instead of assuming their order.
+- **A flash ResSim cannot converge.** The injection gas with its 1e-6 heavy traces condenses a
+  1.6e-6 liquid fraction at surface conditions. OPM resolves it; ResSim's unaccelerated
+  substitution stalls at residual 5.5e-9 after 5000 iterations (target 1e-11). The state is not in
+  the fixture, and the measurement is recorded on #51, whose dew-point robustness criterion it
+  belongs to. The separator stream after breakthrough, equal moles of oil and gas, replaces it.
+- **Derivatives near the critical region agree to 1e-8, not 1e-9.** At `spe5_mix3000_g9` (90%
+  injection gas at 3000 psia) `dbeta/dz` reaches 6.5 and ResSim and OPM differ by 3–6e-9 on
+  every column. The gap does not move between OPM tolerances 1e-9 and 1e-12, and a centred
+  difference on ResSim's flash is noisier (5e-8), so neither side can be preferred. SPE5's
+  derivative bound is 1e-8; the binary and ternary keep 1e-9 and 2e-9.
 
 **Derivatives are a first-class part of this oracle, not a bonus.** PTFlash reconstructs them by
 implicit differentiation of the converged equilibrium, which is the pattern C4 is instructed to
@@ -435,6 +512,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C13 | WASM and product integration | **COMPLETE** (2026-10-08) | Engine boundary, worker path, run series, quantity registry and the `comp_co2_1d` scenario are landed (`661431a`…`5d9f1ce`). Since 2026-10-07 the scenario is offered: it runs through the scenario run-set queue, the chart stack sources its compositional quantities into their own panels (no black-oil curve key), stop and failure reasons reach the UI, and vapour saturation and pressure follow the 3D view and spatial profile. The browser run loop also now steps each report interval to its time; it had counted engine calls, so a run whose steps were cut ended short (40 cells: 16.6 of 20 days). The native C12 comparisons drive their own loops and are unaffected. Since 2026-10-08 the 3D view and spatial profile also show each component's overall mole fraction per cell: the spatial snapshot carries the engine's composition unchanged, and one selector (`visualization/spatialProperty.ts`) offers `z` per component and drops water saturation, which a water-free case does not have ([#29](https://github.com/sergeyfarin/ressim/issues/29)). Restart stays API-only by policy. |
 | C14 | Release | NOT STARTED | **Unblocked** by C12's declaration. C13's reporting must name what it means by surface gas rather than inherit Li's pressure-blind label, and must not treat a surface **rate** as validated end to end — see the C12 record |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
+| #45 | Up to 10 components; per-fluid temperature and BIPs; SPE5 fluid pinned from OPM | **COMPLETE** | `MAX_COMPONENTS = 10` in `fluid/specification.rs` (re-exported by `compositional/layout.rs`); `pinned::spe5()`; `EosVariant::PengRobinsonCorrected`; SPE5 in the fixture (§3a) and in every fixture-driven test; `comp_surface_separation_matches_opm_on_the_spe5_fluid`; N=10 kernels FD-checked in `compositional/cost_tests.rs`. Cost record below |
 
 ## 8. Completion records
 
