@@ -120,6 +120,46 @@ impl CprPressureRestrictionKind {
     }
 }
 
+/// OPM multiplies derivatives with respect to pressure in pascals by `50e5`. ResSim's pressure
+/// primary is bar, so the equivalent nondimensionalizing scale is 50 bar. Normalization cancels
+/// it; it is kept so the solve is OPM's `getTrueImpesWeights` operation for operation.
+pub(crate) const TRUE_IMPES_PRESSURE_SCALE_BAR: f64 = 50.0;
+
+/// OPM's true-IMPES CPR weight for one cell (`getTrueImpesWeights`): solve
+/// `B^T w = e_pressure` with `B` the cell's storage (accumulation) Jacobian block, normalized by
+/// its largest entry. The restriction then sums the cell's equations into their accumulation's
+/// pressure response, so the pressure stage conserves mass the way the coarse problem should.
+/// Quasi-IMPES uses the whole diagonal Jacobian block instead, which mixes in the face terms.
+pub(crate) fn true_impes_weight(storage_block: &[[f64; 3]; 3]) -> Result<[f64; 3], String> {
+    let mut transposed = nalgebra::Matrix3::zeros();
+    for equation in 0..3 {
+        for variable in 0..3 {
+            let mut value = storage_block[equation][variable];
+            if variable == 0 {
+                value *= TRUE_IMPES_PRESSURE_SCALE_BAR;
+            }
+            transposed[(variable, equation)] = value;
+        }
+    }
+
+    let rhs = nalgebra::Vector3::new(1.0, 0.0, 0.0);
+    let solved = transposed
+        .lu()
+        .solve(&rhs)
+        .ok_or_else(|| "singular true-IMPES storage block".to_string())?;
+    if !solved.iter().all(|value| value.is_finite()) {
+        return Err("non-finite true-IMPES storage solve".to_string());
+    }
+    let scale = solved
+        .iter()
+        .map(|value| value.abs())
+        .fold(0.0_f64, f64::max);
+    if !scale.is_finite() || scale <= f64::EPSILON {
+        return Err("degenerate true-IMPES normalization".to_string());
+    }
+    Ok([solved[0] / scale, solved[1] / scale, solved[2] / scale])
+}
+
 fn normalize_weights(weights: &mut [f64]) {
     let max_abs = weights
         .iter()
@@ -1019,11 +1059,30 @@ pub(crate) struct CprBuildTiming {
     pub(crate) block_inverses_ms: f64,
 }
 
+#[cfg(test)]
 fn build_block_jacobi_preconditioner(
     matrix: &CsMat<f64>,
     layout: Option<FimLinearBlockLayout>,
     fine_smoother_kind: CprFineSmootherKind,
     restriction_kind: CprPressureRestrictionKind,
+) -> (BlockJacobiPreconditioner, CprBuildTiming) {
+    build_weighted_block_jacobi_preconditioner(
+        matrix,
+        layout,
+        fine_smoother_kind,
+        restriction_kind,
+        None,
+    )
+}
+
+/// `pressure_weights`, when given, replaces the restriction of every cell that has one (OPM's
+/// true-IMPES weights from the storage blocks, #72); a cell without one keeps `restriction_kind`.
+fn build_weighted_block_jacobi_preconditioner(
+    matrix: &CsMat<f64>,
+    layout: Option<FimLinearBlockLayout>,
+    fine_smoother_kind: CprFineSmootherKind,
+    restriction_kind: CprPressureRestrictionKind,
+    pressure_weights: Option<&[Option<[f64; 3]>]>,
 ) -> (BlockJacobiPreconditioner, CprBuildTiming) {
     let Some(layout) = layout else {
         let scalar_timer = PerfTimer::start();
@@ -1108,7 +1167,14 @@ fn build_block_jacobi_preconditioner(
         cell_block_inverses.push(inverse);
 
         let weights_timer = PerfTimer::start();
-        let (restriction, prolongation) = build_pressure_transfer_weights(&block, restriction_kind);
+        let (mut restriction, prolongation) =
+            build_pressure_transfer_weights(&block, restriction_kind);
+        if let Some(weights) = pressure_weights
+            .and_then(|weights| weights.get(block_idx).copied().flatten())
+            .filter(|_| layout.cell_block_size == 3)
+        {
+            restriction = weights.to_vec();
+        }
         weights_ms += weights_timer.elapsed_ms();
         pressure_restriction.push(restriction);
         pressure_prolongation.push(prolongation);
@@ -1752,6 +1818,7 @@ fn solve_with_cpr_fine_smoother(
     cpr_fine_smoother_kind: CprFineSmootherKind,
     restriction_kind: CprPressureRestrictionKind,
     equation_scaling: Option<&EquationScaling>,
+    pressure_weights: Option<&[Option<[f64; 3]>]>,
 ) -> FimLinearSolveReport {
     solve_with_cpr_fine_smoother_recording(
         jacobian,
@@ -1762,6 +1829,7 @@ fn solve_with_cpr_fine_smoother(
         cpr_fine_smoother_kind,
         restriction_kind,
         equation_scaling,
+        pressure_weights,
         #[cfg(test)]
         None,
     )
@@ -1776,6 +1844,7 @@ fn solve_with_cpr_fine_smoother_recording(
     cpr_fine_smoother_kind: CprFineSmootherKind,
     restriction_kind: CprPressureRestrictionKind,
     equation_scaling: Option<&EquationScaling>,
+    pressure_weights: Option<&[Option<[f64; 3]>]>,
     #[cfg(test)] history: Option<&mut Vec<CprKrylovIterationSnapshot>>,
 ) -> FimLinearSolveReport {
     let total_timer = PerfTimer::start();
@@ -1802,11 +1871,12 @@ fn solve_with_cpr_fine_smoother_recording(
     }
 
     let preconditioner_timer = PerfTimer::start();
-    let (preconditioner, build_timing) = build_block_jacobi_preconditioner(
+    let (preconditioner, build_timing) = build_weighted_block_jacobi_preconditioner(
         jacobian,
         layout,
         cpr_fine_smoother_kind,
         restriction_kind,
+        pressure_weights,
     );
     let preconditioner_build_time_ms = preconditioner_timer.elapsed_ms();
 
@@ -2347,6 +2417,7 @@ pub(super) fn solve(
     layout: Option<FimLinearBlockLayout>,
     used_fallback: bool,
     equation_scaling: Option<&EquationScaling>,
+    pressure_weights: Option<&[Option<[f64; 3]>]>,
 ) -> FimLinearSolveReport {
     // Phase 10 (`FIM-LINEAR-008`): block-ILU0 on the natural per-cell blocks, matching OPM's
     // `Dune::BCRSMatrix<MatrixBlock<Scalar,3,3>>` block smoother. Re-applied (see `mod.rs`)
@@ -2360,7 +2431,7 @@ pub(super) fn solve(
     };
 
     if should_use_true_fgmres(options) {
-        return solve_with_true_flexible_smoother_and_restriction(
+        return solve_with_true_flexible_weighted(
             jacobian,
             rhs,
             options,
@@ -2368,6 +2439,7 @@ pub(super) fn solve(
             cpr_fine_smoother_kind,
             CprPressureRestrictionKind::QuasiImpes,
             equation_scaling,
+            pressure_weights,
         )
         .0;
     }
@@ -2386,6 +2458,7 @@ pub(super) fn solve(
         cpr_fine_smoother_kind,
         CprPressureRestrictionKind::QuasiImpes,
         equation_scaling,
+        pressure_weights,
     )
 }
 
@@ -2419,6 +2492,7 @@ pub(super) fn solve_with_restriction_kind(
         cpr_fine_smoother_kind,
         restriction_kind,
         None,
+        None,
     )
 }
 
@@ -2444,6 +2518,7 @@ pub(super) fn solve_with_smoother_and_restriction(
         fine_smoother_kind,
         restriction_kind,
         equation_scaling,
+        None,
     )
 }
 
@@ -2470,6 +2545,7 @@ pub(super) fn solve_with_smoother_restriction_and_history(
         fine_smoother_kind,
         restriction_kind,
         equation_scaling,
+        None,
         Some(&mut history),
     );
     (report, history)
@@ -2478,6 +2554,7 @@ pub(super) fn solve_with_smoother_restriction_and_history(
 /// True flexible-GMRES using the same CPR construction as production. Y2d5 routes production
 /// here only when `use_true_fgmres` is explicitly enabled; the returned history remains useful
 /// to the solver lab and is discarded by live dispatch.
+#[cfg(test)]
 pub(super) fn solve_with_true_flexible_smoother_and_restriction(
     jacobian: &CsMat<f64>,
     rhs: &DVector<f64>,
@@ -2487,9 +2564,37 @@ pub(super) fn solve_with_true_flexible_smoother_and_restriction(
     restriction_kind: CprPressureRestrictionKind,
     equation_scaling: Option<&EquationScaling>,
 ) -> (FimLinearSolveReport, Vec<FlexibleGmresIterationSnapshot>) {
+    solve_with_true_flexible_weighted(
+        jacobian,
+        rhs,
+        options,
+        layout,
+        fine_smoother_kind,
+        restriction_kind,
+        equation_scaling,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn solve_with_true_flexible_weighted(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    layout: Option<FimLinearBlockLayout>,
+    fine_smoother_kind: CprFineSmootherKind,
+    restriction_kind: CprPressureRestrictionKind,
+    equation_scaling: Option<&EquationScaling>,
+    pressure_weights: Option<&[Option<[f64; 3]>]>,
+) -> (FimLinearSolveReport, Vec<FlexibleGmresIterationSnapshot>) {
     let preconditioner_timer = PerfTimer::start();
-    let (preconditioner, build_timing) =
-        build_block_jacobi_preconditioner(jacobian, layout, fine_smoother_kind, restriction_kind);
+    let (preconditioner, build_timing) = build_weighted_block_jacobi_preconditioner(
+        jacobian,
+        layout,
+        fine_smoother_kind,
+        restriction_kind,
+        pressure_weights,
+    );
     let preconditioner_build_time_ms = preconditioner_timer.elapsed_ms();
     let use_pressure_correction = options.kind == FimLinearSolverKind::FgmresCpr;
     let mut pressure_correction_stats = PressureCorrectionAccumulator::default();
@@ -2913,6 +3018,7 @@ mod tests {
             }),
             true,
             None,
+            None,
         );
 
         let diagnostics = report.cpr_diagnostics.expect("expected CPR diagnostics");
@@ -3203,6 +3309,7 @@ mod tests {
             CprFineSmootherKind::BlockJacobi,
             CprPressureRestrictionKind::Row0Schur,
             None,
+            None,
         );
         let ilu_report = solve_with_cpr_fine_smoother(
             &matrix,
@@ -3212,6 +3319,7 @@ mod tests {
             false,
             CprFineSmootherKind::FullIlu0,
             CprPressureRestrictionKind::Row0Schur,
+            None,
             None,
         );
 
@@ -3265,6 +3373,7 @@ mod tests {
             }),
             false,
             None,
+            None,
         );
 
         assert!(report.converged);
@@ -3312,6 +3421,7 @@ mod tests {
                 perforation_tail_start: 6,
             }),
             false,
+            None,
             None,
         );
 
@@ -3384,6 +3494,7 @@ mod tests {
             }),
             false,
             None,
+            None,
         );
 
         let diagnostics = report.cpr_diagnostics.expect("expected CPR diagnostics");
@@ -3430,6 +3541,7 @@ mod tests {
                 perforation_tail_start: 6,
             }),
             false,
+            None,
             None,
         );
 
@@ -3511,9 +3623,78 @@ mod tests {
             }),
             true,
             None,
+            None,
         );
 
         let diagnostics = report.cpr_diagnostics.expect("expected CPR diagnostics");
         assert_eq!(diagnostics.coarse_rows, 2);
+    }
+
+    /// #72: the true-IMPES weight annihilates the storage block's saturation and composition
+    /// columns, so the restricted accumulation responds to pressure only.
+    #[test]
+    fn true_impes_weight_restricts_storage_to_pressure() {
+        let storage = [[2.0, 50.0, 0.0], [1.5, -48.0, 3.0], [0.4, -1.0, 9.0]];
+        let w = true_impes_weight(&storage).expect("nonsingular storage block");
+        for variable in 1..3 {
+            let response: f64 = (0..3).map(|eq| w[eq] * storage[eq][variable]).sum();
+            assert!(response.abs() < 1e-12, "column {variable}: {response}");
+        }
+        let pressure: f64 = (0..3).map(|eq| w[eq] * storage[eq][0]).sum();
+        assert!(pressure.abs() > 1e-6);
+        assert!((w.iter().fold(0.0_f64, |m, v| m.max(v.abs())) - 1.0).abs() < 1e-15);
+        assert!(true_impes_weight(&[[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]).is_err());
+    }
+
+    /// #72: supplied per-cell weights replace that cell's restriction; a cell without one keeps
+    /// the requested kind.
+    #[test]
+    fn weighted_cpr_uses_supplied_pressure_weights() {
+        let mut tri = TriMatI::<f64, usize>::new((6, 6));
+        for (row, col, value) in [
+            (0, 0, 4.0),
+            (0, 1, 1.0),
+            (1, 0, 1.0),
+            (1, 1, 3.0),
+            (2, 2, 2.0),
+            (3, 3, 5.0),
+            (4, 4, 2.0),
+            (4, 3, 1.0),
+            (5, 5, 1.0),
+            (0, 3, -1.0),
+            (3, 0, -1.0),
+        ] {
+            tri.add_triplet(row, col, value);
+        }
+        let matrix = tri.to_csr();
+        let layout = Some(FimLinearBlockLayout {
+            cell_block_count: 2,
+            cell_block_size: 3,
+            well_bhp_count: 0,
+            perforation_tail_start: 6,
+        });
+        let weights = [Some([1.0, -0.5, 0.25]), None];
+        let (weighted, _) = build_weighted_block_jacobi_preconditioner(
+            &matrix,
+            layout,
+            CprFineSmootherKind::BlockIlu0,
+            CprPressureRestrictionKind::QuasiImpes,
+            Some(&weights),
+        );
+        let (plain, _) = build_block_jacobi_preconditioner(
+            &matrix,
+            layout,
+            CprFineSmootherKind::BlockIlu0,
+            CprPressureRestrictionKind::QuasiImpes,
+        );
+        assert_eq!(weighted.pressure_restriction[0], vec![1.0, -0.5, 0.25]);
+        assert_eq!(
+            weighted.pressure_restriction[1],
+            plain.pressure_restriction[1]
+        );
+        assert_ne!(
+            weighted.pressure_restriction[0],
+            plain.pressure_restriction[0]
+        );
     }
 }

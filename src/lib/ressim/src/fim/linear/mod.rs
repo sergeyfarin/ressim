@@ -12,6 +12,8 @@ mod solver_lab;
 mod sparse_lu_debug;
 mod well_schur;
 
+pub(crate) use gmres_block_jacobi::true_impes_weight;
+
 const DIRECT_SOLVE_ROW_THRESHOLD: usize = 512;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -348,7 +350,35 @@ pub(crate) fn solve_linearized_system(
     layout: Option<FimLinearBlockLayout>,
     equation_scaling: Option<&crate::fim::scaling::EquationScaling>,
 ) -> FimLinearSolveReport {
-    solve_linearized_system_with_routing(jacobian, rhs, options, layout, equation_scaling, true)
+    solve_linearized_system_with_pressure_weights(
+        jacobian,
+        rhs,
+        options,
+        layout,
+        equation_scaling,
+        None,
+    )
+}
+
+/// `solve_linearized_system` with per-cell CPR pressure weights (OPM's true-IMPES weights from
+/// the storage blocks, #72). A cell without one, and every non-CPR route, ignores them.
+pub(crate) fn solve_linearized_system_with_pressure_weights(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    layout: Option<FimLinearBlockLayout>,
+    equation_scaling: Option<&crate::fim::scaling::EquationScaling>,
+    pressure_weights: Option<&[Option<[f64; 3]>]>,
+) -> FimLinearSolveReport {
+    solve_linearized_system_with_routing(
+        jacobian,
+        rhs,
+        options,
+        layout,
+        equation_scaling,
+        pressure_weights,
+        true,
+    )
 }
 
 fn solve_linearized_system_with_routing(
@@ -357,6 +387,7 @@ fn solve_linearized_system_with_routing(
     options: &FimLinearSolveOptions,
     layout: Option<FimLinearBlockLayout>,
     equation_scaling: Option<&crate::fim::scaling::EquationScaling>,
+    pressure_weights: Option<&[Option<[f64; 3]>]>,
     allow_forced_direct: bool,
 ) -> FimLinearSolveReport {
     // Small systems solve directly. If the direct factorization hits a singular Jacobian (a
@@ -390,6 +421,7 @@ fn solve_linearized_system_with_routing(
             &iterative_options,
             layout,
             equation_scaling,
+            pressure_weights,
             false,
         );
         iterative.used_fallback = true;
@@ -418,20 +450,33 @@ fn solve_linearized_system_with_routing(
             options,
             layout.expect("checked above"),
             equation_scaling,
+            pressure_weights,
         );
     }
 
     match options.kind {
         FimLinearSolverKind::DenseLuDebug => dense_lu_debug::solve(jacobian, rhs, options, false),
         FimLinearSolverKind::SparseLuDebug => sparse_lu_debug::solve(jacobian, rhs, options, false),
-        FimLinearSolverKind::GmresIlu0 => {
-            gmres_block_jacobi::solve(jacobian, rhs, options, layout, false, equation_scaling)
-        }
+        FimLinearSolverKind::GmresIlu0 => gmres_block_jacobi::solve(
+            jacobian,
+            rhs,
+            options,
+            layout,
+            false,
+            equation_scaling,
+            None,
+        ),
         // CPR is still incomplete, but the default FIM path now uses a pressure-first
         // two-stage iterative backend instead of falling straight back to sparse LU.
-        FimLinearSolverKind::FgmresCpr => {
-            gmres_block_jacobi::solve(jacobian, rhs, options, layout, false, equation_scaling)
-        }
+        FimLinearSolverKind::FgmresCpr => gmres_block_jacobi::solve(
+            jacobian,
+            rhs,
+            options,
+            layout,
+            false,
+            equation_scaling,
+            pressure_weights,
+        ),
     }
 }
 
@@ -589,7 +634,7 @@ mod tests {
         };
 
         let report =
-            solve_linearized_system_with_routing(&jacobian, &rhs, &options, None, None, true);
+            solve_linearized_system_with_routing(&jacobian, &rhs, &options, None, None, None, true);
 
         assert_eq!(report.backend_used, FimLinearSolverKind::GmresIlu0);
     }
@@ -962,7 +1007,7 @@ mod report_contract_tests {
             ..FimLinearSolveOptions::default()
         };
 
-        let report = gmres_block_jacobi::solve(&jacobian, &rhs, &options, None, false, None);
+        let report = gmres_block_jacobi::solve(&jacobian, &rhs, &options, None, false, None, None);
         assert!(report.converged);
         assert_eq!(report.backend_used, FimLinearSolverKind::GmresIlu0);
         assert_report_contract("gmres-ilu0 regular", &jacobian, &rhs, &report, 4);
@@ -975,7 +1020,7 @@ mod report_contract_tests {
         let options = FimLinearSolveOptions::default();
         let (jacobian, rhs, layout) = sample_system();
 
-        let converged = solve_with_well_elimination(&jacobian, &rhs, &options, layout, None);
+        let converged = solve_with_well_elimination(&jacobian, &rhs, &options, layout, None, None);
         assert!(converged.converged);
         assert_report_contract(
             "well-schur converged",
@@ -1008,7 +1053,8 @@ mod report_contract_tests {
         tri.add_triplet(tail_start + 2, tail_start + 2, 1.0);
         let singular_tail = tri.to_csr();
 
-        let degraded = solve_with_well_elimination(&singular_tail, &rhs, &options, layout, None);
+        let degraded =
+            solve_with_well_elimination(&singular_tail, &rhs, &options, layout, None, None);
         assert!(
             !degraded.converged,
             "a degraded tail inverse must not produce a converged report"
@@ -1035,7 +1081,7 @@ mod report_contract_tests {
         };
         let options = FimLinearSolveOptions::default();
 
-        let report = solve_with_well_elimination(&jacobian, &rhs, &options, layout, None);
+        let report = solve_with_well_elimination(&jacobian, &rhs, &options, layout, None, None);
         assert!(report.converged);
         assert_report_contract("well-schur no tail", &jacobian, &rhs, &report, 3);
     }

@@ -22,7 +22,7 @@ use crate::fim::flow_resv::flow_resv_injector_residual;
 use crate::fim::linear::{
     FimDirectBackend, FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions,
     FimLinearSolveReport, FimLinearSolverKind, active_direct_solve_row_threshold,
-    solve_linearized_system,
+    solve_linearized_system, solve_linearized_system_with_pressure_weights, true_impes_weight,
 };
 use crate::fim::state::{FimState, HydrocarbonState};
 use crate::fim::wells::{build_well_topology, perforation_local_block, physical_well_control};
@@ -1932,6 +1932,24 @@ pub(crate) fn run_fim_timestep(
         // the primary fix (only 1/35 heavy-corpus systems showed a real per-family overshoot;
         // see `docs/FIM_CONVERGENCE_WORKLOG.md` "Step 10.1 follow-up"). Kept opt-in (`None`
         // here) rather than wired live, pending stronger evidence or a different application.
+        // #72: Flow's CPR restricts each cell's equations with OPM's true-IMPES weights, from the
+        // cell's storage (accumulation) block. Quasi-IMPES weights from the full diagonal block
+        // leave a global, mass-balance-shaped error after each solve, and on SPE1 Case 2 that
+        // alone cost 58 Newton updates over Flow's (FIM-NEWTON-GAP-003). Only a system that goes
+        // to CPR needs them; a cell whose storage block is singular keeps quasi-IMPES.
+        let cpr_pressure_weights: Option<Vec<Option<[f64; 3]>>> = (linear_options.kind
+            == FimLinearSolverKind::FgmresCpr
+            && assembly.jacobian.rows() > active_direct_solve_row_threshold())
+        .then(|| {
+            crate::fim::assembly_ad::accumulation_jacobian_blocks_for_state(
+                sim,
+                previous_state,
+                &state,
+            )
+            .iter()
+            .map(|block| true_impes_weight(block).ok())
+            .collect()
+        });
         #[cfg(not(target_arch = "wasm32"))]
         let mut linear_report = if linear_options.use_flow_lifecycle {
             crate::fim::linear::flow_lifecycle::solve_live_flow_lifecycle(
@@ -1944,21 +1962,23 @@ pub(crate) fn run_fim_timestep(
             )
             .unwrap_or_else(|error| panic!("Y2d6d Flow lifecycle setup failed: {error}"))
         } else {
-            solve_linearized_system(
+            solve_linearized_system_with_pressure_weights(
                 &assembly.jacobian,
                 &rhs,
                 &linear_options,
                 block_layout,
                 None,
+                cpr_pressure_weights.as_deref(),
             )
         };
         #[cfg(target_arch = "wasm32")]
-        let mut linear_report = solve_linearized_system(
+        let mut linear_report = solve_linearized_system_with_pressure_weights(
             &assembly.jacobian,
             &rhs,
             &linear_options,
             block_layout,
             None,
+            cpr_pressure_weights.as_deref(),
         );
         linear_solve_time_ms += linear_report.total_time_ms;
         linear_preconditioner_build_time_ms += linear_report.preconditioner_build_time_ms;

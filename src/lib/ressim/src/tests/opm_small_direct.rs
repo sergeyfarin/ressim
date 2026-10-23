@@ -1152,6 +1152,10 @@ fn opm_small_direct_run_ressim() {
             sim.set_fim_direct_backend(backend.clone()).unwrap();
             // Diagnostic: FIM's two-phase relperm table knot count (0 = exact Corey, the curve
             // the deck carries). See the small-direct README, "FIM's 21-knot relperm table".
+            // Diagnostic: Flow's BiCGSTAB/CPRW linear lifecycle (FIM-Y2D6, native, default off).
+            if std::env::var_os("OPM_SMALL_FIM_FLOW_LIFECYCLE").is_some() {
+                sim.set_fim_flow_lifecycle(true);
+            }
             if let Ok(points) = std::env::var("OPM_SMALL_FIM_COREY_POINTS") {
                 sim.set_fim_corey_table_points(
                     points

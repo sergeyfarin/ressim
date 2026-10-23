@@ -6434,6 +6434,64 @@ neutral on 7, contradicted on SPE1 Case 1 for the stated Newton-trajectory reaso
 `newton_updates` would print Newton in Flow's convention. The SPE1 first-substep iteration-3
 difference is unexplained.
 
+### FIM-NEWTON-GAP-003 — true-IMPES CPR weights close the iterative-route Newton gap (#72, 2026-10-23)
+
+**Where the rest of the gap was.** After FIM-NEWTON-GAP-001/002, counted in Flow's convention,
+the small direct-route decks matched Flow and the iterative-route decks (above 512 rows) did not:
+SPE1 Case 2 385 vs 337, SPE1 327 vs 306, sweep-vertical 665 vs 615, sweep-crossflow 719 vs 664,
+sweep-areal 216 vs 205. On SPE1 Case 2 the dt sequence is Flow's exactly, and the extra updates
+are spread across routine 30-day steps that take 3 where Flow takes 2. At t = 2550 the
+iterations match Flow's to two digits until iteration 2, where Flow's gas MB is 5.1e-8 (converged)
+and ResSim's 2.4e-7 with the same CNV: the error left by the linear solve is global (it sums), not
+local.
+
+**Oracle and ablation** (native, committed tree `6a49d2c`, FIM sparse, Newton in Flow's
+convention; the driver's new `OPM_SMALL_FIM_FLOW_LIFECYCLE` switch runs FIM-Y2D6 unchanged):
+
+| Deck | default | forced exact solve | Y2D6 Flow lifecycle | Y2D6 with quasi-IMPES weights | true-IMPES in production CPR | Flow |
+|---|---|---|---|---|---|---|
+| spe1-case2-10x10x3 | 385 | 301 | 327 | 385 | 352 | 337 |
+| spe1-10x10x3 | 327 | — | 298 | 317 | 312 | 306 |
+| sweep-areal | 216 | — | 202 | 218 | 205 | 205 |
+| sweep-vertical | 665 | — | 615 | 677 | 616 | 615 |
+| sweep-crossflow | 719 | — | 666 | 725 | 667 | 664 |
+
+Exact solves remove the gap (and beat Flow), so it is the iterative linear stack. Flow's own
+lifecycle (BiCGSTAB, true-IMPES weights, paroverilu0, one-level dense coarse solve) reproduces
+Flow's counts; the same lifecycle with only its weights swapped for ResSim's quasi-IMPES puts them
+back at ResSim's. The operative piece is the weights. Flow's `cprw` (DBG property tree:
+`weight_type: trueimpes`) solves `B^T w = e_p` with `B` the cell's **storage** block; ResSim's
+quasi-IMPES used the full diagonal Jacobian block, flux and well terms included. FIM-Y2D6's own
+"do not tune this linear path" stands: nothing in it was tuned; the ablation only localized it.
+
+**Change.** The live CPR (true FGMRES, BiCGSTAB coarse solve, well Schur, unchanged) takes
+per-cell true-IMPES weights from `accumulation_jacobian_blocks_for_state` whenever the system goes
+to CPR (above the direct threshold); a cell whose storage block is singular keeps quasi-IMPES.
+`true_impes_weight` moved from the native-only `flow_lifecycle` into `gmres_block_jacobi`, and the
+storage-block helper lost its native-only gate, so wasm runs the same code
+(`validate-native-binding.sh` OK). Small systems keep their direct solve and are bit-identical.
+
+**Result** (dirty tree on `6a49d2c`; scorecard re-baselined on the commit). Cross-solver gate OK:
+every direct-route deck unchanged; Newton falls on every iterative deck (table, last two columns;
+sweep-combined 268 → 211 vs Flow 275) with substeps unchanged or at Flow's (SPE1 123 → 124 = Flow).
+SPE1 Case 1 same-dt worst Δp 1.81 → 1.16 bar (most of FIM-NEWTON-GAP-002's accepted regression
+recovered). Wall time unchanged.
+
+Wasm control matrix: 22x22x1 and 23x23x1 one step 3 substeps / 1 retry → 1 / 0; **20x20x3 one step
+1 → 3 substeps with a nonlinear retry** (start-up step, CNV 90, ten iterations at the chop limits;
+ends iteration 20 at MB 5.5e-6 vs the 1e-6 final tier; the retry at dt 0.0825 converges); gas-rate
+20x20x3 and 10x10x3, heavy 12x12x3 unchanged in substeps. Long horizons: water 12x12x3 23 → 23,
+gas-rate 10x10x3 27 → 26, water 22x22x1 22 → 20 (retry 1 → 0), 23x23x1 22 → 20 (1 → 0), 20x20x3
+20 → 22 (0 → 1); total 114 → 111 substeps, 3 → 2 retries. Coverage `all`, locked baseline,
+`assembly_ad` parity, Buckley-Leverett, SPE1 full-horizon replay pass; clippy count unchanged.
+
+**Verdict.** PROMOTED (OPM `cprw` weight convention). The 20x20x3 start-up step is a moved control,
+recorded rather than chased: the same change removed a retry from 22x22x1 and 23x23x1.
+
+**Open.** SPE1 Case 2 is still 1.04× Flow (352 vs 337); exact solves reach 301, so the rest is also
+linear. The remaining Y2D6 pieces measured as no-ops here.
+
+
 
 ### #21 resolved — report-step sensitivity and the Flow oil bias are temporal plus deck mapping (2026-09-23)
 

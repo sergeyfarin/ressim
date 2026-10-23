@@ -44,7 +44,8 @@ use super::gmres_block_jacobi::{
 };
 use super::gmres_block_jacobi::{cs_mat_mul_vec, invert_tail_block, matrix_value};
 use super::{
-    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, solve_linearized_system,
+    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
+    solve_linearized_system_with_pressure_weights,
 };
 use crate::fim::scaling::EquationScaling;
 
@@ -214,24 +215,33 @@ pub(super) fn solve_with_well_elimination(
     options: &FimLinearSolveOptions,
     layout: FimLinearBlockLayout,
     equation_scaling: Option<&EquationScaling>,
+    pressure_weights: Option<&[Option<[f64; 3]>]>,
 ) -> FimLinearSolveReport {
     let Some(elimination) = eliminate_wells(jacobian, rhs, layout, equation_scaling) else {
         // Nothing to eliminate. The dispatcher in `solve_linearized_system` already checks this
         // before calling here, but stay correct if called directly (e.g. from a future test).
-        return solve_linearized_system(jacobian, rhs, options, Some(layout), equation_scaling);
+        return solve_linearized_system_with_pressure_weights(
+            jacobian,
+            rhs,
+            options,
+            Some(layout),
+            equation_scaling,
+            pressure_weights,
+        );
     };
 
     // Solve the reduced (tail-free) system through the normal dispatcher. This recursion is safe
     // and terminates in one step: `reduced_layout` has no well/perforation tail, so the
     // `eliminate_wells` check in `solve_linearized_system` is false for this call regardless of
     // `options.eliminate_wells`, and it falls straight through to the ordinary iterative/direct
-    // path.
-    let reduced_report = solve_linearized_system(
+    // path. The reduced system keeps the cell rows in order, so the per-cell weights still apply.
+    let reduced_report = solve_linearized_system_with_pressure_weights(
         &elimination.reduced_jacobian,
         &elimination.reduced_rhs,
         options,
         Some(elimination.reduced_layout),
         elimination.reduced_equation_scaling.as_ref(),
+        pressure_weights,
     );
 
     recover_full_system_report(jacobian, rhs, options, elimination, reduced_report)
@@ -542,7 +552,7 @@ mod tests {
         let reference = sparse_lu_debug::solve(&jacobian, &rhs, &options, false);
         assert!(reference.converged, "reference direct solve must converge");
 
-        let eliminated = solve_with_well_elimination(&jacobian, &rhs, &options, layout, None);
+        let eliminated = solve_with_well_elimination(&jacobian, &rhs, &options, layout, None, None);
         assert!(
             eliminated.converged,
             "eliminated solve did not converge: {eliminated:?}"
@@ -585,7 +595,7 @@ mod tests {
             ..FimLinearSolveOptions::default()
         };
 
-        let report = solve_with_well_elimination(&jacobian, &rhs, &options, layout, None);
+        let report = solve_with_well_elimination(&jacobian, &rhs, &options, layout, None, None);
         assert!(report.converged);
         for i in 0..3 {
             assert!((report.solution[i] - 1.0 / (2.0 + i as f64)).abs() < 1e-9);
@@ -600,7 +610,7 @@ mod tests {
             ..FimLinearSolveOptions::default()
         };
 
-        let report = solve_with_well_elimination(&jacobian, &rhs, &options, layout, None);
+        let report = solve_with_well_elimination(&jacobian, &rhs, &options, layout, None, None);
 
         assert!((report.rhs_norm - rhs.norm()).abs() < 1e-12);
         let residual = rhs - cs_mat_mul_vec(&jacobian, &report.solution);
@@ -611,7 +621,7 @@ mod tests {
     fn lab_quasi_impes_restriction_matches_production_well_schur() {
         let (jacobian, rhs, layout) = sample_system();
         let options = FimLinearSolveOptions::default();
-        let production = solve_with_well_elimination(&jacobian, &rhs, &options, layout, None);
+        let production = solve_with_well_elimination(&jacobian, &rhs, &options, layout, None, None);
         let injected = solve_with_well_elimination_and_restriction(
             &jacobian,
             &rhs,

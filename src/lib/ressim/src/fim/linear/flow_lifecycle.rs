@@ -6,12 +6,12 @@
 //! pressure coarse operator is assembled densely.
 
 use nalgebra::{DMatrix, DVector};
-use nalgebra::{Matrix3, Vector3};
 use sprs::{CsMat, TriMatI};
 use std::time::Instant;
 
 use super::capture::FimFlowLifecycleCapture;
 use super::gmres_block_jacobi::{FimBlockIlu0Factors, factorize_block_ilu0};
+pub(crate) use super::gmres_block_jacobi::{TRUE_IMPES_PRESSURE_SCALE_BAR, true_impes_weight};
 use super::{FimLinearBlockLayout, FimLinearSolveReport, FimLinearSolverKind};
 use crate::ReservoirSimulator;
 use crate::fim::assembly_ad::accumulation_jacobian_blocks_for_state;
@@ -21,43 +21,10 @@ pub(crate) const FLOW_SOURCE_TAG: &str = "release/2026.04/final";
 pub(crate) const FLOW_SOURCE_COMMIT: &str = "b82f21dba405286c4c4446614dd3bf9cdebf7a2c";
 pub(crate) const DUNE_ISTL_VERSION: &str = "2.11.0";
 
-/// OPM multiplies derivatives with respect to pressure in pascals by `50e5`. ResSim's pressure
-/// primary is bar, so the equivalent nondimensionalizing scale is 50 bar.
-pub(crate) const TRUE_IMPES_PRESSURE_SCALE_BAR: f64 = 50.0;
 pub(crate) const FLOW_AMG_COARSEN_TARGET: usize = 1200;
 pub(crate) const FLOW_BICGSTAB_REDUCTION: f64 = 0.005;
 pub(crate) const FLOW_BICGSTAB_MAX_PAIRS: usize = 20;
 const FLOW_BICGSTAB_BREAKDOWN_EPSILON: f64 = 1e-80;
-
-pub(crate) fn true_impes_weight(storage_block: &[[f64; 3]; 3]) -> Result<[f64; 3], String> {
-    let mut transposed = Matrix3::zeros();
-    for equation in 0..3 {
-        for variable in 0..3 {
-            let mut value = storage_block[equation][variable];
-            if variable == 0 {
-                value *= TRUE_IMPES_PRESSURE_SCALE_BAR;
-            }
-            transposed[(variable, equation)] = value;
-        }
-    }
-
-    let rhs = Vector3::new(1.0, 0.0, 0.0);
-    let solved = transposed
-        .lu()
-        .solve(&rhs)
-        .ok_or_else(|| "singular true-IMPES storage block".to_string())?;
-    if !solved.iter().all(|value| value.is_finite()) {
-        return Err("non-finite true-IMPES storage solve".to_string());
-    }
-    let scale = solved
-        .iter()
-        .map(|value| value.abs())
-        .fold(0.0_f64, f64::max);
-    if !scale.is_finite() || scale <= f64::EPSILON {
-        return Err("degenerate true-IMPES normalization".to_string());
-    }
-    Ok([solved[0] / scale, solved[1] / scale, solved[2] / scale])
-}
 
 fn extract_block(
     matrix: &CsMat<f64>,
