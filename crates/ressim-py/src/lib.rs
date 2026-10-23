@@ -17,10 +17,12 @@
 //! `simulator::api`, so rates, wells, dimensions and FIM step statistics are now reachable here
 //! and this module can say what came out of a run rather than only that one happened.
 //!
-//! Still `JsValue`-only, pending Phase 2 and 3: `set_pvt_table`, `set_three_phase_scal_tables`,
-//! `set_sweep_config`, `load_state` (configuration and restore) and the packed `get_grid_state`.
-//! Binding around a gap by reaching into private engine state would put physics in the binding
-//! layer, which is the one thing this crate must not do — so the gaps stay visible instead.
+//! Configuration coverage is driven by the scenario catalog (#64): the parity gate replays the
+//! browser worker's recorded setter calls for every black-oil catalog run through this module, so
+//! a setter missing here fails by name. `parity/CONFIGURATION_COVERAGE.md` records what is
+//! deliberately unbound (the compositional engine and the FIM experiment toggles). Binding around
+//! a gap by reaching into private engine state would put physics in the binding layer, which is
+//! the one thing this crate must not do -- so a gap is closed in the engine's API, then here.
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -41,7 +43,9 @@ pub struct PySimulator {
 impl PySimulator {
     #[new]
     fn new(nx: usize, ny: usize, nz: usize, porosity: f64) -> Self {
-        Self { inner: ReservoirSimulator::new(nx, ny, nz, porosity) }
+        Self {
+            inner: ReservoirSimulator::new(nx, ny, nz, porosity),
+        }
     }
 
     // ---- configuration -------------------------------------------------------------------
@@ -69,7 +73,10 @@ impl PySimulator {
         k_rw_max: f64,
         k_ro_max: f64,
     ) -> PyResult<()> {
-        to_py(self.inner.set_rel_perm_props(s_wc, s_or, n_w, n_o, k_rw_max, k_ro_max))
+        to_py(
+            self.inner
+                .set_rel_perm_props(s_wc, s_or, n_w, n_o, k_rw_max, k_ro_max),
+        )
     }
 
     fn set_fluid_properties(&mut self, mu_o: f64, mu_w: f64) -> PyResult<()> {
@@ -94,7 +101,10 @@ impl PySimulator {
         max_perm: f64,
         seed: u64,
     ) -> PyResult<()> {
-        to_py(self.inner.set_permeability_random_seeded(min_perm, max_perm, seed))
+        to_py(
+            self.inner
+                .set_permeability_random_seeded(min_perm, max_perm, seed),
+        )
     }
 
     fn set_stability_params(
@@ -122,7 +132,11 @@ impl PySimulator {
         skin: f64,
         injector: bool,
     ) -> PyResult<()> {
-        to_py(self.inner.add_well(i, j, k, bhp, well_radius, skin, injector).map(|_| ()))
+        to_py(
+            self.inner
+                .add_well(i, j, k, bhp, well_radius, skin, injector)
+                .map(|_| ()),
+        )
     }
 
     /// Add a well belonging to a named physical well.
@@ -144,10 +158,229 @@ impl PySimulator {
         injector: bool,
         physical_well_id: String,
     ) -> PyResult<()> {
+        to_py(self.inner.add_well_with_id(
+            i,
+            j,
+            k,
+            bhp,
+            well_radius,
+            skin,
+            injector,
+            physical_well_id,
+        ))
+    }
+
+    // ---- catalog configuration ---------------------------------------------------------------
+    //
+    // Everything the worker's `configureReservoirSimulator` can call (#64). The parity matrix
+    // replays the browser's recorded calls through these, so the catalog -- not this list -- is
+    // what says a setter is needed; `parity/CONFIGURATION_COVERAGE.md` records what is not bound.
+
+    fn set_gravity_enabled(&mut self, enabled: bool) {
+        self.inner.set_gravity_enabled(enabled);
+    }
+
+    fn set_cell_dimensions_per_layer(
+        &mut self,
+        dx: f64,
+        dy: f64,
+        dz_per_layer: Vec<f64>,
+    ) -> PyResult<()> {
         to_py(
             self.inner
-                .add_well_with_id(i, j, k, bhp, well_radius, skin, injector, physical_well_id),
+                .set_cell_dimensions_per_layer(dx, dy, dz_per_layer),
         )
+    }
+
+    fn set_fluid_densities(&mut self, rho_o: f64, rho_w: f64) -> PyResult<()> {
+        to_py(self.inner.set_fluid_densities(rho_o, rho_w))
+    }
+
+    fn set_fluid_compressibilities(&mut self, c_o: f64, c_w: f64) -> PyResult<()> {
+        to_py(self.inner.set_fluid_compressibilities(c_o, c_w))
+    }
+
+    fn set_rock_properties(
+        &mut self,
+        c_r: f64,
+        depth_reference_m: f64,
+        b_o: f64,
+        b_w: f64,
+    ) -> PyResult<()> {
+        to_py(
+            self.inner
+                .set_rock_properties(c_r, depth_reference_m, b_o, b_w),
+        )
+    }
+
+    fn set_rock_reference_pressure(&mut self, pressure_bar: f64) -> PyResult<()> {
+        to_py(self.inner.set_rock_reference_pressure(pressure_bar))
+    }
+
+    fn set_initial_pressure_hydrostatic(
+        &mut self,
+        datum_depth_m: f64,
+        datum_pressure_bar: f64,
+    ) -> PyResult<()> {
+        to_py(
+            self.inner
+                .set_initial_pressure_hydrostatic(datum_depth_m, datum_pressure_bar),
+        )
+    }
+
+    fn set_initial_saturation_per_layer(&mut self, sw: Vec<f64>) -> PyResult<()> {
+        to_py(self.inner.set_initial_saturation_per_layer(sw))
+    }
+
+    fn set_permeability_random(&mut self, min_perm: f64, max_perm: f64) -> PyResult<()> {
+        to_py(self.inner.set_permeability_random(min_perm, max_perm))
+    }
+
+    fn set_permeability_per_layer(
+        &mut self,
+        perms_x: Vec<f64>,
+        perms_y: Vec<f64>,
+        perms_z: Vec<f64>,
+    ) -> PyResult<()> {
+        to_py(
+            self.inner
+                .set_permeability_per_layer(perms_x, perms_y, perms_z),
+        )
+    }
+
+    fn set_permeability_field(
+        &mut self,
+        perms_x: Vec<f64>,
+        perms_y: Vec<f64>,
+        perms_z: Vec<f64>,
+    ) -> PyResult<()> {
+        to_py(self.inner.set_permeability_field(perms_x, perms_y, perms_z))
+    }
+
+    fn set_rate_controlled_wells(&mut self, enabled: bool) {
+        self.inner.set_rate_controlled_wells(enabled);
+    }
+
+    fn set_well_control_modes(&mut self, injector_mode: String, producer_mode: String) {
+        self.inner
+            .set_well_control_modes(injector_mode, producer_mode);
+    }
+
+    fn set_injector_enabled(&mut self, enabled: bool) {
+        self.inner.set_injector_enabled(enabled);
+    }
+
+    fn set_target_well_rates(
+        &mut self,
+        injector_rate_m3_day: f64,
+        producer_rate_m3_day: f64,
+    ) -> PyResult<()> {
+        to_py(
+            self.inner
+                .set_target_well_rates(injector_rate_m3_day, producer_rate_m3_day),
+        )
+    }
+
+    fn set_target_well_surface_rates(
+        &mut self,
+        injector_rate_m3_day: f64,
+        producer_rate_m3_day: f64,
+    ) -> PyResult<()> {
+        to_py(
+            self.inner
+                .set_target_well_surface_rates(injector_rate_m3_day, producer_rate_m3_day),
+        )
+    }
+
+    fn set_well_bhp_limits(&mut self, bhp_min: f64, bhp_max: f64) -> PyResult<()> {
+        to_py(self.inner.set_well_bhp_limits(bhp_min, bhp_max))
+    }
+
+    /// Per-well control. `NaN` means "no target" for the rate and BHP arguments, as in the browser.
+    fn set_well_schedule(
+        &mut self,
+        physical_well_id: String,
+        control_mode: String,
+        target_rate_m3_day: f64,
+        target_surface_rate_m3_day: f64,
+        bhp_limit: f64,
+        enabled: bool,
+    ) -> PyResult<()> {
+        to_py(self.inner.set_well_schedule(
+            physical_well_id,
+            control_mode,
+            target_rate_m3_day,
+            target_surface_rate_m3_day,
+            bhp_limit,
+            enabled,
+        ))
+    }
+
+    fn set_well_datum(
+        &mut self,
+        physical_well_id: String,
+        datum_depth_m: f64,
+        wellbore_density_kg_m3: f64,
+    ) -> PyResult<()> {
+        to_py(
+            self.inner
+                .set_well_datum(physical_well_id, datum_depth_m, wellbore_density_kg_m3),
+        )
+    }
+
+    // Three-phase and black-oil gas.
+
+    fn set_three_phase_mode_enabled(&mut self, enabled: bool) {
+        self.inner.set_three_phase_mode_enabled(enabled);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn set_three_phase_rel_perm_props(
+        &mut self,
+        s_wc: f64,
+        s_or: f64,
+        s_gc: f64,
+        s_gr: f64,
+        s_org: f64,
+        n_w: f64,
+        n_o: f64,
+        n_g: f64,
+        k_rw_max: f64,
+        k_ro_max: f64,
+        k_rg_max: f64,
+    ) -> PyResult<()> {
+        to_py(self.inner.set_three_phase_rel_perm_props(
+            s_wc, s_or, s_gc, s_gr, s_org, n_w, n_o, n_g, k_rw_max, k_ro_max, k_rg_max,
+        ))
+    }
+
+    fn set_gas_fluid_properties(&mut self, mu_g: f64, c_g: f64, rho_g: f64) -> PyResult<()> {
+        to_py(self.inner.set_gas_fluid_properties(mu_g, c_g, rho_g))
+    }
+
+    fn set_gas_oil_capillary_params(&mut self, p_entry: f64, lambda: f64) -> PyResult<()> {
+        to_py(self.inner.set_gas_oil_capillary_params(p_entry, lambda))
+    }
+
+    fn set_gas_redissolution_enabled(&mut self, enabled: bool) {
+        self.inner.set_gas_redissolution_enabled(enabled);
+    }
+
+    /// `"water"` or `"gas"`.
+    fn set_injected_fluid(&mut self, fluid: &str) -> PyResult<()> {
+        to_py(self.inner.set_injected_fluid(fluid))
+    }
+
+    fn set_initial_rs(&mut self, rs: f64) {
+        self.inner.set_initial_rs(rs);
+    }
+
+    fn set_initial_gas_saturation(&mut self, sat_gas: f64) {
+        self.inner.set_initial_gas_saturation(sat_gas);
+    }
+
+    fn set_initial_gas_saturation_per_layer(&mut self, sg: Vec<f64>) -> PyResult<()> {
+        to_py(self.inner.set_initial_gas_saturation_per_layer(sg))
     }
 
     // ---- running -------------------------------------------------------------------------
@@ -183,6 +416,22 @@ impl PySimulator {
         self.inner.get_sat_oil()
     }
 
+    fn sat_gas(&self) -> Vec<f64> {
+        self.inner.get_sat_gas()
+    }
+
+    fn rs(&self) -> Vec<f64> {
+        self.inner.get_rs()
+    }
+
+    fn layer_thicknesses(&self) -> Vec<f64> {
+        self.inner.get_layer_thicknesses()
+    }
+
+    fn last_solver_warning(&self) -> String {
+        self.inner.get_last_solver_warning()
+    }
+
     fn cell_count(&self) -> usize {
         self.inner.get_pressures().len()
     }
@@ -202,7 +451,11 @@ impl PySimulator {
         pythonize(py, self.inner.rate_history()).map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
-    fn rate_history_since<'py>(&self, py: Python<'py>, start_index: usize) -> PyResult<Bound<'py, PyAny>> {
+    fn rate_history_since<'py>(
+        &self,
+        py: Python<'py>,
+        start_index: usize,
+    ) -> PyResult<Bound<'py, PyAny>> {
         pythonize(py, self.inner.rate_history_since(start_index))
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
@@ -257,7 +510,8 @@ impl PySimulator {
     ) -> PyResult<()> {
         let grid = depythonize(grid).map_err(|e| PyValueError::new_err(e.to_string()))?;
         let wells = depythonize(wells).map_err(|e| PyValueError::new_err(e.to_string()))?;
-        let history = depythonize(rate_history).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let history =
+            depythonize(rate_history).map_err(|e| PyValueError::new_err(e.to_string()))?;
         to_py(self.inner.apply_state(time_days, grid, wells, history))
     }
 
@@ -287,6 +541,9 @@ impl PySimulator {
 #[pymodule]
 fn ressim(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySimulator>()?;
-    m.add("__doc__", "Native bindings to the ResSim reservoir simulator.")?;
+    m.add(
+        "__doc__",
+        "Native bindings to the ResSim reservoir simulator.",
+    )?;
     Ok(())
 }

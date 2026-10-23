@@ -9,9 +9,8 @@ Both runs are the same Rust compiled for two targets, so the bar is tight rather
 Any real disagreement means a binding is lying about what it forwards.
 
 The matrix in `cases.json` varies one axis per case — solver, mobility ratio, grid size — so a
-failure names the axis rather than just the fact. Coverage is bounded by what `ressim-py` can
-configure, not by what is worth checking; the gap is recorded in
-`docs/ARCHITECTURE_SPLIT_PLAN_2026-09-19.md`.
+failure names the axis rather than just the fact. The second half replays every black-oil run of
+the scenario catalog (#64); see `catalogCases.ts` and `CONFIGURATION_COVERAGE.md`.
 """
 from __future__ import annotations
 
@@ -195,6 +194,114 @@ def check_restore(c: dict, failures: list[str]) -> None:
         failures.append("restore accepted a grid of the wrong size")
 
 
+# ---- the catalog half (#64) ----------------------------------------------------------------------
+#
+# Cases derived from the scenario catalog by catalogCases.ts: each carries the exact ordered setter
+# calls the browser's worker makes for one catalog run, and run_wasm.mjs's outputs for them. Here
+# the same calls are replayed through ressim-py. The bar is bit identity, not TOL: both are the
+# same Rust on two targets, and #62 made the engine's math target-independent.
+
+
+def decode_arg(value):
+    """Undo catalogCases.ts's `encodeArg`. Keep in step with `decodeArg` in run_wasm.mjs."""
+    if isinstance(value, list):
+        return [decode_arg(v) for v in value]
+    if isinstance(value, dict):
+        if "$bigint" in value:
+            return int(value["$bigint"])
+        if "$num" in value:
+            return float(value["$num"])
+        if "$f64" in value:
+            return [float(decode_arg(v)) for v in value["$f64"]]
+        return {k: decode_arg(v) for k, v in value.items()}
+    return value
+
+
+def snake_case(name: str) -> str:
+    """`setWellSchedule` -> `set_well_schedule`: the shim keeps the engine's Rust method names."""
+    return "".join(f"_{ch.lower()}" if ch.isupper() else ch for ch in name)
+
+
+def replay(c: dict) -> "ressim.Simulator":
+    sim = ressim.Simulator(c["nx"], c["ny"], c["nz"], c["porosity"])
+    for method, args in c["calls"]:
+        bound = getattr(sim, snake_case(method), None)
+        if bound is None:
+            raise NotImplementedError(
+                f"ressim-py does not bind {snake_case(method)} (browser {method}), which the "
+                "catalog's configuration uses"
+            )
+        bound(*(decode_arg(a) for a in args))
+    for _ in range(c["steps"]):
+        sim.step(c["dtDays"])
+    return sim
+
+
+def same(a, b) -> bool:
+    """Bit-identical, with JSON's spelling of non-finite numbers: wasm's NaN arrives as null."""
+    if isinstance(a, float) and a != a:
+        return b is None or (isinstance(b, float) and b != b)
+    if isinstance(a, float) and isinstance(b, (int, float)) and not isinstance(b, bool):
+        return a == float(b)
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(same(a[k], b[k]) for k in a)
+    if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
+        return len(a) == len(b) and all(same(x, y) for x, y in zip(a, b))
+    return a == b
+
+
+def check_catalog_case(c: dict, failures: list[str]) -> float:
+    """Replay one catalog case natively; return the worst absolute cell difference seen."""
+    name = c["id"]
+    try:
+        sim = replay(c)
+    except Exception as exc:  # noqa: BLE001 - the failure text is the useful part
+        failures.append(f"{name}: {exc}")
+        return float("inf")
+    ref = c["output"]
+    native = {
+        "pressures": sim.pressures(),
+        "satWater": sim.sat_water(),
+        "satGas": sim.sat_gas(),
+        "rs": sim.rs(),
+        "timeDays": sim.time_days(),
+        "warning": sim.last_solver_warning(),
+        "rateHistory": sim.rate_history(),
+        "gridState": sim.grid_state(),
+    }
+    for key, value in native.items():
+        if not same(value, ref[key]):
+            failures.append(f"{name}/{key}: native differs from wasm")
+    worst = 0.0
+    for key in ("pressures", "satWater", "satGas", "rs"):
+        if len(native[key]) == len(ref[key]):
+            worst = max(worst, worst_array_delta(native[key], ref[key])[0])
+    return worst
+
+
+def check_catalog(failures: list[str]) -> int:
+    path = HERE / "reference_catalog_wasm.json"
+    if not path.exists():
+        failures.append(f"missing {path.name}; run run_wasm.mjs first")
+        return 0
+    reference = json.loads(path.read_text())
+    cases = reference["cases"]
+    print(
+        f"\ncatalog: {len(cases)} distinct setups, first {reference['stepCap']} steps each, "
+        f"steps capped at {reference['dtCapDays']} d"
+    )
+    for c in cases.values():
+        before = len(failures)
+        worst = check_catalog_case(c, failures)
+        solver = "FIM  " if c["fim"] else "IMPES"
+        cells = c["nx"] * c["ny"] * c["nz"]
+        verdict = "identical" if len(failures) == before else "DIFFERS"
+        print(f"  {c['id']:<62} {solver} {cells:>5} cells  {verdict}  max|d| {worst:.1e}")
+    for item in reference["excluded"]:
+        print(f"  excluded {item['run']}: {item['reason']}")
+    return len(cases)
+
+
 def main() -> int:
     spec = json.loads((HERE / "cases.json").read_text())
     reference_path = HERE / "reference_wasm.json"
@@ -215,6 +322,7 @@ def main() -> int:
     for c in cases:
         check_case(c, reference[c["id"]], failures)
     check_restore(cases[0], failures)
+    catalog_count = check_catalog(failures)
 
     if failures:
         print("\nFAIL:", file=sys.stderr)
@@ -225,7 +333,8 @@ def main() -> int:
     strict_cases = [c for c in cases if c.get("strict", True)]
     print(
         f"\nnative and wasm bindings agree on {len(strict_cases)} strict cases of {len(cases)}, "
-        "built from the committed Buckley case A fixture."
+        "built from the committed Buckley case A fixture,\n"
+        f"and bit for bit on {catalog_count} distinct setups replayed from the scenario catalog."
     )
     return 0
 

@@ -11,6 +11,8 @@
  * differently.
  */
 import { readFile, writeFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import { runnerImport } from 'vite'
 import init, { ReservoirSimulator } from '../../../src/lib/ressim/pkg/simulator.js'
 
 const here = new URL('.', import.meta.url)
@@ -60,3 +62,68 @@ for (const override of spec.cases) {
 
 await writeFile(new URL('reference_wasm.json', here), `${JSON.stringify(results, null, 2)}\n`)
 console.log(`wrote reference_wasm.json: ${Object.keys(results).length} cases`)
+
+// ---- the catalog half (#64) ------------------------------------------------------------------
+//
+// Cases derived from the scenario catalog by catalogCases.ts, which records the worker's own
+// configuration calls. This half replays them through the browser bindings; compare_native.py
+// replays the same file through ressim-py. Inputs and outputs travel together, so the native side
+// cannot run a different setup from the one it is compared against.
+
+/** Undo catalogCases.ts's `encodeArg`. Keep in step with `decode_arg` in compare_native.py. */
+function decodeArg(value) {
+    if (Array.isArray(value)) return value.map(decodeArg)
+    if (value && typeof value === 'object') {
+        if ('$bigint' in value) return BigInt(value.$bigint)
+        if ('$num' in value) return Number(value.$num)
+        if ('$f64' in value) return new Float64Array(value.$f64.map(decodeArg))
+        return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, decodeArg(v)]))
+    }
+    return value
+}
+
+const { module: catalogModule } = await runnerImport(fileURLToPath(new URL('catalogCases.ts', here)), {
+    configFile: false,
+    root: fileURLToPath(new URL('../../../', here)),
+    logLevel: 'error',
+})
+const { cases: catalogCases, excluded } = catalogModule.buildCatalogCases()
+
+const catalogResults = {}
+for (const c of catalogCases) {
+    const sim = new ReservoirSimulator(c.nx, c.ny, c.nz, c.porosity)
+    try {
+        for (const [method, args] of c.calls) sim[method](...args.map(decodeArg))
+        for (let i = 0; i < c.steps; i += 1) sim.step(c.dtDays)
+        catalogResults[c.id] = {
+            ...c,
+            output: {
+                pressures: [...sim.getPressures()],
+                satWater: [...sim.getSatWater()],
+                satGas: [...sim.getSatGas()],
+                rs: [...sim.getRs()],
+                timeDays: sim.get_time(),
+                warning: sim.getLastSolverWarning(),
+                rateHistory: sim.getRateHistory(),
+                gridState: Object.fromEntries(
+                    Object.entries(sim.getGridState()).map(([k, v]) => [k, Array.from(v)]),
+                ),
+            },
+        }
+    } finally {
+        sim.free()
+    }
+}
+
+const catalogFile = {
+    stepCap: catalogModule.CATALOG_STEP_CAP,
+    dtCapDays: catalogModule.CATALOG_DT_CAP_DAYS,
+    excluded,
+    cases: catalogResults,
+}
+await writeFile(new URL('reference_catalog_wasm.json', here), `${JSON.stringify(catalogFile)}\n`)
+const runCount = catalogCases.reduce((n, c) => n + c.runs.length, 0)
+console.log(
+    `wrote reference_catalog_wasm.json: ${catalogCases.length} distinct setups covering ${runCount} ` +
+        `catalog runs, ${excluded.length} excluded`,
+)

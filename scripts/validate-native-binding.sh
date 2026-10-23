@@ -17,6 +17,9 @@ set -euo pipefail
 #      for the committed Buckley case A fixture. Both are the same Rust compiled for two targets,
 #      so the bar is 1e-9 — a floating-point courtesy, not a tolerance budget. This checks that a
 #      binding forwards faithfully; `benchmark_buckley` in the Rust suite owns the physics.
+#      Then every black-oil catalog run, configured by the worker's own calls as recorded by
+#      parity/catalogCases.ts and replayed through both bindings, must agree bit for bit (#64).
+#      A catalog setter ressim-py does not bind fails here by name.
 #
 # Deliberately NOT a physics gate, and deliberately not in `validate:product`: it needs a Python
 # interpreter and the generated wasm bundle. Run it when touching crates/ressim-py, the engine's
@@ -44,10 +47,12 @@ fi
 echo "gate ok: ressim-py's dependency graph contains no wasm binding crates"
 
 echo "== 2. build and install the extension module"
-cargo build --manifest-path "$repo_root/Cargo.toml" -p ressim-py --quiet
+# Release, not debug: the catalog matrix in step 3 steps 135 engine setups, which takes ~6 min
+# in a debug build and ~15 s in release (#64). The compile costs about a minute more.
+cargo build --manifest-path "$repo_root/Cargo.toml" -p ressim-py --release --quiet
 # The cdylib is libressim.so; Python imports a module named ressim.
 # Honour CARGO_TARGET_DIR: copying from a hard-coded target/ silently tests a stale build.
-cp "${CARGO_TARGET_DIR:-$repo_root/target}/debug/libressim.so" "$parity/ressim.so"
+cp "${CARGO_TARGET_DIR:-$repo_root/target}/release/libressim.so" "$parity/ressim.so"
 python3 -c "import sys; sys.path.insert(0, '$parity'); import ressim; ressim.Simulator(1,1,1,0.2)"
 echo "gate ok: the extension module builds and imports"
 
