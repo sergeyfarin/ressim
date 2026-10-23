@@ -516,6 +516,43 @@ No existing black-oil benchmark tolerance is changed by any of this.
 
 ## 8. Completion records
 
+### #45 — up to ten components and the SPE5 fluid (2026-10-23)
+
+`MAX_COMPONENTS = 10`, the SPE5 fluid pinned from `Spe5FluidSystem.hpp`, temperature per fluid,
+and the SPE5 oracle in the C0 fixture: §1 and §3a. Implemented in `f6318a3`.
+
+**Cost of the dense per-cell kernels**, measured on `f6318a3` (clean tree), release, AMD EPYC
+3251, one thread:
+
+```bash
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib comp_cost_ -- --ignored --nocapture
+```
+
+| Case | Flash (cold) µs | Flash derivatives µs | Cell accumulation µs | Face flux µs |
+| --- | ---: | ---: | ---: | ---: |
+| N=2 binary, 100 bar | 117 | 3.4 | 121 | 194 |
+| N=3 ternary, 130 bar | 111 | 4.7 | 118 | 207 |
+| N=6 SPE5 oil, 130 bar | 76 | 12.7 | 90 | 179 |
+| N=10 timing fluid, 130 bar | 128 | 33.8 | 164 | 329 |
+
+All four states are two-phase. Two runs agreed to within 5% except the N=6 accumulation and face
+columns (98/223 µs in the first run). The N=10 row uses a timing-only fluid, SPE5 plus four
+pseudo-components averaged from neighbours (`compositional/cost_tests.rs`); it is not validated
+physics and is not pinned.
+
+What it says: **the flash dominates and scales with its iteration count, not with N.** The cold
+flash is a stability test plus substitution, and SPE5 at 130 bar converges in fewer iterations
+than the ternary does. The derivatives, which are the dense `N x N` and `N x 2N` part, grow
+roughly as N² (3.4 → 33.8 µs from N=2 to N=10), and at N=10 they are still a fifth of the
+cell cost. A full N=10 cell accumulation costs 1.4× the ternary's and a face 1.6×. The dense
+per-cell Jacobian is therefore not what limits SPE5 or a lumped SPE3; the flash iteration count
+and the global linear solve (#49) are.
+
+**Found along the way** (details in §3a): a molar-density test invariant that heavy oils break,
+a trace-condensate surface flash ResSim's unaccelerated substitution cannot converge (on #51),
+and a 1e-8 derivative agreement near SPE5's critical region that neither side can be preferred
+on.
+
 ### Adapter acceptance against the FIM model/solver boundary (2026-09-19)
 
 [`FIM_MODEL_SOLVER_BOUNDARY_2026-09-18.md`](FIM_MODEL_SOLVER_BOUNDARY_2026-09-18.md) publishes a
