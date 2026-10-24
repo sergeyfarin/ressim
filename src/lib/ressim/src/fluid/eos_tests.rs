@@ -239,8 +239,8 @@ fn comp_eos_fugacity_coefficients_match_the_fixture() {
     }
 
     assert!(
-        // 286 from the binary and ternary, 348 from SPE5 (#45).
-        checked == 286 + 348,
+        // 286 from the binary and ternary, 360 from SPE5 (#45, and `spe5_stcond_gas` from #75).
+        checked == 286 + 360,
         "expected every branch of every state, compared {checked}"
     );
     assert!(

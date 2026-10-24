@@ -220,7 +220,8 @@ which PTFlash cannot flash at all (§4, limit 1) but the EOS evaluates without d
 single-vapour — and 8 flash-free EOS states (pure n-hexane through its vapour pressure, pure C20
 on the PRCORR branch, the ideal-gas limit). The flashed states are the initial oil depleted
 through its bubble point (20–276 bar), the oil diluted 10–90% with injection gas at 3000 and
-4000 psia, the injection gas at 4000 psia, and two `STCOND 15.0 1.0` surface streams. The
+4000 psia, the injection gas at 4000 psia, and two `STCOND 15.0 1.0` surface streams; #75 added
+a third, the injection gas itself (`spe5_stcond_gas`), making 30 states and 14 two-phase. The
 binary and ternary sections are byte-identical to schema `/2` apart from two keys every system
 now carries: `eos` and `flash_tolerance`.
 
@@ -237,16 +238,55 @@ Three things SPE5 found:
   vapour has more moles per m³ than the C10–C20 oil and a fifth of its mass density. ResSim and
   OPM agree on both densities; the tests now compare mass density, and the saturation-versus-`beta`
   test follows the molar volumes instead of assuming their order.
-- **A flash ResSim cannot converge.** The injection gas with its 1e-6 heavy traces condenses a
-  1.6e-6 liquid fraction at surface conditions. OPM resolves it; ResSim's unaccelerated
-  substitution stalls at residual 5.5e-9 after 5000 iterations (target 1e-11). The state is not in
-  the fixture, and the measurement is recorded on #51, whose dew-point robustness criterion it
-  belongs to. The separator stream after breakthrough, equal moles of oil and gas, replaces it.
+- **A flash ResSim could not converge** — fixed by #75, below. The injection gas with its 1e-6
+  heavy traces condenses a 1.6e-6 liquid fraction at surface conditions. OPM resolved it; ResSim
+  returned `NotConverged` at residual 5.5e-9 after 5000 iterations (target 1e-11), so the state
+  was left out of the fixture, and the separator stream after breakthrough, equal moles of oil and
+  gas, went in beside it. It is back as `spe5_stcond_gas`.
 - **Derivatives near the critical region agree to 1e-8, not 1e-9.** At `spe5_mix3000_g9` (90%
   injection gas at 3000 psia) `dbeta/dz` reaches 6.5 and ResSim and OPM differ by 3–6e-9 on
   every column. The gap does not move between OPM tolerances 1e-9 and 1e-12, and a centred
   difference on ResSim's flash is noisier (5e-8), so neither side can be preferred. SPE5's
   derivative bound is 1e-8; the binary and ternary keep 1e-9 and 2e-9.
+
+**Near-dew-point flash (#75, schema `/4`).** The stalled state was not a slow substitution. On
+`spe5_dew_p20_t3e-5` `K` stopped moving at roundoff after 10 iterations while the residual sat at
+5.2e-11 for the remaining 4990. The floor was the Rachford-Rice root: carried in `beta` with
+`beta` near one, the heavy components' liquid denominators `1 + beta (K_i - 1)` are differences
+of nearly equal numbers, and one ulp of `beta` is a 1e-9 relative error in `x_i` when the liquid
+fraction is 1e-7. The flash now carries the root in `L = 1 - beta` whenever `beta > 0.5`, solving
+the same equation with every `K_i` inverted, and ends a Rachford-Rice solve on a converged Newton
+step as well as on a closed bracket. Substitution itself is unchanged. GDEM acceleration
+(Crowe & Nishio; Michelsen & Mollerup ch. 10) was tried first: alone it did not fix the stall
+(8 of 72 sweep states still failed, one newly), and with the root fix it only cut iteration
+counts, which is C14's question, so it is not in.
+
+The fixture gained a separate `spe5_dew_sweep` block: SPE5's injection gas with all three
+heavies at the same trace `t` = 1e-7 to 1e-3 in half-decade steps, at `STCOND` and at 160 °F
+from 10 to 276 bar, 72 states. It sits outside `systems` so the fixture-wide tests do not iterate
+it; `comp_domain_spe5_dew_sweep_matches_the_oracle` gates it on phase state, `L`, `x` and `y` at
+the fixture's 1e-8 bounds. Its derivatives are deliberately not gated: a step from the dew point
+ResSim and OPM differ on `dbeta/dz` by up to 2.4e-6 (at `spe5_dew_stcond_t3e-6`), and which side
+is nearer has not been established. That is open, not settled.
+
+PTFlash cannot resolve most of the sweep at SPE5's 1e-12: neither method converges on 21 of the
+72, nor on `spe5_stcond_gas`. The harness therefore takes a tolerance ladder — 1e-12, then 1e-9 —
+and writes the rung each state was solved at as `flash_tolerance_used`; that new per-state key is
+why the schema is `/4`. Every other state, binary and ternary included, keeps its old tolerance.
+
+| Measure | Before (8729b89) | After |
+|---|---|---|
+| Dew sweep, 72 states: converged | 61 (11 `NotConverged`, all at `STCOND`, 10 and 20 bar) | 72, every one OPM's phase state |
+| Dew sweep: worst \|ΔL\|, \|Δx\|, \|Δy\| vs OPM | — | 3.7e-11, 1.4e-12 |
+| Dew sweep: substitution iterations, converged states | 359 total, worst 47 | 446 total, worst 47 (`p150_t1e-3`) |
+| Fixture two-phase iterations: binary / ternary / SPE5 | mean 18.0 / 18.8 / 28.5; worst 35 / 50 / 79 | unchanged, plus `spe5_stcond_gas` in 8 |
+| C6 domain sweep worst iterations: binary / ternary | 339 / 747 | 339 / 747 |
+| C6 domain sweep worst `z` reconstruction | 1.1e-14 | 2.2e-16 |
+
+The eleven newly converged states take 89 iterations between them; the 61 that converged before
+moved by at most one iteration each (net -2), since their split is now rounded differently. The
+GDEM measurement above was taken on an uncommitted tree and is provisional. Reproduce with
+`cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib -- comp_flash_report_iteration_counts comp_domain_report --ignored --nocapture --test-threads=1`.
 
 **Derivatives are a first-class part of this oracle, not a bonus.** PTFlash reconstructs them by
 implicit differentiation of the converged equilibrium, which is the pattern C4 is instructed to
@@ -549,7 +589,7 @@ per-cell Jacobian is therefore not what limits SPE5 or a lumped SPE3; the flash 
 and the global linear solve (#49) are.
 
 **Found along the way** (details in §3a): a molar-density test invariant that heavy oils break,
-a trace-condensate surface flash ResSim's unaccelerated substitution cannot converge (on #51),
+a trace-condensate surface flash ResSim could not converge (fixed by #75),
 and a 1e-8 derivative agreement near SPE5's critical region that neither side can be preferred
 on.
 

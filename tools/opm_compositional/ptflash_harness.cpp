@@ -51,6 +51,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 using Scalar = double;
@@ -84,6 +85,7 @@ struct Result {
     std::string status = "ok";
     std::string error;
     std::string method_used;
+    Scalar tolerance_used = 0.0;
 
     bool single_phase = false;
     Scalar L = 0.0;
@@ -110,24 +112,34 @@ struct Runner {
     using FluidState = Opm::CompositionalFluidState<Eval, FluidSystem>;
     using Flash = Opm::PTFlash<Scalar, FluidSystem>;
 
-    static Result<NC> run(const Case<NC>& c, const EOSType eos_type, const Scalar tol,
+    // `tolerances` is a ladder: each method is tried at the first, and only a state that no
+    // method resolves there moves to the next. The tolerance that succeeded is recorded per
+    // state, like the method, so a looser reference is never anonymous.
+    static Result<NC> run(const Case<NC>& c, const EOSType eos_type,
+                          const std::vector<Scalar>& tolerances,
                           const std::vector<std::string>& methods)
     {
         Result<NC> r;
         FluidState fs;
 
-        for (size_t attempt = 0; attempt < methods.size(); ++attempt) {
-            fs = FluidState{};
-            seed(fs, c);
-            r.method_used = methods[attempt];
-            try {
-                r.single_phase = Flash::solve(fs, methods[attempt], tol, eos_type, 0);
-                r.status = "ok";
-                r.error.clear();
+        for (const Scalar tol : tolerances) {
+            for (size_t attempt = 0; attempt < methods.size(); ++attempt) {
+                fs = FluidState{};
+                seed(fs, c);
+                r.method_used = methods[attempt];
+                r.tolerance_used = tol;
+                try {
+                    r.single_phase = Flash::solve(fs, methods[attempt], tol, eos_type, 0);
+                    r.status = "ok";
+                    r.error.clear();
+                    break;
+                } catch (const std::exception& e) {
+                    r.status = "oracle_failure";
+                    r.error = e.what();
+                }
+            }
+            if (r.status == "ok") {
                 break;
-            } catch (const std::exception& e) {
-                r.status = "oracle_failure";
-                r.error = e.what();
             }
         }
         if (r.status != "ok") {
@@ -347,7 +359,7 @@ template <class FluidSystem>
 static void emit_system(std::ostream& os, const std::string& system_name,
                         const std::vector<Case<FluidSystem::numComponents>>& cases,
                         const std::vector<EosCase<FluidSystem::numComponents>>& eos_cases,
-                        const EOSType eos_type, const Scalar tol,
+                        const EOSType eos_type, const std::vector<Scalar>& tolerances,
                         const std::vector<std::string>& methods, bool last)
 {
     constexpr int NC = FluidSystem::numComponents;
@@ -355,7 +367,7 @@ static void emit_system(std::ostream& os, const std::string& system_name,
     os << "      \"system\": \"" << system_name << "\",\n";
     os << "      \"num_components\": " << NC << ",\n";
     os << "      \"eos\": \"" << (eos_type == EOSType::PRCORR ? "PRCORR" : "PR") << "\",\n";
-    os << "      \"flash_tolerance\": " << num(tol) << ",\n";
+    os << "      \"flash_tolerance\": " << num(tolerances.front()) << ",\n";
 
     os << "      \"components\": [\n";
     for (int i = 0; i < NC; ++i) {
@@ -422,7 +434,7 @@ static void emit_system(std::ostream& os, const std::string& system_name,
     os << "      \"states\": [\n";
     for (size_t n = 0; n < cases.size(); ++n) {
         const auto& c = cases[n];
-        const auto r = Runner<FluidSystem>::run(c, eos_type, tol, methods);
+        const auto r = Runner<FluidSystem>::run(c, eos_type, tolerances, methods);
         const Scalar beta = 1.0 - r.L;
         // OPM's Li labelling returns L = 1 for a single liquid and L = 0 for a single vapour.
         const char* present = (r.status != "ok")      ? "unresolved"
@@ -434,6 +446,7 @@ static void emit_system(std::ostream& os, const std::string& system_name,
         os << "          \"id\": \"" << c.id << "\",\n";
         os << "          \"status\": \"" << r.status << "\",\n";
         os << "          \"method_used\": \"" << r.method_used << "\",\n";
+        os << "          \"flash_tolerance_used\": " << num(r.tolerance_used) << ",\n";
         os << "          \"pressure_pa\": " << num(c.p_pa) << ",\n";
         os << "          \"temperature_k\": " << num(c.t_k) << ",\n";
         os << "          \"z\": ";
@@ -677,11 +690,10 @@ int main(int argc, char** argv)
     }
     add6("spe5_gas_p276", 4000.0 * 0.068947573, T5, spe5_gas);
     // Surface conditions, `STCOND 15.0 1.0`: what the surface conversion separates.
-    // The second is a producer's stream after gas breakthrough, equal moles of oil and injection
-    // gas. The injection gas alone is deliberately absent: with its 1e-6 heavy traces it condenses
-    // a liquid fraction of 1.6e-6 at surface, which OPM resolves and ResSim's unaccelerated
-    // substitution does not (residual 5.5e-9 after 5000 iterations). That is a flash limitation
-    // with its own issue, not a property of the SPE5 fluid.
+    // The injection gas condenses a liquid fraction of 1.6e-6 here from its 1e-6 heavy traces: a
+    // state on the dew point's doorstep, and the one #75 was opened for. The breakthrough stream
+    // is a producer's stream after gas breakthrough, equal moles of oil and injection gas.
+    add6("spe5_stcond_gas", 1.0, 288.15, spe5_gas);
     add6("spe5_stcond_oil", 1.0, 288.15, spe5_oil);
     {
         std::array<Scalar, 6> z{};
@@ -689,6 +701,32 @@ int main(int argc, char** argv)
             z[i] = 0.5 * spe5_oil[i] + 0.5 * spe5_gas[i];
         }
         add6("spe5_stcond_breakthrough", 1.0, 288.15, z);
+    }
+    // The near-dew-point sweep (#75): the paper's injection gas with all three heavies at the
+    // same trace `t`, taken from C1, for `t` from 1e-7 to 1e-3 in half-decade steps; at surface
+    // and down the reservoir isotherm from depletion to the initial pressure. Small `t` puts the
+    // gas just inside its dew point with a liquid fraction of order `t`, or just outside it.
+    //
+    // Emitted as its own block, `spe5_dew_sweep`, not among the SPE5 states: it is a flash
+    // convergence census, gated on phase state, split and compositions. The fixture-wide
+    // derivative bounds are not claimed here - a step from the dew point `dbeta/dz` is large and
+    // ResSim and OPM differ on it by 1e-6, which is #75's recorded finding, not its gate.
+    std::vector<Case<6>> dew6;
+    {
+        const std::array<std::string, 9> trace_tags = {"1e-7", "3e-7", "1e-6", "3e-6", "1e-5",
+                                                       "3e-5", "1e-4", "3e-4", "1e-3"};
+        std::vector<std::tuple<std::string, Scalar, Scalar>> conditions = {
+            {"stcond", 1.0, 288.15}};
+        for (const Scalar p : {10.0, 20.0, 50.0, 100.0, 150.0, 200.0, 4000.0 * 0.068947573}) {
+            conditions.emplace_back("p" + std::to_string(static_cast<int>(p)), p, T5);
+        }
+        for (const auto& [tag, p_bar, t_k] : conditions) {
+            for (const std::string& trace_tag : trace_tags) {
+                const Scalar t = std::stod(trace_tag);
+                dew6.push_back(Case<6>{"spe5_dew_" + tag + "_t" + trace_tag, p_bar * 1e5, t_k,
+                                       {0.77 - 3.0 * t, 0.20, 0.03, t, t, t}});
+            }
+        }
     }
 
     std::vector<EosCase<6>> e6;
@@ -712,7 +750,7 @@ int main(int argc, char** argv)
 
     std::ostream& os = std::cout;
     os << "{\n";
-    os << "  \"schema\": \"ressim-compositional-ptflash-fixture/3\",\n";
+    os << "  \"schema\": \"ressim-compositional-ptflash-fixture/4\",\n";
     os << "  \"generator\": \"tools/opm_compositional/ptflash_harness.cpp\",\n";
     os << "  \"flash_method_chain\": [";
     for (size_t i = 0; i < methods.size(); ++i) {
@@ -728,18 +766,25 @@ int main(int argc, char** argv)
           "dependent z_(N-1) was seeded with dz/dz_k = -1, so that invariant is enforced by the "
           "oracle rather than assumed by the consumer.\",\n";
     os << "  \"systems\": [\n";
-    emit_system<Binary>(os, "ressim::TwoComponentFluidSystem", t2, e2, eos_type, tol, methods,
+    emit_system<Binary>(os, "ressim::TwoComponentFluidSystem", t2, e2, eos_type, {tol}, methods,
                         false);
-    emit_system<Ternary>(os, "Opm::ThreeComponentFluidSystem", t3, e3, eos_type, tol, methods,
+    emit_system<Ternary>(os, "Opm::ThreeComponentFluidSystem", t3, e3, eos_type, {tol}, methods,
                          false);
     // 1e-12 rather than the default: at 1e-9, `spe5_oil_p150` (0.04 vapour just below the bubble
     // point) converges far enough for the split but not for its derivatives, which then differ
     // from the tighter answer by 9e-10. At 1e-12 every SPE5 state agrees with ResSim's
     // derivatives to ~1e-11. Newton cannot reach 1e-12 on most two-phase SPE5 states, so those
     // are resolved by the `ssi` fallback, which `method_used` records per state.
+    //
+    // A state neither method resolves at 1e-12 is retried at the default (#75): `spe5_stcond_gas`
+    // and 21 of the 72 near-dew sweep states, where PTFlash cannot reach 1e-12 a step from the
+    // dew point. `flash_tolerance_used` records which tolerance each state was solved at.
     emit_system<Spe5>(os, "ressim::Spe5HydrocarbonFluidSystem", t6, e6, EOSType::PRCORR,
-                      std::min(tol, Scalar(1e-12)), methods, true);
-    os << "  ]\n";
+                      {std::min(tol, Scalar(1e-12)), tol}, methods, true);
+    os << "  ],\n";
+    os << "  \"spe5_dew_sweep\":\n";
+    emit_system<Spe5>(os, "ressim::Spe5HydrocarbonFluidSystem", dew6, {}, EOSType::PRCORR,
+                      {std::min(tol, Scalar(1e-12)), tol}, methods, true);
     os << "}\n";
     return 0;
 }

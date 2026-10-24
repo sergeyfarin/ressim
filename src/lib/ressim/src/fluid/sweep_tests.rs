@@ -10,6 +10,7 @@
 //! questions — "is it right where we looked" and "is there anywhere it falls over".
 
 use super::derivatives::{DerivativeError, flash_derivatives};
+use super::fixture;
 use super::flash::{FlashError, PhaseState, flash};
 use super::pinned;
 use super::specification::FluidSpecification;
@@ -448,59 +449,163 @@ fn comp_domain_report_sweep_tallies() {
     }
 }
 
-/// SPE5's injection gas carrying heavy traces, at surface and at reservoir conditions (#75).
+/// One near-dew-point flash against its OPM reference.
+struct DewComparison {
+    id: String,
+    z: Vec<f64>,
+    ours: Result<super::flash::FlashState, FlashError>,
+    oracle_phase: String,
+    /// OPM's `(L, x, y)`, for a two-phase reference.
+    oracle_split: Option<(f64, Vec<f64>, Vec<f64>)>,
+}
+
+/// Flash every state of the fixture's SPE5 dew-point sweep (#75).
 ///
-/// The paper's gas is C1 0.77 / C3 0.20 / C6 0.03 with no C10, C15 or C20. Each state here gives
-/// all three heavies the same trace `t`, taken from C1, for `t` from 1e-7 to 1e-3 in half-decade
-/// steps. With a small `t` the gas sits just inside its dew point, condensing a liquid fraction of
-/// order `t`, which is where unaccelerated substitution's convergence rate goes to zero.
+/// SPE5's injection gas, C1 0.77 / C3 0.20 / C6 0.03, with all three heavies at the same trace
+/// `t` from 1e-7 to 1e-3, at surface and down the reservoir isotherm. With a small `t` the gas
+/// sits just inside its dew point with a liquid fraction of order `t`, which is where the flash
+/// once stalled: not on substitution's rate, but on a Rachford-Rice root carried in `beta`.
+fn spe5_dew_sweep() -> Vec<DewComparison> {
+    let f = fixture::load();
+    let system = &f.spe5_dew_sweep;
+    let spec = fixture::spec_for(system);
+    system
+        .states
+        .iter()
+        .map(|state| DewComparison {
+            id: state.id.clone(),
+            z: state.z.clone(),
+            oracle_split: state.l_liquid.map(|l| {
+                (
+                    l,
+                    state.x_liquid.clone().unwrap_or_default(),
+                    state.y_vapour.clone().unwrap_or_default(),
+                )
+            }),
+            ours: flash(
+                &spec,
+                state.pressure_pa,
+                state.temperature_k,
+                &state.z,
+                None,
+            ),
+            oracle_phase: state.present_phase.clone(),
+        })
+        .collect()
+}
+
+/// **#75's gate.** Every state of the dew-point sweep converges, to the same phase state as OPM,
+/// with the same split and compositions at the fixture's own bounds.
 ///
-/// Returns `(label, pressure [Pa], temperature [K], z)`.
-fn spe5_dew_states(spec: &FluidSpecification) -> Vec<(String, f64, f64, Vec<f64>)> {
-    let traces = [1e-7, 3e-7, 1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4, 1e-3];
-    // Surface conditions are `STCOND 15.0 1.0`; the reservoir column runs from depletion to the
-    // initial 4000 psia at the reservoir temperature.
-    let mut conditions = vec![("stcond".to_string(), 1.0e5, 288.15)];
-    for p_bar in [10.0, 20.0, 50.0, 100.0, 150.0, 200.0, 4000.0 * 0.068947573] {
-        conditions.push((
-            format!("p{}", p_bar as i64),
-            p_bar * 1.0e5,
-            spec.reservoir_temperature_k(),
-        ));
-    }
-    let mut out = Vec::new();
-    for (tag, p, t) in &conditions {
-        for &trace in &traces {
-            let z = vec![0.77 - 3.0 * trace, 0.20, 0.03, trace, trace, trace];
-            out.push((format!("{tag}_t{trace:e}"), *p, *t, z));
+/// Before #75 eleven of these 72 returned `NotConverged`, all within a step of the dew point:
+/// the residual floored at 1e-10 to 1e-7, set by the precision of a Rachford-Rice root carried
+/// in `beta` rather than by substitution's rate. OPM resolves all 72, 21 of them only at its
+/// 1e-9 tolerance rung (`flash_tolerance_used`).
+#[test]
+fn comp_domain_spe5_dew_sweep_matches_the_oracle() {
+    let sweep = spe5_dew_sweep();
+    assert_eq!(sweep.len(), 72, "the dew-point sweep changed size");
+
+    let mut two_phase = 0;
+    let mut worst_split = (0.0f64, String::new());
+    let mut worst_composition = (0.0f64, String::new());
+    let mut worst_reconstruction = 0.0f64;
+    for c in &sweep {
+        let ours = c
+            .ours
+            .as_ref()
+            .unwrap_or_else(|e| panic!("{}: flash failed where OPM resolved it: {e}", c.id));
+        let expected = match c.oracle_phase.as_str() {
+            "two_phase" => PhaseState::TwoPhase,
+            "liquid" => PhaseState::SingleLiquid,
+            "vapour" => PhaseState::SingleVapour,
+            other => panic!("{}: OPM reports {other}", c.id),
+        };
+        assert_eq!(ours.phase_state, expected, "{}: phase state", c.id);
+        if expected != PhaseState::TwoPhase {
+            continue;
+        }
+        two_phase += 1;
+        assert!(
+            ours.equilibrium_residual < 1e-11,
+            "{}: residual {:e}",
+            c.id,
+            ours.equilibrium_residual
+        );
+
+        let (l, x, y) = c
+            .oracle_split
+            .as_ref()
+            .expect("a two-phase reference has a split");
+        let d = (ours.l_liquid() - l).abs();
+        if d > worst_split.0 {
+            worst_split = (d, c.id.clone());
+        }
+        for i in 0..c.z.len() {
+            for d in [(ours.x[i] - x[i]).abs(), (ours.y[i] - y[i]).abs()] {
+                if d > worst_composition.0 {
+                    worst_composition = (d, format!("{}/{i}", c.id));
+                }
+            }
+            let reconstructed = ours.l_liquid() * ours.x[i] + ours.beta * ours.y[i];
+            worst_reconstruction =
+                worst_reconstruction.max((reconstructed - c.z[i]).abs() / c.z[i]);
         }
     }
-    out
+
+    assert_eq!(two_phase, 33, "the sweep's two-phase count changed");
+    // The bounds are `comp_flash_matches_the_fixture_on_every_state`'s, unchanged.
+    assert!(
+        worst_split.0 < 1e-8,
+        "liquid fraction disagrees: {:e} at {}",
+        worst_split.0,
+        worst_split.1
+    );
+    assert!(
+        worst_composition.0 < 1e-8,
+        "phase compositions disagree: {:e} at {}",
+        worst_composition.0,
+        worst_composition.1
+    );
+    // Relative per component, because the heavies are 1e-7 of the feed: an absolute bound would
+    // let one vanish without noticing.
+    assert!(
+        worst_reconstruction < 1e-8,
+        "worst relative z reconstruction: {worst_reconstruction:e}"
+    );
+    println!(
+        "dew sweep vs OPM: worst |dL| {:e} at {}; worst |dx|,|dy| {:e} at {}; worst relative \
+         reconstruction {worst_reconstruction:e}",
+        worst_split.0, worst_split.1, worst_composition.0, worst_composition.1
+    );
 }
 
 #[test]
 #[ignore = "reporting only: prints the SPE5 dew-point sweep recorded in COMPOSITIONAL_VALIDATION.md"]
 fn comp_domain_report_spe5_dew_sweep() {
-    let spec = pinned::spe5().unwrap();
     let (mut converged, mut total_iterations, mut worst) =
         (0usize, 0usize, (0usize, String::new()));
     let mut failed = Vec::new();
-    for (label, p, t, z) in spe5_dew_states(&spec) {
-        match flash(&spec, p, t, &z, None) {
+    for c in spe5_dew_sweep() {
+        match &c.ours {
             Ok(s) => {
                 converged += 1;
                 total_iterations += s.iterations;
                 if s.iterations > worst.0 {
-                    worst = (s.iterations, label.clone());
+                    worst = (s.iterations, c.id.clone());
                 }
                 println!(
-                    "{label}: {:?} beta {:.10} iterations {}",
-                    s.phase_state, s.beta, s.iterations
+                    "{}: {:?} (OPM {}) L {:e} iterations {}",
+                    c.id,
+                    s.phase_state,
+                    c.oracle_phase,
+                    s.l_liquid(),
+                    s.iterations
                 );
             }
             Err(e) => {
-                println!("{label}: FAILED {e}");
-                failed.push(label);
+                println!("{}: FAILED {e} (OPM {})", c.id, c.oracle_phase);
+                failed.push(c.id.clone());
             }
         }
     }
