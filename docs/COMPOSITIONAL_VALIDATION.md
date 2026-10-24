@@ -265,9 +265,44 @@ The fixture gained a separate `spe5_dew_sweep` block: SPE5's injection gas with 
 heavies at the same trace `t` = 1e-7 to 1e-3 in half-decade steps, at `STCOND` and at 160 °F
 from 10 to 276 bar, 72 states. It sits outside `systems` so the fixture-wide tests do not iterate
 it; `comp_domain_spe5_dew_sweep_matches_the_oracle` gates it on phase state, `L`, `x` and `y` at
-the fixture's 1e-8 bounds. Its derivatives are deliberately not gated: a step from the dew point
-ResSim and OPM differ on `dbeta/dz` by up to 2.4e-6 (at `spe5_dew_stcond_t3e-6`), and which side
-is nearer has not been established. That is open, not settled.
+the fixture's 1e-8 bounds, and on derivatives at SPE5's 1e-8 derivative bound against whichever
+oracle each state can support (below).
+
+**The sweep's derivative gap was OPM's `L`, not ResSim's derivatives** (#75 follow-up). A step
+from the dew point the two first differed on `dbeta/dz` by up to 2.4e-6 relative (at
+`spe5_dew_stcond_t3e-6`), and on `dx`, `dy` and the molar densities by up to 7.9e-6. Every gap
+above 1e-8 was on one of the 7 states OPM answered with plain `ssi`, and on those OPM's own result
+does not close its own mass balance: `L x + (1 - L) y` misses the heavies' `z` by 3.7e-6 relative
+at `spe5_dew_stcond_t3e-6`, and the derivative gap follows that miss state by state (2.4e-6,
+1.2e-6, 4.9e-7, 2.4e-7, ...). The cause is in `PTFlash::solveRachfordRice_g_`. Its Newton runs in
+`V` from the midpoint of the pole window, so near `V = 1` it nearly always steps outside the window
+and falls back to bisection in `L`. That bisection stops at an *absolute* half-width of 1e-10, a
+relative error of up to 1.7e-5 when `L` is 6e-6. Plain `ssi` returns that `L` unchanged
+(replaying OPM's routine in Python on the `K` it reports gives OPM's `L` to seven digits, 3.7e-6
+from the exact root of the same `K`), and `updateDerivatives_` linearizes at it. `ssi+newton`
+solves `L` along with `x` and `y` in its Newton step, so those 26 states close mass balance to
+roundoff. The tolerance rung does not matter: the 7 `ssi` states were all solved at 1e-12, and
+the 1e-9-rung states are all `ssi+newton`.
+
+The independent oracle is a centred five-point difference of ResSim's flash. Each perturbed flash
+is started from the base state's `K`, with a step a fraction of the smaller perturbed feed. Over
+the 7 states the worst gap is 1.4e-8 at 1e-2 (truncation), 4.2e-9 at 5e-3, 6.9e-9 at 3e-3,
+6.4e-9 at 2e-3 and 1.0e-8 at 1e-3 (roundoff). On `spe5_dew_stcond_t3e-6` the difference sits
+within 3e-9 of ResSim on every column across the plateau and 4e-7 to 2.4e-6 from OPM. Started
+cold, the perturbed flashes add up to 3.5e-7 of iteration-path noise at `spe5_dew_p20_t1e-3`,
+which is why the gate warm-starts them. Verdict: an **oracle limit**. ResSim's derivatives are
+right and OPM's plain-`ssi` references are not, to that extent. The gate now checks derivatives
+against OPM on the 26 states whose reference closes its mass balance to 1e-12 (`dbeta`, `dx`,
+`dy`, `dcL`, `dcV`; worst 1.9e-9), and `dL/du` against the difference at a 5e-3 step on the other
+7 (worst 4.2e-9). The same bisection floor is in the flash comparison too: the sweep's worst
+\|ΔL\| of 3.7e-11 (`spe5_dew_stcond_t3e-5`) is OPM's error, 4.7e-7 relative.
+
+The derivative pass still forms the liquid denominators as `1 + beta (K_i - 1)`, as the flash did
+before #75. `FlashState` carries only `beta`, so the derivatives inherit a relative error of
+ulp(`beta`) / `L` in the heavies' `x`: 1e-9 at the sweep's smallest `L`, 1.1e-7. The measured
+gaps do not show it above 2e-9, and they do not scale with `1/L`: `spe5_dew_stcond_t1e-4`, at
+`L` = 2.9e-4, is the worst at 1.9e-9. So it is left as it is. Carrying `L` in the state would
+remove it if a tighter bound is ever needed.
 
 PTFlash cannot resolve most of the sweep at SPE5's 1e-12: neither method converges on 21 of the
 72, nor on `spe5_stcond_gas`. The harness therefore takes a tolerance ladder — 1e-12, then 1e-9 —
