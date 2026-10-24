@@ -133,6 +133,11 @@ has no external oracle and needs an independent invariant instead.
    as 1.2681e-4 m³ of oil per mole — 236 582 mol/day — while its own trajectory withdrew 227 888.
    **Consequence:** a surface-metered cumulative on a mixture has no usable oracle here. Pure CO2
    is unaffected (the two agree to ~0.01%). See `comp_depletion_*`.
+9. **SPE5's 1e-12 tolerance is out of reach a step from the dew point.** On the injection gas
+   with heavy traces of 1e-7 to 1e-3, neither `ssi+newton` nor `ssi` converges 22 of 73 states
+   (`spe5_stcond_gas` and 21 of `spe5_dew_sweep`) at 1e-12; at 1e-9 all resolve. SPE5 therefore
+   flashes on a ladder, 1e-12 then 1e-9, and `flash_tolerance_used` says which rung each state's
+   reference came from (#75).
 9. **OPM clamps fugacity coefficients** into `[1e-10, 1e10]` in `CubicEOS.hpp`. No fixture state
    reaches that clamp. The Rust port must not copy it — plan rule 6 forbids clamping an invalid
    result — and if a future fixture state ever did clamp, it would have to be excluded rather
@@ -183,9 +188,12 @@ is the contrast that makes the test meaningful.
 
 ## Output
 
-One JSON object (schema `/3`) with three `systems` entries (binary, ternary, SPE5), each carrying
+One JSON object (schema `/4`) with three `systems` entries (binary, ternary, SPE5), each carrying
 its EOS type, flash tolerance, component table, interaction matrix, a list of flash-free
-`eos_states`, and a list of flashed `states`. Units are SI throughout —
+`eos_states`, and a list of flashed `states`. Each state records the method (`method_used`) and
+the tolerance (`flash_tolerance_used`) its reference was solved with. A fourth block of the same
+shape, `spe5_dew_sweep`, holds #75's near-dew-point sweep outside `systems`, so only the tests
+written for it read it. Units are SI throughout —
 Pa, K, mol, m³, kg, Pa·s — and stated in the `units` field. Critical volume is m³/kmol, matching
 how `LBC.hpp` consumes `criticalVolume()` (it divides by 1000).
 

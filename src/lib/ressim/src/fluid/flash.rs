@@ -31,6 +31,12 @@
 //! independently and agreeing is evidence, converging by the same route is not. Newton
 //! acceleration belongs in C14 if profiling asks for it.
 //!
+//! Near a dew point the vapour fraction approaches one, and the Rachford–Rice root is carried in
+//! the liquid fraction `L` instead (see `PhaseSplit`). Before that, states a step from the dew
+//! point looked like a substitution stall and were not one: `K` had converged to roundoff while
+//! the residual floored at 1e-10 to 1e-7, set by one ulp of `beta` in the heavy components'
+//! liquid denominators (#75).
+//!
 //! # Single-phase results
 //!
 //! A stable feed is a **success**, not a failure. It returns the present phase's own composition
@@ -243,6 +249,68 @@ fn rachford_rice_dg(k: &[f64], z: &[f64], beta: f64) -> f64 {
 /// Returns [`FlashError::RachfordRiceNoRoot`] when there is no window at all: every `K_i` on one
 /// side of one, which means no split of any sign exists.
 pub fn solve_rachford_rice_extended(k: &[f64], z: &[f64]) -> Result<f64, FlashError> {
+    Ok(solve_phase_split(k, z)?.beta())
+}
+
+/// A Rachford–Rice root, carried in whichever of `beta` and `L = 1 - beta` is nearer zero.
+///
+/// Near a dew point `beta` approaches one, and the liquid denominators `1 + beta (K_i - 1)` of the
+/// heavy components approach `L`. Written in `beta`, those are differences of nearly equal numbers,
+/// and one ulp of `beta` (1.1e-16) is a 1e-9 relative error in a heavy liquid mole fraction when
+/// `L` is 1e-7: a floor on the fugacity residual two orders above
+/// [`EQUILIBRIUM_TOLERANCE`]. Written in `L`, the same denominators are `K_i + L (1 - K_i)`,
+/// accurate to the last bit (#75).
+#[derive(Clone, Copy, Debug)]
+enum PhaseSplit {
+    /// The root in `beta`, when `beta <= 0.5`.
+    Vapour(f64),
+    /// The root in `L`, when `beta > 0.5`.
+    Liquid(f64),
+}
+
+impl PhaseSplit {
+    fn beta(self) -> f64 {
+        match self {
+            Self::Vapour(beta) => beta,
+            Self::Liquid(l) => 1.0 - l,
+        }
+    }
+
+    /// Both phase amounts in `[0, 1]`, decided on the variable that carries the root exactly.
+    fn is_physical(self) -> bool {
+        let (Self::Vapour(v) | Self::Liquid(v)) = self;
+        (0.0..=1.0).contains(&v)
+    }
+
+    /// `1 + beta (K_i - 1)`, the liquid denominator `x_i = z_i / d_i`.
+    fn liquid_denominator(self, k: f64) -> f64 {
+        match self {
+            Self::Vapour(beta) => 1.0 + beta * (k - 1.0),
+            Self::Liquid(l) => k + l * (1.0 - k),
+        }
+    }
+}
+
+/// Solve Rachford–Rice on the extended window, in whichever phase amount is smaller.
+///
+/// The equation in `L` is the equation in `beta` with every `K_i` inverted: substituting
+/// `beta = 1 - L` and multiplying through by `K_i` gives `-sum_i z_i (1/K_i - 1) / (1 + L (1/K_i -
+/// 1))`. So one bracketed solver serves both, and the second solve runs only when the first puts
+/// the root past one half.
+fn solve_phase_split(k: &[f64], z: &[f64]) -> Result<PhaseSplit, FlashError> {
+    let beta = bracketed_rachford_rice_root(k, z)?;
+    if beta <= 0.5 {
+        return Ok(PhaseSplit::Vapour(beta));
+    }
+    let k_inverse: Vec<f64> = k.iter().map(|v| 1.0 / v).collect();
+    Ok(PhaseSplit::Liquid(bracketed_rachford_rice_root(
+        &k_inverse, z,
+    )?))
+}
+
+/// The root of `g` in `beta` on the pole-free window: safeguarded Newton inside a bisection
+/// bracket.
+fn bracketed_rachford_rice_root(k: &[f64], z: &[f64]) -> Result<f64, FlashError> {
     let active: Vec<usize> = (0..k.len()).filter(|&i| z[i] > 0.0).collect();
     let k_max = active
         .iter()
@@ -289,11 +357,16 @@ pub fn solve_rachford_rice_extended(k: &[f64], z: &[f64]) -> Result<f64, FlashEr
 
         let dg = rachford_rice_dg(k, z, beta);
         let next = if dg < 0.0 { beta - g / dg } else { f64::NAN };
-        beta = if next.is_finite() && next > lo && next < hi {
-            next
+        if next.is_finite() && next > lo && next < hi {
+            // Newton approaching from one side never closes the bracket, so a converged Newton
+            // step ends the solve as well. Its error is the square of a step this small.
+            if (next - beta).abs() <= RACHFORD_RICE_TOLERANCE * (1.0 + beta.abs()) {
+                return Ok(next);
+            }
+            beta = next;
         } else {
-            0.5 * (lo + hi)
-        };
+            beta = 0.5 * (lo + hi);
+        }
     }
     Ok(0.5 * (lo + hi))
 }
@@ -315,16 +388,16 @@ pub fn solve_rachford_rice(k: &[f64], z: &[f64]) -> Result<f64, FlashError> {
     Ok(beta)
 }
 
-/// Phase compositions from `K`, `z` and `beta`.
+/// Phase compositions from `K`, `z` and the phase split.
 ///
 /// `x_i = z_i / (1 + beta (K_i - 1))`, `y_i = K_i x_i`. An absent component stays exactly absent
 /// in both phases — dividing zero by anything finite gives zero, and nothing here adds material.
-fn phase_compositions(k: &[f64], z: &[f64], beta: f64) -> (Vec<f64>, Vec<f64>) {
+fn phase_compositions(k: &[f64], z: &[f64], split: PhaseSplit) -> (Vec<f64>, Vec<f64>) {
     let n = k.len();
     let mut x = vec![0.0; n];
     let mut y = vec![0.0; n];
     for i in 0..n {
-        let d = 1.0 + beta * (k[i] - 1.0);
+        let d = split.liquid_denominator(k[i]);
         x[i] = z[i] / d;
         y[i] = k[i] * x[i];
     }
@@ -367,12 +440,11 @@ pub fn flash(
     // The iteration runs on the extended window: the stability test's K is an estimate, and a
     // poor estimate can put the root outside [0, 1] on the way to a converged answer well inside
     // it. Whether the state is really two-phase is decided at convergence, not at the first step.
-    let mut beta;
     let mut residual = f64::INFINITY;
 
     for iteration in 1..=MAX_SUBSTITUTION_ITERATIONS {
-        beta = solve_rachford_rice_extended(&k, z)?;
-        let (x, y) = phase_compositions(&k, z, beta);
+        let split = solve_phase_split(&k, z)?;
+        let (x, y) = phase_compositions(&k, z, split);
 
         let xs: f64 = x.iter().sum();
         let ys: f64 = y.iter().sum();
@@ -415,16 +487,16 @@ pub fn flash(
         }
 
         if residual < EQUILIBRIUM_TOLERANCE {
-            let beta = solve_rachford_rice_extended(&k, z)?;
+            let split = solve_phase_split(&k, z)?;
             // Converged with the vapour fraction outside the physical window: the two phases have
             // collapsed onto one another, and the stability test's instability verdict is not
             // borne out. That is a determination, not a failure — Whitson & Michelsen's negative
             // flash is exactly the test for it — so the single-phase result is returned rather
             // than an error.
-            if !(0.0..=1.0).contains(&beta) {
+            if !split.is_physical() {
                 return single_phase(spec, pressure_pa, temperature_k, z);
             }
-            let (x, y) = phase_compositions(&k, z, beta);
+            let (x, y) = phase_compositions(&k, z, split);
             let xs: f64 = x.iter().sum();
             let ys: f64 = y.iter().sum();
             let xn: Vec<f64> = x.iter().map(|v| v / xs).collect();
@@ -435,7 +507,7 @@ pub fn flash(
                 .map_err(FlashError::Eos)?;
             return Ok(FlashState {
                 phase_state: PhaseState::TwoPhase,
-                beta,
+                beta: split.beta(),
                 x: xn,
                 y: yn,
                 k,

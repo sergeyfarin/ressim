@@ -21,6 +21,10 @@ use serde::Deserialize;
 pub struct Fixture {
     pub schema: String,
     pub systems: Vec<FixtureSystem>,
+    /// SPE5's injection gas with heavy traces from 1e-7 to 1e-3, at surface and reservoir
+    /// conditions (#75). Kept out of `systems` so the fixture-wide tests do not iterate it: it is a
+    /// flash-convergence census against OPM, gated by `comp_domain_spe5_dew_*`.
+    pub spe5_dew_sweep: FixtureSystem,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,7 +33,8 @@ pub struct FixtureSystem {
     pub num_components: usize,
     /// OPM's `EOSType` for this system: `PR` for the binary and ternary, `PRCORR` for SPE5.
     pub eos: String,
-    /// The PTFlash tolerance the system's states were solved to: 1e-9, or 1e-12 for SPE5.
+    /// The first PTFlash tolerance the system's states were tried at: 1e-9, or 1e-12 for SPE5,
+    /// whose states fall back to 1e-9 where 1e-12 fails (#75).
     pub flash_tolerance: f64,
     pub components: Vec<FixtureComponent>,
     pub binary_interaction: Vec<Vec<f64>>,
@@ -196,7 +201,7 @@ pub fn load() -> Fixture {
     let raw = include_str!("../../../../../opm/compositional/ptflash_fixtures.json");
     let fixture: Fixture = serde_json::from_str(raw).expect("C0 fixture must parse");
     assert_eq!(
-        fixture.schema, "ressim-compositional-ptflash-fixture/3",
+        fixture.schema, "ressim-compositional-ptflash-fixture/4",
         "fixture schema changed; update this reader deliberately rather than loosening the check"
     );
     assert_eq!(

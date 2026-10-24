@@ -49,4 +49,8 @@ features = ["wasm_js"]
 # shipped bundle. The contract it checks - that component order survives a roundtrip and that an
 # unknown EOS/viscosity tag is rejected rather than silently defaulted - is a property of serde's
 # behaviour, so testing it against a hand-rolled format would prove nothing.
-serde_json = "1.0.154"
+#
+# `float_roundtrip` because the default parser misreads about one f64 in ten by an ulp, and the
+# compositional checkpoint test (`comp_api_checkpoint_*`) asserts a bit-exact JSON roundtrip.
+# Without it that test passes or fails by which values the run happens to produce (#75).
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
