@@ -447,3 +447,68 @@ fn comp_domain_report_sweep_tallies() {
         );
     }
 }
+
+/// SPE5's injection gas carrying heavy traces, at surface and at reservoir conditions (#75).
+///
+/// The paper's gas is C1 0.77 / C3 0.20 / C6 0.03 with no C10, C15 or C20. Each state here gives
+/// all three heavies the same trace `t`, taken from C1, for `t` from 1e-7 to 1e-3 in half-decade
+/// steps. With a small `t` the gas sits just inside its dew point, condensing a liquid fraction of
+/// order `t`, which is where unaccelerated substitution's convergence rate goes to zero.
+///
+/// Returns `(label, pressure [Pa], temperature [K], z)`.
+fn spe5_dew_states(spec: &FluidSpecification) -> Vec<(String, f64, f64, Vec<f64>)> {
+    let traces = [1e-7, 3e-7, 1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4, 1e-3];
+    // Surface conditions are `STCOND 15.0 1.0`; the reservoir column runs from depletion to the
+    // initial 4000 psia at the reservoir temperature.
+    let mut conditions = vec![("stcond".to_string(), 1.0e5, 288.15)];
+    for p_bar in [10.0, 20.0, 50.0, 100.0, 150.0, 200.0, 4000.0 * 0.068947573] {
+        conditions.push((
+            format!("p{}", p_bar as i64),
+            p_bar * 1.0e5,
+            spec.reservoir_temperature_k(),
+        ));
+    }
+    let mut out = Vec::new();
+    for (tag, p, t) in &conditions {
+        for &trace in &traces {
+            let z = vec![0.77 - 3.0 * trace, 0.20, 0.03, trace, trace, trace];
+            out.push((format!("{tag}_t{trace:e}"), *p, *t, z));
+        }
+    }
+    out
+}
+
+#[test]
+#[ignore = "reporting only: prints the SPE5 dew-point sweep recorded in COMPOSITIONAL_VALIDATION.md"]
+fn comp_domain_report_spe5_dew_sweep() {
+    let spec = pinned::spe5().unwrap();
+    let (mut converged, mut total_iterations, mut worst) =
+        (0usize, 0usize, (0usize, String::new()));
+    let mut failed = Vec::new();
+    for (label, p, t, z) in spe5_dew_states(&spec) {
+        match flash(&spec, p, t, &z, None) {
+            Ok(s) => {
+                converged += 1;
+                total_iterations += s.iterations;
+                if s.iterations > worst.0 {
+                    worst = (s.iterations, label.clone());
+                }
+                println!(
+                    "{label}: {:?} beta {:.10} iterations {}",
+                    s.phase_state, s.beta, s.iterations
+                );
+            }
+            Err(e) => {
+                println!("{label}: FAILED {e}");
+                failed.push(label);
+            }
+        }
+    }
+    println!(
+        "spe5 dew sweep: converged {converged}, failed {} {failed:?}; total iterations \
+         {total_iterations}; worst {} at {}",
+        failed.len(),
+        worst.0,
+        worst.1
+    );
+}
