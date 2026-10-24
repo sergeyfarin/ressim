@@ -209,7 +209,9 @@ impl ReservoirSimulator {
             if len == expected {
                 Ok(())
             } else {
-                Err(format!("Mismatch grid size. Expected {expected}, got {name} len: {len}"))
+                Err(format!(
+                    "Mismatch grid size. Expected {expected}, got {name} len: {len}"
+                ))
             }
         };
         check("pressure", grid.pressure.len())?;

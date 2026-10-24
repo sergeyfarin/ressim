@@ -1039,7 +1039,8 @@ impl ReservoirSimulator {
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setPvtTable))]
     pub fn set_pvt_table(&mut self, table_js: JsValue) -> Result<(), JsValue> {
         let rows: Vec<pvt::PvtRow> = serde_wasm_bindgen::from_value(table_js)?;
-        self.apply_pvt_table(rows).map_err(|e| JsValue::from_str(&e))
+        self.apply_pvt_table(rows)
+            .map_err(|e| JsValue::from_str(&e))
     }
 
     #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = setInitialRs))]
