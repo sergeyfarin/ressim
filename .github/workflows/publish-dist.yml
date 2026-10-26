@@ -18,6 +18,11 @@ jobs:
     env:
       RESIM_BUILD_SHA: ${{ github.sha }}
       RESIM_BUILD_REF: ${{ github.ref_name }}
+      # Preserve the existing Pages canary and archive contract until hosting cutover.
+      RESIM_BASE_PATH: /ressim/
+    outputs:
+      archive: ${{ steps.package.outputs.archive }}
+      metadata_file: ${{ steps.package.outputs.metadata_file }}
 
     steps:
       - name: Checkout repository
@@ -56,30 +61,24 @@ jobs:
       - name: Validate product and build deployment
         run: pnpm run validate:product
 
-      - name: Verify embedded revision
-        run: |
-          node -e "const m=require('./dist/ressim/build-info.json'); if(m.commit!==process.env.GITHUB_SHA) throw new Error('build SHA mismatch')"
-
-      - name: Package SHA-addressed production artifact
-        run: |
-          ARCHIVE="ressim-dist-${GITHUB_SHA}.tar.gz"
-          tar -czf "$ARCHIVE" -C dist ressim
-          cp dist/ressim/build-info.json dist-build-meta.json
+      - name: Verify revision and package SHA-addressed production artifact
+        id: package
+        run: pnpm run package:dist
 
       - name: Upload production artifact
         uses: actions/upload-artifact@v4
         with:
           name: ressim-dist-bundle
           path: |
-            ressim-dist-${{ github.sha }}.tar.gz
-            dist-build-meta.json
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.metadata_file }}
           if-no-files-found: error
           retention-days: 14
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: dist/ressim
+          path: ${{ steps.package.outputs.app_dir }}
 
   deploy-pages:
     runs-on: ubuntu-latest
@@ -160,8 +159,8 @@ jobs:
           name: dist-${{ github.sha }}
           target_commitish: ${{ github.sha }}
           files: |
-            ressim-dist-${{ github.sha }}.tar.gz
-            dist-build-meta.json
+            ${{ needs.build-artifact.outputs.archive }}
+            ${{ needs.build-artifact.outputs.metadata_file }}
           generate_release_notes: false
           make_latest: true
           overwrite_files: true
