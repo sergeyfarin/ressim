@@ -18,8 +18,8 @@ jobs:
     env:
       RESIM_BUILD_SHA: ${{ github.sha }}
       RESIM_BUILD_REF: ${{ github.ref_name }}
-      # Preserve the existing Pages canary and archive contract until hosting cutover.
-      RESIM_BASE_PATH: /ressim/
+      # Deploy the root layout; the legacy /ressim/ build remains available explicitly.
+      RESIM_BASE_PATH: /
     outputs:
       archive: ${{ steps.package.outputs.archive }}
       metadata_file: ${{ steps.package.outputs.metadata_file }}
@@ -103,7 +103,8 @@ jobs:
     permissions:
       contents: read
     env:
-      RESIM_PUBLIC_URL: ${{ needs.deploy-pages.outputs.page_url }}
+      RESIM_BASE_PATH: /
+      RESIM_PUBLIC_URL: https://ressim.farin.nl/
       RESIM_EXPECTED_SHA: ${{ github.sha }}
 
     steps:
