@@ -166,27 +166,4 @@ jobs:
           make_latest: true
           overwrite_files: true
 
-  promote-farin:
-    runs-on: ubuntu-latest
-    needs: publish-release
-    permissions:
-      contents: read
-    env:
-      REKENRAAM_WEB_TOKEN: ${{ secrets.REKENRAAM_WEB_TOKEN }}
-
-    steps:
-      - name: Require cross-repository promotion credential
-        if: env.REKENRAAM_WEB_TOKEN == ''
-        run: |
-          echo "Repository secret REKENRAAM_WEB_TOKEN is required to promote the tested SHA to rekenraam-web." >&2
-          exit 1
-
-      - name: Request exact-SHA production promotion
-        env:
-          GH_TOKEN: ${{ secrets.REKENRAAM_WEB_TOKEN }}
-        run: |
-          gh api --method POST repos/sergeyfarin/rekenraam-web/dispatches \
-            -f event_type=component-published \
-            -F client_payload[component]=ressim \
-            -F client_payload[sha]=${GITHUB_SHA} \
-            -F client_payload[release_tag]=dist-${GITHUB_SHA}
+  
