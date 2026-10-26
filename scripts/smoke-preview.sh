@@ -14,7 +14,9 @@ for _ in $(seq 1 60); do
   if ! kill -0 "$preview_pid" 2>/dev/null; then break; fi
   # Wait for our server to bind before probing. An existing listener must never satisfy
   # readiness while the new process is still starting (or about to fail --strictPort).
-  if [[ $(<"$preview_log") == *"http://127.0.0.1:${preview_port}/"* ]] &&
+  # Vite can style the port with ANSI codes when color output is forced (e.g. in CI).
+  preview_output=$(sed $'s/\033\\[[0-9;]*m//g' "$preview_log")
+  if [[ "$preview_output" == *"http://127.0.0.1:${preview_port}/"* ]] &&
     curl -sf "$RESIM_PUBLIC_URL" > /dev/null; then up=1; break; fi
   sleep 1
 done
