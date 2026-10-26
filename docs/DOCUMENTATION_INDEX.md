@@ -20,6 +20,7 @@ under `.archive/`.
 | Document | Use it for |
 |----------|------------|
 | `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
+| [Deployment and rollback](DEPLOYMENT.md) | Legacy and root build layouts, archive contracts, pre-deployment checks and subdomain cutover |
 | [FIM cross-target divergence](FIM_CROSS_TARGET_DIVERGENCE_2026-09-22.md) | Why wasm32 and x86-64 disagreed on FIM, and the fix (§9, FIM-DIRECT-001): a sign-of-roundoff singularity, not the backend split. Routing is now the same on every target |
 | [Open items](OPEN_ITEMS_2026-09-21.md) | Deliberate deferrals and known gaps in one place, each with why it was not done and what would close it |
 | [Engine payload boundary design](ENGINE_PAYLOAD_BOUNDARY_DESIGN_2026-09-21.md) | Pre-implementation note: how the engine's 12 remaining `JsValue`-bound functions become target-agnostic, by generalising the `compositional/api.rs` pattern to black-oil; phases, alternatives rejected, and the gates that keep it true |

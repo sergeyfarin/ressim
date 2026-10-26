@@ -9,6 +9,7 @@
     "dev": "vite --host",
     "prebuild": "pnpm run build:wasm",
     "build": "vite build",
+    "package:dist": "node scripts/package-dist.mjs",
     "preview": "vite preview",
     "build:wasm": "sh scripts/build-wasm.sh",
     "validate": "pnpm run typecheck && pnpm run lint && pnpm run check:cycles && pnpm run test:fast && pnpm run build",

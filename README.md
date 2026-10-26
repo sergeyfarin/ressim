@@ -12,7 +12,8 @@ where the simulation is expected to leave it. Nothing is uploaded: the solver is
 with the app, and there are no analytics or cookies. The selected theme is stored locally in the
 browser.
 
-https://farin.nl/ressim - No installation required
+[Live app](https://farin.nl/ressim/) — No installation required. The prepared destination is
+`https://ressim.farin.nl/`; hosting has not switched. See [deployment and cutover](docs/DEPLOYMENT.md).
 
 <img width="2463" height="1895" alt="image" src="https://github.com/user-attachments/assets/74e00ab8-6c5f-42fc-ae7b-5a85cb27089a" />
 
@@ -152,6 +153,11 @@ Both run in PR CI. The first builds `crates/ressim-py` against the engine with i
 bindings switched off and compares the two clients. They agree bit for bit: the engine's
 transcendental math goes through one implementation on both targets (#62). The second is the only check that would catch an unstyled page, because a Tailwind
 content-glob miss raises no error anywhere.
+
+Builds default to `/ressim/` in `dist/ressim`. Set `RESIM_BASE_PATH=/` for a root build in
+`dist-root`; use the same setting for preview, packaging, and browser tests. PR CI (also available
+through manual dispatch) validates both layouts with exact commit checks before deployment.
+See [deployment and cutover](docs/DEPLOYMENT.md) for commands and archive formats.
 
 One gate is local only, because CI has no OPM Flow. Run it after any change that can move an
 answer:

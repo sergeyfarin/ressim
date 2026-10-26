@@ -19,7 +19,7 @@ async function selectVariants(page: Page, dimensionKey: string, variantKeys: str
   }
 }
 
-test('public deployment loads assets and runs IMPES, FIM, charts, and 3D', async ({ page, request }) => {
+test('public deployment loads assets and runs IMPES, FIM, charts, and 3D', async ({ page, request, context, baseURL }) => {
   const runtimeErrors: string[] = []
   const failedResponses: string[] = []
 
@@ -58,12 +58,22 @@ test('public deployment loads assets and runs IMPES, FIM, charts, and 3D', async
 
   const buildInfoResponse = await request.get('build-info.json')
   expect(buildInfoResponse.ok()).toBeTruthy()
-  const buildInfo = await buildInfoResponse.json() as { commit: string }
+  const buildInfo = await buildInfoResponse.json() as { commit: string; basePath: string }
   if (expectedCommit) expect(buildInfo.commit).toBe(expectedCommit)
+  expect(buildInfo.basePath).toBe(new URL(baseURL!).pathname)
+  expect(buildInfoResponse.headers()['set-cookie']).toBeUndefined()
+
+  const socialImage = await request.get('social-preview.png')
+  expect(socialImage.ok()).toBeTruthy()
+  expect(socialImage.headers()['content-type']).toContain('image/png')
 
   await page.goto('./', { waitUntil: 'networkidle' })
   await expect(page).toHaveTitle(/ResSim/)
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://farin.nl/ressim/')
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://ressim.farin.nl/')
+  await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://ressim.farin.nl/')
+  for (const selector of ['meta[property="og:image"]', 'meta[name="twitter:image"]']) {
+    await expect(page.locator(selector)).toHaveAttribute('content', 'https://ressim.farin.nl/social-preview.png')
+  }
   await expect(page.getByTestId('run-status')).toHaveText('Ready')
 
   await page.reload({ waitUntil: 'networkidle' })
@@ -88,4 +98,5 @@ test('public deployment loads assets and runs IMPES, FIM, charts, and 3D', async
 
   expect(failedResponses).toEqual([])
   expect(runtimeErrors).toEqual([])
+  expect(await context.cookies()).toEqual([])
 })
