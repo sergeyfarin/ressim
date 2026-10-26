@@ -92,7 +92,7 @@ run_thermo() {
     run_filter comp_derivatives_ 12  # C4
     run_filter comp_transport_  11   # C5 LBC and saturations
     run_filter comp_surface_    10   # C5 surface separation
-    run_filter comp_domain_      4   # C6 domain sweep
+    run_filter comp_domain_      5   # C6 domain sweep, and #75's SPE5 dew-point sweep
     run_filter comp_api_        11   # C13 engine boundary: payload, snapshot, checkpoint
     run_filter comp_layout_     12   # C7 component layout
     run_filter comp_state_      18   # C7 accepted/trial state, cache, checkpoints

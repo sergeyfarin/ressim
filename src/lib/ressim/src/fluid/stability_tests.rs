@@ -54,7 +54,7 @@ fn comp_stability_verdict_matches_the_fixture_on_every_state() {
     }
 
     // Binary and ternary, then SPE5 (#45).
-    assert_eq!(two_phase, 36 + 13, "the fixture's two-phase count changed");
+    assert_eq!(two_phase, 36 + 14, "the fixture's two-phase count changed");
     assert_eq!(
         single_phase,
         18 + 16,
@@ -257,7 +257,7 @@ fn comp_stability_unstable_verdict_returns_a_usable_k_estimate() {
             checked += 1;
         }
     }
-    assert_eq!(checked, 36 + 13);
+    assert_eq!(checked, 36 + 14);
 }
 
 #[test]

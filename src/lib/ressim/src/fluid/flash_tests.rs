@@ -149,7 +149,7 @@ fn comp_flash_matches_the_fixture_on_every_state() {
         }
     }
 
-    assert_eq!(two_phase, 36 + 13);
+    assert_eq!(two_phase, 36 + 14);
     assert!(
         worst_beta.0 < 1e-8,
         "vapour fraction disagrees: worst absolute error {:e} at {}",
@@ -408,7 +408,7 @@ fn comp_flash_vapour_saturation_is_not_the_vapour_mole_fraction() {
             assert!((v - expected).abs() / expected < 1e-15, "{}", state.id);
         }
     }
-    assert_eq!(checked, 36 + 13);
+    assert_eq!(checked, 36 + 14);
     assert!(
         worst_gap > 0.1,
         "S_V and beta never differ materially; this test is not exercising its case"
@@ -673,4 +673,40 @@ fn comp_flash_reports_single_phase_when_the_split_collapses() {
     assert_eq!(r.phase_state, PhaseState::SingleLiquid);
     assert_eq!(r.beta, 0.0);
     assert!(r.liquid.is_some() && r.vapour.is_none());
+}
+
+#[test]
+#[ignore = "reporting only: prints the fixture iteration counts recorded in COMPOSITIONAL_VALIDATION.md"]
+fn comp_flash_report_iteration_counts() {
+    let f = fixture::load();
+    for system in &f.systems {
+        let spec = spec_for(system);
+        let (mut total, mut two_phase, mut worst) = (0usize, 0usize, (0usize, String::new()));
+        for state in &system.states {
+            match flash(
+                &spec,
+                state.pressure_pa,
+                state.temperature_k,
+                &state.z,
+                None,
+            ) {
+                Ok(r) if r.phase_state == PhaseState::TwoPhase => {
+                    two_phase += 1;
+                    total += r.iterations;
+                    if r.iterations > worst.0 {
+                        worst = (r.iterations, state.id.clone());
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => println!("{}: FAILED {e}", state.id),
+            }
+        }
+        println!(
+            "{}: two_phase {two_phase}; total iterations {total}; mean {:.1}; worst {} at {}",
+            system.system,
+            total as f64 / two_phase.max(1) as f64,
+            worst.0,
+            worst.1
+        );
+    }
 }
