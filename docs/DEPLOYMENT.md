@@ -1,15 +1,16 @@
 # Deployment and rollback
 
-The live production address remains `https://farin.nl/ressim/`. The prepared destination and
-canonical/social metadata address is `https://ressim.farin.nl/`. This preparation does not switch
-hosting. GitHub Pages at `https://sergeyfarin.github.io/ressim/` remains the latest validated
-`master` canary, using the legacy subpath build.
+The live application is [ResSim](https://ressim.farin.nl/), served at the root of its custom domain
+by GitHub Pages. The canonical and social metadata use the same address. The release workflow
+builds, deploys and smoke-tests the root layout; the legacy `/ressim/` build remains available
+for separately managed hosting at the old path.
 
 ## Build layouts
 
-`RESIM_BASE_PATH` accepts exactly `/ressim/` (the default) or `/`. Set it consistently for build,
+`RESIM_BASE_PATH` accepts exactly `/ressim/` or `/`. Local commands still default to `/ressim/`
+when it is unset; the production workflow explicitly selects `/`. Set it consistently for build,
 preview, packaging, and browser validation. Invalid values fail immediately. Outputs are separate
-so switching options cannot leave assets or a redirect from the other layout in the candidate.
+so switching options cannot leave assets or a redirect from the other layout in the build.
 
 | Setting | Application output | Build metadata | Archive | Archive contents |
 | --- | --- | --- | --- | --- |
@@ -22,10 +23,11 @@ The legacy build also writes `dist/index.html`, a redirect to `/ressim/`, outsid
 page, bundled fonts, favicon, social preview, Worker and WASM assets under the selected base.
 
 `build-info.json` records `commit`, `ref`, `basePath`, `builtAt` and the source commit URL.
-`pnpm run package:dist` requires a full `RESIM_BUILD_SHA` (or `GITHUB_SHA`) and rejects a build whose
-commit or base path differs. It copies the same metadata to `dist-build-meta.json` for legacy
-archives or `dist-root-build-meta.json` for root archives. Different archive names prevent a root
-candidate from replacing the legacy release asset for the same SHA.
+`pnpm run package:dist` requires a full `RESIM_BUILD_SHA` (or `GITHUB_SHA`, which takes precedence
+in CI) and rejects a build whose commit or base path differs. It copies the same metadata to
+`dist-build-meta.json` for legacy archives or `dist-root-build-meta.json` for root archives.
+Different archive names prevent a root archive from replacing the legacy release asset for the
+same SHA.
 
 ## Local and CI validation before deployment
 
@@ -36,14 +38,14 @@ export RESIM_BUILD_SHA=$(git rev-parse HEAD)
 export RESIM_BUILD_REF=$(git branch --show-current)
 export RESIM_EXPECTED_SHA=$RESIM_BUILD_SHA
 
-# Existing layout; includes the full Vitest suite and Rust IMPES gate.
-export RESIM_BASE_PATH=/ressim/
+# Production root layout; includes the full Vitest suite and Rust IMPES gate.
+export RESIM_BASE_PATH=/
 pnpm run validate:product
 pnpm run package:dist
 bash scripts/smoke-preview.sh
 
-# Subdomain candidate; reuses the same numerical engine.
-export RESIM_BASE_PATH=/
+# Optional legacy layout; reuses the same validated numerical engine.
+export RESIM_BASE_PATH=/ressim/
 pnpm run build
 pnpm run package:dist
 bash scripts/smoke-preview.sh
@@ -54,7 +56,7 @@ suite. For a server started separately, use the same `RESIM_BASE_PATH` for `pnpm
 and `pnpm run test:deployed`. `RESIM_PUBLIC_URL` overrides the browser suite's address when
 checking an actual host; the preview wrapper always tests localhost.
 If port 4173 is occupied, set `RESIM_PREVIEW_PORT` for the wrapper; it refuses to test an existing
-server in place of the candidate.
+server in place of the build under test.
 
 `.github/workflows/pr-tests.yml` runs on pull requests or manual dispatch and checks both layouts
 without deploying. Existing solver, Buckley-Leverett, compositional thermodynamics, native binding
@@ -64,49 +66,56 @@ Worker/WASM, IMPES/FIM, compositional runs, charts, styling, 3D and cookie-free 
 The browser checks compare `build-info.json` with `RESIM_EXPECTED_SHA` and the requested base path.
 
 The application sets no cookies, uses no analytics and serves fonts locally. Hosting must preserve
-that behavior; smoke-test the final HTTPS address as well as the local candidate. Numerical models,
+that behavior; smoke-test the live HTTPS address as well as the local build. Numerical models,
 dependencies and numerical acceptance tolerances are unchanged by the layout option.
 
 ## Current release flow
 
-Every push to `master` runs `.github/workflows/publish-dist.yml`:
+Every push to `master` runs `.github/workflows/publish-dist.yml`; it also supports manual dispatch:
 
-1. Run `pnpm run validate:product` with the explicit legacy base `/ressim/`.
-2. Verify the embedded revision/base and package the SHA-addressed legacy archive.
-3. Deploy `dist/ressim` to GitHub Pages.
-4. Smoke-test the deployed Pages URL against the exact workflow SHA.
-5. Publish the tested archive and metadata as release `dist-<full-commit-sha>`.
+1. Build WASM from the workflow revision and run `pnpm run validate:product` with
+   `RESIM_BASE_PATH=/`.
+2. Verify the embedded revision/base and package `ressim-root-dist-<full-commit-sha>.tar.gz`
+   with `dist-root-build-meta.json`.
+3. Upload and deploy the application directory returned by the packaging step (`dist-root`)
+   to GitHub Pages. Archive and metadata upload paths also come from that step's outputs.
+4. Run `pnpm run test:deployed` against `https://ressim.farin.nl/` with `RESIM_BASE_PATH=/`
+   and `RESIM_EXPECTED_SHA` set to the exact workflow SHA. This includes the cookie checks.
+5. After the deployed smoke suite passes, publish the tested archive and metadata as release
+   `dist-<full-commit-sha>`.
 
-There is no promotion or repository dispatch to `rekenraam-web`. Publishing a ResSim release does
-not advance that repository's submodule or switch production hosting.
+There is no promotion or repository dispatch to `rekenraam-web`. The parent site's submodule and
+hosting are managed separately.
 
-## Remaining cutover steps — only after explicit authorization
+## Live verification and hosting configuration
 
-1. Choose the release SHA and run the full PR/manual validation workflow, including the root
-   browser gate. Keep the known-good legacy release available for rollback.
-2. Switch the hosting workflow to `RESIM_BASE_PATH=/`. The existing release workflow takes its
-   Pages directory, archive and metadata paths from the verified packaging step, so this selects
-   `dist-root`, `ressim-root-dist-<sha>.tar.gz` and `dist-root-build-meta.json` together. Keep
-   exact-SHA verification, numerical gates and deployed smoke checks. Do not restore parent-site
-   promotion jobs.
-3. Configure the chosen host's custom domain, DNS and TLS for `ressim.farin.nl`. These settings
-   are intentionally outside the preparation change. Do not add a `CNAME` file to the legacy
-   Pages canary during preparation.
-4. Serve the root artifact and run `RESIM_PUBLIC_URL=https://ressim.farin.nl/` with
-   `RESIM_EXPECTED_SHA=<full-sha>` through `pnpm run test:deployed`. Confirm `/build-info.json`
-   matches, assets/Worker/WASM and the second page load, and hosting introduces no cookies.
-5. Redirect the old production `/ressim/` URLs to the new host, preserving asset and second-page
-   paths as needed. Update the README live link and this document's production status after the
-   final host passes. Check canonical/social previews at the new address.
+The [root cutover deployment](https://github.com/sergeyfarin/ressim/actions/runs/40402259099)
+completed successfully. To verify a deployment independently, check out the intended deployed
+revision and run:
+
+```bash
+RESIM_BASE_PATH=/ \
+RESIM_PUBLIC_URL=https://ressim.farin.nl/ \
+RESIM_EXPECTED_SHA="$(git rev-parse HEAD)" \
+pnpm run test:deployed
+```
+
+Use the SHA of the intended release workflow, rather than deriving the expected SHA from the
+live server. The suite checks `/build-info.json`, direct load/refresh, assets, Worker/WASM,
+the second page, canonical/social metadata and cookie-free operation. A successful Pages upload
+alone does not establish that the custom domain serves the intended revision.
+
+The Pages custom domain, DNS and TLS are managed outside the build and packaging scripts.
+Changes to the former `https://farin.nl/ressim/` hosting or its redirects belong to the parent
+site's deployment configuration and remain separate from this workflow.
 
 ## Rollback
 
 For a root-host regression, redeploy the last known-good **root** archive with its matching
 metadata, verify `/build-info.json` and run the exact-SHA smoke suite. A legacy archive requires
 legacy hosting at `/ressim/`; it cannot be unpacked as a root application without rebuilding.
-Keep the old production path available until the root cutover has passed validation.
 
-To restore a known-good Pages canary, manually run the release workflow from that commit/tag with
-the matching layout. Record the exceptional deployment in issue #8: the next successful `master`
-run replaces it. Any rollback of the separately hosted parent site remains a separate, explicitly
-authorized operation in its owning repository.
+For a workflow-based rollback, manually run the release workflow from a known-good commit/tag
+that supports the root layout and the current custom-domain smoke checks. Record the exceptional
+deployment in issue #8: the next successful `master` run replaces it. Rolling back ResSim leaves
+the separately hosted parent site unchanged; its rollback belongs in its owning repository.

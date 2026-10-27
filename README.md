@@ -12,8 +12,8 @@ where the simulation is expected to leave it. Nothing is uploaded: the solver is
 with the app, and there are no analytics or cookies. The selected theme is stored locally in the
 browser.
 
-[Live app](https://ressim.farin.nl/) — No installation required. The prepared destination is
-`https://ressim.farin.nl/`; hosting has not switched. See [deployment and cutover](docs/DEPLOYMENT.md).
+[Live app](https://ressim.farin.nl/) — No installation required. Hosted at the domain root on
+GitHub Pages. See [deployment and rollback](docs/DEPLOYMENT.md).
 
 <img width="2463" height="1895" alt="image" src="https://github.com/user-attachments/assets/74e00ab8-6c5f-42fc-ae7b-5a85cb27089a" />
 
