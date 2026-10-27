@@ -81,6 +81,7 @@ jobs:
           path: ${{ steps.package.outputs.app_dir }}
 
   deploy-pages:
+    if: vars.RESSIM_PAGES_ENABLED != 'false'
     runs-on: ubuntu-latest
     needs: build-artifact
     permissions:
