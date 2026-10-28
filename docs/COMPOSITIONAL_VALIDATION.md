@@ -639,26 +639,26 @@ never a correction.
 a BHP injector and producer (`comp_linear_cost_spe5_and_spe3_size`, `#[ignore]`d). SPE5 size is
 7x7x3 at SPE5's six components; SPE3 size is 9x9x4 on the ten-component **timing fluid** of
 `cost_tests.rs` (SPE3's own fluid is not pinned; the row count and block size are what a linear
-solver's cost depends on). AMD EPYC 3251, one thread, release. **Provisional**: measured on a dirty
-tree over `ce8a8f8`; re-record on the committed tree before citing elsewhere.
+solver's cost depends on). Measured on `0ab2af3` (clean tree), AMD EPYC 3251, one thread,
+release; ranges are over three runs (wasm: three per route).
 
 | System | Rows | Block-sparse J | Dense J would be | Assembly | `sparse-lu` | `fgmres-cpr` (7 its) | `dense-lu` |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| SPE5 size, native | 882 | 0.25 MB | 6.2 MB | 79 ms | 9.7 ms | 1.8 ms | 36.6 ms |
-| SPE5 size, wasm | 882 | | | 120–195 ms | 45–51 ms | 11–13 ms | 435–494 ms |
-| SPE3 size, native | 3,240 | 1.6 MB | 84 MB | 329 ms | 109 ms | 9.0 ms | not run |
-| SPE3 size, wasm | 3,240 | | | 464–567 ms | 274–295 ms | 15–16 ms | not run |
+| SPE5 size, native | 882 | 0.25 MB | 6.2 MB | 78–83 ms | 9.5–10.3 ms | 1.8 ms | 37.5–43.7 ms |
+| SPE5 size, wasm | 882 | | | 112–208 ms | 35.5–45.7 ms | 12.3–14.3 ms | 344–385 ms |
+| SPE3 size, native | 3,240 | 1.6 MB | 84 MB | 330–345 ms | 109–134 ms | 8.7–12.1 ms | not run |
+| SPE3 size, wasm | 3,240 | | | 431–466 ms | 251–256 ms | 13.6–14.9 ms | not run |
 
 Wasm peak linear memory, one route per fresh instance (it never shrinks, so it is the high-water
 mark): SPE5 size 9.9 MB on sparse LU, **3.7 MB on CPR**, 9.5 MB on dense; SPE3 size **66.7 MB on
 sparse LU** (fill-in), **7.8 MB on CPR**. Against the browser budget recorded in
 `SOLVER_COMPARISON_SUMMARY.md` ("a constrained heap"; no `> ~1500`-cell case without a
 memory-budget check), sparse LU's fill-in is the memory risk at SPE3 scale and CPR is not: that,
-and CPR's 4x and 18x speed at the two sizes, is why `auto` switches to it above 512 rows. Where the
+and CPR's 3x and 18x speed in wasm at the two sizes, is why `auto` switches to it above 512 rows. Where the
 crossover sits between 144 and 882 rows was not measured.
 
 What it says: **the linear solve is no longer what limits SPE5 or SPE3 size.** With CPR the solve
-is 2–10% of assembly, so the per-cell flash (the #45 cost record) is the cost to work on next.
+is 2–12% of assembly, so the per-cell flash (the #45 cost record) is the cost to work on next.
 
 Reproduce:
 

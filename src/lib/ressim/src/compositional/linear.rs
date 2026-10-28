@@ -72,8 +72,8 @@ use super::block_matrix::BlockSparseMatrix;
 /// Systems up to this many rows solve by sparse LU under [`LinearRoute::Auto`]; larger ones by
 /// FGMRES-CPR.
 ///
-/// Measured (wasm, one solve): at 882 rows CPR already took 11 ms against sparse LU's 46 ms, and
-/// at 3,240 rows 16 ms against 290 ms. Below a few hundred rows both are a few milliseconds and the
+/// Measured (wasm, one solve, `0ab2af3`): at 882 rows CPR already took 12–14 ms against sparse
+/// LU's 36–46 ms, and at 3,240 rows 14–15 ms against 251–256 ms. Below a few hundred rows both are a few milliseconds and the
 /// direct solve is exact, which is worth more than the time. Where between the two the crossover
 /// sits was not measured; 512 is the black-oil direct threshold, kept for symmetry rather than
 /// because the compositional system was shown to share it.
