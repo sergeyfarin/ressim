@@ -1,12 +1,13 @@
 //! Newton solve and the trial-update policy (compositional plan, C10).
 //!
-//! # What this is and is not
+//! # The linear solve
 //!
-//! A **direct** solve on the dense assembled system, which is what the plan asks C10 to start
-//! with: a correction-quality oracle on small nonsingular systems, before any iterative or
-//! preconditioned path exists to be compared against. The component-aware block-ILU/CPR adapter is
-//! explicitly deferred — it is a separate piece of work, and its whole value is being measured
-//! against a correction that is known to be right.
+//! Each iteration solves the row-scaled block-sparse system on the route [`LinearOptions`] names
+//! (see [`super::linear`]): by default sparse LU on small systems and FGMRES with the
+//! compositional CPR preconditioner on large ones, or either explicitly, or the dense LU oracle
+//! the plan asked C10 to start with. Every iteration's
+//! [`LinearSolveReport`] is kept in [`NewtonReport::linear_history`], measured identically on
+//! every route, so a direct-vs-iterative comparison reads the same observables from both.
 //!
 //! # The update policy
 //!
@@ -41,6 +42,7 @@ use crate::fluid::specification::FluidSpecification;
 
 use super::assembly::{AssemblyError, AssemblyResult, Face, assemble};
 use super::layout::{CellPrimary, CompositionalLayout};
+use super::linear::{self, LinearFailure, LinearOptions, LinearSolveReport};
 use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalState, RockView, StateError, TrialState};
 
@@ -60,8 +62,8 @@ pub const ZERO_COMPONENT_DIRECTION_TOLERANCE: f64 = 1e-12;
 pub enum NewtonError {
     /// Assembly failed — typically a flash that could not converge at some cell's primaries.
     Assembly(AssemblyError),
-    /// The Jacobian is singular to working precision.
-    SingularJacobian { min_pivot: f64 },
+    /// The linear solve produced no usable correction.
+    Linear(LinearFailure),
     /// The iteration budget ran out with the residual still above tolerance.
     NotConverged {
         iterations: usize,
@@ -83,9 +85,7 @@ impl core::fmt::Display for NewtonError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Assembly(e) => write!(f, "assembly failed: {e}"),
-            Self::SingularJacobian { min_pivot } => {
-                write!(f, "the Jacobian is singular: smallest pivot {min_pivot:e}")
-            }
+            Self::Linear(e) => write!(f, "{e}"),
             Self::NotConverged {
                 iterations,
                 scaled_residual,
@@ -121,8 +121,11 @@ pub struct NewtonReport {
     /// Step scale factor applied at each iteration. Persistent values below one mean the update is
     /// being held back by the domain, not by the physics.
     pub step_scale_history: Vec<f64>,
-    /// Smallest linear pivot seen, across iterations.
+    /// Smallest linear pivot seen, across iterations. Only the dense route exposes its pivots;
+    /// on the others this stays infinite.
     pub min_pivot: f64,
+    /// One report per linear solve, in iteration order.
+    pub linear_history: Vec<LinearSolveReport>,
     /// Each well's component rate [mol/day] at the **accepted** state, in the order the wells were
     /// given.
     ///
@@ -139,6 +142,8 @@ pub struct NewtonOptions {
     /// Scaled residual below which the step is accepted.
     pub tolerance: f64,
     pub max_iterations: usize,
+    /// Which linear solve each iteration uses, and its settings.
+    pub linear: LinearOptions,
 }
 
 impl Default for NewtonOptions {
@@ -149,6 +154,7 @@ impl Default for NewtonOptions {
             // part in 1e8 of what that component holds". Deliberately not a black-oil number.
             tolerance: 1e-8,
             max_iterations: 20,
+            linear: LinearOptions::default(),
         }
     }
 }
@@ -168,53 +174,6 @@ pub struct NewtonProblem<'a> {
     /// Sources in mol/day, positive for injection.
     pub sources: &'a [Vec<f64>],
     pub dt_days: f64,
-}
-
-/// Solve `A x = b` in place by Gaussian elimination with partial pivoting, returning the smallest
-/// pivot magnitude seen.
-///
-/// Dense, because the systems C10 validates on are small and being obviously correct matters more
-/// here than being fast. The sparse path is the deferred adapter's, and this is the oracle it will
-/// be measured against.
-fn solve_dense(matrix: &mut [Vec<f64>], rhs: &mut [f64]) -> f64 {
-    let n = matrix.len();
-    let mut min_pivot = f64::INFINITY;
-
-    for k in 0..n {
-        let mut pivot_row = k;
-        for r in (k + 1)..n {
-            if matrix[r][k].abs() > matrix[pivot_row][k].abs() {
-                pivot_row = r;
-            }
-        }
-        matrix.swap(k, pivot_row);
-        rhs.swap(k, pivot_row);
-
-        let pivot = matrix[k][k];
-        min_pivot = min_pivot.min(pivot.abs());
-        if pivot == 0.0 || !pivot.is_finite() {
-            return min_pivot;
-        }
-        for r in (k + 1)..n {
-            let factor = matrix[r][k] / pivot;
-            if factor == 0.0 {
-                continue;
-            }
-            for c in k..n {
-                matrix[r][c] -= factor * matrix[k][c];
-            }
-            rhs[r] -= factor * rhs[k];
-        }
-    }
-
-    for k in (0..n).rev() {
-        let mut acc = rhs[k];
-        for j in (k + 1)..n {
-            acc -= matrix[k][j] * rhs[j];
-        }
-        rhs[k] = acc / matrix[k][k];
-    }
-    min_pivot
 }
 
 /// The largest `tau` in `(0, 1]` for which the whole step stays strictly inside the domain.
@@ -318,6 +277,7 @@ pub fn solve_newton(
         residual_history: Vec::new(),
         step_scale_history: Vec::new(),
         min_pivot: f64::INFINITY,
+        linear_history: Vec::new(),
         accepted_well_rates: Vec::new(),
     };
     let mut current = state.clone();
@@ -341,25 +301,45 @@ pub fn solve_newton(
         // between a large component and a trace one, and pivoting on it would select pivots by
         // inventory rather than by conditioning.
         let n = problem.layout.component_count();
-        let size = problem.layout.cell_count() * n;
-        let mut matrix = assembled.jacobian.clone();
-        let mut rhs = vec![0.0; size];
-        for cell in 0..problem.layout.cell_count() {
-            for i in 0..n {
-                let row = cell * n + i;
-                let scale = assembled.scaling[cell].row_scale[i];
-                rhs[row] = -assembled.residual[row] / scale;
-                for entry in matrix[row].iter_mut() {
-                    *entry /= scale;
+        let row_scale: Vec<f64> = assembled
+            .scaling
+            .iter()
+            .flat_map(|s| s.row_scale.iter().copied())
+            .collect();
+        let mut matrix = assembled.jacobian;
+        matrix.scale_rows(&row_scale);
+        let rhs: Vec<f64> = assembled
+            .residual
+            .iter()
+            .zip(&row_scale)
+            .map(|(r, s)| -r / s)
+            .collect();
+        let accumulation_blocks: Vec<Vec<f64>> = assembled
+            .accumulation_blocks
+            .iter()
+            .enumerate()
+            .map(|(cell, block)| {
+                let mut scaled = block.clone();
+                for i in 0..n {
+                    let s = row_scale[cell * n + i];
+                    for entry in &mut scaled[i * n..(i + 1) * n] {
+                        *entry /= s;
+                    }
                 }
-            }
-        }
+                scaled
+            })
+            .collect();
 
-        let min_pivot = solve_dense(&mut matrix, &mut rhs);
-        report.min_pivot = report.min_pivot.min(min_pivot);
-        if !rhs.iter().all(|v| v.is_finite()) {
-            return (Err(NewtonError::SingularJacobian { min_pivot }), report);
+        let (solved, linear_report) =
+            linear::solve(&options.linear, &matrix, &accumulation_blocks, &rhs);
+        if let Some(p) = linear_report.min_pivot {
+            report.min_pivot = report.min_pivot.min(p);
         }
+        report.linear_history.push(linear_report);
+        let rhs = match solved {
+            Ok(x) => x,
+            Err(e) => return (Err(NewtonError::Linear(e)), report),
+        };
 
         let tau = match fraction_to_boundary(problem.layout, &current, &rhs) {
             Ok(t) => t,

@@ -121,6 +121,7 @@ fn comp_rollback_a_rejected_step_changes_nothing() {
         newton: NewtonOptions {
             tolerance: 1e-8,
             max_iterations: 4,
+            ..Default::default()
         },
         ..TimestepOptions::default()
     };
@@ -217,6 +218,7 @@ fn comp_rollback_a_rejected_step_leaves_a_non_empty_well_ledger_alone() {
         newton: NewtonOptions {
             tolerance: 1e-8,
             max_iterations: 4,
+            ..Default::default()
         },
         ..TimestepOptions::default()
     };
@@ -262,6 +264,7 @@ fn comp_rollback_the_retry_ladder_halves_dt_and_records_every_attempt() {
         newton: NewtonOptions {
             tolerance: 1e-8,
             max_iterations: 3,
+            ..Default::default()
         },
         ..TimestepOptions::default()
     };
@@ -307,6 +310,7 @@ fn comp_rollback_a_cut_step_succeeds_and_reports_the_dt_that_worked() {
         newton: NewtonOptions {
             tolerance: 1e-8,
             max_iterations: 8,
+            ..Default::default()
         },
         ..TimestepOptions::default()
     };
@@ -353,6 +357,7 @@ fn comp_rollback_failures_are_classified() {
         newton: NewtonOptions {
             tolerance: 1e-8,
             max_iterations: 3,
+            ..Default::default()
         },
         ..TimestepOptions::default()
     };
@@ -408,6 +413,7 @@ fn comp_rollback_budget_exhaustion_is_its_own_classification() {
         newton: NewtonOptions {
             tolerance: 1e-8,
             max_iterations: 2,
+            ..Default::default()
         },
         ..TimestepOptions::default()
     };

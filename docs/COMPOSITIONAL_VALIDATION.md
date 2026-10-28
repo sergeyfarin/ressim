@@ -18,7 +18,7 @@ oracle limitation, not a ResSim defect; §8's C12 record says what it does and d
 At matched temporal resolution the two simulators agree to **0.0074 bar** and **0.0014%**. A
 previously reported 1.29× connection-rate defect was **retracted** — see
 [`COMPOSITIONAL_C12_FORENSICS.md`](COMPOSITIONAL_C12_FORENSICS.md). C13 is complete (status
-table, section 7). C14 onwards have not started.
+table, section 7). C14 onwards have not started; C10's sparse and iterative linear routes landed under #49.
 
 ## Scope this document governs
 
@@ -490,7 +490,7 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | Derivative closure | — | `sum_i d(x_i)/du_v` and `sum_i d(y_i)/du_v` worst 6.1e-16 (`binary_T333_p150`) | The oracle's derivatives satisfy the normalization identity to roundoff |
 | Smooth property derivatives | ≤ 1e-4 relative, on a frozen nonzero derivative scale, over an FD step plateau | Deferred to C4 — needs the Rust implementation to compare against | Not yet |
 | Tiny assembled Jacobian | ≤ 1e-5 scaled entrywise vs FD at smooth states | Deferred to C8/C9 | Not yet |
-| Tiny direct linear oracle | ≤ 1e-10 full-system relative residual | Deferred to C10 | Not yet |
+| Tiny direct linear oracle | ≤ 1e-10 full-system relative residual | Dense and sparse LU both reported on the true full-system residual (`LinearSolveReport`); asserted ≤ 1e-10 on both by `comp_linear_routes_agree_with_the_dense_oracle`; measured ≤ 1.3e-14 at 882 rows and 2.5e-15 at 3,240 (#49) | **Met** |
 | Local conservative face exchange | Cancellation to roundoff | Deferred to C9 | Not yet |
 | Global closed/source balance | ≤ 1e-8 relative accumulated mole error per component | Deferred to C9/C10 | Not yet |
 | Refined external trajectories | ≤ 1% on cumulative quantities, per-observable tolerances in C12 | **Study done.** Sub-step halved four times (first-order convergence confirmed; the comparison step is on the converged part of the curve) and the grid refined 5 → 10 → 20 → 40 with the reference re-solved on each. Per-observable bands frozen from those measurements (rows above). The cumulative target is **not met** — see the C12 record | Partial — the study is complete, the cumulative target is not |
@@ -539,7 +539,10 @@ No existing black-oil benchmark tolerance is changed by any of this.
    grid refinement, a skin variant conditioned to test a cumulative, and a single-cell depletion on
    two different controls. A phase change inside the declared domain is forced by the depletion
    pair, not by a chosen composition.
-4. **The iterative linear adapter is deferred.** C10 delivers the direct dense solve the plan
+4. ~~**The iterative linear adapter is deferred.**~~ **CLOSED by #49**: sparse LU and
+   FGMRES-CPR landed beside the dense oracle, and `NewtonReport::linear_history` carries the
+   observables the precondition below demands, in the same change. See §8's linear-route record.
+   The original text follows. C10 delivers the direct dense solve the plan
    asks it to start with. A component-aware block-ILU or CPR path is not implemented, and it is
    not needed until C14's performance work gives it a budget to meet: its entire value is being
    compared against a correction known to be right, which is what the direct solve now provides.
@@ -581,7 +584,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C7 | Component layout and state | **COMPLETE** | `compositional/{layout,state}.rs`; 30 `comp_layout_*` / `comp_state_*` tests |
 | C8 | Cell inventory, accumulation and scaling | **COMPLETE** | `compositional/accumulation.rs`; 19 `comp_accumulation_*` / `comp_scaling_*` tests |
 | C9 | Component face flux, gravity and global assembly | **COMPLETE** | `compositional/{flux,assembly}.rs`; 33 `comp_flux_*` / `comp_assembly_*` / `comp_gravity_*` tests |
-| C10 | Linear solve, Newton, timestep lifecycle | **COMPLETE** on the direct path | `compositional/{newton,timestep}.rs`; 20 `comp_newton_*` / `comp_rollback_*` tests. The iterative/CPR adapter is deferred — see the C10 record |
+| C10 | Linear solve, Newton, timestep lifecycle | **COMPLETE**, direct and iterative | `compositional/{newton,timestep}.rs`; 20 `comp_newton_*` / `comp_rollback_*` tests. Block-sparse Jacobian, sparse LU and FGMRES-CPR (#49): `compositional/{block_matrix,linear}.rs`, 11 `comp_linear_*` tests — see the linear-route record |
 | C11 | Compositional wells | **COMPLETE** | `compositional/wells.rs`, [design note](COMPOSITIONAL_WELL_DESIGN.md); 29 `comp_well_*` tests, single and multiple completions. **Derived from first principles — C11's OPM reference is unavailable here** (plan correction 3), so no OPM agreement is claimed |
 | C12 | NATIVE-COMPOSITIONAL-READY | **COMPLETE — milestone DECLARED 2026-09-18**, with one residual stated: ResSim's surface-rate control on a mixture is validated as a conversion (8e-6) but not end to end, because no rate-controlled fixture in the oracle converges. At matched resolution the two simulators agree to **0.0074 bar / 0.0014%**; cumulative production to **0.041%** | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 9 `comp_depletion_*` + 3 `comp_skin_*` + 1 `comp_injection_*` + 1 `comp_matched_*` + 3 `comp_oracle_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. A 1.29× connection-rate finding was retracted |
 | C13 | WASM and product integration | **COMPLETE** (2026-10-08) | Engine boundary, worker path, run series, quantity registry and the `comp_co2_1d` scenario are landed (`661431a`…`5d9f1ce`). Since 2026-10-07 the scenario is offered: it runs through the scenario run-set queue, the chart stack sources its compositional quantities into their own panels (no black-oil curve key), stop and failure reasons reach the UI, and vapour saturation and pressure follow the 3D view and spatial profile. The browser run loop also now steps each report interval to its time; it had counted engine calls, so a run whose steps were cut ended short (40 cells: 16.6 of 20 days). The native C12 comparisons drive their own loops and are unaffected. Since 2026-10-08 the 3D view and spatial profile also show each component's overall mole fraction per cell: the spatial snapshot carries the engine's composition unchanged, and one selector (`visualization/spatialProperty.ts`) offers `z` per component and drops water saturation, which a water-free case does not have ([#29](https://github.com/sergeyfarin/ressim/issues/29)). Restart stays API-only by policy. |
@@ -590,6 +593,86 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | #45 | Up to 10 components; per-fluid temperature and BIPs; SPE5 fluid pinned from OPM | **COMPLETE** | `MAX_COMPONENTS = 10` in `fluid/specification.rs` (re-exported by `compositional/layout.rs`); `pinned::spe5()`; `EosVariant::PengRobinsonCorrected`; SPE5 in the fixture (§3a) and in every fixture-driven test; `comp_surface_separation_matches_opm_on_the_spe5_fluid`; N=10 kernels FD-checked in `compositional/cost_tests.rs`. Cost record below |
 
 ## 8. Completion records
+
+### C10 linear routes — block-sparse Jacobian, sparse LU and CPR (#49, 2026-10-28)
+
+The Jacobian is now assembled into `BlockSparseMatrix` (one `N x N` block per cell and per face
+neighbour; wells only touch diagonal blocks, because V1 wells have no unknowns), and each Newton
+iteration solves the row-scaled system on a `LinearRoute`:
+
+| Route | What it is | Role |
+| --- | --- | --- |
+| `dense-lu` | the previous Gaussian elimination, on the densified matrix | the oracle; small grids only |
+| `sparse-lu` | faer sparse LU on the block pattern | default up to 512 rows |
+| `fgmres-cpr` | restarted FGMRES, right-preconditioned by a two-stage CPR | default above 512 rows |
+| `auto` | the size rule above | `LinearOptions::default()` |
+
+**The CPR is the compositional one the plan asked for, not black-oil's quasi-IMPES.** Restriction
+weights are true-IMPES from each cell's own row-scaled accumulation block (`D^T w = e_p`), which for
+this mole-balance formulation is the volume balance: partial molar volumes annihilate every `dz`
+column because the fluid fills the pore volume for every composition. Wells have no equation of
+their own, so they enter the coarse operator `W^T A P` through their cell's diagonal block — the
+BHP feedback included, and no separate well policy needed. The coarse pressure system is solved
+exactly by sparse LU; the second stage is block-ILU(0) on the full matrix. The derivation is in
+`compositional/linear.rs`'s module docs.
+
+**Report contract (§6 item 4) met in the same change.** Every linear solve appends a
+`LinearSolveReport` to `NewtonReport::linear_history`: route actually run, RHS norm, the **true**
+full-system residual `||b - A x||` recomputed from the returned correction (never the Krylov
+recurrence), reduction, iterations and finite-solution status. A CPR solve that misses its
+tolerance is `NewtonError::Linear(NotConverged)`, classified as a linear failure by the lifecycle,
+never a correction.
+
+**Agreement with the dense oracle.**
+
+- Under test, every sparse-LU solve of at most 300 rows is shadowed by the dense oracle and fails
+  above 1e-9 relative (`linear::shadow`). Over the whole compositional gate that is **6,896 systems
+  (3 to 144 rows), worst `||x_sparse - x_dense||_inf / ||x_dense||_inf` = 1.7e-12**.
+- The whole `validate-compositional.sh thermo` gate passes on each route forced in turn
+  (`RESSIM_COMP_LINEAR_ROUTE=dense-lu|sparse-lu|fgmres-cpr`, test builds only), the OPM-referenced
+  C12 fixtures and the convergence census included.
+- `comp_linear_*`: sparse vs dense on a 144-row SPE5 box at ≤ 1e-10; CPR vs dense ≤ 1e-7 at its
+  1e-11 tolerance; Newton on all three routes from one state with both wells, direct routes in
+  identical iterations and accepted states equal to 1e-12, CPR to 1e-9.
+
+**Cost.** One linear solve on a box grid with a pressure gradient, gravity on the vertical faces,
+a BHP injector and producer (`comp_linear_cost_spe5_and_spe3_size`, `#[ignore]`d). SPE5 size is
+7x7x3 at SPE5's six components; SPE3 size is 9x9x4 on the ten-component **timing fluid** of
+`cost_tests.rs` (SPE3's own fluid is not pinned; the row count and block size are what a linear
+solver's cost depends on). AMD EPYC 3251, one thread, release. **Provisional**: measured on a dirty
+tree over `ce8a8f8`; re-record on the committed tree before citing elsewhere.
+
+| System | Rows | Block-sparse J | Dense J would be | Assembly | `sparse-lu` | `fgmres-cpr` (7 its) | `dense-lu` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| SPE5 size, native | 882 | 0.25 MB | 6.2 MB | 79 ms | 9.7 ms | 1.8 ms | 36.6 ms |
+| SPE5 size, wasm | 882 | | | 120–195 ms | 45–51 ms | 11–13 ms | 435–494 ms |
+| SPE3 size, native | 3,240 | 1.6 MB | 84 MB | 329 ms | 109 ms | 9.0 ms | not run |
+| SPE3 size, wasm | 3,240 | | | 464–567 ms | 274–295 ms | 15–16 ms | not run |
+
+Wasm peak linear memory, one route per fresh instance (it never shrinks, so it is the high-water
+mark): SPE5 size 9.9 MB on sparse LU, **3.7 MB on CPR**, 9.5 MB on dense; SPE3 size **66.7 MB on
+sparse LU** (fill-in), **7.8 MB on CPR**. Against the browser budget recorded in
+`SOLVER_COMPARISON_SUMMARY.md` ("a constrained heap"; no `> ~1500`-cell case without a
+memory-budget check), sparse LU's fill-in is the memory risk at SPE3 scale and CPR is not: that,
+and CPR's 4x and 18x speed at the two sizes, is why `auto` switches to it above 512 rows. Where the
+crossover sits between 144 and 882 rows was not measured.
+
+What it says: **the linear solve is no longer what limits SPE5 or SPE3 size.** With CPR the solve
+is 2–10% of assembly, so the per-cell flash (the #45 cost record) is the cost to work on next.
+
+Reproduce:
+
+```bash
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml comp_linear_cost -- --ignored --nocapture
+RESSIM_COMP_LINEAR_ROUTE=fgmres-cpr bash scripts/validate-compositional.sh thermo
+RESSIM_COMP_LINEAR_SHADOW_LOG=1 cargo test --manifest-path src/lib/ressim/Cargo.toml comp_ -- --nocapture --test-threads=1 | grep comp-linear-shadow
+```
+
+The wasm column ran the same test compiled for `wasm32-wasip1` under Node 24's `node:wasi`. The
+crate's test target does not build for wasm32 as committed — FIM tests reference the native-only
+`trace_sink`, `capture` and `flow_lifecycle` modules — so it was built from a copy with those
+module gates lifted and `compositional/` byte-identical; one route per run via
+`RESSIM_COMP_LINEAR_COST_ROUTE`.
 
 ### #45 — up to ten components and the SPE5 fluid (2026-10-23)
 

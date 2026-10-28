@@ -10,8 +10,8 @@
 //! Status: C7–C12 complete — layout, state, accumulation, face flux and gravity, global assembly,
 //! wells, the Newton solve, the timestep lifecycle, and validation against an independent
 //! simulator. `NATIVE-COMPOSITIONAL-READY` is declared; see `docs/COMPOSITIONAL_VALIDATION.md`.
-//! C10's iterative linear adapter is still deferred behind the direct solve it would be measured
-//! against, until C14 gives it a budget to meet.
+//! The Jacobian is block-sparse and solves by sparse LU or FGMRES with a compositional CPR, both
+//! measured against the dense direct solve they replaced (#49; [`linear`]).
 //!
 //! [`api`] is C13's engine-side boundary — a configured case and the payloads that cross the WASM
 //! edge — and [`frontend`] is the thin `wasm_bindgen` shell over it.
@@ -24,10 +24,12 @@
 pub mod accumulation;
 pub mod api;
 pub mod assembly;
+pub mod block_matrix;
 pub mod flux;
 #[cfg(feature = "wasm")]
 pub mod frontend;
 pub mod layout;
+pub mod linear;
 pub mod newton;
 pub mod relperm;
 pub mod state;
@@ -48,6 +50,8 @@ mod flux_tests;
 mod gravity_tests;
 #[cfg(test)]
 mod layout_tests;
+#[cfg(test)]
+mod linear_tests;
 #[cfg(test)]
 mod newton_tests;
 #[cfg(test)]

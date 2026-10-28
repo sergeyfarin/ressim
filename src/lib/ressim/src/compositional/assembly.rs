@@ -28,13 +28,15 @@
 //! `sources` remains for genuinely imposed material — a test fixture, or a boundary condition that
 //! is not a well — and is constant by definition.
 //!
-//! The Jacobian is dense here because the grids C9 validates on are tiny and a dense comparison
-//! against a numerical Jacobian is the point. The sparse structure the solver needs is C10's, and
-//! it reads its block sizes and tail offsets from the same layout.
+//! The Jacobian is stored block-sparse ([`BlockSparseMatrix`]): one `N x N` block per cell and per
+//! face neighbour, which is every entry assembly can write. C9 validated it dense against a
+//! numerical Jacobian on tiny grids; [`BlockSparseMatrix::to_dense`] keeps that comparison exact,
+//! and nothing at SPE scale ever allocates the dense square.
 
 use crate::fluid::specification::FluidSpecification;
 
 use super::accumulation::{AccumulationError, CellInventory, EquationScaling, cell_accumulation};
+use super::block_matrix::BlockSparseMatrix;
 use super::flux::{FluxError, Gravity, face_flux};
 use super::layout::CompositionalLayout;
 use super::relperm::RelativePermeabilityModel;
@@ -104,9 +106,12 @@ impl core::fmt::Display for AssemblyError {
 pub struct AssemblyResult {
     /// Unscaled residual, one entry per cell equation [mol].
     pub residual: Vec<f64>,
-    /// Unscaled Jacobian, `cells*N` square over the cell block. Well and perforation rows are
-    /// C11's and are not present.
-    pub jacobian: Vec<Vec<f64>>,
+    /// Unscaled Jacobian, `cells*N` square over the cell block, stored by `N x N` blocks over the
+    /// face graph. V1 wells have no unknowns of their own, so there are no well rows.
+    pub jacobian: BlockSparseMatrix,
+    /// Each cell's accumulation block `dn_i/du_v`, row-major `N x N`, unscaled. Already inside
+    /// `jacobian`; kept separately because the CPR pressure weights are defined by it alone.
+    pub accumulation_blocks: Vec<Vec<f64>>,
     /// Per-cell inventories at the current primaries.
     pub inventories: Vec<CellInventory>,
     /// Per-cell scaling, built from the previous inventory.
@@ -185,7 +190,13 @@ pub fn assemble(
 
     let size = cells * n;
     let mut residual = vec![0.0; size];
-    let mut jacobian = vec![vec![0.0; size]; size];
+    let mut jacobian =
+        BlockSparseMatrix::from_connections(cells, n, faces.iter().map(|f| (f.cell_i, f.cell_j)))
+            .ok_or(AssemblyError::InvalidFace {
+            face: 0,
+            reason: "the face graph does not form a Jacobian pattern",
+        })?;
+    let mut accumulation_blocks = Vec::with_capacity(cells);
     let mut inventories = Vec::with_capacity(cells);
     let mut scaling = Vec::with_capacity(cells);
 
@@ -202,12 +213,14 @@ pub fn assemble(
         )
         .map_err(|source| AssemblyError::Accumulation { cell, source })?;
 
+        let mut block = vec![0.0; n * n];
         for i in 0..n {
             residual[cell * n + i] = acc.residual[i];
-            for v in 0..n {
-                jacobian[cell * n + i][cell * n + v] = acc.jacobian[i][v];
-            }
+            block[i * n..(i + 1) * n].copy_from_slice(&acc.jacobian[i]);
         }
+        let diagonal = jacobian.diagonal_position(cell);
+        jacobian.block_mut(diagonal).copy_from_slice(&block);
+        accumulation_blocks.push(block);
         scaling.push(EquationScaling::from_previous_inventory(
             &previous_moles[cell],
             state.cell(cell).pressure_bar,
@@ -233,6 +246,18 @@ pub fn assemble(
             source,
         })?;
 
+        let ii = jacobian.diagonal_position(face.cell_i);
+        let jj = jacobian.diagonal_position(face.cell_j);
+        let (Some(ij), Some(ji)) = (
+            jacobian.position(face.cell_i, face.cell_j),
+            jacobian.position(face.cell_j, face.cell_i),
+        ) else {
+            return Err(AssemblyError::InvalidFace {
+                face: index,
+                reason: "is not in the Jacobian pattern",
+            });
+        };
+
         for i in 0..n {
             let contribution = dt_days * flux.component_moles_per_day[i];
             residual[face.cell_i * n + i] += contribution;
@@ -244,10 +269,10 @@ pub fn assemble(
             for v in 0..n {
                 let d_i = dt_days * flux.jacobian[i][v];
                 let d_j = dt_days * flux.jacobian[i][n + v];
-                jacobian[face.cell_i * n + i][face.cell_i * n + v] += d_i;
-                jacobian[face.cell_i * n + i][face.cell_j * n + v] += d_j;
-                jacobian[face.cell_j * n + i][face.cell_i * n + v] -= d_i;
-                jacobian[face.cell_j * n + i][face.cell_j * n + v] -= d_j;
+                jacobian.block_mut(ii)[i * n + v] += d_i;
+                jacobian.block_mut(ij)[i * n + v] += d_j;
+                jacobian.block_mut(ji)[i * n + v] -= d_i;
+                jacobian.block_mut(jj)[i * n + v] -= d_j;
             }
         }
     }
@@ -276,10 +301,11 @@ pub fn assemble(
 
         for connection in &result.completions {
             let cell = connection.cell;
+            let diagonal = jacobian.diagonal_position(cell);
             for i in 0..n {
                 residual[cell * n + i] -= dt_days * connection.component_moles_per_day[i];
                 for v in 0..n {
-                    jacobian[cell * n + i][cell * n + v] -=
+                    jacobian.block_mut(diagonal)[i * n + v] -=
                         dt_days * connection.cell_jacobian[i][v];
                 }
             }
@@ -289,6 +315,7 @@ pub fn assemble(
     Ok(AssemblyResult {
         residual,
         jacobian,
+        accumulation_blocks,
         inventories,
         scaling,
         net_internal_face_moles,

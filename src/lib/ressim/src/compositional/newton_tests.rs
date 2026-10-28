@@ -352,6 +352,7 @@ fn comp_newton_reports_a_budget_exhaustion_with_its_history() {
     let options = NewtonOptions {
         tolerance: 1e-8,
         max_iterations: 3,
+        ..Default::default()
     };
     let (outcome, report) = solve_newton(&problem, &case.state, options);
 
@@ -388,6 +389,7 @@ fn comp_newton_a_failed_solve_does_not_touch_the_input_state() {
     let options = NewtonOptions {
         tolerance: 1e-10,
         max_iterations: 2,
+        ..Default::default()
     };
     let (outcome, _) = solve_newton(&problem, &case.state, options);
     assert!(outcome.is_err());
@@ -420,6 +422,7 @@ fn comp_newton_converges_quadratically_near_the_solution() {
     let options = NewtonOptions {
         tolerance: 1e-12,
         max_iterations: 15,
+        ..Default::default()
     };
     let (outcome, report) = solve_newton(&problem, &case.state, options);
     outcome.unwrap_or_else(|e| panic!("{e} ({report:?})"));

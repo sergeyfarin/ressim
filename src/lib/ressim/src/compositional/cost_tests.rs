@@ -37,7 +37,7 @@ fn cell(p_bar: f64, z: &[f64]) -> CompositionalCellState {
 
 /// SPE5 plus four pseudo-components between C1/C3, C3/C6, C6/C10 and C10/C15. The SPE5
 /// interactions are kept by component id; every pair involving a pseudo-component is zero.
-fn ten_component_fluid() -> FluidSpecification {
+pub(super) fn ten_component_fluid() -> FluidSpecification {
     let spe5 = pinned::spe5().unwrap();
     let c = spe5.components();
     let mean = |a: &Component, b: &Component, id: &str| Component {
@@ -82,7 +82,7 @@ fn ten_component_fluid() -> FluidSpecification {
 
 /// SPE5's initial oil with each pseudo-component taking a share of its neighbours, so the ten
 /// component mixture splits near where the oil does.
-const TEN_Z: [f64; 10] = [0.45, 0.04, 0.02, 0.04, 0.05, 0.06, 0.15, 0.04, 0.10, 0.05];
+pub(super) const TEN_Z: [f64; 10] = [0.45, 0.04, 0.02, 0.04, 0.05, 0.06, 0.15, 0.04, 0.10, 0.05];
 const SPE5_Z: [f64; 6] = [0.50, 0.03, 0.07, 0.20, 0.15, 0.05];
 
 #[test]

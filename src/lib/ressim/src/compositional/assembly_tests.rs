@@ -324,7 +324,8 @@ fn comp_assembly_jacobian_matches_a_numerical_jacobian_entrywise() {
                 .fold(0.0f64, f64::max)
                 .max(1e-8);
             for row in 0..size {
-                let e = (analytic.jacobian[row][column_index] - numerical[row][column_index]).abs()
+                let e = (analytic.jacobian.get(row, column_index) - numerical[row][column_index])
+                    .abs()
                     / scale;
                 if e > worst.0 {
                     worst = (e, format!("{name}[{row}][{column_index}]"));
@@ -376,7 +377,8 @@ fn comp_assembly_jacobian_couples_only_face_neighbours() {
                 });
             if !adjacent {
                 assert_eq!(
-                    result.jacobian[row][col], 0.0,
+                    result.jacobian.get(row, col),
+                    0.0,
                     "cells {row_cell} and {col_cell} are not connected but entry \
                      [{row}][{col}] is nonzero"
                 );

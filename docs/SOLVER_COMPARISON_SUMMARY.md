@@ -26,6 +26,10 @@ constrained heap. Every case below is `≤ 1200` cells (largest: `23×23×1 = 52
 case is exercised here — those are deferred to the offline OPM pipeline, not the browser solver.
 Do not add `> ~1500`-cell convergence cases to this matrix without a memory-budget check.
 
+The compositional engine's linear solve was measured against this budget at SPE5 and SPE3 size
+(882 and 3,240 rows) for #49; the record is in
+[`COMPOSITIONAL_VALIDATION.md`](COMPOSITIONAL_VALIDATION.md) §8.
+
 > **Partially superseded 2026-09-15 (`6be6d08`).** Two rows below improved after this baseline:
 > `water-pressure 22x22x1` now measures `4 substeps / 0-1-0` (was `11 / 8-0-0`) and `23x23x1`
 > measures `3 / 0-1-0` (was `6 / 4-0-0`) at `--steps 1` — the `linear-bad` singularity backstop no
