@@ -8,6 +8,7 @@ the reference does not converge.
 | --- | --- |
 | Deck | `INJECTION.DATA`, derived from the depletion pair — the PROPS section is `1D_COMP.DATA`'s verbatim, © 2024 SINTEF Digital / TNO, Open Database License |
 | Simulator | `flowexp_comp`, the same build as the other cases |
+| Build environment | Ubuntu 26.04 / g++ 15.2 / OPM `2026.04-1~resolute` since the 2026-10-29 re-baseline; see [`../README.md`](../README.md#build-environment) |
 | Regenerate | `bash tools/opm_compositional/run-injection.sh` |
 | Verify unchanged | `bash tools/opm_compositional/run-injection.sh --check` |
 | Consumed by | `comp_injection_*` in `src/lib/ressim/src/compositional/reference_tests.rs` |

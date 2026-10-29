@@ -200,8 +200,18 @@ bash tools/opm_compositional/generate.sh --check  # verify the committed fixture
 | Harness | `tools/opm_compositional/ptflash_harness.cpp`, `two_component_fluid_system.hh`, `spe5_fluid_system.hh` |
 | Fixture | `opm/compositional/ptflash_fixtures.json` |
 | Provenance | `opm/compositional/manifest.json` — compiler, package versions, sha256, source commit |
-| Packages | `libopm-common-dev` / `libopm-simulators-dev` 2026.04-1~noble, `libdune-common-dev` 2.11.0-1~noble |
-| Compiler | `g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0`, `-std=c++20` (C++17 does not compile) |
+| Packages | `libopm-common-dev` / `libopm-simulators-dev` 2026.04-1~resolute, `libdune-common-dev` 2.11.0-1 |
+| Compiler | `g++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0` on Ubuntu 26.04, `-std=c++20` (C++17 does not compile) |
+
+**Re-baselined 2026-10-29** from Ubuntu 24.04 / g++ 13.3 / `2026.04-1~noble` to the environment
+above. The OPM release is the same; the packaging, Dune and the compiler are not. The fixture
+moved by at most 3e-8 relative outside the derivatives, and twelve states changed the method or
+tolerance rung OPM reached them on (`method_used`, `flash_tolerance_used`). The two counts below
+that depend on it are now **18** dew-sweep states at the 1e-9 rung and a derivative split of
+**24 / 9** OPM-checked / difference-checked (26 / 7 in the #75 record). Every worst gap the #75
+record quotes reproduced unchanged and no bound moved. The prose below is #75's measurement on
+the noble build; the per-file account is in
+[`opm/compositional/README.md`](../opm/compositional/README.md#build-environment).
 
 **Flashed states: 47** — 29 two-phase, 15 single-liquid, 3 single-vapour — across both fluid
 systems, two isotherms, a 10–500 bar pressure traverse that crosses a phase boundary, composition
@@ -348,6 +358,7 @@ bash tools/opm_compositional/build-flowexp-comp.sh
 | Source | `OPM/opm-simulators`, tag `release/2026.04/final`, commit `b82f21dba405286c4c4446614dd3bf9cdebf7a2c` |
 | Why that tag | it matches the installed `libopm-common-dev` / `libopm-simulators-dev` 2026.04 packages the headers come from |
 | Configure | `-DCMAKE_BUILD_TYPE=Release -DOPM_COMPILE_COMPONENTS="2;3" -DOPM_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF` |
+| Built with | `g++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0` on Ubuntu 26.04 against the `2026.04-1~resolute` packages, rebuilt 2026-10-29 (g++ 13.3 / `~noble` before); every fixture it produces reproduced byte for byte except `1d_comp/refined/n020`, which moved in the eighth significant digit |
 | Build-tree patches | three, all recorded in the script, none changing OPM behaviour: two unconditional CMake hooks that assume a full build, and two test targets that link `Boost::unit_test_framework`, which is not installed |
 | Location | outside the repository (`../ressim-opm-build/`), since it is ~1 GB of build tree |
 

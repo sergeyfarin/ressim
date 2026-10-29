@@ -517,6 +517,7 @@ struct DewDerivativeGaps {
 /// Across the seven such states the worst gap is 1.4e-8 at 1e-2 (truncation), 4.2e-9 at 5e-3,
 /// 6.9e-9 at 3e-3, 6.4e-9 at 2e-3 and 1.0e-8 at 1e-3 (roundoff); started cold, the perturbed
 /// flashes put up to 3.5e-7 of iteration-path noise into `spe5_dew_p20_t1e-3` at 3e-3 and 1e-3.
+/// Those are #75's seven; the 2026-10-29 re-baseline made it nine, with the same 4.2e-9 at 5e-3.
 ///
 /// Scales as in `comp_derivatives_match_the_fixture_on_every_two_phase_state`: the pressure
 /// column is of order 1e-11 per Pa, so each column is relative to a floor drawn from its own size.
@@ -611,8 +612,8 @@ fn dew_sweep_derivative_gaps() -> DewDerivativeGaps {
 ///
 /// Before #75 eleven of these 72 returned `NotConverged`, all within a step of the dew point:
 /// the residual floored at 1e-10 to 1e-7, set by the precision of a Rachford-Rice root carried
-/// in `beta` rather than by substitution's rate. OPM resolves all 72, 21 of them only at its
-/// 1e-9 tolerance rung (`flash_tolerance_used`).
+/// in `beta` rather than by substitution's rate. OPM resolves all 72, 18 of them only at its
+/// 1e-9 tolerance rung (`flash_tolerance_used`) since the 2026-10-29 re-baseline.
 ///
 /// Derivatives are held to SPE5's 1e-8 bound as well, against OPM where its reference closes its
 /// own mass balance and against a finite difference where it does not (`dew_sweep_derivative_gaps`).
@@ -690,10 +691,13 @@ fn comp_domain_spe5_dew_sweep_matches_the_oracle() {
     );
 
     // Derivatives at SPE5's 1e-8 bound, which the fixture-wide test also holds them to.
+    // The split follows which states OPM answers with plain `ssi`, and that moves with the
+    // oracle's build: 26/7 on the noble / g++ 13 fixture, 24/9 since the 2026-10-29 re-baseline
+    // on resolute / g++ 15 (`opm/compositional/README.md`, "Build environment").
     let gaps = dew_sweep_derivative_gaps();
     assert_eq!(
         (gaps.opm_states, gaps.difference_states),
-        (26, 7),
+        (24, 9),
         "the split between OPM-checked and difference-checked states changed"
     );
     assert!(

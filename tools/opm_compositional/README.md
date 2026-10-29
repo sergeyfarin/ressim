@@ -48,9 +48,14 @@ aborts.
 
 | Package | Version | Supplies |
 | --- | --- | --- |
-| `libopm-common-dev:amd64` | `2026.04-1~noble` | `eos/`, `constraintsolvers/PTFlash.hpp`, `fluidsystems/`, `viscositymodels/LBC.hpp`, `components/` |
-| `libopm-simulators-dev:amd64` | `2026.04-1~noble` | `opm/models/ptflash/` (read, not compiled in) |
-| `libdune-common-dev:amd64` | `2.11.0-1~noble` | `FieldVector`, `FieldMatrix`, exceptions |
+| `libopm-common-dev:amd64` | `2026.04-1~resolute` | `eos/`, `constraintsolvers/PTFlash.hpp`, `fluidsystems/`, `viscositymodels/LBC.hpp`, `components/` |
+| `libopm-simulators-dev:amd64` | `2026.04-1~resolute` | `opm/models/ptflash/` (read, not compiled in) |
+| `libdune-common-dev:amd64` | `2.11.0-1` | `FieldVector`, `FieldMatrix`, exceptions |
+
+On Ubuntu 26.04 with `g++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0` since the 2026-10-29 re-baseline; the
+fixture was generated on 24.04 with g++ 13.3 and the `~noble` packages before that. What the
+move changed is recorded in
+[`opm/compositional/README.md`](../../opm/compositional/README.md#build-environment).
 
 Confirm any header's owner with `dpkg -S /usr/include/opm/<path>`. There are **no** OPM git
 checkouts on this machine; the three commit hashes in
@@ -134,8 +139,11 @@ has no external oracle and needs an independent invariant instead.
    **Consequence:** a surface-metered cumulative on a mixture has no usable oracle here. Pure CO2
    is unaffected (the two agree to ~0.01%). See `comp_depletion_*`.
 9. **SPE5's 1e-12 tolerance is out of reach a step from the dew point.** On the injection gas
-   with heavy traces of 1e-7 to 1e-3, neither `ssi+newton` nor `ssi` converges 22 of 73 states
-   (`spe5_stcond_gas` and 21 of `spe5_dew_sweep`) at 1e-12; at 1e-9 all resolve. SPE5 therefore
+   with heavy traces of 1e-7 to 1e-3, neither `ssi+newton` nor `ssi` converges 19 of 73 states
+   (`spe5_stcond_gas` and 18 of `spe5_dew_sweep`) at 1e-12 on the current build — the count
+   moves with the compiler, see the 2026-10-29 re-baseline in
+   [`opm/compositional/README.md`](../../opm/compositional/README.md#build-environment); at 1e-9
+   all resolve. SPE5 therefore
    flashes on a ladder, 1e-12 then 1e-9, and `flash_tolerance_used` says which rung each state's
    reference came from (#75).
 9. **OPM clamps fugacity coefficients** into `[1e-10, 1e10]` in `CubicEOS.hpp`. No fixture state

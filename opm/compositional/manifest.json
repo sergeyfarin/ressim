@@ -5,13 +5,13 @@
   "regenerate": "bash tools/opm_compositional/generate.sh",
   "verify": "bash tools/opm_compositional/generate.sh --check",
   "environment": {
-    "compiler": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+    "compiler": "g++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
     "cxx_standard": "c++20",
-    "libopm-common-dev": "2026.04-1~noble",
-    "libopm-simulators-dev": "2026.04-1~noble",
-    "libdune-common-dev": "2.11.0-1~noble"
+    "libopm-common-dev": "2026.04-1~resolute",
+    "libopm-simulators-dev": "2026.04-1~resolute",
+    "libdune-common-dev": "2.11.0-1"
   },
-  "sha256": "0b8739100b3ef74c9e1102e4cc584441cc72b3ff55035b248713a25dd1e6f3bf",
-  "generated_from_commit": "8729b89bb8b94436cb780eae9a8d14f043aeb81a",
-  "worktree_clean_at_generation": false
+  "sha256": "ce4b368593bfc98cb165149051db7ca84af15e8473fbc907095c14b48fccde46",
+  "generated_from_commit": "8f10e43d6b33756b48064d8b7feed8e895ca9342",
+  "worktree_clean_at_generation": true
 }

@@ -8,6 +8,7 @@ it takes a cell down through its own saturation pressure.
 | --- | --- |
 | Deck | `DEPLETION.DATA`, derived from [`OPM/opm-tests`](https://github.com/OPM/opm-tests) `compositional/1D_COMP.DATA` — the PROPS section is that deck's verbatim, © 2024 SINTEF Digital / TNO, Open Database License |
 | Simulator | `flowexp_comp`, the same build as the 1D case |
+| Build environment | Ubuntu 26.04 / g++ 15.2 / OPM `2026.04-1~resolute` since the 2026-10-29 re-baseline; see [`../README.md`](../README.md#build-environment) |
 | Regenerate | `bash tools/opm_compositional/run-depletion.sh` |
 | Verify unchanged | `bash tools/opm_compositional/run-depletion.sh --check` |
 | Consumed by | `comp_depletion_*` in `src/lib/ressim/src/compositional/reference_tests.rs` |

@@ -10,6 +10,7 @@ part of the comparison.
 | --- | --- |
 | Deck | `QUARTER_FIVE_SPOT.DATA`, derived from OPM's `compositional/1D_COMP.DATA`, © 2024 SINTEF Digital / TNO, Open Database License (notice retained in the file) |
 | Simulator | `flowexp_comp`, the same build as the other compositional cases ([`build-flowexp-comp.sh`](../../../tools/opm_compositional/build-flowexp-comp.sh)) |
+| Build environment | Ubuntu 26.04 / g++ 15.2 / OPM `2026.04-1~resolute` since the 2026-10-29 re-baseline; see [`../README.md`](../README.md#build-environment) |
 | Regenerate | `bash tools/opm_compositional/run-quarter-five-spot.sh` |
 | Verify unchanged | the same script with `--check` |
 | Consumed by | `comp_reference_quarter_five_spot_matches_opm` in `src/lib/ressim/src/compositional/reference_tests.rs` |
