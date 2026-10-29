@@ -389,6 +389,18 @@ tables.
 - Two-phase IMPES conservation is repaired by [#63](https://github.com/sergeyfarin/ressim/issues/63); measured impact and remaining discretization limits are in §4b.
 - Saturated PVT tables with `dBo/dp > Bg·dRs/dp` are accepted, with a pre-run warning naming the
   unstable range since #39. They break IMPES and fragment FIM through that range (section 2).
+- Tables built from the black-oil correlations (custom black-oil mode) cross that condition
+  just below a high bubble point when Bo comes from Standing (#61). Standing's Bo(Rs) steepens
+  with Rs as F^0.2 while the z-factor Bg falls as about 1/p. Most flagged fluids are past
+  Standing's fitted range: in an ad hoc sweep of 1,920 fluids (API 15–50, γg 0.6–1.0, 40–150 °C,
+  Pb 50–400 bar, the store's p_max = max(1.5·Pb, 500)), 240 of the 279 flagged fluids had
+  Rs_b > 1,425 scf/STB. The flagged share was 0 % up to Pb = 150 bar, then 2 / 8 / 20 / 35 / 50 %
+  at 200 / 250 / 300 / 350 / 400 bar. The custom fluid can now use the Vasquez–Beggs Bo, which is
+  linear in Rs. It flagged none of the 1,920, but moves Bo_b by −30 % to +9 % against Standing, and
+  it was fitted only to Rs ≤ ~2,200 scf/STB. Standing stays the default, so no shipped table
+  changes. The flagged corner is pinned in `pvt.test.ts`, and fitted ranges are listed in
+  `src/lib/physics/README.md`. The sweep was run on the working tree over `b8659087` and is not a
+  baseline.
 - SPE1 scenario wiring is covered (#12). Reference-panel placement is pinned in
   `referenceComparisonModel.test.ts`. The layer thicknesses (20/30/50 ft) and each well's
   completion layer, physical-well id, surface-rate target and BHP limit are checked in

@@ -8,7 +8,10 @@ import {
     generateBlackOilTable,
     saturatedRsFraction,
     standingBubblePoint,
+    standingBo,
     standingRs,
+    vasquezBeggsBo,
+    type SaturatedBoCorrelation,
     type SaturatedRsCorrelation,
 } from './pvt';
 
@@ -101,5 +104,59 @@ describe('saturated Rs(p) below one calibration point (#26)', () => {
         for (const table of [petrosky, standing, alMarhoun]) {
             expect(findThermodynamicallyUnstableRanges(table)).toEqual([]);
         }
+    });
+});
+
+describe('saturated Bo correlation choice (#61)', () => {
+    /** Vasquez & Beggs (1980) worked by hand, 500 scf/STB, 0.75 gas gravity, 200 F, either side of 30 API. */
+    it('is the published Vasquez–Beggs correlation', () => {
+        // 1 + 4.670e-4·500 + 140·(35/0.75)·(1.100e-5 + 1.337e-9·500)
+        expect(vasquezBeggsBo(500, 0.75, 35, 200)).toBeCloseTo(1.3097342, 7);
+        // 1 + 4.677e-4·500 + 140·(25/0.75)·(1.751e-5 − 1.811e-8·500)
+        expect(vasquezBeggsBo(500, 0.75, 25, 200)).toBeCloseTo(1.2733067, 7);
+    });
+
+    it('leaves Standing as the default, bit for bit', () => {
+        expect(generateBlackOilTable(35, 0.75, 80, 150, 300, 20, 1e-4, 'standing', 'standing'))
+            .toEqual(generateBlackOilTable(35, 0.75, 80, 150, 300, 20, 1e-4));
+    });
+
+    it('changes only Bo, and sets Bo_b and the undersaturated branch from the chosen correlation', () => {
+        const tempF = cToF(80);
+        const standing = generateBlackOilTable(35, 0.75, 80, 150, 300, 20, 1e-4);
+        const vasquezBeggs = generateBlackOilTable(35, 0.75, 80, 150, 300, 20, 1e-4, 'standing', 'vasquez-beggs');
+        const rsbScf = standingRs(150 * PSI_PER_BAR, 0.75, 35, tempF);
+        const boPb = vasquezBeggsBo(rsbScf, 0.75, 35, tempF);
+        expect(standingBo(rsbScf, 0.75, 141.5 / 166.5, tempF)).toBeCloseTo(standing.find((r) => r.p_bar === 150)!.bo_m3m3, 12);
+        vasquezBeggs.forEach((row, i) => {
+            expect({ ...row, bo_m3m3: 0 }).toEqual({ ...standing[i], bo_m3m3: 0 });
+            const expected = row.p_bar <= 150
+                ? vasquezBeggsBo(row.rs_m3m3 / SCF_PER_BBL_TO_M3_PER_M3, 0.75, 35, tempF)
+                : boPb * Math.exp(-1e-4 * (row.p_bar - 150));
+            expect(row.bo_m3m3).toBeCloseTo(expected, 12);
+        });
+    });
+
+    /**
+     * The #61 finding, on a corner of the issue's sweep: with the store's p_max = max(1.5·Pb, 500),
+     * Standing's Bo crosses Bg just below high bubble points and Vasquez–Beggs does not.
+     */
+    it('keeps high-bubble-point fluids stable where Standing is not', () => {
+        const flagged = (bo: SaturatedBoCorrelation) => {
+            let count = 0;
+            for (const api of [15, 30, 31, 50]) {
+                for (const sgGas of [0.6, 1.0]) {
+                    for (const tempC of [40, 150]) {
+                        for (const pb of [250, 300, 400]) {
+                            const table = generateBlackOilTable(api, sgGas, tempC, pb, Math.max(1.5 * pb, 500), 30, undefined, 'standing', bo);
+                            if (findThermodynamicallyUnstableRanges(table).length > 0) count += 1;
+                        }
+                    }
+                }
+            }
+            return count;
+        };
+        expect(flagged('standing')).toBeGreaterThan(0);
+        expect(flagged('vasquez-beggs')).toBe(0);
     });
 });

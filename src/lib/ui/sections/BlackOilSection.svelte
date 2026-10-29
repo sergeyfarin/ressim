@@ -1,6 +1,7 @@
 <script lang="ts">
   import Collapsible from "../controls/Collapsible.svelte";
   import Input from "../controls/Input.svelte";
+  import Select from "../controls/Select.svelte";
   import ChartSubPanel from "@ressim/charts/ChartSubPanel.svelte";
   import type { CurveConfig } from "@ressim/charts/chartTypes";
   import type { ModePanelParameterBindings } from "../modePanelTypes";
@@ -64,6 +65,15 @@
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Standing's Bo goes unstable just below a high bubble point; Vasquez–Beggs stays stable (#61) -->
+    <div class="flex items-center justify-between gap-2 px-1">
+      <span class="text-xs text-muted-foreground" title="Saturated Bo(Rs) below the bubble point. Standing (1947) was fitted to Rs ≤ 1,425 scf/STB and turns thermodynamically unstable just below a high bubble point; Vasquez–Beggs (1980) is linear in Rs and stays stable, but gives a different Bo at the bubble point.">B_o correlation</span>
+      <Select class="h-6 text-xs px-1.5 w-40" bind:value={bindings.saturatedBoCorrelation}>
+        <option value="standing">Standing (1947)</option>
+        <option value="vasquez-beggs">Vasquez–Beggs (1980)</option>
+      </Select>
     </div>
 
     {#if bindings.pvtTable && bindings.pvtTable.length > 0}

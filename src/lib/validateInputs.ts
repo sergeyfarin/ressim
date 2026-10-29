@@ -4,7 +4,7 @@
  */
 
 import type { PvtRow } from './simulator-types';
-import { findThermodynamicallyUnstableRanges } from './physics/pvt';
+import { findThermodynamicallyUnstableRanges, type SaturatedBoCorrelation } from './physics/pvt';
 
 export type SimulationInputs = {
     nx: number;
@@ -60,6 +60,8 @@ export type SimulationInputs = {
     targetProducerSurfaceRate?: number | null;
     /** Black-oil PVT table, when the run uses one. */
     pvtTable?: readonly PvtRow[];
+    /** The Bo correlation `pvtTable` was generated with; unset for a scenario's or a user's own table. */
+    generatedPvtBoCorrelation?: SaturatedBoCorrelation;
 };
 
 export type ValidationState = {
@@ -75,6 +77,21 @@ export type ValidationWarning = {
     surface: ValidationWarningSurface;
     fieldKey?: string;
 };
+
+/**
+ * What a user can change when a table built from the black-oil correlations is unstable (#61).
+ * Standing's Bo(Rs) steepens with Rs and crosses Bg just below a high bubble point, mostly past its
+ * fitted range of Rs; Vasquez–Beggs is linear in Rs and stays stable there.
+ */
+function generatedPvtRemedy(correlation: SaturatedBoCorrelation | undefined): string {
+    if (correlation === 'standing') {
+        return ' Standing\'s Bo is outside its fitted range at this bubble point: use the Vasquez–Beggs Bo correlation or a lower bubble point.';
+    }
+    if (correlation === 'vasquez-beggs') {
+        return ' Lower the bubble point to bring the correlations back inside their fitted range.';
+    }
+    return '';
+}
 
 export function validateInputs(input: SimulationInputs): ValidationState {
     const errors: Record<string, string> = {};
@@ -193,7 +210,7 @@ export function validateInputs(input: SimulationInputs): ValidationState {
         const where = unstablePvt.map(([lo, hi]) => `${lo.toFixed(0)}–${hi.toFixed(0)} bar`).join(', ');
         warnings.push({
             code: 'pvt-thermodynamically-unstable',
-            message: `The PVT table is thermodynamically unstable over ${where}: Bo rises with pressure faster than Bg·dRs/dp, so oil and its liberated gas shrink as pressure falls. Results through that range are not physical, and IMPES cannot represent it.`,
+            message: `The PVT table is thermodynamically unstable over ${where}: Bo rises with pressure faster than Bg·dRs/dp, so oil and its liberated gas shrink as pressure falls. Results through that range are not physical, and IMPES cannot represent it.${generatedPvtRemedy(input.generatedPvtBoCorrelation)}`,
             surface: 'non-physical',
         });
     }

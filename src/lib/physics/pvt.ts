@@ -99,6 +99,36 @@ export function standingBo(rs: number, sgGas: number, sgOil: number, tempF: numb
 }
 
 /**
+ * A published saturated-Bo correlation, Bo(Rs) at and below the bubble point (#61).
+ *
+ * Standing's Bo(Rs) steepens with Rs, as F^0.2. Combined with a z-factor Bg, the table goes
+ * thermodynamically unstable (dBo/dRs > Bg) just below a high bubble point, mostly for fluids above
+ * Standing's fitted range of Rs ≤ 1,425 scf/STB. Vasquez–Beggs is linear in Rs, so its slope stays
+ * below Bg across the generator's whole input range, at the cost of a different Bo_b. It was fitted
+ * to Rs ≤ ~2,200 scf/STB, so it too is extrapolated at the highest bubble points.
+ */
+export type SaturatedBoCorrelation = 'standing' | 'vasquez-beggs';
+
+/**
+ * Vasquez & Beggs (1980) Oil Formation Volume Factor for saturated oil,
+ * Bo = 1 + C1·Rs + C2·(T − 60)·(API/γg) + C3·Rs·(T − 60)·(API/γg),
+ * with separate coefficients at and below 30 API. The published γg is the gas gravity at a
+ * 100 psig separator; the generator has only one gas gravity and passes it unchanged.
+ * @param rs Solution GOR in scf/STB
+ * @param sgGas Gas specific gravity
+ * @param api Oil API gravity
+ * @param tempF Temperature in Fahrenheit
+ * @returns Bo in bbl/STB (equivalent to m3/sm3)
+ */
+export function vasquezBeggsBo(rs: number, sgGas: number, api: number, tempF: number): number {
+    const [c1, c2, c3] = api <= 30
+        ? [4.677e-4, 1.751e-5, -1.811e-8]
+        : [4.670e-4, 1.100e-5, 1.337e-9];
+    const thermal = (tempF - 60.0) * (api / sgGas);
+    return 1.0 + c1 * rs + thermal * (c2 + c3 * rs);
+}
+
+/**
  * Beggs-Robinson (1975) Dead Oil Viscosity
  * @param api Oil API
  * @param tempF Temp in Fahrenheit
@@ -229,7 +259,9 @@ export function leeGonzalezEakinViscosity(p: number, z: number, tempR: number, s
  * @param undersaturatedCompressibilityPerBar c_o for Bo above the bubble point
  * @param saturatedRsCorrelation Shape of Rs(p) below the bubble point. Every choice passes
  *   through the same (P_b, Rs_b, Bo_b), which Standing sets; Bo and μ_o below P_b follow the
- *   reshaped Rs through Standing's Bo(Rs) and Beggs–Robinson's μ(Rs).
+ *   reshaped Rs through the chosen Bo(Rs) and Beggs–Robinson's μ(Rs).
+ * @param saturatedBoCorrelation Bo(Rs) at and below the bubble point, which also sets Bo_b and
+ *   so the undersaturated branch (#61).
  * @returns Array of PvtRow ordered by pressure ascending
  */
 export function generateBlackOilTable(
@@ -241,17 +273,21 @@ export function generateBlackOilTable(
     points: number = 30,
     undersaturatedCompressibilityPerBar: number = DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR,
     saturatedRsCorrelation: SaturatedRsCorrelation = 'standing',
+    saturatedBoCorrelation: SaturatedBoCorrelation = 'standing',
 ): PvtRow[] {
     const tempF = cToF(tempC);
     const tempR = cToR(tempC);
     const pbPsia = pbBar * PSI_PER_BAR;
     const sgOil = 141.5 / (131.5 + api);
     const { Tpc, Ppc } = suttonPseudoCriticals(sgGas);
+    const saturatedBo = (rs: number) => saturatedBoCorrelation === 'vasquez-beggs'
+        ? vasquezBeggsBo(rs, sgGas, api, tempF)
+        : standingBo(rs, sgGas, sgOil, tempF);
 
     const rsMaxScf = standingRs(pbPsia, sgGas, api, tempF);
     const rsMaxM3M3 = rsMaxScf * SCF_PER_BBL_TO_M3_PER_M3;
     const muOd = beggsRobinsonDeadOilViscosity(api, tempF);
-    const boPb = standingBo(rsMaxScf, sgGas, sgOil, tempF);
+    const boPb = saturatedBo(rsMaxScf);
     const muOPb = beggsRobinsonSaturatedOilViscosity(muOd, rsMaxScf);
 
     const table: PvtRow[] = [];
@@ -283,7 +319,7 @@ export function generateBlackOilTable(
             rs_scf = saturatedRsCorrelation === 'standing'
                 ? standingRs(pPsia, sgGas, api, tempF)
                 : rsMaxScf * saturatedRsFraction(saturatedRsCorrelation, pPsia, pbPsia);
-            bo = standingBo(rs_scf, sgGas, sgOil, tempF);
+            bo = saturatedBo(rs_scf);
             mu_o = beggsRobinsonSaturatedOilViscosity(muOd, rs_scf);
         } else {
             // Undersaturated
