@@ -25,7 +25,32 @@ export const COMPOSITIONAL_CHECKPOINT_SCHEMA = 'ressim-compositional-checkpoint/
  */
 export type CompositionalFluidChoice = 'pinned-ternary' | 'pinned-binary';
 
-/** A uniform 1D column. The engine refuses anything else rather than flattening it. */
+/**
+ * A structured `nx x ny x nz` box with per-layer thickness and directional permeability (#47).
+ *
+ * Layer vectors are either absent (use the grid fallback) or exactly `nz` long. The engine rejects
+ * a short vector rather than broadcasting one value across the other layers.
+ */
+export interface CompositionalBoxGridConfig {
+  nx: number;
+  ny: number;
+  nz: number;
+  /** One thickness per layer [m], top to bottom. Absent means `dz_m`. */
+  layer_dz_m?: number[];
+  /** One x-permeability per layer [mD]. Absent means `permeability_md`. */
+  layer_kx_md?: number[];
+  /** One y-permeability per layer [mD]. Absent means `permeability_md`. */
+  layer_ky_md?: number[];
+  /** One z-permeability per layer [mD]. Absent means `permeability_md`. */
+  layer_kz_md?: number[];
+  /** Depth of the top of layer 0 [m], positive downward. */
+  top_depth_m?: number;
+}
+
+/**
+ * A uniform 1D column unless `box_grid` is present. The engine refuses a geometry it has not been
+ * validated on rather than flattening it.
+ */
 export interface CompositionalGridConfig {
   cells: number;
   dx_m: number;
@@ -35,6 +60,8 @@ export interface CompositionalGridConfig {
   permeability_md: number;
   rock_reference_pressure_bar: number;
   rock_compressibility_per_bar: number;
+  /** When present, `cells` must equal `nx * ny * nz`. */
+  box_grid?: CompositionalBoxGridConfig;
 }
 
 /**
@@ -135,6 +162,11 @@ export interface CompositionalCaseConfig {
   initial_composition: number[];
   wells: CompositionalWellConfig[];
   gravity_enabled: boolean;
+  /**
+   * Initial pressure gradient [bar/m], positive downward from `grid.box_grid.top_depth_m`.
+   * Absent means the uniform `initial_pressure_bar` the 1D cases use.
+   */
+  initial_pressure_gradient_bar_per_m?: number;
   /** The immiscible water phase. Absent means no water; present requires `stone-ii` relperm. */
   water?: CompositionalWaterConfig;
 }

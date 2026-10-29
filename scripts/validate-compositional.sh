@@ -9,9 +9,10 @@ set -euo pipefail
 #   fixture  rebuild the C0 thermodynamic fixture and verify it reproduces byte for byte.
 #            Needs the OPM headers and a C++20 compiler. ~15 s.
 #   reference re-run every compositional case through flowexp_comp and verify its fixture: the
-#            1D displacement, its three refinements, the skin variant and both single-cell
-#            depletions. Also remeasures the convergence census - how far each reference is from
-#            timestep-converged - because C12 once assumed that and was wrong.
+#            1D displacement, its three refinements, the skin variant, both single-cell
+#            depletions and #47's 2-D quarter five spot. Also remeasures the convergence census -
+#            how far each reference is from timestep-converged - because C12 once assumed that and
+#            was wrong.
 #            Skips with a note when flowexp_comp has not been built; the committed fixture is
 #            still checked by the comp_reference_* tests either way.
 #   refinement C12's timestep and grid refinement study, in RELEASE. Runs the deck's case at four
@@ -106,7 +107,7 @@ run_thermo() {
     run_filter comp_rollback_    10   # C10 timestep lifecycle, retry and commit
     run_filter comp_linear_      11   # C10 block-sparse Jacobian, sparse LU and CPR (#49)
     run_filter comp_well_        29   # C11 wells: sources, derivatives, controls, multi-completion
-    run_filter comp_reference_   10   # C12 against OPM's flowexp_comp on 1D_COMP
+    run_filter comp_reference_   11   # C12 on 1D_COMP and #47's 2-D quarter five spot, against OPM
     run_filter comp_skin_         3   # C12's well-conditioned 1D variant: the cumulative target
     run_filter comp_depletion_    9   # C12's second fixture: single-cell depletion, rate and BHP
     run_filter comp_matched_      1   # C12 at the reference's own timestep - see the forensics doc
@@ -144,6 +145,7 @@ run_reference() {
     bash "$repo_root/tools/opm_compositional/run-refinement.sh" --check
     bash "$repo_root/tools/opm_compositional/run-depletion.sh" --check
     bash "$repo_root/tools/opm_compositional/run-injection.sh" --check
+    bash "$repo_root/tools/opm_compositional/run-quarter-five-spot.sh" --check
     bash "$repo_root/tools/opm_compositional/check-reference-convergence.sh" --check
     echo "gate ok: every compositional reference fixture reproduces from flowexp_comp, and each"
     echo "         one's distance from timestep-convergence is what the census records"

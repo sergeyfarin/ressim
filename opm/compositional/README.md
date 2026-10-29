@@ -49,5 +49,10 @@ pressure at a fixed surface oil rate. Its reference run aborts when the oracle's
 gives out one step after gas appears, which is kept rather than worked around. See
 [`depletion/README.md`](depletion/README.md).
 
+`quarter_five_spot/` is #47's **structured-grid trajectory** fixture: the same ternary flood on a
+5 × 5 × 1 areal grid, so the x- and y-faces and a two-direction Peaceman radius are part of the
+comparison. It is derived from `1d_comp/`'s deck and uses ResSim's pinned EOS data, so the reference
+and the case solve one fluid. See [`quarter_five_spot/README.md`](quarter_five_spot/README.md).
+
 Trajectory references for the black-oil path live in `../reference-decks/` and are a different
 simulator (`flow`) entirely.

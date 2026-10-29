@@ -596,6 +596,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C15 | V1b immiscible water | **COMPLETE** for [#46](https://github.com/sergeyfarin/ressim/issues/46)'s acceptance (2026-10-29) | `compositional/water.rs`; 18 `comp_water_*` tests: layout and state contracts, zero-water reduction, accumulation and assembled FD Jacobians (gravity, both well directions), closed and well-ledger conservation, all three linear routes, and a JutulDarcy water-into-gas fixture that converges in time (§8). Taken ahead of C14 because the SPE5 → SPE3 roadmap (#52) needs it; no capillary pressure, no aqueous solubility, and rate control waits on #48 |
 | #45 | Up to 10 components; per-fluid temperature and BIPs; SPE5 fluid pinned from OPM | **COMPLETE** | `MAX_COMPONENTS = 10` in `fluid/specification.rs` (re-exported by `compositional/layout.rs`); `pinned::spe5()`; `EosVariant::PengRobinsonCorrected`; SPE5 in the fixture (§3a) and in every fixture-driven test; `comp_surface_separation_matches_opm_on_the_spe5_fluid`; N=10 kernels FD-checked in `compositional/cost_tests.rs`. Cost record below |
 | #51 | SPE3 characterization, staged separators, dew-point robustness | **Implemented** | [SPE3 validation](SPE3_VALIDATION.md): published nine-component fluid with volume translations; OPM PTFlash admission, independent Jutul separator/CVD fixtures and a matched 1D dew-point crossing; eight `comp_spe3_*` contracts. Full reservoir execution remains #52 |
+| #47 | Structured grids, gravity, multi-layer completions | **COMPLETE** (2026-10-29) | `grid.box_grid` with per-layer `dz/kx/ky/kz`, TPFA x/y/z faces, a hydrostatic gradient initialization and multi-completion head offsets; 1-D path unchanged. 2-D quarter five spot against `flowexp_comp`: 0.0070 bar, 2.8e-5 saturation, 4.2e-5 composition, 5.4e-12 cumulative. #49 already measured the 7 × 7 × 3 and 9 × 9 × 4 wasm memory/time budget — see §8 |
 
 ## 8. Completion records
 
@@ -1310,6 +1311,56 @@ referee: the surface separation, to 1.4e-8, and the phase appearance.
 
 The per-observable bands frozen above are for **this** case at **this** resolution, and the tests
 that carry them print their measurements so they can be rechecked rather than trusted.
+
+### #47 — structured grids, gravity and multi-layer completions (2026-10-29)
+
+`CompositionalCase` now accepts a `grid.box_grid` of `nx × ny × nz` with per-layer `dz`, `kx`, `ky`
+and `kz`, a top depth and an optional initial pressure gradient. The uniform 1-D column remains the
+`box_grid = None` path and is unchanged, byte for byte: the existing 1-D tests and the
+`comp_api_the_uniform_column_geometry_is_unchanged` face/volume check still pin it.
+
+What the structured path adds:
+
+```text
+* TPFA faces in all three directions. x and y faces are horizontal; z faces use the harmonic mean
+  of the two half-cell transmissibilities and carry `Gravity::between` only when gravity is on.
+* Per-layer thickness and directional permeability. Layer vectors are empty (use the grid
+  fallback) or exactly nz long; they are never broadcast from one value, so a silent kz = kx
+  default cannot happen.
+* A vertical-equilibrium initialization in the form SPE3's water-free EQUIL reduces to: the
+  caller supplies the datum pressure (`initial_pressure_bar` at `top_depth_m`) and the hydrostatic
+  gradient. `comp_api_the_initial_pressure_gradient_is_applied_per_layer` pins the per-layer
+  depths, and `comp_api_a_hydrostatic_box_column_is_stationary` proves an analytic hydrostatic
+  single-phase column steps and moves by less than 1e-8 bar. Contact and water-column logic is not
+  part of this model.
+* Multi-completion wells were already implemented in `wells.rs` with a shared BHP and a
+  `head_offset_bar` per completion; the payload carries the same field. The API-level test
+  `comp_api_a_multi_completion_well_carries_its_head_offsets` runs two completions and shows a
+  1 bar head offset reducing production, alongside the pre-existing `comp_well_multiperf_*` tests.
+```
+
+**The external gate.** `opm/compositional/quarter_five_spot/` is a 5 × 5 × 1 areal CO2 flood run
+through `flowexp_comp`, using ResSim's pinned ternary so the reference and the case solve one fluid.
+Ten 0.1 d report intervals follow the deck's pre-well output-alignment interval. Compared through
+the public `CompositionalCase` payload at the reference's own timesteps:
+
+```text
+worst pressure       0.0070 bar
+worst gas saturation 2.8e-5
+worst overall z      4.2e-5
+cumulative injection 5.4e-12 relative
+```
+
+The fixture is regenerated and checked by
+`bash tools/opm_compositional/run-quarter-five-spot.sh [--check]`, and the test is
+`comp_reference_quarter_five_spot_matches_opm` in `reference_tests.rs`.
+
+**Browser budget.** No new measurement was needed: #49's cost record already runs a 7 × 7 × 3
+SPE5-size box and a 9 × 9 × 4 SPE3-size box with a pressure gradient, gravity on the vertical
+faces and both wells on wasm. It reports 3.7 MB and 7.8 MB peak linear memory on CPR for those
+sizes, both well inside the browser budget; the per-cell flash, not the grid payload, is the cost
+to work on next. #52 remains blocked by #48 (rate-control cost), #50 (WAGR schedule contract) and
+#22 (scorecard), not by #47.
 
 ### C11 — compositional wells
 

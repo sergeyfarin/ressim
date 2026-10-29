@@ -10,6 +10,7 @@
 import type { SimulatorCreatePayload } from '../simulator-types';
 import {
   COMPOSITIONAL_CASE_SCHEMA,
+  type CompositionalBoxGridConfig,
   type CompositionalCaseConfig,
   type CompositionalFluidChoice,
   type CompositionalRelPermConfig,
@@ -94,6 +95,10 @@ export interface CompositionalCaseInput {
   rockReferencePressureBar?: number;
   rockCompressibilityPerBar?: number;
   gravityEnabled?: boolean;
+  /** Structured `nx x ny x nz` geometry (#47). Absent keeps the uniform 1D column. */
+  boxGrid?: CompositionalBoxGridConfig;
+  /** Initial pressure gradient [bar/m], positive downward. Needs `boxGrid`. */
+  initialPressureGradientBarPerM?: number;
 }
 
 /**
@@ -116,6 +121,25 @@ export function buildCompositionalCase(input: CompositionalCaseInput): Compositi
       permeability_md: input.permeabilityMd,
       rock_reference_pressure_bar: input.rockReferencePressureBar ?? 1.0,
       rock_compressibility_per_bar: input.rockCompressibilityPerBar ?? 0,
+      ...(input.boxGrid
+        ? {
+            box_grid: {
+              ...input.boxGrid,
+              ...(input.boxGrid.layer_dz_m
+                ? { layer_dz_m: [...input.boxGrid.layer_dz_m] }
+                : {}),
+              ...(input.boxGrid.layer_kx_md
+                ? { layer_kx_md: [...input.boxGrid.layer_kx_md] }
+                : {}),
+              ...(input.boxGrid.layer_ky_md
+                ? { layer_ky_md: [...input.boxGrid.layer_ky_md] }
+                : {}),
+              ...(input.boxGrid.layer_kz_md
+                ? { layer_kz_md: [...input.boxGrid.layer_kz_md] }
+                : {}),
+            },
+          }
+        : {}),
     },
     relperm: input.relperm,
     initial_pressure_bar: input.initialPressureBar,
@@ -128,6 +152,9 @@ export function buildCompositionalCase(input: CompositionalCaseInput): Compositi
         : {}),
     })),
     gravity_enabled: input.gravityEnabled ?? false,
+    ...(input.initialPressureGradientBarPerM !== undefined
+      ? { initial_pressure_gradient_bar_per_m: input.initialPressureGradientBarPerM }
+      : {}),
   };
 }
 
