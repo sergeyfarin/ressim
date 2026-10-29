@@ -648,6 +648,9 @@ explicitly until added to the authoritative validation scripts. Follow the add-s
 
 ## C15 — V1b: immiscible water, a separate extension
 
+**Status (2026-10-29):** implemented under [#46](https://github.com/sergeyfarin/ressim/issues/46);
+the evidence and what it leaves open are in `COMPOSITIONAL_VALIDATION.md` §8.
+
 1. Specify immiscible water as an additional conserved component with its own density/FVF,
    viscosity and optional water–hydrocarbon capillary relation. No hydrocarbon dissolution in
    water and no water vaporization under this scoped model.

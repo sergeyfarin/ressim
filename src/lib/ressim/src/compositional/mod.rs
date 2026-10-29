@@ -13,6 +13,10 @@
 //! The Jacobian is block-sparse and solves by sparse LU or FGMRES with a compositional CPR, both
 //! measured against the dense direct solve they replaced (#49; [`linear`]).
 //!
+//! [`water`] is C15 / V1b (#46): an optional immiscible water phase with its own unknown and
+//! balance, Stone II three-phase relative permeability, validated against JutulDarcy. A case
+//! without water runs none of it.
+//!
 //! [`api`] is C13's engine-side boundary — a configured case and the payloads that cross the WASM
 //! edge — and [`frontend`] is the thin `wasm_bindgen` shell over it.
 
@@ -34,6 +38,7 @@ pub mod newton;
 pub mod relperm;
 pub mod state;
 pub mod timestep;
+pub mod water;
 pub mod wells;
 
 #[cfg(test)]
@@ -64,5 +69,7 @@ mod spe3_tests;
 mod state_tests;
 #[cfg(test)]
 mod timestep_tests;
+#[cfg(test)]
+mod water_tests;
 #[cfg(test)]
 mod wells_tests;

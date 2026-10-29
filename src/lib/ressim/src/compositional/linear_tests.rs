@@ -25,7 +25,7 @@ use super::linear::{
 use super::newton::{NewtonError, NewtonOptions, NewtonProblem, solve_newton};
 use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalCellState, CompositionalState, RockView};
-use super::wells::{CompositionalWell, WellControl};
+use super::wells::{CompositionalWell, InjectedFluid, WellControl};
 use crate::fluid::pinned;
 use crate::fluid::specification::FluidSpecification;
 
@@ -129,7 +129,7 @@ impl BoxGrid {
                 },
             ),
             CompositionalWell {
-                injection_composition: Some(injection),
+                injection: Some(InjectedFluid::Hydrocarbon(injection)),
                 ..CompositionalWell::single(
                     "INJ",
                     injector_cell,

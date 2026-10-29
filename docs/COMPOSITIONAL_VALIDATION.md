@@ -26,7 +26,8 @@ Isothermal hydrocarbon compositional flow (**V1**): Peng–Robinson EOS, 2 or 3 
 two hydrocarbon phases, phase appearance and disappearance, composition-dependent density and
 viscosity, component-conservative fully implicit transport. Cartesian geometry, one fluid region,
 constant prescribed temperature, no water, no hydrocarbon capillary pressure, zero gravity until
-C9's own subtask enables it. Immiscible water is the separate V1b extension (C15).
+C9's own subtask enables it. Immiscible water is the separate V1b extension (C15), implemented
+under [#46](https://github.com/sergeyfarin/ressim/issues/46) and recorded in §8.
 
 CO2 appears in the fluid below as a PR-EOS component of a hydrocarbon system at fixed temperature.
 This is **not** aqueous CO2. Brine, CO2 dissolution and any storage application remain out of
@@ -592,11 +593,62 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C12 | NATIVE-COMPOSITIONAL-READY | **COMPLETE — milestone DECLARED 2026-09-18**, with one residual stated: ResSim's surface-rate control on a mixture is validated as a conversion (8e-6) but not end to end, because no rate-controlled fixture in the oracle converges. At matched resolution the two simulators agree to **0.0074 bar / 0.0014%**; cumulative production to **0.041%** | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 9 `comp_depletion_*` + 3 `comp_skin_*` + 1 `comp_injection_*` + 1 `comp_matched_*` + 3 `comp_oracle_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. A 1.29× connection-rate finding was retracted |
 | C13 | WASM and product integration | **COMPLETE** (2026-10-08) | Engine boundary, worker path, run series, quantity registry and the `comp_co2_1d` scenario are landed (`661431a`…`5d9f1ce`). Since 2026-10-07 the scenario is offered: it runs through the scenario run-set queue, the chart stack sources its compositional quantities into their own panels (no black-oil curve key), stop and failure reasons reach the UI, and vapour saturation and pressure follow the 3D view and spatial profile. The browser run loop also now steps each report interval to its time; it had counted engine calls, so a run whose steps were cut ended short (40 cells: 16.6 of 20 days). The native C12 comparisons drive their own loops and are unaffected. Since 2026-10-08 the 3D view and spatial profile also show each component's overall mole fraction per cell: the spatial snapshot carries the engine's composition unchanged, and one selector (`visualization/spatialProperty.ts`) offers `z` per component and drops water saturation, which a water-free case does not have ([#29](https://github.com/sergeyfarin/ressim/issues/29)). Restart stays API-only by policy. |
 | C14 | Release | NOT STARTED | **Unblocked** by C12's declaration. C13's reporting must name what it means by surface gas rather than inherit Li's pressure-blind label, and must not treat a surface **rate** as validated end to end — see the C12 record |
-| C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
+| C15 | V1b immiscible water | **COMPLETE** for [#46](https://github.com/sergeyfarin/ressim/issues/46)'s acceptance (2026-10-29) | `compositional/water.rs`; 18 `comp_water_*` tests: layout and state contracts, zero-water reduction, accumulation and assembled FD Jacobians (gravity, both well directions), closed and well-ledger conservation, all three linear routes, and a JutulDarcy water-into-gas fixture that converges in time (§8). Taken ahead of C14 because the SPE5 → SPE3 roadmap (#52) needs it; no capillary pressure, no aqueous solubility, and rate control waits on #48 |
 | #45 | Up to 10 components; per-fluid temperature and BIPs; SPE5 fluid pinned from OPM | **COMPLETE** | `MAX_COMPONENTS = 10` in `fluid/specification.rs` (re-exported by `compositional/layout.rs`); `pinned::spe5()`; `EosVariant::PengRobinsonCorrected`; SPE5 in the fixture (§3a) and in every fixture-driven test; `comp_surface_separation_matches_opm_on_the_spe5_fluid`; N=10 kernels FD-checked in `compositional/cost_tests.rs`. Cost record below |
 | #51 | SPE3 characterization, staged separators, dew-point robustness | **Implemented** | [SPE3 validation](SPE3_VALIDATION.md): published nine-component fluid with volume translations; OPM PTFlash admission, independent Jutul separator/CVD fixtures and a matched 1D dew-point crossing; eight `comp_spe3_*` contracts. Full reservoir execution remains #52 |
 
 ## 8. Completion records
+
+### C15 / V1b — immiscible water (#46, 2026-10-29)
+
+**Model.** Water is a conserved component in a phase of its own, outside the EOS: no hydrocarbon
+dissolves in it and none of it vaporizes. A case opts in with a `water` block and the `stone-ii`
+relative permeability, which must come together; without them the engine runs none of the new
+code. The layout appends `Sw` as the last column and the water balance as the last row of every
+cell block (`CellPrimary::WaterSaturation`, `CellEquation::WaterBalance`), so pressure stays in
+column 0 and every hydrocarbon offset is unchanged. Hydrocarbon inventories are the water-free
+ones times `(1 - Sw)`; `beta` stays a mole split within the hydrocarbons.
+
+- **Water properties** are ECLIPSE `PVTW` — `b_w = (1 + X + X²/2)/B_w`, `mu_w = mu_ref/(1 + Y + Y²/2)` —
+  the law OPM Flow and JutulDarcy (`ConstMuBTable`) both implement. Water is counted in moles via
+  the molar mass of H2O, so its row scales like every other; surface volume is exact.
+- **Relative permeability** is Stone II over SWOF/SGOF through `relperm::RockFluidPropsThreePhase`,
+  the black-oil engine's own functions (`comp_water_stone_two_is_the_black_oil_engines` checks
+  value for value). Still required, still no default. A nonzero `pcow`/`pcog` column is rejected,
+  not ignored: unequal phase pressures need the convention the plan asks for first.
+- **The zero-hydrocarbon limit is rejected**, as the plan allows: an accepted state must have
+  `Sw < 1`, and the fraction-to-boundary bound includes `Sw` on both sides. A waterflood stops
+  short of it physically, at the gas or oil residual.
+- **Wells**: a producer draws water at its own mobility; an injector injects either a hydrocarbon
+  composition or water (`InjectedFluid`), at the cell's total mobility including water — the same
+  law as C12 and as JutulDarcy. `SurfacePhase::Water` meters surface water.
+
+**Against JutulDarcy** (`opm/compositional/water_injection/`, generated by
+`tools/opm_compositional/run-water-injection.sh`, JutulDarcy 0.3.7): water injected at 330 bar into
+ten cells of SPE3 gas at 300 bar, `Sw0 = 0.2`, producer at 270 bar, 60 days. Every state of both
+simulators stays single-phase vapour, so Stone II's oil curve never enters, and the hydrocarbon
+composition drifts by at most 4e-16 in JutulDarcy and under 1e-12 (asserted) in ResSim, as a
+single phase must.
+
+- *The oracle converges in time.* Successive refinements Δt = 2 → 1 → 0.5 → 0.25 d differ by
+  0.345, 0.213, 0.120 bar and 6.8e-3, 4.4e-3, 2.2e-3 in `Sw` — first order, ratios 0.62/0.56 and
+  0.64/0.51. `comp_water_reference_oracle_converges_in_time` fails if a ratio exceeds 0.67.
+- *Matched step.* ResSim at Δt = 1 d against JutulDarcy at 1 d: **6.6e-6 bar, 1.7e-7 in Sw**.
+  ResSim at 0.25 d against JutulDarcy at 0.25 d (first 15 days): **6.7e-6 bar, 1.7e-7**. Bands
+  1e-4 bar and 1e-5. Agreement at two step sizes, five orders below the oracle's own time error,
+  is what says the two compute one discrete model and converge to one limit.
+- *Wellbore storage was the first mismatch.* JutulDarcy's simple-well node defaults to the hole
+  volume (~0.3 m³), starts full of reservoir gas and injects it before any water. That gave
+  1.3e-2 bar and 5.5e-4 in `Sw`, independent of Δt; with a 1e-4 m³ node JutulDarcy's day-1
+  injector cell moved from 0.254382 to 0.254908 against ResSim's 0.254909. ResSim's wells have no
+  wellbore storage by design, so the fixture runs without it, and the script says so.
+
+**Not covered.** Capillary pressure (rejected); aqueous CO2 or brine (out of V1b's scope); a
+hydrocarbon liquid phase against an oracle — the fixture deliberately stays above the dew point,
+so Stone II's oil curve is checked against `relperm.rs` and by the FD Jacobian, not by a
+simulator; rate controls on water injectors, which share C14's open state (#48); the UI, which
+does not yet offer a case with water. Gate: `bash scripts/validate-compositional.sh thermo`
+(`comp_water_`, 18 tests).
 
 ### C10 linear routes — block-sparse Jacobian, sparse LU and CPR (#49, 2026-10-28)
 

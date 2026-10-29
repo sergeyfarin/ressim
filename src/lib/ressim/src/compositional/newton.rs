@@ -30,6 +30,12 @@
 //! Nothing is clamped or renormalized after the step. That is the same requirement stated
 //! differently: clamping one coordinate of a computed direction produces a step nobody solved for.
 //!
+//! # Water saturation (V1b, #46)
+//!
+//! With water, `Sw` is bounded the same way: it may not go negative, and it may not reach one,
+//! because a cell with no hydrocarbon pore volume is outside the model (see [`super::water`]).
+//! Both bounds join the same single fraction-to-boundary factor.
+//!
 //! # A component at exactly zero
 //!
 //! An absent component must be able to become present — a well can inject it. So a positive
@@ -187,13 +193,20 @@ fn fraction_to_boundary(
 ) -> Result<f64, NewtonError> {
     let n = layout.component_count();
     let mut tau = 1.0f64;
+    let column = |cell: usize, primary: CellPrimary| -> Result<usize, NewtonError> {
+        layout
+            .cell_unknown(cell, primary)
+            .map_err(|_| NewtonError::Inadmissible {
+                cell,
+                reason: "the layout has no column for a primary the state carries",
+            })
+    };
 
     for cell in 0..layout.cell_count() {
-        let base = cell * n;
         let c = state.cell(cell);
 
         // Pressure must stay strictly positive.
-        let dp = direction[base];
+        let dp = direction[column(cell, CellPrimary::Pressure)?];
         if dp < 0.0 {
             let limit = -c.pressure_bar / dp;
             tau = tau.min(FRACTION_TO_BOUNDARY * limit);
@@ -203,7 +216,7 @@ fn fraction_to_boundary(
         let mut d_dependent = 0.0;
         for k in 0..(n - 1) {
             let z = c.independent_z()[k];
-            let dz = direction[base + 1 + k];
+            let dz = direction[column(cell, CellPrimary::Composition(k))?];
             d_dependent -= dz;
 
             if dz >= 0.0 {
@@ -236,6 +249,28 @@ fn fraction_to_boundary(
                 tau = tau.min(FRACTION_TO_BOUNDARY * (-z_last / d_dependent));
             }
         }
+
+        // Water saturation stays in [0, 1): water may not go negative, and the hydrocarbons may
+        // not vanish.
+        if layout.has_water() {
+            let sw = c.water_saturation;
+            let dsw = direction[column(cell, CellPrimary::WaterSaturation)?];
+            if dsw < 0.0 {
+                if sw == 0.0 {
+                    if dsw.abs() > ZERO_COMPONENT_DIRECTION_TOLERANCE {
+                        return Err(NewtonError::NegativeDirectionOnAbsentComponent {
+                            cell,
+                            component: n,
+                            direction: dsw,
+                        });
+                    }
+                } else {
+                    tau = tau.min(FRACTION_TO_BOUNDARY * (-sw / dsw));
+                }
+            } else if dsw > 0.0 {
+                tau = tau.min(FRACTION_TO_BOUNDARY * ((1.0 - sw) / dsw));
+            }
+        }
     }
 
     Ok(tau.clamp(0.0, 1.0))
@@ -248,15 +283,30 @@ fn apply_step(
     direction: &[f64],
     tau: f64,
 ) -> TrialState {
-    let n = layout.component_count();
     let mut trial = state.begin_trial();
+    // Every column below exists by construction of the layout; `fraction_to_boundary` has already
+    // resolved each of them, so a miss here is a programming error and the entry is left alone.
+    let at = |cell: usize, primary: CellPrimary| {
+        layout
+            .cell_unknown(cell, primary)
+            .map_or(0.0, |column| tau * direction[column])
+    };
     for cell in 0..layout.cell_count() {
-        let base = cell * n;
+        let dp = at(cell, CellPrimary::Pressure);
+        let dz: Vec<f64> = (0..layout.independent_composition_count())
+            .map(|k| at(cell, CellPrimary::Composition(k)))
+            .collect();
+        let dsw = if layout.has_water() {
+            at(cell, CellPrimary::WaterSaturation)
+        } else {
+            0.0
+        };
         let target = trial.cell_mut(cell);
-        target.pressure_bar += tau * direction[base];
-        for k in 0..(n - 1) {
-            target.independent_z_mut()[k] += tau * direction[base + 1 + k];
+        target.pressure_bar += dp;
+        for (z, step) in target.independent_z_mut().iter_mut().zip(dz) {
+            *z += step;
         }
+        target.water_saturation += dsw;
     }
     trial
 }
@@ -300,7 +350,7 @@ pub fn solve_newton(
         // Scale the rows before solving. The unscaled system spans many orders of magnitude
         // between a large component and a trace one, and pivoting on it would select pivots by
         // inventory rather than by conditioning.
-        let n = problem.layout.component_count();
+        let n = problem.layout.cell_block_size();
         let row_scale: Vec<f64> = assembled
             .scaling
             .iter()

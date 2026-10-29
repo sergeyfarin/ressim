@@ -30,6 +30,8 @@
 
 use crate::ad::Scalar;
 
+use super::water::WaterModel;
+
 /// A hydrocarbon liquid/vapour relative permeability model.
 ///
 /// **No `Default`, deliberately.** Choosing a relative permeability curve is a modelling decision,
@@ -58,6 +60,15 @@ pub enum RelativePermeabilityModel {
     /// The table is the caller's — from a deck, a benchmark definition or a measurement — and is
     /// validated on construction rather than trusted.
     Tabulated(RelativePermeabilityTable),
+
+    /// The water extension (V1b, #46): Stone II over SWOF/SGOF tables, and the immiscible water
+    /// phase it needs.
+    ///
+    /// The relative permeability is the choice that decides the phase set, so it is the one
+    /// object that carries the water model: a case cannot have water without three-phase curves,
+    /// nor three-phase curves without water. See [`super::water`]. The two-phase methods below
+    /// evaluate it at zero water saturation; the physics paths call [`super::water`] directly.
+    StoneTwoWater(Box<WaterModel>),
 }
 
 /// Corey exponents and endpoints. Construct with [`CoreyParameters::new`].
@@ -346,6 +357,10 @@ impl RelativePermeabilityModel {
                 s_e.powf(p.liquid_exponent) * p.liquid_endpoint
             }
             Self::Tabulated(t) => t.interpolate(s_liquid, &t.kr_liquid),
+            Self::StoneTwoWater(w) => {
+                let zero = S::from_f64(0.0);
+                w.relperm.kr_liquid(zero, S::from_f64(1.0) - s_liquid)
+            }
         }
     }
 
@@ -361,6 +376,7 @@ impl RelativePermeabilityModel {
                 (S::from_f64(1.0) - s_e).powf(p.vapour_exponent) * p.vapour_endpoint
             }
             Self::Tabulated(t) => t.interpolate(s_liquid, &t.kr_vapour),
+            Self::StoneTwoWater(w) => w.relperm.kr_vapour(S::from_f64(1.0) - s_liquid),
         }
     }
 
@@ -387,6 +403,15 @@ impl RelativePermeabilityModel {
             Self::Linear => "linear",
             Self::Corey(_) => "corey",
             Self::Tabulated(_) => "tabulated",
+            Self::StoneTwoWater(_) => "stone-ii-water",
+        }
+    }
+
+    /// The water model, when this is the water extension's three-phase model.
+    pub fn water(&self) -> Option<&WaterModel> {
+        match self {
+            Self::StoneTwoWater(w) => Some(w),
+            _ => None,
         }
     }
 }

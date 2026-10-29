@@ -40,7 +40,7 @@ fn interpolate_piecewise_generic<S: Scalar, T>(
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct SwofRow {
     pub sw: f64,
     pub krw: f64,
@@ -48,7 +48,7 @@ pub struct SwofRow {
     pub pcow: Option<f64>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct SgofRow {
     pub sg: f64,
     pub krg: f64,
@@ -56,7 +56,7 @@ pub struct SgofRow {
     pub pcog: Option<f64>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ThreePhaseScalTables {
     pub swof: Vec<SwofRow>,
     pub sgof: Vec<SgofRow>,
@@ -196,7 +196,7 @@ fn interpolate_piecewise_slope<T>(
 /// Three-phase rock/fluid properties for Stone II relative permeability model.
 /// Oil-water Corey parameters are the same form as `RockFluidProps` (2-phase).
 /// Gas Corey parameters are independent.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct RockFluidPropsThreePhase {
     // ── Oil-water system ──────────────────────────────────────────────────────
     /// Connate water saturation [dimensionless]

@@ -24,12 +24,13 @@
 
 use crate::fluid::specification::FluidSpecification;
 
-use super::accumulation::{AccumulationError, cell_inventory};
+use super::accumulation::{AccumulationError, cell_inventory_with_water};
 use super::assembly::AssemblyError;
 use super::layout::CompositionalLayout;
 use super::newton::{NewtonError, NewtonOptions, NewtonProblem, NewtonReport, solve_newton};
 use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalState, FlashCache, RockView};
+use super::water::WaterProperties;
 
 /// What kind of failure a rejected attempt hit.
 ///
@@ -129,7 +130,8 @@ pub struct CompositionalRun {
     time_days: f64,
     cache: FlashCache,
     /// Cumulative moles produced (negative) or injected (positive) per component through imposed
-    /// **sources**, over accepted steps only.
+    /// **sources**, over accepted steps only. Grows to `N+1` entries, water last, once a step
+    /// with water sources is accepted.
     cumulative_source_moles: Vec<f64>,
     /// The same, per well, from the rates the accepted solve actually ran at.
     cumulative_well_moles: Vec<Vec<f64>>,
@@ -186,9 +188,20 @@ impl CompositionalRun {
         spec: &FluidSpecification,
         rock: &RockView<'_>,
     ) -> Result<Vec<Vec<f64>>, AccumulationError> {
+        self.accepted_inventory_with_water(spec, rock, None)
+    }
+
+    /// [`Self::accepted_inventory`], with water as the last entry of each row when `water` is
+    /// given.
+    pub fn accepted_inventory_with_water(
+        &self,
+        spec: &FluidSpecification,
+        rock: &RockView<'_>,
+        water: Option<&WaterProperties>,
+    ) -> Result<Vec<Vec<f64>>, AccumulationError> {
         (0..self.state.cells().len())
             .map(|c| {
-                cell_inventory(spec, rock, c, self.state.cell(c))
+                cell_inventory_with_water(spec, rock, water, c, self.state.cell(c))
                     .map(|(inv, _)| inv.component_moles)
             })
             .collect()
@@ -220,7 +233,8 @@ impl CompositionalRun {
         // The previous inventory is evaluated once, from the accepted state, and reused across
         // every attempt. Recomputing it per attempt would make the balance reference the attempt
         // rather than the step.
-        let previous_moles = match self.accepted_inventory(spec, rock) {
+        let water = relperm.water().map(|w| &w.properties);
+        let previous_moles = match self.accepted_inventory_with_water(spec, rock, water) {
             Ok(p) => p,
             Err(e) => {
                 report.failure = Some((FailureKind::Flash, format!("previous inventory: {e}")));
@@ -257,6 +271,10 @@ impl CompositionalRun {
                     // The single commit point. Everything advances here, together.
                     self.state = accepted;
                     self.time_days += dt;
+                    let width = sources.first().map_or(0, Vec::len);
+                    if self.cumulative_source_moles.len() < width {
+                        self.cumulative_source_moles.resize(width, 0.0);
+                    }
                     for (i, total) in self.cumulative_source_moles.iter_mut().enumerate() {
                         *total += dt * sources.iter().map(|s| s[i]).sum::<f64>();
                     }
@@ -269,6 +287,9 @@ impl CompositionalRun {
                         );
                     }
                     for (index, rate) in accepted_well_rates.iter().enumerate() {
+                        if self.cumulative_well_moles[index].len() < rate.len() {
+                            self.cumulative_well_moles[index].resize(rate.len(), 0.0);
+                        }
                         for (i, value) in rate.iter().enumerate() {
                             self.cumulative_well_moles[index][i] += dt * value;
                         }
