@@ -917,6 +917,7 @@ fn water_case(initial_sw: f64) -> CaseConfig {
             permeability_md: 100.0,
             rock_reference_pressure_bar: 200.0,
             rock_compressibility_per_bar: 0.0,
+            box_grid: None,
         },
         relperm: RelPermConfig::StoneIi {
             swof: swof(&[(0.15, 0.0, 0.9), (0.6, 0.2, 0.1), (1.0, 0.6, 0.0)]),
@@ -949,6 +950,7 @@ fn water_case(initial_sw: f64) -> CaseConfig {
             },
         ],
         gravity_enabled: false,
+        initial_pressure_gradient_bar_per_m: None,
         water: Some(WaterConfig {
             reference_pressure_bar: 200.0,
             formation_volume_factor: 1.02,

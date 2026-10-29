@@ -116,6 +116,39 @@ describe('buildCompositionalCase', () => {
     expect(well.control).toBe('bhp');
     expect('target_bar' in well && well.target_bar).toBe(150);
   });
+
+  it('leaves the 1-D payload free of the structured-grid fields', () => {
+    const config = buildCompositionalCase(input());
+    expect('box_grid' in config.grid).toBe(false);
+    expect('initial_pressure_gradient_bar_per_m' in config).toBe(false);
+  });
+
+  it('carries a box grid and gradient as copied plain data', () => {
+    const source: CompositionalCaseInput = {
+      ...input(),
+      cells: 8,
+      boxGrid: {
+        nx: 2,
+        ny: 2,
+        nz: 2,
+        layer_dz_m: [10, 20],
+        layer_kx_md: [100, 200],
+        layer_ky_md: [110, 210],
+        layer_kz_md: [10, 20],
+        top_depth_m: 1000,
+      },
+      initialPressureGradientBarPerM: 0.1,
+    };
+    const config = buildCompositionalCase(source);
+    expect(config.grid.box_grid).toEqual(source.boxGrid);
+    expect(config.initial_pressure_gradient_bar_per_m).toBe(0.1);
+
+    // The layer vectors must not alias the caller: a $state array is a Proxy and fails structured
+    // cloning at the worker boundary.
+    source.boxGrid!.layer_dz_m![0] = 99;
+    expect(config.grid.box_grid?.layer_dz_m?.[0]).toBe(10);
+    expect(() => structuredClone(config)).not.toThrow();
+  });
 });
 
 describe('peacemanWellIndex', () => {

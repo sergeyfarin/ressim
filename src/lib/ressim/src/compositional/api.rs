@@ -153,8 +153,8 @@ impl FluidChoice {
     }
 }
 
-/// A uniform 1D column. Deliberately narrow: the validated compositional cases are 1D, and a
-/// geometry this build has never run is refused rather than accepted and hoped for.
+/// A uniform 1D column unless [`Self::box_grid`] is present. Deliberately narrow: a geometry this
+/// build has not been validated on is refused rather than accepted and hoped for.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GridConfig {
     pub cells: usize,
@@ -166,6 +166,75 @@ pub struct GridConfig {
     /// Rock compressibility and its reference pressure. Zero compressibility is admissible.
     pub rock_reference_pressure_bar: f64,
     pub rock_compressibility_per_bar: f64,
+    /// Optional `nx x ny x nz` structured geometry (#47). Absent means the uniform 1D column
+    /// above, bit for bit. When present, `cells` must equal `nx * ny * nz`, `dx_m`/`dy_m` are the
+    /// lateral cell sizes, and `dz_m`/`permeability_md` are the uniform fallbacks for any layer
+    /// vector left empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub box_grid: Option<BoxGridConfig>,
+}
+
+/// A structured `nx x ny x nz` box with per-layer thickness and directional permeability.
+///
+/// Layer vectors are either empty (use the [`GridConfig`] fallback) or exactly `nz` long. They are
+/// not broadcast from a single value, because a silent kz = kx default is exactly the kind of
+/// unsourced rock assumption this engine refuses to make.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BoxGridConfig {
+    pub nx: usize,
+    pub ny: usize,
+    pub nz: usize,
+    /// One thickness per layer [m], top to bottom. Empty means `GridConfig::dz_m`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layer_dz_m: Vec<f64>,
+    /// One x-permeability per layer [mD]. Empty means `GridConfig::permeability_md`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layer_kx_md: Vec<f64>,
+    /// One y-permeability per layer [mD]. Empty means `GridConfig::permeability_md`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layer_ky_md: Vec<f64>,
+    /// One z-permeability per layer [mD]. Empty means `GridConfig::permeability_md`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layer_kz_md: Vec<f64>,
+    /// Depth of the top of layer 0 [m], positive downward. Only used when gravity is enabled.
+    #[serde(default)]
+    pub top_depth_m: f64,
+}
+
+impl BoxGridConfig {
+    /// One value per layer, with the uniform fallback applied where the vector is empty.
+    fn per_layer(values: &[f64], fallback: f64, nz: usize) -> Vec<f64> {
+        if values.is_empty() {
+            vec![fallback; nz]
+        } else {
+            values.to_vec()
+        }
+    }
+
+    fn layer_dz_m(&self, fallback: f64) -> Vec<f64> {
+        Self::per_layer(&self.layer_dz_m, fallback, self.nz)
+    }
+
+    fn layer_kx_md(&self, fallback: f64) -> Vec<f64> {
+        Self::per_layer(&self.layer_kx_md, fallback, self.nz)
+    }
+
+    fn layer_ky_md(&self, fallback: f64) -> Vec<f64> {
+        Self::per_layer(&self.layer_ky_md, fallback, self.nz)
+    }
+
+    fn layer_kz_md(&self, fallback: f64) -> Vec<f64> {
+        Self::per_layer(&self.layer_kz_md, fallback, self.nz)
+    }
+
+    /// Centre depth of layer `k`, positive downward from the top of layer 0.
+    fn layer_depth_m(&self, k: usize, dz_m: &[f64]) -> f64 {
+        let mut depth = self.top_depth_m;
+        for thickness in &dz_m[..k] {
+            depth += thickness;
+        }
+        depth + 0.5 * dz_m[k]
+    }
 }
 
 /// The relative permeability model, which the caller must choose explicitly.
@@ -353,9 +422,16 @@ pub struct CaseConfig {
     pub initial_composition: Vec<f64>,
     #[serde(default)]
     pub wells: Vec<WellConfig>,
-    /// Gravity is off unless a case asks for it; the validated 1D cases are horizontal.
+    /// Gravity is off unless a case asks for it. It acts on the vertical faces of a
+    /// [`GridConfig::box_grid`]; the uniform 1D column remains horizontal whatever this says.
     #[serde(default)]
     pub gravity_enabled: bool,
+    /// Initial pressure gradient [bar/m], positive downward, measured from
+    /// [`BoxGridConfig::top_depth_m`]. Absent means the uniform `initial_pressure_bar` every
+    /// validated 1D case uses. Requires a box grid; a gradient on a uniform column would silently
+    /// do nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initial_pressure_gradient_bar_per_m: Option<f64>,
     /// The immiscible water phase. Absent means no water, and then `relperm` must be a two-phase
     /// model; present means `relperm` must be `stone-ii`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -420,12 +496,100 @@ impl CaseConfig {
                 reason: "must be finite and non-negative".to_string(),
             });
         }
+        if let Some(box_grid) = &g.box_grid {
+            if box_grid.nx == 0 || box_grid.ny == 0 || box_grid.nz == 0 {
+                return Err(ConfigError::Rejected {
+                    field: "grid.box_grid".to_string(),
+                    reason: "nx, ny and nz must each be at least one".to_string(),
+                });
+            }
+            let expected = box_grid
+                .nx
+                .checked_mul(box_grid.ny)
+                .and_then(|n| n.checked_mul(box_grid.nz));
+            if expected != Some(g.cells) {
+                return Err(ConfigError::Rejected {
+                    field: "grid.box_grid".to_string(),
+                    reason: format!(
+                        "{} x {} x {} does not multiply to grid.cells = {}",
+                        box_grid.nx, box_grid.ny, box_grid.nz, g.cells
+                    ),
+                });
+            }
+            for (name, values) in [
+                ("layer_dz_m", &box_grid.layer_dz_m),
+                ("layer_kx_md", &box_grid.layer_kx_md),
+                ("layer_ky_md", &box_grid.layer_ky_md),
+                ("layer_kz_md", &box_grid.layer_kz_md),
+            ] {
+                if !values.is_empty() && values.len() != box_grid.nz {
+                    return Err(ConfigError::Rejected {
+                        field: format!("grid.box_grid.{name}"),
+                        reason: format!(
+                            "must be empty (use the grid fallback) or have one value per layer \
+                             ({}), found {}",
+                            box_grid.nz,
+                            values.len()
+                        ),
+                    });
+                }
+                for (k, value) in values.iter().enumerate() {
+                    if !(value.is_finite() && *value > 0.0) {
+                        return Err(ConfigError::OutOfRange {
+                            field: format!("grid.box_grid.{name}[{k}]"),
+                            value: *value,
+                            reason: "must be finite and positive".to_string(),
+                        });
+                    }
+                }
+            }
+            if !box_grid.top_depth_m.is_finite() {
+                return Err(ConfigError::OutOfRange {
+                    field: "grid.box_grid.top_depth_m".to_string(),
+                    value: box_grid.top_depth_m,
+                    reason: "must be finite".to_string(),
+                });
+            }
+        } else if self.initial_pressure_gradient_bar_per_m.is_some() {
+            return Err(ConfigError::Rejected {
+                field: "initial_pressure_gradient_bar_per_m".to_string(),
+                reason: "requires a grid.box_grid; the uniform 1D column is horizontal".to_string(),
+            });
+        }
+        if let Some(gradient) = self.initial_pressure_gradient_bar_per_m
+            && !gradient.is_finite()
+        {
+            return Err(ConfigError::OutOfRange {
+                field: "initial_pressure_gradient_bar_per_m".to_string(),
+                value: gradient,
+                reason: "must be finite".to_string(),
+            });
+        }
         if !(self.initial_pressure_bar.is_finite() && self.initial_pressure_bar > 0.0) {
             return Err(ConfigError::OutOfRange {
                 field: "initial_pressure_bar".to_string(),
                 value: self.initial_pressure_bar,
                 reason: "must be finite and positive".to_string(),
             });
+        }
+        if let (Some(box_grid), Some(gradient)) =
+            (&g.box_grid, self.initial_pressure_gradient_bar_per_m)
+        {
+            let dz = box_grid.layer_dz_m(g.dz_m);
+            for k in 0..box_grid.nz {
+                let pressure = self.initial_pressure_bar
+                    + gradient * (box_grid.layer_depth_m(k, &dz) - box_grid.top_depth_m);
+                if !(pressure.is_finite() && pressure > 0.0) {
+                    return Err(ConfigError::OutOfRange {
+                        field: "initial_pressure_gradient_bar_per_m".to_string(),
+                        value: gradient,
+                        reason: format!(
+                            "puts layer {k} at {pressure} bar; every cell needs a positive \
+                             initial pressure"
+                        ),
+                    });
+                }
+            }
         }
 
         check_composition("initial_composition", &self.initial_composition, n)?;
@@ -622,21 +786,93 @@ impl CompositionalCase {
         let initial_sw = config.water.as_ref().map_or(0.0, |w| w.initial_saturation);
 
         let relperm = config.relperm_model()?;
-        let pore_volumes = vec![g.dx_m * g.dy_m * g.dz_m * g.porosity; cells];
+        let (pore_volumes, faces, initial_pressures) = match &g.box_grid {
+            // The validated 1D column, byte for byte as it was before structured grids existed.
+            None => {
+                let geom_t = DARCY * g.permeability_md * (g.dy_m * g.dz_m) / g.dx_m;
+                let faces: Vec<Face> = (0..cells.saturating_sub(1))
+                    .map(|i| Face {
+                        cell_i: i,
+                        cell_j: i + 1,
+                        geom_t,
+                        // A horizontal column, so gravity does nothing along it even when a case
+                        // asks for it. A vertical geometry needs `box_grid`, which can carry a
+                        // depth for every face.
+                        gravity: Gravity::OFF,
+                    })
+                    .collect();
+                (
+                    vec![g.dx_m * g.dy_m * g.dz_m * g.porosity; cells],
+                    faces,
+                    vec![config.initial_pressure_bar; cells],
+                )
+            }
+            Some(box_grid) => {
+                let dz = box_grid.layer_dz_m(g.dz_m);
+                let kx = box_grid.layer_kx_md(g.permeability_md);
+                let ky = box_grid.layer_ky_md(g.permeability_md);
+                let kz = box_grid.layer_kz_md(g.permeability_md);
+                let gradient = config.initial_pressure_gradient_bar_per_m.unwrap_or(0.0);
+                let depth = |k: usize| box_grid.layer_depth_m(k, &dz);
+                let index = |i: usize, j: usize, k: usize| (k * box_grid.ny + j) * box_grid.nx + i;
 
-        // A uniform column: every internal face has the same geometric transmissibility.
-        let geom_t = DARCY * g.permeability_md * (g.dy_m * g.dz_m) / g.dx_m;
-        let faces: Vec<Face> = (0..cells.saturating_sub(1))
-            .map(|i| Face {
-                cell_i: i,
-                cell_j: i + 1,
-                geom_t,
-                // The supported geometry is a horizontal column, so gravity does nothing along it
-                // even when a case asks for it. Wiring a non-trivial potential here needs a
-                // vertical geometry, which this build does not accept.
-                gravity: Gravity::OFF,
-            })
-            .collect();
+                let mut pore_volumes = Vec::with_capacity(cells);
+                let mut initial_pressures = Vec::with_capacity(cells);
+                for (k, &layer_dz) in dz.iter().enumerate() {
+                    let pressure =
+                        config.initial_pressure_bar + gradient * (depth(k) - box_grid.top_depth_m);
+                    for _ in 0..box_grid.nx * box_grid.ny {
+                        pore_volumes.push(g.dx_m * g.dy_m * layer_dz * g.porosity);
+                        initial_pressures.push(pressure);
+                    }
+                }
+
+                let mut faces =
+                    Vec::with_capacity(cells.saturating_sub(1) * 3 + box_grid.nx * box_grid.ny);
+                for k in 0..box_grid.nz {
+                    for j in 0..box_grid.ny {
+                        for i in 0..box_grid.nx {
+                            let here = index(i, j, k);
+                            if i + 1 < box_grid.nx {
+                                faces.push(Face {
+                                    cell_i: here,
+                                    cell_j: index(i + 1, j, k),
+                                    geom_t: DARCY * kx[k] * (g.dy_m * dz[k]) / g.dx_m,
+                                    gravity: Gravity::OFF,
+                                });
+                            }
+                            if j + 1 < box_grid.ny {
+                                faces.push(Face {
+                                    cell_i: here,
+                                    cell_j: index(i, j + 1, k),
+                                    geom_t: DARCY * ky[k] * (g.dx_m * dz[k]) / g.dy_m,
+                                    gravity: Gravity::OFF,
+                                });
+                            }
+                            if k + 1 < box_grid.nz {
+                                let k_above = kz[k];
+                                let k_below = kz[k + 1];
+                                faces.push(Face {
+                                    cell_i: here,
+                                    cell_j: index(i, j, k + 1),
+                                    // TPFA harmonic mean of the two half-cell
+                                    // transmissibilities, with different thicknesses and
+                                    // permeabilities across the layer boundary.
+                                    geom_t: DARCY * 2.0 * k_above * k_below * g.dx_m * g.dy_m
+                                        / (k_below * dz[k] + k_above * dz[k + 1]),
+                                    gravity: if config.gravity_enabled {
+                                        Gravity::between(depth(k), depth(k + 1))
+                                    } else {
+                                        Gravity::OFF
+                                    },
+                                });
+                            }
+                        }
+                    }
+                }
+                (pore_volumes, faces, initial_pressures)
+            }
+        };
 
         let wells = config
             .wells
@@ -646,10 +882,11 @@ impl CompositionalCase {
 
         let initial = CompositionalState::new(
             &layout,
-            (0..cells)
-                .map(|_| {
+            initial_pressures
+                .iter()
+                .map(|&pressure| {
                     CompositionalCellState::with_water(
-                        config.initial_pressure_bar,
+                        pressure,
                         config.initial_composition[..n - 1].to_vec(),
                         initial_sw,
                     )
@@ -689,6 +926,24 @@ impl CompositionalCase {
 
     pub fn time_days(&self) -> f64 {
         self.run.time_days()
+    }
+
+    /// Grid dimensions as `[nx, ny, nz]`. A uniform 1D column is `[cells, 1, 1]`.
+    pub fn dimensions(&self) -> [usize; 3] {
+        match &self.config.grid.box_grid {
+            Some(box_grid) => [box_grid.nx, box_grid.ny, box_grid.nz],
+            None => [self.config.grid.cells, 1, 1],
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn faces(&self) -> &[Face] {
+        &self.faces
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pore_volumes(&self) -> &[f64] {
+        &self.pore_volumes
     }
 
     pub fn config(&self) -> &CaseConfig {

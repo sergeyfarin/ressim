@@ -553,13 +553,13 @@ mod deck {
     }
 }
 
-/// The deck's `SGOF` table, as a ResSim relative permeability model.
+/// The deck's `SGOF` table, column for column.
 ///
-/// `SGOF` is keyed on **gas** saturation and this model is keyed on **liquid** saturation, so the
-/// rows are reversed and `S_L = 1 - S_g`. The table is Corey-squared — `krg = Sg^2`,
+/// `SGOF` is keyed on **gas** saturation and ResSim's table is keyed on **liquid** saturation, so
+/// the rows are reversed and `S_L = 1 - S_g`. The table is Corey-squared — `krg = Sg^2`,
 /// `kro = (1-Sg)^2` — but it is transcribed as a table rather than recognised as a Corey curve,
 /// because what the deck supplies is a table and the reference interpolated it.
-fn deck_relperm() -> RelativePermeabilityModel {
+fn deck_relperm_columns() -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     let mut liquid_saturation = Vec::new();
     let mut kr_liquid = Vec::new();
     let mut kr_vapour = Vec::new();
@@ -570,6 +570,12 @@ fn deck_relperm() -> RelativePermeabilityModel {
         kr_liquid.push((1.0 - s_g) * (1.0 - s_g));
         kr_vapour.push(s_g * s_g);
     }
+    (liquid_saturation, kr_liquid, kr_vapour)
+}
+
+/// The same table as a ResSim relative permeability model.
+fn deck_relperm() -> RelativePermeabilityModel {
+    let (liquid_saturation, kr_liquid, kr_vapour) = deck_relperm_columns();
     RelativePermeabilityModel::Tabulated(
         RelativePermeabilityTable::new(liquid_saturation, kr_liquid, kr_vapour)
             .expect("the deck's SGOF table must validate"),
@@ -3301,5 +3307,336 @@ fn comp_injection_mixture_surface_conversion_matches_opms_flash() {
          recorded 37%. This is a sample of a non-settling sequence, not a constant — if the \
          fixture's timestep changed, remeasure",
         flash_vs_trajectory * 100.0
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// #47: the structured grid against a 2-D external reference
+// ---------------------------------------------------------------------------------------------
+
+/// The 2-D quarter-five-spot deck's geometry and controls, so each one can be checked against
+/// `opm/compositional/quarter_five_spot/QUARTER_FIVE_SPOT.DATA` by eye.
+mod quarter_five_spot {
+    use crate::fluid::units::from_celsius;
+
+    pub const NX: usize = 5;
+    pub const NY: usize = 5;
+    pub const NZ: usize = 1;
+    pub const CELLS: usize = NX * NY * NZ;
+    /// `DXV 5*20`, `DYV 5*20`, `DZV 10`.
+    pub const DX_M: f64 = 20.0;
+    pub const DY_M: f64 = 20.0;
+    pub const DZ_M: f64 = 10.0;
+    /// `PERMX/Y/Z 25*100`, `PORO 25*0.1`.
+    pub const PERM_MD: f64 = 100.0;
+    pub const PORO: f64 = 0.1;
+    /// `TOPS 25*2000`; only used when gravity is on, and this case keeps it off.
+    pub const TOP_DEPTH_M: f64 = 2000.0;
+    /// `ROCK 68.9476 0`.
+    pub const ROCK_REFERENCE_BAR: f64 = 68.9476;
+    pub const ROCK_COMPRESSIBILITY: f64 = 0.0;
+    /// `PRESSURE 25*75.` and `ZMF 25*0.1 / 25*0.3 / 25*0.6`.
+    pub const INITIAL_PRESSURE_BAR: f64 = 75.0;
+    pub const INITIAL_Z: [f64; 3] = [0.1, 0.3, 0.6];
+    /// `COMPDAT ... OPEN 2* 0.0151`: item 9 is the wellbore diameter, not its radius.
+    pub const WELL_DIAMETER_M: f64 = 0.0151;
+    pub const WELL_RADIUS_M: f64 = WELL_DIAMETER_M / 2.0;
+    /// `(1,1,1)` and `(5,5,1)` in the deck's one-based indexing.
+    pub const INJECTOR_CELL: usize = 0;
+    pub const PRODUCER_CELL: usize = CELLS - 1;
+    /// `WCONINJE INJ GAS OPEN BHP 100000 1* 150` and `WCONPROD PROD OPEN BHP 5* 50`.
+    pub const INJECTOR_SURFACE_RATE_SM3_PER_DAY: f64 = 100_000.0;
+    pub const INJECTOR_BHP_LIMIT_BAR: f64 = 150.0;
+    pub const PRODUCER_BHP_BAR: f64 = 50.0;
+    /// `STCOND 15.0 1.0`, the deck's own surface conditions.
+    pub const SURFACE_PRESSURE_PA: f64 = 1.0e5;
+    pub fn surface_temperature_k() -> f64 {
+        from_celsius(15.0)
+    }
+    /// The one pre-well report interval. See the deck's comment: it is an output-alignment
+    /// workaround in `flowexp_comp`, not part of the physical case.
+    pub const PRE_WELL_DAYS: f64 = 0.001;
+    /// The ten `TSTEP 0.1` intervals after the wells open.
+    pub const REPORT_INTERVAL_DAYS: f64 = 0.1;
+
+    /// Peaceman's equivalent radius for an isotropic square cell and the geometric well index
+    /// that follows: `r_eq = 0.28 * sqrt(dx^2 + dy^2) / 2`.
+    pub fn well_index() -> f64 {
+        let r_eq = 0.28 * (DX_M * DX_M + DY_M * DY_M).sqrt() / 2.0;
+        super::deck::DARCY * 2.0 * std::f64::consts::PI * PERM_MD * DZ_M
+            / crate::math::ln(r_eq / WELL_RADIUS_M)
+    }
+}
+
+/// The 2-D fixture, as extracted by `tools/opm_compositional/extract_reference.py`.
+fn quarter_five_spot_reference() -> Reference {
+    let raw = include_str!("../../../../../opm/compositional/quarter_five_spot/reference.json");
+    let r: Reference = serde_json::from_str(raw).expect("the 2-D reference must parse");
+    assert_eq!(r.schema, "ressim-compositional-reference/1");
+    assert_eq!(r.case, "QUARTER_FIVE_SPOT");
+    assert_eq!(r.cells, quarter_five_spot::CELLS);
+    assert_eq!(r.report_steps.len(), 11);
+    r
+}
+
+/// The 2-D case through the public payload, with the same no-well startup as the deck.
+fn run_quarter_five_spot(molar_rate: f64) -> super::api::CompositionalCase {
+    use super::api::{
+        BoxGridConfig, CASE_SCHEMA, CaseConfig, CompletionConfig, CompositionalCase, FluidChoice,
+        GridConfig, RelPermConfig, WellConfig, WellControlConfig,
+    };
+
+    let (liquid_saturation, kr_liquid, kr_vapour) = deck_relperm_columns();
+    let config = CaseConfig {
+        schema: CASE_SCHEMA.to_string(),
+        fluid: FluidChoice::PinnedTernary,
+        grid: GridConfig {
+            cells: quarter_five_spot::CELLS,
+            dx_m: quarter_five_spot::DX_M,
+            dy_m: quarter_five_spot::DY_M,
+            dz_m: quarter_five_spot::DZ_M,
+            porosity: quarter_five_spot::PORO,
+            permeability_md: quarter_five_spot::PERM_MD,
+            rock_reference_pressure_bar: quarter_five_spot::ROCK_REFERENCE_BAR,
+            rock_compressibility_per_bar: quarter_five_spot::ROCK_COMPRESSIBILITY,
+            box_grid: Some(BoxGridConfig {
+                nx: quarter_five_spot::NX,
+                ny: quarter_five_spot::NY,
+                nz: quarter_five_spot::NZ,
+                layer_dz_m: vec![quarter_five_spot::DZ_M],
+                layer_kx_md: vec![quarter_five_spot::PERM_MD],
+                layer_ky_md: vec![quarter_five_spot::PERM_MD],
+                layer_kz_md: vec![quarter_five_spot::PERM_MD],
+                top_depth_m: quarter_five_spot::TOP_DEPTH_M,
+            }),
+        },
+        relperm: RelPermConfig::Tabulated {
+            liquid_saturation,
+            kr_liquid,
+            kr_vapour,
+        },
+        initial_pressure_bar: quarter_five_spot::INITIAL_PRESSURE_BAR,
+        initial_composition: quarter_five_spot::INITIAL_Z.to_vec(),
+        wells: Vec::new(),
+        gravity_enabled: false,
+        initial_pressure_gradient_bar_per_m: None,
+        water: None,
+    };
+
+    let well_index = quarter_five_spot::well_index();
+    let injector = WellConfig {
+        id: "INJ".to_string(),
+        completions: vec![CompletionConfig {
+            cell: quarter_five_spot::INJECTOR_CELL,
+            well_index,
+            head_offset_bar: 0.0,
+        }],
+        control: WellControlConfig::MolarRate {
+            target_moles_per_day: molar_rate,
+            bhp_limit_bar: quarter_five_spot::INJECTOR_BHP_LIMIT_BAR,
+        },
+        injection_composition: Some(vec![1.0, 0.0, 0.0]),
+        inject_water: false,
+    };
+    let producer = WellConfig {
+        id: "PROD".to_string(),
+        completions: vec![CompletionConfig {
+            cell: quarter_five_spot::PRODUCER_CELL,
+            well_index,
+            head_offset_bar: 0.0,
+        }],
+        control: WellControlConfig::Bhp {
+            target_bar: quarter_five_spot::PRODUCER_BHP_BAR,
+        },
+        injection_composition: None,
+        inject_water: false,
+    };
+
+    // The deck's wells open after its pre-well report interval, so run that interval with no wells
+    // and restore the same state into a case that has them. A checkpoint carries its config, which
+    // is exactly what makes this possible through the public boundary.
+    let mut case = CompositionalCase::new(config).expect("the 2-D case must build");
+    let outcome = case.step(quarter_five_spot::PRE_WELL_DAYS);
+    assert!(
+        outcome.succeeded(),
+        "the pre-well step failed: {:?}",
+        outcome.failure
+    );
+    let mut checkpoint = case.checkpoint();
+    checkpoint.config.wells = vec![injector, producer];
+    CompositionalCase::restore(&checkpoint).expect("the 2-D case must restore with wells")
+}
+
+/// **#47's structured-grid trajectory result.** Run the 2-D quarter-five-spot deck through the
+/// public case payload and compare every cell at every report step against `flowexp_comp`.
+///
+/// This is deliberately a different comparison from the 1D `comp_reference_*` tests: it turns on
+/// the x- and y-faces of a structured box, a well index whose equivalent radius depends on both
+/// lateral cell widths, and a diagonal displacement. The fluid, the `SGOF` table, the initial
+/// mixture and the 0.1 d report intervals are the reference's own.
+///
+/// The injector is the one control that cannot be replicated keyword for keyword: the deck asks
+/// for 100 000 sm3/day of surface gas, and ResSim's pinned-fluid payload has no surface-rate
+/// control. It is driven at the equivalent molar rate at the deck's `STCOND`, and the cumulative
+/// assertion below verifies that both sides injected the same moles rather than assuming it.
+#[test]
+fn comp_reference_quarter_five_spot_matches_opm() {
+    let reference = quarter_five_spot_reference();
+    let spec = crate::fluid::pinned::ternary().unwrap();
+
+    // 100 000 sm3/day of pure CO2 at the deck's STCOND, as moles. The pinned ternary is the deck's
+    // fluid, so this is also the reference's own surface conversion.
+    let injected = flash(
+        &spec,
+        quarter_five_spot::SURFACE_PRESSURE_PA,
+        quarter_five_spot::surface_temperature_k(),
+        &[1.0, 0.0, 0.0],
+        None,
+    )
+    .expect("surface CO2 must flash");
+    let molar_volume = injected.mixture_molar_volume();
+    let molar_rate = quarter_five_spot::INJECTOR_SURFACE_RATE_SM3_PER_DAY / molar_volume;
+
+    let times = reference.summary.get("TIME").expect("TIME").clone();
+    assert_eq!(times.len(), reference.report_steps.len());
+
+    let mut case = run_quarter_five_spot(molar_rate);
+
+    // The pre-well report step is the initial state in both, and comparing it pins the state
+    // every later number descends from.
+    let initial = &reference.report_steps[0];
+    let snapshot = case.snapshot();
+    assert!(
+        (snapshot.time_days - times[0]).abs() < 1e-9,
+        "the pre-well step ended at {} d, the reference says {} d",
+        snapshot.time_days,
+        times[0]
+    );
+    for cell in 0..quarter_five_spot::CELLS {
+        assert!(
+            (snapshot.pressure[cell] - initial.pressure[cell]).abs() < 1e-6,
+            "cell {cell}: initial pressure {} against the reference's {}",
+            snapshot.pressure[cell],
+            initial.pressure[cell]
+        );
+        assert!(
+            (snapshot.vapour_saturation[cell] - initial.sgas[cell]).abs() < 1e-6,
+            "cell {cell}: initial S_g {} against the reference's {}",
+            snapshot.vapour_saturation[cell],
+            initial.sgas[cell]
+        );
+        let z = initial.z(cell);
+        for (component, expected) in z.iter().enumerate() {
+            assert!(
+                (snapshot.composition[component][cell] - expected).abs() < 1e-6,
+                "cell {cell} component {component}: initial z {} against the reference's {}",
+                snapshot.composition[component][cell],
+                expected
+            );
+        }
+    }
+
+    let mut worst_pressure = (0.0f64, String::new());
+    let mut worst_saturation = (0.0f64, String::new());
+    let mut worst_composition = (0.0f64, String::new());
+
+    for (index, step) in reference.report_steps.iter().enumerate().skip(1) {
+        let outcome = case.step(quarter_five_spot::REPORT_INTERVAL_DAYS);
+        assert!(
+            outcome.succeeded(),
+            "report step {index} failed: {:?}",
+            outcome.failure
+        );
+        let snapshot = case.snapshot();
+        assert!(
+            (snapshot.time_days - times[index]).abs() < 1e-6,
+            "report step {index} ended at {} d, the reference says {} d",
+            snapshot.time_days,
+            times[index]
+        );
+
+        for cell in 0..quarter_five_spot::CELLS {
+            let dp = (snapshot.pressure[cell] - step.pressure[cell]).abs();
+            if dp > worst_pressure.0 {
+                worst_pressure = (
+                    dp,
+                    format!(
+                        "t = {:.3} d, cell {cell}: {:.6} vs {:.6} bar",
+                        times[index], snapshot.pressure[cell], step.pressure[cell]
+                    ),
+                );
+            }
+
+            let ds = (snapshot.vapour_saturation[cell] - step.sgas[cell]).abs();
+            if ds > worst_saturation.0 {
+                worst_saturation = (
+                    ds,
+                    format!(
+                        "t = {:.3} d, cell {cell}: {:.8} vs {:.8}",
+                        times[index], snapshot.vapour_saturation[cell], step.sgas[cell]
+                    ),
+                );
+            }
+
+            let z = step.z(cell);
+            for (component, expected) in z.iter().enumerate() {
+                let dz = (snapshot.composition[component][cell] - expected).abs();
+                if dz > worst_composition.0 {
+                    worst_composition = (
+                        dz,
+                        format!(
+                            "t = {:.3} d, cell {cell}, z{component}: {:.8} vs {:.8}",
+                            times[index], snapshot.composition[component][cell], expected
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
+    // The final cumulative, in moles, against the reference's own surface volume at STCOND.
+    let fgit = reference.summary.get("FGIT").expect("FGIT");
+    let theirs_moles = fgit.last().unwrap() / molar_volume;
+    let ours_moles = case.snapshot().cumulative_well_moles[0][0];
+    let cumulative_relative = (ours_moles - theirs_moles).abs() / theirs_moles;
+
+    eprintln!(
+        "#47 2-D quarter five spot over {} cells x {} report steps:\n           pressure:    {:.5} bar at {}\n           saturation:  {:.3e} at {}\n           composition: {:.3e} at {}\n           cumulative:  {:.3e} relative ({ours_moles:.6e} vs {theirs_moles:.6e} mol)",
+        quarter_five_spot::CELLS,
+        reference.report_steps.len() - 1,
+        worst_pressure.0,
+        worst_pressure.1,
+        worst_saturation.0,
+        worst_saturation.1,
+        worst_composition.0,
+        worst_composition.1,
+        cumulative_relative,
+    );
+
+    // Measured on the committed fixture: 0.0070 bar, 2.8e-5 and 4.2e-5, cumulative 5.4e-12.
+    // The bands sit above the measurement without being wide enough to hide a face or well-index
+    // mistake: those move the pressure by bars, not by hundredths.
+    assert!(
+        worst_pressure.0 < 0.05,
+        "pressure disagrees with OPM: worst {:.5} bar at {}",
+        worst_pressure.0,
+        worst_pressure.1
+    );
+    assert!(
+        worst_saturation.0 < 2e-4,
+        "gas saturation disagrees with OPM: worst {:.3e} at {}",
+        worst_saturation.0,
+        worst_saturation.1
+    );
+    assert!(
+        worst_composition.0 < 2e-4,
+        "overall composition disagrees with OPM: worst {:.3e} at {}",
+        worst_composition.0,
+        worst_composition.1
+    );
+    assert!(
+        cumulative_relative < 1e-8,
+        "cumulative injection differs by {:.3e}: {ours_moles:.6e} vs {theirs_moles:.6e} mol",
+        cumulative_relative
     );
 }
