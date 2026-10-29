@@ -35,6 +35,7 @@ fn valid_config() -> CaseConfig {
                 }],
                 control: WellControlConfig::Bhp { target_bar: 150.0 },
                 injection_composition: Some(vec![1.0, 0.0, 0.0]),
+                inject_water: false,
             },
             WellConfig {
                 id: "PROD".to_string(),
@@ -45,9 +46,11 @@ fn valid_config() -> CaseConfig {
                 }],
                 control: WellControlConfig::Bhp { target_bar: 50.0 },
                 injection_composition: None,
+                inject_water: false,
             },
         ],
         gravity_enabled: false,
+        water: None,
     }
 }
 

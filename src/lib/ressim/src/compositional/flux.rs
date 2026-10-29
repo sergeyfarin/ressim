@@ -54,6 +54,15 @@
 //! differentiable at `dphi = 0`, and a Jacobian that tried to differentiate through it would be
 //! differentiating a discontinuity.
 //!
+//! # With water (V1b, #46)
+//!
+//! When the relative permeability is [`RelativePermeabilityModel::StoneTwoWater`], the face carries
+//! a third phase. Water has its own potential, its own upstream side and its own gravity head, and
+//! moves only the water component; the hydrocarbon phases move only hydrocarbons. Their relative
+//! permeabilities become Stone II's, evaluated at the upstream cell's absolute saturations
+//! `Sw` and `S_V = (1 - Sw) s_V`. The derivative space grows to `2(N+1)` slots: each cell's
+//! `[p, z_0..z_(N-2), Sw]`. Without water, none of this runs and the slot count stays `2N`.
+//!
 //! # Relative permeability
 //!
 //! Supplied by the caller as a [`RelativePermeabilityModel`], never assumed here. V1 runs on its
@@ -69,6 +78,7 @@ use crate::fluid::units::{bar_to_pa, dpa_to_dbar};
 
 use super::relperm::RelativePermeabilityModel;
 use super::state::CompositionalCellState;
+use super::water::WaterModel;
 
 /// Why a face flux could not be produced.
 #[derive(Clone, Debug, PartialEq)]
@@ -175,6 +185,18 @@ pub struct FaceFlux {
     pub potential_difference_bar: f64,
     /// Phase volumetric rates `[liquid, vapour]` [m³/day], positive from `i` to `j`.
     pub phase_rates_m3_per_day: [f64; 2],
+    /// The water phase across this face, when the case has water.
+    pub water: Option<WaterFaceFlux>,
+}
+
+/// What the water phase did across one face.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WaterFaceFlux {
+    pub upstream: UpstreamSide,
+    /// Water potential difference [bar].
+    pub potential_bar: f64,
+    /// Water volumetric rate [m³/day], positive from `i` to `j`.
+    pub rate_m3_per_day: f64,
 }
 
 /// Everything one cell contributes to a face, evaluated once.
@@ -182,6 +204,7 @@ struct CellFaceData {
     state: FlashState,
     derivatives: FlashDerivatives,
     pressure_bar: f64,
+    water_saturation: f64,
 }
 
 fn evaluate_cell(
@@ -205,6 +228,7 @@ fn evaluate_cell(
         state,
         derivatives,
         pressure_bar: cell.pressure_bar,
+        water_saturation: cell.water_saturation,
     })
 }
 
@@ -212,6 +236,9 @@ fn evaluate_cell(
 ///
 /// `geom_t` is `DARCY_METRIC_FACTOR * geometric_transmissibility` [m³/day/bar per 1/cP], the same
 /// quantity the black-oil assembler passes to `fim/flux.rs`.
+///
+/// With [`RelativePermeabilityModel::StoneTwoWater`] the flux has `N+1` rows, water last, and the
+/// Jacobian `N+1 x 2(N+1)` columns.
 pub fn face_flux(
     spec: &FluidSpecification,
     relperm: &RelativePermeabilityModel,
@@ -227,23 +254,33 @@ pub fn face_flux(
     let i = evaluate_cell(spec, cell_i.0, cell_i.1)?;
     let j = evaluate_cell(spec, cell_j.0, cell_j.1)?;
 
+    // `M` is the face's slot count: `2N` without water, `2(N+1)` with it.
+    macro_rules! sized {
+        ($n:literal, $dry:literal, $wet:literal) => {
+            if relperm.water().is_some() {
+                face_flux_sized::<$n, $wet>(spec, relperm, geom_t, gravity, &i, &j)
+            } else {
+                face_flux_sized::<$n, $dry>(spec, relperm, geom_t, gravity, &i, &j)
+            }
+        };
+    }
     match n {
-        2 => face_flux_sized::<2, 4>(spec, relperm, geom_t, gravity, &i, &j),
-        3 => face_flux_sized::<3, 6>(spec, relperm, geom_t, gravity, &i, &j),
-        4 => face_flux_sized::<4, 8>(spec, relperm, geom_t, gravity, &i, &j),
-        5 => face_flux_sized::<5, 10>(spec, relperm, geom_t, gravity, &i, &j),
-        6 => face_flux_sized::<6, 12>(spec, relperm, geom_t, gravity, &i, &j),
-        7 => face_flux_sized::<7, 14>(spec, relperm, geom_t, gravity, &i, &j),
-        8 => face_flux_sized::<8, 16>(spec, relperm, geom_t, gravity, &i, &j),
-        9 => face_flux_sized::<9, 18>(spec, relperm, geom_t, gravity, &i, &j),
-        10 => face_flux_sized::<10, 20>(spec, relperm, geom_t, gravity, &i, &j),
+        2 => sized!(2, 4, 6),
+        3 => sized!(3, 6, 8),
+        4 => sized!(4, 8, 10),
+        5 => sized!(5, 10, 12),
+        6 => sized!(6, 12, 14),
+        7 => sized!(7, 14, 16),
+        8 => sized!(8, 16, 18),
+        9 => sized!(9, 18, 20),
+        10 => sized!(10, 20, 22),
         count => Err(FluxError::UnsupportedComponentCount { count }),
     }
 }
 
 /// Seeds for one cell's quantities within the face's `2N`-slot derivative space.
 ///
-/// `offset` is 0 for cell `i` and `N` for cell `j`. `FlashDerivatives` is per pascal in its
+/// `offset` is 0 for cell `i` and the cell block size (`N`, or `N+1` with water) for cell `j`. `FlashDerivatives` is per pascal in its
 /// pressure slot and the primary is bar, so the conversion happens here, once, as the seeds are
 /// built.
 fn seed<const N: usize, const M: usize>(row: &[f64], offset: usize) -> [f64; M] {
@@ -278,18 +315,21 @@ fn face_flux_sized<const N: usize, const M: usize>(
     i: &CellFaceData,
     j: &CellFaceData,
 ) -> Result<FaceFlux, FluxError> {
-    debug_assert_eq!(M, 2 * N);
+    let water = relperm.water();
+    // Cell block size: `N`, or `N+1` with water. Cell `j`'s slots start here.
+    let b = M / 2;
+    debug_assert_eq!(b, N + usize::from(water.is_some()));
 
     let mut p_i_deriv = [0.0; M];
     p_i_deriv[0] = 1.0;
     let p_i = Ad::<M>::seeded(i.pressure_bar, p_i_deriv);
     let mut p_j_deriv = [0.0; M];
-    p_j_deriv[N] = 1.0;
+    p_j_deriv[b] = 1.0;
     let p_j = Ad::<M>::seeded(j.pressure_bar, p_j_deriv);
     let dp = p_i - p_j;
     let head_coefficient = gravity.head_coefficient();
 
-    let mut component_flux = vec![Ad::<M>::constant(0.0); N];
+    let mut component_flux = vec![Ad::<M>::constant(0.0); b];
     let mut phase_rates = [0.0f64; 2];
     let mut phase_potentials = [dp.value(); 2];
     let mut upstream = [UpstreamSide::First; 2];
@@ -299,7 +339,7 @@ fn face_flux_sized<const N: usize, const M: usize>(
         // side is known — that is the whole reason gravity makes the phases disagree about which
         // way material moves.
         let rho_i = phase_mass_density::<N, M>(i, 0, liquid);
-        let rho_j = phase_mass_density::<N, M>(j, N, liquid);
+        let rho_j = phase_mass_density::<N, M>(j, b, liquid);
         let rho_avg = match (rho_i, rho_j) {
             (Some(a), Some(b)) => Some((a + b) * 0.5),
             // Present in one cell only: use that cell's density rather than averaging against a
@@ -327,7 +367,7 @@ fn face_flux_sized<const N: usize, const M: usize>(
         let (up, offset) = if upstream_is_first {
             (i, 0usize)
         } else {
-            (j, N)
+            (j, b)
         };
 
         let Some(phase) = upstream_phase::<N, M>(spec, up, offset, liquid).map_err(|source| {
@@ -342,15 +382,47 @@ fn face_flux_sized<const N: usize, const M: usize>(
             continue;
         };
 
-        let kr = relperm.kr(phase.liquid_saturation, liquid);
+        let kr = match water {
+            None => relperm.kr(phase.liquid_saturation, liquid),
+            Some(w) => {
+                let sw = water_saturation::<N, M>(up, offset);
+                hydrocarbon_kr_with_water(w, sw, phase.liquid_saturation, liquid)
+            }
+        };
         let mobility = kr / phase.viscosity_cp;
         let q = mobility * dphi * geom_t;
         phase_rates[phase_index] = q.value();
 
-        for (component, flux) in component_flux.iter_mut().enumerate() {
+        for (component, flux) in component_flux.iter_mut().take(N).enumerate() {
             *flux = *flux + q * phase.molar_density * phase.composition[component];
         }
     }
+
+    // Water: its own potential, upstream side and head, and only the water row.
+    let water_face = water.map(|w| {
+        let props = &w.properties;
+        let rho_avg = (props.mass_density(p_i) + props.mass_density(p_j)) * 0.5;
+        let dphi = dp - rho_avg * head_coefficient;
+        let upstream_is_first = dphi.value() >= 0.0;
+        let (up, offset, p_up) = if upstream_is_first {
+            (i, 0usize, p_i)
+        } else {
+            (j, b, p_j)
+        };
+        let sw = water_saturation::<N, M>(up, offset);
+        let mobility = w.relperm.kr_water(sw) / props.viscosity_cp(p_up);
+        let q = mobility * dphi * geom_t;
+        component_flux[N] = q * props.molar_density(p_up);
+        WaterFaceFlux {
+            upstream: if upstream_is_first {
+                UpstreamSide::First
+            } else {
+                UpstreamSide::Second
+            },
+            potential_bar: dphi.value(),
+            rate_m3_per_day: q.value(),
+        }
+    });
 
     let jacobian = component_flux
         .iter()
@@ -364,7 +436,33 @@ fn face_flux_sized<const N: usize, const M: usize>(
         phase_potential_bar: phase_potentials,
         potential_difference_bar: dp.value(),
         phase_rates_m3_per_day: phase_rates,
+        water: water_face,
     })
+}
+
+/// A cell's water saturation, seeded into its `Sw` slot (`offset + N`).
+fn water_saturation<const N: usize, const M: usize>(cell: &CellFaceData, offset: usize) -> Ad<M> {
+    Ad::<M>::variable(cell.water_saturation, offset + N)
+}
+
+/// Stone II hydrocarbon relative permeability at absolute saturations.
+///
+/// `hydrocarbon_liquid` is the flash's liquid fraction **of the hydrocarbon volume**; the absolute
+/// gas saturation is `(1 - Sw)(1 - s_L)`. Shared by the face flux and the wells so the two cannot
+/// evaluate the curves at different saturations.
+pub(crate) fn hydrocarbon_kr_with_water<S: Scalar>(
+    water: &WaterModel,
+    sw: S,
+    hydrocarbon_liquid: S,
+    liquid: bool,
+) -> S {
+    let one = S::from_f64(1.0);
+    let sg = (one - sw) * (one - hydrocarbon_liquid);
+    if liquid {
+        water.relperm.kr_liquid(sw, sg)
+    } else {
+        water.relperm.kr_vapour(sg)
+    }
 }
 
 /// A phase's **mass** density in one cell, with derivatives seeded into that cell's half of the

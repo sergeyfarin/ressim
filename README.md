@@ -200,7 +200,8 @@ Full `cargo test` is not used as a gate, because FIM diagnostic tests can domina
 - Adaptive timestep checks based on saturation change, pressure change, and well-rate change
   limits, plus, in IMPES, a limit on the dissolved-gas change per substep.
 - A separate isothermal compositional engine (Peng–Robinson EOS, two to ten components with
-  binary interactions, phase appearance and disappearance, compositional wells). Pinned fluids:
+  binary interactions, phase appearance and disappearance, compositional wells, and an optional
+  immiscible water phase with Stone II three-phase relative permeability). Pinned fluids:
   a C1/C10 binary, a CO₂/C1/C10 ternary, and the six-component SPE5 fluid from OPM's
   `Spe5FluidSystem`. It is validated natively against OPM's
   compositional simulator and not yet offered in the app.

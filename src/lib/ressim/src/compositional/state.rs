@@ -67,6 +67,14 @@ pub enum StateError {
     },
     /// A checkpoint's schema version is not the one this build writes.
     IncompatibleCheckpoint { found: u32, expected: u32 },
+    /// Water saturation outside `[0, 1)`.
+    ///
+    /// One is excluded on purpose: a cell with no hydrocarbon pore volume has an unidentifiable
+    /// hydrocarbon composition, and V1b rejects that domain rather than inventing equations for
+    /// it (see [`super::water`]).
+    WaterSaturationOutOfRange { cell: usize, value: f64 },
+    /// A cell carries water but the layout has no water phase.
+    WaterWithoutWaterLayout { cell: usize, value: f64 },
 }
 
 impl core::fmt::Display for StateError {
@@ -105,6 +113,15 @@ impl core::fmt::Display for StateError {
                 f,
                 "checkpoint schema {found} cannot be read by a build that writes {expected}"
             ),
+            Self::WaterSaturationOutOfRange { cell, value } => write!(
+                f,
+                "cell {cell}: water saturation {value} is outside [0, 1); a cell with no \
+                 hydrocarbon pore volume is outside the model"
+            ),
+            Self::WaterWithoutWaterLayout { cell, value } => write!(
+                f,
+                "cell {cell}: water saturation {value} in a layout without water"
+            ),
         }
     }
 }
@@ -116,14 +133,29 @@ pub struct CompositionalCellState {
     pub pressure_bar: f64,
     /// `z_0 .. z_(N-2)`. The dependent component is **not** stored.
     independent_z: Vec<f64>,
+    /// Water saturation, `[0, 1)`. Always zero in a layout without water.
+    ///
+    /// `z` is the composition of the **hydrocarbons** only; water is not one of its components.
+    #[serde(default)]
+    pub water_saturation: f64,
 }
 
 impl CompositionalCellState {
     /// Build and validate a cell state from its independent coordinates.
     pub fn new(pressure_bar: f64, independent_z: Vec<f64>) -> Result<Self, StateError> {
+        Self::with_water(pressure_bar, independent_z, 0.0)
+    }
+
+    /// Build and validate a cell state that also carries water saturation `sw`.
+    pub fn with_water(
+        pressure_bar: f64,
+        independent_z: Vec<f64>,
+        water_saturation: f64,
+    ) -> Result<Self, StateError> {
         let state = Self {
             pressure_bar,
             independent_z,
+            water_saturation,
         };
         state.validate(0)?;
         Ok(state)
@@ -185,6 +217,10 @@ impl CompositionalCellState {
         if dependent < 0.0 {
             return Err(StateError::DependentCompositionNegative { cell, dependent });
         }
+        let sw = self.water_saturation;
+        if !(sw.is_finite() && (0.0..1.0).contains(&sw)) {
+            return Err(StateError::WaterSaturationOutOfRange { cell, value: sw });
+        }
         Ok(())
     }
 }
@@ -220,6 +256,12 @@ impl CompositionalState {
                 });
             }
             cell.validate(index)?;
+            if !layout.has_water() && cell.water_saturation != 0.0 {
+                return Err(StateError::WaterWithoutWaterLayout {
+                    cell: index,
+                    value: cell.water_saturation,
+                });
+            }
         }
         Ok(Self {
             component_count: layout.component_count(),
@@ -338,7 +380,9 @@ impl TrialState {
 ///
 /// Bumped whenever the serialized shape changes. A checkpoint from another schema is rejected, not
 /// migrated: a restart that silently reinterprets old bytes is worse than one that refuses.
-pub const CHECKPOINT_SCHEMA: u32 = 1;
+///
+/// 2 added each cell's water saturation (#46).
+pub const CHECKPOINT_SCHEMA: u32 = 2;
 
 /// A serializable, versioned snapshot of an accepted state.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -19,6 +19,10 @@
 //! assumption the one nobody had to type. `Linear` is accepted but marked verification-only, and
 //! [`CaseConfig::validate`] reports that so a scenario-admission check can refuse it.
 //!
+//! Water (V1b, #46) is opt-in: a `water` block and a `stone-ii` relative permeability go
+//! together, and either without the other is rejected. Without them a case is exactly the
+//! water-free model it was.
+//!
 //! Everything unsupported is rejected **before** anything is allocated, and the error names the
 //! field. Silence about an unsupported control is how a run ends up meaning something other than
 //! what the caller asked for.
@@ -31,11 +35,13 @@ use super::layout::CompositionalLayout;
 use super::relperm::{CoreyParameters, RelativePermeabilityModel, RelativePermeabilityTable};
 use super::state::{CompositionalCellState, CompositionalState, RockView};
 use super::timestep::{CompositionalRun, TimestepOptions};
-use super::wells::{Completion, CompositionalWell, SurfacePhase, WellControl};
+use super::water::{StoneTwoRelPerm, WaterModel, WaterProperties};
+use super::wells::{Completion, CompositionalWell, InjectedFluid, SurfacePhase, WellControl};
 use crate::fluid::flash::{PhaseState, flash};
 use crate::fluid::pinned;
 use crate::fluid::specification::FluidSpecification;
 use crate::fluid::units::bar_to_pa;
+use crate::relperm::{SgofRow, SwofRow};
 
 /// The only schema this build accepts. An absent or different one is refused rather than guessed
 /// at — the plan is explicit that an absent discriminator must not be read as compositional.
@@ -181,9 +187,16 @@ pub enum RelPermConfig {
         kr_liquid: Vec<f64>,
         kr_vapour: Vec<f64>,
     },
+    /// Three-phase Stone II over SWOF/SGOF tables. Requires, and is required by, a `water` block.
+    StoneIi {
+        swof: Vec<SwofRow>,
+        sgof: Vec<SgofRow>,
+    },
 }
 
 impl RelPermConfig {
+    /// The two-phase hydrocarbon model. The three-phase one is built with the water it needs by
+    /// [`CaseConfig::relperm_model`].
     fn build(&self) -> Result<RelativePermeabilityModel, ConfigError> {
         let rejected = |e: super::relperm::RelPermError| ConfigError::Rejected {
             field: "relperm".to_string(),
@@ -221,6 +234,44 @@ impl RelPermConfig {
                 )
                 .map_err(rejected)?,
             ),
+            Self::StoneIi { .. } => {
+                return Err(ConfigError::Rejected {
+                    field: "relperm".to_string(),
+                    reason: "stone-ii is the water extension's model and needs a water block"
+                        .to_string(),
+                });
+            }
+        })
+    }
+}
+
+/// The immiscible water phase: a `PVTW` record, a surface density and the initial saturation.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WaterConfig {
+    pub reference_pressure_bar: f64,
+    pub formation_volume_factor: f64,
+    pub compressibility_per_bar: f64,
+    pub viscosity_cp: f64,
+    #[serde(default)]
+    pub viscosibility_per_bar: f64,
+    pub surface_density_kg_per_m3: f64,
+    /// Initial water saturation, uniform, in `[0, 1)`.
+    pub initial_saturation: f64,
+}
+
+impl WaterConfig {
+    fn properties(&self) -> Result<WaterProperties, ConfigError> {
+        WaterProperties::new(
+            self.reference_pressure_bar,
+            self.formation_volume_factor,
+            self.compressibility_per_bar,
+            self.viscosity_cp,
+            self.viscosibility_per_bar,
+            self.surface_density_kg_per_m3,
+        )
+        .map_err(|e| ConfigError::Rejected {
+            field: "water".to_string(),
+            reason: format!("{e}"),
         })
     }
 }
@@ -251,6 +302,8 @@ pub enum SurfacePhaseConfig {
     Liquid,
     Vapour,
     Total,
+    /// Surface water. Only in a case with water.
+    Water,
 }
 
 impl From<SurfacePhaseConfig> for SurfacePhase {
@@ -259,6 +312,7 @@ impl From<SurfacePhaseConfig> for SurfacePhase {
             SurfacePhaseConfig::Liquid => SurfacePhase::Liquid,
             SurfacePhaseConfig::Vapour => SurfacePhase::Vapour,
             SurfacePhaseConfig::Total => SurfacePhase::Total,
+            SurfacePhaseConfig::Water => SurfacePhase::Water,
         }
     }
 }
@@ -270,8 +324,12 @@ pub struct WellConfig {
     pub completions: Vec<CompletionConfig>,
     #[serde(flatten)]
     pub control: WellControlConfig,
-    /// Overall mole fractions of the injected stream. Required for an injector.
+    /// Overall mole fractions of the injected hydrocarbon stream. An injector needs this or
+    /// `inject_water`, not both.
     pub injection_composition: Option<Vec<f64>>,
+    /// Inject water. Only in a case with water.
+    #[serde(default)]
+    pub inject_water: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -298,6 +356,10 @@ pub struct CaseConfig {
     /// Gravity is off unless a case asks for it; the validated 1D cases are horizontal.
     #[serde(default)]
     pub gravity_enabled: bool,
+    /// The immiscible water phase. Absent means no water, and then `relperm` must be a two-phase
+    /// model; present means `relperm` must be `stone-ii`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub water: Option<WaterConfig>,
 }
 
 /// What [`CaseConfig::validate`] found that is admissible but worth saying out loud.
@@ -368,6 +430,38 @@ impl CaseConfig {
 
         check_composition("initial_composition", &self.initial_composition, n)?;
 
+        // Water and the three-phase relative permeability come together or not at all.
+        let stone = matches!(self.relperm, RelPermConfig::StoneIi { .. });
+        match (&self.water, stone) {
+            (Some(water), true) => {
+                if !(water.initial_saturation.is_finite()
+                    && (0.0..1.0).contains(&water.initial_saturation))
+                {
+                    return Err(ConfigError::OutOfRange {
+                        field: "water.initial_saturation".to_string(),
+                        value: water.initial_saturation,
+                        reason: "must be in [0, 1); a cell with no hydrocarbon is outside the \
+                                 model"
+                            .to_string(),
+                    });
+                }
+                self.relperm_model()?;
+            }
+            (None, false) => {}
+            (Some(_), false) => {
+                return Err(ConfigError::Rejected {
+                    field: "relperm".to_string(),
+                    reason: "a case with water needs the three-phase stone-ii model".to_string(),
+                });
+            }
+            (None, true) => {
+                return Err(ConfigError::Rejected {
+                    field: "water".to_string(),
+                    reason: "the stone-ii model needs a water block".to_string(),
+                });
+            }
+        }
+
         for well in &self.wells {
             if well.completions.is_empty() {
                 return Err(ConfigError::Rejected {
@@ -394,6 +488,27 @@ impl CaseConfig {
             if let Some(z) = &well.injection_composition {
                 check_composition(&format!("wells[{}].injection_composition", well.id), z, n)?;
             }
+            if well.inject_water && well.injection_composition.is_some() {
+                return Err(ConfigError::Rejected {
+                    field: format!("wells[{}].inject_water", well.id),
+                    reason: "a well injects water or a hydrocarbon composition, not both"
+                        .to_string(),
+                });
+            }
+            let wants_water = well.inject_water
+                || matches!(
+                    well.control,
+                    WellControlConfig::SurfaceRate {
+                        phase: SurfacePhaseConfig::Water,
+                        ..
+                    }
+                );
+            if wants_water && self.water.is_none() {
+                return Err(ConfigError::Rejected {
+                    field: format!("wells[{}]", well.id),
+                    reason: "injects or meters water, and the case has no water block".to_string(),
+                });
+            }
             // A surface-rate control needs surface conditions, and the pinned fluids have them.
             // Naming it here keeps the failure at the boundary rather than inside a Newton step.
             if let WellControlConfig::SurfaceRate { .. } = well.control {
@@ -411,6 +526,27 @@ impl CaseConfig {
         Ok(CaseAdvisories {
             relperm_is_verification_only: matches!(self.relperm, RelPermConfig::Linear),
         })
+    }
+
+    /// The relative permeability model, carrying the water model when the case has water.
+    fn relperm_model(&self) -> Result<RelativePermeabilityModel, ConfigError> {
+        match (&self.relperm, &self.water) {
+            (RelPermConfig::StoneIi { swof, sgof }, Some(water)) => {
+                let relperm = StoneTwoRelPerm::new(swof.clone(), sgof.clone()).map_err(|e| {
+                    ConfigError::Rejected {
+                        field: "relperm".to_string(),
+                        reason: format!("{e}"),
+                    }
+                })?;
+                Ok(RelativePermeabilityModel::StoneTwoWater(Box::new(
+                    WaterModel {
+                        properties: water.properties()?,
+                        relperm,
+                    },
+                )))
+            }
+            (relperm, _) => relperm.build(),
+        }
     }
 }
 
@@ -474,14 +610,18 @@ impl CompositionalCase {
         let cells = config.grid.cells;
         let g = &config.grid;
 
-        let layout =
+        let mut layout =
             CompositionalLayout::new(n, cells, config.wells.len(), total_completions(&config))
                 .map_err(|e| ConfigError::Rejected {
                     field: "grid.cells".to_string(),
                     reason: format!("{e:?}"),
                 })?;
+        if config.water.is_some() {
+            layout = layout.with_water();
+        }
+        let initial_sw = config.water.as_ref().map_or(0.0, |w| w.initial_saturation);
 
-        let relperm = config.relperm.build()?;
+        let relperm = config.relperm_model()?;
         let pore_volumes = vec![g.dx_m * g.dy_m * g.dz_m * g.porosity; cells];
 
         // A uniform column: every internal face has the same geometric transmissibility.
@@ -508,9 +648,10 @@ impl CompositionalCase {
             &layout,
             (0..cells)
                 .map(|_| {
-                    CompositionalCellState::new(
+                    CompositionalCellState::with_water(
                         config.initial_pressure_bar,
                         config.initial_composition[..n - 1].to_vec(),
+                        initial_sw,
                     )
                 })
                 .collect::<Result<Vec<_>, _>>()
@@ -531,7 +672,7 @@ impl CompositionalCase {
             pore_volumes,
             faces,
             wells,
-            sources: vec![vec![0.0; n]; cells],
+            sources: vec![vec![0.0; layout.cell_block_size()]; cells],
             options: TimestepOptions::default(),
             run: CompositionalRun::new(initial),
             config,
@@ -599,6 +740,7 @@ impl CompositionalCase {
     /// every step is the kind of cost that is invisible until it is not.
     pub fn snapshot(&self) -> Snapshot {
         let n = self.spec.component_count();
+        let has_water = self.relperm.water().is_some();
         let cells = self.run.state().cells();
         let mut pressure = Vec::with_capacity(cells.len());
         let mut composition = vec![Vec::with_capacity(cells.len()); n];
@@ -627,7 +769,9 @@ impl CompositionalCase {
                         }
                         .to_string(),
                     );
-                    vapour_saturation.push(state.vapour_saturation());
+                    // Of the pore volume: the hydrocarbons hold `1 - Sw` of it.
+                    vapour_saturation
+                        .push((1.0 - cell.water_saturation) * state.vapour_saturation());
                 }
                 Err(_) => {
                     // A cell whose flash will not resolve is reported as such rather than given a
@@ -638,6 +782,11 @@ impl CompositionalCase {
             }
         }
 
+        let mut inventory = self.inventory();
+        let water = has_water.then(|| WaterSnapshot {
+            saturation: cells.iter().map(|c| c.water_saturation).collect(),
+            inventory_moles: inventory.pop().unwrap_or(0.0),
+        });
         Snapshot {
             time_days: self.run.time_days(),
             component_ids: (0..n).map(|i| self.spec.component(i).id.clone()).collect(),
@@ -645,18 +794,23 @@ impl CompositionalCase {
             composition,
             phase_state,
             vapour_saturation,
-            inventory: self.inventory(),
+            inventory,
             cumulative_well_moles: self.run.cumulative_well_moles().to_vec(),
+            water,
         }
     }
 
-    /// Total moles of each component held by the grid. This is the conservation diagnostic: what
-    /// it loses must equal what the wells produced, which `comp_rollback_*` checks in the engine.
+    /// Total moles of each component held by the grid, water last when the case has it. This is
+    /// the conservation diagnostic: what it loses must equal what the wells produced, which
+    /// `comp_rollback_*` checks in the engine.
     fn inventory(&self) -> Vec<f64> {
-        let n = self.spec.component_count();
         let rock = self.rock();
-        let mut total = vec![0.0; n];
-        if let Ok(per_cell) = self.run.accepted_inventory(&self.spec, &rock) {
+        let water = self.relperm.water().map(|w| &w.properties);
+        let mut total = vec![0.0; self.layout.cell_block_size()];
+        if let Ok(per_cell) = self
+            .run
+            .accepted_inventory_with_water(&self.spec, &rock, water)
+        {
             for cell in per_cell {
                 for (i, moles) in cell.iter().enumerate() {
                     total[i] += moles;
@@ -687,6 +841,14 @@ impl CompositionalCase {
                 .iter()
                 .map(|c| c.overall_composition())
                 .collect(),
+            water_saturation: self.relperm.water().map(|_| {
+                self.run
+                    .state()
+                    .cells()
+                    .iter()
+                    .map(|c| c.water_saturation)
+                    .collect()
+            }),
         }
     }
 
@@ -712,11 +874,24 @@ impl CompositionalCase {
                 ),
             });
         }
+        let has_water = case.relperm.water().is_some();
+        let water_saturation = match (&checkpoint.water_saturation, has_water) {
+            (Some(sw), true) if sw.len() == checkpoint.pressure.len() => sw.clone(),
+            (None, false) => vec![0.0; checkpoint.pressure.len()],
+            _ => {
+                return Err(ConfigError::Rejected {
+                    field: "checkpoint.water_saturation".to_string(),
+                    reason: "must be present, one per cell, exactly when the case has water"
+                        .to_string(),
+                });
+            }
+        };
         let cells = checkpoint
             .pressure
             .iter()
             .zip(&checkpoint.composition)
-            .map(|(p, z)| {
+            .zip(&water_saturation)
+            .map(|((p, z), sw)| {
                 if z.len() != n {
                     return Err(ConfigError::CompositionMismatch {
                         field: "checkpoint.composition".to_string(),
@@ -724,7 +899,7 @@ impl CompositionalCase {
                         found: z.len(),
                     });
                 }
-                CompositionalCellState::new(*p, z[..n - 1].to_vec()).map_err(|e| {
+                CompositionalCellState::with_water(*p, z[..n - 1].to_vec(), *sw).map_err(|e| {
                     ConfigError::Rejected {
                         field: "checkpoint.composition".to_string(),
                         reason: format!("{e:?}"),
@@ -781,7 +956,14 @@ fn build_well(config: &WellConfig) -> Result<CompositionalWell, ConfigError> {
             })
             .collect(),
         control,
-        injection_composition: config.injection_composition.clone(),
+        injection: if config.inject_water {
+            Some(InjectedFluid::Water)
+        } else {
+            config
+                .injection_composition
+                .clone()
+                .map(InjectedFluid::Hydrocarbon)
+        },
     })
 }
 
@@ -821,10 +1003,23 @@ pub struct Snapshot {
     pub composition: Vec<Vec<f64>>,
     pub phase_state: Vec<String>,
     pub vapour_saturation: Vec<f64>,
-    /// Total moles per component held by the grid.
+    /// Total moles per hydrocarbon component held by the grid. Water is in [`Self::water`].
     pub inventory: Vec<f64>,
-    /// Per well, cumulative component moles. Positive into the reservoir.
+    /// Per well, cumulative component moles. Positive into the reservoir. With water, each row
+    /// has one more entry, water last.
     pub cumulative_well_moles: Vec<Vec<f64>>,
+    /// The water phase, when the case has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub water: Option<WaterSnapshot>,
+}
+
+/// The water phase's share of a snapshot.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WaterSnapshot {
+    /// Water saturation per cell.
+    pub saturation: Vec<f64>,
+    /// Total water held by the grid [mol].
+    pub inventory_moles: f64,
 }
 
 /// A versioned checkpoint.
@@ -835,4 +1030,7 @@ pub struct Checkpoint {
     pub time_days: f64,
     pub pressure: Vec<f64>,
     pub composition: Vec<Vec<f64>>,
+    /// Water saturation per cell, exactly when the case has water.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub water_saturation: Option<Vec<f64>>,
 }

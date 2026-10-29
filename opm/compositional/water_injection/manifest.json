@@ -1,0 +1,11 @@
+{
+  "generator": "bash tools/opm_compositional/run-water-injection.sh",
+  "verify": "bash tools/opm_compositional/run-water-injection.sh --check",
+  "generated_from_commit": "0debc26a023936d63b48e1648cb53571b0fd88ad",
+  "worktree_clean_at_generation": true,
+  "sha256": {
+    "opm/compositional/water_injection/reference.json": "f944e027d1dc338c749135c8896b3c072080d9b4c13d4498aa9d797713127d72",
+    "tools/jutul/water_injection_reference.jl": "5884a06b7a99c898aacaaacb1af40e0bc8b4c10249ab6763d91a085f46a8ba8f",
+    "tools/jutul/Manifest.toml": "b9314ca17ea48264ae08322809adfe80a89b52baa73736266b0cf180ade955a6"
+  }
+}

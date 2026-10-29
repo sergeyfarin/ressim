@@ -469,7 +469,7 @@ use super::flux::Gravity;
 use super::relperm::{RelativePermeabilityModel, RelativePermeabilityTable};
 use super::state::RockView;
 use super::timestep::{CompositionalRun, TimestepOptions};
-use super::wells::{Completion, CompositionalWell, SurfacePhase, WellControl};
+use super::wells::{Completion, CompositionalWell, InjectedFluid, SurfacePhase, WellControl};
 
 /// The deck's geometry, as constants so each one can be checked against `1D_COMP.DATA` by eye.
 mod deck {
@@ -724,7 +724,7 @@ fn run_deck_case_full(
             phase: SurfacePhase::Total,
             bhp_limit_bar: deck::INJECTOR_BHP_LIMIT_BAR,
         },
-        injection_composition: Some(deck::INJECTION_STREAM.to_vec()),
+        injection: Some(InjectedFluid::Hydrocarbon(deck::INJECTION_STREAM.to_vec())),
     };
     let producer = CompositionalWell {
         id: "PROD".to_string(),
@@ -736,7 +736,7 @@ fn run_deck_case_full(
         control: WellControl::Bhp {
             target_bar: deck::PRODUCER_BHP_BAR,
         },
-        injection_composition: None,
+        injection: None,
     };
 
     let open_wells = vec![injector, producer];
@@ -1811,7 +1811,7 @@ fn run_depletion(report_times_days: &[f64], max_sub_step_days: f64) -> Vec<Compo
             phase: SurfacePhase::Liquid,
             bhp_limit_bar: depletion_deck::BHP_FLOOR_BAR,
         },
-        injection_composition: None,
+        injection: None,
     };
 
     let initial = CompositionalState::new(
@@ -2271,7 +2271,7 @@ fn run_depletion_bhp_with_totals(
         control: WellControl::Bhp {
             target_bar: DEPLETION_BHP_BAR,
         },
-        injection_composition: None,
+        injection: None,
     };
 
     let initial = CompositionalState::new(
@@ -2669,7 +2669,7 @@ fn comp_depletion_bhp_connection_rate_matches_opm_at_the_end_of_step() {
         control: WellControl::Bhp {
             target_bar: DEPLETION_BHP_BAR,
         },
-        injection_composition: None,
+        injection: None,
     };
 
     let cell_at = |pressure: f64, z: [f64; 3]| {

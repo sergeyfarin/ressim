@@ -10,8 +10,8 @@ use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalCellState, CompositionalState, RockView};
 use super::timestep::{CompositionalRun, TimestepOptions};
 use super::wells::{
-    Completion, CompositionalWell, SurfacePhase, WellControl, WellError, WellResult, WellSource,
-    well_source, well_source_at_bhp,
+    Completion, CompositionalWell, InjectedFluid, SurfacePhase, WellControl, WellError, WellResult,
+    WellSource, well_source, well_source_at_bhp,
 };
 use crate::fluid::flash::{PhaseState, flash};
 use crate::fluid::specification::{FluidSpecification, SurfaceConditions};
@@ -38,7 +38,7 @@ fn producer(target_bar: f64) -> CompositionalWell {
 
 fn injector(target_bar: f64, z_inj: Vec<f64>) -> CompositionalWell {
     let mut well = CompositionalWell::single("I1", 0, WELL_INDEX, WellControl::Bhp { target_bar });
-    well.injection_composition = Some(z_inj);
+    well.injection = Some(InjectedFluid::Hydrocarbon(z_inj));
     well
 }
 
@@ -281,7 +281,7 @@ fn comp_well_an_injector_without_a_composition_is_rejected() {
     // while the well is configured as an injector by its control, which cannot be represented:
     // the type requires the composition for the injection branch to be taken at all.
     let mut well = producer(250.0);
-    well.injection_composition = None;
+    well.injection = None;
     let s = well_source(&spec, &relperm(), &well, &one(c.clone())).unwrap();
     assert_eq!(s.total_moles_per_day(), 0.0);
 }
@@ -876,7 +876,7 @@ fn multi_producer(bhp: f64, indices: [f64; 3], heads: [f64; 3]) -> Compositional
             })
             .collect(),
         control: WellControl::Bhp { target_bar: bhp },
-        injection_composition: None,
+        injection: None,
     }
 }
 
@@ -1016,7 +1016,7 @@ fn comp_well_multiperf_injector_crossflow_is_rejected() {
     ];
     let mut well = multi_producer(250.0, [WELL_INDEX; 3], [0.0; 3]);
     well.id = "I-MULTI".to_string();
-    well.injection_composition = Some(vec![0.7, 0.3, 0.0]);
+    well.injection = Some(InjectedFluid::Hydrocarbon(vec![0.7, 0.3, 0.0]));
 
     match well_source(&spec, &relperm(), &well, &cells) {
         Err(WellError::Crossflow {
@@ -1136,7 +1136,7 @@ fn comp_well_a_well_without_completions_is_rejected() {
         id: "EMPTY".to_string(),
         completions: Vec::new(),
         control: WellControl::Bhp { target_bar: 150.0 },
-        injection_composition: None,
+        injection: None,
     };
     assert!(matches!(
         well_source(&spec, &relperm(), &well, &three_cells(200.0)),

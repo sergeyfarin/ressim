@@ -17,6 +17,20 @@
 //! constant with respect to the current Newton primaries and carries no derivatives. Recomputing
 //! it from the trial state would make the residual a function of itself.
 //!
+//! # With water (V1b, #46)
+//!
+//! The hydrocarbons occupy `(1 - Sw)` of the pore volume and water the rest:
+//!
+//! ```text
+//! n_i = PV(p) (1 - Sw) ( s_L cL x_i + s_V cV y_i )      i < N
+//! n_w = PV(p) Sw c_w(p)
+//! ```
+//!
+//! with `s_L`, `s_V` the flash's hydrocarbon-only fractions. The hydrocarbon rows are the water-free
+//! inventory times `(1 - Sw)`, so their Jacobian is the water-free block times `(1 - Sw)` plus an
+//! `Sw` column of minus the water-free inventory — exact by the product rule, and computed from
+//! the same AD block rather than a second derivation of it. Without water nothing here runs.
+//!
 //! # Single-phase states
 //!
 //! Only the phase that exists contributes. The absent phase's molar density is not multiplied by a
@@ -41,6 +55,7 @@ use crate::fluid::units::{bar_to_pa, dpa_to_dbar};
 
 use super::layout::MAX_COMPONENTS;
 use super::state::{CompositionalCellState, RockView};
+use super::water::WaterProperties;
 
 /// Why an accumulation term could not be produced.
 #[derive(Clone, Debug, PartialEq)]
@@ -74,9 +89,9 @@ impl core::fmt::Display for AccumulationError {
 /// A cell's molar inventory and everything derived from it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CellInventory {
-    /// Moles of each component [mol].
+    /// Moles of each component [mol]. With water, `N+1` entries, water last.
     pub component_moles: Vec<f64>,
-    /// Total moles [mol].
+    /// Total hydrocarbon moles [mol]. Water is not included.
     pub total_moles: f64,
     /// Pore volume at the cell's pressure [m³].
     pub pore_volume_m3: f64,
@@ -84,8 +99,11 @@ pub struct CellInventory {
     pub mixture_molar_volume: f64,
     /// Phase state at the cell's primaries.
     pub phase_state: PhaseState,
-    /// Vapour saturation — the volume fraction, not `beta`.
+    /// Vapour saturation — the volume fraction of the **pore volume**, not `beta`, and not the
+    /// hydrocarbon-only fraction when water is present.
     pub vapour_saturation: f64,
+    /// Water saturation. Zero without water.
+    pub water_saturation: f64,
 }
 
 /// Inventory of one cell at its current primaries.
@@ -95,6 +113,20 @@ pub struct CellInventory {
 pub fn cell_inventory(
     spec: &FluidSpecification,
     rock: &RockView<'_>,
+    cell_index: usize,
+    cell: &CompositionalCellState,
+) -> Result<(CellInventory, FlashState), AccumulationError> {
+    cell_inventory_with_water(spec, rock, None, cell_index, cell)
+}
+
+/// [`cell_inventory`], with the immiscible water phase when `water` is given.
+///
+/// With water the inventory has `N+1` entries, water last; without it this is exactly
+/// [`cell_inventory`].
+pub fn cell_inventory_with_water(
+    spec: &FluidSpecification,
+    rock: &RockView<'_>,
+    water: Option<&WaterProperties>,
     cell_index: usize,
     cell: &CompositionalCellState,
 ) -> Result<(CellInventory, FlashState), AccumulationError> {
@@ -109,8 +141,30 @@ pub fn cell_inventory(
     .map_err(AccumulationError::Flash)?;
 
     let pore_volume = rock.pore_volume_m3(cell_index, cell.pressure_bar);
-    let inventory = inventory_from_flash(&state, &z, pore_volume);
+    let mut inventory = inventory_from_flash(&state, &z, pore_volume);
+    if let Some(water) = water {
+        add_water(&mut inventory, water, cell);
+    }
     Ok((inventory, state))
+}
+
+/// Scale a water-free inventory to the hydrocarbon pore volume and append the water moles.
+fn add_water(
+    inventory: &mut CellInventory,
+    water: &WaterProperties,
+    cell: &CompositionalCellState,
+) {
+    let sw = cell.water_saturation;
+    let hydrocarbon = 1.0 - sw;
+    for moles in &mut inventory.component_moles {
+        *moles *= hydrocarbon;
+    }
+    inventory.total_moles *= hydrocarbon;
+    inventory.vapour_saturation *= hydrocarbon;
+    inventory.water_saturation = sw;
+    inventory
+        .component_moles
+        .push(inventory.pore_volume_m3 * sw * water.molar_density(cell.pressure_bar));
 }
 
 /// The inventory implied by an already-computed flash.
@@ -153,15 +207,17 @@ fn inventory_from_flash(state: &FlashState, z: &[f64], pore_volume_m3: f64) -> C
         mixture_molar_volume: v_mix,
         phase_state: state.phase_state,
         vapour_saturation: state.vapour_saturation(),
+        water_saturation: 0.0,
     }
 }
 
 /// The accumulation residual and its local Jacobian for one cell.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CellAccumulation {
-    /// `R_i` for each component [mol]. Unscaled.
+    /// `R_i` for each component [mol]. Unscaled. With water, `N+1` rows, water last.
     pub residual: Vec<f64>,
-    /// `dR_i/du`, row-major `N x N`, with `u = [p_bar, z_0 .. z_(N-2)]`.
+    /// `dR_i/du`, row-major `N x N`, with `u = [p_bar, z_0 .. z_(N-2)]`; with water `N+1` square,
+    /// `u = [p_bar, z_0 .. z_(N-2), Sw]`.
     ///
     /// The pressure column is per **bar**, not per pascal: the primary is in reservoir units and
     /// the EOS boundary is where the conversion happens, exactly once.
@@ -183,11 +239,39 @@ pub fn cell_accumulation(
     source_moles_per_day: &[f64],
     dt_days: f64,
 ) -> Result<CellAccumulation, AccumulationError> {
+    cell_accumulation_with_water(
+        spec,
+        rock,
+        None,
+        cell_index,
+        cell,
+        previous_moles,
+        source_moles_per_day,
+        dt_days,
+    )
+}
+
+/// [`cell_accumulation`], with the immiscible water phase when `water` is given.
+///
+/// With water, `previous_moles` and `source_moles_per_day` have `N+1` entries, water last, and the
+/// Jacobian is `N+1` square with `Sw` as the last column.
+#[allow(clippy::too_many_arguments)]
+pub fn cell_accumulation_with_water(
+    spec: &FluidSpecification,
+    rock: &RockView<'_>,
+    water: Option<&WaterProperties>,
+    cell_index: usize,
+    cell: &CompositionalCellState,
+    previous_moles: &[f64],
+    source_moles_per_day: &[f64],
+    dt_days: f64,
+) -> Result<CellAccumulation, AccumulationError> {
     let n = spec.component_count();
+    let rows = n + usize::from(water.is_some());
     if dt_days <= 0.0 || !dt_days.is_finite() {
         return Err(AccumulationError::NonPositiveTimestep { days: dt_days });
     }
-    if previous_moles.len() != n || source_moles_per_day.len() != n {
+    if previous_moles.len() != rows || source_moles_per_day.len() != rows {
         return Err(AccumulationError::InvalidSource {
             reason: "previous inventory or source has the wrong length",
         });
@@ -200,7 +284,7 @@ pub fn cell_accumulation(
         });
     }
 
-    let (inventory, state) = cell_inventory(spec, rock, cell_index, cell)?;
+    let (mut inventory, state) = cell_inventory(spec, rock, cell_index, cell)?;
     let z = cell.overall_composition();
     let derivatives = flash_derivatives(
         spec,
@@ -211,7 +295,7 @@ pub fn cell_accumulation(
     )
     .map_err(AccumulationError::Derivative)?;
 
-    let jacobian = match n {
+    let mut jacobian = match n {
         2 => inventory_jacobian::<2>(rock, cell_index, cell, &state, &derivatives)?,
         3 => inventory_jacobian::<3>(rock, cell_index, cell, &state, &derivatives)?,
         4 => inventory_jacobian::<4>(rock, cell_index, cell, &state, &derivatives)?,
@@ -224,7 +308,21 @@ pub fn cell_accumulation(
         count => return Err(AccumulationError::UnsupportedComponentCount { count }),
     };
 
-    let residual = (0..n)
+    if let Some(water) = water {
+        // The water-free inventory and block, before scaling: the `Sw` column needs them.
+        let free_moles = inventory.component_moles.clone();
+        add_water(&mut inventory, water, cell);
+        let sw = cell.water_saturation;
+        for (row, free) in jacobian.iter_mut().zip(&free_moles) {
+            for entry in row.iter_mut() {
+                *entry *= 1.0 - sw;
+            }
+            row.push(-free);
+        }
+        jacobian.push(water_inventory_row(rock, water, cell_index, cell, n));
+    }
+
+    let residual = (0..rows)
         .map(|i| {
             inventory.component_moles[i] - previous_moles[i] - dt_days * source_moles_per_day[i]
         })
@@ -235,6 +333,27 @@ pub fn cell_accumulation(
         jacobian,
         inventory,
     })
+}
+
+/// `d n_w / du` for `n_w = PV(p) Sw c_w(p)`, over `u = [p, z_0..z_(N-2), Sw]`.
+///
+/// Two AD slots, pressure and `Sw`; water does not depend on the hydrocarbon composition.
+fn water_inventory_row(
+    rock: &RockView<'_>,
+    water: &WaterProperties,
+    cell_index: usize,
+    cell: &CompositionalCellState,
+    n: usize,
+) -> Vec<f64> {
+    let p = Ad::<2>::variable(cell.pressure_bar, 0);
+    let sw = Ad::<2>::variable(cell.water_saturation, 1);
+    let pv_value = rock.pore_volume_m3(cell_index, cell.pressure_bar);
+    let pv = Ad::<2>::seeded(pv_value, [rock.compressibility_per_bar * pv_value, 0.0]);
+    let n_w = pv * sw * water.molar_density(p);
+    let mut row = vec![0.0; n + 1];
+    row[0] = n_w.d(0);
+    row[n] = n_w.d(1);
+    row
 }
 
 /// `dn_i/du` by carrying the flash's total derivatives through the inventory expression.

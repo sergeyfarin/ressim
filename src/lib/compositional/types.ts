@@ -60,10 +60,40 @@ export type CompositionalRelPermConfig =
       liquid_saturation: number[];
       kr_liquid: number[];
       kr_vapour: number[];
-    };
+    }
+  /** Three-phase Stone II. Requires, and is required by, a `water` block (#46). */
+  | { model: 'stone-ii'; swof: CompositionalSwofRow[]; sgof: CompositionalSgofRow[] };
+
+/** One SWOF row. Capillary pressure must be absent or zero; the engine rejects anything else. */
+export interface CompositionalSwofRow {
+  sw: number;
+  krw: number;
+  krow: number;
+  pcow?: number | null;
+}
+
+/** One SGOF row. Capillary pressure must be absent or zero; the engine rejects anything else. */
+export interface CompositionalSgofRow {
+  sg: number;
+  krg: number;
+  krog: number;
+  pcog?: number | null;
+}
+
+/** The immiscible water phase: a PVTW record, a surface density and the initial saturation. */
+export interface CompositionalWaterConfig {
+  reference_pressure_bar: number;
+  formation_volume_factor: number;
+  compressibility_per_bar: number;
+  viscosity_cp: number;
+  viscosibility_per_bar?: number;
+  surface_density_kg_per_m3: number;
+  /** Uniform, in `[0, 1)`. */
+  initial_saturation: number;
+}
 
 /** Which surface stream a volumetric rate target refers to. */
-export type CompositionalSurfacePhase = 'liquid' | 'vapour' | 'total';
+export type CompositionalSurfacePhase = 'liquid' | 'vapour' | 'total' | 'water';
 
 /**
  * A well control. The engine flattens the discriminator into the well object, so `control` sits
@@ -88,8 +118,10 @@ export interface CompositionalCompletion {
 export type CompositionalWellConfig = CompositionalWellControl & {
   id: string;
   completions: CompositionalCompletion[];
-  /** Overall mole fractions of the injected stream. Required for an injector. */
+  /** Overall mole fractions of the injected hydrocarbon stream. An injector needs this or `inject_water`. */
   injection_composition?: number[];
+  /** Inject water. Only in a case with water. */
+  inject_water?: boolean;
 };
 
 /** A complete case, as it crosses the worker and WASM boundaries. */
@@ -103,6 +135,8 @@ export interface CompositionalCaseConfig {
   initial_composition: number[];
   wells: CompositionalWellConfig[];
   gravity_enabled: boolean;
+  /** The immiscible water phase. Absent means no water; present requires `stone-ii` relperm. */
+  water?: CompositionalWaterConfig;
 }
 
 /** What validation found that is admissible but worth acting on. */
@@ -156,10 +190,12 @@ export interface CompositionalSnapshot {
   /** `'two-phase' | 'single-liquid' | 'single-vapour' | 'unresolved'`, per cell. */
   phase_state: string[];
   vapour_saturation: number[];
-  /** Total moles per component held by the grid — the conservation diagnostic. */
+  /** Total moles per hydrocarbon component held by the grid — the conservation diagnostic. */
   inventory: number[];
-  /** Per well, cumulative component moles. Positive into the reservoir. */
+  /** Per well, cumulative component moles. Positive into the reservoir. With water, water is last. */
   cumulative_well_moles: number[][];
+  /** The water phase, when the case has one. */
+  water?: { saturation: number[]; inventory_moles: number };
 }
 
 /** A versioned checkpoint. It carries its own config, because a state without one restores into nothing. */
@@ -169,6 +205,8 @@ export interface CompositionalCheckpoint {
   time_days: number;
   pressure: number[];
   composition: number[][];
+  /** Water saturation per cell, exactly when the case has water. */
+  water_saturation?: number[];
 }
 
 /** Turn an engine rejection into something a person can act on, without implementation jargon. */

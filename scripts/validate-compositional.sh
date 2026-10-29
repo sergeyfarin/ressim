@@ -113,6 +113,7 @@ run_thermo() {
     run_filter comp_oracle_       3   # the oracle convergence census, and the band rule it enforces
     run_filter comp_injection_    1   # surface-rate control on a MIXTURE, against OPM's own flash
     run_filter comp_spe3_         8   # #51: OPM/Jutul fluid, separator train, CVD and 1D dew crossing
+    run_filter comp_water_       18   # #46: immiscible water, Stone II, FD Jacobian, conservation, JutulDarcy
 }
 
 run_fixture() {

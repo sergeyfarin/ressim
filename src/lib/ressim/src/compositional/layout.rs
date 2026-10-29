@@ -17,6 +17,19 @@
 //! separate equation. Pressure enters through the EOS densities in every balance, so there is no
 //! pressure closure to append; appending one would overdetermine the system.
 //!
+//! # With water (V1b, #46)
+//!
+//! A layout built [`CompositionalLayout::with_water`] appends one unknown and one equation:
+//!
+//! ```text
+//! columns:  [ p , z_0 , ... , z_(N-2) , Sw ]    N+1 primaries
+//! rows:     [ R_0 , ... , R_(N-1) , R_w ]       N hydrocarbon balances, then water
+//! ```
+//!
+//! Water is last in both so pressure stays in column 0 and every hydrocarbon offset is the one the
+//! water-free layout has. Callers name the water column and row through
+//! [`CellPrimary::WaterSaturation`] and [`CellEquation::WaterBalance`]; nothing computes them.
+//!
 //! Columns and rows are numbered separately on purpose. They happen to share a block size here,
 //! and that is a property of this model rather than a law — [`crate::fim::layout`] makes the same
 //! distinction for the black-oil model, and for the same reason.
@@ -54,6 +67,8 @@ pub enum CellPrimary {
     /// point: a type that could name `Composition(N-1)` would let a caller ask for the column of
     /// something that has no column.
     Composition(usize),
+    /// Water saturation, present only in a layout [`CompositionalLayout::with_water`]. Last column.
+    WaterSaturation,
 }
 
 /// A cell's equations, in matrix **row** order within its block.
@@ -63,6 +78,8 @@ pub enum CellEquation {
     ///
     /// Every component gets a balance; only the compositions lose one degree of freedom.
     ComponentBalance(usize),
+    /// Water mole balance, present only in a layout [`CompositionalLayout::with_water`]. Last row.
+    WaterBalance,
 }
 
 /// Where everything lives in the compositional Jacobian.
@@ -75,6 +92,7 @@ pub struct CompositionalLayout {
     cell_count: usize,
     well_count: usize,
     perforation_count: usize,
+    water: bool,
 }
 
 /// Why a layout could not be constructed or an index could not be resolved.
@@ -97,6 +115,8 @@ pub enum LayoutError {
     },
     /// A cell index beyond the cell count.
     CellOutOfRange { index: usize, cell_count: usize },
+    /// A water column or row was asked of a layout without water.
+    NoWaterPhase,
 }
 
 impl core::fmt::Display for LayoutError {
@@ -123,6 +143,7 @@ impl core::fmt::Display for LayoutError {
             Self::CellOutOfRange { index, cell_count } => {
                 write!(f, "cell {index} is outside 0..{cell_count}")
             }
+            Self::NoWaterPhase => write!(f, "this layout has no water phase"),
         }
     }
 }
@@ -144,7 +165,21 @@ impl CompositionalLayout {
             cell_count,
             well_count,
             perforation_count,
+            water: false,
         })
+    }
+
+    /// The same layout with the immiscible water unknown and equation appended to every cell.
+    pub fn with_water(self) -> Self {
+        Self {
+            water: true,
+            ..self
+        }
+    }
+
+    /// True when every cell carries `Sw` and a water balance.
+    pub fn has_water(&self) -> bool {
+        self.water
     }
 
     pub fn component_count(&self) -> usize {
@@ -163,8 +198,13 @@ impl CompositionalLayout {
         self.perforation_count
     }
 
-    /// Unknowns per cell, which equals equations per cell: `N`.
+    /// Unknowns per cell, which equals equations per cell: `N`, or `N+1` with water.
     pub fn cell_block_size(&self) -> usize {
+        self.component_count + usize::from(self.water)
+    }
+
+    /// Hydrocarbon component balances per cell: `N`, with or without water.
+    pub fn hydrocarbon_equation_count(&self) -> usize {
         self.component_count
     }
 
@@ -197,19 +237,28 @@ impl CompositionalLayout {
                     Ok(1 + k)
                 }
             }
+            CellPrimary::WaterSaturation => {
+                if self.water {
+                    Ok(self.component_count)
+                } else {
+                    Err(LayoutError::NoWaterPhase)
+                }
+            }
         }
     }
 
     /// Local row of an equation within a cell block.
     pub fn local_row(&self, equation: CellEquation) -> Result<usize, LayoutError> {
-        let CellEquation::ComponentBalance(i) = equation;
-        if i >= self.component_count {
-            Err(LayoutError::ComponentOutOfRange {
-                index: i,
-                component_count: self.component_count,
-            })
-        } else {
-            Ok(i)
+        match equation {
+            CellEquation::ComponentBalance(i) if i >= self.component_count => {
+                Err(LayoutError::ComponentOutOfRange {
+                    index: i,
+                    component_count: self.component_count,
+                })
+            }
+            CellEquation::ComponentBalance(i) => Ok(i),
+            CellEquation::WaterBalance if self.water => Ok(self.component_count),
+            CellEquation::WaterBalance => Err(LayoutError::NoWaterPhase),
         }
     }
 
@@ -235,6 +284,8 @@ impl CompositionalLayout {
         let local = column % self.cell_block_size();
         let primary = if local == 0 {
             CellPrimary::Pressure
+        } else if self.water && local == self.component_count {
+            CellPrimary::WaterSaturation
         } else {
             CellPrimary::Composition(local - 1)
         };
@@ -247,10 +298,13 @@ impl CompositionalLayout {
         if row >= cell_rows {
             return None;
         }
-        Some((
-            row / self.cell_block_size(),
-            CellEquation::ComponentBalance(row % self.cell_block_size()),
-        ))
+        let local = row % self.cell_block_size();
+        let equation = if self.water && local == self.component_count {
+            CellEquation::WaterBalance
+        } else {
+            CellEquation::ComponentBalance(local)
+        };
+        Some((row / self.cell_block_size(), equation))
     }
 
     /// First column of the well-BHP tail.

@@ -36,6 +36,15 @@
 //! A **single-completion** producer at or above its cell pressure is a different case and is shut
 //! in rather than rejected: there is no other connection for fluid to have come from, so there is
 //! no wellbore mixture being silently invented.
+//!
+//! # With water (V1b, #46)
+//!
+//! When the relative permeability is the water extension's, a producer also draws the water phase
+//! at its own mobility, and the cell's total mobility that an injector's stream moves at includes
+//! water. An injector injects either a hydrocarbon composition or water ([`InjectedFluid`]), never
+//! a mixture: water is outside the EOS, so a mixed stream would need a phase split nothing here
+//! defines. Injected water is at the connection pressure, so its molar density carries the BHP
+//! derivative exactly as an injected hydrocarbon stream's does.
 
 use crate::ad::Ad;
 use crate::fluid::derivatives::{DerivativeError, FlashDerivatives, flash_derivatives};
@@ -44,6 +53,7 @@ use crate::fluid::specification::FluidSpecification;
 use crate::fluid::transport::{TransportError, lbc_viscosity, surface_separation};
 use crate::fluid::units::{PA_S_PER_CP, bar_to_pa, dpa_to_dbar};
 
+use super::flux::hydrocarbon_kr_with_water;
 use super::relperm::RelativePermeabilityModel;
 use super::state::CompositionalCellState;
 
@@ -81,8 +91,20 @@ pub enum WellControl {
 pub enum SurfacePhase {
     Liquid,
     Vapour,
-    /// Both, summed. Rarely what anyone means, but unambiguous when it is.
+    /// Both hydrocarbon streams, summed. Water is not included. Rarely what anyone means, but
+    /// unambiguous when it is.
     Total,
+    /// Surface water, `moles * M_H2O / rho_w,surface`. Only with water.
+    Water,
+}
+
+/// What an injector injects.
+#[derive(Clone, Debug, PartialEq)]
+pub enum InjectedFluid {
+    /// A hydrocarbon stream: `N` overall mole fractions, flashed at the connection pressure.
+    Hydrocarbon(Vec<f64>),
+    /// Water. Only in a case with water.
+    Water,
 }
 
 /// One connection between a well and a cell.
@@ -108,8 +130,8 @@ pub struct CompositionalWell {
     /// Connections, in no particular order. At least one.
     pub completions: Vec<Completion>,
     pub control: WellControl,
-    /// Prescribed injection composition, `N` overall mole fractions. Required for an injector.
-    pub injection_composition: Option<Vec<f64>>,
+    /// What the well injects. Required for an injector.
+    pub injection: Option<InjectedFluid>,
 }
 
 impl CompositionalWell {
@@ -128,7 +150,7 @@ impl CompositionalWell {
                 head_offset_bar: 0.0,
             }],
             control,
-            injection_composition: None,
+            injection: None,
         }
     }
 
@@ -164,6 +186,8 @@ pub enum WellError {
     },
     /// The surface conversion needs surface conditions the specification does not carry.
     SurfaceConditionsNotPinned,
+    /// A water injector or a water-rate control in a case without water.
+    NoWaterPhase { well: String },
     /// A completion would flow the wrong way for the well's overall direction.
     ///
     /// Rejected rather than clipped: the fluid re-entering the formation would be the wellbore
@@ -220,6 +244,9 @@ impl core::fmt::Display for WellError {
                  wellbore mixture, which is not modelled"
             ),
             Self::NoCompletions { well } => write!(f, "well {well} has no completions"),
+            Self::NoWaterPhase { well } => {
+                write!(f, "well {well} needs a water phase, and the case has none")
+            }
         }
     }
 }
@@ -227,9 +254,11 @@ impl core::fmt::Display for WellError {
 /// A well's contribution to one cell, and its derivatives.
 #[derive(Clone, Debug, PartialEq)]
 pub struct WellSource {
-    /// Component molar sources [mol/day]. Positive means entering the cell.
+    /// Component molar sources [mol/day]. Positive means entering the cell. With water, `N+1`
+    /// entries, water last.
     pub component_moles_per_day: Vec<f64>,
-    /// `d source_i / d u`, row-major `N x N`, `u = [p_bar, z_0..z_(N-2)]` of the connected cell.
+    /// `d source_i / d u`, row-major `N x N`, `u = [p_bar, z_0..z_(N-2)]` of the connected cell;
+    /// with water `N+1` square and `u` ends in `Sw`.
     pub cell_jacobian: Vec<Vec<f64>>,
     /// `d source_i / d bhp` [mol/day/bar], one entry per component.
     pub bhp_derivative: Vec<f64>,
@@ -274,25 +303,39 @@ pub fn source_at_bhp(
             value: completion.well_index,
         });
     }
-    let n = spec.component_count();
-    match n {
-        2 => source_sized::<2>(spec, relperm, well, completion, cell, bhp_bar),
-        3 => source_sized::<3>(spec, relperm, well, completion, cell, bhp_bar),
-        4 => source_sized::<4>(spec, relperm, well, completion, cell, bhp_bar),
-        5 => source_sized::<5>(spec, relperm, well, completion, cell, bhp_bar),
-        6 => source_sized::<6>(spec, relperm, well, completion, cell, bhp_bar),
-        7 => source_sized::<7>(spec, relperm, well, completion, cell, bhp_bar),
-        8 => source_sized::<8>(spec, relperm, well, completion, cell, bhp_bar),
-        9 => source_sized::<9>(spec, relperm, well, completion, cell, bhp_bar),
-        10 => source_sized::<10>(spec, relperm, well, completion, cell, bhp_bar),
+    if matches!(well.injection, Some(InjectedFluid::Water)) && relperm.water().is_none() {
+        return Err(WellError::NoWaterPhase {
+            well: well.id.clone(),
+        });
+    }
+    // Slots: the cell's block (`N`, or `N+1` with water), then BHP.
+    macro_rules! sized {
+        ($n:literal, $dry:literal, $wet:literal) => {
+            if relperm.water().is_some() {
+                source_ad::<$n, $wet>(spec, relperm, well, completion, cell, bhp_bar)
+            } else {
+                source_ad::<$n, $dry>(spec, relperm, well, completion, cell, bhp_bar)
+            }
+        };
+    }
+    match spec.component_count() {
+        2 => sized!(2, 3, 4),
+        3 => sized!(3, 4, 5),
+        4 => sized!(4, 5, 6),
+        5 => sized!(5, 6, 7),
+        6 => sized!(6, 7, 8),
+        7 => sized!(7, 8, 9),
+        8 => sized!(8, 9, 10),
+        9 => sized!(9, 10, 11),
+        10 => sized!(10, 11, 12),
         count => Err(WellError::UnsupportedComponentCount { count }),
     }
 }
 
 /// Seed a flash-derivative row into the well's slot layout.
 ///
-/// `N` is the cell's primary count and `M = N + 1` is the slot count, so the row occupies slots
-/// `0..N` and the BHP slot stays zero. Writing this over `M` alone is an off-by-one that indexes
+/// `N` is the component count and `M` the slot count (`N + 1`, or `N + 2` with water), so the row
+/// occupies slots `0..N` and the `Sw` and BHP slots stay zero. Writing this over `M` alone is an off-by-one that indexes
 /// a length-`N` row with `N + 1` and panics, which is how it was found.
 fn seed_cell<const N: usize, const M: usize>(row: &[f64]) -> [f64; M] {
     let mut out = [0.0; M];
@@ -311,39 +354,15 @@ fn seed_cell<const N: usize, const M: usize>(row: &[f64]) -> [f64; M] {
 fn seed_bhp<const N: usize, const M: usize>(row: &[f64]) -> [f64; M] {
     let mut out = [0.0; M];
     if !row.is_empty() {
-        out[N] = dpa_to_dbar(row[0]);
+        out[M - 1] = dpa_to_dbar(row[0]);
     }
     out
 }
 
-/// AD over `N + 1` slots: the cell's `N` primaries, then `bhp`.
+/// AD over the cell's block (`N` primaries, or `N+1` with water) and then `bhp`, in the last slot.
 ///
 /// One evaluation gives both the cell block and the BHP column. Producing them separately is how a
 /// BHP derivative ends up disagreeing with the cell derivative it shares every term with.
-fn source_sized<const N: usize>(
-    spec: &FluidSpecification,
-    relperm: &RelativePermeabilityModel,
-    well: &CompositionalWell,
-    completion: &Completion,
-    cell: &CompositionalCellState,
-    bhp_bar: f64,
-) -> Result<WellSource, WellError> {
-    // Slots: 0 = p_cell, 1..N = independent z, N = bhp. `Ad` needs a const size, so every
-    // supported component count is instantiated explicitly.
-    match N {
-        2 => source_ad::<2, 3>(spec, relperm, well, completion, cell, bhp_bar),
-        3 => source_ad::<3, 4>(spec, relperm, well, completion, cell, bhp_bar),
-        4 => source_ad::<4, 5>(spec, relperm, well, completion, cell, bhp_bar),
-        5 => source_ad::<5, 6>(spec, relperm, well, completion, cell, bhp_bar),
-        6 => source_ad::<6, 7>(spec, relperm, well, completion, cell, bhp_bar),
-        7 => source_ad::<7, 8>(spec, relperm, well, completion, cell, bhp_bar),
-        8 => source_ad::<8, 9>(spec, relperm, well, completion, cell, bhp_bar),
-        9 => source_ad::<9, 10>(spec, relperm, well, completion, cell, bhp_bar),
-        10 => source_ad::<10, 11>(spec, relperm, well, completion, cell, bhp_bar),
-        count => Err(WellError::UnsupportedComponentCount { count }),
-    }
-}
-
 fn source_ad<const N: usize, const M: usize>(
     spec: &FluidSpecification,
     relperm: &RelativePermeabilityModel,
@@ -352,22 +371,27 @@ fn source_ad<const N: usize, const M: usize>(
     cell: &CompositionalCellState,
     bhp_bar: f64,
 ) -> Result<WellSource, WellError> {
-    debug_assert_eq!(M, N + 1);
+    let water = relperm.water();
+    // Cell block size, and the BHP slot after it.
+    let b = M - 1;
+    debug_assert_eq!(b, N + usize::from(water.is_some()));
     let t = spec.reservoir_temperature_k();
 
     let mut p_deriv = [0.0; M];
     p_deriv[0] = 1.0;
     let p_cell = Ad::<M>::seeded(cell.pressure_bar, p_deriv);
+    // The cell's water saturation in its slot, `N`; only read when there is water.
+    let sw = water.map(|_| Ad::<M>::variable(cell.water_saturation, N));
 
     let mut bhp_deriv = [0.0; M];
-    bhp_deriv[N] = 1.0;
+    bhp_deriv[b] = 1.0;
     let bhp = Ad::<M>::seeded(bhp_bar, bhp_deriv);
     let p_conn = bhp + completion.head_offset_bar;
     let dp = p_cell - p_conn;
 
-    let injecting = dp.value() < 0.0 && well.injection_composition.is_some();
+    let injecting = dp.value() < 0.0 && well.injection.is_some();
 
-    let mut component_flux = vec![Ad::<M>::constant(0.0); N];
+    let mut component_flux = vec![Ad::<M>::constant(0.0); b];
     let reservoir_rate;
 
     if injecting {
@@ -388,16 +412,12 @@ fn source_ad<const N: usize, const M: usize>(
         // mixture it is displacing, so injecting at the stream's own mobility over-injects by that
         // factor until the cell is swept. Against `flowexp_comp` on `1D_COMP` it showed up as a
         // 27% excess across the interval where the injector switches from rate to BHP control.
-        let z_inj = well.injection_composition.as_ref().ok_or_else(|| {
-            WellError::MissingInjectionComposition {
-                well: well.id.clone(),
-            }
-        })?;
-        let p_conn_pa = bar_to_pa(p_conn.value());
-        let inj_state =
-            flash(spec, p_conn_pa, t, z_inj, None).map_err(WellError::InjectionFlash)?;
-        let inj_derivatives = flash_derivatives(spec, p_conn_pa, t, z_inj, &inj_state)
-            .map_err(WellError::CellDerivative)?;
+        let injection =
+            well.injection
+                .as_ref()
+                .ok_or_else(|| WellError::MissingInjectionComposition {
+                    well: well.id.clone(),
+                })?;
 
         let z_cell = cell.overall_composition();
         let cell_state = flash(spec, bar_to_pa(cell.pressure_bar), t, &z_cell, None)
@@ -409,12 +429,15 @@ fn source_ad<const N: usize, const M: usize>(
         let mut lambda = Ad::<M>::constant(0.0);
         for liquid in [true, false] {
             let Some(phase) =
-                cell_phase::<N, M>(spec, relperm, &cell_state, &cell_derivatives, liquid)
+                cell_phase::<N, M>(spec, relperm, &cell_state, &cell_derivatives, liquid, sw)
                     .map_err(WellError::Transport)?
             else {
                 continue;
             };
             lambda = lambda + phase.mobility;
+        }
+        if let (Some(w), Some(sw)) = (water, sw) {
+            lambda = lambda + w.relperm.kr_water(sw) / w.properties.viscosity_cp(p_cell);
         }
 
         // Positive into the cell. The composition carries a BHP derivative and no cell-primary
@@ -422,9 +445,25 @@ fn source_ad<const N: usize, const M: usize>(
         // right, and keeping them separate is what makes an injector's Jacobian auditable.
         let q = (-dp) * lambda * completion.well_index;
         reservoir_rate = q.value();
-        let c_mixture = mixture_molar_density::<N, M>(&inj_state, &inj_derivatives);
-        for (i, flux) in component_flux.iter_mut().enumerate() {
-            *flux = q * c_mixture * z_inj[i];
+        match injection {
+            InjectedFluid::Hydrocarbon(z_inj) => {
+                let p_conn_pa = bar_to_pa(p_conn.value());
+                let inj_state =
+                    flash(spec, p_conn_pa, t, z_inj, None).map_err(WellError::InjectionFlash)?;
+                let inj_derivatives = flash_derivatives(spec, p_conn_pa, t, z_inj, &inj_state)
+                    .map_err(WellError::CellDerivative)?;
+                let c_mixture = mixture_molar_density::<N, M>(&inj_state, &inj_derivatives);
+                for (i, flux) in component_flux.iter_mut().take(N).enumerate() {
+                    *flux = q * c_mixture * z_inj[i];
+                }
+            }
+            InjectedFluid::Water => {
+                let w = water.ok_or_else(|| WellError::NoWaterPhase {
+                    well: well.id.clone(),
+                })?;
+                // At the connection pressure: the BHP derivative comes with it.
+                component_flux[N] = q * w.properties.molar_density(p_conn);
+            }
         }
     } else if dp.value() > 0.0 {
         // --- Producer: the cell's own fluid.
@@ -435,19 +474,25 @@ fn source_ad<const N: usize, const M: usize>(
             .map_err(WellError::CellDerivative)?;
 
         let mut total_rate = Ad::<M>::constant(0.0);
-        for (index, liquid) in [(0usize, true), (1usize, false)] {
-            let _ = index;
-            let Some(phase) = cell_phase::<N, M>(spec, relperm, &state, &derivatives, liquid)
+        for liquid in [true, false] {
+            let Some(phase) = cell_phase::<N, M>(spec, relperm, &state, &derivatives, liquid, sw)
                 .map_err(WellError::Transport)?
             else {
                 continue;
             };
             let q = phase.mobility * dp * completion.well_index;
             total_rate = total_rate + q;
-            for (i, flux) in component_flux.iter_mut().enumerate() {
+            for (i, flux) in component_flux.iter_mut().take(N).enumerate() {
                 // Negative: production removes moles from the cell.
                 *flux = *flux - q * phase.molar_density * phase.composition[i];
             }
+        }
+        if let (Some(w), Some(sw)) = (water, sw) {
+            let props = &w.properties;
+            let q =
+                w.relperm.kr_water(sw) / props.viscosity_cp(p_cell) * dp * completion.well_index;
+            total_rate = total_rate + q;
+            component_flux[N] = -(q * props.molar_density(p_cell));
         }
         reservoir_rate = -total_rate.value();
     } else {
@@ -457,11 +502,11 @@ fn source_ad<const N: usize, const M: usize>(
         reservoir_rate = 0.0;
     }
 
-    let mut cell_jacobian = vec![vec![0.0; N]; N];
-    let mut bhp_derivative = vec![0.0; N];
+    let mut cell_jacobian = vec![vec![0.0; b]; b];
+    let mut bhp_derivative = vec![0.0; b];
     for (i, flux) in component_flux.iter().enumerate() {
-        cell_jacobian[i].copy_from_slice(&flux.deriv()[..N]);
-        bhp_derivative[i] = flux.d(N);
+        cell_jacobian[i].copy_from_slice(&flux.deriv()[..b]);
+        bhp_derivative[i] = flux.d(b);
     }
 
     Ok(WellSource {
@@ -521,8 +566,9 @@ fn cell_phase<const N: usize, const M: usize>(
     state: &FlashState,
     d: &FlashDerivatives,
     liquid: bool,
+    water_saturation: Option<Ad<M>>,
 ) -> Result<Option<CellPhase<M>>, TransportError> {
-    phase_common::<N, M>(spec, relperm, state, d, liquid, false)
+    phase_common::<N, M>(spec, relperm, state, d, liquid, false, water_saturation)
 }
 
 /// Build one phase's mobility, molar density and composition as AD quantities.
@@ -538,6 +584,7 @@ fn phase_common<const N: usize, const M: usize>(
     d: &FlashDerivatives,
     liquid: bool,
     into_bhp_slot: bool,
+    water_saturation: Option<Ad<M>>,
 ) -> Result<Option<CellPhase<M>>, TransportError> {
     let present = match (state.phase_state, liquid) {
         (PhaseState::TwoPhase, _) => true,
@@ -603,7 +650,11 @@ fn phase_common<const N: usize, const M: usize>(
         &composition,
         molar_density,
     )?;
-    let mobility = relperm.kr(liquid_saturation, liquid) / (mu_pa_s / PA_S_PER_CP);
+    let kr = match (relperm.water(), water_saturation) {
+        (Some(w), Some(sw)) => hydrocarbon_kr_with_water(w, sw, liquid_saturation, liquid),
+        _ => relperm.kr(liquid_saturation, liquid),
+    };
+    let mobility = kr / (mu_pa_s / PA_S_PER_CP);
 
     Ok(Some(CellPhase {
         mobility,
@@ -762,7 +813,6 @@ pub fn well_source(
             bhp_limit_bar,
         } => {
             let phase = *phase;
-            let n = spec.component_count();
             solve_for_rate(
                 spec,
                 relperm,
@@ -770,7 +820,7 @@ pub fn well_source(
                 cells,
                 *bhp_limit_bar,
                 *target_m3_per_day,
-                move |result, spec| surface_rate(spec, result, phase, n),
+                move |result, spec| surface_rate(spec, relperm, &well.id, result, phase),
             )
         }
     }
@@ -779,14 +829,25 @@ pub fn well_source(
 /// Surface volumetric rate of a well's total stream [m³/day], signed as the stream is.
 fn surface_rate(
     spec: &FluidSpecification,
+    relperm: &RelativePermeabilityModel,
+    well_id: &str,
     result: &WellResult,
     phase: SurfacePhase,
-    component_count: usize,
 ) -> Result<f64, WellError> {
+    let n = spec.component_count();
+    let water = relperm.water();
+    let mut components = result.total_component_moles_per_day(n + usize::from(water.is_some()));
+    if phase == SurfacePhase::Water {
+        let w = water.ok_or_else(|| WellError::NoWaterPhase {
+            well: well_id.to_string(),
+        })?;
+        return Ok(w.properties.surface_volume_m3(components[n]));
+    }
     if spec.surface().is_none() {
         return Err(WellError::SurfaceConditionsNotPinned);
     }
-    let components = result.total_component_moles_per_day(component_count);
+    // The hydrocarbon stream only: water does not enter the separator flash.
+    components.truncate(n);
     let total: f64 = components.iter().sum();
     if total == 0.0 {
         return Ok(0.0);
@@ -804,6 +865,7 @@ fn surface_rate(
         SurfacePhase::Liquid => separated.liquid_volume,
         SurfacePhase::Vapour => separated.vapour_volume,
         SurfacePhase::Total => separated.liquid_volume + separated.vapour_volume,
+        SurfacePhase::Water => 0.0,
     };
     Ok(sign * volume)
 }

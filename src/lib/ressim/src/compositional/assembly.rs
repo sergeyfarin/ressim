@@ -35,7 +35,9 @@
 
 use crate::fluid::specification::FluidSpecification;
 
-use super::accumulation::{AccumulationError, CellInventory, EquationScaling, cell_accumulation};
+use super::accumulation::{
+    AccumulationError, CellInventory, EquationScaling, cell_accumulation_with_water,
+};
 use super::block_matrix::BlockSparseMatrix;
 use super::flux::{FluxError, Gravity, face_flux};
 use super::layout::CompositionalLayout;
@@ -75,6 +77,14 @@ pub enum AssemblyError {
         face: usize,
         reason: &'static str,
     },
+    /// The layout has water and the relative permeability does not, or the reverse.
+    ///
+    /// The water phase is carried by [`RelativePermeabilityModel::StoneTwoWater`], and a layout
+    /// that disagrees with it would put a water row where no physics fills it.
+    WaterMismatch {
+        layout_has_water: bool,
+        relperm_has_water: bool,
+    },
     /// The source or previous-inventory table does not match the grid.
     ShapeMismatch {
         what: &'static str,
@@ -90,6 +100,14 @@ impl core::fmt::Display for AssemblyError {
             Self::Flux { face, source } => write!(f, "face {face}: {source}"),
             Self::Well { well, source } => write!(f, "well {well}: {source}"),
             Self::InvalidFace { face, reason } => write!(f, "face {face}: {reason}"),
+            Self::WaterMismatch {
+                layout_has_water,
+                relperm_has_water,
+            } => write!(
+                f,
+                "layout water = {layout_has_water}, relative permeability water = \
+                 {relperm_has_water}; the two must agree"
+            ),
             Self::ShapeMismatch {
                 what,
                 expected,
@@ -129,7 +147,7 @@ pub struct AssemblyResult {
 impl AssemblyResult {
     /// Largest scaled residual across every cell and component.
     pub fn scaled_residual_norm(&self, layout: &CompositionalLayout) -> f64 {
-        let n = layout.component_count();
+        let n = layout.cell_block_size();
         let mut worst = 0.0f64;
         for cell in 0..layout.cell_count() {
             let rows = &self.residual[cell * n..(cell + 1) * n];
@@ -156,8 +174,16 @@ pub fn assemble(
     sources: &[Vec<f64>],
     dt_days: f64,
 ) -> Result<AssemblyResult, AssemblyError> {
-    let n = layout.component_count();
+    // Rows and columns per cell: `N`, or `N+1` with water.
+    let n = layout.cell_block_size();
     let cells = layout.cell_count();
+    let water = relperm.water().map(|w| &w.properties);
+    if layout.has_water() != water.is_some() {
+        return Err(AssemblyError::WaterMismatch {
+            layout_has_water: layout.has_water(),
+            relperm_has_water: water.is_some(),
+        });
+    }
 
     if previous_moles.len() != cells {
         return Err(AssemblyError::ShapeMismatch {
@@ -202,9 +228,10 @@ pub fn assemble(
 
     // Accumulation and sources, cell by cell.
     for cell in 0..cells {
-        let acc = cell_accumulation(
+        let acc = cell_accumulation_with_water(
             spec,
             rock,
+            water,
             cell,
             state.cell(cell),
             &previous_moles[cell],
@@ -346,7 +373,7 @@ pub fn numerical_jacobian(
     pressure_step_bar: f64,
     composition_step: f64,
 ) -> Result<Vec<Vec<f64>>, AssemblyError> {
-    let n = layout.component_count();
+    let n = layout.cell_block_size();
     let cells = layout.cell_count();
     let size = cells * n;
     let mut out = vec![vec![0.0; size]; size];
@@ -364,6 +391,9 @@ pub fn numerical_jacobian(
                 }
                 super::layout::CellPrimary::Composition(k) => {
                     cells_copy[cell].independent_z_mut()[k] += sign * composition_step;
+                }
+                super::layout::CellPrimary::WaterSaturation => {
+                    cells_copy[cell].water_saturation += sign * composition_step;
                 }
             }
             let perturbed = CompositionalState::new(layout, cells_copy)
@@ -387,7 +417,8 @@ pub fn numerical_jacobian(
         let down = perturb(-1.0)?;
         let step = match primary {
             super::layout::CellPrimary::Pressure => pressure_step_bar,
-            super::layout::CellPrimary::Composition(_) => composition_step,
+            super::layout::CellPrimary::Composition(_)
+            | super::layout::CellPrimary::WaterSaturation => composition_step,
         };
         for row in 0..size {
             out[row][column] = (up[row] - down[row]) / (2.0 * step);
