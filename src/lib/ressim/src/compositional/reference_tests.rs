@@ -757,6 +757,7 @@ fn run_deck_case_full(
         newton: super::newton::NewtonOptions {
             tolerance: 1e-7,
             max_iterations: 30,
+            ..Default::default()
         },
         ..TimestepOptions::default()
     };
@@ -1832,6 +1833,7 @@ fn run_depletion(report_times_days: &[f64], max_sub_step_days: f64) -> Vec<Compo
         newton: super::newton::NewtonOptions {
             tolerance: 1e-8,
             max_iterations: 30,
+            ..Default::default()
         },
         ..TimestepOptions::default()
     };

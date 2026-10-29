@@ -112,7 +112,7 @@ fn classify(error: &NewtonError) -> (FailureKind, String) {
         }) => FailureKind::Flash,
         NewtonError::Assembly(AssemblyError::Flux { .. }) => FailureKind::Flash,
         NewtonError::Assembly(_) => FailureKind::Admissibility,
-        NewtonError::SingularJacobian { .. } => FailureKind::Linear,
+        NewtonError::Linear(_) => FailureKind::Linear,
         NewtonError::NotConverged { .. } => FailureKind::Nonlinear,
         NewtonError::Inadmissible { .. }
         | NewtonError::NegativeDirectionOnAbsentComponent { .. }
