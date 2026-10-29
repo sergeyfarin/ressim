@@ -26,6 +26,32 @@ For undersaturated oil ($P > P_b$), $B_o$ decreases via isothermal compressibili
 $$ B_o(P) = B_o(P_b) \cdot \exp(-c_o (P - P_b)) $$
 Where $\gamma_o = \frac{141.5}{131.5 + API}$.
 
+**Vasquez–Beggs (1980)**, selectable for the custom black-oil fluid (#61). Standing remains the default:
+$$ B_o = 1 + C_1 R_s + C_2 (T - 60) \frac{API}{\gamma_g} + C_3 R_s (T - 60) \frac{API}{\gamma_g} $$
+| | $C_1$ | $C_2$ | $C_3$ |
+|---|---|---|---|
+| API ≤ 30 | 4.677e-4 | 1.751e-5 | −1.811e-8 |
+| API > 30 | 4.670e-4 | 1.100e-5 | 1.337e-9 |
+
+The published $\gamma_g$ is the gas gravity at a 100 psig separator; the generator passes its only gas gravity.
+
+**Why the choice exists.** Below $P_b$ a black-oil table is thermodynamically stable only while
+$dB_o/dR_s < B_g$. Standing's slope grows with $R_s$ while $B_g$ falls roughly as $1/P$, so
+correlation tables trip the `pvt-thermodynamically-unstable` warning just below a high bubble point.
+Vasquez–Beggs is linear in $R_s$ and stays stable over the generator's input range, but its $B_{ob}$
+differs from Standing's (−30 % to +9 % over API 15–50, 40–150 °C, $P_b$ ≤ 400 bar).
+`docs/BLACK_OIL_VALIDATION.md` §4 has the sweep.
+
+**Fitted data ranges**, as usually quoted (e.g. Ahmed, *Reservoir Engineering Handbook*). Outside
+these ranges the correlation is an extrapolation:
+
+| Correlation | $P_b$ (psia) | $R_s$ (scf/STB) | $T$ (°F) | API | $\gamma_g$ |
+|---|---|---|---|---|---|
+| Standing (1947) | 130–7,000 | 20–1,425 | 100–258 | 16.5–63.8 | 0.59–0.95 |
+| Vasquez–Beggs (1980) | 50–5,250 | 0–2,199 | 70–295 | 15.3–59.5 | 0.511–1.351 |
+
+At 30 API, γg 0.7 and 80 °C, Standing's $R_s$ reaches 1,425 scf/STB at about $P_b$ = 420 bar. At 50 API it reaches it at about 240 bar.
+
 ### 3. Oil Viscosity ($\mu_o$)
 **Beggs-Robinson (1975)** for dead and saturated oil.
 1. Dead oil viscosity $\mu_{od}$ (cP):

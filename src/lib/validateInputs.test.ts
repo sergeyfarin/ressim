@@ -295,6 +295,15 @@ describe('PVT thermodynamic stability (#39)', () => {
             .some((w) => w.code === 'pvt-thermodynamically-unstable')).toBe(false);
     });
 
+    it('suggests a remedy only for a table built from the correlations (#61)', () => {
+        const message = (generatedPvtBoCorrelation?: 'standing' | 'vasquez-beggs') => validateInputs(
+            makeValidInputs({ pvtTable: unstable, generatedPvtBoCorrelation }),
+        ).warnings.find((w) => w.code === 'pvt-thermodynamically-unstable')?.message ?? '';
+        expect(message('standing')).toContain('Vasquez–Beggs Bo correlation');
+        expect(message('vasquez-beggs')).toContain('Lower the bubble point');
+        expect(message(undefined)).not.toMatch(/Vasquez|Lower the bubble point/);
+    });
+
     it('is quiet for every shipped scenario and variant', () => {
         const offenders: string[] = [];
         for (const scenario of listScenarios()) {

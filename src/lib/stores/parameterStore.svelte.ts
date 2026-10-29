@@ -3,7 +3,7 @@ import type {
     PvtRow,
     ThreePhaseScalTables,
 } from '../simulator-types';
-import { generateBlackOilTable } from '../physics/pvt';
+import { DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR, generateBlackOilTable, type SaturatedBoCorrelation } from '../physics/pvt';
 import { getStockTankOilInPlace, getGasInPlace } from '@ressim/quantities/reservoirVolumes';
 import { buildCreatePayloadFromState } from '../buildCreatePayload';
 import {
@@ -99,6 +99,7 @@ class ParameterStoreImpl {
     gasSpecificGravity = $state(0.7);
     reservoirTemperature = $state(80.0);
     bubblePoint = $state(150.0);
+    saturatedBoCorrelation = $state<SaturatedBoCorrelation>('standing');
 
     mu_w = $state(0.5);
     mu_o = $state(1.0);
@@ -210,7 +211,8 @@ class ParameterStoreImpl {
                 return this.pvtTableOverride.map((row) => ({ ...row }));
             }
             const pMax = Math.max(this.initialPressure * 1.5, Math.max(this.injectorBhp, this.producerBhp) * 1.5, 500);
-            return generateBlackOilTable(this.apiGravity, this.gasSpecificGravity, this.reservoirTemperature, this.bubblePoint, pMax);
+            return generateBlackOilTable(this.apiGravity, this.gasSpecificGravity, this.reservoirTemperature, this.bubblePoint, pMax,
+                30, DEFAULT_UNDERSATURATED_OIL_COMPRESSIBILITY_PER_BAR, 'standing', this.saturatedBoCorrelation);
         }
         return undefined;
     });
@@ -268,6 +270,9 @@ class ParameterStoreImpl {
             initialPressure: this.initialPressure,
             pvtMode: this.pvtMode,
             pvtTable: this.pvtTable,
+            generatedPvtBoCorrelation: this.pvtMode === 'black-oil' && !this.pvtTableOverride?.length
+                ? this.saturatedBoCorrelation
+                : undefined,
             c_o: this.c_o,
             volume_expansion_o: this.volume_expansion_o,
         };
@@ -331,6 +336,7 @@ class ParameterStoreImpl {
             gasSpecificGravity: this.gasSpecificGravity,
             reservoirTemperature: this.reservoirTemperature,
             bubblePoint: this.bubblePoint,
+            saturatedBoCorrelation: this.saturatedBoCorrelation,
             mu_w: this.mu_w,
             mu_o: this.mu_o,
             c_o: this.c_o,
@@ -451,6 +457,7 @@ class ParameterStoreImpl {
         this.gasSpecificGravity = fin(resolved.gasSpecificGravity, 0.7);
         this.reservoirTemperature = fin(resolved.reservoirTemperature, 80.0);
         this.bubblePoint = fin(resolved.bubblePoint, 150.0);
+        this.saturatedBoCorrelation = resolved.saturatedBoCorrelation === 'vasquez-beggs' ? 'vasquez-beggs' : 'standing';
 
         this.mu_w = fin(resolved.mu_w, 0.5);
         this.mu_o = fin(resolved.mu_o, 1.0);
@@ -555,6 +562,7 @@ class ParameterStoreImpl {
             scalTables: this.scalTables,
             pvtMode: this.pvtMode, apiGravity: this.apiGravity, gasSpecificGravity: this.gasSpecificGravity,
             reservoirTemperature: this.reservoirTemperature, bubblePoint: this.bubblePoint,
+            saturatedBoCorrelation: this.saturatedBoCorrelation,
             mu_w: this.mu_w, mu_o: this.mu_o, c_o: this.c_o, c_w: this.c_w,
             rock_compressibility: this.rock_compressibility, depth_reference: this.depth_reference,
             volume_expansion_o: this.volume_expansion_o, volume_expansion_w: this.volume_expansion_w,

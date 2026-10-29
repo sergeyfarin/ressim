@@ -1,5 +1,6 @@
 import type { CaseMode, ToggleState } from "../catalog/caseCatalog";
 import type { PvtRow } from "../simulator-types";
+import type { SaturatedBoCorrelation } from "../physics/pvt";
 import type {
   BasePresetProfile,
   ComparisonSelection,
@@ -35,6 +36,7 @@ export type ModePanelParameterBindings = {
   gasSpecificGravity: number;
   reservoirTemperature: number;
   bubblePoint: number;
+  saturatedBoCorrelation: SaturatedBoCorrelation;
   nx: number;
   ny: number;
   nz: number;
