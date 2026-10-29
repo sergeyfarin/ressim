@@ -601,6 +601,10 @@ No existing black-oil benchmark tolerance is changed by any of this.
 
 ### C15 / V1b — immiscible water (#46, 2026-10-29)
 
+Measured on `0debc26a` with `bash scripts/validate-compositional.sh thermo` (`comp_water_`, 18
+tests, all passing); the fixture manifest is regenerated on that clean commit and `--check`
+reproduces it.
+
 **Model.** Water is a conserved component in a phase of its own, outside the EOS: no hydrocarbon
 dissolves in it and none of it vaporizes. A case opts in with a `water` block and the `stone-ii`
 relative permeability, which must come together; without them the engine runs none of the new
