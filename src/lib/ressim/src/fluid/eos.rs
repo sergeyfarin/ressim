@@ -174,6 +174,7 @@ impl CubicRoots {
 #[derive(Clone, Debug, PartialEq)]
 pub struct PhaseProperties {
     pub branch: PhaseBranch,
+    /// Untranslated cubic root. With volume shifts this is not `p * molar_volume / (R*T)`.
     pub z_factor: f64,
     /// [m³/mol]
     pub molar_volume: f64,
@@ -228,6 +229,21 @@ fn pr_omega_a(variant: EosVariant, reduced_temperature: f64, acentric_factor: f6
 
 /// `Omega_B`. `eos/PRParams.hpp::calcOmegaB`.
 const PR_OMEGA_B: f64 = 0.077_796_074;
+
+/// Composition-weighted, pressure-independent volume translation [m³/mol].
+pub(crate) fn volume_translation<S: Scalar>(spec: &FluidSpecification, x: &[S]) -> S {
+    let mut shift = S::from_f64(0.0);
+    for (i, &s) in spec.volume_shifts().iter().enumerate() {
+        let c = spec.component(i);
+        shift = shift
+            + x[i]
+                * S::from_f64(
+                    s * PR_OMEGA_B * GAS_CONSTANT_J_PER_MOL_K * c.critical_temperature_k
+                        / c.critical_pressure_pa,
+                );
+    }
+    shift
+}
 
 /// `m1 = 1 + sqrt(2)`, `m2 = 1 - sqrt(2)`. `eos/PRParams.hpp::calcm1`, `calcm2`.
 fn pr_m1_m2() -> (f64, f64) {
@@ -487,7 +503,7 @@ pub fn evaluate(
     let z = select_root(&roots, params.b, branch)?;
 
     let rt = GAS_CONSTANT_J_PER_MOL_K * temperature_k;
-    let molar_volume = z * rt / pressure_pa;
+    let molar_volume = z * rt / pressure_pa - volume_translation(spec, x);
     if !molar_volume.is_finite() || molar_volume <= 0.0 {
         return Err(EosError::NotFinite {
             what: "molar volume",

@@ -456,7 +456,13 @@ fn phase_density_ad<const M: usize>(
     let z = z_factor_with_derivatives(params.a, params.b, z_value, branch)?;
 
     // c = p / (Z R T), the reciprocal of V_m = Z R T / p.
-    let molar_density = pressure_pa / (z * (GAS_CONSTANT_J_PER_MOL_K * temperature_k));
+    let molar_density = if spec.volume_shifts().is_empty() {
+        pressure_pa / (z * (GAS_CONSTANT_J_PER_MOL_K * temperature_k))
+    } else {
+        let volume = z * (GAS_CONSTANT_J_PER_MOL_K * temperature_k) / pressure_pa
+            - super::eos::volume_translation(spec, x);
+        Ad::<M>::constant(1.0) / volume
+    };
 
     let mut mean_mw = Ad::<M>::constant(0.0);
     for i in 0..spec.component_count() {

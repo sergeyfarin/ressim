@@ -58,6 +58,8 @@ pub enum FluidSpecError {
     InvalidTemperature { field: &'static str, value_k: f64 },
     /// Surface pressure is not positive and finite.
     InvalidSurfacePressure { value_pa: f64 },
+    /// A volume translation or separator train is malformed.
+    InvalidExtension { reason: &'static str },
     /// An overall composition has the wrong number of entries.
     CompositionLength { expected: usize, actual: usize },
     /// An overall composition entry is non-finite or negative.
@@ -73,6 +75,7 @@ pub enum FluidSpecError {
 impl core::fmt::Display for FluidSpecError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
+            Self::InvalidExtension { reason } => write!(f, "invalid fluid extension: {reason}"),
             Self::UnsupportedComponentCount { count } => write!(
                 f,
                 "component count {count} is outside the supported range 2..={MAX_COMPONENTS}"
@@ -217,12 +220,10 @@ pub struct Component {
     pub acentric_factor: f64,
 }
 
-/// Surface conditions for the single-stage surface flash.
+/// Pressure and temperature for a separator stage or the surface volume meter.
 ///
-/// **Not yet pinned for V1.** `docs/COMPOSITIONAL_VALIDATION.md` §6 records this as an open
-/// decision owed by C5, which is why [`FluidSpecification::surface`] is an `Option` rather than a
-/// field with a plausible default. A default here would become a silent assumption in every
-/// surface rate the model ever reports.
+/// A case must declare its convention explicitly. [`FluidSpecification::surface`] is an `Option`
+/// so a fluid without declared surface conditions cannot silently report surface rates.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SurfaceConditions {
     pub pressure_pa: f64,
@@ -243,6 +244,10 @@ pub struct FluidSpecification {
     /// The single fixed reservoir temperature [K]. V1 is isothermal.
     reservoir_temperature_k: f64,
     surface: Option<SurfaceConditions>,
+    #[serde(default)]
+    volume_shifts: Vec<f64>,
+    #[serde(default)]
+    separator_stages: Vec<SurfaceConditions>,
 }
 
 impl FluidSpecification {
@@ -374,6 +379,8 @@ impl FluidSpecification {
             viscosity,
             reservoir_temperature_k,
             surface,
+            volume_shifts: Vec::new(),
+            separator_stages: Vec::new(),
         })
     }
 
@@ -409,6 +416,54 @@ impl FluidSpecification {
     /// Surface conditions, if they have been pinned. See [`SurfaceConditions`].
     pub fn surface(&self) -> Option<SurfaceConditions> {
         self.surface
+    }
+
+    /// Attach dimensionless Peneloux translations: `V = ZRT/p - sum(x_i s_i b_i)`.
+    /// They change volumes, not phase equilibrium; absent coefficients mean zero translation.
+    pub fn with_volume_shifts(mut self, shifts: Vec<f64>) -> Result<Self, FluidSpecError> {
+        if shifts.len() != self.component_count() || shifts.iter().any(|s| !s.is_finite()) {
+            return Err(FluidSpecError::InvalidExtension {
+                reason: "volume shifts must have one finite value per component",
+            });
+        }
+        self.volume_shifts = shifts;
+        Ok(self)
+    }
+
+    /// Dimensionless volume translations, empty for an untranslated EOS.
+    pub fn volume_shifts(&self) -> &[f64] {
+        &self.volume_shifts
+    }
+
+    /// Attach a liquid-cascade separator train ending at the declared stock-tank conditions.
+    /// Each stage must have positive finite P/T and strictly lower pressure than its predecessor.
+    pub fn with_separator_stages(
+        mut self,
+        stages: Vec<SurfaceConditions>,
+    ) -> Result<Self, FluidSpecError> {
+        if stages.is_empty()
+            || stages.iter().any(|s| {
+                !s.pressure_pa.is_finite()
+                    || s.pressure_pa <= 0.0
+                    || !s.temperature_k.is_finite()
+                    || s.temperature_k <= 0.0
+            })
+            || stages
+                .windows(2)
+                .any(|s| s[0].pressure_pa <= s[1].pressure_pa)
+            || stages.last().copied() != self.surface
+        {
+            return Err(FluidSpecError::InvalidExtension {
+                reason: "separator stages must descend in pressure and end at the declared surface conditions",
+            });
+        }
+        self.separator_stages = stages;
+        Ok(self)
+    }
+
+    /// Liquid-cascade stages; empty means a single flash at `surface()`.
+    pub fn separator_stages(&self) -> &[SurfaceConditions] {
+        &self.separator_stages
     }
 
     /// Index of a component by its stable identifier.
@@ -448,14 +503,20 @@ impl FluidSpecification {
             .map(|&oi| order.iter().map(|&oj| self.interaction[oi][oj]).collect())
             .collect();
 
-        Self::new(
+        let mut permuted = Self::new(
             components,
             interaction,
             self.eos,
             self.viscosity,
             self.reservoir_temperature_k,
             self.surface,
-        )
+        )?;
+        if !self.volume_shifts.is_empty() {
+            permuted = permuted
+                .with_volume_shifts(order.iter().map(|&i| self.volume_shifts[i]).collect())?;
+        }
+        permuted.separator_stages = self.separator_stages.clone();
+        Ok(permuted)
     }
 }
 

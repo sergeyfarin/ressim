@@ -34,8 +34,11 @@ scope and would need a different thermodynamic model, not a parameter change.
 
 ## 1. The pinned fluid
 
-Three fluid systems, all sourced entirely from the installed OPM 2026.04 packages. No property
-below was chosen, fitted or rounded by ResSim. Each carries its own temperature
+The binary, ternary and SPE5 systems are sourced entirely from the installed OPM 2026.04 packages.
+SPE3's nine-component characterization is sourced from published tables; see
+[SPE3 validation](SPE3_VALIDATION.md) for its OPM PTFlash/JutulDarcy admission, volume translations,
+three-stage separator and dew-point crossing contracts (#51). No property was fitted by ResSim.
+Each carries its own temperature
 (`FluidSpecification::reservoir_temperature_k`); there is no crate-wide one (#45).
 
 ### Ternary (N=3) — `Opm::ThreeComponentFluidSystem`
@@ -591,6 +594,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C14 | Release | NOT STARTED | **Unblocked** by C12's declaration. C13's reporting must name what it means by surface gas rather than inherit Li's pressure-blind label, and must not treat a surface **rate** as validated end to end — see the C12 record |
 | C15 | V1b immiscible water | NOT STARTED | Gated on C14 |
 | #45 | Up to 10 components; per-fluid temperature and BIPs; SPE5 fluid pinned from OPM | **COMPLETE** | `MAX_COMPONENTS = 10` in `fluid/specification.rs` (re-exported by `compositional/layout.rs`); `pinned::spe5()`; `EosVariant::PengRobinsonCorrected`; SPE5 in the fixture (§3a) and in every fixture-driven test; `comp_surface_separation_matches_opm_on_the_spe5_fluid`; N=10 kernels FD-checked in `compositional/cost_tests.rs`. Cost record below |
+| #51 | SPE3 characterization, staged separators, dew-point robustness | **Implemented** | [SPE3 validation](SPE3_VALIDATION.md): published nine-component fluid with volume translations; OPM PTFlash admission, independent Jutul separator/CVD fixtures and a matched 1D dew-point crossing; eight `comp_spe3_*` contracts. Full reservoir execution remains #52 |
 
 ## 8. Completion records
 
@@ -638,8 +642,8 @@ never a correction.
 **Cost.** One linear solve on a box grid with a pressure gradient, gravity on the vertical faces,
 a BHP injector and producer (`comp_linear_cost_spe5_and_spe3_size`, `#[ignore]`d). SPE5 size is
 7x7x3 at SPE5's six components; SPE3 size is 9x9x4 on the ten-component **timing fluid** of
-`cost_tests.rs` (SPE3's own fluid is not pinned; the row count and block size are what a linear
-solver's cost depends on). Measured on `0ab2af3` (clean tree), AMD EPYC 3251, one thread,
+`cost_tests.rs` (at measurement time SPE3's own fluid was not pinned; #51 subsequently pins a
+nine-component fluid, so this remains a ten-component timing case). Measured on `0ab2af3` (clean tree), AMD EPYC 3251, one thread,
 release; ranges are over three runs (wasm: three per route).
 
 | System | Rows | Block-sparse J | Dense J would be | Assembly | `sparse-lu` | `fgmres-cpr` (7 its) | `dense-lu` |

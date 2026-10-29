@@ -43,6 +43,8 @@ mod eos_tests;
 #[cfg(test)]
 mod flash_tests;
 #[cfg(test)]
+pub(crate) mod spe3_tests;
+#[cfg(test)]
 mod stability_tests;
 #[cfg(test)]
 mod sweep_tests;

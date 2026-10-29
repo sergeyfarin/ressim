@@ -25,9 +25,9 @@
 //!
 //! # Surface conditions
 //!
-//! A **single equilibrium stage**. The produced stream is flashed once at the declared surface
-//! pressure and temperature, and the resulting phase mole rates are converted to volumes with the
-//! phase molar densities at those conditions. This is not a separator train, and it deliberately
+//! A single equilibrium stage, or an explicit liquid-cascade separator train. The produced stream
+//! is flashed at each declared stage; only its liquid continues downstream. Removed gases are
+//! combined and metered on the vapour EOS branch at the declared surface conditions. It deliberately
 //! produces no `Bo`, `Bg` or `Rs`: those are black-oil quantities defined against a specific
 //! fluid model, and reusing their names for an arbitrary-composition calculation would invite
 //! exactly the misreading the plan forbids. The outputs are "surface liquid" and "surface gas"
@@ -257,7 +257,7 @@ pub struct SurfaceStream {
     pub liquid_component_moles: Vec<f64>,
     /// Per-component moles in the surface gas.
     pub vapour_component_moles: Vec<f64>,
-    /// The phase state the stream separated into at surface conditions.
+    /// Which collected products exist. For a train this labels its products, not a common flash.
     pub phase_state: PhaseState,
 }
 
@@ -283,8 +283,8 @@ impl SurfaceStream {
     /// Gas-to-liquid ratio at surface conditions [m³/m³].
     ///
     /// Deliberately **not** called GOR. A black-oil GOR is a property of a specific fluid model
-    /// with a specific separator convention; this is the ratio of two volumes produced by one
-    /// declared equilibrium stage. `None` when there is no surface liquid to divide by.
+    /// with a specific separator convention; this is the ratio of volumes produced by the
+    /// declared separator convention. `None` when there is no surface liquid to divide by.
     pub fn surface_gas_liquid_ratio(&self) -> Option<f64> {
         if self.liquid_volume > 0.0 {
             Some(self.vapour_volume / self.liquid_volume)
@@ -320,7 +320,16 @@ pub fn surface_separation(
         .surface()
         .ok_or(TransportError::SurfaceConditionsNotPinned)?;
 
+    if !spec.separator_stages().is_empty() {
+        return separator_train(spec, component_moles);
+    }
+
     let total: f64 = component_moles.iter().sum();
+    if !total.is_finite() {
+        return Err(TransportError::InvalidComposition {
+            reason: "stream total is not finite",
+        });
+    }
     if total == 0.0 {
         return Ok(SurfaceStream::zero(n));
     }
@@ -357,5 +366,78 @@ pub fn surface_separation(
         liquid_component_moles,
         vapour_component_moles,
         phase_state: state.phase_state,
+    })
+}
+
+/// Liquid-cascade separation: stage vapours leave the train, stage liquids feed the next flash.
+/// Collected gas is metered as vapour at `spec.surface()` without an additional equilibrium stage.
+/// This convention does not condense sales gas again at the meter. Stock-tank liquid volume is
+/// the last stage's liquid volume; all intermediate gas volumes are discarded.
+fn separator_train(
+    spec: &FluidSpecification,
+    component_moles: &[f64],
+) -> Result<SurfaceStream, TransportError> {
+    let n = spec.component_count();
+    let total: f64 = component_moles.iter().sum();
+    if !total.is_finite() {
+        return Err(TransportError::InvalidComposition {
+            reason: "stream total is not finite",
+        });
+    }
+    if total == 0.0 {
+        return Ok(SurfaceStream::zero(n));
+    }
+    let mut liquid = component_moles.to_vec();
+    let mut gas = vec![0.0; n];
+    let mut liquid_volume = 0.0;
+    for stage in spec.separator_stages() {
+        let feed: f64 = liquid.iter().sum();
+        if feed == 0.0 {
+            break;
+        }
+        let z: Vec<f64> = liquid.iter().map(|m| m / feed).collect();
+        let state = flash(spec, stage.pressure_pa, stage.temperature_k, &z, None)
+            .map_err(TransportError::SurfaceFlash)?;
+        let nl = feed * state.l_liquid();
+        let ng = feed - nl;
+        for i in 0..n {
+            liquid[i] = nl * state.x[i];
+            gas[i] += ng * state.y[i];
+        }
+        liquid_volume = state.liquid.as_ref().map_or(0.0, |p| nl / p.molar_density);
+    }
+    let liquid_moles: f64 = liquid.iter().sum();
+    let vapour_moles: f64 = gas.iter().sum();
+    let mut vapour_volume = 0.0;
+    if vapour_moles > 0.0 {
+        let meter = spec
+            .surface()
+            .ok_or(TransportError::SurfaceConditionsNotPinned)?;
+        let y: Vec<f64> = gas.iter().map(|m| m / vapour_moles).collect();
+        let p = super::eos::evaluate(
+            spec,
+            meter.pressure_pa,
+            meter.temperature_k,
+            &y,
+            super::eos::PhaseBranch::Vapour,
+        )
+        .map_err(TransportError::Eos)?;
+        vapour_volume = vapour_moles / p.molar_density;
+    }
+    Ok(SurfaceStream {
+        total_moles: total,
+        liquid_moles,
+        vapour_moles,
+        liquid_volume,
+        vapour_volume,
+        liquid_component_moles: liquid,
+        vapour_component_moles: gas,
+        phase_state: if liquid_moles == 0.0 {
+            PhaseState::SingleVapour
+        } else if vapour_moles == 0.0 {
+            PhaseState::SingleLiquid
+        } else {
+            PhaseState::TwoPhase
+        },
     })
 }
