@@ -43,7 +43,12 @@ commit="$(git -C "$worktree" rev-parse --short HEAD)"
 
 cd "$worktree"
 started=$(date +%s)
-BENCH_OUT="$home_dir/run" bash "$worktree/scripts/benchmarks.sh" check > "$log" 2>&1
+# The parity section imports workspace packages (vite, since #64), so the worktree needs the
+# lockfile's node_modules. CI=true keeps pnpm from prompting without a TTY.
+if ! CI=true pnpm install --frozen-lockfile > "$log" 2>&1; then
+    echo "pnpm install --frozen-lockfile FAILED in $worktree" >> "$log"
+fi
+BENCH_OUT="$home_dir/run" bash "$worktree/scripts/benchmarks.sh" check >> "$log" 2>&1
 check_rc=$?
 minutes=$(( ($(date +%s) - started) / 60 ))
 signals="$(python3 "$worktree/tools/benchmarks/benchmarks.py" signals 2>&1)"
