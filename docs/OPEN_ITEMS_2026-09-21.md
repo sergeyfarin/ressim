@@ -170,9 +170,13 @@ These were deliberately left out of the first version; #22 owns remaining harnes
 - **A second independent simulator** is wired in since #54 phase 3: JutulDarcy runs the
   small-direct decks and `gas_drive` in `benchmarks.sh`'s full tier (`BENCHMARKS.md` §9). What it
   does not cover, deliberately: SPE1 (it ignores `DRSDT`, so it runs Case 2 physics), cumulatives
-  (its summary integrates end-of-step rates over report intervals), and compositional cases.
-- **SPE3 / SPE5.** They cannot run in ResSim yet: too many components, no compositional water
-  phase, 1-D only, slow rate control, no schedules. The engine roadmap is #52 (#45–#51).
+  (its summary integrates end-of-step rates over report intervals), and compositional cases on
+  that common scorecard. #51 separately adds a JutulDarcy compositional dew-point admission
+  fixture; see [SPE3 validation](SPE3_VALIDATION.md).
+- **SPE3 / SPE5.** Full-case execution remains #52, after the remaining engine enablers
+  (#45–#51). Component capacity and SPE5's fluid (#45), sparse linear routes (#49), and SPE3's
+  characterization, staged separation and dew-point admission (#51) are implemented. The latter
+  validates a small 1D depletion case, not the full SPE3 reservoir.
 - **CI.** CI has no Flow. A committed Flow-output cache would let CI run the check, but it would
   cost several MB of reference fields in the repository. Not worth it while the gate takes 20 s
   locally.

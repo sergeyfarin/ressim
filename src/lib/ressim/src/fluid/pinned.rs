@@ -1,7 +1,7 @@
 //! The pinned fluids: C0's binary and ternary (`docs/COMPOSITIONAL_VALIDATION.md` §1) and the SPE5
-//! hydrocarbon fluid (#45).
+//! hydrocarbon fluid (#45), plus the published nine-component SPE3 fluid (#51).
 //!
-//! Every number below was read out of the installed OPM 2026.04 headers, with the owning header
+//! The C0 and SPE5 numbers were read out of the installed OPM 2026.04 headers, with the owning header
 //! named next to it. None was chosen, fitted or rounded here. The reference fixture in
 //! `opm/compositional/ptflash_fixtures.json` was generated from the same headers by
 //! `tools/opm_compositional/`, so these constants and that fixture describe one fluid — if they
@@ -21,9 +21,11 @@
 //! `tools/opm_compositional/spe5_fluid_system.hh`, which delegates every property to that header.
 //!
 //! Temperature belongs to each fluid, not to the crate: every constructor below names its own.
+//! [`spe3`] instead cites Juell, Whitson & Hoda's published characterization, with its independent
+//! flash and depletion oracle in `opm/compositional/spe3/`.
 
 use super::specification::{
-    Component, EosVariant, FluidSpecError, FluidSpecification, ViscosityModel,
+    Component, EosVariant, FluidSpecError, FluidSpecification, SurfaceConditions, ViscosityModel,
 };
 
 use super::units::OPM_GAS_CONSTANT_J_PER_MOL_K;
@@ -55,6 +57,88 @@ fn c1() -> Component {
         critical_volume_m3_per_kmol: 9.863e-2,
         acentric_factor: 0.011,
     }
+}
+
+/// SPE3's original reservoir composition in the nine-component Juell/Whitson/Hoda ordering.
+pub const SPE3_COMPOSITION: [f64; 9] = [
+    0.0121, 0.0194, 0.6599, 0.0869, 0.0591, 0.0967, 0.0472, 0.0153, 0.0034,
+];
+
+/// SPE3 at 200 °F, using the nine-component characterization of Juell, Whitson & Hoda,
+/// SPE 121252 (2009), Tables 3–5 (ARCO-derived, including their published volume shifts).
+/// See `docs/SPE3_VALIDATION.md` for provenance, EOS convention and the independent oracle.
+pub fn spe3() -> Result<FluidSpecification, FluidSpecError> {
+    // id, MW [g/mol], Tc [K], Pc [bara], Zc, acentric factor, dimensionless shift.
+    let rows = [
+        ("CO2", 44.01, 304.21, 73.82, 0.27400, 0.225, -0.00089),
+        ("N2", 28.02, 126.27, 33.90, 0.29000, 0.040, -0.16453),
+        ("C1", 16.04, 186.61, 46.20, 0.28800, 0.013, -0.17817),
+        ("C2", 30.07, 305.33, 48.80, 0.28500, 0.098, -0.06456),
+        ("C3", 44.10, 369.85, 42.50, 0.28100, 0.152, -0.06439),
+        ("C4-6", 67.28, 396.22, 34.35, 0.27228, 0.234, -0.18129),
+        ("C7+1", 110.90, 572.50, 25.94, 0.26444, 0.332, 0.12080),
+        ("C7+2", 170.90, 630.22, 16.92, 0.25140, 0.495, 0.23442),
+        ("C7+3", 282.10, 862.61, 8.61, 0.22436, 0.833, 0.54479),
+    ];
+    let components = rows
+        .iter()
+        .map(|&(id, mw, tc, pc, zc, ac, _)| Component {
+            id: id.to_string(),
+            molar_mass_kg_per_mol: mw * 1e-3,
+            critical_temperature_k: tc,
+            critical_pressure_pa: pc * 1e5,
+            critical_volume_m3_per_kmol: zc * super::units::GAS_CONSTANT_J_PER_MOL_K * tc
+                / (pc * 1e5)
+                * 1e3,
+            acentric_factor: ac,
+        })
+        .collect();
+    // Table 4, lower triangle. Zeros are stated values, not an assumed default.
+    let lower: [&[f64]; 9] = [
+        &[],
+        &[0.0],
+        &[0.13, 0.036],
+        &[0.135, 0.05, 0.0],
+        &[0.1277, 0.08, 0.0, 0.0],
+        &[0.1, 0.1002, 0.09281, 0.0, 0.0],
+        &[0.1, 0.1, 0.0, 0.00385, 0.00385, 0.0],
+        &[0.1, 0.1, 0.0, 0.00630, 0.00630, 0.0, 0.0],
+        &[0.1, 0.1, 0.1392, 0.006, 0.006, 0.0, 0.0, 0.0],
+    ];
+    let mut interaction = zero_interaction(9);
+    for (i, row) in lower.iter().enumerate() {
+        for (j, &k) in row.iter().enumerate() {
+            interaction[i][j] = k;
+            interaction[j][i] = k;
+        }
+    }
+    let stages = spe3_separator_stages(false);
+    FluidSpecification::new(
+        components,
+        interaction,
+        EosVariant::PengRobinson,
+        ViscosityModel::LohrenzBrayClark,
+        (200.0 + 459.67) * 5.0 / 9.0,
+        Some(stages[2]),
+    )?
+    .with_volume_shifts(rows.iter().map(|r| r.6).collect())?
+    .with_separator_stages(stages)
+}
+
+/// Kenyon & Behie (1987), Table 3: primary (815 or 315 psia), second stage (65 psia),
+/// stock tank (14.7 psia); 80/80/60 °F. Switch primary pressure below 2500 psia reservoir pressure.
+pub fn spe3_separator_stages(low_pressure_primary: bool) -> Vec<SurfaceConditions> {
+    [
+        (if low_pressure_primary { 315.0 } else { 815.0 }, 80.0),
+        (65.0, 80.0),
+        (14.7, 60.0),
+    ]
+    .iter()
+    .map(|&(p, t)| SurfaceConditions {
+        pressure_pa: p * 6894.757293168,
+        temperature_k: (t + 459.67) * 5.0 / 9.0,
+    })
+    .collect()
 }
 
 /// n-Decane. `/usr/include/opm/material/components/C10.hpp`.

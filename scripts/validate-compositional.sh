@@ -112,6 +112,7 @@ run_thermo() {
     run_filter comp_matched_      1   # C12 at the reference's own timestep - see the forensics doc
     run_filter comp_oracle_       3   # the oracle convergence census, and the band rule it enforces
     run_filter comp_injection_    1   # surface-rate control on a MIXTURE, against OPM's own flash
+    run_filter comp_spe3_         8   # #51: OPM/Jutul fluid, separator train, CVD and 1D dew crossing
 }
 
 run_fixture() {
@@ -125,6 +126,7 @@ run_fixture() {
         exit 1
     fi
     bash "$repo_root/tools/opm_compositional/generate.sh" --check
+    bash "$repo_root/tools/opm_compositional/run-spe3.sh" --check --opm-only
     echo "gate ok: the committed fixture reproduces from the installed OPM headers"
 }
 
