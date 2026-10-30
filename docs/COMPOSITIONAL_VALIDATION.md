@@ -772,10 +772,12 @@ inventory(t) - inventory(0) = sum over wells of cumulative_well_moles(t)
 
 holds per component to `1e-8` relative, water last. A shut-in injector contributes zero and reports
 a flowing BHP of zero; opening it changes no completions and the next interval injects again.
-Release timing on the committed tree: the WAG gate **0.14 s**, all five `comp_schedule_*` tests
-**0.17 s** (`cargo test --release ... comp_schedule_`). Gate command:
-`bash scripts/validate-compositional.sh thermo` (`comp_schedule_`, 5 tests, plus the shared
-`schedule::tests::` envelope tests).
+Measured on `21557c21` in release: the WAG gate **0.11 s**, all five `comp_schedule_*` tests
+**0.14 s** (`cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib comp_schedule_`).
+Gate command: `bash scripts/validate-compositional.sh thermo` (`comp_schedule_`, 5 tests, plus the
+shared `schedule::tests::` envelope tests). That tree also passed
+`bash scripts/validate-solver-coverage.sh all`, `bash scripts/validate-cross-solver.sh`,
+`bash scripts/benchmarks.sh check --tier fast` and `pnpm run validate:product`.
 
 **Not covered.** This is an internal timing/conservation contract, not an OPM `SCHEDULE` trajectory
 comparison. Black-oil consumption of the envelope is #17; relative-permeability hysteresis is E4;
