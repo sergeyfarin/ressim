@@ -18,7 +18,9 @@ oracle limitation, not a ResSim defect; §8's C12 record says what it does and d
 At matched temporal resolution the two simulators agree to **0.0074 bar** and **0.0014%**. A
 previously reported 1.29× connection-rate defect was **retracted** — see
 [`COMPOSITIONAL_C12_FORENSICS.md`](COMPOSITIONAL_C12_FORENSICS.md). C13 is complete (status
-table, section 7). C14 onwards have not started; C10's sparse and iterative linear routes landed under #49.
+table, section 7). C14's rate-control performance subtask (#48) is complete and recorded in §8;
+the rest of the C14 release matrix has not started. C10's sparse and iterative linear routes landed
+under #49.
 
 ## Scope this document governs
 
@@ -600,16 +602,77 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | C8 | Cell inventory, accumulation and scaling | **COMPLETE** | `compositional/accumulation.rs`; 19 `comp_accumulation_*` / `comp_scaling_*` tests |
 | C9 | Component face flux, gravity and global assembly | **COMPLETE** | `compositional/{flux,assembly}.rs`; 33 `comp_flux_*` / `comp_assembly_*` / `comp_gravity_*` tests |
 | C10 | Linear solve, Newton, timestep lifecycle | **COMPLETE**, direct and iterative | `compositional/{newton,timestep}.rs`; 20 `comp_newton_*` / `comp_rollback_*` tests. Block-sparse Jacobian, sparse LU and FGMRES-CPR (#49): `compositional/{block_matrix,linear}.rs`, 11 `comp_linear_*` tests — see the linear-route record |
-| C11 | Compositional wells | **COMPLETE** | `compositional/wells.rs`, [design note](COMPOSITIONAL_WELL_DESIGN.md); 29 `comp_well_*` tests, single and multiple completions. **Derived from first principles — C11's OPM reference is unavailable here** (plan correction 3), so no OPM agreement is claimed |
-| C12 | NATIVE-COMPOSITIONAL-READY | **COMPLETE — milestone DECLARED 2026-09-18**, with one residual stated: ResSim's surface-rate control on a mixture is validated as a conversion (8e-6) but not end to end, because no rate-controlled fixture in the oracle converges. At matched resolution the two simulators agree to **0.0074 bar / 0.0014%**; cumulative production to **0.041%** | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 9 `comp_depletion_*` + 3 `comp_skin_*` + 1 `comp_injection_*` + 1 `comp_matched_*` + 3 `comp_oracle_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. A 1.29× connection-rate finding was retracted |
+| C11 | Compositional wells | **COMPLETE** | `compositional/wells.rs`, [design note](COMPOSITIONAL_WELL_DESIGN.md); 33 `comp_well_*` tests, single and multiple completions, BHP and rate controls. **Derived from first principles — C11's OPM reference is unavailable here** (plan correction 3), so no OPM agreement is claimed |
+| C12 | NATIVE-COMPOSITIONAL-READY | **COMPLETE — milestone DECLARED 2026-09-18**, with one residual stated: ResSim's surface-rate control on a mixture is validated as a conversion (8e-6) but not end to end, because no rate-controlled fixture in the oracle converges. At matched resolution the two simulators agree to **0.0074 bar / 0.0014%**; cumulative production to **0.041%** | `compositional/reference_tests.rs`, 10 `comp_reference_*` + 9 `comp_depletion_*` + 3 `comp_skin_*` + 2 `comp_injection_*` + 1 `comp_matched_*` + 3 `comp_oracle_*` + 3 `comp_refinement_*`. Found and fixed three real defects: explicit wells, the injector connection law, and `COMPDAT`'s diameter. A 1.29× connection-rate finding was retracted |
 | C13 | WASM and product integration | **COMPLETE** (2026-10-08) | Engine boundary, worker path, run series, quantity registry and the `comp_co2_1d` scenario are landed (`661431a`…`5d9f1ce`). Since 2026-10-07 the scenario is offered: it runs through the scenario run-set queue, the chart stack sources its compositional quantities into their own panels (no black-oil curve key), stop and failure reasons reach the UI, and vapour saturation and pressure follow the 3D view and spatial profile. The browser run loop also now steps each report interval to its time; it had counted engine calls, so a run whose steps were cut ended short (40 cells: 16.6 of 20 days). The native C12 comparisons drive their own loops and are unaffected. Since 2026-10-08 the 3D view and spatial profile also show each component's overall mole fraction per cell: the spatial snapshot carries the engine's composition unchanged, and one selector (`visualization/spatialProperty.ts`) offers `z` per component and drops water saturation, which a water-free case does not have ([#29](https://github.com/sergeyfarin/ressim/issues/29)). Restart stays API-only by policy. |
-| C14 | Release | NOT STARTED | **Unblocked** by C12's declaration. C13's reporting must name what it means by surface gas rather than inherit Li's pressure-blind label, and must not treat a surface **rate** as validated end to end — see the C12 record |
-| C15 | V1b immiscible water | **COMPLETE** for [#46](https://github.com/sergeyfarin/ressim/issues/46)'s acceptance (2026-10-29) | `compositional/water.rs`; 18 `comp_water_*` tests: layout and state contracts, zero-water reduction, accumulation and assembled FD Jacobians (gravity, both well directions), closed and well-ledger conservation, all three linear routes, and a JutulDarcy water-into-gas fixture that converges in time (§8). Taken ahead of C14 because the SPE5 → SPE3 roadmap (#52) needs it; no capillary pressure, no aqueous solubility, and rate control waits on #48 |
+| C14 | Release | **IN PROGRESS — #48 complete** (2026-10-30) | Rate-controlled wells are a Newton equation with a locally eliminated BHP unknown; the single-cell release cost is **~1.4×** a BHP-controlled step and ORAT's seven-step rate-controlled depletion fell from 3.5 s to 0.13 s. See §8. C13's reporting must name what it means by surface gas rather than inherit Li's pressure-blind label, and must not treat a surface **rate** as validated end to end — see the C12 record |
+| C15 | V1b immiscible water | **COMPLETE** for [#46](https://github.com/sergeyfarin/ressim/issues/46)'s acceptance (2026-10-29) | `compositional/water.rs`; 19 `comp_water_*` tests: layout and state contracts, zero-water reduction, accumulation and assembled FD Jacobians (gravity, both well directions), closed and well-ledger conservation, all three linear routes, water surface-rate control through #48's equation, and a JutulDarcy water-into-gas fixture that converges in time (§8). Taken ahead of C14 because the SPE5 → SPE3 roadmap (#52) needs it; no capillary pressure, no aqueous solubility |
 | #45 | Up to 10 components; per-fluid temperature and BIPs; SPE5 fluid pinned from OPM | **COMPLETE** | `MAX_COMPONENTS = 10` in `fluid/specification.rs` (re-exported by `compositional/layout.rs`); `pinned::spe5()`; `EosVariant::PengRobinsonCorrected`; SPE5 in the fixture (§3a) and in every fixture-driven test; `comp_surface_separation_matches_opm_on_the_spe5_fluid`; N=10 kernels FD-checked in `compositional/cost_tests.rs`. Cost record below |
 | #51 | SPE3 characterization, staged separators, dew-point robustness | **Implemented** | [SPE3 validation](SPE3_VALIDATION.md): published nine-component fluid with volume translations; OPM PTFlash admission, independent Jutul separator/CVD fixtures and a matched 1D dew-point crossing; eight `comp_spe3_*` contracts. Full reservoir execution remains #52 |
+| #48 | Rate-controlled wells at BHP-control cost | **COMPLETE** (2026-10-30) | `comp_well_rate_*` and `comp_cost_rate_controlled_*`: BHP as a Newton unknown with a locally eliminated rate row, 5% control hysteresis, FD-checked rate-row derivatives, and two source evaluations per assembly. §8 |
 | #47 | Structured grids, gravity, multi-layer completions | **COMPLETE** (2026-10-29) | `grid.box_grid` with per-layer `dz/kx/ky/kz`, TPFA x/y/z faces, a hydrostatic gradient initialization and multi-completion head offsets; 1-D path unchanged. 2-D quarter five spot against `flowexp_comp`: 0.0070 bar, 2.8e-5 saturation, 4.2e-5 composition, 5.4e-12 cumulative. #49 already measured the 7 × 7 × 3 and 9 × 9 × 4 wasm memory/time budget — see §8 |
 
 ## 8. Completion records
+
+### C14 / #48 — rate-controlled wells at BHP-control cost (2026-10-30)
+
+Measured on `2078469f` with `bash scripts/validate-compositional.sh all` (thermo,
+fixture and flowexp_comp reference regeneration, wasm compile) and
+`bash scripts/validate-solver-coverage.sh all`.
+
+**Design decision.** The rate constraint is an equation in the Newton system with the BHP as its
+unknown, eliminated locally by a scalar Schur complement (the OPM `StandardWell` structure). The
+alternative the issue allowed — a bisection outside the Jacobian loop — was rejected because it
+still freezes the BHP inside a Newton iteration, so the Jacobian omits the well's strongest
+feedback and the constraint is only satisfied by an outer fixed point. `COMPOSITIONAL_WELL_DESIGN.md`
+records the block derivation and why `J_ww` is scalar/diagonal.
+
+**What changed.**
+
+- `compositional/wells.rs`: `evaluate_well_control` evaluates a well once at the limit (control
+  selection) and once at the Newton BHP, returning a `RateConstraint` with `d(rate)/d(u)` and
+  `d(rate)/d(bhp)`. Surface-row derivatives are analytic for a single-stage separation (chained
+  from `flash_derivatives` at surface conditions) and finite-differenced for a separator train.
+- `compositional/assembly.rs`: `WellElimination`, `reduce_well_unknowns` and
+  `recover_well_updates`. The linear solve and CPR still see the cell block, unchanged in shape.
+- `compositional/newton.rs`: the BHP is carried as a Newton iterate with its own
+  fraction-to-boundary bound, and the accepted BHP is reported.
+- Control switching uses the black-oil 5% hysteresis margin: a target within 5% of the limit's
+  capacity stays BHP-limited, and only outside that band does the rate row take over.
+
+**Cost.** Release, one core, same process and case:
+
+```text
+single cell, three 0.25 d report steps   BHP control 0.003 s   rate control 0.004 s   1.23-1.47x
+ORAT 7-report-step rate depletion         before 3.5 s          after 0.13 s
+```
+
+The single-cell figure is asserted by
+`comp_cost_rate_controlled_against_bhp_controlled`; the source-evaluation count is asserted by
+`comp_well_rate_control_uses_two_source_evaluations_not_a_bisection` (two evaluations per active
+rate well per assembly, one for a BHP well), which is the machine-independent form of the same
+claim. The 3.5 s ORAT figure was measured on the same machine before this change with the test
+now at 0.13 s; the pressure path moved by 0.0012 bar at its worst point because the control now
+holds the target through the Jacobian rather than replacing it with a BHP solve, and the existing
+2 bar band still passes. The benchmark records also improved on the same commit: compositional/1D
+plain `cum_injection_rel_err` 4.18e-4 -> 3.81e-5 and `worst_pressure_diff` 1.681 -> 0.0166 bar
+(`bash scripts/benchmarks.sh check`, re-recorded in the follow-up commit).
+
+**Gates.** `comp_well_rate_constraint_jacobian_matches_finite_differences` checks the rate row for
+molar, surface-vapour and surface-total targets. `comp_well_rate_schur_correction_equals_the_full_dense_solve`
+checks the local elimination against the full cell-plus-well system.
+`comp_well_rate_control_holds_its_target_through_the_newton_system` runs three accepted steps and
+checks the accepted rate and BHP. `comp_well_rate_limit_switches_with_hysteresis` checks both sides
+of the band. `comp_water_rate_controlled_injector_holds_its_surface_target` does the same for
+`SurfacePhase::Water`, closing the water-rate half #46 deferred to #48.
+`comp_injection_mixture_rate_control_is_time_stepped_and_holds_opms_flash_rate` is the
+acceptance's time-stepped mixture gate: eight 0.25 d steps of the 0.5/0.3/0.2 stream, against
+OPM's own STCOND flash (105 024.7 mol/day) rather than `flowexp_comp`'s non-converging trajectory.
+
+**Still not validated end to end against a simulator.** The C12 residual stands: no
+rate-controlled `flowexp_comp` fixture converges in the timestep, so the control loop's trajectory
+is checked by internal invariants and a closed-form single-cell target, not by an external
+trajectory. `docs/COMPOSITIONAL_C12_FORENSICS.md` records the ruled-out mechanisms.
 
 ### C15 / V1b — immiscible water (#46, 2026-10-29)
 
@@ -662,14 +725,16 @@ single phase must.
 **Not covered.** Capillary pressure (rejected); aqueous CO2 or brine (out of V1b's scope); a
 hydrocarbon liquid phase against an oracle — the fixture deliberately stays above the dew point,
 so Stone II's oil curve is checked against `relperm.rs` and by the FD Jacobian, not by a
-simulator; rate controls on water injectors, which share C14's open state (#48); the UI, which
-does not yet offer a case with water. Gate: `bash scripts/validate-compositional.sh thermo`
-(`comp_water_`, 18 tests).
+simulator; multi-well control interactions beyond one water injector (the single-well water
+surface-rate contract is `comp_water_rate_controlled_injector_holds_its_surface_target`); the UI,
+which does not yet offer a case with water. Gate: `bash scripts/validate-compositional.sh thermo`
+(`comp_water_`, 19 tests).
 
 ### C10 linear routes — block-sparse Jacobian, sparse LU and CPR (#49, 2026-10-28)
 
 The Jacobian is now assembled into `BlockSparseMatrix` (one `N x N` block per cell and per face
-neighbour; wells only touch diagonal blocks, because V1 wells have no unknowns), and each Newton
+neighbour; a rate-controlled well's BHP unknown is eliminated locally, so the matrix it reaches
+still has only cell blocks), and each Newton
 iteration solves the row-scaled system on a `LinearRoute`:
 
 | Route | What it is | Role |
