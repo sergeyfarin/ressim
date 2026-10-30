@@ -43,7 +43,7 @@ use super::flux::{FluxError, Gravity, face_flux};
 use super::layout::CompositionalLayout;
 use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalCellState, CompositionalState, RockView};
-use super::wells::{CompositionalWell, WellError, well_source};
+use super::wells::{CompositionalWell, WellError, evaluate_well_control, initial_bhp_guesses};
 
 /// One connection between two cells.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -72,6 +72,12 @@ pub enum AssemblyError {
         well: String,
         source: WellError,
     },
+    /// A rate-control row has no usable derivative with respect to its BHP unknown, so its BHP
+    /// cannot be eliminated from the Newton system.
+    WellConstraintSingular {
+        well: String,
+        derivative: f64,
+    },
     /// A face names a cell that is not in the grid, or connects a cell to itself.
     InvalidFace {
         face: usize,
@@ -99,6 +105,11 @@ impl core::fmt::Display for AssemblyError {
             Self::Accumulation { cell, source } => write!(f, "cell {cell}: {source}"),
             Self::Flux { face, source } => write!(f, "face {face}: {source}"),
             Self::Well { well, source } => write!(f, "well {well}: {source}"),
+            Self::WellConstraintSingular { well, derivative } => write!(
+                f,
+                "well {well}: its rate-control row has d(rate)/d(bhp) = {derivative:e}, so the \
+                 BHP unknown cannot be eliminated"
+            ),
             Self::InvalidFace { face, reason } => write!(f, "face {face}: {reason}"),
             Self::WaterMismatch {
                 layout_has_water,
@@ -125,7 +136,8 @@ pub struct AssemblyResult {
     /// Unscaled residual, one entry per cell equation [mol].
     pub residual: Vec<f64>,
     /// Unscaled Jacobian, `cells*N` square over the cell block, stored by `N x N` blocks over the
-    /// face graph. V1 wells have no unknowns of their own, so there are no well rows.
+    /// face graph. A rate-controlled well's BHP unknown is eliminated by
+    /// [`Self::reduce_well_unknowns`] before the linear solve, so there are no well rows here.
     pub jacobian: BlockSparseMatrix,
     /// Each cell's accumulation block `dn_i/du_v`, row-major `N x N`, unscaled. Already inside
     /// `jacobian`; kept separately because the CPR pressure weights are defined by it alone.
@@ -142,10 +154,41 @@ pub struct AssemblyResult {
     /// Reported because a well's rate is a result of the solve rather than an input to it, and a
     /// caller accumulating production needs the rate that was actually accepted.
     pub well_rates: Vec<Vec<f64>>,
+    /// The BHP each well was evaluated at, in the order the wells were given.
+    pub well_bhp: Vec<f64>,
+    /// Whether each well was on its BHP limit at this iterate.
+    pub well_on_bhp_limit: Vec<bool>,
+    /// One rate-control row per well whose rate equation is active. The BHP unknown is eliminated
+    /// locally by [`Self::reduce_well_unknowns`]; this is everything that elimination needs.
+    pub well_eliminations: Vec<WellElimination>,
+}
+
+/// A rate-control row and its coupling to one well's BHP unknown.
+///
+/// `cell_bhp_column` is `d(cell residual)/d(bhp)` over the whole cell block, and `cell_jacobian`
+/// is `d(rate residual)/d(cell primaries)` restricted to the connected cells. The BHP block is
+/// scalar and diagonal — a well's own constraint never depends on another well's BHP — so the
+/// elimination is a rank-one update per well rather than a general Schur solve.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WellElimination {
+    /// Index into the well slice.
+    pub well: usize,
+    /// Stable id for the failure report.
+    pub id: String,
+    /// `achieved - target` at this iterate.
+    pub residual: f64,
+    /// `|target|`, floored at one, used for the convergence test.
+    pub scale: f64,
+    /// `d residual / d bhp`.
+    pub bhp_derivative: f64,
+    /// `d residual / d u` for each connected cell.
+    pub cell_jacobian: Vec<(usize, Vec<f64>)>,
+    /// `d(cell residual)/d(bhp)` over the flat cell block.
+    pub cell_bhp_column: Vec<f64>,
 }
 
 impl AssemblyResult {
-    /// Largest scaled residual across every cell and component.
+    /// Largest scaled residual across every cell, component and active rate constraint.
     pub fn scaled_residual_norm(&self, layout: &CompositionalLayout) -> f64 {
         let n = layout.cell_block_size();
         let mut worst = 0.0f64;
@@ -153,14 +196,82 @@ impl AssemblyResult {
             let rows = &self.residual[cell * n..(cell + 1) * n];
             worst = worst.max(self.scaling[cell].scaled_residual_norm(rows));
         }
+        for elimination in &self.well_eliminations {
+            worst = worst.max(elimination.residual.abs() / elimination.scale);
+        }
         worst
+    }
+
+    /// Eliminate the active rate-control BHPs, returning the reduced cell system.
+    ///
+    /// ```text
+    /// [J_cc  J_cw] [dx_c]   [-R_c]
+    /// [J_wc  J_ww] [dx_w] = [-R_w]
+    /// ```
+    ///
+    /// With one scalar BHP per rate-controlled well and `J_ww` diagonal, the reduced system is
+    /// `(J_cc - J_cw J_ww^-1 J_wc) dx_c = -R_c + J_cw J_ww^-1 R_w`. The update is applied to the
+    /// diagonal blocks only, because a completion's BHP column and its rate row are both
+    /// restricted to its connected cells.
+    pub fn reduce_well_unknowns(&self) -> Result<(BlockSparseMatrix, Vec<f64>), AssemblyError> {
+        let mut jacobian = self.jacobian.clone();
+        let mut residual = self.residual.clone();
+        let n = jacobian.block_size();
+        for elimination in &self.well_eliminations {
+            let a = elimination.bhp_derivative;
+            if !a.is_finite() || a == 0.0 {
+                return Err(AssemblyError::WellConstraintSingular {
+                    well: elimination.id.clone(),
+                    derivative: a,
+                });
+            }
+            let residual_over_a = elimination.residual / a;
+            for (cell, row) in &elimination.cell_jacobian {
+                let diagonal = jacobian.diagonal_position(*cell);
+                for i in 0..n {
+                    let column = elimination.cell_bhp_column[cell * n + i];
+                    if column == 0.0 {
+                        continue;
+                    }
+                    for v in 0..n {
+                        jacobian.block_mut(diagonal)[i * n + v] -= column * row[v] / a;
+                    }
+                    residual[cell * n + i] -= column * residual_over_a;
+                }
+            }
+        }
+        Ok((jacobian, residual))
+    }
+
+    /// Recover `dx_w` for each active rate-control BHP after the reduced system has been solved.
+    pub fn recover_well_updates(&self, dx_cells: &[f64]) -> Result<Vec<f64>, AssemblyError> {
+        let n = self.jacobian.block_size();
+        let mut updates = Vec::with_capacity(self.well_eliminations.len());
+        for elimination in &self.well_eliminations {
+            let a = elimination.bhp_derivative;
+            if !a.is_finite() || a == 0.0 {
+                return Err(AssemblyError::WellConstraintSingular {
+                    well: elimination.id.clone(),
+                    derivative: a,
+                });
+            }
+            let mut j_wc_dx = 0.0;
+            for (cell, row) in &elimination.cell_jacobian {
+                for v in 0..n {
+                    j_wc_dx += row[v] * dx_cells[cell * n + v];
+                }
+            }
+            updates.push((-elimination.residual - j_wc_dx) / a);
+        }
+        Ok(updates)
     }
 }
 
-/// Assemble the residual and Jacobian for a whole grid.
+/// Assemble with a fresh BHP guess for every well.
 ///
-/// `previous_moles` is the previous accepted state's inventory, one row per cell, evaluated once
-/// by the caller. `sources` is in mol/day, positive for injection.
+/// The Newton loop calls [`assemble_with_well_bhp`] instead, because its BHP is an iterate it
+/// owns. This wrapper exists for callers that only need the cell rows at a self-consistent guess
+/// — an imposed-source test, or a diagnostic that asks what one assembly would look like.
 #[allow(clippy::too_many_arguments)]
 pub fn assemble(
     spec: &FluidSpecification,
@@ -173,6 +284,42 @@ pub fn assemble(
     previous_moles: &[Vec<f64>],
     sources: &[Vec<f64>],
     dt_days: f64,
+) -> Result<AssemblyResult, AssemblyError> {
+    let well_bhp = initial_bhp_guesses(wells, state.cells());
+    assemble_with_well_bhp(
+        spec,
+        layout,
+        rock,
+        relperm,
+        state,
+        faces,
+        wells,
+        previous_moles,
+        sources,
+        dt_days,
+        &well_bhp,
+    )
+}
+
+/// Assemble the residual and Jacobian for a whole grid at a given set of well BHPs.
+///
+/// `previous_moles` is the previous accepted state's inventory, one row per cell, evaluated once
+/// by the caller. `sources` is in mol/day, positive for injection. `well_bhp` has one entry per
+/// well; an active rate control contributes a constraint row that
+/// [`AssemblyResult::reduce_well_unknowns`] eliminates.
+#[allow(clippy::too_many_arguments)]
+pub fn assemble_with_well_bhp(
+    spec: &FluidSpecification,
+    layout: &CompositionalLayout,
+    rock: &RockView<'_>,
+    relperm: &RelativePermeabilityModel,
+    state: &CompositionalState,
+    faces: &[Face],
+    wells: &[CompositionalWell],
+    previous_moles: &[Vec<f64>],
+    sources: &[Vec<f64>],
+    dt_days: f64,
+    well_bhp: &[f64],
 ) -> Result<AssemblyResult, AssemblyError> {
     // Rows and columns per cell: `N`, or `N+1` with water.
     let n = layout.cell_block_size();
@@ -197,6 +344,13 @@ pub fn assemble(
             what: "source rows",
             expected: cells,
             actual: sources.len(),
+        });
+    }
+    if well_bhp.len() != wells.len() {
+        return Err(AssemblyError::ShapeMismatch {
+            what: "well BHP values",
+            expected: wells.len(),
+            actual: well_bhp.len(),
         });
     }
     for (index, face) in faces.iter().enumerate() {
@@ -316,15 +470,23 @@ pub fn assemble(
 
     // Wells, evaluated at **this** iterate. Their derivative with respect to the connected cell's
     // primaries is what makes the BHP feedback part of the Newton step rather than a constant.
+    // A rate-controlled well also contributes one scalar equation with its BHP as the unknown;
+    // that row is collected here and eliminated by `reduce_well_unknowns`.
     let mut well_rates = Vec::with_capacity(wells.len());
-    for well in wells {
-        let result = well_source(spec, relperm, well, state.cells()).map_err(|source| {
-            AssemblyError::Well {
-                well: well.id.clone(),
-                source,
-            }
-        })?;
+    let mut well_bhp_values = Vec::with_capacity(wells.len());
+    let mut well_on_bhp_limit = Vec::with_capacity(wells.len());
+    let mut well_eliminations = Vec::new();
+    for (well_index, well) in wells.iter().enumerate() {
+        let evaluation =
+            evaluate_well_control(spec, relperm, well, state.cells(), well_bhp[well_index])
+                .map_err(|source| AssemblyError::Well {
+                    well: well.id.clone(),
+                    source,
+                })?;
+        let result = evaluation.result;
         well_rates.push(result.total_component_moles_per_day(n));
+        well_bhp_values.push(result.bhp_bar);
+        well_on_bhp_limit.push(result.on_bhp_limit);
 
         for connection in &result.completions {
             let cell = connection.cell;
@@ -337,6 +499,25 @@ pub fn assemble(
                 }
             }
         }
+
+        if let Some(constraint) = evaluation.constraint {
+            let mut cell_bhp_column = vec![0.0; size];
+            for connection in &result.completions {
+                for i in 0..n {
+                    cell_bhp_column[connection.cell * n + i] -=
+                        dt_days * connection.bhp_derivative[i];
+                }
+            }
+            well_eliminations.push(WellElimination {
+                well: well_index,
+                id: well.id.clone(),
+                residual: constraint.residual,
+                scale: constraint.scale,
+                bhp_derivative: constraint.bhp_derivative,
+                cell_jacobian: constraint.cell_jacobian,
+                cell_bhp_column,
+            });
+        }
     }
 
     Ok(AssemblyResult {
@@ -347,6 +528,9 @@ pub fn assemble(
         scaling,
         net_internal_face_moles,
         well_rates,
+        well_bhp: well_bhp_values,
+        well_on_bhp_limit,
+        well_eliminations,
     })
 }
 
@@ -377,6 +561,10 @@ pub fn numerical_jacobian(
     let cells = layout.cell_count();
     let size = cells * n;
     let mut out = vec![vec![0.0; size]; size];
+    // Hold every well's BHP fixed across perturbations: the analytic matrix compared here is the
+    // cell block before the rate-control rows eliminate their BHP unknowns. Letting the guess
+    // follow the perturbed state would measure a different derivative.
+    let well_bhp = initial_bhp_guesses(wells, state.cells());
 
     for column in 0..size {
         let (cell, primary) = layout
@@ -398,7 +586,7 @@ pub fn numerical_jacobian(
             }
             let perturbed = CompositionalState::new(layout, cells_copy)
                 .expect("a perturbed state must stay admissible");
-            let result = assemble(
+            let result = assemble_with_well_bhp(
                 spec,
                 layout,
                 rock,
@@ -409,6 +597,7 @@ pub fn numerical_jacobian(
                 previous_moles,
                 sources,
                 dt_days,
+                &well_bhp,
             )?;
             Ok(result.residual)
         };

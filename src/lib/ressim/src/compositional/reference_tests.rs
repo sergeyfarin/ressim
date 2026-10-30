@@ -3310,6 +3310,102 @@ fn comp_injection_mixture_surface_conversion_matches_opms_flash() {
     );
 }
 
+/// **The same mixture rate control, now time-stepped.** Before C14 this test could not exist:
+/// three report steps cost 17 s in release because a 41-step BHP bisection ran inside every
+/// Jacobian evaluation. The rate equation makes it an ordinary Newton case.
+///
+/// The cell is closed apart from the injector, so its inventory change *is* what the well
+/// injected. The closed-form oracle is OPM's own flash of the stream at the deck's `STCOND`:
+/// 2000 sm³/day must arrive as **105 024.7 mol/day**, to the 8e-6 conversion agreement the
+/// non-time-stepped test records. `flowexp_comp`'s own trajectory is not used here because it
+/// does not converge in the timestep (C12 forensics).
+#[test]
+fn comp_injection_mixture_rate_control_is_time_stepped_and_holds_opms_flash_rate() {
+    let spec = deck_fluid();
+    let fluid = spec.clone();
+    let n = 3;
+    let layout = CompositionalLayout::new(n, 1, 1, 1).unwrap();
+    let pore_volumes = vec![100.0 * 100.0 * 10.0 * 0.1];
+    let rock = RockView {
+        pore_volume_ref_m3: &pore_volumes,
+        reference_pressure_bar: 68.9476,
+        compressibility_per_bar: 0.0,
+    };
+    let state = CompositionalState::new(
+        &layout,
+        vec![CompositionalCellState::new(150.0, vec![0.1, 0.3]).unwrap()],
+    )
+    .unwrap();
+
+    // OPM's own flash of 0.5 CO2 / 0.3 C1 / 0.2 C10 at the deck's STCOND.
+    let fixture = crate::fluid::fixture::load();
+    let stcond = crate::fluid::fixture::ternary_system(&fixture)
+        .states
+        .iter()
+        .find(|s| s.id == "ternary_stcond_injection")
+        .expect("the C0 fixture must carry OPM's surface flash of the injected stream");
+    let l = stcond.l_liquid.expect("L");
+    let per_mole = l * stcond.liquid.as_ref().expect("liquid").molar_volume_si()
+        + (1.0 - l) * stcond.vapour.as_ref().expect("vapour").molar_volume_si();
+    let opm_moles_per_day = INJECTION_RATE_SM3_PER_DAY / per_mole;
+
+    let r_eq = 0.28 * (100.0f64 * 100.0 + 100.0 * 100.0).sqrt() / 2.0;
+    let well_index = deck::DARCY * 2.0 * std::f64::consts::PI * 100.0 * 10.0
+        / crate::math::ln(r_eq / (0.0151 / 2.0));
+    let well = CompositionalWell {
+        id: "INJ".to_string(),
+        completions: vec![Completion {
+            cell: 0,
+            well_index,
+            head_offset_bar: 0.0,
+        }],
+        control: WellControl::SurfaceRate {
+            target_m3_per_day: INJECTION_RATE_SM3_PER_DAY,
+            phase: SurfacePhase::Total,
+            bhp_limit_bar: INJECTION_BHP_LIMIT_BAR,
+        },
+        injection: Some(InjectedFluid::Hydrocarbon(INJECTION_STREAM.to_vec())),
+    };
+
+    let mut run = CompositionalRun::new(state);
+    let sources = vec![vec![0.0; n]];
+    for step in 0..8 {
+        let report = run.step(
+            &fluid,
+            &layout,
+            &rock,
+            &deck_relperm(),
+            &[],
+            std::slice::from_ref(&well),
+            &sources,
+            0.25,
+            TimestepOptions::default(),
+        );
+        assert!(report.succeeded(), "step {step}: {report:?}");
+        let newton = &report.attempts.last().unwrap().newton;
+        let accepted: f64 = newton.accepted_well_rates[0].iter().sum();
+        let relative = (accepted - opm_moles_per_day).abs() / opm_moles_per_day;
+        assert!(
+            relative < 1e-4,
+            "step {step}: accepted {accepted} mol/day against OPM's flash {opm_moles_per_day} \
+             ({relative:e})"
+        );
+        assert!(
+            newton.accepted_well_bhp[0] < INJECTION_BHP_LIMIT_BAR - 50.0,
+            "step {step}: the injector is approaching its BHP limit ({})",
+            newton.accepted_well_bhp[0]
+        );
+    }
+
+    let injected: f64 = run.cumulative_well_moles()[0].iter().sum();
+    let expected = opm_moles_per_day * run.time_days();
+    assert!(
+        (injected - expected).abs() / expected < 1e-4,
+        "two days injected {injected} mol, OPM's flash says {expected}"
+    );
+    assert!(run.state().cell(0).pressure_bar > 150.0);
+}
+
 // ---------------------------------------------------------------------------------------------
 // #47: the structured grid against a 2-D external reference
 // ---------------------------------------------------------------------------------------------

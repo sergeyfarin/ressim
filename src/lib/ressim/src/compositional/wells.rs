@@ -57,6 +57,18 @@ use super::flux::hydrocarbon_kr_with_water;
 use super::relperm::RelativePermeabilityModel;
 use super::state::CompositionalCellState;
 
+// Counts source evaluations in tests, so the rate-control cost claim is an assertion rather than
+// a wall-clock measurement that depends on the machine.
+#[cfg(test)]
+thread_local! {
+    static WELL_SOURCE_EVALUATIONS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn take_well_source_evaluations() -> usize {
+    WELL_SOURCE_EVALUATIONS.with(|count| count.replace(0))
+}
+
 /// What a well is controlled on.
 ///
 /// Units are in the variant names because "rate" means three different quantities here.
@@ -170,6 +182,8 @@ pub enum WellError {
     CellDerivative(DerivativeError),
     /// The injection stream's flash failed.
     InjectionFlash(FlashError),
+    /// The surface separation flash failed.
+    SurfaceFlash(FlashError),
     /// A viscosity could not be evaluated.
     Transport(TransportError),
     /// An injector has no prescribed composition, or it is invalid.
@@ -208,6 +222,7 @@ impl core::fmt::Display for WellError {
             Self::CellFlash(e) => write!(f, "connected cell's flash failed: {e}"),
             Self::CellDerivative(e) => write!(f, "connected cell's derivatives failed: {e}"),
             Self::InjectionFlash(e) => write!(f, "injection stream's flash failed: {e}"),
+            Self::SurfaceFlash(e) => write!(f, "surface separation flash failed: {e}"),
             Self::Transport(e) => write!(f, "{e}"),
             Self::MissingInjectionComposition { well } => {
                 write!(f, "well {well} injects but has no prescribed composition")
@@ -283,6 +298,111 @@ impl WellSource {
     /// True when the well is producing, i.e. removing material.
     pub fn is_producing(&self) -> bool {
         self.total_moles_per_day() < 0.0
+    }
+}
+
+/// The rate-control equation at one BHP, kept separate from the source it constrains.
+///
+/// This is the row a `StandardWell`-style solve needs: `achieved(rate) - target = 0`, with the
+/// BHP as its unknown and derivatives to both the BHP and the connected cells' primaries. The
+/// assembly eliminates the BHP locally rather than adding a global tail to the cell system; see
+/// [`super::assembly`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct RateConstraint {
+    /// `achieved - target`, in the control's own unit [mol/day] or [m³/day].
+    pub residual: f64,
+    /// `d residual / d bhp`, in the same unit per bar.
+    pub bhp_derivative: f64,
+    /// `d residual / d u` for each completion's connected cell, `u` in the cell-block layout.
+    pub cell_jacobian: Vec<(usize, Vec<f64>)>,
+    /// Scale used to judge the constraint residual: `|target|`, floored at one.
+    pub scale: f64,
+    /// The achieved rate at this BHP, in the control's unit.
+    pub achieved: f64,
+}
+
+/// A well evaluated at a given BHP under its control.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WellEvaluation {
+    /// The source terms at the BHP this evaluation selected.
+    pub result: WellResult,
+    /// The active rate equation, or `None` when the well is on BHP control — either because that
+    /// is its declared control or because its rate target binds its BHP limit.
+    pub constraint: Option<RateConstraint>,
+}
+
+/// The first BHP a Newton solve tries for each well, in the caller's well order.
+///
+/// A BHP-controlled well starts at its target. A rate-controlled well starts halfway between its
+/// BHP limit and the mean connection pressure: those are the two pressures its answer lies
+/// between, so the midpoint is the least arbitrary guess that needs no history. A rejected
+/// timestep therefore starts from the same place as a fresh one, which is what keeps a retry
+/// reproducible.
+pub fn initial_bhp_guesses(
+    wells: &[CompositionalWell],
+    cells: &[CompositionalCellState],
+) -> Vec<f64> {
+    wells
+        .iter()
+        .map(|well| match &well.control {
+            WellControl::Bhp { target_bar } => *target_bar,
+            WellControl::MolarRate {
+                target_mol_per_day,
+                bhp_limit_bar,
+            } => rate_initial_bhp(well, cells, *target_mol_per_day, *bhp_limit_bar),
+            WellControl::SurfaceRate {
+                target_m3_per_day,
+                bhp_limit_bar,
+                ..
+            } => rate_initial_bhp(well, cells, *target_m3_per_day, *bhp_limit_bar),
+        })
+        .collect()
+}
+
+fn rate_initial_bhp(
+    well: &CompositionalWell,
+    cells: &[CompositionalCellState],
+    target: f64,
+    bhp_limit_bar: f64,
+) -> f64 {
+    let (lo, hi) = rate_bhp_interval(target, bhp_limit_bar);
+    if !(lo < hi) {
+        return bhp_limit_bar;
+    }
+    let mean_connection_pressure = if well.completions.is_empty() {
+        0.5 * (lo + hi)
+    } else {
+        well.completions
+            .iter()
+            .map(|completion| cells[completion.cell].pressure_bar - completion.head_offset_bar)
+            .sum::<f64>()
+            / well.completions.len() as f64
+    };
+    let midpoint = 0.5 * (bhp_limit_bar + mean_connection_pressure);
+    midpoint.clamp(lo, hi)
+}
+
+/// The admissible BHP interval for a rate target: the limit is a maximum for an injector and a
+/// minimum for a producer.
+fn rate_bhp_interval(target: f64, bhp_limit_bar: f64) -> (f64, f64) {
+    if target > 0.0 {
+        (BHP_SEARCH_MIN_BAR, bhp_limit_bar.min(BHP_SEARCH_MAX_BAR))
+    } else {
+        (bhp_limit_bar.max(BHP_SEARCH_MIN_BAR), BHP_SEARCH_MAX_BAR)
+    }
+}
+
+/// Whether a rate target is close enough to the limit's capacity that the limit should control.
+///
+/// This is the black-oil hysteresis rule (`well_control.rs`'s `bhp_margin`): a well stays on its
+/// BHP limit until the limit can deliver the target by a margin of 5% of that target. Without the
+/// margin a well sitting exactly at capacity flips control mode on every Newton iterate.
+fn rate_limit_binds(achieved_at_limit: f64, target: f64) -> bool {
+    let margin = 0.05 * target.abs().max(1.0);
+    if target >= 0.0 {
+        achieved_at_limit < target + margin
+    } else {
+        achieved_at_limit > target - margin
     }
 }
 
@@ -664,9 +784,9 @@ fn phase_common<const N: usize, const M: usize>(
 }
 
 /// Largest BHP considered when solving a rate target [bar].
-const BHP_SEARCH_MAX_BAR: f64 = 2000.0;
+pub(crate) const BHP_SEARCH_MAX_BAR: f64 = 2000.0;
 /// Smallest BHP considered [bar].
-const BHP_SEARCH_MIN_BAR: f64 = 1.0;
+pub(crate) const BHP_SEARCH_MIN_BAR: f64 = 1.0;
 /// Bracketing tolerance on BHP [bar].
 const BHP_SOLVE_TOLERANCE_BAR: f64 = 1e-9;
 
@@ -718,6 +838,398 @@ impl WellResult {
     }
 }
 
+/// Evaluate a well under its control at a given BHP guess.
+///
+/// A BHP-controlled well ignores the guess and uses its target. A rate-controlled well first asks
+/// whether its limit can meet the target; if it cannot (within the control hysteresis), the well
+/// is evaluated at the limit with no rate equation. Otherwise the source is evaluated at the
+/// guess and returned with the rate row that the Newton system eliminates.
+///
+/// This runs **one or two** source evaluations per call, never a bisection. That is the C14
+/// change: the rate equation is part of the Newton system, so the BHP is a Newton unknown rather
+/// than something solved inside every Jacobian evaluation.
+pub fn evaluate_well_control(
+    spec: &FluidSpecification,
+    relperm: &RelativePermeabilityModel,
+    well: &CompositionalWell,
+    cells: &[CompositionalCellState],
+    bhp_bar: f64,
+) -> Result<WellEvaluation, WellError> {
+    match &well.control {
+        WellControl::Bhp { target_bar } => Ok(WellEvaluation {
+            result: well_source_at_bhp(spec, relperm, well, cells, *target_bar)?,
+            constraint: None,
+        }),
+        WellControl::MolarRate {
+            target_mol_per_day,
+            bhp_limit_bar,
+        } => evaluate_rate_control(
+            spec,
+            relperm,
+            well,
+            cells,
+            *target_mol_per_day,
+            *bhp_limit_bar,
+            RateMeasure::Molar,
+            bhp_bar,
+        ),
+        WellControl::SurfaceRate {
+            target_m3_per_day,
+            phase,
+            bhp_limit_bar,
+        } => evaluate_rate_control(
+            spec,
+            relperm,
+            well,
+            cells,
+            *target_m3_per_day,
+            *bhp_limit_bar,
+            RateMeasure::Surface(*phase),
+            bhp_bar,
+        ),
+    }
+}
+
+/// The rate equation at a BHP, with no limit check. Used by the control evaluation and by the
+/// finite-difference contract test.
+pub fn rate_constraint_at_bhp(
+    spec: &FluidSpecification,
+    relperm: &RelativePermeabilityModel,
+    well: &CompositionalWell,
+    cells: &[CompositionalCellState],
+    bhp_bar: f64,
+    target: f64,
+    measure: RateMeasure,
+) -> Result<RateConstraint, WellError> {
+    let result = well_source_at_bhp(spec, relperm, well, cells, bhp_bar)?;
+    rate_constraint_from_result(spec, relperm, &well.id, &result, target, measure)
+}
+
+fn rate_constraint_from_result(
+    spec: &FluidSpecification,
+    relperm: &RelativePermeabilityModel,
+    well_id: &str,
+    result: &WellResult,
+    target: f64,
+    measure: RateMeasure,
+) -> Result<RateConstraint, WellError> {
+    let block = relperm.water().is_some() as usize + spec.component_count();
+    let (achieved, gradient) = measure.value_and_gradient(spec, relperm, well_id, result)?;
+
+    let mut by_cell: Vec<(usize, Vec<f64>)> = Vec::new();
+    for completion in &result.completions {
+        let entry = match by_cell
+            .iter_mut()
+            .find(|(cell, _)| *cell == completion.cell)
+        {
+            Some((_, row)) => row,
+            None => {
+                by_cell.push((completion.cell, vec![0.0; block]));
+                &mut by_cell.last_mut().expect("just pushed").1
+            }
+        };
+        for i in 0..block {
+            let weight = gradient.get(i).copied().unwrap_or(0.0);
+            if weight == 0.0 {
+                continue;
+            }
+            for (v, value) in entry.iter_mut().enumerate() {
+                *value += weight * completion.cell_jacobian[i][v];
+            }
+        }
+    }
+
+    let mut bhp_derivative = 0.0;
+    for completion in &result.completions {
+        for (i, weight) in gradient.iter().enumerate() {
+            bhp_derivative += weight * completion.bhp_derivative[i];
+        }
+    }
+
+    Ok(RateConstraint {
+        residual: achieved - target,
+        bhp_derivative,
+        cell_jacobian: by_cell,
+        scale: target.abs().max(1.0),
+        achieved,
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RateMeasure {
+    /// Total component molar rate [mol/day].
+    Molar,
+    /// Surface volumetric rate in one phase [m³/day].
+    Surface(SurfacePhase),
+}
+
+impl RateMeasure {
+    fn value_and_gradient(
+        self,
+        spec: &FluidSpecification,
+        relperm: &RelativePermeabilityModel,
+        well_id: &str,
+        result: &WellResult,
+    ) -> Result<(f64, Vec<f64>), WellError> {
+        let water = relperm.water();
+        let width = spec.component_count() + usize::from(water.is_some());
+        match self {
+            Self::Molar => {
+                let components = result.total_component_moles_per_day(width);
+                Ok((components.iter().sum(), vec![1.0; width]))
+            }
+            Self::Surface(phase) => {
+                let components = result.total_component_moles_per_day(width);
+                surface_measure_with_gradient(spec, relperm, well_id, &components, phase)
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn evaluate_rate_control(
+    spec: &FluidSpecification,
+    relperm: &RelativePermeabilityModel,
+    well: &CompositionalWell,
+    cells: &[CompositionalCellState],
+    target: f64,
+    bhp_limit_bar: f64,
+    measure: RateMeasure,
+    bhp_bar: f64,
+) -> Result<WellEvaluation, WellError> {
+    let (lo, hi) = rate_bhp_interval(target, bhp_limit_bar);
+    let limit_bhp = if target > 0.0 { hi } else { lo };
+
+    let mut at_limit = well_source_at_bhp(spec, relperm, well, cells, limit_bhp)?;
+    let (achieved_at_limit, _) = measure.value_and_gradient(spec, relperm, &well.id, &at_limit)?;
+    if lo >= hi || rate_limit_binds(achieved_at_limit, target) {
+        at_limit.on_bhp_limit = true;
+        for source in &mut at_limit.completions {
+            source.on_bhp_limit = true;
+        }
+        return Ok(WellEvaluation {
+            result: at_limit,
+            constraint: None,
+        });
+    }
+
+    let bhp_bar = bhp_bar.clamp(lo, hi);
+    let result = well_source_at_bhp(spec, relperm, well, cells, bhp_bar)?;
+    let constraint =
+        rate_constraint_from_result(spec, relperm, &well.id, &result, target, measure)?;
+    Ok(WellEvaluation {
+        result,
+        constraint: Some(constraint),
+    })
+}
+
+/// A surface-phase rate and its gradient with respect to the **signed** component mole rates.
+fn surface_measure_with_gradient(
+    spec: &FluidSpecification,
+    relperm: &RelativePermeabilityModel,
+    well_id: &str,
+    components: &[f64],
+    phase: SurfacePhase,
+) -> Result<(f64, Vec<f64>), WellError> {
+    let n = spec.component_count();
+    let water = relperm.water();
+    let width = n + usize::from(water.is_some());
+    if components.len() != width {
+        return Err(WellError::SurfaceConditionsNotPinned);
+    }
+    let mut gradient = vec![0.0; width];
+
+    if phase == SurfacePhase::Water {
+        let w = water.ok_or_else(|| WellError::NoWaterPhase {
+            well: well_id.to_string(),
+        })?;
+        gradient[n] = w.properties.surface_volume_m3(1.0);
+        return Ok((w.properties.surface_volume_m3(components[n]), gradient));
+    }
+    if spec.surface().is_none() {
+        return Err(WellError::SurfaceConditionsNotPinned);
+    }
+    let total: f64 = components[..n].iter().sum();
+    if total == 0.0 {
+        return Ok((0.0, gradient));
+    }
+    let sign = if total < 0.0 { -1.0 } else { 1.0 };
+    let stream: Vec<f64> = components[..n].iter().map(|m| sign * m).collect();
+    let (volume, volume_gradient) = surface_volume_and_gradient(spec, well_id, &stream, phase)?;
+    gradient[..n].copy_from_slice(&volume_gradient);
+    Ok((sign * volume, gradient))
+}
+
+/// Surface volume of a non-negative component stream, and `d volume / d stream_i`.
+fn surface_volume_and_gradient(
+    spec: &FluidSpecification,
+    well_id: &str,
+    stream: &[f64],
+    phase: SurfacePhase,
+) -> Result<(f64, Vec<f64>), WellError> {
+    let n = spec.component_count();
+    let total: f64 = stream.iter().sum();
+    if total == 0.0 {
+        return Ok((0.0, vec![0.0; n]));
+    }
+    if spec.separator_stages().is_empty() {
+        surface_volume_gradient_single_stage(spec, well_id, stream, phase)
+    } else {
+        // A liquid-cascade train chains several flashes. Its derivative is not needed by the
+        // physical model, only by Newton's convergence rate, so a finite difference of the same
+        // public separation is enough here and avoids duplicating the train's internals. The
+        // single-stage case — every pinned fluid and every scenario — is analytic.
+        let mut gradient = vec![0.0; n];
+        let base = surface_volume_of_stream(spec, well_id, stream, phase)?;
+        let step_scale = 1e-6 * total.max(1.0) / n as f64;
+        for j in 0..n {
+            let step = step_scale.max(1e-12 * stream[j].abs().max(1.0));
+            let mut up = stream.to_vec();
+            let mut down = stream.to_vec();
+            up[j] += step;
+            down[j] = (down[j] - step).max(0.0);
+            let actual = up[j] - down[j];
+            if actual == 0.0 {
+                continue;
+            }
+            let upper = surface_volume_of_stream(spec, well_id, &up, phase)?;
+            let lower = surface_volume_of_stream(spec, well_id, &down, phase)?;
+            gradient[j] = (upper - lower) / actual;
+        }
+        let _ = base;
+        Ok((base, gradient))
+    }
+}
+
+fn surface_volume_of_stream(
+    spec: &FluidSpecification,
+    well_id: &str,
+    stream: &[f64],
+    phase: SurfacePhase,
+) -> Result<f64, WellError> {
+    let separated = surface_separation(spec, stream).map_err(WellError::Transport)?;
+    match phase {
+        SurfacePhase::Liquid => Ok(separated.liquid_volume),
+        SurfacePhase::Vapour => Ok(separated.vapour_volume),
+        SurfacePhase::Total => Ok(separated.liquid_volume + separated.vapour_volume),
+        SurfacePhase::Water => Err(WellError::NoWaterPhase {
+            well: well_id.to_string(),
+        }),
+    }
+}
+
+fn surface_volume_gradient_single_stage(
+    spec: &FluidSpecification,
+    well_id: &str,
+    stream: &[f64],
+    phase: SurfacePhase,
+) -> Result<(f64, Vec<f64>), WellError> {
+    let n = spec.component_count();
+    let total: f64 = stream.iter().sum();
+    let z: Vec<f64> = stream.iter().map(|m| m / total).collect();
+    let surface = spec
+        .surface()
+        .ok_or(WellError::SurfaceConditionsNotPinned)?;
+    let state = flash(spec, surface.pressure_pa, surface.temperature_k, &z, None)
+        .map_err(WellError::SurfaceFlash)?;
+    let derivatives =
+        flash_derivatives(spec, surface.pressure_pa, surface.temperature_k, &z, &state)
+            .map_err(WellError::CellDerivative)?;
+
+    let two_phase = state.phase_state == PhaseState::TwoPhase;
+    let beta = match state.phase_state {
+        PhaseState::SingleLiquid => 0.0,
+        PhaseState::SingleVapour => 1.0,
+        PhaseState::TwoPhase => state.beta,
+    };
+
+    let dbeta_dm = |j: usize| -> f64 {
+        if !two_phase || derivatives.dbeta.is_empty() {
+            return 0.0;
+        }
+        let mut value = 0.0;
+        for (k, z_k) in z.iter().enumerate().take(n - 1) {
+            let dz = if j == n - 1 {
+                -z_k / total
+            } else if j == k {
+                (1.0 - z_k) / total
+            } else {
+                -z_k / total
+            };
+            value += derivatives.dbeta[1 + k] * dz;
+        }
+        value
+    };
+
+    let density_gradient = |j: usize, liquid: bool| -> f64 {
+        let row = if liquid {
+            &derivatives.dliquid_molar_density
+        } else {
+            &derivatives.dvapour_molar_density
+        };
+        if row.is_empty() {
+            return 0.0;
+        }
+        let mut value = 0.0;
+        for (k, z_k) in z.iter().enumerate().take(n - 1) {
+            let dz = if j == n - 1 {
+                -z_k / total
+            } else if j == k {
+                (1.0 - z_k) / total
+            } else {
+                -z_k / total
+            };
+            value += row[1 + k] * dz;
+        }
+        value
+    };
+
+    let mut volume = 0.0;
+    let mut gradient = vec![0.0; n];
+    for liquid in [true, false] {
+        let included = match phase {
+            SurfacePhase::Liquid => liquid,
+            SurfacePhase::Vapour => !liquid,
+            SurfacePhase::Total => true,
+            SurfacePhase::Water => false,
+        };
+        if !included {
+            continue;
+        }
+        let present = matches!(
+            (state.phase_state, liquid),
+            (PhaseState::TwoPhase, _)
+                | (PhaseState::SingleLiquid, true)
+                | (PhaseState::SingleVapour, false)
+        );
+        if !present {
+            continue;
+        }
+        let props = if liquid {
+            state.liquid.as_ref().expect("liquid")
+        } else {
+            state.vapour.as_ref().expect("vapour")
+        };
+        let phase_moles = total * if liquid { 1.0 - beta } else { beta };
+        let phase_volume = phase_moles / props.molar_density;
+        volume += phase_volume;
+
+        for (j, value) in gradient.iter_mut().enumerate() {
+            let dbeta = dbeta_dm(j);
+            let d_moles = if liquid {
+                1.0 - beta - total * dbeta
+            } else {
+                beta + total * dbeta
+            };
+            let d_rho = density_gradient(j, liquid);
+            *value += d_moles / props.molar_density
+                - phase_moles * d_rho / (props.molar_density * props.molar_density);
+        }
+    }
+    let _ = well_id;
+    Ok((volume, gradient))
+}
+
 /// Every completion at a given BHP, with crossflow rejected.
 ///
 /// The well's overall direction is decided by the sum of the completions' potentials weighted by
@@ -731,6 +1243,8 @@ pub fn well_source_at_bhp(
     cells: &[CompositionalCellState],
     bhp_bar: f64,
 ) -> Result<WellResult, WellError> {
+    #[cfg(test)]
+    WELL_SOURCE_EVALUATIONS.with(|count| count.set(count.get() + 1));
     if well.completions.is_empty() {
         return Err(WellError::NoCompletions {
             well: well.id.clone(),
@@ -892,12 +1406,8 @@ where
 
     // The limit is a maximum for an injector and a minimum for a producer, so it is one end of the
     // search interval and the "hardest achievable" point.
-    let (mut lo, mut hi) = if injecting {
-        (BHP_SEARCH_MIN_BAR, bhp_limit_bar.min(BHP_SEARCH_MAX_BAR))
-    } else {
-        (bhp_limit_bar.max(BHP_SEARCH_MIN_BAR), BHP_SEARCH_MAX_BAR)
-    };
-    if !(lo < hi) {
+    let (mut lo, mut hi) = rate_bhp_interval(target, bhp_limit_bar);
+    if lo >= hi {
         let mut at_limit = well_source_at_bhp(spec, relperm, well, cells, bhp_limit_bar)?;
         at_limit.on_bhp_limit = true;
         return Ok(at_limit);
@@ -908,12 +1418,7 @@ where
     let mut at_limit = well_source_at_bhp(spec, relperm, well, cells, limit_bhp)?;
     let achieved_at_limit = measure(&at_limit, spec)?;
 
-    let limit_binds = if injecting {
-        achieved_at_limit < target
-    } else {
-        achieved_at_limit > target
-    };
-    if limit_binds {
+    if rate_limit_binds(achieved_at_limit, target) {
         // The target is beyond what the limit allows: revert to BHP control at the limit and
         // report what was achieved, rather than pretending the target was met.
         at_limit.on_bhp_limit = true;

@@ -46,11 +46,12 @@
 //! not patched. The weights are computed from the **row-scaled** block, so they belong to the
 //! system the Krylov method actually sees.
 //!
-//! **Wells.** V1 wells have no unknowns; each completion's derivative sits in its cell's diagonal
-//! block. The coarse operator is `C = W^T A P` over the full scaled matrix, so a well's pressure
+//! **Wells.** A rate-controlled well's BHP unknown is eliminated locally by the assembler, so the
+//! matrix here has no well rows; each completion's derivative sits in its cell's diagonal block.
+//! The coarse operator is `C = W^T A P` over the full scaled matrix, so a well's pressure
 //! derivative — the BHP feedback — enters the pressure equation exactly as it enters the cell's
 //! equations, and its composition derivatives are left to the second stage. No separate well
-//! policy is needed because there is no well equation to restrict.
+//! policy is needed because the assembler has already eliminated the rate-control equation.
 //!
 //! **Coarse operator and solve.** `P` injects a cell's pressure correction into its pressure column,
 //! so `C` is `cells x cells` with the face graph's pattern. It is factorized once per linear solve
