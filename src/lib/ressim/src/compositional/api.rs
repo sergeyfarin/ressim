@@ -43,14 +43,29 @@ use crate::fluid::specification::FluidSpecification;
 use crate::fluid::units::bar_to_pa;
 use crate::relperm::{SgofRow, SwofRow};
 
-/// The only schema this build accepts. An absent or different one is refused rather than guessed
-/// at — the plan is explicit that an absent discriminator must not be read as compositional.
+/// The schema for a case with **no** schedule. See [`SCHEDULE_CASE_SCHEMA`] for the scheduled
+/// variant, and why the version is part of the schedule guard.
 pub const CASE_SCHEMA: &str = "ressim-compositional-case/1";
-/// The only checkpoint schema this build accepts.
+/// The schema for a case that carries a schedule (#50).
+///
+/// **Why a second version rather than an additive field.** Serde defaults a missing `schedule` and
+/// ignores an unknown one, so a build that predates schedules would accept a `/1` payload with
+/// events and silently run it without them — a different physical case with no error. A scheduled
+/// case therefore demands `/2`, which an older build refuses as an unsupported schema. The
+/// checkpoint's embedded `config` carries the same discriminator, so a scheduled checkpoint is
+/// refused by that build too, even though the checkpoint envelope itself remains `/1`.
+pub const SCHEDULE_CASE_SCHEMA: &str = "ressim-compositional-case/2";
+/// The only checkpoint envelope this build accepts.
 ///
 /// Additive optional fields do not bump this: serde defaults a missing field and ignores an
-/// unknown one, so a `/1` payload from before `well_bhp_bar` restores unchanged. A bump is for a
-/// shape an older build would *misinterpret*, not one it can safely ignore.
+/// unknown one, so a `/1` payload from before `well_bhp_bar` or `schedule_position` restores
+/// unchanged. A bump is for a shape an older build would *misinterpret*, not one it can safely
+/// ignore.
+///
+/// **Scheduled checkpoints are guarded through their embedded config schema.** A checkpoint from a
+/// scheduled case carries `config.schema == SCHEDULE_CASE_SCHEMA`, which a build without schedules
+/// refuses in `CompositionalCase::new`; the envelope itself stays `/1` because the extra fields are
+/// additive.
 pub const CHECKPOINT_SCHEMA: &str = "ressim-compositional-checkpoint/1";
 
 /// Why a case could not be built. Every variant names the field that was wrong.
@@ -508,10 +523,16 @@ impl CaseConfig {
     /// checked first, because every other message would be noise if the payload is from a
     /// different version.
     pub fn validate(&self) -> Result<CaseAdvisories, ConfigError> {
-        if self.schema != CASE_SCHEMA {
+        if self.schema != CASE_SCHEMA && self.schema != SCHEDULE_CASE_SCHEMA {
             return Err(ConfigError::UnsupportedSchema {
                 found: self.schema.clone(),
-                expected: CASE_SCHEMA.to_string(),
+                expected: format!("{CASE_SCHEMA} or {SCHEDULE_CASE_SCHEMA}"),
+            });
+        }
+        if !self.schedule.is_empty() && self.schema != SCHEDULE_CASE_SCHEMA {
+            return Err(ConfigError::UnsupportedSchema {
+                found: format!("{} (with a schedule)", self.schema),
+                expected: SCHEDULE_CASE_SCHEMA.to_string(),
             });
         }
 
@@ -1175,7 +1196,14 @@ impl CompositionalCase {
     /// The requested `dt` is capped at the next schedule event, so a switch is never applied
     /// part-way through an accepted step. The caller sees the smaller accepted `dt` and continues
     /// on the remainder; [`super::frontend`] and the worker session already do this.
+    ///
+    /// A boundary interval may be shorter than the normal minimum timestep (an event at day
+    /// 1.0000005 leaves 5e-7 d after a daily step). That interval is explicitly requested by the
+    /// schedule, so its cap also lowers the retry ladder's floor: refusing to attempt it would
+    /// end the run with `Budget` rather than switching. A caller's own tiny `dt` is still refused
+    /// by the configured minimum.
     pub fn step(&mut self, dt_days: f64) -> StepOutcome {
+        let requested_dt_days = dt_days;
         self.apply_schedule_through(self.run.time_days());
         let dt_days = crate::schedule::cap_dt_at_next_event(
             &self.config.schedule,
@@ -1183,6 +1211,10 @@ impl CompositionalCase {
             self.run.time_days(),
             dt_days,
         );
+        let mut options = self.options;
+        if dt_days < requested_dt_days && dt_days > 0.0 {
+            options.min_dt_days = options.min_dt_days.min(dt_days);
+        }
         let next_event = self
             .config
             .schedule
@@ -1204,7 +1236,7 @@ impl CompositionalCase {
             &self.wells,
             &self.sources,
             dt_days,
-            self.options,
+            options,
         );
         if report.succeeded()
             && next_event

@@ -10,6 +10,7 @@
 import type { SimulatorCreatePayload } from '../simulator-types';
 import {
   COMPOSITIONAL_CASE_SCHEMA,
+  COMPOSITIONAL_SCHEDULE_CASE_SCHEMA,
   type CompositionalBoxGridConfig,
   type CompositionalCaseConfig,
   type CompositionalFluidChoice,
@@ -75,8 +76,11 @@ export function assertCompositionalPayload(payload: unknown): string | null {
     return 'This scenario asks for the compositional model but carries no compositional case.';
   }
   const schema = (candidate.compositional as { schema?: unknown }).schema;
-  if (schema !== COMPOSITIONAL_CASE_SCHEMA) {
-    return `This compositional case was written for ${String(schema) || 'no version'}; this build reads ${COMPOSITIONAL_CASE_SCHEMA}.`;
+  if (
+    schema !== COMPOSITIONAL_CASE_SCHEMA &&
+    schema !== COMPOSITIONAL_SCHEDULE_CASE_SCHEMA
+  ) {
+    return `This compositional case was written for ${String(schema) || 'no version'}; this build reads ${COMPOSITIONAL_CASE_SCHEMA} or ${COMPOSITIONAL_SCHEDULE_CASE_SCHEMA}.`;
   }
   return null;
 }
@@ -133,7 +137,9 @@ function copyEvent(event: CompositionalWellEvent): CompositionalWellEvent {
  */
 export function buildCompositionalCase(input: CompositionalCaseInput): CompositionalCaseConfig {
   return {
-    schema: COMPOSITIONAL_CASE_SCHEMA,
+    schema: input.schedule?.length
+      ? COMPOSITIONAL_SCHEDULE_CASE_SCHEMA
+      : COMPOSITIONAL_CASE_SCHEMA,
     fluid: input.fluid,
     grid: {
       cells: input.cells,

@@ -7,7 +7,11 @@ import {
   isCompositionalCreate,
   peacemanWellIndex,
 } from './createPayload';
-import { COMPOSITIONAL_CASE_SCHEMA, describeCompositionalError } from './types';
+import {
+  COMPOSITIONAL_CASE_SCHEMA,
+  COMPOSITIONAL_SCHEDULE_CASE_SCHEMA,
+  describeCompositionalError,
+} from './types';
 import type { CompositionalCaseInput } from './createPayload';
 
 function input(): CompositionalCaseInput {
@@ -83,6 +87,17 @@ describe('assertCompositionalPayload', () => {
     expect(message).toContain('ressim-compositional-case/99');
     expect(message).toContain(COMPOSITIONAL_CASE_SCHEMA);
   });
+
+  it('accepts the scheduled schema as well as the unscheduled one', () => {
+    const scheduled = buildCompositionalCase({
+      ...input(),
+      schedule: [{ time_days: 1, well: 'INJ', control: { control: 'shut-in' } }],
+    });
+    expect(scheduled.schema).toBe(COMPOSITIONAL_SCHEDULE_CASE_SCHEMA);
+    expect(
+      assertCompositionalPayload({ fluidModel: 'compositional', compositional: scheduled }),
+    ).toBeNull();
+  });
 });
 
 describe('buildCompositionalCase', () => {
@@ -92,7 +107,6 @@ describe('buildCompositionalCase', () => {
     expect(config.grid.rock_compressibility_per_bar).toBe(0);
     expect(config.gravity_enabled).toBe(false);
   });
-
   it('copies the arrays rather than aliasing the caller', () => {
     // A payload that shares an array with a store is how a $state proxy leaks across the worker
     // boundary, which structured cloning rejects.
@@ -187,6 +201,7 @@ describe('buildCompositionalCase', () => {
       ],
     };
     const config = buildCompositionalCase(source);
+    expect(config.schema).toBe(COMPOSITIONAL_SCHEDULE_CASE_SCHEMA);
     expect(config.water).toEqual(source.water);
     expect(config.schedule).toEqual(source.schedule);
     expect(() => structuredClone(config)).not.toThrow();

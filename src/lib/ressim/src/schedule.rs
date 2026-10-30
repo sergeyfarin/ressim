@@ -35,6 +35,10 @@ pub struct WellEvent<C> {
 /// The change payload is not inspected here; its owner validates the fields it understands and
 /// refuses the ones it does not.
 pub fn validate_event_times<C>(events: &[WellEvent<C>]) -> Result<(), String> {
+    // Every well at one instant must appear at most once, not merely not twice in a row. A
+    // schedule may legitimately interleave wells at the same time (`INJ`, `PROD`, `INJ` is the
+    // failure case): the second `INJ` would otherwise silently overwrite the first.
+    let mut same_time_wells: Vec<&str> = Vec::new();
     for (index, event) in events.iter().enumerate() {
         if event.well.trim().is_empty() {
             return Err(format!("schedule event {index} has an empty well id"));
@@ -51,27 +55,30 @@ pub fn validate_event_times<C>(events: &[WellEvent<C>]) -> Result<(), String> {
                 event.well, event.time_days
             ));
         }
-        let Some(previous) = index.checked_sub(1).map(|i| &events[i]) else {
-            continue;
-        };
-        if event.time_days < previous.time_days {
-            return Err(format!(
-                "schedule events must be in nondecreasing time order; event {index} for well \
-                 {:?} at {} day follows event {} for well {:?} at {} day",
-                event.well,
-                event.time_days,
-                index - 1,
-                previous.well,
-                previous.time_days
-            ));
+        if let Some(previous) = index.checked_sub(1).map(|i| &events[i]) {
+            if event.time_days < previous.time_days {
+                return Err(format!(
+                    "schedule events must be in nondecreasing time order; event {index} for well \
+                     {:?} at {} day follows event {} for well {:?} at {} day",
+                    event.well,
+                    event.time_days,
+                    index - 1,
+                    previous.well,
+                    previous.time_days
+                ));
+            }
+            if event.time_days != previous.time_days {
+                same_time_wells.clear();
+            }
         }
-        if event.time_days == previous.time_days && event.well == previous.well {
+        if same_time_wells.contains(&event.well.as_str()) {
             return Err(format!(
                 "schedule has two changes for well {:?} at {} day; their order would be \
                  ambiguous",
                 event.well, event.time_days
             ));
         }
+        same_time_wells.push(&event.well);
     }
     Ok(())
 }
@@ -135,6 +142,24 @@ mod tests {
         assert!(validate_event_times(&[event(2.0, "A", 0.0), event(1.0, "B", 0.0)]).is_err());
         assert!(validate_event_times(&[event(1.0, "A", 0.0), event(1.0, "A", 1.0)]).is_err());
         assert!(validate_event_times(&[event(1.0, "A", 0.0), event(1.0, "B", 1.0)]).is_ok());
+        // Ambiguity is per instant, not per adjacent pair: a second change for A after B must
+        // still be refused even though A is not the immediately preceding entry.
+        assert!(
+            validate_event_times(&[
+                event(1.0, "A", 0.0),
+                event(1.0, "B", 1.0),
+                event(1.0, "A", 2.0),
+            ])
+            .is_err()
+        );
+        assert!(
+            validate_event_times(&[
+                event(1.0, "A", 0.0),
+                event(1.0, "B", 1.0),
+                event(2.0, "A", 2.0),
+            ])
+            .is_ok()
+        );
         assert!(validate_event_times(&[event(-1.0, "A", 0.0)]).is_err());
         assert!(validate_event_times(&[event(f64::NAN, "A", 0.0)]).is_err());
         assert!(validate_event_times(&[event(1.0, " ", 0.0)]).is_err());

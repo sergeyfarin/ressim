@@ -8,8 +8,8 @@
 
 use super::api::{
     CASE_SCHEMA, CaseConfig, CompletionConfig, CompositionalCase, FluidChoice, GridConfig,
-    RelPermConfig, WaterConfig, WellChangeConfig, WellConfig, WellControlConfig, WellEventConfig,
-    WellInjectionConfig,
+    RelPermConfig, SCHEDULE_CASE_SCHEMA, WaterConfig, WellChangeConfig, WellConfig,
+    WellControlConfig, WellEventConfig, WellInjectionConfig,
 };
 use super::assembly::Face;
 use super::flux::Gravity;
@@ -23,7 +23,7 @@ use crate::relperm::{SgofRow, SwofRow};
 /// A 1-D five-cell water/hydrocarbon column, with one injector and one producer.
 fn wag_case() -> CaseConfig {
     CaseConfig {
-        schema: CASE_SCHEMA.to_string(),
+        schema: SCHEDULE_CASE_SCHEMA.to_string(),
         fluid: FluidChoice::PinnedBinary,
         grid: GridConfig {
             cells: 5,
@@ -176,6 +176,47 @@ fn well_delta(before: &[Vec<f64>], after: &[Vec<f64>], well: usize, component: u
     at(after) - at(before)
 }
 
+/// A scheduled boundary can be much shorter than the normal minimum timestep. It must be
+/// attempted, not turned into a `Budget` failure before Newton runs.
+#[test]
+fn comp_schedule_short_boundary_interval_is_attempted() {
+    let mut config = wag_case();
+    config.schedule = vec![gas_event(1.000_000_5, 10.0)];
+    let mut case = CompositionalCase::new(config).unwrap();
+
+    assert!(case.step(1.0).succeeded());
+    assert_eq!(case.time_days(), 1.0);
+    assert_eq!(case.checkpoint().schedule_position, Some(0));
+
+    let outcome = case.step(1.0);
+    assert!(
+        outcome.succeeded(),
+        "the 5e-7 d interval before the event failed: {:?}",
+        outcome.failure
+    );
+    let accepted = outcome.accepted_dt_days.expect("accepted");
+    assert!(
+        (accepted - 5e-7).abs() < 1e-12,
+        "accepted {accepted} d rather than the 5e-7 d boundary interval"
+    );
+    assert!(
+        (case.time_days() - 1.000_000_5).abs() < 1e-12,
+        "the clock is {}",
+        case.time_days()
+    );
+    assert_eq!(case.checkpoint().schedule_position, Some(1));
+
+    // And the event really is now in force: the next interval injects the gas stream.
+    let before = case.snapshot().cumulative_well_moles.clone();
+    let next = case.step(1.0);
+    assert!(next.succeeded(), "{:?}", next.failure);
+    let after = case.snapshot();
+    assert!(
+        well_delta(&before, &after.cumulative_well_moles, 0, 0) > 0.0,
+        "the gas event did not govern the interval after the short boundary"
+    );
+}
+
 /// **#50's gate.** Each WAG switch is exact in time, changes the prescribed stream, and the
 /// inventory change equals the well ledger across the switch.
 #[test]
@@ -302,8 +343,10 @@ fn comp_schedule_checkpoint_carries_position_and_continues_identically() {
 
     let checkpoint = original.checkpoint();
     assert_eq!(checkpoint.schedule_position, Some(1));
+    assert_eq!(checkpoint.config.schema, SCHEDULE_CASE_SCHEMA);
     let json = serde_json::to_string(&checkpoint).unwrap();
     assert!(json.contains("\"schedule_position\":1"), "{json}");
+    assert!(json.contains(SCHEDULE_CASE_SCHEMA), "{json}");
     assert!(json.contains("\"schedule\":["), "{json}");
     assert!(json.contains("\"time_days\":1.0"), "{json}");
     assert!(
@@ -351,6 +394,16 @@ fn comp_schedule_checkpoint_carries_position_and_continues_identically() {
     assert!(replayed.step(0.5).succeeded());
     assert!((replayed.time_days() - 2.0).abs() < 1e-12);
     assert_eq!(replayed.checkpoint().schedule_position, Some(2));
+
+    // A build without schedules accepts the checkpoint envelope and rejects its `/1` config only
+    // after `Self::new` validates it. Simulate that config to show the schedule cannot survive as
+    // an ignored field.
+    let mut legacy_config = parsed.clone();
+    legacy_config.config.schema = CASE_SCHEMA.to_string();
+    assert!(
+        CompositionalCase::restore(&legacy_config).is_err(),
+        "a scheduled checkpoint under the legacy case schema was accepted"
+    );
 }
 
 /// An event at `t = 0` is the initial condition, and a malformed schedule is refused before a run
@@ -383,6 +436,27 @@ fn comp_schedule_t0_applies_at_construction_and_bad_schedules_are_refused() {
     let mut duplicate = config.clone();
     duplicate.schedule = vec![gas_event(1.0, 1.0), gas_event(1.0, 2.0)];
     assert!(error(duplicate).contains("ambiguous"));
+
+    // The duplicate is not adjacent: a second INJ after a PROD event at the same instant is just
+    // as ambiguous, and the last one silently winning is the failure this guards.
+    let mut interleaved = config.clone();
+    let mut producer_event = gas_event(1.0, 1.0);
+    producer_event.well = "PROD".to_string();
+    producer_event.change = WellChangeConfig {
+        control: Some(WellControlConfig::Bhp { target_bar: 170.0 }),
+        injection: None,
+    };
+    interleaved.schedule = vec![gas_event(1.0, 1.0), producer_event, water_event(1.0, 5.0)];
+    assert!(error(interleaved).contains("ambiguous"));
+
+    // A scheduled payload must use /2: /1 is what a build without schedules accepts, and it
+    // would ignore the events.
+    let mut legacy_schema = config.clone();
+    legacy_schema.schema = CASE_SCHEMA.to_string();
+    assert!(
+        error(legacy_schema).contains(SCHEDULE_CASE_SCHEMA),
+        "a /1 payload with events was accepted"
+    );
 
     let mut unknown_well = config.clone();
     unknown_well.schedule[0].well = "NO_SUCH_WELL".to_string();

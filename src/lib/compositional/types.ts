@@ -10,10 +10,23 @@
  * `JsValue`. These declarations are what gives the frontend its types back.
  */
 
-/** The only case schema this build accepts. Must match `api::CASE_SCHEMA`. */
+/** The case schema for a payload with **no** schedule. Must match `api::CASE_SCHEMA`. */
 export const COMPOSITIONAL_CASE_SCHEMA = 'ressim-compositional-case/1';
+/**
+ * The case schema for a payload that carries a schedule (#50). Must match
+ * `api::SCHEDULE_CASE_SCHEMA`.
+ *
+ * A schedule must use `/2` so a build that predates schedules refuses the payload rather than
+ * ignoring its events and running a different physical case.
+ */
+export const COMPOSITIONAL_SCHEDULE_CASE_SCHEMA = 'ressim-compositional-case/2';
 /** The only checkpoint schema this build accepts. Must match `api::CHECKPOINT_SCHEMA`. */
 export const COMPOSITIONAL_CHECKPOINT_SCHEMA = 'ressim-compositional-checkpoint/1';
+
+/** The case schema discriminator: unscheduled `/1`, scheduled `/2`. */
+export type CompositionalCaseSchema =
+  | typeof COMPOSITIONAL_CASE_SCHEMA
+  | typeof COMPOSITIONAL_SCHEDULE_CASE_SCHEMA;
 
 /**
  * The fluid, chosen by name.
@@ -180,7 +193,7 @@ export type CompositionalWellConfig = CompositionalWellControl & {
 
 /** A complete case, as it crosses the worker and WASM boundaries. */
 export interface CompositionalCaseConfig {
-  schema: typeof COMPOSITIONAL_CASE_SCHEMA;
+  schema: CompositionalCaseSchema;
   fluid: CompositionalFluidChoice;
   grid: CompositionalGridConfig;
   relperm: CompositionalRelPermConfig;
