@@ -189,6 +189,15 @@ impl CompositionalRun {
         &self.well_bhp_bar
     }
 
+    /// Restore the accepted flowing BHPs from a checkpoint.
+    ///
+    /// Reporting-only: [`Self::step`] does not read this as an initial guess, so restoring an old
+    /// checkpoint without it cannot change a trajectory. It exists so a restored snapshot can show
+    /// the pressure the run last accepted, before it takes another step.
+    pub(crate) fn set_well_bhp_bar(&mut self, well_bhp_bar: Vec<f64>) {
+        self.well_bhp_bar = well_bhp_bar;
+    }
+
     pub fn cache_mut(&mut self) -> &mut FlashCache {
         &mut self.cache
     }

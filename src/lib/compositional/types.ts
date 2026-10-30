@@ -226,6 +226,11 @@ export interface CompositionalSnapshot {
   inventory: number[];
   /** Per well, cumulative component moles. Positive into the reservoir. With water, water is last. */
   cumulative_well_moles: number[][];
+  /**
+   * Per well, the BHP the accepted solve ran at [bar]. Absent before the first accepted step and
+   * in snapshots written before C14's reporting.
+   */
+  well_bhp_bar?: number[];
   /** The water phase, when the case has one. */
   water?: { saturation: number[]; inventory_moles: number };
 }
@@ -239,6 +244,11 @@ export interface CompositionalCheckpoint {
   composition: number[][];
   /** Water saturation per cell, exactly when the case has water. */
   water_saturation?: number[];
+  /**
+   * Per well, the accepted flowing BHP [bar]. Absent in checkpoints written before it existed;
+   * restoring one without it re-solves the BHP at the next step.
+   */
+  well_bhp_bar?: number[];
 }
 
 /** Turn an engine rejection into something a person can act on, without implementation jargon. */
