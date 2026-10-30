@@ -674,6 +674,14 @@ rate-controlled `flowexp_comp` fixture converges in the timestep, so the control
 is checked by internal invariants and a closed-form single-cell target, not by an external
 trajectory. `docs/COMPOSITIONAL_C12_FORENSICS.md` records the ruled-out mechanisms.
 
+**Follow-up #85 (2026-10-30).** `Snapshot` and `Checkpoint` now carry `well_bhp_bar`, the
+accepted flowing pressure per well, serde-defaulted and omitted when empty. The checkpoint schema
+string stays `/1` because the field is additive and optional: an old payload restores with an
+empty vector, and an old build ignores an unknown field. The restored run shows the last accepted
+BHP before it steps, but the solve still does not read it back — reporting only, so a trajectory
+cannot move. `compositionalWellState(config, snapshot)` uses it for the 3D well state's
+`flowing_bhp`, keeping the configured `bhp` separate.
+
 ### C15 / V1b — immiscible water (#46, 2026-10-29)
 
 Measured on `0debc26a` with `bash scripts/validate-compositional.sh thermo` (`comp_water_`, 18

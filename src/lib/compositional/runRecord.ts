@@ -49,18 +49,27 @@ export function buildCompositionalRunRecord(input: {
  *
  * The compositional grid is a 1D column of `cells`, so a completion's cell index is its `i`. A well
  * with an injection stream is an injector; that is the engine's own rule.
+ *
+ * `bhp` is the configured pressure a BHP-controlled well asks for. `flowing_bhp`, when a snapshot
+ * supplies it, is the pressure the accepted solve actually ran at — for a rate-controlled well
+ * those are different quantities, and only the snapshot knows the second.
  */
-export function compositionalWellState(config: CompositionalCaseConfig): WellState {
-  return config.wells.flatMap((well) =>
-    well.completions.map((completion) => ({
+export function compositionalWellState(
+  config: CompositionalCaseConfig,
+  snapshot?: CompositionalSnapshot,
+): WellState {
+  return config.wells.flatMap((well, wellIndex) => {
+    const flowing = snapshot?.well_bhp_bar?.[wellIndex];
+    return well.completions.map((completion) => ({
       physical_well_id: well.id,
       i: completion.cell,
       j: 0,
       k: 0,
       injector: well.injection_composition !== undefined,
       ...(well.control === 'bhp' ? { bhp: well.target_bar } : {}),
-    })),
-  );
+      ...(flowing !== undefined && Number.isFinite(flowing) ? { flowing_bhp: flowing } : {}),
+    }));
+  });
 }
 
 /**

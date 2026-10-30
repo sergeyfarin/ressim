@@ -79,6 +79,117 @@ fn comp_api_a_valid_config_builds_and_steps() {
     );
 }
 
+/// The same case with a rate-controlled producer, so the snapshot has a BHP that is not a config
+/// value. The injector stays BHP-controlled and must report its target unchanged.
+fn rate_controlled_config() -> CaseConfig {
+    let mut config = valid_config();
+    config.wells[1].control = WellControlConfig::MolarRate {
+        target_moles_per_day: -1.0e3,
+        bhp_limit_bar: 50.0,
+    };
+    config
+}
+
+/// **#85's snapshot contract.** A rate-controlled well reports the BHP the solve actually ran at,
+/// not its configured limit; a BHP-controlled well reports its target. Before the first accepted
+/// step there is no flowing pressure, and the field is omitted rather than filled with a guess.
+#[test]
+fn comp_api_snapshot_reports_flowing_bhp_per_well() {
+    let mut case = CompositionalCase::new(rate_controlled_config()).unwrap();
+    assert!(
+        case.snapshot().well_bhp_bar.is_empty(),
+        "a case that has not stepped has no accepted flowing pressure"
+    );
+    assert!(
+        serde_json::to_value(case.snapshot())
+            .unwrap()
+            .get("well_bhp_bar")
+            .is_none(),
+        "an empty flowing-BHP vector must be omitted from the payload"
+    );
+
+    assert!(case.step(0.02).succeeded());
+    let snapshot = case.snapshot();
+    assert_eq!(snapshot.well_bhp_bar.len(), 2);
+    assert!(
+        (snapshot.well_bhp_bar[0] - 150.0).abs() < 1e-12,
+        "the BHP-controlled injector reported {} rather than its target",
+        snapshot.well_bhp_bar[0]
+    );
+    assert!(
+        snapshot.well_bhp_bar[1] > 50.0,
+        "the rate-controlled producer solved the BHP limit ({}), so the target was not the operative control",
+        snapshot.well_bhp_bar[1]
+    );
+    assert!(
+        snapshot.well_bhp_bar[1] < snapshot.pressure[4],
+        "a producer's flowing BHP must be below the connected cell pressure"
+    );
+}
+
+/// **#85's restart contract.** The flowing BHP survives the checkpoint and the restored run
+/// continues identically. An old checkpoint without the optional field still restores, because a
+/// missing flowing pressure cannot change a solve that never reads it back.
+#[test]
+fn comp_api_checkpoint_preserves_flowing_bhp_and_continues_identically() {
+    let mut original = CompositionalCase::new(rate_controlled_config()).unwrap();
+    for _ in 0..3 {
+        assert!(original.step(0.02).succeeded());
+    }
+    let before = original.snapshot().well_bhp_bar.clone();
+    assert_eq!(before.len(), 2);
+    let checkpoint = original.checkpoint();
+    assert_eq!(checkpoint.well_bhp_bar, before);
+
+    let json = serde_json::to_string(&checkpoint).unwrap();
+    let parsed: Checkpoint = serde_json::from_str(&json).unwrap();
+    let mut restored = CompositionalCase::restore(&parsed).expect("the checkpoint must restore");
+    assert_eq!(
+        restored.snapshot().well_bhp_bar,
+        before,
+        "the flowing BHP did not survive the JSON roundtrip"
+    );
+
+    assert!(original.step(0.02).succeeded());
+    assert!(restored.step(0.02).succeeded());
+    let a = original.snapshot();
+    let b = restored.snapshot();
+    assert_eq!(
+        a.well_bhp_bar, b.well_bhp_bar,
+        "the restored run re-solved a different flowing BHP"
+    );
+    for cell in 0..5 {
+        assert!(
+            (a.pressure[cell] - b.pressure[cell]).abs() < 1e-9,
+            "cell {cell} diverged after the restore: {} vs {}",
+            a.pressure[cell],
+            b.pressure[cell]
+        );
+    }
+
+    // A checkpoint written before the field existed restores unchanged.
+    let mut legacy = checkpoint.clone();
+    legacy.well_bhp_bar.clear();
+    let restored = CompositionalCase::restore(&legacy).expect("an old checkpoint must restore");
+    assert!(
+        restored.snapshot().well_bhp_bar.is_empty(),
+        "an old checkpoint must not invent a flowing pressure"
+    );
+
+    // A vector that does not name every well is refused, not silently truncated or padded.
+    let mut broken = checkpoint.clone();
+    broken.well_bhp_bar.pop();
+    match CompositionalCase::restore(&broken) {
+        Err(ConfigError::Rejected { field, .. }) => {
+            assert_eq!(field, "checkpoint.well_bhp_bar");
+        }
+        other => panic!(
+            "a mismatched flowing-BHP vector was accepted: {other:?}",
+            other = other.err()
+        ),
+    }
+}
+
 /// The uniform column is the geometry every validated case before #47 used, and adding a box grid
 /// must not move it: same faces, same order, same transmissibility, gravity off.
 #[test]

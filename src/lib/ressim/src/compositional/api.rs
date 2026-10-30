@@ -47,6 +47,10 @@ use crate::relperm::{SgofRow, SwofRow};
 /// at — the plan is explicit that an absent discriminator must not be read as compositional.
 pub const CASE_SCHEMA: &str = "ressim-compositional-case/1";
 /// The only checkpoint schema this build accepts.
+///
+/// Additive optional fields do not bump this: serde defaults a missing field and ignores an
+/// unknown one, so a `/1` payload from before `well_bhp_bar` restores unchanged. A bump is for a
+/// shape an older build would *misinterpret*, not one it can safely ignore.
 pub const CHECKPOINT_SCHEMA: &str = "ressim-compositional-checkpoint/1";
 
 /// Why a case could not be built. Every variant names the field that was wrong.
@@ -1051,6 +1055,7 @@ impl CompositionalCase {
             vapour_saturation,
             inventory,
             cumulative_well_moles: self.run.cumulative_well_moles().to_vec(),
+            well_bhp_bar: self.run.well_bhp_bar().to_vec(),
             water,
         }
     }
@@ -1104,6 +1109,7 @@ impl CompositionalCase {
                     .map(|c| c.water_saturation)
                     .collect()
             }),
+            well_bhp_bar: self.run.well_bhp_bar().to_vec(),
         }
     }
 
@@ -1169,6 +1175,29 @@ impl CompositionalCase {
             })?;
         case.run = CompositionalRun::new(state);
         case.run.set_time_days(checkpoint.time_days);
+        if !checkpoint.well_bhp_bar.is_empty() {
+            if checkpoint.well_bhp_bar.len() != case.config.wells.len() {
+                return Err(ConfigError::Rejected {
+                    field: "checkpoint.well_bhp_bar".to_string(),
+                    reason: format!(
+                        "carries {} values for {} wells",
+                        checkpoint.well_bhp_bar.len(),
+                        case.config.wells.len()
+                    ),
+                });
+            }
+            if checkpoint
+                .well_bhp_bar
+                .iter()
+                .any(|bhp| !bhp.is_finite() || *bhp <= 0.0)
+            {
+                return Err(ConfigError::Rejected {
+                    field: "checkpoint.well_bhp_bar".to_string(),
+                    reason: "every flowing BHP must be finite and positive".to_string(),
+                });
+            }
+            case.run.set_well_bhp_bar(checkpoint.well_bhp_bar.clone());
+        }
         Ok(case)
     }
 }
@@ -1263,6 +1292,10 @@ pub struct Snapshot {
     /// Per well, cumulative component moles. Positive into the reservoir. With water, each row
     /// has one more entry, water last.
     pub cumulative_well_moles: Vec<Vec<f64>>,
+    /// Per well, the BHP the accepted solve ran at [bar]. Empty before the first accepted step
+    /// and in snapshots from before C14's reporting.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub well_bhp_bar: Vec<f64>,
     /// The water phase, when the case has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub water: Option<WaterSnapshot>,
@@ -1288,4 +1321,8 @@ pub struct Checkpoint {
     /// Water saturation per cell, exactly when the case has water.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub water_saturation: Option<Vec<f64>>,
+    /// Per well, the accepted flowing BHP [bar]. Absent in checkpoints written before it existed;
+    /// restoring one without it re-solves the BHP at the next step.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub well_bhp_bar: Vec<f64>,
 }

@@ -786,9 +786,11 @@ class RuntimeStoreImpl {
             stop: { reason: message.reason === 'failed' ? 'failed' : 'completed', message: message.message },
         });
         // The 3D view and the spatial profile read the black-oil per-cell vocabulary; the record's
-        // own snapshots stay the source for everything compositional.
-        const wells = compositionalWellState(config);
-        this.history = record.snapshots.map((snapshot) => toSpatialSnapshot(snapshot, wells));
+        // own snapshots stay the source for everything compositional. Per-snapshot wells carry the
+        // flowing BHP, which changes over a rate-controlled run.
+        this.history = record.snapshots.map((snapshot) =>
+            toSpatialSnapshot(snapshot, compositionalWellState(config, snapshot)),
+        );
         this.currentIndex = this.history.length - 1;
         this.simTime = record.snapshots.at(-1)?.time_days ?? 0;
         if (message.reason === 'failed') {

@@ -32,6 +32,19 @@ describe('compositionalWellState', () => {
     });
 });
 
+describe('compositionalWellState flowing BHP', () => {
+    it('reports the snapshot pressure separately from the configured BHP target', () => {
+        const wells = compositionalWellState(config, { ...snapshot, well_bhp_bar: [149.25, 49.25] });
+        expect(wells.map((w) => w.bhp)).toEqual([150, 50]);
+        expect(wells.map((w) => w.flowing_bhp)).toEqual([149.25, 49.25]);
+    });
+
+    it('leaves flowing_bhp absent for a snapshot written before the field existed', () => {
+        const wells = compositionalWellState(config, snapshot);
+        expect(wells.every((w) => w.flowing_bhp === undefined)).toBe(true);
+    });
+});
+
 describe('toSpatialSnapshot', () => {
     const spatial = toSpatialSnapshot(snapshot, compositionalWellState(config));
 
