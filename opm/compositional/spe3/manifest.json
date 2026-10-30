@@ -1,12 +1,12 @@
 {
   "generator": "bash tools/opm_compositional/run-spe3.sh",
   "verify": "bash tools/opm_compositional/run-spe3.sh --check",
-  "generated_from_commit": "f8ccf5213f76cd3f66cd0c82aec6c37ae54a9ba4",
+  "generated_from_commit": "8f10e43d6b33756b48064d8b7feed8e895ca9342",
   "worktree_clean_at_generation": false,
-  "opm_common": "2026.04-1~noble",
+  "opm_common": "2026.04-1~resolute",
   "sha256": {
     "opm/compositional/spe3/reference.json": "97f9feff7e0e9e7802bbaddad0603eee42c5a1aa8a9b84e181eed4c2e1f61ab0",
-    "opm/compositional/spe3/ptflash.json": "7c066a4946d620cc076b6b400ce9c6e835a04bf3f9fb28ae9b9739ad6a999ab7",
+    "opm/compositional/spe3/ptflash.json": "cf1c46c8f083d5d4ec918360b6fdad262e6bb0d93d53c43825c67391a2c0b25a",
     "tools/jutul/spe3_reference.jl": "1644c5ea7820f4f62c0587c1be4d494e027abe0b5121a542e4f6de3e031ded79",
     "tools/opm_compositional/spe3_harness.cpp": "cfda871cbcb2e440ca40dae6d7029c8ed9b98b8ca6eecf35dfca21daf5192936",
     "tools/opm_compositional/ptflash_harness.cpp": "9a14ef6820334d6590b6afa1aeccf8556c2129095d3d0508fc5462e7df0b41bf",

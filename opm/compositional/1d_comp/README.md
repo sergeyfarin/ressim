@@ -7,6 +7,7 @@ five-cell 1D CO2 flood in CO2 / methane / decane — ResSim's own V1 fluid.
 | --- | --- |
 | Deck | `1D_COMP.DATA`, from [`OPM/opm-tests`](https://github.com/OPM/opm-tests) `compositional/`, © 2024 SINTEF Digital / TNO, Open Database License (notice retained in the file) |
 | Simulator | `flowexp_comp`, built by [`tools/opm_compositional/build-flowexp-comp.sh`](../../../tools/opm_compositional/build-flowexp-comp.sh) from `OPM/opm-simulators` `release/2026.04/final` (`b82f21d`) |
+| Build environment | Ubuntu 26.04 / g++ 15.2 / OPM `2026.04-1~resolute` since the 2026-10-29 re-baseline; see [`../README.md`](../README.md#build-environment) |
 | Regenerate | `bash tools/opm_compositional/run-1d-comp.sh`, and `run-refinement.sh` for `refined/` |
 | Verify unchanged | the same two scripts with `--check` |
 | Consumed by | `comp_reference_*` and `comp_refinement_*` in `src/lib/ressim/src/compositional/reference_tests.rs` |

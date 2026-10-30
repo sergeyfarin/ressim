@@ -56,3 +56,48 @@ and the case solve one fluid. See [`quarter_five_spot/README.md`](quarter_five_s
 
 Trajectory references for the black-oil path live in `../reference-decks/` and are a different
 simulator (`flow`) entirely.
+
+## Build environment
+
+Every fixture in this directory that comes out of OPM — the PTFlash fixture, `spe3/ptflash.json`
+and the `flowexp_comp` trajectories — was last regenerated or re-verified in this environment:
+
+| | |
+| --- | --- |
+| OS | Ubuntu 26.04.1 LTS (`resolute`) |
+| Compiler | `g++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0`, `-std=c++20` |
+| OPM packages | `libopm-common-dev`, `libopm-simulators-dev`, `libopm-grid-dev` `2026.04-1~resolute`, from the OPM PPA |
+| Dune | `libdune-common-dev` `2.11.0-1` (Ubuntu's own; no `~noble` suffix any more) |
+| `flowexp_comp` | rebuilt by `build-flowexp-comp.sh` from the same pinned `release/2026.04/final` (`b82f21d`), with the compiler above |
+
+The OPM release did not change: `2026.04` on both sides. The packaging (`~noble` → `~resolute`),
+Dune (`2.11.0-1~noble` → `2.11.0-1`) and the compiler (g++ 13.3 → 15.2) did. `manifest.json` and
+`spe3/manifest.json` record the same versions per generation.
+
+### Re-baseline of 2026-10-29
+
+Moved from Ubuntu 24.04 / g++ 13.3 / `2026.04-1~noble`. `bash scripts/validate-compositional.sh
+all` re-derives every fixture below from the new build and passes, and these are all the files that
+changed:
+
+- `ptflash_fixtures.json` — values move in the last digits, worst 3e-8 relative outside the
+  derivatives (`L` at `spe5_dew_stcond_t3e-4`, an absolute 3e-11). Twelve states changed how OPM
+  reached its answer, all recorded per state: `binary_p80` now converges on `ssi+newton`;
+  `ternary_p110`, `spe5_oil_p20` and three dew-sweep states fall back to plain `ssi`; and six
+  dew-sweep states moved between the 1e-12 and 1e-9 tolerance rungs. That moves the dew sweep's
+  derivative split from 26 OPM-checked / 7 difference-checked states to **24 / 9**
+  (`comp_domain_spe5_dew_sweep_matches_the_oracle`). The worst gaps did not move: 1.9e-9 against
+  OPM, 4.2e-9 against the difference, |ΔL| 3.7e-11 and |Δx|, |Δy| 1.4e-12. No bound changed.
+- `spe3/ptflash.json` — roundoff, worst 6e-13 relative.
+- `1d_comp/refined/n020/reference.json` — 32 saturations and mole fractions in the eighth
+  significant digit (worst 6e-10 absolute); pressure is unchanged. Its only consumer, the release
+  refinement study (`validate-compositional.sh refinement`), reproduces C12's recorded ladder to
+  every printed digit.
+
+Everything else `flowexp_comp` writes here (`1d_comp/`, `refined/n010`, `n040`, `skin/`, both
+depletions, `injection/`, `quarter_five_spot/`) and the convergence census reproduced byte for
+byte. `water_injection/` is a JutulDarcy reference and was not affected.
+
+Not re-run: the black-oil `flow` references under `../reference-decks/`. `libopm-simulators-bin`
+(which ships `/usr/bin/flow`) was not reinstalled by the upgrade, so their manifests still name
+`flow 2026.04 (Ubuntu 2026.04-1~noble)`, which is what produced them.
