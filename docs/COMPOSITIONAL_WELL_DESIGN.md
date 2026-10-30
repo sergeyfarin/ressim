@@ -248,9 +248,20 @@ rather than two.
   expects a report at a later time sees the smaller accepted `dt` and continues on the remainder —
   the worker session already steps on the remainder rather than counting engine calls as report
   steps.
+- **Short boundary intervals are attempted.** An event at day 1.0000005 after a daily report step
+  leaves a 5e-7 d interval, below the normal 1e-6 d minimum timestep. The schedule cap lowers the
+  retry floor for that explicitly requested interval, so Newton runs; refusing it would end the
+  run with `Budget` before any solve. A caller's own tiny `dt` is still governed by the configured
+  minimum.
 - **Order is data, not a sort.** Events must be in nondecreasing time order and a well may not have
-  two changes at the same instant. An ambiguous schedule is refused rather than silently reordered,
-  because two readings would otherwise give two answers.
+  two changes at any one instant — including when another well's event sits between them. An
+  ambiguous schedule is refused rather than silently reordered, because two readings would
+  otherwise give two answers.
+- **The schema is the capability guard.** A scheduled case uses
+  `ressim-compositional-case/2`, not the unscheduled `/1`. A build that predates schedules refuses
+  `/2` as an unsupported schema instead of deserializing the payload, ignoring its events and
+  running a different physical case. The checkpoint envelope stays `/1`, but its embedded `config`
+  carries `/2`, so an older build rejects a scheduled checkpoint through that config.
 - **`t = 0` is the initial condition.** Events at zero are applied when the case is built, so the
   base control need not be repeated as a first no-op event.
 - **Shut-in is a control.** `{"control":"shut-in"}` zeroes the source, keeps the completions, and
