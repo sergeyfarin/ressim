@@ -134,7 +134,34 @@ export type CompositionalWellControl =
       target_m3_per_day: number;
       phase: CompositionalSurfacePhase;
       bhp_limit_bar: number;
-    };
+    }
+  /** No flow. The well keeps its completions and can be opened again by a later event. */
+  | { control: 'shut-in' };
+
+/**
+ * What a scheduled event changes about a well's injected stream.
+ *
+ * `none` clears the prescribed stream; it does not turn the well into a producer by itself. A
+ * control and an injection change may travel in one event, which is how a WAG switch changes the
+ * target and the fluid together.
+ */
+export type CompositionalInjectionConfig =
+  | { injection: 'hydrocarbon'; composition: number[] }
+  | { injection: 'water' }
+  | { injection: 'none' };
+
+/**
+ * One scheduled well change. The envelope is shared with the black-oil schedule contract (#17):
+ * an absolute time, a well, and a flattened change.
+ */
+export interface CompositionalWellEvent {
+  time_days: number;
+  well: string;
+  /** Replace the control; absent leaves the current one in force. */
+  control?: CompositionalWellControl;
+  /** Replace the injected stream; absent leaves the current one in force. */
+  injection?: CompositionalInjectionConfig;
+}
 
 export interface CompositionalCompletion {
   cell: number;
@@ -161,6 +188,12 @@ export interface CompositionalCaseConfig {
   /** All `N` overall mole fractions. They must sum to one; nothing renormalizes them. */
   initial_composition: number[];
   wells: CompositionalWellConfig[];
+  /**
+   * Absolute-time changes to well controls and injected streams (#50). Base `wells` controls apply
+   * until the first event. Events are listed in nondecreasing time order; the engine refuses to
+   * sort an ambiguous schedule silently.
+   */
+  schedule?: CompositionalWellEvent[];
   gravity_enabled: boolean;
   /**
    * Initial pressure gradient [bar/m], positive downward from `grid.box_grid.top_depth_m`.
@@ -227,8 +260,9 @@ export interface CompositionalSnapshot {
   /** Per well, cumulative component moles. Positive into the reservoir. With water, water is last. */
   cumulative_well_moles: number[][];
   /**
-   * Per well, the BHP the accepted solve ran at [bar]. Absent before the first accepted step and
-   * in snapshots written before C14's reporting.
+   * Per well, the BHP the accepted solve ran at [bar], or zero while the well is shut in (and for
+   * a well just reopened by an event, until its first accepted step). Absent before the first
+   * accepted step and in snapshots written before C14's reporting.
    */
   well_bhp_bar?: number[];
   /** The water phase, when the case has one. */
@@ -245,10 +279,13 @@ export interface CompositionalCheckpoint {
   /** Water saturation per cell, exactly when the case has water. */
   water_saturation?: number[];
   /**
-   * Per well, the accepted flowing BHP [bar]. Absent in checkpoints written before it existed;
-   * restoring one without it re-solves the BHP at the next step.
+   * Per well, the accepted flowing BHP [bar]. Zero means shut in, or newly reopened before its
+   * first accepted step. Absent in checkpoints written before it existed; restoring one without
+   * it re-solves the BHP at the next step.
    */
   well_bhp_bar?: number[];
+  /** How many scheduled events had been applied at this state (#50). */
+  schedule_position?: number;
 }
 
 /** Turn an engine rejection into something a person can act on, without implementation jargon. */

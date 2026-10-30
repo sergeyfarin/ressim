@@ -13,8 +13,11 @@ import {
   type CompositionalBoxGridConfig,
   type CompositionalCaseConfig,
   type CompositionalFluidChoice,
+  type CompositionalInjectionConfig,
   type CompositionalRelPermConfig,
+  type CompositionalWaterConfig,
   type CompositionalWellConfig,
+  type CompositionalWellEvent,
 } from './types';
 
 /** Which engine a payload is asking for. */
@@ -91,6 +94,10 @@ export interface CompositionalCaseInput {
   initialComposition: number[];
   relperm: CompositionalRelPermConfig;
   wells: CompositionalWellConfig[];
+  /** Absolute-time well changes (#50). Base well controls apply until the first event. */
+  schedule?: CompositionalWellEvent[];
+  /** The immiscible water phase, when the case runs one (#46). Requires `stone-ii` relperm. */
+  water?: CompositionalWaterConfig;
   /** Rock compressibility; both default to the incompressible rock the validated cases use. */
   rockReferencePressureBar?: number;
   rockCompressibilityPerBar?: number;
@@ -99,6 +106,22 @@ export interface CompositionalCaseInput {
   boxGrid?: CompositionalBoxGridConfig;
   /** Initial pressure gradient [bar/m], positive downward. Needs `boxGrid`. */
   initialPressureGradientBarPerM?: number;
+}
+
+/** Copy an injected stream without sharing arrays with the caller's params object. */
+function copyInjection(injection: CompositionalInjectionConfig): CompositionalInjectionConfig {
+  return injection.injection === 'hydrocarbon'
+    ? { injection: 'hydrocarbon', composition: [...injection.composition] }
+    : { ...injection };
+}
+
+/** Copy one scheduled event, including whatever nested payload it carries. */
+function copyEvent(event: CompositionalWellEvent): CompositionalWellEvent {
+  return {
+    ...event,
+    ...(event.control ? { control: { ...event.control } } : {}),
+    ...(event.injection ? { injection: copyInjection(event.injection) } : {}),
+  };
 }
 
 /**
@@ -151,6 +174,12 @@ export function buildCompositionalCase(input: CompositionalCaseInput): Compositi
         ? { injection_composition: [...well.injection_composition] }
         : {}),
     })),
+    ...(input.schedule?.length
+      ? { schedule: input.schedule.map(copyEvent) }
+      : {}),
+    ...(input.water
+      ? { water: { ...input.water } }
+      : {}),
     gravity_enabled: input.gravityEnabled ?? false,
     ...(input.initialPressureGradientBarPerM !== undefined
       ? { initial_pressure_gradient_bar_per_m: input.initialPressureGradientBarPerM }

@@ -54,6 +54,7 @@ fn valid_config() -> CaseConfig {
                 inject_water: false,
             },
         ],
+        schedule: Vec::new(),
         gravity_enabled: false,
         initial_pressure_gradient_bar_per_m: None,
         water: None,

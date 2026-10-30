@@ -3514,6 +3514,7 @@ fn run_quarter_five_spot(molar_rate: f64) -> super::api::CompositionalCase {
         initial_pressure_bar: quarter_five_spot::INITIAL_PRESSURE_BAR,
         initial_composition: quarter_five_spot::INITIAL_Z.to_vec(),
         wells: Vec::new(),
+        schedule: Vec::new(),
         gravity_enabled: false,
         initial_pressure_gradient_bar_per_m: None,
         water: None,

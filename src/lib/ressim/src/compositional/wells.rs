@@ -96,6 +96,11 @@ pub enum WellControl {
         phase: SurfacePhase,
         bhp_limit_bar: f64,
     },
+    /// No flow. The well keeps its completions and can be opened again by a later schedule event.
+    ///
+    /// This is a control rather than a removed well because schedule position and per-well
+    /// cumulative production are indexed by well, and a well that disappears would renumber both.
+    ShutIn,
 }
 
 /// Which surface stream a volumetric target refers to.
@@ -355,6 +360,7 @@ pub fn initial_bhp_guesses(
                 bhp_limit_bar,
                 ..
             } => rate_initial_bhp(well, cells, *target_m3_per_day, *bhp_limit_bar),
+            WellControl::ShutIn => 0.0,
         })
         .collect()
 }
@@ -887,6 +893,14 @@ pub fn evaluate_well_control(
             RateMeasure::Surface(*phase),
             bhp_bar,
         ),
+        WellControl::ShutIn => Ok(WellEvaluation {
+            result: WellResult {
+                completions: Vec::new(),
+                bhp_bar: 0.0,
+                on_bhp_limit: false,
+            },
+            constraint: None,
+        }),
     }
 }
 
@@ -1337,6 +1351,11 @@ pub fn well_source(
                 move |result, spec| surface_rate(spec, relperm, &well.id, result, phase),
             )
         }
+        WellControl::ShutIn => Ok(WellResult {
+            completions: Vec::new(),
+            bhp_bar: 0.0,
+            on_bhp_limit: false,
+        }),
     }
 }
 
