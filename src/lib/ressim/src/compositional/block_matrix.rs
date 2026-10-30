@@ -3,8 +3,9 @@
 //!
 //! Each cell carries `N` equations and `N` primaries, and a cell's equations depend only on its own
 //! primaries and on those of the cells it shares a face with. Wells add only to the connected
-//! cell's own block — V1 has no well unknowns, so there is no well row and no well column. The
-//! pattern is therefore the face graph plus the diagonal, fixed for the whole run, and storing it
+//! cell's own block — a rate-controlled well's BHP unknown is eliminated locally before the
+//! linear solve, so there is no well row and no well column here. The pattern is therefore the
+//! face graph plus the diagonal, fixed for the whole run, and storing it
 //! as blocks rather than scalars keeps the cell structure that the CPR preconditioner and the
 //! block-ILU smoother both work on.
 //!

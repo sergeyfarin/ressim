@@ -11,8 +11,11 @@ use std::time::Instant;
 
 use super::accumulation::cell_accumulation;
 use super::flux::{Gravity, face_flux};
+use super::layout::CompositionalLayout;
 use super::relperm::RelativePermeabilityModel;
-use super::state::{CompositionalCellState, RockView};
+use super::state::{CompositionalCellState, CompositionalState, RockView};
+use super::timestep::{CompositionalRun, TimestepOptions};
+use super::wells::{CompositionalWell, WellControl, well_source_at_bhp};
 use crate::fluid::derivatives::flash_derivatives;
 use crate::fluid::flash::{PhaseState, flash};
 use crate::fluid::pinned;
@@ -248,4 +251,91 @@ fn comp_cost_per_cell_kernels_by_component_count() {
         });
         println!("{name:<20} {flash_us:>10.1} {derivs_us:>12.1} {acc_us:>14.1} {face_us:>12.1}");
     }
+}
+
+/// The C14 acceptance measurement: three report steps of a single-cell rate-controlled producer
+/// against the same case on BHP control. Run in release:
+///
+/// ```text
+/// cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib comp_cost_rate_ -- --ignored --nocapture
+/// ```
+///
+/// The assertion is a loose same-order bound, not a performance budget: the point is that rate
+/// control no longer contains a 41-step bisection per Jacobian evaluation. The exact ratios and
+/// the machine they were measured on belong in `docs/COMPOSITIONAL_VALIDATION.md`.
+#[test]
+#[ignore]
+fn comp_cost_rate_controlled_against_bhp_controlled() {
+    let spec = pinned::ternary().unwrap();
+    let layout = CompositionalLayout::new(3, 1, 1, 1).unwrap();
+    let compose = || {
+        CompositionalState::new(
+            &layout,
+            vec![CompositionalCellState::new(220.0, vec![0.2, 0.5]).unwrap()],
+        )
+        .unwrap()
+    };
+    let pore_volumes = vec![1000.0];
+    let rock = RockView {
+        pore_volume_ref_m3: &pore_volumes,
+        reference_pressure_bar: 200.0,
+        compressibility_per_bar: 4.0e-5,
+    };
+    let well_index = 8.526_988_8e-3 * 2.0 * std::f64::consts::PI * 100.0 * 10.0 / 5.3 * 1e-3;
+    let bhp_well =
+        CompositionalWell::single("P1", 0, well_index, WellControl::Bhp { target_bar: 180.0 });
+    let reference = well_source_at_bhp(
+        &spec,
+        &RelativePermeabilityModel::Linear,
+        &bhp_well,
+        &[CompositionalCellState::new(220.0, vec![0.2, 0.5]).unwrap()],
+        180.0,
+    )
+    .unwrap();
+    let target = reference.total_moles_per_day();
+    let rate_well = CompositionalWell::single(
+        "P1",
+        0,
+        well_index,
+        WellControl::MolarRate {
+            target_mol_per_day: target,
+            bhp_limit_bar: 50.0,
+        },
+    );
+
+    let run = |well: &CompositionalWell| {
+        let mut run = CompositionalRun::new(compose());
+        let sources = vec![vec![0.0; 3]];
+        let start = Instant::now();
+        for _ in 0..3 {
+            let report = run.step(
+                &spec,
+                &layout,
+                &rock,
+                &RelativePermeabilityModel::Linear,
+                &[],
+                std::slice::from_ref(well),
+                &sources,
+                0.25,
+                TimestepOptions::default(),
+            );
+            assert!(report.succeeded(), "{report:?}");
+        }
+        start.elapsed().as_secs_f64()
+    };
+
+    // Warm the flash path so the first call does not pay for cold instruction caches.
+    let _ = run(&bhp_well);
+    let bhp_seconds = run(&bhp_well);
+    let rate_seconds = run(&rate_well);
+    let ratio = rate_seconds / bhp_seconds.max(1e-12);
+    println!(
+        "three 0.25 d single-cell steps:\n  BHP control  {bhp_seconds:.3} s\n  rate control \
+         {rate_seconds:.3} s\n  ratio        {ratio:.2}x"
+    );
+    assert!(
+        ratio < 8.0,
+        "rate control costs {ratio:.2}x a BHP-controlled step; the C14 acceptance is the same \
+         order, not a bisection per assembly"
+    );
 }

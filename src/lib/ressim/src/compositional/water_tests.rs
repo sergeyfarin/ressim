@@ -25,7 +25,9 @@ use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalCellState, CompositionalState, RockView, StateError};
 use super::timestep::{CompositionalRun, TimestepOptions};
 use super::water::{StoneTwoRelPerm, WaterError, WaterModel, WaterProperties};
-use super::wells::{CompositionalWell, InjectedFluid, WellControl};
+use super::wells::{
+    CompositionalWell, InjectedFluid, SurfacePhase, WellControl, well_source_at_bhp,
+};
 use crate::fluid::pinned;
 use crate::fluid::specification::FluidSpecification;
 use crate::relperm::{RockFluidPropsThreePhase, SgofRow, SwofRow, ThreePhaseScalTables};
@@ -835,7 +837,7 @@ fn comp_water_injection_into_hydrocarbon_cells_balances_against_the_wells() {
         false,
     );
     let mut injector =
-        CompositionalWell::single("WINJ", 0, 3.0, WellControl::Bhp { target_bar: 260.0 });
+        CompositionalWell::single("WINJ", 0, 0.3, WellControl::Bhp { target_bar: 260.0 });
     injector.injection = Some(InjectedFluid::Water);
     let producer =
         CompositionalWell::single("PROD", 4, 3.0, WellControl::Bhp { target_bar: 150.0 });
@@ -860,6 +862,59 @@ fn comp_water_injection_into_hydrocarbon_cells_balances_against_the_wells() {
     assert!(cumulative[0][0] == 0.0 && cumulative[0][1] == 0.0);
     assert!(cumulative[1][0] < 0.0 && cumulative[1][1] < 0.0);
     assert!(run.run.state().cell(0).water_saturation > 0.3);
+}
+
+/// A water injector on a surface-rate target. This is the water-side half of #48: the rate row's
+/// gradient has one entry for water in the `N+1` block, and the BHP unknown is eliminated exactly
+/// as it is for a hydrocarbon well.
+#[test]
+fn comp_water_rate_controlled_injector_holds_its_surface_target() {
+    let relperm = water_relperm(realistic_tables());
+    let grid = column(
+        pinned::binary().unwrap(),
+        &[200.0; 5],
+        &[0.15; 5],
+        &[0.6],
+        false,
+    );
+    let mut bhp_well =
+        CompositionalWell::single("WINJ", 0, 0.3, WellControl::Bhp { target_bar: 260.0 });
+    bhp_well.injection = Some(InjectedFluid::Water);
+    let at_bhp =
+        well_source_at_bhp(&grid.spec, &relperm, &bhp_well, grid.state.cells(), 260.0).unwrap();
+    let water_moles = at_bhp.total_component_moles_per_day(3)[2];
+    assert!(water_moles > 0.0);
+    let target_volume = water_properties().surface_volume_m3(water_moles);
+
+    let mut rate_well = CompositionalWell::single(
+        "WINJ",
+        0,
+        0.3,
+        WellControl::SurfaceRate {
+            target_m3_per_day: target_volume,
+            phase: SurfacePhase::Water,
+            bhp_limit_bar: 400.0,
+        },
+    );
+    rate_well.injection = Some(InjectedFluid::Water);
+    let producer =
+        CompositionalWell::single("PROD", 4, 3.0, WellControl::Bhp { target_bar: 150.0 });
+    let wells = [rate_well, producer];
+
+    let mut run = run_on(grid);
+    assert!(run.step(&relperm, &wells, 0.01));
+    let cumulative = run.run.cumulative_well_moles();
+    let injected_moles = cumulative[0][2];
+    let achieved_volume =
+        water_properties().surface_volume_m3(injected_moles) / run.run.time_days();
+    assert!(
+        (achieved_volume - target_volume).abs() / target_volume < 1e-7,
+        "injected {achieved_volume} m³/day against a target of {target_volume}"
+    );
+    assert!(
+        run.run.well_bhp_bar()[0] > 200.0,
+        "the water injector should have solved a BHP above the cell pressure"
+    );
 }
 
 /// Hydrocarbon injected into nearly water-filled cells: the small-hydrocarbon limit. The step bound

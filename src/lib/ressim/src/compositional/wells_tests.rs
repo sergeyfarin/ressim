@@ -3,15 +3,17 @@
 //! The gates are internal invariants, because no external well oracle exists — see
 //! `docs/COMPOSITIONAL_WELL_DESIGN.md`, "Provenance". Nothing here claims agreement with OPM.
 
-use super::assembly::Face;
+use super::assembly::{Face, assemble, assemble_with_well_bhp};
 use super::flux::Gravity;
 use super::layout::CompositionalLayout;
+use super::linear::solve_dense;
 use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalCellState, CompositionalState, RockView};
 use super::timestep::{CompositionalRun, TimestepOptions};
 use super::wells::{
-    Completion, CompositionalWell, InjectedFluid, SurfacePhase, WellControl, WellError, WellResult,
-    WellSource, well_source, well_source_at_bhp,
+    Completion, CompositionalWell, InjectedFluid, RateMeasure, SurfacePhase, WellControl,
+    WellError, WellResult, WellSource, evaluate_well_control, rate_constraint_at_bhp,
+    take_well_source_evaluations, well_source, well_source_at_bhp,
 };
 use crate::fluid::flash::{PhaseState, flash};
 use crate::fluid::specification::{FluidSpecification, SurfaceConditions};
@@ -1142,4 +1144,409 @@ fn comp_well_a_well_without_completions_is_rejected() {
         well_source(&spec, &relperm(), &well, &three_cells(200.0)),
         Err(WellError::NoCompletions { .. })
     ));
+}
+
+// ---------------------------------------------------------------------------------------------
+// The rate equation (C14, #48)
+// ---------------------------------------------------------------------------------------------
+
+/// The rate row and its BHP column against finite differences, for both a molar and a surface
+/// target. This is the derivative the Newton system uses to eliminate the BHP unknown; an
+/// approximate one would converge, but this is exact and is checked as such.
+#[test]
+fn comp_well_rate_constraint_jacobian_matches_finite_differences() {
+    let spec = spec_with_surface();
+    let base_cell = cell(200.0, &[0.2, 0.5]);
+    let well = producer(180.0);
+    let n = spec.component_count();
+
+    let mut worst = (0.0f64, String::new());
+    for (name, measure) in [
+        ("molar", RateMeasure::Molar),
+        ("surface vapour", RateMeasure::Surface(SurfacePhase::Vapour)),
+        ("surface total", RateMeasure::Surface(SurfacePhase::Total)),
+    ] {
+        let probe = rate_constraint_at_bhp(
+            &spec,
+            &relperm(),
+            &well,
+            &one(base_cell.clone()),
+            180.0,
+            0.0,
+            measure,
+        )
+        .unwrap();
+        let target = probe.achieved;
+        let base = rate_constraint_at_bhp(
+            &spec,
+            &relperm(),
+            &well,
+            &one(base_cell.clone()),
+            180.0,
+            target,
+            measure,
+        )
+        .unwrap();
+        assert!(
+            base.residual.abs() < 1e-9,
+            "{name}: the probe is not its own target"
+        );
+
+        let hb = 1e-4;
+        let up = rate_constraint_at_bhp(
+            &spec,
+            &relperm(),
+            &well,
+            &one(base_cell.clone()),
+            180.0 + hb,
+            target,
+            measure,
+        )
+        .unwrap();
+        let down = rate_constraint_at_bhp(
+            &spec,
+            &relperm(),
+            &well,
+            &one(base_cell.clone()),
+            180.0 - hb,
+            target,
+            measure,
+        )
+        .unwrap();
+        let fd = (up.residual - down.residual) / (2.0 * hb);
+        let error = (base.bhp_derivative - fd).abs() / fd.abs().max(1e-6);
+        if error > worst.0 {
+            worst = (error, format!("{name}/dbhp"));
+        }
+
+        let hp = 1e-4;
+        let up = rate_constraint_at_bhp(
+            &spec,
+            &relperm(),
+            &well,
+            &one(cell(200.0 + hp, &[0.2, 0.5])),
+            180.0,
+            target,
+            measure,
+        )
+        .unwrap();
+        let down = rate_constraint_at_bhp(
+            &spec,
+            &relperm(),
+            &well,
+            &one(cell(200.0 - hp, &[0.2, 0.5])),
+            180.0,
+            target,
+            measure,
+        )
+        .unwrap();
+        let fd = (up.residual - down.residual) / (2.0 * hp);
+        let analytic = base.cell_jacobian[0].1[0];
+        let error = (analytic - fd).abs() / fd.abs().max(1e-6);
+        if error > worst.0 {
+            worst = (error, format!("{name}/dp"));
+        }
+
+        for k in 0..(n - 1) {
+            let hz = 1e-6;
+            let mut zp = vec![0.2, 0.5];
+            let mut zm = vec![0.2, 0.5];
+            zp[k] += hz;
+            zm[k] -= hz;
+            let up = rate_constraint_at_bhp(
+                &spec,
+                &relperm(),
+                &well,
+                &one(cell(200.0, &zp)),
+                180.0,
+                target,
+                measure,
+            )
+            .unwrap();
+            let down = rate_constraint_at_bhp(
+                &spec,
+                &relperm(),
+                &well,
+                &one(cell(200.0, &zm)),
+                180.0,
+                target,
+                measure,
+            )
+            .unwrap();
+            let fd = (up.residual - down.residual) / (2.0 * hz);
+            let analytic = base.cell_jacobian[0].1[1 + k];
+            let error = (analytic - fd).abs() / fd.abs().max(1e-6);
+            if error > worst.0 {
+                worst = (error, format!("{name}/dz{k}"));
+            }
+        }
+    }
+
+    assert!(
+        worst.0 < 1e-5,
+        "the rate-constraint Jacobian disagrees with FD: worst {:e} at {}",
+        worst.0,
+        worst.1
+    );
+}
+
+/// **C14's acceptance.** A rate-controlled step now holds the target through the Newton system
+/// rather than by a bisection inside assembly, and the accepted rate is the target.
+#[test]
+fn comp_well_rate_control_holds_its_target_through_the_newton_system() {
+    let spec = pinned::ternary().unwrap();
+    let layout = CompositionalLayout::new(3, 1, 1, 1).unwrap();
+    let state = CompositionalState::new(&layout, vec![cell(220.0, &[0.2, 0.5])]).unwrap();
+    let pore_volumes = vec![1000.0];
+    let rock = RockView {
+        pore_volume_ref_m3: &pore_volumes,
+        reference_pressure_bar: 200.0,
+        compressibility_per_bar: 4.0e-5,
+    };
+
+    // Scale the well index down so 0.25 d does not drain the 1000 m3 cell in one step: this test
+    // is about holding a rate, not about a rate that the limit legitimately cannot sustain.
+    let well_index = WELL_INDEX * 1e-3;
+    let reference = well_source_at_bhp(
+        &spec,
+        &relperm(),
+        &CompositionalWell::single("P1", 0, well_index, WellControl::Bhp { target_bar: 180.0 }),
+        &one(cell(220.0, &[0.2, 0.5])),
+        180.0,
+    )
+    .unwrap();
+    let target = reference.total_moles_per_day();
+    let well = CompositionalWell::single(
+        "P1",
+        0,
+        well_index,
+        WellControl::MolarRate {
+            target_mol_per_day: target,
+            bhp_limit_bar: 50.0,
+        },
+    );
+
+    let mut run = CompositionalRun::new(state);
+    let sources = vec![vec![0.0; 3]];
+    for step in 0..3 {
+        let report = run.step(
+            &spec,
+            &layout,
+            &rock,
+            &relperm(),
+            &[],
+            std::slice::from_ref(&well),
+            &sources,
+            0.25,
+            TimestepOptions::default(),
+        );
+        assert!(report.succeeded(), "step {step}: {report:?}");
+        let newton = &report.attempts.last().unwrap().newton;
+        let achieved: f64 = newton.accepted_well_rates[0].iter().sum();
+        assert!(
+            rel(achieved, target) < 1e-7,
+            "step {step}: accepted rate {achieved} against target {target}"
+        );
+        assert!(
+            newton.accepted_well_bhp[0] > 50.0,
+            "step {step}: BHP {} hit the limit, so the target was not the operative control",
+            newton.accepted_well_bhp[0]
+        );
+    }
+    assert!(run.state().cell(0).pressure_bar < 220.0);
+    assert_eq!(run.well_bhp_bar().len(), 1);
+}
+
+/// Control selection uses the black-oil rule: a target within 5% of what the limit can deliver is
+/// BHP-limited, and only outside that band does the rate equation take over. Without the margin a
+/// well sitting exactly at capacity flips control mode every Newton iterate.
+#[test]
+fn comp_well_rate_limit_switches_with_hysteresis() {
+    let spec = pinned::ternary().unwrap();
+    let c = one(cell(200.0, &[0.2, 0.5]));
+    let at_limit = well_source_at_bhp(&spec, &relperm(), &producer(150.0), &c, 150.0).unwrap();
+    let capacity = at_limit.total_moles_per_day();
+    assert!(capacity < 0.0);
+
+    // 3% short of capacity: inside the 5% band, so the limit still controls.
+    let inside = CompositionalWell::single(
+        "P1",
+        0,
+        WELL_INDEX,
+        WellControl::MolarRate {
+            target_mol_per_day: capacity / 1.03,
+            bhp_limit_bar: 150.0,
+        },
+    );
+    let evaluation = evaluate_well_control(&spec, &relperm(), &inside, &c, 180.0).unwrap();
+    assert!(evaluation.result.on_bhp_limit);
+    assert_eq!(evaluation.result.bhp_bar, 150.0);
+    assert!(evaluation.constraint.is_none());
+
+    // 10% short: outside the band, so the rate equation is active again.
+    let outside = CompositionalWell::single(
+        "P1",
+        0,
+        WELL_INDEX,
+        WellControl::MolarRate {
+            target_mol_per_day: capacity / 1.10,
+            bhp_limit_bar: 150.0,
+        },
+    );
+    let evaluation = evaluate_well_control(&spec, &relperm(), &outside, &c, 180.0).unwrap();
+    assert!(!evaluation.result.on_bhp_limit);
+    assert!(evaluation.constraint.is_some());
+}
+
+/// The cost claim, as an assertion: an active rate control evaluates two well sources per
+/// assembly — one at the limit to choose the control, one at the Newton BHP — not the ~41 of the
+/// old bisection. A BHP-controlled well evaluates one.
+#[test]
+fn comp_well_rate_control_uses_two_source_evaluations_not_a_bisection() {
+    let spec = pinned::ternary().unwrap();
+    let layout = CompositionalLayout::new(3, 1, 1, 1).unwrap();
+    let state = CompositionalState::new(&layout, vec![cell(220.0, &[0.2, 0.5])]).unwrap();
+    let rock = RockView {
+        pore_volume_ref_m3: &[1000.0],
+        reference_pressure_bar: 200.0,
+        compressibility_per_bar: 4.0e-5,
+    };
+    let previous = vec![
+        super::accumulation::cell_inventory(&spec, &rock, 0, state.cell(0))
+            .unwrap()
+            .0
+            .component_moles,
+    ];
+    let sources = vec![vec![0.0; 3]];
+
+    let rate_well = CompositionalWell::single(
+        "P1",
+        0,
+        WELL_INDEX,
+        WellControl::MolarRate {
+            target_mol_per_day: -1.0e3,
+            bhp_limit_bar: 50.0,
+        },
+    );
+    let _ = take_well_source_evaluations();
+    let result = assemble(
+        &spec,
+        &layout,
+        &rock,
+        &relperm(),
+        &state,
+        &[],
+        std::slice::from_ref(&rate_well),
+        &previous,
+        &sources,
+        1.0,
+    )
+    .unwrap();
+    assert_eq!(result.well_eliminations.len(), 1);
+    assert_eq!(
+        take_well_source_evaluations(),
+        2,
+        "rate control must cost one limit check and one rate evaluation per assembly"
+    );
+
+    let bhp_well = producer(180.0);
+    let _ = assemble(
+        &spec,
+        &layout,
+        &rock,
+        &relperm(),
+        &state,
+        &[],
+        std::slice::from_ref(&bhp_well),
+        &previous,
+        &sources,
+        1.0,
+    )
+    .unwrap();
+    assert_eq!(
+        take_well_source_evaluations(),
+        1,
+        "a BHP-controlled well must evaluate once per assembly"
+    );
+}
+
+/// The local Schur elimination is algebra, not an approximation: its reduced correction and
+/// recovered BHP update equal the dense solution of the full cell-plus-well system.
+#[test]
+fn comp_well_rate_schur_correction_equals_the_full_dense_solve() {
+    let spec = pinned::ternary().unwrap();
+    let layout = CompositionalLayout::new(3, 1, 1, 1).unwrap();
+    let state = CompositionalState::new(&layout, vec![cell(220.0, &[0.2, 0.5])]).unwrap();
+    let rock = RockView {
+        pore_volume_ref_m3: &[1000.0],
+        reference_pressure_bar: 200.0,
+        compressibility_per_bar: 4.0e-5,
+    };
+    let previous = vec![
+        super::accumulation::cell_inventory(&spec, &rock, 0, state.cell(0))
+            .unwrap()
+            .0
+            .component_moles,
+    ];
+    let well = CompositionalWell::single(
+        "P1",
+        0,
+        WELL_INDEX * 1e-3,
+        WellControl::MolarRate {
+            target_mol_per_day: -1.0e3,
+            bhp_limit_bar: 50.0,
+        },
+    );
+    let assembled = assemble_with_well_bhp(
+        &spec,
+        &layout,
+        &rock,
+        &relperm(),
+        &state,
+        &[],
+        std::slice::from_ref(&well),
+        &previous,
+        &[vec![0.0; 3]],
+        1.0,
+        &[180.0],
+    )
+    .unwrap();
+    let elimination = &assembled.well_eliminations[0];
+    let n = 3;
+
+    let mut full = vec![vec![0.0; n + 1]; n + 1];
+    for row in 0..n {
+        for column in 0..n {
+            full[row][column] = assembled.jacobian.get(row, column);
+        }
+        full[row][n] = elimination.cell_bhp_column[row];
+    }
+    for column in 0..n {
+        full[n][column] = elimination.cell_jacobian[0].1[column];
+    }
+    full[n][n] = elimination.bhp_derivative;
+    let mut full_rhs: Vec<f64> = assembled.residual.iter().map(|r| -r).collect();
+    full_rhs.push(-elimination.residual);
+    let mut full_correction = full_rhs.clone();
+    solve_dense(&mut full, &mut full_correction);
+
+    let (reduced, residual) = assembled.reduce_well_unknowns().unwrap();
+    let reduced_rhs: Vec<f64> = residual.iter().map(|r| -r).collect();
+    let mut reduced_correction = reduced_rhs.clone();
+    solve_dense(&mut reduced.to_dense(), &mut reduced_correction);
+    let bhp_correction = assembled.recover_well_updates(&reduced_correction).unwrap()[0];
+
+    for i in 0..n {
+        assert!(
+            (full_correction[i] - reduced_correction[i]).abs() < 1e-10,
+            "cell correction {i}: full {} vs reduced {}",
+            full_correction[i],
+            reduced_correction[i]
+        );
+    }
+    assert!(
+        (full_correction[n] - bhp_correction).abs() < 1e-10,
+        "BHP correction: full {} vs recovered {bhp_correction}",
+        full_correction[n]
+    );
 }

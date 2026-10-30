@@ -46,11 +46,14 @@
 
 use crate::fluid::specification::FluidSpecification;
 
-use super::assembly::{AssemblyError, AssemblyResult, Face, assemble};
+use super::assembly::{AssemblyError, AssemblyResult, Face, assemble_with_well_bhp};
 use super::layout::{CellPrimary, CompositionalLayout};
 use super::linear::{self, LinearFailure, LinearOptions, LinearSolveReport};
 use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalState, RockView, StateError, TrialState};
+use super::wells::{
+    BHP_SEARCH_MAX_BAR, BHP_SEARCH_MIN_BAR, CompositionalWell, WellControl, initial_bhp_guesses,
+};
 
 /// How close to the domain boundary a step is allowed to land.
 ///
@@ -140,6 +143,8 @@ pub struct NewtonReport {
     /// however much the rate moved during the step, which for a BHP well against a pressurizing
     /// cell is not small.
     pub accepted_well_rates: Vec<Vec<f64>>,
+    /// Each well's BHP at the accepted state, in the order the wells were given.
+    pub accepted_well_bhp: Vec<f64>,
 }
 
 /// Convergence and iteration settings.
@@ -276,6 +281,55 @@ fn fraction_to_boundary(
     Ok(tau.clamp(0.0, 1.0))
 }
 
+/// The BHP part of the fraction-to-boundary bound.
+///
+/// A rate-controlled well's BHP is a Newton unknown, so the step must keep it positive and inside
+/// the same interval the control uses. Clipping at the limit is not a substitute for the control
+/// switch — the next assembly makes that decision from the cell state — but it stops a linear
+/// correction overshooting into a pressure the well could never run at.
+fn well_fraction_to_boundary(
+    wells: &[CompositionalWell],
+    eliminations: &[super::assembly::WellElimination],
+    current_bhp: &[f64],
+    direction: &[f64],
+) -> f64 {
+    let mut tau = 1.0f64;
+    for (index, elimination) in eliminations.iter().enumerate() {
+        let dbhp = direction[index];
+        if dbhp == 0.0 || !dbhp.is_finite() {
+            continue;
+        }
+        let bhp = current_bhp[elimination.well];
+        let well = &wells[elimination.well];
+        let (limit, injecting) = match &well.control {
+            WellControl::MolarRate {
+                target_mol_per_day,
+                bhp_limit_bar,
+            } => (*bhp_limit_bar, *target_mol_per_day > 0.0),
+            WellControl::SurfaceRate {
+                target_m3_per_day,
+                bhp_limit_bar,
+                ..
+            } => (*bhp_limit_bar, *target_m3_per_day > 0.0),
+            WellControl::Bhp { .. } => continue,
+        };
+
+        // Positivity, and the absolute search interval.
+        if dbhp < 0.0 {
+            tau = tau.min(FRACTION_TO_BOUNDARY * (bhp - BHP_SEARCH_MIN_BAR) / -dbhp);
+        } else {
+            tau = tau.min(FRACTION_TO_BOUNDARY * (BHP_SEARCH_MAX_BAR - bhp) / dbhp);
+        }
+        // The control's limit is the hard end on the direction the well is allowed to move.
+        if injecting && dbhp > 0.0 {
+            tau = tau.min(FRACTION_TO_BOUNDARY * (limit - bhp) / dbhp);
+        } else if !injecting && dbhp < 0.0 {
+            tau = tau.min(FRACTION_TO_BOUNDARY * (bhp - limit) / -dbhp);
+        }
+    }
+    tau.clamp(0.0, 1.0)
+}
+
 /// Apply a scaled direction to produce a trial.
 fn apply_step(
     layout: &CompositionalLayout,
@@ -329,13 +383,15 @@ pub fn solve_newton(
         min_pivot: f64::INFINITY,
         linear_history: Vec::new(),
         accepted_well_rates: Vec::new(),
+        accepted_well_bhp: Vec::new(),
     };
     let mut current = state.clone();
+    let mut current_bhp = initial_bhp_guesses(problem.wells, current.cells());
 
     for iteration in 1..=options.max_iterations {
         report.iterations = iteration;
 
-        let assembled = match assemble_at(problem, &current) {
+        let assembled = match assemble_at(problem, &current, &current_bhp) {
             Ok(a) => a,
             Err(e) => return (Err(NewtonError::Assembly(e)), report),
         };
@@ -344,8 +400,17 @@ pub fn solve_newton(
 
         if norm <= options.tolerance {
             report.accepted_well_rates = assembled.well_rates;
+            report.accepted_well_bhp = assembled.well_bhp;
             return (Ok(current), report);
         }
+
+        // Eliminate the active rate-control BHPs before the linear solve. The reduced system is
+        // still the cell block, so the linear route and CPR see the matrix shape they always did;
+        // the BHP correction is recovered from the same constraint row afterwards.
+        let (mut matrix, mut residual) = match assembled.reduce_well_unknowns() {
+            Ok(system) => system,
+            Err(e) => return (Err(NewtonError::Assembly(e)), report),
+        };
 
         // Scale the rows before solving. The unscaled system spans many orders of magnitude
         // between a large component and a trace one, and pivoting on it would select pivots by
@@ -356,11 +421,9 @@ pub fn solve_newton(
             .iter()
             .flat_map(|s| s.row_scale.iter().copied())
             .collect();
-        let mut matrix = assembled.jacobian;
         matrix.scale_rows(&row_scale);
-        let rhs: Vec<f64> = assembled
-            .residual
-            .iter()
+        let rhs: Vec<f64> = residual
+            .drain(..)
             .zip(&row_scale)
             .map(|(r, s)| -r / s)
             .collect();
@@ -390,11 +453,21 @@ pub fn solve_newton(
             Ok(x) => x,
             Err(e) => return (Err(NewtonError::Linear(e)), report),
         };
+        let bhp_updates = match assembled.recover_well_updates(&rhs) {
+            Ok(u) => u,
+            Err(e) => return (Err(NewtonError::Assembly(e)), report),
+        };
 
         let tau = match fraction_to_boundary(problem.layout, &current, &rhs) {
             Ok(t) => t,
             Err(e) => return (Err(e), report),
         };
+        let tau = tau.min(well_fraction_to_boundary(
+            problem.wells,
+            &assembled.well_eliminations,
+            &assembled.well_bhp,
+            &bhp_updates,
+        ));
         report.step_scale_history.push(tau);
         if tau <= 0.0 {
             return (
@@ -406,11 +479,16 @@ pub fn solve_newton(
             );
         }
 
+        let mut next_bhp = assembled.well_bhp.clone();
+        for (index, elimination) in assembled.well_eliminations.iter().enumerate() {
+            next_bhp[elimination.well] += tau * bhp_updates[index];
+        }
         let trial = apply_step(problem.layout, &current, &rhs, tau);
         current = match trial.commit() {
             Ok(s) => s,
             Err(e) => return (Err(NewtonError::State(e)), report),
         };
+        current_bhp = next_bhp;
     }
 
     let last = report.residual_history.last().copied().unwrap_or(f64::NAN);
@@ -426,8 +504,9 @@ pub fn solve_newton(
 fn assemble_at(
     problem: &NewtonProblem<'_>,
     state: &CompositionalState,
+    well_bhp: &[f64],
 ) -> Result<AssemblyResult, AssemblyError> {
-    assemble(
+    assemble_with_well_bhp(
         problem.spec,
         problem.layout,
         &problem.rock,
@@ -438,6 +517,7 @@ fn assemble_at(
         problem.previous_moles,
         problem.sources,
         problem.dt_days,
+        well_bhp,
     )
 }
 

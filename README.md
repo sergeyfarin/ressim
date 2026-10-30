@@ -240,7 +240,7 @@ reference solving the same discrete model, and the commit it was measured on. Th
 | Generated decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | sweep-combined: sparse.cum.FWPT +0.45 % | `ee2f6b5` |
 | Native vs wasm bindings | Each other | buckley-impes (IMPES): cells_max_abs_diff 0 abs | 1e-09 abs | 0% | — | `ee2f6b5` |
 | FIM convergence, long horizons | Substeps per report step | no banded criterion | — | — | — | `ee2f6b5` |
-| Compositional, matched timestep | OPM flowexp_comp | 1D plain: worst_pressure_diff 1.68 bar | 2 bar | 84% | 1D plain: worst_pressure_diff 1.68 bar (explained) | `ee2f6b5` |
+| Compositional, matched timestep | OPM flowexp_comp | depletion BHP: worst_pressure_diff 0.00951 bar | 0.02 bar | 48% | depletion BHP: cum_production_worst_component_rel_err +0.09 % | `831eff7a` |
 | Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | dep-pvt-lab-report: fim_vs_jutul.final_FGPR_rel_err +1.31 % (explained) | `ee2f6b5` |
 <!-- /GENERATED:summary -->
 

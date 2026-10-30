@@ -135,6 +135,11 @@ pub struct CompositionalRun {
     cumulative_source_moles: Vec<f64>,
     /// The same, per well, from the rates the accepted solve actually ran at.
     cumulative_well_moles: Vec<Vec<f64>>,
+    /// Flowing BHP per well at the last accepted state. Empty until a step with wells is accepted.
+    ///
+    /// Carried for reporting and restart evidence, not as a Newton initial guess: the solve starts
+    /// from the control's own pressure interval so a retry and a fresh run follow the same path.
+    well_bhp_bar: Vec<f64>,
 }
 
 impl CompositionalRun {
@@ -147,6 +152,7 @@ impl CompositionalRun {
             cache: FlashCache::with_cells(cells),
             cumulative_source_moles: vec![0.0; n],
             cumulative_well_moles: Vec::new(),
+            well_bhp_bar: Vec::new(),
         }
     }
 
@@ -176,6 +182,11 @@ impl CompositionalRun {
     /// Positive means into the reservoir. Empty until a step with wells has been accepted.
     pub fn cumulative_well_moles(&self) -> &[Vec<f64>] {
         &self.cumulative_well_moles
+    }
+
+    /// Flowing BHP per well at the accepted state [bar]; empty until a well step is accepted.
+    pub fn well_bhp_bar(&self) -> &[f64] {
+        &self.well_bhp_bar
     }
 
     pub fn cache_mut(&mut self) -> &mut FlashCache {
@@ -263,6 +274,7 @@ impl CompositionalRun {
             match outcome {
                 Ok(accepted) => {
                     let accepted_well_rates = newton.accepted_well_rates.clone();
+                    let accepted_well_bhp = newton.accepted_well_bhp.clone();
                     report.attempts.push(AttemptReport {
                         dt_days: dt,
                         newton,
@@ -271,6 +283,7 @@ impl CompositionalRun {
                     // The single commit point. Everything advances here, together.
                     self.state = accepted;
                     self.time_days += dt;
+                    self.well_bhp_bar = accepted_well_bhp;
                     let width = sources.first().map_or(0, Vec::len);
                     if self.cumulative_source_moles.len() < width {
                         self.cumulative_source_moles.resize(width, 0.0);

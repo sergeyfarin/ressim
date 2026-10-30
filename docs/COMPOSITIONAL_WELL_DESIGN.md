@@ -78,6 +78,53 @@ Under BHP control the well adds no unknown: it is a pure source term on the cell
 `N x 1` derivative with respect to `bhp` is still produced, because rate control needs it and a
 derivative that only exists in one code path is a derivative that disagrees with itself.
 
+### C14: the rate row is part of the Newton system
+
+**Decision: the rate constraint is an equation with the BHP as its unknown, solved by local Schur
+elimination** — the OPM `StandardWell` structure — rather than a bisection outside the Jacobian
+loop. The reason is the C14 measurement itself: a single-cell, three-report-step case took 17 s in
+release because a 41-step BHP bisection ran inside every Jacobian evaluation. Moving the same
+bisection outside the loop would still leave the BHP frozen within a Newton iteration, so the
+Jacobian would omit the well's strongest feedback and the constraint would be satisfied only by
+an outer fixed point. The equation is both smaller and the formulation OPM uses.
+
+For one rate-controlled well the system is
+
+```text
+[ J_cc  J_cw ] [ dx_c ]   [ -R_c ]
+[ J_wc  J_ww ] [ dx_w ] = [ -R_w ]      J_ww is scalar and diagonal across wells
+```
+
+`J_cw = -dt * d(source_i)/d(bhp)` already existed on every `WellSource`; `J_wc` is
+`d(achieved rate)/d(cell primaries)` and `J_ww = d(achieved rate)/d(bhp)`. The assembler
+eliminates the BHP locally,
+
+```text
+(J_cc - J_cw J_ww^-1 J_wc) dx_c = -R_c + J_cw J_ww^-1 R_w
+dx_w = J_ww^-1 (-R_w - J_wc dx_c)
+```
+
+so the linear solve and CPR still see the same cell-block shape they saw before. The surface-rate
+row's derivative is analytic for the single-stage separation every pinned fluid uses: it chains
+the existing `flash_derivatives` at surface conditions through `d(beta)/d(z)` and
+`d(rho)/d(z)`. A liquid-cascade train, whose derivative only affects Newton's rate, uses a
+finite difference of the same public `surface_separation`.
+
+Cost measured on this commit (release, one core, four runs): **three 0.25 d single-cell report
+steps cost 1.23–1.47× the BHP-controlled case** (`comp_cost_rate_controlled_against_bhp_controlled`);
+the same ORAT seven-step rate-controlled depletion fell from **3.5 s to 0.13 s** after the change.
+The
+remaining factor is one limit-capacity check per assembly, which control selection needs.
+
+### Control switching and hysteresis
+
+A rate target near what the BHP limit can deliver is switched to BHP control at the limit. The
+margin is the black-oil engine's (`well_control.rs`): the limit must deliver the target by **5% of
+the target** before the rate equation takes over again. Without the deadband a well sitting exactly
+at capacity flips mode on every Newton iterate. This is stateless, so a retry and a fresh run make
+the same decision from the same state. The switch is per assembly, and `WellResult.on_bhp_limit`
+reports the active mode; a BHP-limited well contributes no rate row and no BHP unknown.
+
 ## Connection law and sign convention
 
 ```text
@@ -164,11 +211,12 @@ flowing back *into* the formation — which is precisely the case that is reject
 ## Controls
 
 1. **BHP.** Data. The source follows directly.
-2. **Total molar rate**, `mol/day`, signed: positive injects. Solved for the `bhp` that achieves
-   it, by a bracketed scalar solve on a monotone function of `bhp`, with a BHP limit applied
-   afterwards — if the limit binds, the well reverts to BHP control at the limit and the achieved
-   rate is reported rather than the target. A target that cannot be reached at any admissible BHP
-   is reported as such, not silently truncated.
+2. **Total molar rate**, `mol/day`, signed: positive injects. The rate equation and the BHP
+   unknown are part of the Newton system (above). If the limit binds, the well reverts to BHP
+   control at the limit and reports the achieved rate rather than the target. A target that
+   cannot be reached at any admissible BHP is therefore reported as the limit's achieved rate,
+   not silently truncated. `well_source` remains a direct scalar-solve convenience for callers
+   that ask one well for a self-consistent source; the timestep driver does not use it.
 3. **Surface volumetric rate**, `m3/day` at the pinned surface conditions, through C5's
    `surface_separation`. **This is not a reservoir rate and not a black-oil RESV target**: the
    conversion is a single-stage equilibrium flash at 1 atm and 288.71 K, and the two differ by the
@@ -191,7 +239,14 @@ Internal, since no external well oracle exists:
 - **Injectivity.** An injector delivering a vapour into a liquid-filled cell still injects — the
   specific failure the plan names.
 - **Control switching.** A rate target that exceeds what the BHP limit allows reverts to the limit,
-  and the reported rate is the achieved one.
+  and the reported rate is the achieved one. The 5% hysteresis band is tested in both directions.
+- **Rate-row derivatives.** `d(rate)/d(cell primaries)` and `d(rate)/d(bhp)` against finite
+  differences, for molar, surface-liquid/vapour and surface-total targets
+  (`comp_well_rate_constraint_jacobian_matches_finite_differences`).
+- **Cost.** An active rate control evaluates two well sources per assembly — one limit check and
+  one rate evaluation — not a bisection; a BHP-controlled well evaluates one
+  (`comp_well_rate_control_uses_two_source_evaluations_not_a_bisection`). The release timing is
+  in `COMPOSITIONAL_VALIDATION.md`'s C14 record.
 
 ## Explicitly out of scope for this commit
 
