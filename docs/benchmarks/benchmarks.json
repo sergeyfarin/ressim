@@ -9656,9 +9656,9 @@
   },
   "compositional": {
    "provenance": {
-    "commit": "ee2f6b5",
+    "commit": "831eff7a",
     "dirty": false,
-    "date": "2026-10-23",
+    "date": "2026-10-30",
     "command": "cargo test --release --lib -- comp_matched_1d_trajectory_agrees_with_opm comp_depletion_bhp_trajectory_matches_opm_at_matched_timestep comp_depletion_bhp_cumulative_production_matches_opm; bash scripts/validate-compositional.sh reference",
     "note": "fixtures reproduce from flowexp_comp"
    },
@@ -9671,7 +9671,7 @@
      "reference": "OPM flowexp_comp, matched timestep",
      "same_model": true,
      "unit": "frac",
-     "value": 0.000407124358167655
+     "value": 0.0004071243581728834
     },
     {
      "at": "component 2",
@@ -9681,7 +9681,7 @@
      "reference": "OPM flowexp_comp, matched timestep",
      "same_model": true,
      "unit": "frac",
-     "value": 0.0008786575748230271
+     "value": 0.0008786575748295216
     },
     {
      "at": "t = 2.0 d: 91.7794 vs 91.7889 bar",
@@ -9691,7 +9691,7 @@
      "reference": "OPM flowexp_comp, matched timestep",
      "same_model": true,
      "unit": "bar",
-     "value": 0.009507400236728358
+     "value": 0.009507400236643093
     },
     {
      "at": "",
@@ -9701,7 +9701,7 @@
      "reference": "OPM flowexp_comp, matched timestep",
      "same_model": true,
      "unit": "frac",
-     "value": 0.0001813902171702575
+     "value": 0.00018139021716864767
     },
     {
      "at": "t = 5.11 d, cell 3: 97.2283 vs 97.2357 bar",
@@ -9711,7 +9711,7 @@
      "reference": "OPM flowexp_comp, matched timestep",
      "same_model": true,
      "unit": "bar",
-     "value": 0.0074242672991005065
+     "value": 0.007424267299029452
     },
     {
      "at": "",
@@ -9721,17 +9721,17 @@
      "reference": "OPM flowexp_comp, matched timestep",
      "same_model": true,
      "unit": "frac",
-     "value": 1.3680777071060494e-05
+     "value": 1.3680777071339493e-05
     },
     {
-     "at": "t = 0.19 d, cell 4: 59.4244 vs 61.1053 bar",
+     "at": "t = 19.11 d, cell 2: 109.0926 vs 109.0761 bar",
      "band": 2.0,
      "case": "1D plain",
      "metric": "worst_pressure_diff",
      "reference": "OPM flowexp_comp, matched timestep",
      "same_model": true,
      "unit": "bar",
-     "value": 1.6809713137332025
+     "value": 0.016558926616099257
     },
     {
      "at": "",
@@ -9741,7 +9741,7 @@
      "reference": "OPM flowexp_comp, matched timestep",
      "same_model": true,
      "unit": "frac",
-     "value": 0.000418184204049009
+     "value": 3.807765870052429e-05
     }
    ]
   },

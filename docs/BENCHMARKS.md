@@ -44,7 +44,7 @@ it is never the tightest criterion, and it can be the larger error (see Signals 
 | Generated decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | sweep-combined: sparse.cum.FWPT +0.45 % | `ee2f6b5` |
 | Native vs wasm bindings | Each other | buckley-impes (IMPES): cells_max_abs_diff 0 abs | 1e-09 abs | 0% | — | `ee2f6b5` |
 | FIM convergence, long horizons | Substeps per report step | no banded criterion | — | — | — | `ee2f6b5` |
-| Compositional, matched timestep | OPM flowexp_comp | 1D plain: worst_pressure_diff 1.68 bar | 2 bar | 84% | 1D plain: worst_pressure_diff 1.68 bar (explained) | `ee2f6b5` |
+| Compositional, matched timestep | OPM flowexp_comp | depletion BHP: worst_pressure_diff 0.00951 bar | 0.02 bar | 48% | depletion BHP: cum_production_worst_component_rel_err +0.09 % | `831eff7a` |
 | Second simulator on the same decks | JutulDarcy vs Flow and FIM | no banded criterion | — | — | dep-pvt-lab-report: fim_vs_jutul.final_FGPR_rel_err +1.31 % (explained) | `ee2f6b5` |
 <!-- /GENERATED:summary -->
 
@@ -64,7 +64,7 @@ with the drift check and the signals. It comments there only when the state chan
 commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
 
 <!-- GENERATED:signals -->
-**Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 0 unexplained and untracked, 0 tracked, 7 explained.
+**Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 0 unexplained and untracked, 0 tracked, 6 explained.
 
 | Section | Case | Metric | Value | Where | Status |
 |---|---|---|---|---|---|
@@ -72,7 +72,6 @@ commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
 | three_phase | gas_drive | oil_rate_rel_err | +3.92 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
 | three_phase | gas_drive | vs_jutul.FOPR_rel_err | +4.49 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
 | three_phase | gas_drive | jutul_vs_flow.FOPR_rel_err | -2.10 % | t=10 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
-| compositional | 1D plain | worst_pressure_diff | 1.68 bar | t = 0.19 d, cell 4: 59.4244 vs 61.1053 bar | explained: COMPOSITIONAL_VALIDATION.md §8 (C12) |
 | jutul | dep-pvt-lab-report | jutul_vs_flow.final_FGPR_rel_err | -1.31 % |  | explained: opm/reference-decks/small-direct/README.md, "Saturation tables: nodes above S_gc, and a table's own knots" (#55); OPEN_ITEMS_2026-09-21.md §11 |
 | jutul | dep-pvt-lab-report | fim_vs_jutul.final_FGPR_rel_err | +1.31 % |  | explained: opm/reference-decks/small-direct/README.md, "Saturation tables: nodes above S_gc, and a table's own knots" (#55); OPEN_ITEMS_2026-09-21.md §11 |
 
@@ -80,7 +79,6 @@ commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
 
 | Section | Case | Metric | Value | Band | Used | Status |
 |---|---|---|---|---|---|---|
-| compositional | 1D plain | worst_pressure_diff | 1.68 bar | 2 bar | 84% | explained: COMPOSITIONAL_VALIDATION.md §8 (C12) |
 | depletion | FIM | sat_gas_finest_pair_gap | +1.20 % | 1.5 % | 80% | explained: depletion_grid_convergence.rs, FINEST_PAIR_TOLERANCE_SAT_GAS (#11) |
 | depletion | IMPES | sat_gas_finest_pair_gap | +1.20 % | 1.5 % | 80% | explained: depletion_grid_convergence.rs, FINEST_PAIR_TOLERANCE_SAT_GAS (#11) |
 
@@ -93,7 +91,7 @@ commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
 | three_phase | 5 of 9 | 1 | gas_drive: mb_drift_oil | < 0.1 % | — |
 | depletion | 2 of 8 | — | FIM: pressure_finest_pair_gap | 15.5% | — |
 | parity | 0 of 18 | 18 | buckley-impes (IMPES): cells_max_abs_diff | < 0.1 % | explained: crates/ressim-py/parity/compare_native.py, TOL |
-| compositional | 4 of 8 | — | 1D skin 60: cum_injection_rel_err | 2.7% | — |
+| compositional | 4 of 8 | 1 | 1D plain: cum_injection_rel_err | 1.9% | — |
 <!-- /GENERATED:signals -->
 
 ## 1. Buckley–Leverett breakthrough (analytical)
@@ -421,7 +419,7 @@ there. In the app the compositional engine runs as `comp_co2_1d`, which plots it
 compositional quantities (#29).
 
 <!-- GENERATED:compositional -->
-*Measured on `ee2f6b5` (clean tree), 2026-10-23.*
+*Measured on `831eff7a` (clean tree), 2026-10-30.*
 
 | Case | Metric | Measured | Band | Where |
 |---|---|---|---|---|
@@ -431,8 +429,8 @@ compositional quantities (#29).
 | depletion BHP | worst_sg_diff | 0.0181 % | 0.05 % |  |
 | 1D skin 60 | worst_pressure_diff | 0.0074 bar | 0.02 bar | t = 5.11 d, cell 3: 97.2283 vs 97.2357 bar |
 | 1D skin 60 | cum_injection_rel_err | 0.0014 % | 0.05 % |  |
-| 1D plain | worst_pressure_diff | 1.6810 bar | 2 bar | t = 0.19 d, cell 4: 59.4244 vs 61.1053 bar |
-| 1D plain | cum_injection_rel_err | 0.0418 % | 0.20 % |  |
+| 1D plain | worst_pressure_diff | 0.0166 bar | 2 bar | t = 19.11 d, cell 2: 109.0926 vs 109.0761 bar |
+| 1D plain | cum_injection_rel_err | 0.0038 % | 0.20 % |  |
 <!-- /GENERATED:compositional -->
 
 ```bash
