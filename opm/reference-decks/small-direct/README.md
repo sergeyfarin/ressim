@@ -81,6 +81,8 @@ bash scripts/validate-cross-solver.sh --grid-refine                       # Rich
 
 The script runs the three steps under "Replay" for every ResSim solver and checks the result against
 [`scorecard.json`](scorecard.json). That file is written by the comparator and never edited by hand.
+The comparator searches this tree and the five top-level generated wasm-preset directories
+(`opm/reference-decks/{gas-rate-10x10x3,water-*}`); a case name must occur in exactly one root.
 It also holds the six compositional trajectory cases from
 [`opm/compositional/trajectory_cases.json`](../../compositional/trajectory_cases.json), written by
 `bash scripts/validate-compositional.sh update-scorecard`. A write merges the cases it measured and
@@ -124,7 +126,9 @@ part of the normal deck inventory as well; its scorecard row is the middle rung,
 physical scenario.
 
 Before this gate, every result table below was typed into this README by hand after each fix, and
-nothing noticed when a later change moved a number.
+nothing noticed when a later change moved a number. The dated tables below also predate the five
+generated wasm-preset rows; [`scorecard.json`](scorecard.json) is the complete 25-case black-oil
+baseline, and `--markdown` includes those rows when a table is regenerated.
 
 ## Replay
 

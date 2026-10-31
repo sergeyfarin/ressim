@@ -566,7 +566,9 @@ impl RockFluidProps {
         self.k_ro_generic(s_w)
     }
 
-    /// Exact rounded SWOF values from `opm/reference-decks/water-heavy-step1/CASE.DATA`.
+    /// The nine-knot SWOF pilot table used by the water-heavy diagnostic. The generated
+    /// `water-heavy-step1` deck now samples the same Corey curves densely; this constant is the
+    /// coarse table the OPM-parity experiment used, not the deck's current nodes.
     /// OPM's piecewise-linear evaluator selects the segment ending at a knot, hence `Sw=.3`
     /// uses the `.2-.3` slope rather than the analytic Corey tangent. This narrowly names the
     /// water-heavy diagnostic table; it is not a replacement for the application's Corey model.
