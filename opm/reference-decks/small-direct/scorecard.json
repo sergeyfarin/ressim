@@ -1,18 +1,32 @@
 {
   "$comment": "Written by compare_small_direct.py --write-scorecard; do not edit by hand. Bands are BANDS in that script. A write merges the cases it measured and keeps the rest, because the black-oil and compositional gates update different families. See opm/reference-decks/small-direct/README.md.",
   "provenance": {
-    "commit": "c27d5382",
+    "commit": "c37c7f2b",
     "dirty": false,
     "date": "2026-10-31",
     "flow": "flow 2026.04",
-    "command": "bash scripts/validate-compositional.sh update-scorecard",
+    "command": "bash scripts/validate-cross-solver.sh --update",
     "cases": [
-      "1d_comp",
-      "1d_comp_skin",
-      "depletion",
-      "depletion_bhp",
-      "injection",
-      "quarter_five_spot"
+      "bo-1d-10",
+      "bo-1d-20",
+      "bo-1d-40",
+      "dep-pvt-al-marhoun",
+      "dep-pvt-correlation",
+      "dep-pvt-lab-report",
+      "dep-pvt-petrosky-farshad",
+      "gas-drive-20",
+      "go-1d-50",
+      "ow-1d-50-adverse",
+      "ow-1d-96",
+      "ow-2d-12x12",
+      "spe1-10x10x3",
+      "spe1-case2-10x10x3",
+      "sweep-areal",
+      "sweep-combined",
+      "sweep-crossflow",
+      "sweep-vertical",
+      "wf-capillary",
+      "wf-gravity-stability"
     ]
   },
   "cases": {
@@ -33,10 +47,11 @@
             "cum.FOPT": 1.2443554114977743e-05,
             "cum.FGPT": 1.1155777971832396e-05,
             "substeps": 22,
-            "newton": 52
+            "newton": 52,
+            "newton_ratio": 1.0196078431372548
           },
           "warnings": 0,
-          "wall_ms": 20.5
+          "wall_ms": 9.7
         },
         "dense": {
           "metrics": {
@@ -49,10 +64,11 @@
             "cum.FOPT": 1.2443554114977743e-05,
             "cum.FGPT": 1.1155777971832396e-05,
             "substeps": 22,
-            "newton": 52
+            "newton": 52,
+            "newton_ratio": 1.0196078431372548
           },
           "warnings": 0,
-          "wall_ms": 8.4
+          "wall_ms": 8.3
         },
         "impes": {
           "metrics": {
@@ -67,7 +83,7 @@
             "substeps": 25
           },
           "warnings": 0,
-          "wall_ms": 3.9
+          "wall_ms": 3.8
         }
       },
       "pairs": {
@@ -85,9 +101,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -109,10 +125,11 @@
             "cum.FOPT": 0.0005398071045825234,
             "cum.FGPT": 0.0011571921194405547,
             "substeps": 22,
-            "newton": 54
+            "newton": 54,
+            "newton_ratio": 1.0
           },
           "warnings": 0,
-          "wall_ms": 57.7
+          "wall_ms": 31.6
         },
         "dense": {
           "metrics": {
@@ -125,10 +142,11 @@
             "cum.FOPT": 0.0005398071045825234,
             "cum.FGPT": 0.0011571921194405547,
             "substeps": 22,
-            "newton": 54
+            "newton": 54,
+            "newton_ratio": 1.0
           },
           "warnings": 0,
-          "wall_ms": 40.0
+          "wall_ms": 42.3
         },
         "impes": {
           "metrics": {
@@ -143,7 +161,7 @@
             "substeps": 27
           },
           "warnings": 0,
-          "wall_ms": 17.7
+          "wall_ms": 17.8
         }
       },
       "pairs": {
@@ -161,9 +179,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -183,12 +201,13 @@
             "final.sw": 4.6001695988701075e-06,
             "final.sg": 3.4205151676652834e-05,
             "cum.FOPT": 6.208332942386969e-11,
-            "cum.FGPT": 0.00044693578975841527,
+            "cum.FGPT": 0.0004469357897387765,
             "substeps": 481,
-            "newton": 971
+            "newton": 971,
+            "newton_ratio": 1.0020639834881322
           },
           "warnings": 0,
-          "wall_ms": 904.7
+          "wall_ms": 903.0
         },
         "dense": {
           "metrics": {
@@ -201,10 +220,11 @@
             "cum.FOPT": 6.208332942386969e-11,
             "cum.FGPT": 0.00044693578975841527,
             "substeps": 481,
-            "newton": 971
+            "newton": 971,
+            "newton_ratio": 1.0020639834881322
           },
           "warnings": 0,
-          "wall_ms": 1226.0
+          "wall_ms": 1214.8
         },
         "impes": {
           "metrics": {
@@ -215,17 +235,17 @@
             "final.sw": 1.6442457451831816e-06,
             "final.sg": 0.001982764314476637,
             "cum.FOPT": 0.0,
-            "cum.FGPT": 0.013719419413442166,
+            "cum.FGPT": 0.013719419413205121,
             "substeps": 536
           },
           "warnings": 0,
-          "wall_ms": 447.3
+          "wall_ms": 435.6
         }
       },
       "pairs": {
         "sparse_vs_dense": {
           "invariant": true,
-          "p": 1.000444171950221e-10,
+          "p": 1.000159954855917e-10,
           "sw": 1.0000333894311098e-13,
           "sg": 1.0000333894311098e-13
         },
@@ -237,9 +257,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -258,13 +278,14 @@
             "final.p": 0.030968243739685875,
             "final.sw": 4.346690491208172e-06,
             "final.sg": 3.191639994831741e-05,
-            "cum.FOPT": 4.173612237705297e-11,
-            "cum.FGPT": 0.00044291682843092473,
+            "cum.FOPT": 4.180559766677174e-11,
+            "cum.FGPT": 0.00044291682843109403,
             "substeps": 481,
-            "newton": 969
+            "newton": 969,
+            "newton_ratio": 1.0010330578512396
           },
           "warnings": 0,
-          "wall_ms": 897.3
+          "wall_ms": 912.0
         },
         "dense": {
           "metrics": {
@@ -274,28 +295,29 @@
             "final.p": 0.030968243739685875,
             "final.sw": 4.346690491208172e-06,
             "final.sg": 3.191639994831741e-05,
-            "cum.FOPT": 4.180559766677174e-11,
+            "cum.FOPT": 4.173612237705297e-11,
             "cum.FGPT": 0.0004429168284527655,
             "substeps": 481,
-            "newton": 969
+            "newton": 969,
+            "newton_ratio": 1.0010330578512396
           },
           "warnings": 0,
-          "wall_ms": 1191.1
+          "wall_ms": 1225.2
         },
         "impes": {
           "metrics": {
-            "p": 0.9087855732696895,
+            "p": 0.9087855732796868,
             "sw": 9.875908896644914e-07,
             "sg": 0.0015955150009483166,
-            "final.p": 0.9087855732696895,
+            "final.p": 0.9087855732796868,
             "final.sw": 6.365902437965865e-07,
             "final.sg": 0.0015955150009483166,
             "cum.FOPT": 0.0,
-            "cum.FGPT": 0.012060053073799645,
+            "cum.FGPT": 0.012060053073799815,
             "substeps": 540
           },
           "warnings": 0,
-          "wall_ms": 427.8
+          "wall_ms": 426.1
         }
       },
       "pairs": {
@@ -307,15 +329,15 @@
         },
         "sparse_vs_impes": {
           "invariant": false,
-          "p": 0.8778173295300036,
+          "p": 0.8778173295400009,
           "sw": 4.685535000006902e-06,
           "sg": 0.0015635986009999991
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -330,33 +352,35 @@
           "metrics": {
             "p": 0.15390941904377087,
             "sw": 3.2261269536232318e-06,
-            "sg": 0.00010973398459282864,
+            "sg": 0.00010973398459142864,
             "final.p": 0.006829121256558324,
             "final.sw": 3.2261269536232318e-06,
             "final.sg": 5.5577850704702225e-06,
             "cum.FOPT": 1.8194525721439816e-11,
             "cum.FGPT": 0.00020156884009709858,
             "substeps": 481,
-            "newton": 972
+            "newton": 972,
+            "newton_ratio": 1.002061855670103
           },
           "warnings": 0,
-          "wall_ms": 894.2
+          "wall_ms": 884.9
         },
         "dense": {
           "metrics": {
             "p": 0.15390941904377087,
             "sw": 3.2261269536232318e-06,
-            "sg": 0.00010973398458792864,
+            "sg": 0.00010973398458702865,
             "final.p": 0.006829121256558324,
             "final.sw": 3.2261269536232318e-06,
             "final.sg": 5.5577850704702225e-06,
             "cum.FOPT": 1.8194525721439816e-11,
             "cum.FGPT": 0.00020156884009709858,
             "substeps": 481,
-            "newton": 972
+            "newton": 972,
+            "newton_ratio": 1.002061855670103
           },
           "warnings": 0,
-          "wall_ms": 1332.2
+          "wall_ms": 1221.9
         },
         "impes": {
           "metrics": {
@@ -367,11 +391,11 @@
             "final.sw": 1.9965435361923856e-07,
             "final.sg": 0.0008703661933259499,
             "cum.FOPT": 0.0,
-            "cum.FGPT": 0.011109018705665382,
+            "cum.FGPT": 0.011109018705633434,
             "substeps": 495
           },
           "warnings": 0,
-          "wall_ms": 368.4
+          "wall_ms": 369.5
         }
       },
       "pairs": {
@@ -389,9 +413,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -410,13 +434,14 @@
             "final.p": 0.027839421450622126,
             "final.sw": 4.026470137460936e-06,
             "final.sg": 2.269899972009992e-05,
-            "cum.FOPT": 3.784719040224984e-11,
-            "cum.FGPT": 0.0003941154550576357,
+            "cum.FOPT": 3.791666569196861e-11,
+            "cum.FGPT": 0.00039411545510900913,
             "substeps": 481,
-            "newton": 969
+            "newton": 969,
+            "newton_ratio": 1.0020682523267839
           },
           "warnings": 0,
-          "wall_ms": 906.7
+          "wall_ms": 897.0
         },
         "dense": {
           "metrics": {
@@ -426,13 +451,14 @@
             "final.p": 0.027839421450622126,
             "final.sw": 4.026470137460936e-06,
             "final.sg": 2.269899972009992e-05,
-            "cum.FOPT": 3.791666569196861e-11,
+            "cum.FOPT": 3.784719040224984e-11,
             "cum.FGPT": 0.00039411545508322247,
             "substeps": 481,
-            "newton": 969
+            "newton": 969,
+            "newton_ratio": 1.0020682523267839
           },
           "warnings": 0,
-          "wall_ms": 1206.3
+          "wall_ms": 1222.5
         },
         "impes": {
           "metrics": {
@@ -443,11 +469,11 @@
             "final.sw": 7.200127374595855e-07,
             "final.sg": 0.0008025744429201176,
             "cum.FOPT": 0.0,
-            "cum.FGPT": 0.008833023077383744,
+            "cum.FGPT": 0.008833023077360957,
             "substeps": 539
           },
           "warnings": 0,
-          "wall_ms": 430.4
+          "wall_ms": 424.4
         }
       },
       "pairs": {
@@ -465,9 +491,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -489,10 +515,11 @@
             "cum.FOPT": 0.00321905591557381,
             "cum.FGPT": 0.00016251630778799163,
             "substeps": 63,
-            "newton": 137
+            "newton": 137,
+            "newton_ratio": 0.9856115107913669
           },
           "warnings": 0,
-          "wall_ms": 52.0
+          "wall_ms": 52.1
         },
         "dense": {
           "metrics": {
@@ -505,10 +532,11 @@
             "cum.FOPT": 0.00321905591557381,
             "cum.FGPT": 0.00016251630778799163,
             "substeps": 63,
-            "newton": 137
+            "newton": 137,
+            "newton_ratio": 0.9856115107913669
           },
           "warnings": 0,
-          "wall_ms": 50.1
+          "wall_ms": 49.9
         },
         "impes": {
           "metrics": {
@@ -523,7 +551,7 @@
             "substeps": 111
           },
           "warnings": 0,
-          "wall_ms": 119.9
+          "wall_ms": 118.0
         }
       },
       "pairs": {
@@ -541,9 +569,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -566,10 +594,11 @@
             "cum.FGPT": 0.0005779693354505594,
             "cum.FGIT": 0.00033259241676247814,
             "substeps": 151,
-            "newton": 335
+            "newton": 335,
+            "newton_ratio": 0.9940652818991098
           },
           "warnings": 0,
-          "wall_ms": 169.6
+          "wall_ms": 144.9
         },
         "dense": {
           "metrics": {
@@ -583,10 +612,11 @@
             "cum.FGPT": 0.0005779693354505594,
             "cum.FGIT": 0.00033259241676247814,
             "substeps": 151,
-            "newton": 335
+            "newton": 335,
+            "newton_ratio": 0.9940652818991098
           },
           "warnings": 0,
-          "wall_ms": 263.8
+          "wall_ms": 267.9
         },
         "impes": {
           "metrics": {
@@ -602,7 +632,7 @@
             "substeps": 213
           },
           "warnings": 0,
-          "wall_ms": 87.9
+          "wall_ms": 90.5
         }
       },
       "pairs": {
@@ -620,9 +650,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -644,10 +674,11 @@
             "cum.FOPT": 3.4263031333660344e-05,
             "cum.FWIT": 2.9190075191754458e-05,
             "substeps": 12,
-            "newton": 36
+            "newton": 36,
+            "newton_ratio": 1.0909090909090908
           },
           "warnings": 0,
-          "wall_ms": 11.4
+          "wall_ms": 11.2
         },
         "dense": {
           "metrics": {
@@ -660,10 +691,11 @@
             "cum.FOPT": 3.4263031333660344e-05,
             "cum.FWIT": 2.9190075191754458e-05,
             "substeps": 12,
-            "newton": 36
+            "newton": 36,
+            "newton_ratio": 1.0909090909090908
           },
           "warnings": 0,
-          "wall_ms": 24.4
+          "wall_ms": 24.2
         },
         "impes": {
           "metrics": {
@@ -678,7 +710,7 @@
             "substeps": 28
           },
           "warnings": 0,
-          "wall_ms": 8.9
+          "wall_ms": 7.6
         }
       },
       "pairs": {
@@ -696,9 +728,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -721,10 +753,11 @@
             "cum.FWPT": 0.0009730356567200968,
             "cum.FWIT": 0.0005894808655282806,
             "substeps": 120,
-            "newton": 257
+            "newton": 257,
+            "newton_ratio": 0.9922779922779923
           },
           "warnings": 0,
-          "wall_ms": 165.8
+          "wall_ms": 166.9
         },
         "dense": {
           "metrics": {
@@ -738,10 +771,11 @@
             "cum.FWPT": 0.0009730356567200968,
             "cum.FWIT": 0.0005894808655282806,
             "substeps": 120,
-            "newton": 257
+            "newton": 257,
+            "newton_ratio": 0.9922779922779923
           },
           "warnings": 0,
-          "wall_ms": 883.2
+          "wall_ms": 926.3
         },
         "impes": {
           "metrics": {
@@ -757,7 +791,7 @@
             "substeps": 632
           },
           "warnings": 0,
-          "wall_ms": 344.8
+          "wall_ms": 323.9
         }
       },
       "pairs": {
@@ -775,9 +809,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -800,10 +834,11 @@
             "cum.FWPT": 2.797853082812226e-05,
             "cum.FWIT": 4.424098351135653e-06,
             "substeps": 40,
-            "newton": 92
+            "newton": 92,
+            "newton_ratio": 0.8070175438596491
           },
           "warnings": 0,
-          "wall_ms": 253.5
+          "wall_ms": 179.1
         },
         "dense": {
           "metrics": {
@@ -817,10 +852,11 @@
             "cum.FWPT": 2.797853082812226e-05,
             "cum.FWIT": 4.424098351135653e-06,
             "substeps": 40,
-            "newton": 92
+            "newton": 92,
+            "newton_ratio": 0.8070175438596491
           },
           "warnings": 0,
-          "wall_ms": 1068.9
+          "wall_ms": 1020.4
         },
         "impes": {
           "metrics": {
@@ -836,7 +872,7 @@
             "substeps": 227
           },
           "warnings": 0,
-          "wall_ms": 414.5
+          "wall_ms": 413.3
         }
       },
       "pairs": {
@@ -854,9 +890,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -879,10 +915,11 @@
             "cum.FGPT": 3.4789151422229636e-05,
             "cum.FGIT": 5.96874159069552e-09,
             "substeps": 124,
-            "newton": 312
+            "newton": 312,
+            "newton_ratio": 1.0196078431372548
           },
           "warnings": 0,
-          "wall_ms": 3183.2
+          "wall_ms": 3166.3
         },
         "dense": {
           "metrics": {
@@ -896,10 +933,11 @@
             "cum.FGPT": 3.4789151422229636e-05,
             "cum.FGIT": 5.96874159069552e-09,
             "substeps": 124,
-            "newton": 312
+            "newton": 312,
+            "newton_ratio": 1.0196078431372548
           },
           "warnings": 0,
-          "wall_ms": 3274.6
+          "wall_ms": 3139.9
         },
         "impes": {
           "metrics": {
@@ -915,7 +953,7 @@
             "substeps": 210
           },
           "warnings": 0,
-          "wall_ms": 5877.1
+          "wall_ms": 5960.5
         }
       },
       "pairs": {
@@ -933,9 +971,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -958,10 +996,11 @@
             "cum.FGPT": 9.545149677248806e-05,
             "cum.FGIT": 2.744759614427416e-09,
             "substeps": 123,
-            "newton": 352
+            "newton": 352,
+            "newton_ratio": 1.0445103857566767
           },
           "warnings": 0,
-          "wall_ms": 3312.9
+          "wall_ms": 3259.0
         },
         "dense": {
           "metrics": {
@@ -975,10 +1014,11 @@
             "cum.FGPT": 9.545149677248806e-05,
             "cum.FGIT": 2.744759614427416e-09,
             "substeps": 123,
-            "newton": 352
+            "newton": 352,
+            "newton_ratio": 1.0445103857566767
           },
           "warnings": 0,
-          "wall_ms": 3276.9
+          "wall_ms": 3270.2
         },
         "impes": {
           "metrics": {
@@ -994,7 +1034,7 @@
             "substeps": 376
           },
           "warnings": 0,
-          "wall_ms": 11649.4
+          "wall_ms": 11933.1
         }
       },
       "pairs": {
@@ -1012,9 +1052,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -1037,10 +1077,11 @@
             "cum.FWPT": 0.00022808059095465487,
             "cum.FWIT": 0.0001578145046383053,
             "substeps": 82,
-            "newton": 205
+            "newton": 205,
+            "newton_ratio": 1.0
           },
           "warnings": 0,
-          "wall_ms": 1293.0
+          "wall_ms": 1329.1
         },
         "dense": {
           "metrics": {
@@ -1054,10 +1095,11 @@
             "cum.FWPT": 0.00022808059095465487,
             "cum.FWIT": 0.0001578145046383053,
             "substeps": 82,
-            "newton": 205
+            "newton": 205,
+            "newton_ratio": 1.0
           },
           "warnings": 0,
-          "wall_ms": 1305.3
+          "wall_ms": 1258.3
         },
         "impes": {
           "metrics": {
@@ -1073,7 +1115,7 @@
             "substeps": 1797
           },
           "warnings": 0,
-          "wall_ms": 15859.1
+          "wall_ms": 15656.6
         }
       },
       "pairs": {
@@ -1091,9 +1133,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -1116,10 +1158,11 @@
             "cum.FWPT": 0.004524884128739197,
             "cum.FWIT": 0.0038533003246782353,
             "substeps": 78,
-            "newton": 211
+            "newton": 211,
+            "newton_ratio": 0.7672727272727272
           },
           "warnings": 0,
-          "wall_ms": 10396.0
+          "wall_ms": 10259.9
         },
         "dense": {
           "metrics": {
@@ -1133,10 +1176,11 @@
             "cum.FWPT": 0.004524884128739197,
             "cum.FWIT": 0.0038533003246782353,
             "substeps": 78,
-            "newton": 211
+            "newton": 211,
+            "newton_ratio": 0.7672727272727272
           },
           "warnings": 0,
-          "wall_ms": 10530.4
+          "wall_ms": 10208.4
         },
         "impes": {
           "metrics": {
@@ -1152,7 +1196,7 @@
             "substeps": 2134
           },
           "warnings": 0,
-          "wall_ms": 170339.3
+          "wall_ms": 167761.6
         }
       },
       "pairs": {
@@ -1170,9 +1214,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -1195,10 +1239,11 @@
             "cum.FWPT": 7.68394128399337e-05,
             "cum.FWIT": 6.031971442996918e-05,
             "substeps": 312,
-            "newton": 667
+            "newton": 667,
+            "newton_ratio": 1.0045180722891567
           },
           "warnings": 0,
-          "wall_ms": 6767.4
+          "wall_ms": 6739.9
         },
         "dense": {
           "metrics": {
@@ -1212,10 +1257,11 @@
             "cum.FWPT": 7.68394128399337e-05,
             "cum.FWIT": 6.031971442996918e-05,
             "substeps": 312,
-            "newton": 667
+            "newton": 667,
+            "newton_ratio": 1.0045180722891567
           },
           "warnings": 0,
-          "wall_ms": 6816.8
+          "wall_ms": 6758.5
         },
         "impes": {
           "metrics": {
@@ -1231,7 +1277,7 @@
             "substeps": 707
           },
           "warnings": 0,
-          "wall_ms": 1326.7
+          "wall_ms": 1294.9
         }
       },
       "pairs": {
@@ -1249,9 +1295,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -1274,10 +1320,11 @@
             "cum.FWPT": 1.4790136037929478e-06,
             "cum.FWIT": 1.5379895029387433e-05,
             "substeps": 302,
-            "newton": 616
+            "newton": 616,
+            "newton_ratio": 1.0016260162601627
           },
           "warnings": 0,
-          "wall_ms": 6197.7
+          "wall_ms": 6181.8
         },
         "dense": {
           "metrics": {
@@ -1291,10 +1338,11 @@
             "cum.FWPT": 1.4790136037929478e-06,
             "cum.FWIT": 1.5379895029387433e-05,
             "substeps": 302,
-            "newton": 616
+            "newton": 616,
+            "newton_ratio": 1.0016260162601627
           },
           "warnings": 0,
-          "wall_ms": 6248.0
+          "wall_ms": 6089.6
         },
         "impes": {
           "metrics": {
@@ -1310,7 +1358,7 @@
             "substeps": 541
           },
           "warnings": 0,
-          "wall_ms": 975.6
+          "wall_ms": 965.3
         }
       },
       "pairs": {
@@ -1328,9 +1376,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -1353,10 +1401,11 @@
             "cum.FWPT": 2.2590704130019755e-05,
             "cum.FWIT": 2.5176961893317612e-05,
             "substeps": 201,
-            "newton": 435
+            "newton": 435,
+            "newton_ratio": 1.013986013986014
           },
           "warnings": 0,
-          "wall_ms": 296.9
+          "wall_ms": 306.8
         },
         "dense": {
           "metrics": {
@@ -1370,10 +1419,11 @@
             "cum.FWPT": 2.6987881338980608e-05,
             "cum.FWIT": 2.8289649723252924e-05,
             "substeps": 201,
-            "newton": 428
+            "newton": 428,
+            "newton_ratio": 0.9976689976689976
           },
           "warnings": 0,
-          "wall_ms": 1465.0
+          "wall_ms": 1474.3
         },
         "impes": {
           "metrics": {
@@ -1389,7 +1439,7 @@
             "substeps": 785
           },
           "warnings": 0,
-          "wall_ms": 380.3
+          "wall_ms": 364.0
         }
       },
       "pairs": {
@@ -1407,9 +1457,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -1432,10 +1482,11 @@
             "cum.FWPT": 0.0005514231382845877,
             "cum.FWIT": 0.0002712664589009038,
             "substeps": 136,
-            "newton": 336
+            "newton": 336,
+            "newton_ratio": 0.9155313351498637
           },
           "warnings": 0,
-          "wall_ms": 153.2
+          "wall_ms": 151.9
         },
         "dense": {
           "metrics": {
@@ -1449,10 +1500,11 @@
             "cum.FWPT": 0.0005514355565212652,
             "cum.FWIT": 0.0002712664589009038,
             "substeps": 136,
-            "newton": 335
+            "newton": 335,
+            "newton_ratio": 0.9128065395095368
           },
           "warnings": 0,
-          "wall_ms": 392.5
+          "wall_ms": 374.2
         },
         "impes": {
           "metrics": {
@@ -1468,7 +1520,7 @@
             "substeps": 532
           },
           "warnings": 0,
-          "wall_ms": 222.3
+          "wall_ms": 213.2
         }
       },
       "pairs": {
@@ -1486,9 +1538,9 @@
         }
       },
       "measured": {
-        "commit": "3c2686e",
+        "commit": "c37c7f2b",
         "dirty": false,
-        "date": "2026-10-23",
+        "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-cross-solver.sh --update"
       }
@@ -1659,6 +1711,84 @@
         "date": "2026-10-31",
         "flow": "flow 2026.04",
         "command": "bash scripts/validate-compositional.sh update-scorecard"
+      }
+    },
+    "bo-1d-20": {
+      "flow": {
+        "substeps": 22,
+        "newton": 52
+      },
+      "runs": {
+        "sparse": {
+          "metrics": {
+            "p": 0.001762051404682552,
+            "sw": 1.6174118391831804e-08,
+            "sg": 7.180312341002423e-07,
+            "final.p": 0.0002978523093872809,
+            "final.sw": 1.1575570640909305e-08,
+            "final.sg": 6.111921811956245e-07,
+            "cum.FOPT": 1.6224002819490243e-05,
+            "cum.FGPT": 1.5296721984268358e-05,
+            "substeps": 22,
+            "newton": 53,
+            "newton_ratio": 1.0192307692307692
+          },
+          "warnings": 0,
+          "wall_ms": 16.6
+        },
+        "dense": {
+          "metrics": {
+            "p": 0.001762051404682552,
+            "sw": 1.6174118391831804e-08,
+            "sg": 7.180312342002599e-07,
+            "final.p": 0.0002978523093872809,
+            "final.sw": 1.1575570640909305e-08,
+            "final.sg": 6.111921811956245e-07,
+            "cum.FOPT": 1.6224002819490243e-05,
+            "cum.FGPT": 1.5296721984268358e-05,
+            "substeps": 22,
+            "newton": 53,
+            "newton_ratio": 1.0192307692307692
+          },
+          "warnings": 0,
+          "wall_ms": 16.1
+        },
+        "impes": {
+          "metrics": {
+            "p": 0.42905659460467405,
+            "sw": 1.3107623321462203e-07,
+            "sg": 0.0004829802057309627,
+            "final.p": 0.09791505096251285,
+            "final.sw": 3.416627060437438e-08,
+            "final.sg": 0.00011590669436887385,
+            "cum.FOPT": 0.00322078155666879,
+            "cum.FGPT": 0.024561481826923946,
+            "substeps": 26
+          },
+          "warnings": 0,
+          "wall_ms": 8.7
+        }
+      },
+      "pairs": {
+        "sparse_vs_dense": {
+          "invariant": true,
+          "p": 9.99875737761613e-11,
+          "sw": 0.0,
+          "sg": 1.000241556248227e-14
+        },
+        "sparse_vs_impes": {
+          "invariant": false,
+          "p": 0.4272945431999915,
+          "sw": 1.2819759999393998e-07,
+          "sg": 0.0004830606498699985
+        }
+      },
+      "measured": {
+        "commit": "c37c7f2b",
+        "dirty": false,
+        "date": "2026-10-31",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     }
   }
