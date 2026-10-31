@@ -280,7 +280,13 @@ if wanted compositional; then
                 "a fixture no longer reproduces or a record left its scorecard band; see its output" ""
         fi
     else
-        status compositional ran "$cmd" "fixtures not re-derived: flowexp_comp not built (tier $tier)" ""
+        if bash "$repo_root/scripts/validate-compositional.sh" records > "$run_dir/compositional-records.log" 2>&1; then
+            status compositional ran "$cmd; bash scripts/validate-compositional.sh records" \
+                "fixtures not re-derived (tier $tier); trajectory records match the shared scorecard" ""
+        else
+            status compositional failed "bash scripts/validate-compositional.sh records" \
+                "a compositional record left its scorecard band; see its output" ""
+        fi
     fi
 fi
 

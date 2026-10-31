@@ -59,11 +59,15 @@ simulator (`flow`) entirely.
 
 ## Shared run record and scorecard (#22)
 
-`bash scripts/validate-compositional.sh reference` runs `comp_reference_run_records` in release,
+`bash scripts/validate-compositional.sh records` runs `comp_reference_run_records` in release,
 which writes each committed trajectory fixture's ResSim counterpart as `<case>.comp.json` in the
 same `<case>.<run>.json` shape as the black-oil runs (`run: "comp"`). The cells carry `p`, `sw`,
 `sg` and component-major `z`; the comparator grades `p`, `sg` and `z` because no compositional
-fixture carries water. `sw` is extra in the record, not compared.
+fixture carries water. `sw` is extra in the record, not compared. This mode needs neither
+`flowexp_comp` nor the OPM Python bindings, so it is what normal CI runs.
+
+`bash scripts/validate-compositional.sh reference` runs the same checks after re-deriving the
+committed fixtures from `flowexp_comp`; use it when the fixture or deck changed.
 
 The case list is [`trajectory_cases.json`](trajectory_cases.json): `1d_comp`, `1d_comp_skin`,
 `depletion`, `depletion_bhp`, `injection`, and `quarter_five_spot`. The refinement ladders under

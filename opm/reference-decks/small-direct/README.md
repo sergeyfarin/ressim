@@ -94,8 +94,9 @@ Newton numbers in the dated tables below and in older docs read about one per su
 Improvements past the band are printed. Record them with `--update` and commit the scorecard with
 the change that earned them. Its `provenance` then names the commit, the Flow version and the
 command, and `provenance.cases` scopes that write to the cases it actually measured; cases kept
-from an earlier write are unchanged. Flow output is cached per deck SHA-256, so a warm check takes
-about 20 s.
+from an earlier write are unchanged. A preserved case that predates the per-case `measured` block
+inherits the earlier top-level provenance, so a partial update cannot re-attribute it to the new
+commit. Flow output is cached per deck SHA-256, so a warm check takes about 20 s.
 
 Before this gate, every result table below was typed into this README by hand after each fix, and
 nothing noticed when a later change moved a number.

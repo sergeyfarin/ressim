@@ -18,6 +18,9 @@ set -euo pipefail
 #            compositional regression fails the same ratchet as a black-oil one (Part C, #22).
 #            Skips the fixture regeneration with a note when flowexp_comp has not been built; the
 #            record comparison still runs against the committed fixtures.
+#   records  the record comparison alone: run the ignored writer against the committed fixtures and
+#            check the shared scorecard. No flowexp_comp, OPM headers or OPM Python bindings. This
+#            is the mode normal CI runs; `reference` adds the local fixture regeneration.
 #   update-scorecard
 #            As `reference`, but deliberately re-baselines the compositional cases in
 #            `opm/reference-decks/small-direct/scorecard.json`. Run it on a committed tree.
@@ -141,6 +144,61 @@ run_fixture() {
     echo "gate ok: the committed fixture reproduces from the installed OPM headers"
 }
 
+run_records() {
+    # The same `<case>.<run>.json` record and scorecard the black-oil gate uses (#22, Part C).
+    # The committed fixture is the oracle here, so this half needs neither flowexp_comp nor the
+    # OPM Python bindings - only the release build and the shared scorecard.
+    local mode="${1:---check}"
+    local provenance="bash scripts/validate-compositional.sh records"
+    if [ "$mode" = "--write-scorecard" ]; then
+        provenance="bash scripts/validate-compositional.sh update-scorecard"
+    fi
+
+    local records_dir
+    if [ -n "${COMP_REFERENCE_OUT:-}" ]; then
+        records_dir="$COMP_REFERENCE_OUT"
+        mkdir -p "$records_dir"
+    else
+        records_dir="$(mktemp -d)"
+        cleanup_dirs+=("$records_dir")
+    fi
+
+    echo "== records: ResSim trajectories against the committed fixtures and the shared scorecard =="
+    local python="python3"
+    if ! "$python" -c 'import numpy' 2>/dev/null; then
+        # CI's system Python has no numpy. Keep the fallback local to this gate rather than
+        # changing the runner image; the existing workflow already proves venv/pip work there.
+        local venv="${RESSIM_COMPARE_VENV:-${TMPDIR:-/tmp}/ressim-compare-venv}"
+        if [ ! -x "$venv/bin/python" ] || ! "$venv/bin/python" -c 'import numpy' 2>/dev/null; then
+            echo "== records: creating $venv with numpy"
+            python3 -m venv "$venv"
+            "$venv/bin/pip" install --quiet numpy
+        fi
+        python="$venv/bin/python"
+    fi
+    local status=0
+    COMP_REFERENCE_OUT="$records_dir" cargo test --release --manifest-path "$manifest_path" --lib \
+        comp_reference_run_records -- --ignored --nocapture 2>&1 | tee "$log_file" || status=$?
+    if [ "$status" -ne 0 ]; then
+        echo "FAIL: comp_reference_run_records exited $status." >&2
+        exit "$status"
+    fi
+    local passed
+    passed="$(awk '/^test result:/ { gsub(/;/, ""); for (i = 2; i <= NF; i++) if ($i == "passed") p += $(i - 1) } END { print (p + 0) }' "$log_file")"
+    if [ "$passed" -lt 1 ]; then
+        echo "FAIL: comp_reference_run_records did not run; the record gate would be a no-op." >&2
+        exit 1
+    fi
+    echo "gate ok: 'comp_reference_run_records' ran $passed test(s)"
+
+    "$python" "$repo_root/tools/opm_flow/compare_small_direct.py" \
+        --ressim-dir "$records_dir" \
+        --comp-reference-dir "$repo_root/opm/compositional" \
+        --scorecard "$repo_root/opm/reference-decks/small-direct/scorecard.json" \
+        "$mode" --provenance-command "$provenance"
+    echo "gate ok: every compositional trajectory matches its fixture within the scorecard bands"
+}
+
 run_reference() {
     echo "== reference: re-run the compositional cases and verify their fixtures =="
     local binary="${FLOWEXP_COMP:-$(cd "${repo_root}/.." && pwd)/ressim-opm-build/opm-simulators/build/bin/flowexp_comp}"
@@ -160,47 +218,11 @@ run_reference() {
         echo "         one's distance from timestep-convergence is what the census records"
     fi
 
-    # The same `<case>.<run>.json` record and scorecard the black-oil gate uses (#22, Part C).
-    # The committed fixture is the oracle here, so this half needs neither flowexp_comp nor the
-    # OPM Python bindings - only the release build and the shared scorecard.
     local mode="--check"
-    local provenance="bash scripts/validate-compositional.sh reference"
     if [ "${1:-}" = "update-scorecard" ]; then
         mode="--write-scorecard"
-        provenance="bash scripts/validate-compositional.sh update-scorecard"
     fi
-
-    local records_dir
-    if [ -n "${COMP_REFERENCE_OUT:-}" ]; then
-        records_dir="$COMP_REFERENCE_OUT"
-        mkdir -p "$records_dir"
-    else
-        records_dir="$(mktemp -d)"
-        cleanup_dirs+=("$records_dir")
-    fi
-
-    echo "== records: ResSim trajectories against the committed fixtures and the shared scorecard =="
-    local status=0
-    COMP_REFERENCE_OUT="$records_dir" cargo test --release --manifest-path "$manifest_path" --lib \
-        comp_reference_run_records -- --ignored --nocapture 2>&1 | tee "$log_file" || status=$?
-    if [ "$status" -ne 0 ]; then
-        echo "FAIL: comp_reference_run_records exited $status." >&2
-        exit "$status"
-    fi
-    local passed
-    passed="$(awk '/^test result:/ { gsub(/;/, ""); for (i = 2; i <= NF; i++) if ($i == "passed") p += $(i - 1) } END { print (p + 0) }' "$log_file")"
-    if [ "$passed" -lt 1 ]; then
-        echo "FAIL: comp_reference_run_records did not run; the record gate would be a no-op." >&2
-        exit 1
-    fi
-    echo "gate ok: 'comp_reference_run_records' ran $passed test(s)"
-
-    python3 "$repo_root/tools/opm_flow/compare_small_direct.py" \
-        --ressim-dir "$records_dir" \
-        --comp-reference-dir "$repo_root/opm/compositional" \
-        --scorecard "$repo_root/opm/reference-decks/small-direct/scorecard.json" \
-        "$mode" --provenance-command "$provenance"
-    echo "gate ok: every compositional trajectory matches its fixture within the scorecard bands"
+    run_records "$mode"
 }
 
 # The refinement study. Release, because a debug build turns three minutes into forty.
@@ -245,11 +267,12 @@ case "$mode" in
     native)  run_thermo; run_fixture; run_reference ;;
     wasm)    run_wasm ;;
     reference) run_reference ;;
+    records) run_records ;;
     update-scorecard) run_reference update-scorecard ;;
     refinement) run_refinement ;;
     all)     run_thermo; run_fixture; run_reference; run_wasm ;;
     *)
-        echo "usage: $0 {thermo|fixture|reference|update-scorecard|refinement|native|wasm|all}" >&2
+        echo "usage: $0 {thermo|fixture|reference|records|update-scorecard|refinement|native|wasm|all}" >&2
         exit 2
         ;;
 esac

@@ -195,11 +195,34 @@ def inventory_relative_error(run: dict, cum: dict) -> dict | None:
     return dict(zip(("water", "oil", "gas"), map(float, error)))
 
 
+def checked_fields(fields: list[dict], where: str) -> list[dict]:
+    """Convert every field to float and reject non-finite entries before any reduction.
+
+    `json.loads` turns a serialized NaN/Infinity (or a Rust `null`) into a float nan, and
+    `max()` over an array containing nan returns whichever operand wins the comparison - it does
+    not reliably surface the bad cell. A record that cannot represent a cell must fail here
+    instead of being scored as a small difference.
+    """
+    for index, field in enumerate(fields):
+        for key, values in field.items():
+            array = np.asarray(values, dtype=float)
+            bad = np.argwhere(~np.isfinite(array))
+            if bad.size:
+                coord = ", ".join(str(int(x)) for x in bad[0])
+                raise SystemExit(
+                    f"{where}: report {index} field {key} is non-finite at index ({coord})"
+                )
+            field[key] = array
+    return fields
+
+
 def field_error(a: list[dict], b: list[dict], keys: tuple[str, ...] = ("p", "sw", "sg")) -> dict:
     """Worst cell difference over all report steps, and at the final one."""
     worst = {key: 0.0 for key in keys}
     for fa, fb in zip(a, b):
         for key in keys:
+            if not (np.all(np.isfinite(fa[key])) and np.all(np.isfinite(fb[key]))):
+                raise SystemExit(f"non-finite {key} reached field_error")
             worst[key] = max(worst[key], float(np.max(np.abs(fa[key] - fb[key]))))
     final = {key: float(np.max(np.abs(a[-1][key] - b[-1][key]))) for key in keys}
     return {"worst": worst, "final": final}
@@ -240,7 +263,7 @@ def comp_reference_fields(path: Path) -> tuple[list[dict], list[float]]:
     times = [float(t) for t in doc["summary"]["TIME"]]
     if len(times) != len(fields):
         raise SystemExit(f"{path}: {len(fields)} report steps but {len(times)} summary times")
-    return fields, times
+    return checked_fields(fields, str(path)), times
 
 
 def comp_manifest(comp_dir: Path) -> dict[str, Path]:
@@ -267,14 +290,18 @@ def compare_comp_case(case: str, reference_path: Path, args: argparse.Namespace)
             raise SystemExit(
                 f"{case}: report {index} is at {report['t']} d, the reference says {expected} d"
             )
-    fields = [
-        {
-            "p": np.array(report["p"], dtype=float),
-            "sg": np.array(report["sg"], dtype=float),
-            "z": np.array(report["z"], dtype=float),
-        }
-        for report in reports
-    ]
+    fields = checked_fields(
+        [
+            {
+                "p": np.array(report["p"], dtype=float),
+                "sw": np.array(report["sw"], dtype=float),
+                "sg": np.array(report["sg"], dtype=float),
+                "z": np.array(report["z"], dtype=float),
+            }
+            for report in reports
+        ],
+        f"{case}/comp",
+    )
     if any(f["z"].shape != r["z"].shape for f, r in zip(fields, reference)):
         raise SystemExit(f"{case}: composition shape differs from the reference")
     conv = ressim_convergence(run)
@@ -306,6 +333,7 @@ def compare_case(case: str, args: argparse.Namespace) -> dict:
     out = args.flow_dir / case
     flow_ms = run_flow(case, out, args.deck_dir)
     flow = {"fields": flow_fields(out), "cum": flow_cumulatives(out), "conv": flow_convergence(out)}
+    flow["fields"] = checked_fields(flow["fields"], f"{case}/Flow")
     entry: dict = {
         "flow": {"source": "flow", "conv": flow["conv"], "wall_ms": flow_ms, "cum": flow["cum"]},
         "runs": {},
@@ -313,7 +341,10 @@ def compare_case(case: str, args: argparse.Namespace) -> dict:
     fields_by_run = {}
     for run_id in discover_runs(args.ressim_dir, case):
         run = json.loads((args.ressim_dir / f"{case}.{run_id}.json").read_text())
-        fields = [{k: np.array(r[k]) for k in ("p", "sw", "sg")} for r in run["reports"]]
+        fields = checked_fields(
+            [{k: np.array(r[k]) for k in ("p", "sw", "sg")} for r in run["reports"]],
+            f"{case}/{run_id}",
+        )
         if len(fields) != len(flow["fields"]):
             raise SystemExit(f"{case}/{run_id}: {len(fields)} ResSim reports vs {len(flow['fields'])} Flow")
         fields_by_run[run_id] = fields
@@ -380,6 +411,37 @@ def scorecard_metrics(entry: dict) -> dict:
         runs[run_id] = {"metrics": metrics, "warnings": len(r["warnings"]), "wall_ms": round(r["wall_ms"], 1)}
     pairs = {k: {"invariant": v["invariant"], **v["worst"]} for k, v in entry["pairs"].items()}
     return {"flow": {k: entry["flow"]["conv"][k] for k in ("substeps", "newton")}, "runs": runs, "pairs": pairs}
+
+
+def merge_scorecard(
+    existing: dict | None, measured: dict, prov: dict, prune: bool
+) -> tuple[dict, int]:
+    """Merge this run's cases into an existing scorecard without losing old provenance.
+
+    A scorecard written before per-case `measured` blocks existed only had the top-level
+    provenance, which described every case in the file. Copy that legacy block into each
+    preserved case before the top-level block is replaced by this write's provenance, so a
+    partial update cannot silently re-attribute an earlier measurement.
+    """
+    preserved = {}
+    if existing is not None and not prune:
+        legacy = existing.get("provenance")
+        if legacy:
+            legacy = {k: v for k, v in legacy.items() if k in ("commit", "dirty", "date", "flow", "command")}
+        for case, entry in existing.get("cases", {}).items():
+            entry = dict(entry)
+            if "measured" not in entry and legacy:
+                entry["measured"] = dict(legacy)
+            preserved[case] = entry
+    card = {
+        "$comment": "Written by compare_small_direct.py --write-scorecard; do not edit by hand. "
+        "Bands are BANDS in that script. A write merges the cases it measured and keeps the "
+        "rest, because the black-oil and compositional gates update different families. See "
+        "opm/reference-decks/small-direct/README.md.",
+        "provenance": {**prov, "cases": sorted(measured)},
+        "cases": {**preserved, **measured},
+    }
+    return card, len(set(preserved) - set(measured))
 
 
 def band_for(metric: str) -> tuple[float, float]:
@@ -610,21 +672,11 @@ def main() -> int:
         measured = {case: scorecard_metrics(e) for case, e in report.items()}
         for entry in measured.values():
             entry["measured"] = dict(prov)
-        preserved = {}
-        if args.scorecard.exists() and not args.prune_scorecard:
-            preserved = json.loads(args.scorecard.read_text()).get("cases", {})
-        card = {
-            "$comment": "Written by compare_small_direct.py --write-scorecard; do not edit by hand. "
-            "Bands are BANDS in that script. A write merges the cases it measured and keeps the "
-            "rest, because the black-oil and compositional gates update different families. See "
-            "opm/reference-decks/small-direct/README.md.",
-            "provenance": {**prov, "cases": sorted(measured)},
-            "cases": {**preserved, **measured},
-        }
+        existing = json.loads(args.scorecard.read_text()) if args.scorecard.exists() else None
+        card, kept = merge_scorecard(existing, measured, prov, args.prune_scorecard)
         if prov["dirty"]:
             print("\nwarning: tracked files are modified; this scorecard is provisional until "
                   "re-written on a committed tree", file=sys.stderr)
-        kept = len(card["cases"]) - len(measured)
         if kept:
             print(f"\nkept {kept} case(s) from the existing scorecard")
         args.scorecard.write_text(json.dumps(card, indent=2) + "\n")
