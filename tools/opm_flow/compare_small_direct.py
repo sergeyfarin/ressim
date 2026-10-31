@@ -195,24 +195,53 @@ def inventory_relative_error(run: dict, cum: dict) -> dict | None:
     return dict(zip(("water", "oil", "gas"), map(float, error)))
 
 
-def checked_fields(fields: list[dict], where: str) -> list[dict]:
-    """Convert every field to float and reject non-finite entries before any reduction.
+def checked_fields(
+    fields: list[dict], where: str, ndim: dict[str, int] | None = None
+) -> list[dict]:
+    """Convert every field to float, reject non-finite entries, and validate its shape.
 
-    `json.loads` turns a serialized NaN/Infinity (or a Rust `null`) into a float nan, and
-    `max()` over an array containing nan returns whichever operand wins the comparison - it does
-    not reliably surface the bad cell. A record that cannot represent a cell must fail here
-    instead of being scored as a small difference.
+    `json.loads` turns a serialized NaN/Infinity (or a Rust `null`) into a float nan. Checking
+    `np.argwhere` alone misses a whole-field `null`: it becomes a 0-d array and `argwhere` returns
+    shape `(1, 0)`, so `bad.size` is zero. Test `np.all(np.isfinite(array))` directly and require
+    the field's declared rank; a whole-field `sw: null` is not a per-cell array.
     """
+    expected_ndim = ndim or {}
     for index, field in enumerate(fields):
+        cells = None
         for key, values in field.items():
-            array = np.asarray(values, dtype=float)
-            bad = np.argwhere(~np.isfinite(array))
-            if bad.size:
-                coord = ", ".join(str(int(x)) for x in bad[0])
+            try:
+                array = np.asarray(values, dtype=float)
+            except (TypeError, ValueError) as exc:
+                raise SystemExit(f"{where}: report {index} field {key} is not numeric: {exc}") from exc
+            if not np.all(np.isfinite(array)):
+                bad = np.argwhere(~np.isfinite(array))
+                if bad.size:
+                    coord = ", ".join(str(int(x)) for x in bad[0])
+                    detail = f"index ({coord})"
+                else:
+                    detail = "the whole field"
+                raise SystemExit(f"{where}: report {index} field {key} is non-finite at {detail}")
+            rank = expected_ndim.get(key, 1)
+            if array.ndim != rank:
                 raise SystemExit(
-                    f"{where}: report {index} field {key} is non-finite at index ({coord})"
+                    f"{where}: report {index} field {key} must be {rank}-d, got shape {array.shape}"
                 )
+            if array.size == 0:
+                raise SystemExit(f"{where}: report {index} field {key} is empty")
+            if array.ndim == 1:
+                if cells is None:
+                    cells = array.shape[0]
+                elif array.shape[0] != cells:
+                    raise SystemExit(
+                        f"{where}: report {index} field {key} has {array.shape[0]} cells, expected {cells}"
+                    )
             field[key] = array
+        if cells is not None:
+            for key, array in field.items():
+                if array.ndim == 2 and array.shape[1] != cells:
+                    raise SystemExit(
+                        f"{where}: report {index} field {key} has {array.shape[1]} cells, expected {cells}"
+                    )
     return fields
 
 
@@ -263,7 +292,7 @@ def comp_reference_fields(path: Path) -> tuple[list[dict], list[float]]:
     times = [float(t) for t in doc["summary"]["TIME"]]
     if len(times) != len(fields):
         raise SystemExit(f"{path}: {len(fields)} report steps but {len(times)} summary times")
-    return checked_fields(fields, str(path)), times
+    return checked_fields(fields, str(path), {"p": 1, "sg": 1, "z": 2}), times
 
 
 def comp_manifest(comp_dir: Path) -> dict[str, Path]:
@@ -301,6 +330,7 @@ def compare_comp_case(case: str, reference_path: Path, args: argparse.Namespace)
             for report in reports
         ],
         f"{case}/comp",
+        {"p": 1, "sw": 1, "sg": 1, "z": 2},
     )
     if any(f["z"].shape != r["z"].shape for f, r in zip(fields, reference)):
         raise SystemExit(f"{case}: composition shape differs from the reference")
@@ -442,6 +472,31 @@ def merge_scorecard(
         "cases": {**preserved, **measured},
     }
     return card, len(set(preserved) - set(measured))
+
+
+def case_family(entry: dict) -> str:
+    """Which solver family a scorecard entry belongs to, from the run ids it covers."""
+    runs = entry.get("runs", {})
+    if any(run in runs for run in ("sparse", "dense", "impes")):
+        return "black-oil"
+    if "comp" in runs:
+        return "compositional"
+    return "unknown"
+
+
+def coverage_error(report: dict, expected: set[str], family: str, partial: bool) -> str | None:
+    """Refuse a complete run that silently dropped a case; `--case` opts into a partial run."""
+    if partial:
+        return None
+    if not expected:
+        return f"no {family} cases selected"
+    missing = sorted(expected - set(report))
+    if missing:
+        return (
+            f"incomplete {family} coverage: missing {', '.join(missing)}. "
+            "Run the whole family or pass --case for an intentional partial run."
+        )
+    return None
 
 
 def band_for(metric: str) -> tuple[float, float]:
@@ -620,16 +675,42 @@ def main() -> int:
     if args.comp_reference_dir is None and args.flow_dir is None:
         parser.error("--flow-dir or --comp-reference-dir is required")
 
+    scorecard = None
+    if args.scorecard and args.scorecard.exists():
+        scorecard = json.loads(args.scorecard.read_text())
+
     if args.comp_reference_dir:
+        family = "compositional"
         manifest = comp_manifest(args.comp_reference_dir)
+        candidates = set(manifest)
         cases = args.case or list(manifest)
-        unknown = sorted(set(cases) - set(manifest))
+        unknown = sorted(set(cases) - candidates)
         if unknown:
             parser.error(f"not in trajectory_cases.json: {', '.join(unknown)}")
+    else:
+        family = "black-oil"
+        candidates = {p.name for p in args.deck_dir.iterdir() if (p / "CASE.DATA").exists()}
+        cases = args.case or sorted(candidates)
+
+    # A complete run must cover the whole family. A case can be absent from this invocation's
+    # manifest/deck tree and still be in the committed scorecard; silently dropping it would turn
+    # the ratchet off for that case. `--case` is the explicit opt-in to a partial run, and
+    # `--prune-scorecard` is the explicit opt-in to retiring cases.
+    expected = set(cases) if args.case else set(candidates)
+    if scorecard is not None and not args.prune_scorecard:
+        expected |= {
+            case for case, entry in scorecard.get("cases", {}).items()
+            if case_family(entry) == family
+        }
+
+    if args.comp_reference_dir:
         report = {case: compare_comp_case(case, manifest[case], args) for case in cases}
     else:
-        cases = args.case or sorted(p.name for p in args.deck_dir.iterdir() if (p / "CASE.DATA").exists())
         report = {case: compare_case(case, args) for case in cases}
+
+    error = coverage_error(report, expected, family, bool(args.case))
+    if error:
+        raise SystemExit(error)
 
     if args.markdown:
         print_markdown(report)
@@ -672,8 +753,7 @@ def main() -> int:
         measured = {case: scorecard_metrics(e) for case, e in report.items()}
         for entry in measured.values():
             entry["measured"] = dict(prov)
-        existing = json.loads(args.scorecard.read_text()) if args.scorecard.exists() else None
-        card, kept = merge_scorecard(existing, measured, prov, args.prune_scorecard)
+        card, kept = merge_scorecard(scorecard, measured, prov, args.prune_scorecard)
         if prov["dirty"]:
             print("\nwarning: tracked files are modified; this scorecard is provisional until "
                   "re-written on a committed tree", file=sys.stderr)
@@ -682,7 +762,8 @@ def main() -> int:
         args.scorecard.write_text(json.dumps(card, indent=2) + "\n")
         print(f"\nscorecard written: {args.scorecard}")
     elif args.check:
-        scorecard = json.loads(args.scorecard.read_text())
+        if scorecard is None:
+            parser.error(f"{args.scorecard}: no scorecard to check")
         failures, improvements, notes = check(report, scorecard)
         p = scorecard["provenance"]
         print(f"\nscorecard: {args.scorecard} (measured at {p['commit']}{' dirty' if p['dirty'] else ''}, "

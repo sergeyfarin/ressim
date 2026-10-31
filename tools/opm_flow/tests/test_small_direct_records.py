@@ -10,9 +10,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 try:
-    from compare_small_direct import compare_comp_case, merge_scorecard
+    from compare_small_direct import case_family, compare_comp_case, coverage_error, merge_scorecard
 except ModuleNotFoundError:
+    case_family = None
     compare_comp_case = None
+    coverage_error = None
     merge_scorecard = None
 
 
@@ -67,6 +69,21 @@ class CompositionalRecordTests(unittest.TestCase):
     def test_null_water_saturation_is_rejected(self):
         self.record["reports"][0]["sw"] = [None]
         with self.assertRaisesRegex(SystemExit, r"non-finite"):
+            self.compare()
+
+    def test_whole_field_null_water_saturation_is_rejected(self):
+        self.record["reports"][0]["sw"] = None
+        with self.assertRaisesRegex(SystemExit, r"non-finite"):
+            self.compare()
+
+    def test_scalar_water_saturation_is_rejected(self):
+        self.record["reports"][0]["sw"] = 0.0
+        with self.assertRaisesRegex(SystemExit, r"must be 1-d"):
+            self.compare()
+
+    def test_one_dimensional_composition_is_rejected(self):
+        self.record["reports"][0]["z"] = [0.5, 0.3, 0.2]
+        with self.assertRaisesRegex(SystemExit, r"must be 2-d"):
             self.compare()
 
     def test_nonfinite_composition_is_rejected(self):
@@ -129,6 +146,28 @@ class ScorecardMergeTests(unittest.TestCase):
         card, kept = merge_scorecard(existing, {}, self.new_provenance(), prune=True)
         self.assertEqual(kept, 0)
         self.assertNotIn("old", card["cases"])
+
+
+@unittest.skipIf(coverage_error is None, "requires Flow's numpy environment")
+class CoverageTests(unittest.TestCase):
+    def test_empty_family_is_rejected(self):
+        error = coverage_error({}, set(), "compositional", partial=False)
+        self.assertIn("no compositional cases", error)
+
+    def test_missing_case_is_rejected(self):
+        error = coverage_error({"1d_comp": {}}, {"1d_comp", "injection"}, "compositional", partial=False)
+        self.assertIn("injection", error)
+        self.assertIn("--case", error)
+
+    def test_complete_run_passes(self):
+        self.assertIsNone(coverage_error({"a": {}}, {"a"}, "compositional", partial=False))
+
+    def test_partial_run_is_allowed(self):
+        self.assertIsNone(coverage_error({}, {"a", "b"}, "compositional", partial=True))
+
+    def test_family_comes_from_run_ids(self):
+        self.assertEqual(case_family({"runs": {"comp": {}}}), "compositional")
+        self.assertEqual(case_family({"runs": {"sparse": {}, "dense": {}}}), "black-oil")
 
 
 if __name__ == "__main__":
