@@ -49,7 +49,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const caseDir = resolve(ROOT, 'opm/reference-decks', args.caseKey);
   const manifest = JSON.parse(await readFile(resolve(caseDir, 'manifest.json'), 'utf8'));
-  if (manifest.schemaVersion !== 1 || manifest.caseKey !== args.caseKey) {
+  if (![1, 2].includes(manifest.schemaVersion) || manifest.caseKey !== args.caseKey) {
     throw new Error(`Invalid manifest for ${args.caseKey}`);
   }
 
@@ -59,15 +59,19 @@ async function main() {
   if (actualHash !== manifest.deck.sha256) {
     throw new Error(`Deck checksum mismatch: expected ${manifest.deck.sha256}, got ${actualHash}`);
   }
-  for (const invariant of manifest.deckInvariants) {
+  for (const invariant of manifest.deckInvariants ?? []) {
     if (!deck.includes(invariant)) {
       throw new Error(`Deck is missing required mapped input: ${JSON.stringify(invariant)}`);
     }
   }
 
   if (args.infostep) {
+    const expected = manifest.opm?.expected;
+    if (!expected) {
+      console.log(`OPM fixture verified: ${args.caseKey} (checksum only; no typed Newton oracle)`);
+      return;
+    }
     const rows = parseInfoStep(await readFile(resolve(args.infostep), 'utf8'));
-    const expected = manifest.opm.expected;
     const actualIterations = rows.map((row) => row.newton);
     if (rows.length !== expected.substeps) {
       throw new Error(`Expected ${expected.substeps} OPM substeps, got ${rows.length}`);

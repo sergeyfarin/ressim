@@ -1,5 +1,15 @@
 # OPM Flow vs ResSim FIM vs ResSim IMPES
 
+> **Retired 2026-10-31 (#22).** The wasm-preset cases now have simulator-generated decks and gated
+> rows in
+> [`small-direct/scorecard.json`](../opm/reference-decks/small-direct/scorecard.json):
+> `water-heavy-step1`, `water-pressure-20x20x3`, `water-pressure-22x22x1`,
+> `water-pressure-23x23x1` and `gas-rate-10x10x3`. The typed convergence tables below are
+> historical evidence only; **do not use them as a baseline**. The current measurements, bands and
+> replay commands are the scorecard and
+> [`small-direct/README.md`](../opm/reference-decks/small-direct/README.md).
+> [`BENCHMARKS.md`](BENCHMARKS.md) remains the product-facing benchmark page.
+
 > **Historical record, superseded 2026-09-25.** Current numbers are in
 > [`BENCHMARKS.md`](BENCHMARKS.md): the cross-solver scorecard against Flow (§5) and the
 > long-horizon FIM convergence table on `5c29e0e` (§7). The `linear-bad` retries this page records
