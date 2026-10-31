@@ -24,7 +24,8 @@ set -euo pipefail
 #   bash scripts/validate-cross-solver.sh --grid-refine
 #       grid-refined referee: run the uniform bo-1d depletion column at 10, 20 and 40 cells
 #       through FIM sparse and IMPES, then report successive differences, contraction ratios,
-#       observed order and the Richardson extrapolation. Needs no Flow or OPM bindings.
+#       observed order and the Richardson extrapolation. Requires the complete 20-report/100-day
+#       schedule and a constant cell-count ratio. Needs no Flow or OPM bindings.
 #
 # Needs `flow` and its `opm.io` Python package for the normal and time-refined modes; skips with
 # a note when Flow is absent, like validate-compositional.sh's reference mode. About 20 s with Flow

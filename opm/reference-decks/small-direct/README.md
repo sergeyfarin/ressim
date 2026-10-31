@@ -107,9 +107,11 @@ commit. Flow output is cached per deck SHA-256, so a warm check takes about 20 s
 20 and 40 cells through FIM sparse and IMPES, needs no Flow or OPM bindings, and prints each
 observable's successive differences, contraction ratio, observed order and Richardson
 extrapolation. It fails when a finer difference is more than 0.8 of the coarser one, the same
-contraction rule as `physics_depletion_grid_convergence_*`. The `bo-1d-20` case exists so the
-ladder is part of the normal deck inventory as well; its scorecard row is the middle rung, not a
-separate physical scenario.
+contraction rule as `physics_depletion_grid_convergence_*`, and rejects a truncated schedule
+(`OPM_SMALL_REPORT_LIMIT`) or a non-constant level ratio before judging convergence. An exactly
+converged finest pair passes with zero contraction. The `bo-1d-20` case exists so the ladder is
+part of the normal deck inventory as well; its scorecard row is the middle rung, not a separate
+physical scenario.
 
 Before this gate, every result table below was typed into this README by hand after each fix, and
 nothing noticed when a later change moved a number.

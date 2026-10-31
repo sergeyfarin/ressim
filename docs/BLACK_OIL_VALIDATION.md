@@ -646,10 +646,11 @@ cumulative oil. It needs no Flow or OPM bindings: this is self-convergence, not 
 
 The ladder is the uniform `bo-1d` column, so the arithmetic field mean is the pore-volume mean. The
 gate fails when a finer difference exceeds 0.8 of the preceding one, matching
-`physics_depletion_grid_convergence_*`. Measured on 2026-10-31 at `c37c7f2b`: both solvers
-contract by ~0.53 per halving with observed order 0.91–0.92 on all four observables. The new
-`bo-1d-20` deck and scorecard row are the middle rung of that ladder, not a separate physical
-scenario.
+`physics_depletion_grid_convergence_*`; it rejects a truncated schedule or a non-constant level
+ratio before judging, and an exactly converged finest pair passes with zero contraction.
+Measured on 2026-10-31 at `c37c7f2b`: both solvers contract by ~0.53 per halving with observed
+order 0.91–0.92 on all four observables. The new `bo-1d-20` deck and scorecard row are the middle
+rung of that ladder, not a separate physical scenario.
 
 ## 5. FIM repair F6 applicability table (2026-09-15)
 
