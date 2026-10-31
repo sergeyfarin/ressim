@@ -102,8 +102,14 @@ pub fn event_at(time_days: f64, event_time_days: f64) -> bool {
     (time_days - event_time_days).abs() <= event_tolerance(time_days)
 }
 
+/// Clock tolerance used to decide whether an event boundary has been reached.
+///
+/// This absorbs floating-point clock roundoff only. It is deliberately tighter than a `dt`: at day
+/// 1000 it is `1e-8 d`, while a real report remainder can be `5e-7 d`. An earlier `1e-9 * time`
+/// rule gave `1e-6 d` at day 1000 and could not tell a completed remainder from the boundary it
+/// started at.
 fn event_tolerance(time_days: f64) -> f64 {
-    1e-9 * time_days.abs().max(1.0)
+    1e-11 * time_days.abs().max(1.0)
 }
 
 /// The largest `dt` that ends no later than the next event.

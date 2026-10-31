@@ -1396,6 +1396,7 @@ impl CompositionalCase {
             }),
             well_bhp_bar: self.run.well_bhp_bar().to_vec(),
             schedule_position: Some(self.schedule_position),
+            schedule_boundary_pending: Some(self.schedule_boundary_pending),
         }
     }
 
@@ -1465,17 +1466,21 @@ impl CompositionalCase {
         // agree. Replaying is idempotent because events replace state; the comparison is what
         // catches a checkpoint whose cursor and clock disagree.
         case.apply_schedule_through(checkpoint.time_days);
-        // Replaying a historical event must not leave the flag set when the checkpoint clock is
-        // past it. The boundary allowance belongs only to a state exactly at an event time, and
-        // `t = 0` events were the initial condition rather than a step boundary.
-        case.schedule_boundary_pending = checkpoint.time_days > 0.0
-            && case
-                .schedule_position
-                .checked_sub(1)
-                .and_then(|index| case.config.schedule.get(index))
-                .is_some_and(|event| {
-                    crate::schedule::event_at(checkpoint.time_days, event.time_days)
-                });
+        // A checkpoint carries whether the next step is the remainder after an event. That is
+        // exact; inferring it from the clock would regenerate an allowance already consumed, and
+        // at day 1000 a 5e-7 d remainder is smaller than the clock tolerance. Older checkpoints
+        // without the field are inferred from an event that coincides with their clock.
+        case.schedule_boundary_pending =
+            checkpoint.schedule_boundary_pending.unwrap_or_else(|| {
+                checkpoint.time_days > 0.0
+                    && case
+                        .schedule_position
+                        .checked_sub(1)
+                        .and_then(|index| case.config.schedule.get(index))
+                        .is_some_and(|event| {
+                            crate::schedule::event_at(checkpoint.time_days, event.time_days)
+                        })
+            });
         if let Some(position) = checkpoint.schedule_position
             && position != case.schedule_position
         {
@@ -1670,4 +1675,12 @@ pub struct Checkpoint {
     /// explicitly; a checkpoint written before this field existed is replayed by time instead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schedule_position: Option<usize>,
+    /// Whether the next step is the report remainder after an event (#50).
+    ///
+    /// Without this, restore would have to infer it from the clock, and a remainder already
+    /// consumed could look like clock roundoff at long times. Carrying the flag keeps a restored
+    /// run's timestep policy identical to the run that wrote the checkpoint. Absent in older
+    /// checkpoints, which are inferred from `event_at(checkpoint.time, last event)`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schedule_boundary_pending: Option<bool>,
 }

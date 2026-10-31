@@ -299,6 +299,11 @@ export interface CompositionalCheckpoint {
   well_bhp_bar?: number[];
   /** How many scheduled events had been applied at this state (#50). */
   schedule_position?: number;
+  /**
+   * Whether the next step is the report remainder after a schedule event (#50). Carried so a
+   * restored run keeps the same timestep policy; absent checkpoints infer it from the clock.
+   */
+  schedule_boundary_pending?: boolean;
 }
 
 /** Turn an engine rejection into something a person can act on, without implementation jargon. */

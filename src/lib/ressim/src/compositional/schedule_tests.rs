@@ -303,6 +303,64 @@ fn comp_schedule_restore_derives_boundary_from_clock_only() {
     assert!((restored_past_event.time_days() - 1.0).abs() < 1e-12);
 }
 
+/// At long clocks a completed remainder is still progress, not roundoff. The checkpoint carries
+/// the consumed flag; a checkpoint from before that field is inferred with a roundoff-scale
+/// tolerance, not the old `1e-9 * time` band.
+#[test]
+fn comp_schedule_restore_keeps_consumed_allowance_at_long_clock() {
+    let mut config = wag_case();
+    // A static day-1000 approach, so the test measures the boundary policy rather than a long
+    // transient.
+    config.wells[0].control = WellControlConfig::Bhp { target_bar: 200.0 };
+    config.wells[1].control = WellControlConfig::Bhp { target_bar: 200.0 };
+    config.schedule = vec![gas_event(1000.0, 10.0)];
+    let mut original = CompositionalCase::new(config).unwrap();
+
+    let first = original.step(1000.0);
+    assert!(first.succeeded(), "{:?}", first.failure);
+    assert!((original.time_days() - 1000.0).abs() < 1e-12);
+    assert_eq!(original.checkpoint().schedule_position, Some(1));
+
+    let at_event = original.checkpoint();
+    assert_eq!(at_event.schedule_boundary_pending, Some(true));
+    let mut restored_at_event = CompositionalCase::restore(&at_event).unwrap();
+    assert!(original.step(5e-7).succeeded());
+    assert!(restored_at_event.step(5e-7).succeeded());
+    assert!((restored_at_event.time_days() - 1000.000_000_5).abs() < 1e-12);
+
+    let past_event = original.checkpoint();
+    assert_eq!(past_event.schedule_boundary_pending, Some(false));
+    let mut restored_past = CompositionalCase::restore(&past_event).unwrap();
+    let original_tiny = original.step(5e-7);
+    let restored_tiny = restored_past.step(5e-7);
+    for (who, outcome) in [("original", original_tiny), ("restored", restored_tiny)] {
+        assert!(
+            !outcome.succeeded(),
+            "{who} run accepted a second 5e-7 d step after the remainder was consumed"
+        );
+        assert_eq!(outcome.attempts, 0, "{who} run attempted Newton");
+        assert_eq!(outcome.failure.expect("failure").kind, "Budget");
+    }
+
+    // A checkpoint from before the flag existed must still distinguish the consumed remainder at
+    // day 1000 from clock roundoff.
+    let mut legacy_past = past_event.clone();
+    legacy_past.schedule_boundary_pending = None;
+    let mut restored_legacy_past = CompositionalCase::restore(&legacy_past).unwrap();
+    let legacy_tiny = restored_legacy_past.step(5e-7);
+    assert!(
+        !legacy_tiny.succeeded(),
+        "a flag-less checkpoint regenerated the consumed allowance at day 1000"
+    );
+    assert_eq!(legacy_tiny.attempts, 0);
+
+    // The same flag-less inference at the event itself must still grant the owed remainder.
+    let mut legacy_at = at_event.clone();
+    legacy_at.schedule_boundary_pending = None;
+    let mut restored_legacy_at = CompositionalCase::restore(&legacy_at).unwrap();
+    assert!(restored_legacy_at.step(5e-7).succeeded());
+}
+
 /// A caller-supplied tiny step away from a schedule boundary is still refused before Newton.
 #[test]
 fn comp_schedule_a_caller_tiny_step_is_still_refused() {
@@ -443,9 +501,14 @@ fn comp_schedule_checkpoint_carries_position_and_continues_identically() {
 
     let checkpoint = original.checkpoint();
     assert_eq!(checkpoint.schedule_position, Some(1));
+    assert_eq!(checkpoint.schedule_boundary_pending, Some(false));
     assert_eq!(checkpoint.config.schema, SCHEDULE_CASE_SCHEMA);
     let json = serde_json::to_string(&checkpoint).unwrap();
     assert!(json.contains("\"schedule_position\":1"), "{json}");
+    assert!(
+        json.contains("\"schedule_boundary_pending\":false"),
+        "{json}"
+    );
     assert!(json.contains(SCHEDULE_CASE_SCHEMA), "{json}");
     assert!(json.contains("\"schedule\":["), "{json}");
     assert!(json.contains("\"time_days\":1.0"), "{json}");
