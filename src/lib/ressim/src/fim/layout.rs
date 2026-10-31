@@ -28,8 +28,8 @@ pub(crate) const CELL_BLOCK_SIZE: usize = 3;
 ///
 /// The discriminants are the column offsets and are load-bearing — `assembly.rs` and the CPR
 /// pressure restriction both rely on pressure being local column 0.
-#[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(test), allow(dead_code))] // only `Pressure` is named outside tests today
 pub(crate) enum CellPrimary {
     /// Cell pressure [bar]. The CPR coarse system is built from exactly this column.
     Pressure = 0,
@@ -55,8 +55,8 @@ pub(crate) enum CellEquation {
     GasComponent = 2,
 }
 
-#[cfg(test)]
 impl CellPrimary {
+    #[cfg(test)]
     pub(crate) const ALL: [Self; CELL_BLOCK_SIZE] =
         [Self::Pressure, Self::WaterSaturation, Self::Hydrocarbon];
 
@@ -64,6 +64,7 @@ impl CellPrimary {
         self as usize
     }
 
+    #[cfg(test)]
     pub(crate) const fn from_local_index(local_var: usize) -> Option<Self> {
         match local_var {
             0 => Some(Self::Pressure),
@@ -118,7 +119,7 @@ mod tests {
     }
 
     /// Pressure must stay local column 0: `fim/linear`'s CPR restriction builds its coarse system
-    /// from that column, and `flow_lifecycle.rs` still selects it with a literal `col % 3 == 0`.
+    /// from that column, and `FimLinearBlockLayout::is_cell_pressure_column` selects it by name.
     #[test]
     fn pressure_is_the_first_cell_column() {
         assert_eq!(CellPrimary::Pressure.local_index(), 0);

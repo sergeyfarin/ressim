@@ -434,7 +434,8 @@ compositional quantities (#29).
 <!-- /GENERATED:compositional -->
 
 ```bash
-bash scripts/validate-compositional.sh reference   # skips with a note without flowexp_comp
+bash scripts/validate-compositional.sh records     # fast tier: records vs committed fixtures + scorecard
+bash scripts/validate-compositional.sh reference   # local: re-derive fixtures, then the same records
 ```
 
 ## 9. Second simulator: JutulDarcy

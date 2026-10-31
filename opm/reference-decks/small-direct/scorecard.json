@@ -1,11 +1,19 @@
 {
-  "$comment": "Written by compare_small_direct.py --write-scorecard; do not edit by hand. Bands are BANDS in that script. See opm/reference-decks/small-direct/README.md.",
+  "$comment": "Written by compare_small_direct.py --write-scorecard; do not edit by hand. Bands are BANDS in that script. A write merges the cases it measured and keeps the rest, because the black-oil and compositional gates update different families. See opm/reference-decks/small-direct/README.md.",
   "provenance": {
-    "commit": "3c2686e",
+    "commit": "c27d5382",
     "dirty": false,
-    "date": "2026-10-23",
+    "date": "2026-10-31",
     "flow": "flow 2026.04",
-    "command": "bash scripts/validate-cross-solver.sh --update"
+    "command": "bash scripts/validate-compositional.sh update-scorecard",
+    "cases": [
+      "1d_comp",
+      "1d_comp_skin",
+      "depletion",
+      "depletion_bhp",
+      "injection",
+      "quarter_five_spot"
+    ]
   },
   "cases": {
     "bo-1d-10": {
@@ -75,6 +83,13 @@
           "sw": 1.2961440000458513e-07,
           "sg": 0.00048724746032000055
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "bo-1d-40": {
@@ -144,6 +159,13 @@
           "sw": 1.548878000023901e-07,
           "sg": 0.00047368713846999977
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "dep-pvt-al-marhoun": {
@@ -213,6 +235,13 @@
           "sw": 6.046909099999276e-06,
           "sg": 0.0019485591627999843
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "dep-pvt-correlation": {
@@ -282,6 +311,13 @@
           "sw": 4.685535000006902e-06,
           "sg": 0.0015635986009999991
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "dep-pvt-lab-report": {
@@ -351,6 +387,13 @@
           "sw": 3.026472600003993e-06,
           "sg": 0.0008749816156000123
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "dep-pvt-petrosky-farshad": {
@@ -420,6 +463,13 @@
           "sw": 3.3064574000013502e-06,
           "sg": 0.0007798754432000177
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "gas-drive-20": {
@@ -489,6 +539,13 @@
           "sw": 1.7772364999946166e-06,
           "sg": 0.005540026518099983
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "go-1d-50": {
@@ -561,6 +618,13 @@
           "sw": 9.709985899997164e-06,
           "sg": 0.07310660023689
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "ow-1d-50-adverse": {
@@ -630,6 +694,13 @@
           "sw": 0.04104337861700001,
           "sg": 0.0
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "ow-1d-96": {
@@ -702,6 +773,13 @@
           "sw": 0.1953557844754,
           "sg": 0.0
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "ow-2d-12x12": {
@@ -774,6 +852,13 @@
           "sw": 0.1540740928991,
           "sg": 0.0
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "spe1-10x10x3": {
@@ -846,6 +931,13 @@
           "sw": 0.00026039786510000107,
           "sg": 0.10919150202253
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "spe1-case2-10x10x3": {
@@ -918,6 +1010,13 @@
           "sw": 0.00022991999899998894,
           "sg": 0.06493401785049999
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "sweep-areal": {
@@ -990,6 +1089,13 @@
           "sw": 0.17427805638779997,
           "sg": 0.0
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "sweep-combined": {
@@ -1062,6 +1168,13 @@
           "sw": 0.23705384440900001,
           "sg": 0.0
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "sweep-crossflow": {
@@ -1134,6 +1247,13 @@
           "sw": 0.11726163227269998,
           "sg": 0.0
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "sweep-vertical": {
@@ -1206,6 +1326,13 @@
           "sw": 0.10032643610299999,
           "sg": 0.0
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "wf-capillary": {
@@ -1278,6 +1405,13 @@
           "sw": 0.05104680977820003,
           "sg": 0.0
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
       }
     },
     "wf-gravity-stability": {
@@ -1350,6 +1484,181 @@
           "sw": 0.2987538505698,
           "sg": 0.0
         }
+      },
+      "measured": {
+        "commit": "3c2686e",
+        "dirty": false,
+        "date": "2026-10-23",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-cross-solver.sh --update"
+      }
+    },
+    "1d_comp": {
+      "flow": {
+        "substeps": null,
+        "newton": null
+      },
+      "runs": {
+        "comp": {
+          "metrics": {
+            "p": 4.055951722343906,
+            "sg": 0.09094273895084004,
+            "z": 0.1327454678808272,
+            "final.p": 0.002638776940401044,
+            "final.sg": 0.0,
+            "final.z": 0.0009039340875058866
+          },
+          "warnings": 0,
+          "wall_ms": 1445.8
+        }
+      },
+      "pairs": {},
+      "measured": {
+        "commit": "c27d5382",
+        "dirty": false,
+        "date": "2026-10-31",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-compositional.sh update-scorecard"
+      }
+    },
+    "1d_comp_skin": {
+      "flow": {
+        "substeps": null,
+        "newton": null
+      },
+      "runs": {
+        "comp": {
+          "metrics": {
+            "p": 0.007424267299029452,
+            "sg": 0.00010044987879687106,
+            "z": 4.468712737507041e-05,
+            "final.p": 0.0020273031114186324,
+            "final.sg": 8.224416446478422e-05,
+            "final.z": 3.82401265213439e-05
+          },
+          "warnings": 0,
+          "wall_ms": 153.4
+        }
+      },
+      "pairs": {},
+      "measured": {
+        "commit": "c27d5382",
+        "dirty": false,
+        "date": "2026-10-31",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-compositional.sh update-scorecard"
+      }
+    },
+    "depletion": {
+      "flow": {
+        "substeps": null,
+        "newton": null
+      },
+      "runs": {
+        "comp": {
+          "metrics": {
+            "p": 1.3766631786944288,
+            "sg": 0.0014614279001901051,
+            "z": 1.0179904197382683e-06,
+            "final.p": 0.1713517951522192,
+            "final.sg": 0.0014614279001901051,
+            "final.z": 1.0179904197382683e-06
+          },
+          "warnings": 0,
+          "wall_ms": 127.6
+        }
+      },
+      "pairs": {},
+      "measured": {
+        "commit": "c27d5382",
+        "dirty": false,
+        "date": "2026-10-31",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-compositional.sh update-scorecard"
+      }
+    },
+    "depletion_bhp": {
+      "flow": {
+        "substeps": null,
+        "newton": null
+      },
+      "runs": {
+        "comp": {
+          "metrics": {
+            "p": 0.009507400236643093,
+            "sg": 0.00018139021716864767,
+            "z": 7.479562103873683e-05,
+            "final.p": 1.4535861126319105e-05,
+            "final.sg": 0.00018139021716864767,
+            "final.z": 7.351033296942866e-05
+          },
+          "warnings": 0,
+          "wall_ms": 8.6
+        }
+      },
+      "pairs": {},
+      "measured": {
+        "commit": "c27d5382",
+        "dirty": false,
+        "date": "2026-10-31",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-compositional.sh update-scorecard"
+      }
+    },
+    "injection": {
+      "flow": {
+        "substeps": null,
+        "newton": null
+      },
+      "runs": {
+        "comp": {
+          "metrics": {
+            "p": 13.326758555086798,
+            "sg": 0.0,
+            "z": 0.0036309243464782703,
+            "final.p": 13.326758555086798,
+            "final.sg": 0.0,
+            "final.z": 0.0036309243464782703
+          },
+          "warnings": 0,
+          "wall_ms": 60.4
+        }
+      },
+      "pairs": {},
+      "measured": {
+        "commit": "c27d5382",
+        "dirty": false,
+        "date": "2026-10-31",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-compositional.sh update-scorecard"
+      }
+    },
+    "quarter_five_spot": {
+      "flow": {
+        "substeps": null,
+        "newton": null
+      },
+      "runs": {
+        "comp": {
+          "metrics": {
+            "p": 0.007000537257880524,
+            "sg": 2.7930561660949316e-05,
+            "z": 4.1788219531602167e-05,
+            "final.p": 0.007000537257880524,
+            "final.sg": 2.7930561660949316e-05,
+            "final.z": 4.1788219531602167e-05
+          },
+          "warnings": 0,
+          "wall_ms": 319.7
+        }
+      },
+      "pairs": {},
+      "measured": {
+        "commit": "c27d5382",
+        "dirty": false,
+        "date": "2026-10-31",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-compositional.sh update-scorecard"
       }
     }
   }

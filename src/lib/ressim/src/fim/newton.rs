@@ -19,6 +19,8 @@ use crate::fim::assembly_ad::assemble_fim_system_ad as assemble_fim_system;
 use crate::fim::flow_resv::FlowResvReportStepContext;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::fim::flow_resv::flow_resv_injector_residual;
+#[cfg(test)]
+use crate::fim::layout::{CELL_BLOCK_SIZE, CellPrimary};
 use crate::fim::linear::{
     FimDirectBackend, FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions,
     FimLinearSolveReport, FimLinearSolverKind, active_direct_solve_row_threshold,
@@ -799,12 +801,12 @@ fn trace_y2b_bound_projection_audit(
 #[cfg(test)]
 fn y2a_finite_difference_step(state: &FimState, unknown_idx: usize) -> f64 {
     if unknown_idx < state.n_cell_unknowns() {
-        let cell = state.cell(unknown_idx / 3);
-        return match unknown_idx % 3 {
-            0 => 1e-5 * cell.pressure_bar.abs().max(1.0),
-            1 => 1e-7,
-            2 => 1e-7 * cell.hydrocarbon_var.abs().max(1.0),
-            _ => unreachable!(),
+        let cell = state.cell(unknown_idx / CELL_BLOCK_SIZE);
+        return match CellPrimary::from_local_index(unknown_idx % CELL_BLOCK_SIZE) {
+            Some(CellPrimary::Pressure) => 1e-5 * cell.pressure_bar.abs().max(1.0),
+            Some(CellPrimary::WaterSaturation) => 1e-7,
+            Some(CellPrimary::Hydrocarbon) => 1e-7 * cell.hydrocarbon_var.abs().max(1.0),
+            None => unreachable!(),
         };
     }
     if unknown_idx < state.n_cell_unknowns() + state.n_well_unknowns() {
@@ -818,12 +820,12 @@ fn y2a_finite_difference_step(state: &FimState, unknown_idx: usize) -> f64 {
 #[cfg(test)]
 fn y2a_perturb_unknown(state: &mut FimState, unknown_idx: usize, delta: f64) {
     if unknown_idx < state.n_cell_unknowns() {
-        let cell = &mut state.cells[unknown_idx / 3];
-        match unknown_idx % 3 {
-            0 => cell.pressure_bar += delta,
-            1 => cell.sw += delta,
-            2 => cell.hydrocarbon_var += delta,
-            _ => unreachable!(),
+        let cell = &mut state.cells[unknown_idx / CELL_BLOCK_SIZE];
+        match CellPrimary::from_local_index(unknown_idx % CELL_BLOCK_SIZE) {
+            Some(CellPrimary::Pressure) => cell.pressure_bar += delta,
+            Some(CellPrimary::WaterSaturation) => cell.sw += delta,
+            Some(CellPrimary::Hydrocarbon) => cell.hydrocarbon_var += delta,
+            None => unreachable!(),
         }
     } else if unknown_idx < state.n_cell_unknowns() + state.n_well_unknowns() {
         let well_idx = unknown_idx - state.n_cell_unknowns();
