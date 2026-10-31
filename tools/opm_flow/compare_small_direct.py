@@ -332,8 +332,13 @@ def compare_comp_case(case: str, reference_path: Path, args: argparse.Namespace)
         f"{case}/comp",
         {"p": 1, "sw": 1, "sg": 1, "z": 2},
     )
-    if any(f["z"].shape != r["z"].shape for f, r in zip(fields, reference)):
-        raise SystemExit(f"{case}: composition shape differs from the reference")
+    for index, (f, r) in enumerate(zip(fields, reference)):
+        for key in ("p", "sg", "z"):
+            if f[key].shape != r[key].shape:
+                raise SystemExit(
+                    f"{case}: report {index} field {key} has shape {f[key].shape}, "
+                    f"reference {r[key].shape}"
+                )
     conv = ressim_convergence(run)
     return {
         "flow": {
@@ -377,6 +382,13 @@ def compare_case(case: str, args: argparse.Namespace) -> dict:
         )
         if len(fields) != len(flow["fields"]):
             raise SystemExit(f"{case}/{run_id}: {len(fields)} ResSim reports vs {len(flow['fields'])} Flow")
+        for index, (fa, fb) in enumerate(zip(fields, flow["fields"])):
+            for key in ("p", "sw", "sg"):
+                if fa[key].shape != fb[key].shape:
+                    raise SystemExit(
+                        f"{case}/{run_id}: report {index} field {key} has shape {fa[key].shape}, "
+                        f"Flow {fb[key].shape}"
+                    )
         fields_by_run[run_id] = fields
         cum = ressim_cumulatives(run)
         largest = max(abs(x) for x in flow["cum"].values())

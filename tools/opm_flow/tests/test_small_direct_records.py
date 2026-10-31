@@ -86,6 +86,16 @@ class CompositionalRecordTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, r"must be 2-d"):
             self.compare()
 
+    def test_record_cell_count_must_match_reference(self):
+        self.record["reports"][0].update({
+            "p": [100.0, 100.0],
+            "sw": [0.0, 0.0],
+            "sg": [0.2, 0.2],
+            "z": [[0.5, 0.5], [0.3, 0.3], [0.2, 0.2]],
+        })
+        with self.assertRaisesRegex(SystemExit, r"reference"):
+            self.compare()
+
     def test_nonfinite_composition_is_rejected(self):
         self.record["reports"][0]["z"][1] = [float("nan")]
         with self.assertRaisesRegex(SystemExit, r"non-finite"):
