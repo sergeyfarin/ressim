@@ -115,8 +115,8 @@ run_thermo() {
     run_filter comp_injection_    1   # surface-rate control on a MIXTURE, against OPM's own flash
     run_filter comp_spe3_         8   # #51: OPM/Jutul fluid, separator train, CVD and 1D dew crossing
     run_filter comp_water_       18   # #46: immiscible water, Stone II, FD Jacobian, conservation, JutulDarcy
-    run_filter comp_schedule_     8   # #50: WAG switches, both short boundary directions, mass ledger and restart
-    run_filter schedule::tests::  4   # #50/#17: the engine-neutral event envelope and its ordering rules
+    run_filter comp_schedule_     9   # #50: WAG switches, both short boundaries, restore derivation, restart
+    run_filter schedule::tests::  5   # #50/#17: the engine-neutral event envelope, ordering and clock rules
 }
 
 run_fixture() {

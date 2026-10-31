@@ -93,6 +93,15 @@ pub fn event_reached(time_days: f64, event_time_days: f64) -> bool {
     time_days + event_tolerance(time_days) >= event_time_days
 }
 
+/// True when `time_days` is *at* `event_time_days`, within the schedule's clock tolerance.
+///
+/// Unlike [`event_reached`], this is symmetric: a clock just after an event has reached it but is
+/// not at it. Restore uses this to decide whether the restored state is a boundary remainder;
+/// replaying a historical event that lies before the checkpoint clock must not create one.
+pub fn event_at(time_days: f64, event_time_days: f64) -> bool {
+    (time_days - event_time_days).abs() <= event_tolerance(time_days)
+}
+
 fn event_tolerance(time_days: f64) -> f64 {
     1e-9 * time_days.abs().max(1.0)
 }
@@ -179,5 +188,17 @@ mod tests {
         assert!(event_reached(20.0 - 1e-12, 20.0));
         assert!(!event_reached(19.999, 20.0));
         assert!(event_reached(0.0, 0.0));
+    }
+
+    #[test]
+    fn schedule_being_at_an_event_is_symmetric_and_tighter_than_reached() {
+        assert!(event_at(20.0, 20.0));
+        assert!(event_at(20.0 - 1e-12, 20.0));
+        assert!(event_at(20.0 + 1e-12, 20.0));
+        assert!(!event_at(20.000_001, 20.0));
+        // A clock after an event has reached it, but is not at it: restore must not treat this as
+        // a boundary remainder.
+        assert!(event_reached(20.000_001, 20.0));
+        assert!(!event_at(20.000_001, 20.0));
     }
 }

@@ -1465,6 +1465,17 @@ impl CompositionalCase {
         // agree. Replaying is idempotent because events replace state; the comparison is what
         // catches a checkpoint whose cursor and clock disagree.
         case.apply_schedule_through(checkpoint.time_days);
+        // Replaying a historical event must not leave the flag set when the checkpoint clock is
+        // past it. The boundary allowance belongs only to a state exactly at an event time, and
+        // `t = 0` events were the initial condition rather than a step boundary.
+        case.schedule_boundary_pending = checkpoint.time_days > 0.0
+            && case
+                .schedule_position
+                .checked_sub(1)
+                .and_then(|index| case.config.schedule.get(index))
+                .is_some_and(|event| {
+                    crate::schedule::event_at(checkpoint.time_days, event.time_days)
+                });
         if let Some(position) = checkpoint.schedule_position
             && position != case.schedule_position
         {

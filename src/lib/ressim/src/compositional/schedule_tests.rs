@@ -264,6 +264,45 @@ fn comp_schedule_short_remainder_after_event_is_attempted() {
     );
 }
 
+/// Restore must derive the boundary allowance from the checkpoint clock, not from the fact that
+/// replay applied a historical event. A checkpoint taken after the event has no remainder left.
+#[test]
+fn comp_schedule_restore_derives_boundary_from_clock_only() {
+    let mut config = wag_case();
+    config.schedule = vec![gas_event(0.999_999_5, 10.0)];
+    let mut original = CompositionalCase::new(config).unwrap();
+
+    assert!(original.step(1.0).succeeded());
+    assert!((original.time_days() - 0.999_999_5).abs() < 1e-12);
+
+    // Exactly at the event: the remainder is still owed, and both the original and the restored
+    // run must attempt it.
+    let at_event = original.checkpoint();
+    let mut restored_at_event = CompositionalCase::restore(&at_event).unwrap();
+    let remainder = 1.0 - original.time_days();
+    assert!(original.step(remainder).succeeded());
+    assert!(restored_at_event.step(remainder).succeeded());
+    assert!((restored_at_event.time_days() - 1.0).abs() < 1e-12);
+
+    // Past the event: replay applies it, but the restored clock is not on the boundary. Both runs
+    // must refuse a caller-supplied tiny step with no Newton attempt.
+    let past_event = original.checkpoint();
+    assert_eq!(past_event.schedule_position, Some(1));
+    let mut restored_past_event = CompositionalCase::restore(&past_event).unwrap();
+
+    let original_tiny = original.step(5e-7);
+    let restored_tiny = restored_past_event.step(5e-7);
+    for (who, outcome) in [("original", original_tiny), ("restored", restored_tiny)] {
+        assert!(
+            !outcome.succeeded(),
+            "{who} run accepted a 5e-7 d step after the event"
+        );
+        assert_eq!(outcome.attempts, 0, "{who} run attempted Newton");
+        assert_eq!(outcome.failure.expect("failure").kind, "Budget");
+    }
+    assert!((restored_past_event.time_days() - 1.0).abs() < 1e-12);
+}
+
 /// A caller-supplied tiny step away from a schedule boundary is still refused before Newton.
 #[test]
 fn comp_schedule_a_caller_tiny_step_is_still_refused() {
