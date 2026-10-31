@@ -10,6 +10,7 @@ path FIM-DIRECT-001 was about. These do.
 | `ow-1d-50-adverse` | 50×1×1 | 154 | the parity matrix's adverse-mobility FIM case (μo = 20) |
 | `ow-2d-12x12` | 12×12×1 | 436 | heterogeneous quarter five-spot; took 9,021 substeps before FIM-DIRECT-001 |
 | `bo-1d-10` | 10×1×1 | 32 | `physics_depletion_grid_convergence_fim` at nx=10: depletion through the bubble point |
+| `bo-1d-20` | 20×1×1 | 62 | the same column at nx=20: the middle rung of the grid-refinement referee |
 | `bo-1d-40` | 40×1×1 | 122 | the same column at nx=40 |
 | `go-1d-50` | 50×1×1 | 152 | `gas_injection` base case: dead oil displaced by gas, both wells on BHP |
 | `dep-pvt-correlation` | 48×1×1 | 146 | `dep_pvt` base case: constant-rate (3 Sm³/d ORAT) blowdown from 130 bar above the bubble point to ~90 below it |
@@ -65,6 +66,7 @@ bash scripts/validate-cross-solver.sh              # FIM sparse + dense + IMPES 
 bash scripts/validate-cross-solver.sh --update     # re-baseline, on a committed tree only
 bash scripts/validate-cross-solver.sh --markdown   # the tables below, generated rather than typed
 bash scripts/validate-cross-solver.sh --refine 0.025 --case ow-2d-12x12   # time-refined referee
+bash scripts/validate-cross-solver.sh --grid-refine                       # Richardson grid referee, no Flow
 ```
 
 The script runs the three steps under "Replay" for every ResSim solver and checks the result against
@@ -78,7 +80,7 @@ committed `flowexp_comp` fixture and the fields are pressure, gas saturation and
 
 - an accuracy metric against the reference gets worse than its band: worst and final cell
   Δp/ΔSw/ΔSg (black oil) or Δp/ΔSg/Δz (compositional), and cumulatives;
-- a work metric gets worse than its band: substeps, Newton;
+- a work metric gets worse than its band: substeps, Newton, and the FIM Newton/Flow-Newton ratio;
 - a run raises a solver warning the scorecard did not record;
 - sparse and dense stop agreeing;
 - a run the scorecard covers produces no output.
@@ -89,7 +91,10 @@ absolute floor, so roundoff on a near-zero baseline is not a failure.
 Newton is counted in Flow's convention on both sides: iterations that solve and update, as in
 Flow's `NewtIt`, so the check that finds a substep converged adds nothing. ResSim reports its
 `newton_updates`. Until #72 the ResSim column counted linearizations, one more per substep, so
-Newton numbers in the dated tables below and in older docs read about one per substep high.
+Newton numbers in the dated tables below and in older docs read about one per substep high. The
+scorecard also stores each FIM run's `newton_ratio` (ResSim Newton / Flow Newton) and gates it
+with the same relative-plus-floor rule; IMPES and compositional runs omit it because they have no
+paired Newton count.
 
 Improvements past the band are printed. Record them with `--update` and commit the scorecard with
 the change that earned them. Its `provenance` then names the commit, the Flow version and the
@@ -97,6 +102,14 @@ command, and `provenance.cases` scopes that write to the cases it actually measu
 from an earlier write are unchanged. A preserved case that predates the per-case `measured` block
 inherits the earlier top-level provenance, so a partial update cannot re-attribute it to the new
 commit. Flow output is cached per deck SHA-256, so a warm check takes about 20 s.
+
+`--grid-refine` is the grid counterpart of `--refine`: it runs the uniform `bo-1d` column at 10,
+20 and 40 cells through FIM sparse and IMPES, needs no Flow or OPM bindings, and prints each
+observable's successive differences, contraction ratio, observed order and Richardson
+extrapolation. It fails when a finer difference is more than 0.8 of the coarser one, the same
+contraction rule as `physics_depletion_grid_convergence_*`. The `bo-1d-20` case exists so the
+ladder is part of the normal deck inventory as well; its scorecard row is the middle rung, not a
+separate physical scenario.
 
 Before this gate, every result table below was typed into this README by hand after each fix, and
 nothing noticed when a later change moved a number.

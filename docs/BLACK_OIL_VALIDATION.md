@@ -164,8 +164,8 @@ Bg 0.01), (150, 15, 1.12, 0.006) and an undersaturated row (200, 15, 1.119). Bot
 the default step controls (IMPES: 0.05 saturation, 75 bar).
 
 **Where.** `src/lib/ressim/src/tests/physics/depletion_grid_convergence.rs`. The OPM Flow twin
-of the column is [`small-direct`](../opm/reference-decks/small-direct/README.md) `bo-1d-10` and
-`bo-1d-40`, generated from the same fixture.
+of the column is [`small-direct`](../opm/reference-decks/small-direct/README.md) `bo-1d-10`,
+`bo-1d-20` and `bo-1d-40`, generated from the same fixture.
 
 Criteria per quantity: each successive refinement difference must be at most 0.8× the previous
 one (first-order upstream transport gives ~0.5–0.6 here). The two finest grids must agree to
@@ -637,6 +637,18 @@ Generated output:
 | sweep-vertical | 7.291e-12 | 2.018e-12 | 0.000e+00 |
 | sweep-crossflow | 2.811e-11 | 3.153e-12 | 0.000e+00 |
 
+### Grid-refined referee
+
+`bash scripts/validate-cross-solver.sh --grid-refine` runs the same physical problem at 10, 20 and
+40 cells through FIM sparse and IMPES and computes the successive difference, contraction ratio,
+observed order and Richardson extrapolation for pressure, free-gas saturation, dissolved gas and
+cumulative oil. It needs no Flow or OPM bindings: this is self-convergence, not an accuracy claim.
+
+The ladder is the uniform `bo-1d` column, so the arithmetic field mean is the pore-volume mean. The
+gate fails when a finer difference exceeds 0.8 of the preceding one, matching
+`physics_depletion_grid_convergence_*`. Measured on 2026-10-31: both solvers contract by ~0.53 per
+halving with observed order 0.91–0.92 on all four observables. The new `bo-1d-20` deck and
+scorecard row are the middle rung of that ladder, not a separate physical scenario.
 
 ## 5. FIM repair F6 applicability table (2026-09-15)
 
