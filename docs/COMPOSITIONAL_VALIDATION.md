@@ -610,7 +610,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | #45 | Up to 10 components; per-fluid temperature and BIPs; SPE5 fluid pinned from OPM | **COMPLETE** | `MAX_COMPONENTS = 10` in `fluid/specification.rs` (re-exported by `compositional/layout.rs`); `pinned::spe5()`; `EosVariant::PengRobinsonCorrected`; SPE5 in the fixture (§3a) and in every fixture-driven test; `comp_surface_separation_matches_opm_on_the_spe5_fluid`; N=10 kernels FD-checked in `compositional/cost_tests.rs`. Cost record below |
 | #51 | SPE3 characterization, staged separators, dew-point robustness | **Implemented** | [SPE3 validation](SPE3_VALIDATION.md): published nine-component fluid with volume translations; OPM PTFlash admission, independent Jutul separator/CVD fixtures and a matched 1D dew-point crossing; eight `comp_spe3_*` contracts. Full reservoir execution remains #52 |
 | #48 | Rate-controlled wells at BHP-control cost | **COMPLETE** (2026-10-30) | `comp_well_rate_*` and `comp_cost_rate_controlled_*`: BHP as a Newton unknown with a locally eliminated rate row, 5% control hysteresis, FD-checked rate-row derivatives, and two source evaluations per assembly. §8 |
-| #50 | Compositional well schedules: WAG alternation and shut-in | **COMPLETE** (2026-10-30) | One engine-neutral event envelope (`schedule.rs`) shared with #17, compositional control/injection changes, exact-time step capping, both directions of short event boundaries, a `ShutIn` control and an explicit checkpoint cursor. Scheduled cases use schema `/2` so pre-schedule builds refuse them. Nine `comp_schedule_*` tests; the WAG gate switches water → gas → water → gas → shut-in → open on exact days with a closed component ledger. §8 |
+| #50 | Compositional well schedules: WAG alternation and shut-in | **COMPLETE** (2026-10-30) | One engine-neutral event envelope (`schedule.rs`) shared with #17, compositional control/injection changes, exact-time step capping, both directions of short event boundaries, a `ShutIn` control and an explicit checkpoint cursor plus consumed-remainder flag. Scheduled cases use schema `/2` so pre-schedule builds refuse them. Ten `comp_schedule_*` tests; the WAG gate switches water → gas → water → gas → shut-in → open on exact days with a closed component ledger. §8 |
 | #47 | Structured grids, gravity, multi-layer completions | **COMPLETE** (2026-10-29) | `grid.box_grid` with per-layer `dz/kx/ky/kz`, TPFA x/y/z faces, a hydrostatic gradient initialization and multi-completion head offsets; 1-D path unchanged. 2-D quarter five spot against `flowexp_comp`: 0.0070 bar, 2.8e-5 saturation, 4.2e-5 composition, 5.4e-12 cumulative. #49 already measured the 7 × 7 × 3 and 9 × 9 × 4 wasm memory/time budget — see §8 |
 
 ## 8. Completion records
@@ -767,11 +767,15 @@ unsupported schema rather than ignoring its events and running a different case.
 envelope stays `/1`, but its embedded `config` carries `/2`, so the same guard refuses a scheduled
 checkpoint in an older build.
 
-**Restart.** A checkpoint stores `schedule_position`, the number of events applied. Restore replays
-the schedule to the checkpoint clock and requires that position to agree; a checkpoint from before
-the field existed is replayed by time instead of refused. The C13 roundtrip test is extended by
-`comp_schedule_checkpoint_carries_position_and_continues_identically`, which crosses three event
-boundaries after the restore and compares the resulting pressure and composition.
+**Restart.** A checkpoint stores `schedule_position`, the number of events applied, and
+`schedule_boundary_pending`, whether the next step is the report remainder after an event. The
+latter is state, not inferable from the clock: at day 1000 a consumed `5e-7 d` remainder is
+indistinguishable from roundoff under any practical clock tolerance, so carrying it keeps the
+restored timestep policy identical. A checkpoint from before the field existed is inferred with
+`event_at(checkpoint.time, last event)`, whose tolerance is roundoff-scale (`1e-11 * time`, i.e.
+`1e-8 d` at day 1000) rather than the old `1e-9 * time` band (`1e-6 d`). The C13 roundtrip test is
+extended by `comp_schedule_checkpoint_carries_position_and_continues_identically`, which crosses
+three event boundaries after the restore and compares the resulting pressure and composition.
 
 **Gate.** `comp_schedule_wag_cycle_switches_exactly_in_time_and_conserves_mass` runs five cells on
 the pinned binary with immiscible water. The injector alternates water → gas → water → gas, shuts in
@@ -788,11 +792,13 @@ a flowing BHP of zero; opening it changes no completions and the next interval i
 `comp_schedule_short_remainder_after_event_is_attempted` cover both short-boundary directions;
 `comp_schedule_restore_derives_boundary_from_clock_only` checks that restore does not grant the
 remainder allowance merely because replay applied a historical event;
+`comp_schedule_restore_keeps_consumed_allowance_at_long_clock` covers the day-1000 case, both with
+the carried flag and with flag-less inference;
 `comp_schedule_a_caller_tiny_step_is_still_refused` keeps the guard from becoming a general bypass.
 The validation test covers the non-adjacent same-time conflict and the `/1`-with-events refusal.
-Measured on `0d0a9e02` in release: the WAG gate **0.11 s**, all nine `comp_schedule_*` tests
-**0.16 s** (`cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib comp_schedule_`).
-Gate command: `bash scripts/validate-compositional.sh thermo` (`comp_schedule_`, 9 tests, plus the
+Measured on `92aa98f4` in release: the WAG gate **0.11 s**, all ten `comp_schedule_*` tests
+**0.18 s** (`cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib comp_schedule_`).
+Gate command: `bash scripts/validate-compositional.sh thermo` (`comp_schedule_`, 10 tests, plus the
 shared `schedule::tests::` envelope tests). That tree also passed
 `bash scripts/validate-solver-coverage.sh all`, `bash scripts/validate-cross-solver.sh`,
 `bash scripts/benchmarks.sh check --tier fast` and `pnpm run validate:product`.

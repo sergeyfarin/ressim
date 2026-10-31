@@ -273,11 +273,13 @@ rather than two.
   reports the pressure its accepted solve ran at.
 - **Restart carries the cursor.** A checkpoint stores `schedule_position` — the number of events
   applied — because two events at one time for different wells are not recoverable from the state
-  alone. Restore replays the schedule to the checkpoint clock and requires the stored position to
-  agree. The short-remainder allowance is derived from an event *at* that clock, not from whether
-  replay applied any historical event, so a checkpoint past an event behaves exactly like the run
-  that produced it. Checkpoints written before the field existed are replayed by time instead of
-  refused.
+  alone, and `schedule_boundary_pending` — whether the next step is the remainder after an event.
+  The latter is execution state: at day 1000 a consumed 5e-7 d remainder is smaller than any
+  practical clock-roundoff tolerance, so inferring it would regenerate an allowance the original
+  run had used. A checkpoint from before the flag existed is inferred with a roundoff-scale
+  `event_at(checkpoint.time, last event)` test (`1e-11 * time`), not the old `1e-9 * time` band.
+  Restore still requires the stored cursor to agree. Checkpoints written before schedules existed
+  are replayed by time instead of refused.
 - **One event can change both halves.** A WAG switch changes the control target and the injected
   stream together, so there is no instant at which the well is injecting the old fluid at the new
   target (or the new fluid at the old one).
