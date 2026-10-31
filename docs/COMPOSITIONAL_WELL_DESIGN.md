@@ -251,8 +251,10 @@ rather than two.
 - **Short boundary intervals are attempted.** An event at day 1.0000005 after a daily report step
   leaves a 5e-7 d interval, below the normal 1e-6 d minimum timestep. The schedule cap lowers the
   retry floor for that explicitly requested interval, so Newton runs; refusing it would end the
-  run with `Budget` before any solve. A caller's own tiny `dt` is still governed by the configured
-  minimum.
+  run with `Budget` before any solve. The symmetric case is an event at day 0.9999995: the 5e-7 d
+  report remainder *after* the event is not capped by anything, so an explicit "this state is on
+  an event boundary" flag grants the same allowance for that one remainder. A caller's own tiny
+  `dt` away from a boundary is still governed by the configured minimum.
 - **Order is data, not a sort.** Events must be in nondecreasing time order and a well may not have
   two changes at any one instant — including when another well's event sits between them. An
   ambiguous schedule is refused rather than silently reordered, because two readings would
