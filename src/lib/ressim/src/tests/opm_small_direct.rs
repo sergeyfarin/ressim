@@ -40,7 +40,7 @@ struct Case {
     report_dt_days: f64,
 }
 
-const CASES: [Case; 20] = [
+const CASES: [Case; 25] = [
     Case {
         key: "ow-1d-96",
         note: "wf_bl1d geometry: 96x1x1 waterflood, BHP injector/producer, M~2",
@@ -171,6 +171,39 @@ const CASES: [Case; 20] = [
         report_steps: 134,
         report_dt_days: 0.5,
     },
+    // The wasm diagnostic's tracked presets. Their decks used to be hand-mapped; these cases
+    // build the same simulators, and the same deck writer that serves the rest of the matrix
+    // writes them. `water-heavy-step1` is the FIM-DIAG-003 heavy control.
+    Case {
+        key: "water-heavy-step1",
+        note: "wasm water-pressure heavy control: 12x12x3, dt 1 d, BHP 500/100",
+        report_steps: 1,
+        report_dt_days: 1.0,
+    },
+    Case {
+        key: "water-pressure-20x20x3",
+        note: "wasm water-pressure preset: 20x20x3, one 0.25 d report",
+        report_steps: 1,
+        report_dt_days: 0.25,
+    },
+    Case {
+        key: "water-pressure-22x22x1",
+        note: "wasm water-pressure preset: 22x22x1, one 0.25 d report",
+        report_steps: 1,
+        report_dt_days: 0.25,
+    },
+    Case {
+        key: "water-pressure-23x23x1",
+        note: "wasm water-pressure preset: 23x23x1, one 0.25 d report",
+        report_steps: 1,
+        report_dt_days: 0.25,
+    },
+    Case {
+        key: "gas-rate-10x10x3",
+        note: "wasm gas-rate preset: 10x10x3, six 0.25 d reports, RESV gas/oil targets",
+        report_steps: 6,
+        report_dt_days: 0.25,
+    },
 ];
 
 /// The report schedule actually used: the case's own, or `OPM_SMALL_REPORT_DT` over the same
@@ -257,6 +290,11 @@ fn build(key: &str) -> ReservoirSimulator {
             injector_rate: Some(100.0),
             ..Waterflood::default()
         }),
+        "water-heavy-step1" => water_pressure_case(12, 12, 3),
+        "water-pressure-20x20x3" => water_pressure_case(20, 20, 3),
+        "water-pressure-22x22x1" => water_pressure_case(22, 22, 1),
+        "water-pressure-23x23x1" => water_pressure_case(23, 23, 1),
+        "gas-rate-10x10x3" => gas_rate_3d(10, 10, 3),
         other => panic!("unknown small-direct case {other}"),
     }
 }
@@ -405,6 +443,21 @@ fn catalog_waterflood(w: &Waterflood) -> ReservoirSimulator {
     sim
 }
 
+/// The wasm `water-pressure` preset: uniform 2000/200 mD layers, 10 x 10 x 1 m cells, BHP
+/// injector at (0, 0, 0) and producer at the opposite corner. The grid size is the only knob the
+/// tracked decks vary.
+fn water_pressure_case(nx: usize, ny: usize, nz: usize) -> ReservoirSimulator {
+    catalog_waterflood(&Waterflood {
+        dims: [nx, ny, nz],
+        cell: [10.0, 10.0, 1.0],
+        perm_xy: vec![2000.0; nz],
+        perm_z: vec![200.0; nz],
+        producer_ij: (nx - 1, ny - 1),
+        fim: true,
+        ..Waterflood::default()
+    })
+}
+
 /// Two-phase waterflood: injector in the first cell, producer in the last, both on BHP.
 fn oil_water(
     nx: usize,
@@ -530,6 +583,86 @@ pub(super) fn gas_injection_1d() -> ReservoirSimulator {
         .unwrap();
     sim.add_well_with_id(0, 0, 0, 350.0, 0.1, 0.0, true, "INJ".to_string())
         .unwrap();
+    sim
+}
+
+/// The wasm `gas-rate` preset: three-phase gas injection, 10 x 10 x 5 m cells, four-row PVTO,
+/// reservoir-volume targets (gas 500, oil 200 m3/day), gravity on and redissolution off.
+fn gas_rate_3d(nx: usize, ny: usize, nz: usize) -> ReservoirSimulator {
+    let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.2);
+    sim.set_fim_enabled(true);
+    sim.set_cell_dimensions(10.0, 10.0, 5.0).unwrap();
+    sim.set_initial_pressure(200.0);
+    sim.set_initial_saturation(0.15);
+    sim.set_initial_gas_saturation(0.0);
+    sim.set_fluid_properties(0.8, 0.4).unwrap();
+    sim.set_fluid_compressibilities(1e-4, 5e-5).unwrap();
+    sim.set_rock_properties(4e-5, 2500.0, 1.2, 1.0).unwrap();
+    sim.set_fluid_densities(850.0, 1020.0).unwrap();
+    sim.set_gas_fluid_properties(0.02, 1e-4, 0.8).unwrap();
+    sim.set_capillary_params(0.0, 2.0).unwrap();
+    sim.set_gravity_enabled(true);
+    sim.set_permeability_per_layer(vec![500.0; nz], vec![500.0; nz], vec![50.0; nz])
+        .unwrap();
+    sim.apply_pvt_table(vec![
+        PvtRow {
+            p_bar: 50.0,
+            rs_m3m3: 20.0,
+            bo_m3m3: 1.1,
+            mu_o_cp: 1.0,
+            bg_m3m3: 0.02,
+            mu_g_cp: 0.015,
+        },
+        PvtRow {
+            p_bar: 150.0,
+            rs_m3m3: 80.0,
+            bo_m3m3: 1.25,
+            mu_o_cp: 0.7,
+            bg_m3m3: 0.008,
+            mu_g_cp: 0.018,
+        },
+        PvtRow {
+            p_bar: 250.0,
+            rs_m3m3: 140.0,
+            bo_m3m3: 1.4,
+            mu_o_cp: 0.5,
+            bg_m3m3: 0.005,
+            mu_g_cp: 0.022,
+        },
+        PvtRow {
+            p_bar: 350.0,
+            rs_m3m3: 200.0,
+            bo_m3m3: 1.55,
+            mu_o_cp: 0.4,
+            bg_m3m3: 0.004,
+            mu_g_cp: 0.025,
+        },
+    ])
+    .unwrap();
+    sim.set_initial_rs(80.0);
+    sim.set_three_phase_rel_perm_props(0.15, 0.15, 0.05, 0.05, 0.2, 2.0, 2.0, 2.0, 1e-5, 1.0, 0.95)
+        .unwrap();
+    sim.set_three_phase_mode_enabled(true);
+    sim.set_injected_fluid("gas").unwrap();
+    sim.set_gas_redissolution_enabled(false);
+    sim.set_stability_params(0.05, 75.0, 0.75);
+    sim.set_well_control_modes("rate".to_string(), "rate".to_string());
+    sim.set_target_well_rates(500.0, 200.0).unwrap();
+    sim.set_well_bhp_limits(50.0, 400.0).unwrap();
+    sim.set_rate_controlled_wells(true);
+    sim.add_well_with_id(0, 0, 0, 350.0, 0.1, 0.0, true, "INJ".to_string())
+        .unwrap();
+    sim.add_well_with_id(
+        nx - 1,
+        ny - 1,
+        0,
+        100.0,
+        0.1,
+        0.0,
+        false,
+        "PROD".to_string(),
+    )
+    .unwrap();
     sim
 }
 
@@ -1059,12 +1192,22 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
                         control.bhp_limit
                     );
                 }
-                // A reservoir-volume target, which ResSim meets at the completion cell's pressure.
-                // Written as the surface rate it is at the cell's initial pressure: water's FVF
+                // A gas reservoir-volume target is written as RESV, which is what the wasm
+                // gas-rate preset is: Flow does not convert it through Bg the way a surface
+                // target would. (JutulDarcy 0.3.7 cannot run RESV injectors; this case is not
+                // in its deck set.)
+                (true, None, Some(target)) if gas_injector => {
+                    let _ = writeln!(
+                        d,
+                        "WCONINJE\n  '{name}' '{fluid}' 'OPEN' 'RESV' 1* {target} {} /\n/",
+                        control.bhp_limit
+                    );
+                }
+                // A water reservoir-volume target, which ResSim meets at the completion cell's
+                // pressure. Written as the surface rate it is at that pressure: water's FVF
                 // moves by c_w ~ 3e-6/bar from there, so the two differ by ~1e-4 over the run,
                 // which is as close as Flow's own RESV (converted at the field-average pressure)
-                // gets, and JutulDarcy 0.3.7 cannot run RESV injectors. For gas they would differ
-                // by Bg, so a gas target is not written.
+                // gets.
                 (true, None, Some(target)) if !gas_injector => {
                     let p_cell = sim.pressure[sim.idx(well.i, well.j, well.k)];
                     let surface = target * sim.water_inverse_fvf_generic(p_cell);
@@ -1084,18 +1227,30 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
                 }
             }
         } else {
-            match (control.rate_controlled, control.target_surface_rate_m3_day) {
+            match (
+                control.rate_controlled,
+                control.target_surface_rate_m3_day,
+                control.target_rate_m3_day,
+            ) {
                 // A producer's surface target is stock-tank oil. Flow needs a positive BHP
                 // limit; ResSim's floor of 0 means "none", and 1 bar never binds either.
-                (true, Some(target)) => {
+                (true, Some(target), _) => {
                     let _ = writeln!(
                         d,
                         "WCONPROD\n  '{name}' 'OPEN' 'ORAT' {target} 4* {} /\n/",
                         control.bhp_limit.max(1.0)
                     );
                 }
-                (true, None) => panic!("{name}: reservoir-volume producer targets are not written"),
-                (false, _) => {
+                // The wasm gas-rate preset's oil target is reservoir volume.
+                (true, None, Some(target)) => {
+                    let _ = writeln!(
+                        d,
+                        "WCONPROD\n  '{name}' 'OPEN' 'RESV' 4* {target} {} /\n/",
+                        control.bhp_limit.max(1.0)
+                    );
+                }
+                (true, None, None) => panic!("{name}: rate-controlled producer has no target"),
+                (false, _, _) => {
                     let _ = writeln!(d, "WCONPROD\n  '{name}' 'OPEN' 'BHP' 5* {} /\n/", well.bhp);
                 }
             }
@@ -1111,12 +1266,26 @@ fn deck(case: &Case, sim: &ReservoirSimulator) -> String {
 }
 
 #[test]
-#[ignore = "writes the committed small-direct OPM decks; set OPM_SMALL_DECK_DIR"]
+#[ignore = "writes OPM cross-solver decks; set OPM_SMALL_DECK_DIR (and OPM_SMALL_DECK_LAYOUT=legacy for the wasm-preset dirs)"]
 fn opm_small_direct_write_decks() {
     let dir = std::env::var("OPM_SMALL_DECK_DIR").expect("set OPM_SMALL_DECK_DIR");
+    let legacy = std::env::var("OPM_SMALL_DECK_LAYOUT").is_ok_and(|value| value == "legacy");
+    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let legacy_root = repo.join("opm/reference-decks");
+    let legacy_keys = [
+        "gas-rate-10x10x3",
+        "water-heavy-step1",
+        "water-pressure-20x20x3",
+        "water-pressure-22x22x1",
+        "water-pressure-23x23x1",
+    ];
     for case in &CASES {
         let sim = build(case.key);
-        let path = std::path::Path::new(&dir).join(case.key);
+        let path = if legacy && legacy_keys.contains(&case.key) {
+            legacy_root.join(case.key)
+        } else {
+            std::path::Path::new(&dir).join(case.key)
+        };
         std::fs::create_dir_all(&path).unwrap();
         std::fs::write(path.join("CASE.DATA"), deck(case, &sim)).unwrap();
     }

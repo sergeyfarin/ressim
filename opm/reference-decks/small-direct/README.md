@@ -1,8 +1,11 @@
-# Small-direct OPM decks (every case under 512 rows)
+# Cross-solver decks (small-direct tree plus generated wasm presets)
 
-Every other deck under `opm/reference-decks/` has ~900+ rows. That is above the 512-row threshold
-where FIM switches from a direct LU to iterative CPR, so none of them exercises the small direct
-path FIM-DIRECT-001 was about. These do.
+The `small-direct/` tree holds every case whose ResSim/Flow deck is written by
+`src/lib/ressim/src/tests/opm_small_direct.rs`; some of them (SPE1, the sweep cases and the wasm
+presets) are well past the 512-row forced-direct threshold. The name is historical. The wasm-preset
+decks live in their top-level `opm/reference-decks/<case>/` directories so the legacy
+`opm-reference-fixture-check.mjs` and `opm-ressim-compare.sh` paths keep working; the comparator
+discovers both roots.
 
 | Case | Grid | Rows | What it is |
 |---|---|---|---|
@@ -22,6 +25,11 @@ path FIM-DIRECT-001 was about. These do.
 | `spe1-case2-10x10x3` | 10×10×3 | 900 | the same with redissolution (Case 2): no `DRSDT`, so JutulDarcy runs the same model. Guards the saturated-Rs convention above the table: until #35 continued the saturated curve, ResSim was 112 bar and 5.8 % cumulative oil off Flow and JutulDarcy here |
 | `wf-capillary` | 96×1×1 | 292 | `wf_capillary` base case: the `wf_bl1d` slab with Brooks–Corey P_c (P_e = 3 bar) under a 40 bar drawdown |
 | `wf-gravity-stability` | 1×1×60 | 184 | `wf_gravity_stability` base case: vertical column flooded upward at 100 rm³/day, gravity on |
+| `water-heavy-step1` | 12×12×3 | ~1,300 | generated wasm `water-pressure` heavy control, `TSTEP 1.0` |
+| `water-pressure-20x20x3` | 20×20×3 | ~3,600 | generated wasm `water-pressure` preset, one 0.25 d report |
+| `water-pressure-22x22x1` | 22×22×1 | ~1,450 | generated wasm `water-pressure` preset, one 0.25 d report |
+| `water-pressure-23x23x1` | 23×23×1 | ~1,600 | generated wasm `water-pressure` preset, one 0.25 d report |
+| `gas-rate-10x10x3` | 10×10×3 | 900 | generated wasm `gas-rate` preset, six 0.25 d reports, RESV controls |
 | `sweep-vertical` | 48×1×5 | ~730 | `sweep_vertical` base case: five layers, V_DP ≈ 0.5, kv/kh = 0.1, fully perforated BHP wells |
 | `sweep-crossflow` | 48×1×5 | ~730 | `sweep_crossflow` base case: the same section with k_rw,max = 0.25 |
 | `sweep-areal` | 21×21×1 | ~1,330 | `sweep_areal` base case: quarter five-spot, both wells on BHP |

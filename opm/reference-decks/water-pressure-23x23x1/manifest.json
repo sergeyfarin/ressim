@@ -1,14 +1,11 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "caseKey": "water-pressure-23x23x1",
-  "source": {
-    "generatedBy": "WATER-022",
-    "derivedFrom": "opm/reference-decks/water-heavy-step1/CASE.DATA",
-    "note": "Same rock/fluid/well configuration as the heavy deck; only DIMENS, cell-count multipliers, producer location and TSTEP differ, mirroring configureCommonTwoPhase plus waterWellConfig in scripts/fim-wasm-diagnostic.mjs."
-  },
+  "generatedBy": "src/lib/ressim/src/tests/opm_small_direct.rs",
+  "source": "wasm preset water-pressure",
   "deck": {
     "path": "CASE.DATA",
-    "sha256": "4179ad80cb66efd51385dead7670700b128910aa8726273a44327f2430ad1498"
+    "sha256": "113308d19c89c56fcf94a2870a950a44aee7640dd0d2722c5e8733fbf9d8b567"
   },
   "ressim": {
     "command": [
@@ -27,19 +24,10 @@
     ]
   },
   "flow": {
-    "binary": "flow 2026.04 (Ubuntu 2026.04-1~noble)",
+    "binary": "flow 2026.04",
     "arguments": [
-      "--enable-gravity=false",
-      "--output-extra-convergence-info=steps,iterations"
+      "--enable-gravity=false"
     ],
-    "gravityNote": "Gravity MUST be disabled. The ResSim presets run gravity-off (configureCommonTwoPhase); leaving Flow's default on makes it converge in far fewer iterations and invalidates every comparison. See worklog WATER-019.",
-    "oracle": {
-      "reportStepDays": 0.25,
-      "newtonIterations": 11,
-      "linearIterations": 10,
-      "converged": true,
-      "wallClockSecondsAssemblyLsetupLsolveUpdate": 0.0456,
-      "FOPT": 336.241547
-    }
+    "note": "No typed Newton oracle is stored here; the gated baseline is opm/reference-decks/small-direct/scorecard.json."
   }
 }

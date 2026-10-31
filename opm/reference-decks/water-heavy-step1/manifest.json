@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 2,
+  "caseKey": "water-heavy-step1",
+  "generatedBy": "src/lib/ressim/src/tests/opm_small_direct.rs",
+  "source": "wasm preset water-pressure",
+  "deck": {
+    "path": "CASE.DATA",
+    "sha256": "9f813f150e9b07fbc49721493cdb25b5c612fcb16616176cc198a77e33f62abb"
+  },
+  "ressim": {
+    "command": [
+      "node",
+      "scripts/fim-wasm-diagnostic.mjs",
+      "--preset",
+      "water-pressure",
+      "--grid",
+      "12x12x3",
+      "--steps",
+      "1",
+      "--dt",
+      "1.0",
+      "--diagnostic",
+      "summary"
+    ]
+  },
+  "flow": {
+    "binary": "flow 2026.04",
+    "arguments": [
+      "--enable-gravity=false"
+    ],
+    "note": "No typed Newton oracle is stored here; the gated baseline is opm/reference-decks/small-direct/scorecard.json."
+  }
+}
