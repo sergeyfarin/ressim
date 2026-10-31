@@ -35,12 +35,14 @@ discovers both roots.
 | `sweep-areal` | 21×21×1 | ~1,330 | `sweep_areal` base case: quarter five-spot, both wells on BHP |
 | `sweep-combined` | 21×21×5 | ~6,620 | `sweep_combined` base case: five-spot over five sealed layers (k_v = 0.001 mD), M = 1 |
 
-The SPE1 pair and the last four are not small: they are past the forced-direct threshold. They are here for the
+The SPE1 pair and the sweep cases are past the forced-direct threshold. They are here for the
 one-definition deck writer, which settled #55: their hand-written Flow decks disagreed with
 ResSim by 3–8 %, and these decks, written from the acceptance tests' own simulators, agree to
-0.1–0.8 % (see "Generated decks for the #55 gaps" below). A gravity-on case gets real `TOPS`, the
-engine's surface densities and an explicit well datum, and its header says to run plain `flow`;
-`compare_small_direct.py` takes the Flow options from that header.
+0.1–0.8 % (see "Generated decks for the #55 gaps" below). The five wasm-preset rows are generated
+from their presets into the top-level `opm/reference-decks/<case>/` directories; their old
+hand-mapping notes are retired. A gravity-on case gets real `TOPS`, the engine's surface densities
+and an explicit well datum, and its header says to run plain `flow`; `compare_small_direct.py`
+takes the Flow options from that header.
 
 **The decks are generated, not hand-written.** `src/lib/ressim/src/tests/opm_small_direct.rs` builds
 each case as a ResSim simulator and writes its deck from that same object. SWOF, SGOF, PVDO,
