@@ -21,9 +21,15 @@ set -euo pipefail
 #       simulators on them and compare, ungated. Agreement with Flow at the *same* dt is not
 #       accuracy: FIM and Flow share an implicit scheme and its time-step error, so a gap between
 #       them and IMPES says nothing about which is right until all three are refined. Slow.
+#   bash scripts/validate-cross-solver.sh --grid-refine
+#       grid-refined referee: run the uniform bo-1d depletion column at 10, 20 and 40 cells
+#       through FIM sparse and IMPES, then report successive differences, contraction ratios,
+#       observed order and the Richardson extrapolation. Requires the complete 20-report/100-day
+#       schedule and a constant cell-count ratio. Needs no Flow or OPM bindings.
 #
-# Needs `flow` and its `opm.io` Python package; skips with a note when Flow is absent, like
-# validate-compositional.sh's reference mode. About 20 s with Flow cached, ~40 s cold.
+# Needs `flow` and its `opm.io` Python package for the normal and time-refined modes; skips with
+# a note when Flow is absent, like validate-compositional.sh's reference mode. About 20 s with Flow
+# cached, ~40 s cold. `--grid-refine` is the exception: it needs only ResSim and numpy.
 #
 # Deliberately NOT in validate:* or PR CI: CI has no Flow. Run it after any change to the
 # engine's physics, PVT, wells, either timestep controller or the small-system linear route,
@@ -38,16 +44,63 @@ mode="--check"
 compare_args=(--inventory-check)
 cases=()
 refine=""
+grid_refine=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --update) mode="--write-scorecard"; shift ;;
         --markdown) compare_args+=(--markdown); shift ;;
         --case) cases+=("${2:?missing case}"); compare_args+=(--case "$2"); shift 2 ;;
         --refine) refine="${2:?missing report dt in days}"; shift 2 ;;
-        --help) sed -n '3,32p' "$0"; exit 0 ;;
+        --grid-refine) grid_refine=1; shift ;;
+        --help) sed -n '3,40p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
 done
+
+run_ressim() {
+    local solver="$1" backend="${2:-}"
+    local case_filter=()
+    # The driver takes one case or all; loop when several are named.
+    if [ ${#cases[@]} -eq 0 ]; then case_filter=(""); else case_filter=("${cases[@]}"); fi
+    for c in "${case_filter[@]}"; do
+        env OPM_SMALL_OUT="$ressim_dir" OPM_SMALL_SOLVER="$solver" OPM_SMALL_BACKEND="$backend" \
+            ${c:+OPM_SMALL_CASE="$c"} \
+            cargo test --release --quiet --manifest-path "$manifest_path" --lib \
+            opm_small_direct_run_ressim -- --ignored --nocapture --exact \
+            tests::opm_small_direct::opm_small_direct_run_ressim 2>&1 \
+            | grep -E 'substeps=|panicked|error' || true
+    done
+}
+
+if [ "$grid_refine" -eq 1 ]; then
+    # Richardson self-convergence needs only ResSim. It deliberately runs before the Flow
+    # availability check so the referee still works on a machine without OPM installed.
+    if [ -n "$refine" ] || [ "$mode" != "--check" ] || [ ${#cases[@]} -gt 0 ] \
+        || [ ${#compare_args[@]} -gt 1 ]; then
+        echo "--grid-refine is standalone: do not combine it with --case, --update, --markdown or --refine" >&2
+        exit 2
+    fi
+    if ! python3 -c 'import numpy' 2>/dev/null; then
+        echo "skip: the grid-refinement referee needs numpy for its field averages." >&2
+        exit 0
+    fi
+    work="$work/grid-refine"
+    ressim_dir="$work/ressim"
+    rm -rf "$ressim_dir"
+    mkdir -p "$ressim_dir"
+    cases=(bo-1d-10 bo-1d-20 bo-1d-40)
+    echo "== ResSim grid ladder (native release)"
+    run_ressim fim sparse
+    run_ressim impes
+    produced="$(find "$ressim_dir" -name '*.json' | wc -l)"
+    if [ "$produced" -eq 0 ]; then
+        echo "FAIL: the ResSim grid ladder wrote no output." >&2
+        exit 1
+    fi
+    python3 "$repo_root/tools/opm_flow/grid_refinement_referee.py" \
+        --ressim-dir "$ressim_dir" --levels 10 20 40
+    exit $?
+fi
 
 if ! command -v flow >/dev/null 2>&1 || ! python3 -c 'import opm.io' 2>/dev/null; then
     echo "skip: OPM Flow or its opm.io Python package is not installed; nothing was compared."
@@ -68,21 +121,6 @@ fi
 ressim_dir="$work/ressim"
 rm -rf "$ressim_dir"
 mkdir -p "$ressim_dir" "$work/flow"
-
-run_ressim() {
-    local solver="$1" backend="${2:-}"
-    local case_filter=()
-    # The driver takes one case or all; loop when several are named.
-    if [ ${#cases[@]} -eq 0 ]; then case_filter=(""); else case_filter=("${cases[@]}"); fi
-    for c in "${case_filter[@]}"; do
-        env OPM_SMALL_OUT="$ressim_dir" OPM_SMALL_SOLVER="$solver" OPM_SMALL_BACKEND="$backend" \
-            ${c:+OPM_SMALL_CASE="$c"} \
-            cargo test --release --quiet --manifest-path "$manifest_path" --lib \
-            opm_small_direct_run_ressim -- --ignored --nocapture --exact \
-            tests::opm_small_direct::opm_small_direct_run_ressim 2>&1 \
-            | grep -E 'substeps=|panicked|error' || true
-    done
-}
 
 echo "== ResSim (native release)"
 run_ressim fim sparse

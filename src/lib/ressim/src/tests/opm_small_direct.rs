@@ -40,7 +40,7 @@ struct Case {
     report_dt_days: f64,
 }
 
-const CASES: [Case; 19] = [
+const CASES: [Case; 20] = [
     Case {
         key: "ow-1d-96",
         note: "wf_bl1d geometry: 96x1x1 waterflood, BHP injector/producer, M~2",
@@ -62,6 +62,12 @@ const CASES: [Case; 19] = [
     Case {
         key: "bo-1d-10",
         note: "physics_depletion_grid_convergence_fim column at nx=10: depletion through the bubble point",
+        report_steps: 20,
+        report_dt_days: 5.0,
+    },
+    Case {
+        key: "bo-1d-20",
+        note: "the same column at nx=20; the middle rung of the grid-refinement referee",
         report_steps: 20,
         report_dt_days: 5.0,
     },
@@ -189,6 +195,7 @@ fn build(key: &str) -> ReservoirSimulator {
         "ow-1d-50-adverse" => oil_water(50, 1, [10.0, 10.0, 1.0], (2000.0, 2000.0), 20.0, 0.5, 0),
         "ow-2d-12x12" => oil_water(12, 12, [20.0, 20.0, 5.0], (200.0, 2000.0), 1.0, 0.5, 42),
         "bo-1d-10" => black_oil_depletion(10),
+        "bo-1d-20" => black_oil_depletion(20),
         "bo-1d-40" => black_oil_depletion(40),
         "go-1d-50" => gas_injection_1d(),
         "dep-pvt-correlation" => dep_pvt_column(DepPvtRung::Correlation),

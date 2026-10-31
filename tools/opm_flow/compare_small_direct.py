@@ -78,6 +78,9 @@ BANDS = {
     "cum": (0.25, 0.001),  # relative difference, i.e. 0.1 percentage point
     "substeps": (0.10, 2),
     "newton": (0.25, 5),
+    # FIM Newton iterations divided by Flow's, per run. The absolute floor covers a small Flow
+    # count; the relative part catches a solver-side change without pinning the ratio to one.
+    "newton_ratio": (0.25, 0.05),
 }
 
 
@@ -442,6 +445,7 @@ def provenance(command: str) -> dict:
 def scorecard_metrics(entry: dict) -> dict:
     """The gated subset of a case's report: what the scorecard stores and `--check` compares."""
     runs = {}
+    flow_newton = entry["flow"]["conv"].get("newton")
     for run_id, r in entry["runs"].items():
         # Worst over reports catches a transient (IMPES's first-substep pressure response is one);
         # final catches a drifted answer that a transient elsewhere would mask.
@@ -450,6 +454,10 @@ def scorecard_metrics(entry: dict) -> dict:
         metrics.update({f"final.{k}": r["vs_flow"]["final"][k] for k in fields})
         metrics.update({f"cum.{k}": v for k, v in r["cum_rel_vs_flow"].items()})
         metrics.update({k: r["conv"][k] for k in ("substeps", "newton") if r["conv"][k] is not None})
+        # FIM work against Flow's own Newton count. A compositional run has no Flow Newton count;
+        # IMPES has no Newton loop. Both omit the ratio rather than inventing one.
+        if flow_newton and r["conv"].get("newton") is not None:
+            metrics["newton_ratio"] = r["conv"]["newton"] / flow_newton
         runs[run_id] = {"metrics": metrics, "warnings": len(r["warnings"]), "wall_ms": round(r["wall_ms"], 1)}
     pairs = {k: {"invariant": v["invariant"], **v["worst"]} for k, v in entry["pairs"].items()}
     return {"flow": {k: entry["flow"]["conv"][k] for k in ("substeps", "newton")}, "runs": runs, "pairs": pairs}

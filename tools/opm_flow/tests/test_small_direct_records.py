@@ -10,12 +10,19 @@ from pathlib import Path
 from types import SimpleNamespace
 
 try:
-    from compare_small_direct import case_family, compare_comp_case, coverage_error, merge_scorecard
+    from compare_small_direct import (
+        case_family,
+        compare_comp_case,
+        coverage_error,
+        merge_scorecard,
+        scorecard_metrics,
+    )
 except ModuleNotFoundError:
     case_family = None
     compare_comp_case = None
     coverage_error = None
     merge_scorecard = None
+    scorecard_metrics = None
 
 
 @unittest.skipIf(compare_comp_case is None, "requires Flow's numpy environment")
@@ -178,6 +185,35 @@ class CoverageTests(unittest.TestCase):
     def test_family_comes_from_run_ids(self):
         self.assertEqual(case_family({"runs": {"comp": {}}}), "compositional")
         self.assertEqual(case_family({"runs": {"sparse": {}, "dense": {}}}), "black-oil")
+
+
+@unittest.skipIf(scorecard_metrics is None, "requires Flow's numpy environment")
+class WorkRatioTests(unittest.TestCase):
+    def entry(self, run_newton):
+        return {
+            "flow": {"conv": {"substeps": 20, "newton": 50, "retries": 0, "retry_newton": 0}},
+            "runs": {
+                "sparse": {
+                    "vs_flow": {
+                        "worst": {"p": 0.1, "sw": 0.0, "sg": 0.0},
+                        "final": {"p": 0.1, "sw": 0.0, "sg": 0.0},
+                    },
+                    "cum_rel_vs_flow": {},
+                    "conv": {"substeps": 20, "newton": run_newton, "retries": 0, "retry_newton": 0},
+                    "warnings": [],
+                    "wall_ms": 1.0,
+                }
+            },
+            "pairs": {},
+        }
+
+    def test_fim_newton_ratio_is_recorded(self):
+        metrics = scorecard_metrics(self.entry(60))["runs"]["sparse"]["metrics"]
+        self.assertAlmostEqual(metrics["newton_ratio"], 1.2)
+
+    def test_impes_without_a_newton_count_omits_the_ratio(self):
+        metrics = scorecard_metrics(self.entry(None))["runs"]["sparse"]["metrics"]
+        self.assertNotIn("newton_ratio", metrics)
 
 
 if __name__ == "__main__":

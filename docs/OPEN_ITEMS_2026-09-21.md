@@ -163,6 +163,11 @@ same `scorecard.json`. The fixture remains the oracle. `--write-scorecard` merge
 invocation measured and keeps the rest, because the black-oil and compositional gates update
 different families. There is no second comparator.
 
+**Closed 2026-10-31 (#22):** the scorecard stores each FIM run's `newton_ratio` against Flow, and
+`bash scripts/validate-cross-solver.sh --grid-refine` runs the uniform `bo-1d` column at 10/20/40
+cells through FIM sparse and IMPES, reporting Richardson order and contraction with no external
+simulator. `bo-1d-20` is the middle rung in the normal deck/scorecard inventory.
+
 These remain outside it; #22 owns the remaining harness work:
 
 - **The ≥ 900-row decks and the wasm presets** (`opm/reference-decks/{gas-rate,water-*}`). These

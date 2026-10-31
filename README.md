@@ -164,6 +164,7 @@ answer:
 
 ```bash
 bash scripts/validate-cross-solver.sh     # FIM and IMPES vs OPM Flow on the small-direct decks
+bash scripts/validate-cross-solver.sh --grid-refine   # Richardson grid self-convergence, no Flow
 bash scripts/validate-compositional.sh records     # compositional records vs fixtures + scorecard
 bash scripts/validate-compositional.sh reference   # also re-derive the fixtures locally
 ```
