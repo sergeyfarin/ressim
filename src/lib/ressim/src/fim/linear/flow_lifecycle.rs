@@ -15,6 +15,7 @@ pub(crate) use super::gmres_block_jacobi::{TRUE_IMPES_PRESSURE_SCALE_BAR, true_i
 use super::{FimLinearBlockLayout, FimLinearSolveReport, FimLinearSolverKind};
 use crate::ReservoirSimulator;
 use crate::fim::assembly_ad::accumulation_jacobian_blocks_for_state;
+use crate::fim::layout::{CELL_BLOCK_SIZE, CellPrimary};
 use crate::fim::state::FimState;
 
 pub(crate) const FLOW_SOURCE_TAG: &str = "release/2026.04/final";
@@ -54,7 +55,7 @@ pub(crate) fn build_capture_data(
     layout: FimLinearBlockLayout,
     jacobian: &CsMat<f64>,
 ) -> Result<FimFlowLifecycleCapture, String> {
-    if layout.cell_block_size != 3 || layout.cell_block_count != state.cells.len() {
+    if layout.cell_block_size != CELL_BLOCK_SIZE || layout.cell_block_count != state.cells.len() {
         return Err("Y2d6 requires one three-primary block per reservoir cell".to_string());
     }
     if jacobian.rows() != jacobian.cols() || jacobian.rows() != state.n_unknowns() {
@@ -129,7 +130,7 @@ pub(crate) fn validate_capture_data(
     {
         return Err("Y2d6 source/config fingerprint mismatch".to_string());
     }
-    if layout.cell_block_size != 3
+    if layout.cell_block_size != CELL_BLOCK_SIZE
         || data.storage_blocks.len() != layout.cell_block_count
         || data.true_impes_weights.len() != layout.cell_block_count
         || data.reservoir_unknown_count != layout.cell_unknown_count()
@@ -375,7 +376,7 @@ impl<'a> FlowLiveLinearSolver<'a> {
         let reservoir = data.reservoir_unknown_count;
         let cells = layout.cell_block_count;
         let wells = data.j_ww.rows();
-        if layout.cell_block_size != 3 || reservoir != layout.cell_unknown_count() {
+        if layout.cell_block_size != CELL_BLOCK_SIZE || reservoir != layout.cell_unknown_count() {
             return Err("Y2d6d requires the captured three-primary reservoir layout".to_string());
         }
         if cells > FLOW_AMG_COARSEN_TARGET {
@@ -394,19 +395,23 @@ impl<'a> FlowLiveLinearSolver<'a> {
 
         let mut coarse_reservoir = DMatrix::zeros(cells, cells);
         for (row, entries) in data.j_rr.outer_iterator().enumerate() {
-            let row_cell = row / 3;
-            let weight = data.true_impes_weights[row_cell][row % 3];
+            let (row_cell, equation) = layout
+                .split_cell_unknown(row)
+                .ok_or_else(|| format!("Y2d6d reservoir row {row} is outside the cell blocks"))?;
+            let weight = data.true_impes_weights[row_cell][equation];
             for (&col, &value) in entries.indices().iter().zip(entries.data().iter()) {
-                if col % 3 == 0 {
-                    coarse_reservoir[(row_cell, col / 3)] += weight * value;
+                if layout.is_cell_pressure_column(col) {
+                    coarse_reservoir[(row_cell, col / layout.cell_block_size)] += weight * value;
                 }
             }
         }
 
         let mut restricted_j_rw = DMatrix::zeros(cells, wells);
         for (row, entries) in data.j_rw.outer_iterator().enumerate() {
-            let row_cell = row / 3;
-            let weight = data.true_impes_weights[row_cell][row % 3];
+            let (row_cell, equation) = layout
+                .split_cell_unknown(row)
+                .ok_or_else(|| format!("Y2d6d reservoir row {row} is outside the cell blocks"))?;
+            let weight = data.true_impes_weights[row_cell][equation];
             for (&col, &value) in entries.indices().iter().zip(entries.data().iter()) {
                 restricted_j_rw[(row_cell, col)] += weight * value;
             }
@@ -414,8 +419,8 @@ impl<'a> FlowLiveLinearSolver<'a> {
         let mut j_wr_prolonged = DMatrix::zeros(wells, cells);
         for (row, entries) in data.j_wr.outer_iterator().enumerate() {
             for (&col, &value) in entries.indices().iter().zip(entries.data().iter()) {
-                if col % 3 == 0 {
-                    j_wr_prolonged[(row, col / 3)] += value;
+                if layout.is_cell_pressure_column(col) {
+                    j_wr_prolonged[(row, col / layout.cell_block_size)] += value;
                 }
             }
         }
@@ -425,7 +430,7 @@ impl<'a> FlowLiveLinearSolver<'a> {
             .ok_or_else(|| "Y2d6d one-level Flow coarse matrix is singular".to_string())?;
         let reservoir_layout = FimLinearBlockLayout {
             cell_block_count: cells,
-            cell_block_size: 3,
+            cell_block_size: CELL_BLOCK_SIZE,
             well_bhp_count: 0,
             perforation_tail_start: reservoir,
         };
@@ -461,9 +466,10 @@ impl<'a> FlowLiveLinearSolver<'a> {
         DVector::from_iterator(
             self.layout.cell_block_count,
             (0..self.layout.cell_block_count).map(|cell| {
-                (0..3)
+                (0..self.layout.cell_block_size)
                     .map(|equation| {
-                        self.data.true_impes_weights[cell][equation] * vector[3 * cell + equation]
+                        self.data.true_impes_weights[cell][equation]
+                            * vector[self.layout.cell_unknown(cell, equation)]
                     })
                     .sum()
             }),
@@ -473,7 +479,9 @@ impl<'a> FlowLiveLinearSolver<'a> {
     fn prolong(&self, pressure: &DVector<f64>) -> DVector<f64> {
         let mut result = DVector::zeros(self.data.reservoir_unknown_count);
         for cell in 0..self.layout.cell_block_count {
-            result[3 * cell] = pressure[cell];
+            result[self
+                .layout
+                .cell_unknown(cell, CellPrimary::Pressure.local_index())] = pressure[cell];
         }
         result
     }
@@ -601,7 +609,7 @@ impl<'a> FlowComponentOracle<'a> {
     ) -> Result<Self, String> {
         let reservoir = data.reservoir_unknown_count;
         let cells = layout.cell_block_count;
-        if layout.cell_block_size != 3 || reservoir != layout.cell_unknown_count() {
+        if layout.cell_block_size != CELL_BLOCK_SIZE || reservoir != layout.cell_unknown_count() {
             return Err("Y2d6b requires the captured three-primary reservoir layout".to_string());
         }
         if cells > FLOW_AMG_COARSEN_TARGET {
@@ -642,7 +650,7 @@ impl<'a> FlowComponentOracle<'a> {
             .ok_or_else(|| "Y2d6b one-level Flow coarse matrix is singular".to_string())?;
         let reservoir_layout = FimLinearBlockLayout {
             cell_block_count: cells,
-            cell_block_size: 3,
+            cell_block_size: CELL_BLOCK_SIZE,
             well_bhp_count: 0,
             perforation_tail_start: reservoir,
         };
@@ -1215,7 +1223,7 @@ mod tests {
         };
         let layout = FimLinearBlockLayout {
             cell_block_count: 2,
-            cell_block_size: 3,
+            cell_block_size: CELL_BLOCK_SIZE,
             well_bhp_count: 2,
             perforation_tail_start: 8,
         };

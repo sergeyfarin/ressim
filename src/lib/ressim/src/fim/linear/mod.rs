@@ -225,11 +225,9 @@ impl FimLinearBlockLayout {
 
     /// `FIM-REPAIR-F7` (#22): the accessors the compositional plan's `EquationLayout` is checked
     /// against, so it can ask what a row or column *means* instead of recovering it from `% 3`.
-    /// Test-only: production code addresses the block through `CELL_BLOCK_SIZE` directly.
     ///
     /// Splits a matrix column into `(cell_idx, local_var)`, or `None` when it addresses the
     /// well-BHP / perforation tail rather than a cell block.
-    #[cfg(test)]
     pub(crate) const fn split_cell_unknown(self, unknown_idx: usize) -> Option<(usize, usize)> {
         if unknown_idx >= self.cell_unknown_count() {
             return None;
@@ -240,10 +238,14 @@ impl FimLinearBlockLayout {
         ))
     }
 
+    /// Matrix column of a cell's local primary. Inverse of [`Self::split_cell_unknown`].
+    pub(crate) const fn cell_unknown(self, cell_idx: usize, local_var: usize) -> usize {
+        cell_idx * self.cell_block_size + local_var
+    }
+
     /// True when `column` is a cell's pressure column — the column the CPR coarse system is
-    /// restricted onto. Answers "what does this column mean?" without an `index % 3` at the call
-    /// site.
-    #[cfg(test)]
+    /// restricted onto. Answers "what does this column mean?" without positional arithmetic at
+    /// the call site.
     pub(crate) fn is_cell_pressure_column(self, column: usize) -> bool {
         matches!(
             self.split_cell_unknown(column),
@@ -494,6 +496,49 @@ mod tests {
         assert!(!options.use_true_fgmres);
         assert!(!options.use_flow_lifecycle);
         assert!(!options.require_raw_full_residual_acceptance);
+    }
+
+    /// The block accessors name a column's cell and local primary; the block size is a property
+    /// of the model, so neither the split nor the pressure test may bake in `3`.
+    #[test]
+    fn block_layout_accessors_round_trip_and_name_the_pressure_column() {
+        use crate::fim::layout::{CELL_BLOCK_SIZE, CellPrimary};
+
+        let layout = FimLinearBlockLayout {
+            cell_block_count: 4,
+            cell_block_size: CELL_BLOCK_SIZE,
+            well_bhp_count: 2,
+            perforation_tail_start: 4 * CELL_BLOCK_SIZE + 2,
+        };
+        for cell in 0..layout.cell_block_count {
+            for local in 0..layout.cell_block_size {
+                let column = layout.cell_unknown(cell, local);
+                assert_eq!(layout.split_cell_unknown(column), Some((cell, local)));
+                assert_eq!(
+                    layout.is_cell_pressure_column(column),
+                    local == CellPrimary::Pressure.local_index()
+                );
+            }
+        }
+        assert_eq!(layout.split_cell_unknown(layout.well_bhp_start()), None);
+        assert!(!layout.is_cell_pressure_column(layout.well_bhp_start()));
+    }
+
+    /// A compositional cell block is not three columns wide. The pressure column is still the
+    /// first one, and the accessor must say so without any black-oil arithmetic at the call site.
+    #[test]
+    fn block_layout_finds_pressure_for_a_non_three_column_block() {
+        let layout = FimLinearBlockLayout {
+            cell_block_count: 2,
+            cell_block_size: 4,
+            well_bhp_count: 1,
+            perforation_tail_start: 9,
+        };
+        assert!(layout.is_cell_pressure_column(0));
+        assert!(layout.is_cell_pressure_column(4));
+        assert!(!layout.is_cell_pressure_column(1));
+        assert!(!layout.is_cell_pressure_column(3));
+        assert!(!layout.is_cell_pressure_column(8)); // well-BHP tail
     }
 
     #[test]

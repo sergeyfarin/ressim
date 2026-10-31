@@ -215,34 +215,33 @@ fn assert_full_system_fd_matches_for_fixture(
         let n_cells = state.cells.len();
         let n_wells = state.n_well_unknowns();
 
-        let h = if col < n_cells * 3 {
-            let cell_idx = col / 3;
-            let local_var = col % 3;
+        let h = if col < n_cells * CELL_BLOCK_SIZE {
+            let cell_idx = col / CELL_BLOCK_SIZE;
             let step = finite_difference_step(&state, col);
-            match local_var {
-                0 => {
+            match CellPrimary::from_local_index(col % CELL_BLOCK_SIZE) {
+                Some(CellPrimary::Pressure) => {
                     state_plus.cells[cell_idx].pressure_bar += step;
                     state_minus.cells[cell_idx].pressure_bar -= step;
                 }
-                1 => {
+                Some(CellPrimary::WaterSaturation) => {
                     state_plus.cells[cell_idx].sw += step;
                     state_minus.cells[cell_idx].sw -= step;
                 }
-                2 => {
+                Some(CellPrimary::Hydrocarbon) => {
                     state_plus.cells[cell_idx].hydrocarbon_var += step;
                     state_minus.cells[cell_idx].hydrocarbon_var -= step;
                 }
-                _ => unreachable!(),
+                None => unreachable!(),
             }
             step
-        } else if col < n_cells * 3 + n_wells {
-            let well_idx = col - n_cells * 3;
+        } else if col < n_cells * CELL_BLOCK_SIZE + n_wells {
+            let well_idx = col - n_cells * CELL_BLOCK_SIZE;
             let step = 1e-4 * state.well_bhp[well_idx].abs().max(1.0);
             state_plus.well_bhp[well_idx] += step;
             state_minus.well_bhp[well_idx] -= step;
             step
         } else {
-            let perf_idx = col - n_cells * 3 - n_wells;
+            let perf_idx = col - n_cells * CELL_BLOCK_SIZE - n_wells;
             let step = 1e-4 * state.perforation_primaries[perf_idx].value.abs().max(0.1);
             state_plus.perforation_primaries[perf_idx].value += step;
             state_minus.perforation_primaries[perf_idx].value -= step;

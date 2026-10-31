@@ -40,6 +40,7 @@ use crate::ReservoirSimulator;
 use crate::fim::assembly::{FimAssembly, FimAssemblyOptions};
 use crate::fim::assembly_ad::assemble_fim_system_ad;
 use crate::fim::flow_resv::FlowResvReportStepContext;
+use crate::fim::layout::{CELL_BLOCK_SIZE, CellEquation, CellPrimary};
 use crate::fim::state::{FimState, HydrocarbonState};
 use crate::fim::wells::FimWellTopology;
 
@@ -59,11 +60,12 @@ fn env_usize(name: &str, default: usize) -> usize {
 fn step(state: &FimState, col: usize) -> f64 {
     let n_cell = state.n_cell_unknowns();
     if col < n_cell {
-        let cell = state.cell(col / 3);
-        return match col % 3 {
-            0 => 1e-5 * cell.pressure_bar.abs().max(1.0),
-            1 => 1e-7,
-            _ => 1e-7 * cell.hydrocarbon_var.abs().max(1.0),
+        let cell = state.cell(col / CELL_BLOCK_SIZE);
+        return match CellPrimary::from_local_index(col % CELL_BLOCK_SIZE) {
+            Some(CellPrimary::Pressure) => 1e-5 * cell.pressure_bar.abs().max(1.0),
+            Some(CellPrimary::WaterSaturation) => 1e-7,
+            Some(CellPrimary::Hydrocarbon) => 1e-7 * cell.hydrocarbon_var.abs().max(1.0),
+            None => unreachable!(),
         };
     }
     if col < n_cell + state.n_well_unknowns() {
@@ -76,11 +78,12 @@ fn step(state: &FimState, col: usize) -> f64 {
 fn perturb(state: &mut FimState, col: usize, delta: f64) {
     let n_cell = state.n_cell_unknowns();
     if col < n_cell {
-        let cell = &mut state.cells[col / 3];
-        match col % 3 {
-            0 => cell.pressure_bar += delta,
-            1 => cell.sw += delta,
-            _ => cell.hydrocarbon_var += delta,
+        let cell = &mut state.cells[col / CELL_BLOCK_SIZE];
+        match CellPrimary::from_local_index(col % CELL_BLOCK_SIZE) {
+            Some(CellPrimary::Pressure) => cell.pressure_bar += delta,
+            Some(CellPrimary::WaterSaturation) => cell.sw += delta,
+            Some(CellPrimary::Hydrocarbon) => cell.hydrocarbon_var += delta,
+            None => unreachable!(),
         }
     } else if col < n_cell + state.n_well_unknowns() {
         state.well_bhp[col - n_cell] += delta;
@@ -93,8 +96,13 @@ fn perturb(state: &mut FimState, col: usize, delta: f64) {
 fn row_kind(state: &FimState, row: usize) -> (String, String) {
     let n_cell = state.n_cell_unknowns();
     if row < n_cell {
-        let eq = ["water", "oil", "gas"][row % 3];
-        return (eq.to_string(), format!("cell{}", row / 3));
+        let eq = match CellEquation::from_local_index(row % CELL_BLOCK_SIZE) {
+            Some(CellEquation::Water) => "water",
+            Some(CellEquation::OilComponent) => "oil",
+            Some(CellEquation::GasComponent) => "gas",
+            None => unreachable!(),
+        };
+        return (eq.to_string(), format!("cell{}", row / CELL_BLOCK_SIZE));
     }
     if row < n_cell + state.n_well_unknowns() {
         return ("well".to_string(), format!("well{}", row - n_cell));
@@ -109,16 +117,21 @@ fn row_kind(state: &FimState, row: usize) -> (String, String) {
 fn col_kind(state: &FimState, col: usize) -> (String, String, f64) {
     let n_cell = state.n_cell_unknowns();
     if col < n_cell {
-        let cell = state.cell(col / 3);
-        let (kind, value) = match col % 3 {
-            0 => ("p", cell.pressure_bar),
-            1 => ("sw", cell.sw),
-            _ => match cell.regime {
+        let cell = state.cell(col / CELL_BLOCK_SIZE);
+        let (kind, value) = match CellPrimary::from_local_index(col % CELL_BLOCK_SIZE) {
+            Some(CellPrimary::Pressure) => ("p", cell.pressure_bar),
+            Some(CellPrimary::WaterSaturation) => ("sw", cell.sw),
+            Some(CellPrimary::Hydrocarbon) => match cell.regime {
                 HydrocarbonState::Saturated => ("Sg", cell.hydrocarbon_var),
                 HydrocarbonState::Undersaturated => ("Rs", cell.hydrocarbon_var),
             },
+            None => unreachable!(),
         };
-        return (kind.to_string(), format!("cell{}", col / 3), value);
+        return (
+            kind.to_string(),
+            format!("cell{}", col / CELL_BLOCK_SIZE),
+            value,
+        );
     }
     if col < n_cell + state.n_well_unknowns() {
         let well = col - n_cell;
@@ -147,11 +160,11 @@ fn cell_detail(
     col: usize,
 ) -> Option<String> {
     let n_cell = state.n_cell_unknowns();
-    if row >= n_cell || col >= n_cell || row / 3 != col / 3 {
+    if row >= n_cell || col >= n_cell || row / CELL_BLOCK_SIZE != col / CELL_BLOCK_SIZE {
         return None;
     }
-    let idx = row / 3;
-    let (eq, var) = (row % 3, col % 3);
+    let idx = row / CELL_BLOCK_SIZE;
+    let (eq, var) = (row % CELL_BLOCK_SIZE, col % CELL_BLOCK_SIZE);
     let c = state.cell(idx);
     let pc = previous_state.cell(idx);
     let base_rs = (!sim.gas_redissolution_enabled).then(|| sim.rs[idx]);
@@ -185,19 +198,20 @@ fn cell_detail(
     )[eq][var];
     let h = step(state, col);
     let (mut plus, mut minus) = (*c, *c);
-    match var {
-        0 => {
+    match CellPrimary::from_local_index(var) {
+        Some(CellPrimary::Pressure) => {
             plus.pressure_bar += h;
             minus.pressure_bar -= h;
         }
-        1 => {
+        Some(CellPrimary::WaterSaturation) => {
             plus.sw += h;
             minus.sw -= h;
         }
-        _ => {
+        Some(CellPrimary::Hydrocarbon) => {
             plus.hydrocarbon_var += h;
             minus.hydrocarbon_var -= h;
         }
+        None => unreachable!(),
     }
     let base = acc(c);
     let rs_sat = sim
