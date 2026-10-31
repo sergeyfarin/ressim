@@ -54,6 +54,7 @@ fn valid_config() -> CaseConfig {
                 inject_water: false,
             },
         ],
+        schedule: Vec::new(),
         gravity_enabled: false,
         initial_pressure_gradient_bar_per_m: None,
         water: None,
@@ -553,13 +554,13 @@ fn comp_api_a_hydrostatic_box_column_is_stationary() {
 /// an absent one must not be read as compositional.
 #[test]
 fn comp_api_a_foreign_schema_is_refused() {
-    for schema in ["", "ressim-compositional-case/2", "black-oil"] {
+    for schema in ["", "ressim-compositional-case/3", "black-oil"] {
         let mut config = valid_config();
         config.schema = schema.to_string();
         match CompositionalCase::new(config) {
             Err(ConfigError::UnsupportedSchema { found, expected }) => {
                 assert_eq!(found, schema);
-                assert_eq!(expected, CASE_SCHEMA);
+                assert!(expected.contains(CASE_SCHEMA) && expected.contains(SCHEDULE_CASE_SCHEMA));
             }
             other => panic!(
                 "schema {schema:?} was not refused: {other:?}",

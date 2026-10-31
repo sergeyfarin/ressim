@@ -10,10 +10,23 @@
  * `JsValue`. These declarations are what gives the frontend its types back.
  */
 
-/** The only case schema this build accepts. Must match `api::CASE_SCHEMA`. */
+/** The case schema for a payload with **no** schedule. Must match `api::CASE_SCHEMA`. */
 export const COMPOSITIONAL_CASE_SCHEMA = 'ressim-compositional-case/1';
+/**
+ * The case schema for a payload that carries a schedule (#50). Must match
+ * `api::SCHEDULE_CASE_SCHEMA`.
+ *
+ * A schedule must use `/2` so a build that predates schedules refuses the payload rather than
+ * ignoring its events and running a different physical case.
+ */
+export const COMPOSITIONAL_SCHEDULE_CASE_SCHEMA = 'ressim-compositional-case/2';
 /** The only checkpoint schema this build accepts. Must match `api::CHECKPOINT_SCHEMA`. */
 export const COMPOSITIONAL_CHECKPOINT_SCHEMA = 'ressim-compositional-checkpoint/1';
+
+/** The case schema discriminator: unscheduled `/1`, scheduled `/2`. */
+export type CompositionalCaseSchema =
+  | typeof COMPOSITIONAL_CASE_SCHEMA
+  | typeof COMPOSITIONAL_SCHEDULE_CASE_SCHEMA;
 
 /**
  * The fluid, chosen by name.
@@ -134,7 +147,34 @@ export type CompositionalWellControl =
       target_m3_per_day: number;
       phase: CompositionalSurfacePhase;
       bhp_limit_bar: number;
-    };
+    }
+  /** No flow. The well keeps its completions and can be opened again by a later event. */
+  | { control: 'shut-in' };
+
+/**
+ * What a scheduled event changes about a well's injected stream.
+ *
+ * `none` clears the prescribed stream; it does not turn the well into a producer by itself. A
+ * control and an injection change may travel in one event, which is how a WAG switch changes the
+ * target and the fluid together.
+ */
+export type CompositionalInjectionConfig =
+  | { injection: 'hydrocarbon'; composition: number[] }
+  | { injection: 'water' }
+  | { injection: 'none' };
+
+/**
+ * One scheduled well change. The envelope is shared with the black-oil schedule contract (#17):
+ * an absolute time, a well, and a flattened change.
+ */
+export interface CompositionalWellEvent {
+  time_days: number;
+  well: string;
+  /** Replace the control; absent leaves the current one in force. */
+  control?: CompositionalWellControl;
+  /** Replace the injected stream; absent leaves the current one in force. */
+  injection?: CompositionalInjectionConfig;
+}
 
 export interface CompositionalCompletion {
   cell: number;
@@ -153,7 +193,7 @@ export type CompositionalWellConfig = CompositionalWellControl & {
 
 /** A complete case, as it crosses the worker and WASM boundaries. */
 export interface CompositionalCaseConfig {
-  schema: typeof COMPOSITIONAL_CASE_SCHEMA;
+  schema: CompositionalCaseSchema;
   fluid: CompositionalFluidChoice;
   grid: CompositionalGridConfig;
   relperm: CompositionalRelPermConfig;
@@ -161,6 +201,12 @@ export interface CompositionalCaseConfig {
   /** All `N` overall mole fractions. They must sum to one; nothing renormalizes them. */
   initial_composition: number[];
   wells: CompositionalWellConfig[];
+  /**
+   * Absolute-time changes to well controls and injected streams (#50). Base `wells` controls apply
+   * until the first event. Events are listed in nondecreasing time order; the engine refuses to
+   * sort an ambiguous schedule silently.
+   */
+  schedule?: CompositionalWellEvent[];
   gravity_enabled: boolean;
   /**
    * Initial pressure gradient [bar/m], positive downward from `grid.box_grid.top_depth_m`.
@@ -227,8 +273,9 @@ export interface CompositionalSnapshot {
   /** Per well, cumulative component moles. Positive into the reservoir. With water, water is last. */
   cumulative_well_moles: number[][];
   /**
-   * Per well, the BHP the accepted solve ran at [bar]. Absent before the first accepted step and
-   * in snapshots written before C14's reporting.
+   * Per well, the BHP the accepted solve ran at [bar], or zero while the well is shut in (and for
+   * a well just reopened by an event, until its first accepted step). Absent before the first
+   * accepted step and in snapshots written before C14's reporting.
    */
   well_bhp_bar?: number[];
   /** The water phase, when the case has one. */
@@ -245,10 +292,18 @@ export interface CompositionalCheckpoint {
   /** Water saturation per cell, exactly when the case has water. */
   water_saturation?: number[];
   /**
-   * Per well, the accepted flowing BHP [bar]. Absent in checkpoints written before it existed;
-   * restoring one without it re-solves the BHP at the next step.
+   * Per well, the accepted flowing BHP [bar]. Zero means shut in, or newly reopened before its
+   * first accepted step. Absent in checkpoints written before it existed; restoring one without
+   * it re-solves the BHP at the next step.
    */
   well_bhp_bar?: number[];
+  /** How many scheduled events had been applied at this state (#50). */
+  schedule_position?: number;
+  /**
+   * Whether the next step is the report remainder after a schedule event (#50). Carried so a
+   * restored run keeps the same timestep policy; absent checkpoints infer it from the clock.
+   */
+  schedule_boundary_pending?: boolean;
 }
 
 /** Turn an engine rejection into something a person can act on, without implementation jargon. */

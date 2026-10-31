@@ -35,6 +35,7 @@ mod mobility;
 mod pvt;
 mod relperm;
 mod reporting;
+pub mod schedule;
 mod solvers;
 mod step;
 mod timing;

@@ -610,6 +610,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | #45 | Up to 10 components; per-fluid temperature and BIPs; SPE5 fluid pinned from OPM | **COMPLETE** | `MAX_COMPONENTS = 10` in `fluid/specification.rs` (re-exported by `compositional/layout.rs`); `pinned::spe5()`; `EosVariant::PengRobinsonCorrected`; SPE5 in the fixture (§3a) and in every fixture-driven test; `comp_surface_separation_matches_opm_on_the_spe5_fluid`; N=10 kernels FD-checked in `compositional/cost_tests.rs`. Cost record below |
 | #51 | SPE3 characterization, staged separators, dew-point robustness | **Implemented** | [SPE3 validation](SPE3_VALIDATION.md): published nine-component fluid with volume translations; OPM PTFlash admission, independent Jutul separator/CVD fixtures and a matched 1D dew-point crossing; eight `comp_spe3_*` contracts. Full reservoir execution remains #52 |
 | #48 | Rate-controlled wells at BHP-control cost | **COMPLETE** (2026-10-30) | `comp_well_rate_*` and `comp_cost_rate_controlled_*`: BHP as a Newton unknown with a locally eliminated rate row, 5% control hysteresis, FD-checked rate-row derivatives, and two source evaluations per assembly. §8 |
+| #50 | Compositional well schedules: WAG alternation and shut-in | **COMPLETE** (2026-10-30) | One engine-neutral event envelope (`schedule.rs`) shared with #17, compositional control/injection changes, exact-time step capping, both directions of short event boundaries, a `ShutIn` control and an explicit checkpoint cursor plus consumed-remainder flag. Scheduled cases use schema `/2` so pre-schedule builds refuse them. Ten `comp_schedule_*` tests; the WAG gate switches water → gas → water → gas → shut-in → open on exact days with a closed component ledger. §8 |
 | #47 | Structured grids, gravity, multi-layer completions | **COMPLETE** (2026-10-29) | `grid.box_grid` with per-layer `dz/kx/ky/kz`, TPFA x/y/z faces, a hydrostatic gradient initialization and multi-completion head offsets; 1-D path unchanged. 2-D quarter five spot against `flowexp_comp`: 0.0070 bar, 2.8e-5 saturation, 4.2e-5 composition, 5.4e-12 cumulative. #49 already measured the 7 × 7 × 3 and 9 × 9 × 4 wasm memory/time budget — see §8 |
 
 ## 8. Completion records
@@ -737,6 +738,76 @@ simulator; multi-well control interactions beyond one water injector (the single
 surface-rate contract is `comp_water_rate_controlled_injector_holds_its_surface_target`); the UI,
 which does not yet offer a case with water. Gate: `bash scripts/validate-compositional.sh thermo`
 (`comp_water_`, 19 tests).
+
+### #50 — compositional well schedules: WAG alternation and shut-in (2026-10-30)
+
+**What landed.** `compositional/api.rs` carries an absolute-time `schedule` of well events, and
+`compositional/wells.rs` gained `WellControl::ShutIn`. The event envelope itself is engine-neutral
+(`src/lib/ressim/src/schedule.rs`): a time, a well id, and a flattened change. Compositional
+changes replace the control, the prescribed injected stream, or both; the black-oil side will fill
+the same envelope with its own control type under #17, so the scenario contract is one schedule
+rather than two.
+
+**Timing and lifecycle.** `CompositionalCase::step` caps the requested `dt` at the next event and
+applies the event only after an accepted step reaches that time. A switch therefore cannot happen
+inside an accepted step, and the caller continues on the remainder of its report interval. When the
+boundary interval is shorter than the normal minimum timestep (day 1.0000005 after a daily report
+step leaves 5e-7 d), the cap lowers the retry floor for that explicitly requested interval so Newton
+runs instead of returning `Budget` without an attempt. The same allowance applies to a remainder
+that starts at an event boundary: an event at day 0.9999995 leaves 5e-7 d to finish the daily report
+step, and that call is not capped by the next event. A caller's own tiny step away from a boundary is
+still refused. Events must be in nondecreasing time order
+and a well may not have two changes at any one instant — including when another well's event is
+listed between them; an ambiguous schedule is refused at the boundary rather than sorted silently.
+`t = 0` events are applied when the case is built.
+
+**Schema guard.** A scheduled case uses `ressim-compositional-case/2`; an unscheduled case keeps
+`/1`. A build that predates schedules accepts only `/1`, so it refuses a scheduled payload as an
+unsupported schema rather than ignoring its events and running a different case. The checkpoint
+envelope stays `/1`, but its embedded `config` carries `/2`, so the same guard refuses a scheduled
+checkpoint in an older build.
+
+**Restart.** A checkpoint stores `schedule_position`, the number of events applied, and
+`schedule_boundary_pending`, whether the next step is the report remainder after an event. The
+latter is state, not inferable from the clock: at day 1000 a consumed `5e-7 d` remainder is
+indistinguishable from roundoff under any practical clock tolerance, so carrying it keeps the
+restored timestep policy identical. A checkpoint from before the field existed is inferred with
+`event_at(checkpoint.time, last event)`, whose tolerance is roundoff-scale (`1e-11 * time`, i.e.
+`1e-8 d` at day 1000) rather than the old `1e-9 * time` band (`1e-6 d`). The C13 roundtrip test is
+extended by `comp_schedule_checkpoint_carries_position_and_continues_identically`, which crosses
+three event boundaries after the restore and compares the resulting pressure and composition.
+
+**Gate.** `comp_schedule_wag_cycle_switches_exactly_in_time_and_conserves_mass` runs five cells on
+the pinned binary with immiscible water. The injector alternates water → gas → water → gas, shuts in
+and reopens on integer days. Every step accepts exactly the scheduled interval with **one attempt**
+(no retry is triggered by a switch), the clock lands on each event, and after every switch
+
+```text
+inventory(t) - inventory(0) = sum over wells of cumulative_well_moles(t)
+```
+
+holds per component to `1e-8` relative, water last. A shut-in injector contributes zero and reports
+a flowing BHP of zero; opening it changes no completions and the next interval injects again.
+`comp_schedule_short_boundary_interval_is_attempted` and
+`comp_schedule_short_remainder_after_event_is_attempted` cover both short-boundary directions;
+`comp_schedule_restore_derives_boundary_from_clock_only` checks that restore does not grant the
+remainder allowance merely because replay applied a historical event;
+`comp_schedule_restore_keeps_consumed_allowance_at_long_clock` covers the day-1000 case, both with
+the carried flag and with flag-less inference;
+`comp_schedule_a_caller_tiny_step_is_still_refused` keeps the guard from becoming a general bypass.
+The validation test covers the non-adjacent same-time conflict and the `/1`-with-events refusal.
+Measured on `92aa98f4` in release: the WAG gate **0.11 s**, all ten `comp_schedule_*` tests
+**0.18 s** (`cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib comp_schedule_`).
+Gate command: `bash scripts/validate-compositional.sh thermo` (`comp_schedule_`, 10 tests, plus the
+shared `schedule::tests::` envelope tests). That tree also passed
+`bash scripts/validate-solver-coverage.sh all`, `bash scripts/validate-cross-solver.sh`,
+`bash scripts/benchmarks.sh check --tier fast` and `pnpm run validate:product`.
+
+**Not covered.** This is an internal timing/conservation contract, not an OPM `SCHEDULE` trajectory
+comparison. Black-oil consumption of the envelope is #17; relative-permeability hysteresis is E4;
+a deck parser is separate. The WAG fixture runs on BHP controls because the pinned binary and
+ternary fluids declare no surface conditions, so surface-rate switching remains #48's separate
+surface-rate contract rather than a new oracle claim.
 
 ### C10 linear routes — block-sparse Jacobian, sparse LU and CPR (#49, 2026-10-28)
 

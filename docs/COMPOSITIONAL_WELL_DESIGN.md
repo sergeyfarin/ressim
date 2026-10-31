@@ -225,6 +225,74 @@ flowing back *into* the formation — which is precisely the case that is reject
 Every control carries its units in the API and in its tests, because "rate" is three different
 quantities here.
 
+## Schedules (#50, shared with #17)
+
+A case carries an absolute-time `schedule` of well events. The envelope is engine-neutral
+(`src/lib/ressim/src/schedule.rs`): **a time, a well id, and a flattened change**. The
+compositional half of the change is a control and/or an injected stream; a black-oil event will
+carry its own control type in the same envelope (#17), so scenario code sees one schedule contract
+rather than two.
+
+```json
+{
+  "time_days": 1.0,
+  "well": "INJ",
+  "control": { "control": "bhp", "target_bar": 250.0 },
+  "injection": { "injection": "hydrocarbon", "composition": [1.0, 0.0] }
+}
+```
+
+- **Exact time.** The engine caps a requested step at the next event, accepts that step, and only
+  then applies the change. A well's source over `[t_i, t_i+1)` is therefore governed by the last
+  event at or before `t_i`; a switch cannot happen part-way through an accepted step. A caller that
+  expects a report at a later time sees the smaller accepted `dt` and continues on the remainder —
+  the worker session already steps on the remainder rather than counting engine calls as report
+  steps.
+- **Short boundary intervals are attempted.** An event at day 1.0000005 after a daily report step
+  leaves a 5e-7 d interval, below the normal 1e-6 d minimum timestep. The schedule cap lowers the
+  retry floor for that explicitly requested interval, so Newton runs; refusing it would end the
+  run with `Budget` before any solve. The symmetric case is an event at day 0.9999995: the 5e-7 d
+  report remainder *after* the event is not capped by anything, so an explicit "this state is on
+  an event boundary" flag grants the same allowance for that one remainder. A caller's own tiny
+  `dt` away from a boundary is still governed by the configured minimum.
+- **Order is data, not a sort.** Events must be in nondecreasing time order and a well may not have
+  two changes at any one instant — including when another well's event sits between them. An
+  ambiguous schedule is refused rather than silently reordered, because two readings would
+  otherwise give two answers.
+- **The schema is the capability guard.** A scheduled case uses
+  `ressim-compositional-case/2`, not the unscheduled `/1`. A build that predates schedules refuses
+  `/2` as an unsupported schema instead of deserializing the payload, ignoring its events and
+  running a different physical case. The checkpoint envelope stays `/1`, but its embedded `config`
+  carries `/2`, so an older build rejects a scheduled checkpoint through that config.
+- **`t = 0` is the initial condition.** Events at zero are applied when the case is built, so the
+  base control need not be repeated as a first no-op event.
+- **Shut-in is a control.** `{"control":"shut-in"}` zeroes the source, keeps the completions, and
+  keeps the well's row in the cumulative ledger so later events can reopen it. A shut-in well
+  reports a flowing BHP of zero, and a well reopened by an event keeps zero until its first
+  accepted step supplies a solved value; every well that has flowed under its current control
+  reports the pressure its accepted solve ran at.
+- **Restart carries the cursor.** A checkpoint stores `schedule_position` — the number of events
+  applied — because two events at one time for different wells are not recoverable from the state
+  alone, and `schedule_boundary_pending` — whether the next step is the remainder after an event.
+  The latter is execution state: at day 1000 a consumed 5e-7 d remainder is smaller than any
+  practical clock-roundoff tolerance, so inferring it would regenerate an allowance the original
+  run had used. A checkpoint from before the flag existed is inferred with a roundoff-scale
+  `event_at(checkpoint.time, last event)` test (`1e-11 * time`), not the old `1e-9 * time` band.
+  Restore still requires the stored cursor to agree. Checkpoints written before schedules existed
+  are replayed by time instead of refused.
+- **One event can change both halves.** A WAG switch changes the control target and the injected
+  stream together, so there is no instant at which the well is injecting the old fluid at the new
+  target (or the new fluid at the old one).
+
+The gate is `comp_schedule_wag_cycle_switches_exactly_in_time_and_conserves_mass`: five cells, a
+pinned binary, immiscible water and one producer; the injector alternates water → gas → water → gas,
+shuts in, and reopens on integer days. Each step stops exactly on its event without a retry, and
+after every switch the inventory change equals the summed per-well cumulative row, water included.
+
+Out of scope here: black-oil consumption of the envelope (#17 owns the wiring and E2), relative
+permeability hysteresis (E4), and an OPM `SCHEDULE` deck parser. The gate is an internal
+conservation/timing contract, not an OPM trajectory comparison.
+
 ## What the gates are
 
 Internal, since no external well oracle exists:

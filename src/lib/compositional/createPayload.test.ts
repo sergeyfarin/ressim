@@ -7,7 +7,11 @@ import {
   isCompositionalCreate,
   peacemanWellIndex,
 } from './createPayload';
-import { COMPOSITIONAL_CASE_SCHEMA, describeCompositionalError } from './types';
+import {
+  COMPOSITIONAL_CASE_SCHEMA,
+  COMPOSITIONAL_SCHEDULE_CASE_SCHEMA,
+  describeCompositionalError,
+} from './types';
 import type { CompositionalCaseInput } from './createPayload';
 
 function input(): CompositionalCaseInput {
@@ -83,6 +87,17 @@ describe('assertCompositionalPayload', () => {
     expect(message).toContain('ressim-compositional-case/99');
     expect(message).toContain(COMPOSITIONAL_CASE_SCHEMA);
   });
+
+  it('accepts the scheduled schema as well as the unscheduled one', () => {
+    const scheduled = buildCompositionalCase({
+      ...input(),
+      schedule: [{ time_days: 1, well: 'INJ', control: { control: 'shut-in' } }],
+    });
+    expect(scheduled.schema).toBe(COMPOSITIONAL_SCHEDULE_CASE_SCHEMA);
+    expect(
+      assertCompositionalPayload({ fluidModel: 'compositional', compositional: scheduled }),
+    ).toBeNull();
+  });
 });
 
 describe('buildCompositionalCase', () => {
@@ -92,7 +107,6 @@ describe('buildCompositionalCase', () => {
     expect(config.grid.rock_compressibility_per_bar).toBe(0);
     expect(config.gravity_enabled).toBe(false);
   });
-
   it('copies the arrays rather than aliasing the caller', () => {
     // A payload that shares an array with a store is how a $state proxy leaks across the worker
     // boundary, which structured cloning rejects.
@@ -148,6 +162,58 @@ describe('buildCompositionalCase', () => {
     source.boxGrid!.layer_dz_m![0] = 99;
     expect(config.grid.box_grid?.layer_dz_m?.[0]).toBe(10);
     expect(() => structuredClone(config)).not.toThrow();
+  });
+
+  it('carries a WAG schedule and water as copied plain data', () => {
+    const source: CompositionalCaseInput = {
+      ...input(),
+      relperm: {
+        model: 'stone-ii',
+        swof: [
+          { sw: 0, krw: 0, krow: 1 },
+          { sw: 1, krw: 1, krow: 0 },
+        ],
+        sgof: [
+          { sg: 0, krg: 0, krog: 1 },
+          { sg: 1, krg: 1, krog: 0 },
+        ],
+      },
+      water: {
+        reference_pressure_bar: 200,
+        formation_volume_factor: 1.02,
+        compressibility_per_bar: 4.5e-5,
+        viscosity_cp: 0.5,
+        surface_density_kg_per_m3: 1020,
+        initial_saturation: 0.15,
+      },
+      schedule: [
+        {
+          time_days: 1,
+          well: 'INJ',
+          control: { control: 'bhp', target_bar: 250 },
+          injection: { injection: 'hydrocarbon', composition: [1, 0, 0] },
+        },
+        {
+          time_days: 2,
+          well: 'INJ',
+          control: { control: 'shut-in' },
+        },
+      ],
+    };
+    const config = buildCompositionalCase(source);
+    expect(config.schema).toBe(COMPOSITIONAL_SCHEDULE_CASE_SCHEMA);
+    expect(config.water).toEqual(source.water);
+    expect(config.schedule).toEqual(source.schedule);
+    expect(() => structuredClone(config)).not.toThrow();
+
+    // No array is shared with a caller's (possibly proxied) params object.
+    const composition = source.schedule![0].injection;
+    if (composition?.injection === 'hydrocarbon') composition.composition[0] = 0;
+    expect(
+      config.schedule?.[0].injection?.injection === 'hydrocarbon'
+        ? config.schedule[0].injection.composition[0]
+        : null,
+    ).toBe(1);
   });
 });
 

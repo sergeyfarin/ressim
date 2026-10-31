@@ -312,6 +312,7 @@ fn well_fraction_to_boundary(
                 ..
             } => (*bhp_limit_bar, *target_m3_per_day > 0.0),
             WellControl::Bhp { .. } => continue,
+            WellControl::ShutIn => continue,
         };
 
         // Positivity, and the absolute search interval.

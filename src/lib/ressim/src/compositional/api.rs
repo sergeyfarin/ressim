@@ -43,14 +43,29 @@ use crate::fluid::specification::FluidSpecification;
 use crate::fluid::units::bar_to_pa;
 use crate::relperm::{SgofRow, SwofRow};
 
-/// The only schema this build accepts. An absent or different one is refused rather than guessed
-/// at — the plan is explicit that an absent discriminator must not be read as compositional.
+/// The schema for a case with **no** schedule. See [`SCHEDULE_CASE_SCHEMA`] for the scheduled
+/// variant, and why the version is part of the schedule guard.
 pub const CASE_SCHEMA: &str = "ressim-compositional-case/1";
-/// The only checkpoint schema this build accepts.
+/// The schema for a case that carries a schedule (#50).
+///
+/// **Why a second version rather than an additive field.** Serde defaults a missing `schedule` and
+/// ignores an unknown one, so a build that predates schedules would accept a `/1` payload with
+/// events and silently run it without them — a different physical case with no error. A scheduled
+/// case therefore demands `/2`, which an older build refuses as an unsupported schema. The
+/// checkpoint's embedded `config` carries the same discriminator, so a scheduled checkpoint is
+/// refused by that build too, even though the checkpoint envelope itself remains `/1`.
+pub const SCHEDULE_CASE_SCHEMA: &str = "ressim-compositional-case/2";
+/// The only checkpoint envelope this build accepts.
 ///
 /// Additive optional fields do not bump this: serde defaults a missing field and ignores an
-/// unknown one, so a `/1` payload from before `well_bhp_bar` restores unchanged. A bump is for a
-/// shape an older build would *misinterpret*, not one it can safely ignore.
+/// unknown one, so a `/1` payload from before `well_bhp_bar` or `schedule_position` restores
+/// unchanged. A bump is for a shape an older build would *misinterpret*, not one it can safely
+/// ignore.
+///
+/// **Scheduled checkpoints are guarded through their embedded config schema.** A checkpoint from a
+/// scheduled case carries `config.schema == SCHEDULE_CASE_SCHEMA`, which a build without schedules
+/// refuses in `CompositionalCase::new`; the envelope itself stays `/1` because the extra fields are
+/// additive.
 pub const CHECKPOINT_SCHEMA: &str = "ressim-compositional-checkpoint/1";
 
 /// Why a case could not be built. Every variant names the field that was wrong.
@@ -367,6 +382,52 @@ pub enum WellControlConfig {
         phase: SurfacePhaseConfig,
         bhp_limit_bar: f64,
     },
+    /// No flow through the well. Its connections stay configured, so a later event can open it
+    /// again without repeating the completion data.
+    ShutIn,
+}
+
+/// What a scheduled event changes about a well's injected stream.
+///
+/// [`Self::NoInjection`] is not "produce instead": it clears the prescribed stream, which is what
+/// a well that was injecting needs before it can be reopened as a producer. A control change and
+/// an injection change may appear in one event, which is how a WAG switch changes the target and
+/// the fluid together without an instant at which the well is half-switched.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "injection", rename_all = "kebab-case")]
+pub enum WellInjectionConfig {
+    Hydrocarbon {
+        composition: Vec<f64>,
+    },
+    Water,
+    #[serde(rename = "none")]
+    NoInjection,
+}
+
+impl WellInjectionConfig {
+    fn to_injected(&self) -> Option<InjectedFluid> {
+        match self {
+            Self::Hydrocarbon { composition } => {
+                Some(InjectedFluid::Hydrocarbon(composition.clone()))
+            }
+            Self::Water => Some(InjectedFluid::Water),
+            Self::NoInjection => None,
+        }
+    }
+}
+
+/// One scheduled well change, in the shared declarative envelope ([`crate::schedule`]).
+pub type WellEventConfig = crate::schedule::WellEvent<WellChangeConfig>;
+
+/// The engine-specific half of a [`WellEventConfig`]: a control, an injected stream, or both.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WellChangeConfig {
+    /// Replace the well's control. An event with none leaves the current control in force.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control: Option<WellControlConfig>,
+    /// Replace the prescribed injected stream. An event with none leaves it in force.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub injection: Option<WellInjectionConfig>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -426,6 +487,10 @@ pub struct CaseConfig {
     pub initial_composition: Vec<f64>,
     #[serde(default)]
     pub wells: Vec<WellConfig>,
+    /// Absolute-time changes to well controls and injected streams (#50). Base [`Self::wells`]
+    /// controls apply until the first event. Events are ordered by time, never sorted silently.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub schedule: Vec<WellEventConfig>,
     /// Gravity is off unless a case asks for it. It acts on the vertical faces of a
     /// [`GridConfig::box_grid`]; the uniform 1D column remains horizontal whatever this says.
     #[serde(default)]
@@ -458,10 +523,16 @@ impl CaseConfig {
     /// checked first, because every other message would be noise if the payload is from a
     /// different version.
     pub fn validate(&self) -> Result<CaseAdvisories, ConfigError> {
-        if self.schema != CASE_SCHEMA {
+        if self.schema != CASE_SCHEMA && self.schema != SCHEDULE_CASE_SCHEMA {
             return Err(ConfigError::UnsupportedSchema {
                 found: self.schema.clone(),
-                expected: CASE_SCHEMA.to_string(),
+                expected: format!("{CASE_SCHEMA} or {SCHEDULE_CASE_SCHEMA}"),
+            });
+        }
+        if !self.schedule.is_empty() && self.schema != SCHEDULE_CASE_SCHEMA {
+            return Err(ConfigError::UnsupportedSchema {
+                found: format!("{} (with a schedule)", self.schema),
+                expected: SCHEDULE_CASE_SCHEMA.to_string(),
             });
         }
 
@@ -630,6 +701,24 @@ impl CaseConfig {
             }
         }
 
+        for (index, well) in self.wells.iter().enumerate() {
+            if well.id.trim().is_empty() {
+                return Err(ConfigError::Rejected {
+                    field: format!("wells[{index}].id"),
+                    reason: "a well needs a non-empty identifier".to_string(),
+                });
+            }
+            if self.wells[..index].iter().any(|other| other.id == well.id) {
+                return Err(ConfigError::Rejected {
+                    field: format!("wells[{index}].id"),
+                    reason: format!(
+                        "the identifier {:?} is already used; a schedule addresses a well by it",
+                        well.id
+                    ),
+                });
+            }
+        }
+
         for well in &self.wells {
             if well.completions.is_empty() {
                 return Err(ConfigError::Rejected {
@@ -677,19 +766,40 @@ impl CaseConfig {
                     reason: "injects or meters water, and the case has no water block".to_string(),
                 });
             }
-            // A surface-rate control needs surface conditions, and the pinned fluids have them.
-            // Naming it here keeps the failure at the boundary rather than inside a Newton step.
-            if let WellControlConfig::SurfaceRate { .. } = well.control {
-                let spec = self.fluid.build()?;
-                if spec.surface().is_none() {
-                    return Err(ConfigError::UnsupportedControl {
-                        well: well.id.clone(),
-                        control: "surface-rate, but this fluid has no surface conditions"
-                            .to_string(),
-                    });
-                }
+            self.validate_well_control(&format!("wells[{}].control", well.id), well)?;
+        }
+
+        for (index, event) in self.schedule.iter().enumerate() {
+            let field = format!("schedule[{index}]");
+            let well = self
+                .wells
+                .iter()
+                .find(|well| well.id == event.well)
+                .ok_or_else(|| ConfigError::Rejected {
+                    field: field.clone(),
+                    reason: format!("no configured well is called {:?}", event.well),
+                })?;
+            if event.change.control.is_none() && event.change.injection.is_none() {
+                return Err(ConfigError::Rejected {
+                    field,
+                    reason: "an event must change at least one of control or injection".to_string(),
+                });
+            }
+            if let Some(control) = &event.change.control {
+                let mut changed = well.clone();
+                changed.control = control.clone();
+                self.validate_well_control(&format!("{field}.control"), &changed)?;
+            }
+            if let Some(injection) = &event.change.injection {
+                self.validate_well_injection(&format!("{field}.injection"), injection, n)?;
             }
         }
+        crate::schedule::validate_event_times(&self.schedule).map_err(|reason| {
+            ConfigError::Rejected {
+                field: "schedule".to_string(),
+                reason,
+            }
+        })?;
 
         Ok(CaseAdvisories {
             relperm_is_verification_only: matches!(self.relperm, RelPermConfig::Linear),
@@ -714,6 +824,94 @@ impl CaseConfig {
                 )))
             }
             (relperm, _) => relperm.build(),
+        }
+    }
+
+    /// Check a control in the context of the well that will run it.
+    ///
+    /// Base controls and scheduled controls go through the same function, so an event cannot
+    /// introduce a target the base payload would have been refused. `well` supplies the identity
+    /// and injection side, which a surface-water control depends on.
+    fn validate_well_control(&self, field: &str, well: &WellConfig) -> Result<(), ConfigError> {
+        let positive = |value: f64, field: &str| -> Result<(), ConfigError> {
+            if value.is_finite() && value > 0.0 {
+                Ok(())
+            } else {
+                Err(ConfigError::OutOfRange {
+                    field: field.to_string(),
+                    value,
+                    reason: "must be finite and positive".to_string(),
+                })
+            }
+        };
+        let finite = |value: f64, field: &str| -> Result<(), ConfigError> {
+            if value.is_finite() {
+                Ok(())
+            } else {
+                Err(ConfigError::OutOfRange {
+                    field: field.to_string(),
+                    value,
+                    reason: "must be finite".to_string(),
+                })
+            }
+        };
+        match &well.control {
+            WellControlConfig::Bhp { target_bar } => {
+                positive(*target_bar, &format!("{field}.target_bar"))?
+            }
+            WellControlConfig::MolarRate {
+                target_moles_per_day,
+                bhp_limit_bar,
+            } => {
+                finite(
+                    *target_moles_per_day,
+                    &format!("{field}.target_moles_per_day"),
+                )?;
+                positive(*bhp_limit_bar, &format!("{field}.bhp_limit_bar"))?;
+            }
+            WellControlConfig::SurfaceRate {
+                target_m3_per_day,
+                phase,
+                bhp_limit_bar,
+            } => {
+                finite(*target_m3_per_day, &format!("{field}.target_m3_per_day"))?;
+                positive(*bhp_limit_bar, &format!("{field}.bhp_limit_bar"))?;
+                if *phase == SurfacePhaseConfig::Water && self.water.is_none() {
+                    return Err(ConfigError::Rejected {
+                        field: format!("{field}.phase"),
+                        reason: "meters water, and the case has no water block".to_string(),
+                    });
+                }
+                let spec = self.fluid.build()?;
+                if spec.surface().is_none() {
+                    return Err(ConfigError::UnsupportedControl {
+                        well: well.id.clone(),
+                        control: "surface-rate, but this fluid has no surface conditions"
+                            .to_string(),
+                    });
+                }
+            }
+            WellControlConfig::ShutIn => {}
+        }
+        Ok(())
+    }
+
+    /// Check an injected stream the same way a base well's injection is checked.
+    fn validate_well_injection(
+        &self,
+        field: &str,
+        injection: &WellInjectionConfig,
+        components: usize,
+    ) -> Result<(), ConfigError> {
+        match injection {
+            WellInjectionConfig::Hydrocarbon { composition } => {
+                check_composition(field, composition, components)
+            }
+            WellInjectionConfig::Water if self.water.is_none() => Err(ConfigError::Rejected {
+                field: field.to_string(),
+                reason: "injects water, and the case has no water block".to_string(),
+            }),
+            WellInjectionConfig::Water | WellInjectionConfig::NoInjection => Ok(()),
         }
     }
 }
@@ -763,6 +961,16 @@ pub struct CompositionalCase {
     sources: Vec<Vec<f64>>,
     options: TimestepOptions,
     run: CompositionalRun,
+    /// How many schedule events have been applied. The schedule itself lives in `config`, because
+    /// a checkpoint already carries it; this is the cursor into it.
+    schedule_position: usize,
+    /// True when the accepted state sits exactly on an event that was applied after the step.
+    ///
+    /// The next call is the report remainder after that event. It may legitimately be shorter than
+    /// the minimum timestep, and unlike an interval ending at an event it is not capped. This flag
+    /// grants the allowance for that one remainder only; a caller's tiny step at any other time is
+    /// still refused. It is not checkpointed: restore derives it by replaying to the clock.
+    schedule_boundary_pending: bool,
 }
 
 /// `DARCY_METRIC_FACTOR`, the same constant the black-oil path uses.
@@ -881,7 +1089,7 @@ impl CompositionalCase {
         let wells = config
             .wells
             .iter()
-            .map(|w| build_well(w))
+            .map(build_well)
             .collect::<Result<Vec<_>, _>>()?;
 
         let initial = CompositionalState::new(
@@ -906,7 +1114,7 @@ impl CompositionalCase {
             reason: format!("{e:?}"),
         })?;
 
-        Ok(Self {
+        let mut case = Self {
             spec,
             layout,
             relperm,
@@ -916,8 +1124,13 @@ impl CompositionalCase {
             sources: vec![vec![0.0; layout.cell_block_size()]; cells],
             options: TimestepOptions::default(),
             run: CompositionalRun::new(initial),
+            schedule_position: 0,
+            schedule_boundary_pending: false,
             config,
-        })
+        };
+        // A t = 0 event is the initial condition, not a step-1 surprise.
+        case.apply_schedule_through(0.0);
+        Ok(case)
     }
 
     fn rock(&self) -> RockView<'_> {
@@ -954,9 +1167,73 @@ impl CompositionalCase {
         &self.config
     }
 
+    /// Apply every schedule event whose time has been reached, in configuration order.
+    ///
+    /// Called at construction for `t = 0`, at the start of a step (which also makes a restored
+    /// run self-consistent), and after an accepted step reaches an event boundary. Applying an
+    /// event twice is harmless because every event replaces state rather than toggling it; that
+    /// idempotence is what lets restore replay the prefix without storing a mutation log.
+    fn apply_schedule_through(&mut self, time_days: f64) {
+        let mut applied = false;
+        while let Some(event) = self.config.schedule.get(self.schedule_position) {
+            if !crate::schedule::event_reached(time_days, event.time_days) {
+                break;
+            }
+            apply_well_event(&mut self.wells, event);
+            self.schedule_position += 1;
+            applied = true;
+        }
+        if applied && self.run.time_days() > 0.0 {
+            self.schedule_boundary_pending = true;
+        }
+        if applied && self.run.well_bhp_bar().len() == self.wells.len() {
+            // The accepted BHP belongs to the interval that just ended. A well the new event
+            // shuts in has no flowing pressure from this instant, so report zero rather than the
+            // pressure it was producing at. A reopened well keeps zero until its first accepted
+            // step supplies a solved value.
+            let mut bhp = self.run.well_bhp_bar().to_vec();
+            for (value, well) in bhp.iter_mut().zip(&self.wells) {
+                if matches!(well.control, WellControl::ShutIn) {
+                    *value = 0.0;
+                }
+            }
+            self.run.set_well_bhp_bar(bhp);
+        }
+    }
+
     /// Attempt one step. The outcome is reported, never panicked: a flash that cannot resolve is
     /// something a scenario has to be able to show a user.
+    ///
+    /// The requested `dt` is capped at the next schedule event, so a switch is never applied
+    /// part-way through an accepted step. The caller sees the smaller accepted `dt` and continues
+    /// on the remainder; [`super::frontend`] and the worker session already do this.
+    ///
+    /// A boundary interval may be shorter than the normal minimum timestep. That happens in both
+    /// directions: an event at day `1.0000005` leaves `5e-7 d` before it, and an event at day
+    /// `0.9999995` leaves `5e-7 d` of a daily report interval *after* it. Both intervals are
+    /// explicitly requested by the schedule, so they lower the retry ladder's floor; refusing
+    /// either would end the run with `Budget` rather than stepping. A caller's own tiny `dt` away
+    /// from a schedule boundary is still refused by the configured minimum.
     pub fn step(&mut self, dt_days: f64) -> StepOutcome {
+        let requested_dt_days = dt_days;
+        self.apply_schedule_through(self.run.time_days());
+        let starts_at_event = self.schedule_boundary_pending;
+        let dt_days = crate::schedule::cap_dt_at_next_event(
+            &self.config.schedule,
+            self.schedule_position,
+            self.run.time_days(),
+            dt_days,
+        );
+        let mut options = self.options;
+        let schedule_created_interval = dt_days < requested_dt_days || starts_at_event;
+        if schedule_created_interval && dt_days > 0.0 {
+            options.min_dt_days = options.min_dt_days.min(dt_days);
+        }
+        let next_event = self
+            .config
+            .schedule
+            .get(self.schedule_position)
+            .map(|event| event.time_days);
         // Built inline rather than through `self.rock()`: that borrows all of `self`, and the step
         // needs `self.run` mutably at the same time.
         let rock = RockView {
@@ -973,8 +1250,16 @@ impl CompositionalCase {
             &self.wells,
             &self.sources,
             dt_days,
-            self.options,
+            options,
         );
+        if report.succeeded() {
+            self.schedule_boundary_pending = false;
+            if next_event
+                .is_some_and(|time| crate::schedule::event_reached(self.run.time_days(), time))
+            {
+                self.apply_schedule_through(self.run.time_days());
+            }
+        }
         StepOutcome {
             accepted_dt_days: report.accepted_dt_days,
             time_days: self.run.time_days(),
@@ -1110,6 +1395,8 @@ impl CompositionalCase {
                     .collect()
             }),
             well_bhp_bar: self.run.well_bhp_bar().to_vec(),
+            schedule_position: Some(self.schedule_position),
+            schedule_boundary_pending: Some(self.schedule_boundary_pending),
         }
     }
 
@@ -1175,6 +1462,36 @@ impl CompositionalCase {
             })?;
         case.run = CompositionalRun::new(state);
         case.run.set_time_days(checkpoint.time_days);
+        // Replay the schedule to the checkpoint's clock, then require the explicit position to
+        // agree. Replaying is idempotent because events replace state; the comparison is what
+        // catches a checkpoint whose cursor and clock disagree.
+        case.apply_schedule_through(checkpoint.time_days);
+        // A checkpoint carries whether the next step is the remainder after an event. That is
+        // exact; inferring it from the clock would regenerate an allowance already consumed, and
+        // at day 1000 a 5e-7 d remainder is smaller than the clock tolerance. Older checkpoints
+        // without the field are inferred from an event that coincides with their clock.
+        case.schedule_boundary_pending =
+            checkpoint.schedule_boundary_pending.unwrap_or_else(|| {
+                checkpoint.time_days > 0.0
+                    && case
+                        .schedule_position
+                        .checked_sub(1)
+                        .and_then(|index| case.config.schedule.get(index))
+                        .is_some_and(|event| {
+                            crate::schedule::event_at(checkpoint.time_days, event.time_days)
+                        })
+            });
+        if let Some(position) = checkpoint.schedule_position
+            && position != case.schedule_position
+        {
+            return Err(ConfigError::Rejected {
+                field: "checkpoint.schedule_position".to_string(),
+                reason: format!(
+                    "says {position} event(s) were applied, but the clock at {} day reaches {}",
+                    checkpoint.time_days, case.schedule_position
+                ),
+            });
+        }
         if !checkpoint.well_bhp_bar.is_empty() {
             if checkpoint.well_bhp_bar.len() != case.config.wells.len() {
                 return Err(ConfigError::Rejected {
@@ -1186,15 +1503,18 @@ impl CompositionalCase {
                     ),
                 });
             }
-            if checkpoint
-                .well_bhp_bar
-                .iter()
-                .any(|bhp| !bhp.is_finite() || *bhp <= 0.0)
-            {
-                return Err(ConfigError::Rejected {
-                    field: "checkpoint.well_bhp_bar".to_string(),
-                    reason: "every flowing BHP must be finite and positive".to_string(),
-                });
+            for (index, bhp) in checkpoint.well_bhp_bar.iter().enumerate() {
+                // Zero is a shut-in well, or a well just reopened by an event that has not taken a
+                // step yet. Both are valid at an event boundary; only a negative or non-finite
+                // value is not a pressure.
+                if !bhp.is_finite() || *bhp < 0.0 {
+                    return Err(ConfigError::Rejected {
+                        field: format!("checkpoint.well_bhp_bar[{index}]"),
+                        reason: "every reported BHP must be finite and non-negative; zero means \
+                                 no accepted flow"
+                            .to_string(),
+                    });
+                }
             }
             case.run.set_well_bhp_bar(checkpoint.well_bhp_bar.clone());
         }
@@ -1207,7 +1527,48 @@ fn total_completions(config: &CaseConfig) -> usize {
 }
 
 fn build_well(config: &WellConfig) -> Result<CompositionalWell, ConfigError> {
-    let control = match &config.control {
+    Ok(CompositionalWell {
+        id: config.id.clone(),
+        completions: config
+            .completions
+            .iter()
+            .map(|c| Completion {
+                cell: c.cell,
+                well_index: c.well_index,
+                head_offset_bar: c.head_offset_bar,
+            })
+            .collect(),
+        control: control_from_config(&config.control),
+        injection: if config.inject_water {
+            Some(InjectedFluid::Water)
+        } else {
+            config
+                .injection_composition
+                .clone()
+                .map(InjectedFluid::Hydrocarbon)
+        },
+    })
+}
+
+/// Apply one already-validated event to the matching well.
+///
+/// A missing well cannot happen after [`CaseConfig::validate`], and is skipped rather than
+/// panicking so a future caller that bypasses validation still gets a typed outcome instead of a
+/// crash. Events replace controls and streams; nothing accumulates.
+fn apply_well_event(wells: &mut [CompositionalWell], event: &WellEventConfig) {
+    let Some(well) = wells.iter_mut().find(|well| well.id == event.well) else {
+        return;
+    };
+    if let Some(control) = &event.change.control {
+        well.control = control_from_config(control);
+    }
+    if let Some(injection) = &event.change.injection {
+        well.injection = injection.to_injected();
+    }
+}
+
+fn control_from_config(control: &WellControlConfig) -> WellControl {
+    match control {
         WellControlConfig::Bhp { target_bar } => WellControl::Bhp {
             target_bar: *target_bar,
         },
@@ -1227,28 +1588,8 @@ fn build_well(config: &WellConfig) -> Result<CompositionalWell, ConfigError> {
             phase: (*phase).into(),
             bhp_limit_bar: *bhp_limit_bar,
         },
-    };
-    Ok(CompositionalWell {
-        id: config.id.clone(),
-        completions: config
-            .completions
-            .iter()
-            .map(|c| Completion {
-                cell: c.cell,
-                well_index: c.well_index,
-                head_offset_bar: c.head_offset_bar,
-            })
-            .collect(),
-        control,
-        injection: if config.inject_water {
-            Some(InjectedFluid::Water)
-        } else {
-            config
-                .injection_composition
-                .clone()
-                .map(InjectedFluid::Hydrocarbon)
-        },
-    })
+        WellControlConfig::ShutIn => WellControl::ShutIn,
+    }
 }
 
 /// What one step did.
@@ -1292,8 +1633,9 @@ pub struct Snapshot {
     /// Per well, cumulative component moles. Positive into the reservoir. With water, each row
     /// has one more entry, water last.
     pub cumulative_well_moles: Vec<Vec<f64>>,
-    /// Per well, the BHP the accepted solve ran at [bar]. Empty before the first accepted step
-    /// and in snapshots from before C14's reporting.
+    /// Per well, the BHP the accepted solve ran at [bar], or zero while the well is shut in (and
+    /// for a well just reopened by an event, until its first accepted step). Empty before the
+    /// first accepted step and in snapshots from before C14's reporting.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub well_bhp_bar: Vec<f64>,
     /// The water phase, when the case has one.
@@ -1322,7 +1664,23 @@ pub struct Checkpoint {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub water_saturation: Option<Vec<f64>>,
     /// Per well, the accepted flowing BHP [bar]. Absent in checkpoints written before it existed;
-    /// restoring one without it re-solves the BHP at the next step.
+    /// restoring one without it re-solves the BHP at the next step. Zero means shut in, or newly
+    /// reopened before its first accepted step.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub well_bhp_bar: Vec<f64>,
+    /// How many scheduled events had been applied at this state (#50).
+    ///
+    /// An event replaces a well's control or stream, so the position is not derivable from the
+    /// state alone when two events at the same time target different wells. It is carried
+    /// explicitly; a checkpoint written before this field existed is replayed by time instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schedule_position: Option<usize>,
+    /// Whether the next step is the report remainder after an event (#50).
+    ///
+    /// Without this, restore would have to infer it from the clock, and a remainder already
+    /// consumed could look like clock roundoff at long times. Carrying the flag keeps a restored
+    /// run's timestep policy identical to the run that wrote the checkpoint. Absent in older
+    /// checkpoints, which are inferred from `event_at(checkpoint.time, last event)`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schedule_boundary_pending: Option<bool>,
 }
