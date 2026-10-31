@@ -164,13 +164,18 @@ fn comp_spec_pinned_component_order_matches_opm() {
     );
 }
 
-/// Surface conditions are an open decision (C5). If this ever fails, someone pinned them — which
-/// is fine, but `COMPOSITIONAL_VALIDATION.md` §6 has to be updated in the same change.
+/// The C0 fluids stay unpinned; SPE5 carries the compositional-default surface stage so its
+/// stock-tank rate controls have a conversion. `COMPOSITIONAL_VALIDATION.md` §6 records both.
 #[test]
-fn comp_spec_pinned_fluids_declare_surface_conditions_unpinned() {
+fn comp_spec_pinned_fluids_declare_their_surface_conditions() {
     assert!(pinned::binary().unwrap().surface().is_none());
     assert!(pinned::ternary().unwrap().surface().is_none());
-    assert!(pinned::spe5().unwrap().surface().is_none());
+    let surface = pinned::spe5()
+        .unwrap()
+        .surface()
+        .expect("SPE5 rate controls need one");
+    assert_eq!(surface.pressure_pa, 101_325.0);
+    assert_eq!(surface.temperature_k, 288.71);
 }
 
 #[test]

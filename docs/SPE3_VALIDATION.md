@@ -134,3 +134,26 @@ bash scripts/validate-compositional.sh native
 
 The normal `thermo` gate includes every `comp_spe3_*` test. Julia is an offline fixture producer,
 not a browser dependency. The public scenario picker remains governed by #52's admission gates.
+
+## Reservoir scenario (#52)
+
+`src/lib/catalog/scenarios/comp_spe3_gas_cycling.ts` builds SPE3 Case 1's 9×9×4 reservoir payload:
+the published nine-component characterization, the deck's four-layer grid and two-completion wells,
+6200 Mscf/d separator-gas production, 4700 Mscf/d recycle for ten years, then shut-in for the
+five-year blowdown. It is exported as `opm/compositional/spe3/case.json` and is **withheld from the
+picker**, because the independent 3-D JutulDarcy reference and its scorecard row are not committed
+yet and the full run has not been exercised. Nothing on this page claims that reservoir run.
+
+Two model decisions are explicit in the payload:
+
+- **Fixed separator-gas stream.** The deck has no `WELLSTRE`; the recycled stream is the stock-tank
+  gas the independent flash returns from the initial fluid at the 815 psia / 80 °F primary,
+  normalised to a composition. It is not a time-varying produced-gas recycle; that would be a
+  separately named case.
+- **High-pressure train throughout.** The engine carries one separator train per case. #51 records
+  the published rule that the primary switches to 315 psia below 2500 psia reservoir pressure; a
+  run that crosses it would need a runtime switch the engine does not have. The blowdown tail is
+  where that matters.
+
+The reservoir case needs the same three things as SPE5: a JutulDarcy 3-D reference, its rows on
+the shared scorecard, and a full-horizon replay. It should not be offered before those exist.

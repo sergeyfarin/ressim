@@ -249,8 +249,10 @@ pub fn ternary() -> Result<FluidSpecification, FluidSpecError> {
 /// `w > 0.49` and take the 1978 `f(w)`. The header's constant phase viscosities are not carried:
 /// viscosity is LBC, as for every pinned fluid, and the fixture's viscosities are LBC's.
 ///
-/// Surface conditions are `None`, as for the C0 fluids; a case that reports surface volumes
-/// attaches its own `STCOND`.
+/// Surface conditions are the compositional-model default from C5 (1 atm, 288.71 K), attached
+/// so the deck's stock-tank rate targets have a conversion to run: SPE5 Case 1 controls both
+/// injectors and the producer on surface volumes. The separation is the single equilibrium stage
+/// the compositional model defines, not the black-oil deck's PVT table.
 pub fn spe5() -> Result<FluidSpecification, FluidSpecError> {
     let components = vec![
         spe5_component("C1", 16.04e-3, 343.0, 667.8, 0.290, 0.0130),
@@ -275,6 +277,9 @@ pub fn spe5() -> Result<FluidSpecification, FluidSpecError> {
         EosVariant::PengRobinsonCorrected,
         ViscosityModel::LohrenzBrayClark,
         SPE5_RESERVOIR_TEMPERATURE_K,
-        None,
+        Some(SurfaceConditions {
+            pressure_pa: 101_325.0,
+            temperature_k: 288.71,
+        }),
     )
 }
