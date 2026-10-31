@@ -54,6 +54,10 @@ import numpy as np
 
 REPO = Path(__file__).resolve().parents[2]
 DECKS = REPO / "opm" / "reference-decks" / "small-direct"
+# Every generated cross-solver deck lives either in the historical small-direct tree or in its
+# own top-level directory (the wasm preset cases). One runner may use several roots; a case name
+# must occur in exactly one of them.
+DECK_ROOTS = (DECKS, REPO / "opm" / "reference-decks")
 # Report order. Any other `<case>.<run>.json` found is reported after these.
 KNOWN_RUNS = ("sparse", "dense", "impes", "comp")
 LABELS = {"sparse": "FIM sparse", "dense": "FIM dense", "impes": "IMPES", "comp": "Compositional"}
@@ -93,9 +97,35 @@ def deck_flow_args(deck: Path) -> list[str]:
     raise SystemExit(f"{deck}: no '-- Run with: flow CASE.DATA' header")
 
 
-def run_flow(case: str, out: Path, decks: Path = DECKS) -> float | None:
+def find_deck(case: str, deck_roots: list[Path]) -> Path:
+    """The one `CASE.DATA` for this case across the configured deck roots."""
+    matches = [root / case / "CASE.DATA" for root in deck_roots if (root / case / "CASE.DATA").exists()]
+    if not matches:
+        raise SystemExit(f"{case}: no CASE.DATA under {', '.join(map(str, deck_roots))}")
+    if len(matches) > 1:
+        raise SystemExit(f"{case}: duplicate CASE.DATA under {', '.join(map(str, deck_roots))}")
+    return matches[0]
+
+
+def discovered_deck_cases(deck_roots: list[Path]) -> set[str]:
+    """All case names across the roots; a duplicate name is an error, never a silent override."""
+    found: dict[str, Path] = {}
+    for root in deck_roots:
+        if not root.exists():
+            continue
+        for path in root.iterdir():
+            deck = path / "CASE.DATA"
+            if not deck.exists():
+                continue
+            if path.name in found:
+                raise SystemExit(f"{path.name}: duplicate CASE.DATA under {found[path.name]} and {deck}")
+            found[path.name] = deck
+    return set(found)
+
+
+def run_flow(case: str, out: Path, deck_roots: list[Path] | None = None) -> float | None:
     """Run Flow unless `out` already holds a finished run of this exact deck."""
-    deck = decks / case / "CASE.DATA"
+    deck = find_deck(case, deck_roots or list(DECK_ROOTS))
     stamp = out / "deck.sha"
     digest = subprocess.run(["sha256sum", str(deck)], check=True, capture_output=True, text=True).stdout.split()[0]
     if (out / "CASE.INFOSTEP").exists() and stamp.exists() and stamp.read_text().strip() == digest:
@@ -676,8 +706,9 @@ def main() -> int:
     parser.add_argument("--markdown", action="store_true", help="print tables ready for a README")
     parser.add_argument("--inventory-check", action="store_true",
                         help="require independent IMPES component accounting to close within 1e-8")
-    parser.add_argument("--deck-dir", type=Path, default=DECKS,
-                        help="decks written with OPM_SMALL_REPORT_DT, for a report-step ladder")
+    parser.add_argument("--deck-dir", action="append", type=Path,
+                        help="deck root(s); repeat to combine trees (default: small-direct plus the "
+                             "generated wasm-preset directories)")
     parser.add_argument("--scorecard", type=Path)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--check", action="store_true", help="fail on a regression against --scorecard")
@@ -709,7 +740,8 @@ def main() -> int:
             parser.error(f"not in trajectory_cases.json: {', '.join(unknown)}")
     else:
         family = "black-oil"
-        candidates = {p.name for p in args.deck_dir.iterdir() if (p / "CASE.DATA").exists()}
+        args.deck_dir = args.deck_dir or list(DECK_ROOTS)
+        candidates = discovered_deck_cases(args.deck_dir)
         cases = args.case or sorted(candidates)
 
     # A complete run must cover the whole family. A case can be absent from this invocation's

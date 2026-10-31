@@ -2,6 +2,14 @@
 
 This is the consolidated current-state summary for the Rust FIM solver.
 
+> **Retired 2026-10-31 (#22).** The wasm-preset convergence tables below are historical. Their
+> decks are now written by `opm_small_direct.rs`, and the gated rows are in
+> [`small-direct/scorecard.json`](../opm/reference-decks/small-direct/scorecard.json):
+> `water-heavy-step1`, `water-pressure-20x20x3`, `water-pressure-22x22x1`,
+> `water-pressure-23x23x1` and `gas-rate-10x10x3`. Use that scorecard and
+> [`small-direct/README.md`](../opm/reference-decks/small-direct/README.md) for current
+> measurements; do not treat the typed tables below as a baseline.
+
 > **2026-09-25: re-measured on `5c29e0e`.** The 2026-09-15 long-horizon table below reproduces on
 > the unified linear routing to within one substep (22x22x1: 22 vs 23). gas-pressure 10x10x3 adds
 > a row at ratio 1.25, and there are no linear retries anywhere. The current table and replay

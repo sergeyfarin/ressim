@@ -168,13 +168,15 @@ different families. There is no second comparator.
 cells through FIM sparse and IMPES, reporting Richardson order and contraction with no external
 simulator. `bo-1d-20` is the middle rung in the normal deck/scorecard inventory.
 
-These remain outside it; #22 owns the remaining harness work:
+**Closed 2026-10-31 (#22): the ≥900-row wasm-preset decks are generated.**
+`gas-rate-10x10x3`, `water-heavy-step1` and the three `water-pressure-*` decks are now written by
+`opm_small_direct.rs` from the same simulator configuration the wasm preset uses. Their paths are
+unchanged for the legacy comparison scripts, and the comparator discovers both the top-level deck
+directories and `small-direct/`. All five are scorecard rows; the typed convergence tables in
+`SOLVER_COMPARISON_SUMMARY.md` and `FIM_STATUS.md` are retired in favour of those rows.
 
-- **The ≥ 900-row decks and the wasm presets** (`opm/reference-decks/{gas-rate,water-*}`). These
-  are hand-mapped decks with known mapping gaps (that README's "#21"), driven through
-  `fim-wasm-diagnostic.mjs`. Their convergence numbers still live in `SOLVER_COMPARISON_SUMMARY.md`
-  and `FIM_STATUS.md` as typed tables. Close by generating those decks from the simulator the way
-  `opm_small_direct.rs` does, then adding them as cases.
+The harness still deliberately leaves these outside it:
+
 - **The wasm target.** The harness runs natively. Native/wasm parity is
   `validate-native-binding.sh`'s job: ~1e-13 since FIM-DIRECT-001, bit-identical since #62.
 - **A second independent simulator** is wired in since #54 phase 3: JutulDarcy runs the

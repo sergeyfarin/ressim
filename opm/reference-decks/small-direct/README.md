@@ -1,8 +1,11 @@
-# Small-direct OPM decks (every case under 512 rows)
+# Cross-solver decks (small-direct tree plus generated wasm presets)
 
-Every other deck under `opm/reference-decks/` has ~900+ rows. That is above the 512-row threshold
-where FIM switches from a direct LU to iterative CPR, so none of them exercises the small direct
-path FIM-DIRECT-001 was about. These do.
+The `small-direct/` tree holds every case whose ResSim/Flow deck is written by
+`src/lib/ressim/src/tests/opm_small_direct.rs`; some of them (SPE1, the sweep cases and the wasm
+presets) are well past the 512-row forced-direct threshold. The name is historical. The wasm-preset
+decks live in their top-level `opm/reference-decks/<case>/` directories so the legacy
+`opm-reference-fixture-check.mjs` and `opm-ressim-compare.sh` paths keep working; the comparator
+discovers both roots.
 
 | Case | Grid | Rows | What it is |
 |---|---|---|---|
@@ -22,17 +25,24 @@ path FIM-DIRECT-001 was about. These do.
 | `spe1-case2-10x10x3` | 10×10×3 | 900 | the same with redissolution (Case 2): no `DRSDT`, so JutulDarcy runs the same model. Guards the saturated-Rs convention above the table: until #35 continued the saturated curve, ResSim was 112 bar and 5.8 % cumulative oil off Flow and JutulDarcy here |
 | `wf-capillary` | 96×1×1 | 292 | `wf_capillary` base case: the `wf_bl1d` slab with Brooks–Corey P_c (P_e = 3 bar) under a 40 bar drawdown |
 | `wf-gravity-stability` | 1×1×60 | 184 | `wf_gravity_stability` base case: vertical column flooded upward at 100 rm³/day, gravity on |
+| `water-heavy-step1` | 12×12×3 | ~1,300 | generated wasm `water-pressure` heavy control, `TSTEP 1.0` |
+| `water-pressure-20x20x3` | 20×20×3 | ~3,600 | generated wasm `water-pressure` preset, one 0.25 d report |
+| `water-pressure-22x22x1` | 22×22×1 | ~1,450 | generated wasm `water-pressure` preset, one 0.25 d report |
+| `water-pressure-23x23x1` | 23×23×1 | ~1,600 | generated wasm `water-pressure` preset, one 0.25 d report |
+| `gas-rate-10x10x3` | 10×10×3 | 900 | generated wasm `gas-rate` preset, six 0.25 d reports, RESV controls |
 | `sweep-vertical` | 48×1×5 | ~730 | `sweep_vertical` base case: five layers, V_DP ≈ 0.5, kv/kh = 0.1, fully perforated BHP wells |
 | `sweep-crossflow` | 48×1×5 | ~730 | `sweep_crossflow` base case: the same section with k_rw,max = 0.25 |
 | `sweep-areal` | 21×21×1 | ~1,330 | `sweep_areal` base case: quarter five-spot, both wells on BHP |
 | `sweep-combined` | 21×21×5 | ~6,620 | `sweep_combined` base case: five-spot over five sealed layers (k_v = 0.001 mD), M = 1 |
 
-The SPE1 pair and the last four are not small: they are past the forced-direct threshold. They are here for the
+The SPE1 pair and the sweep cases are past the forced-direct threshold. They are here for the
 one-definition deck writer, which settled #55: their hand-written Flow decks disagreed with
 ResSim by 3–8 %, and these decks, written from the acceptance tests' own simulators, agree to
-0.1–0.8 % (see "Generated decks for the #55 gaps" below). A gravity-on case gets real `TOPS`, the
-engine's surface densities and an explicit well datum, and its header says to run plain `flow`;
-`compare_small_direct.py` takes the Flow options from that header.
+0.1–0.8 % (see "Generated decks for the #55 gaps" below). The five wasm-preset rows are generated
+from their presets into the top-level `opm/reference-decks/<case>/` directories; their old
+hand-mapping notes are retired. A gravity-on case gets real `TOPS`, the engine's surface densities
+and an explicit well datum, and its header says to run plain `flow`; `compare_small_direct.py`
+takes the Flow options from that header.
 
 **The decks are generated, not hand-written.** `src/lib/ressim/src/tests/opm_small_direct.rs` builds
 each case as a ResSim simulator and writes its deck from that same object. SWOF, SGOF, PVDO,
@@ -71,6 +81,8 @@ bash scripts/validate-cross-solver.sh --grid-refine                       # Rich
 
 The script runs the three steps under "Replay" for every ResSim solver and checks the result against
 [`scorecard.json`](scorecard.json). That file is written by the comparator and never edited by hand.
+The comparator searches this tree and the five top-level generated wasm-preset directories
+(`opm/reference-decks/{gas-rate-10x10x3,water-*}`); a case name must occur in exactly one root.
 It also holds the six compositional trajectory cases from
 [`opm/compositional/trajectory_cases.json`](../../compositional/trajectory_cases.json), written by
 `bash scripts/validate-compositional.sh update-scorecard`. A write merges the cases it measured and
@@ -114,13 +126,15 @@ part of the normal deck inventory as well; its scorecard row is the middle rung,
 physical scenario.
 
 Before this gate, every result table below was typed into this README by hand after each fix, and
-nothing noticed when a later change moved a number.
+nothing noticed when a later change moved a number. The dated tables below also predate the five
+generated wasm-preset rows; [`scorecard.json`](scorecard.json) is the complete 25-case black-oil
+baseline, and `--markdown` includes those rows when a table is regenerated.
 
 ## Replay
 
 ```bash
-# decks (only after changing a case)
-OPM_SMALL_DECK_DIR=$PWD/opm/reference-decks/small-direct cargo test --release \
+# decks (only after changing a case; legacy layout keeps the five wasm-preset decks top-level)
+OPM_SMALL_DECK_DIR=$PWD/opm/reference-decks/small-direct OPM_SMALL_DECK_LAYOUT=legacy cargo test --release \
   --manifest-path src/lib/ressim/Cargo.toml opm_small_direct_write_decks -- --ignored
 # ResSim: FIM once per small-system LU, then IMPES
 for b in sparse dense; do OPM_SMALL_OUT=/tmp/small-direct OPM_SMALL_SOLVER=fim OPM_SMALL_BACKEND=$b cargo test --release \
