@@ -1,11 +1,19 @@
 {
-  "$comment": "Written by compare_small_direct.py --write-scorecard; do not edit by hand. Bands are BANDS in that script. See opm/reference-decks/small-direct/README.md.",
+  "$comment": "Written by compare_small_direct.py --write-scorecard; do not edit by hand. Bands are BANDS in that script. A write merges the cases it measured and keeps the rest, because the black-oil and compositional gates update different families. See opm/reference-decks/small-direct/README.md.",
   "provenance": {
-    "commit": "3c2686e",
+    "commit": "3eb05261",
     "dirty": false,
-    "date": "2026-10-23",
+    "date": "2026-10-31",
     "flow": "flow 2026.04",
-    "command": "bash scripts/validate-cross-solver.sh --update"
+    "command": "bash scripts/validate-compositional.sh update-scorecard",
+    "cases": [
+      "1d_comp",
+      "1d_comp_skin",
+      "depletion",
+      "depletion_bhp",
+      "injection",
+      "quarter_five_spot"
+    ]
   },
   "cases": {
     "bo-1d-10": {
@@ -1350,6 +1358,174 @@
           "sw": 0.2987538505698,
           "sg": 0.0
         }
+      }
+    },
+    "1d_comp": {
+      "flow": {
+        "substeps": null,
+        "newton": null
+      },
+      "runs": {
+        "comp": {
+          "metrics": {
+            "p": 4.055951722343906,
+            "sg": 0.09094273895084004,
+            "z": 0.1327454678808272,
+            "final.p": 0.002638776940401044,
+            "final.sg": 0.0,
+            "final.z": 0.0009039340875058866
+          },
+          "warnings": 0,
+          "wall_ms": 1439.6
+        }
+      },
+      "pairs": {},
+      "measured": {
+        "commit": "3eb05261",
+        "dirty": false,
+        "date": "2026-10-31",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-compositional.sh update-scorecard"
+      }
+    },
+    "1d_comp_skin": {
+      "flow": {
+        "substeps": null,
+        "newton": null
+      },
+      "runs": {
+        "comp": {
+          "metrics": {
+            "p": 0.007424267299029452,
+            "sg": 0.00010044987879687106,
+            "z": 4.468712737507041e-05,
+            "final.p": 0.0020273031114186324,
+            "final.sg": 8.224416446478422e-05,
+            "final.z": 3.82401265213439e-05
+          },
+          "warnings": 0,
+          "wall_ms": 152.6
+        }
+      },
+      "pairs": {},
+      "measured": {
+        "commit": "3eb05261",
+        "dirty": false,
+        "date": "2026-10-31",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-compositional.sh update-scorecard"
+      }
+    },
+    "depletion": {
+      "flow": {
+        "substeps": null,
+        "newton": null
+      },
+      "runs": {
+        "comp": {
+          "metrics": {
+            "p": 1.3766631786944288,
+            "sg": 0.0014614279001901051,
+            "z": 1.0179904197382683e-06,
+            "final.p": 0.1713517951522192,
+            "final.sg": 0.0014614279001901051,
+            "final.z": 1.0179904197382683e-06
+          },
+          "warnings": 0,
+          "wall_ms": 131.0
+        }
+      },
+      "pairs": {},
+      "measured": {
+        "commit": "3eb05261",
+        "dirty": false,
+        "date": "2026-10-31",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-compositional.sh update-scorecard"
+      }
+    },
+    "depletion_bhp": {
+      "flow": {
+        "substeps": null,
+        "newton": null
+      },
+      "runs": {
+        "comp": {
+          "metrics": {
+            "p": 0.009507400236643093,
+            "sg": 0.00018139021716864767,
+            "z": 7.479562103873683e-05,
+            "final.p": 1.4535861126319105e-05,
+            "final.sg": 0.00018139021716864767,
+            "final.z": 7.351033296942866e-05
+          },
+          "warnings": 0,
+          "wall_ms": 8.2
+        }
+      },
+      "pairs": {},
+      "measured": {
+        "commit": "3eb05261",
+        "dirty": false,
+        "date": "2026-10-31",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-compositional.sh update-scorecard"
+      }
+    },
+    "injection": {
+      "flow": {
+        "substeps": null,
+        "newton": null
+      },
+      "runs": {
+        "comp": {
+          "metrics": {
+            "p": 13.326758555086798,
+            "sg": 0.0,
+            "z": 0.0036309243464782703,
+            "final.p": 13.326758555086798,
+            "final.sg": 0.0,
+            "final.z": 0.0036309243464782703
+          },
+          "warnings": 0,
+          "wall_ms": 62.0
+        }
+      },
+      "pairs": {},
+      "measured": {
+        "commit": "3eb05261",
+        "dirty": false,
+        "date": "2026-10-31",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-compositional.sh update-scorecard"
+      }
+    },
+    "quarter_five_spot": {
+      "flow": {
+        "substeps": null,
+        "newton": null
+      },
+      "runs": {
+        "comp": {
+          "metrics": {
+            "p": 0.007000537257880524,
+            "sg": 2.7930561660949316e-05,
+            "z": 4.1788219531602167e-05,
+            "final.p": 0.007000537257880524,
+            "final.sg": 2.7930561660949316e-05,
+            "final.z": 4.1788219531602167e-05
+          },
+          "warnings": 0,
+          "wall_ms": 316.1
+        }
+      },
+      "pairs": {},
+      "measured": {
+        "commit": "3eb05261",
+        "dirty": false,
+        "date": "2026-10-31",
+        "flow": "flow 2026.04",
+        "command": "bash scripts/validate-compositional.sh update-scorecard"
       }
     }
   }
