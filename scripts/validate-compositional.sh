@@ -171,8 +171,13 @@ run_records() {
         local venv="${RESSIM_COMPARE_VENV:-${TMPDIR:-/tmp}/ressim-compare-venv}"
         if [ ! -x "$venv/bin/python" ] || ! "$venv/bin/python" -c 'import numpy' 2>/dev/null; then
             echo "== records: creating $venv with numpy"
-            python3 -m venv "$venv"
-            "$venv/bin/pip" install --quiet numpy
+            if command -v uv > /dev/null; then
+                uv venv "$venv" > /dev/null
+                uv pip install --python "$venv/bin/python" numpy > /dev/null
+            else
+                python3 -m venv "$venv"
+                "$venv/bin/pip" install --quiet numpy
+            fi
         fi
         python="$venv/bin/python"
     fi
