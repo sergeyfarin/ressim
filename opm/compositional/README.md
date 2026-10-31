@@ -57,6 +57,35 @@ and the case solve one fluid. See [`quarter_five_spot/README.md`](quarter_five_s
 Trajectory references for the black-oil path live in `../reference-decks/` and are a different
 simulator (`flow`) entirely.
 
+## Shared run record and scorecard (#22)
+
+`bash scripts/validate-compositional.sh reference` runs `comp_reference_run_records` in release,
+which writes each committed trajectory fixture's ResSim counterpart as `<case>.comp.json` in the
+same `<case>.<run>.json` shape as the black-oil runs (`run: "comp"`). The cells carry `p`, `sw`,
+`sg` and component-major `z`; the comparator grades `p`, `sg` and `z` because no compositional
+fixture carries water. `sw` is extra in the record, not compared.
+
+The case list is [`trajectory_cases.json`](trajectory_cases.json): `1d_comp`, `1d_comp_skin`,
+`depletion`, `depletion_bhp`, `injection`, and `quarter_five_spot`. The refinement ladders under
+`1d_comp/refined/` are a study, not scorecard cases. `tools/opm_flow/compare_small_direct.py`
+reads the manifest with `--comp-reference-dir`, compares against the fixtures, and checks the
+shared [`scorecard.json`](../reference-decks/small-direct/scorecard.json). The fixture stays the
+oracle; the scorecard is a regression ratchet, and these fixtures are not timestep-converged
+(see [`reference_convergence.json`](reference_convergence.json)), so a band is not an accuracy
+claim.
+
+The compositional half needs neither `flowexp_comp` nor the OPM Python bindings: the fixture is
+committed and `opm.io` is imported only for live Flow output. Re-baseline deliberately, on a
+committed tree:
+
+```bash
+bash scripts/validate-compositional.sh update-scorecard
+```
+
+A write merges the six compositional cases into the shared file and preserves the black-oil
+cases the current invocation did not measure. The top-level `provenance.cases` names what that
+write measured; each newly measured case also carries its own `measured` block.
+
 ## Build environment
 
 Every fixture in this directory that comes out of OPM — the PTFlash fixture, `spe3/ptflash.json`

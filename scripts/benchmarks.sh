@@ -274,10 +274,10 @@ if wanted compositional; then
     elif [ "$tier" = full ] && [ -x "$flowexp_comp" ]; then
         if bash "$repo_root/scripts/validate-compositional.sh" reference > "$run_dir/compositional.log" 2>&1; then
             status compositional ran "$cmd; bash scripts/validate-compositional.sh reference" \
-                "fixtures reproduce from flowexp_comp" ""
+                "fixtures reproduce; trajectory records match the shared scorecard" ""
         else
             status compositional failed "bash scripts/validate-compositional.sh reference" \
-                "fixtures no longer reproduce from flowexp_comp; see its output" ""
+                "a fixture no longer reproduces or a record left its scorecard band; see its output" ""
         fi
     else
         status compositional ran "$cmd" "fixtures not re-derived: flowexp_comp not built (tier $tier)" ""

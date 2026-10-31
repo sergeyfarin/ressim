@@ -150,16 +150,21 @@ profiles and reduces its component-volume correction cost; evidence and validati
 [IMPES_VOLUME_CLOSURE_PROFILE.md](IMPES_VOLUME_CLOSURE_PROFILE.md). The FIM default is retained:
 changing that product policy requires its own browser validation and is outside this optimization.
 
-## 9. Cross-solver harness covers the small-direct black-oil decks only (2026-09-25, #22)
+## 9. Cross-solver harness: remaining harness work (2026-09-25, #22)
 
 `scripts/validate-cross-solver.sh` gates FIM sparse, FIM dense and IMPES against OPM Flow on the
 committed small-direct case inventory. It has expanded beyond the initial eight decks.
-These were deliberately left out of the first version; #22 owns remaining harness work:
 
-- **Compositional.** `scripts/validate-compositional.sh reference` already checks against
-  `flowexp_comp`, with its own fixtures and bands. It is not on the shared scorecard because its
-  run record is a different shape: components, not Sw/Sg. Close by giving the compositional runs
-  the same `<case>.<run>.json` record and adding a `comp` run id. Do not write a second comparator.
+**Closed 2026-10-31 (#22): compositional cases share the record and scorecard.**
+`scripts/validate-compositional.sh reference` writes each committed trajectory fixture's ResSim
+counterpart as `<case>.comp.json` — the same `<case>.<run>.json` shape, with run id `comp` and
+overall composition `z` — and grades it with `tools/opm_flow/compare_small_direct.py` against the
+same `scorecard.json`. The fixture remains the oracle. `--write-scorecard` merges the cases an
+invocation measured and keeps the rest, because the black-oil and compositional gates update
+different families. There is no second comparator.
+
+These remain outside it; #22 owns the remaining harness work:
+
 - **The ≥ 900-row decks and the wasm presets** (`opm/reference-decks/{gas-rate,water-*}`). These
   are hand-mapped decks with known mapping gaps (that README's "#21"), driven through
   `fim-wasm-diagnostic.mjs`. Their convergence numbers still live in `SOLVER_COMPARISON_SUMMARY.md`

@@ -13,8 +13,14 @@ set -euo pipefail
 #            depletions and #47's 2-D quarter five spot. Also remeasures the convergence census -
 #            how far each reference is from timestep-converged - because C12 once assumed that and
 #            was wrong.
-#            Skips with a note when flowexp_comp has not been built; the committed fixture is
-#            still checked by the comp_reference_* tests either way.
+#            Then writes every committed trajectory fixture's ResSim counterpart as
+#            `<case>.comp.json` and checks it against the shared cross-solver scorecard, so a
+#            compositional regression fails the same ratchet as a black-oil one (Part C, #22).
+#            Skips the fixture regeneration with a note when flowexp_comp has not been built; the
+#            record comparison still runs against the committed fixtures.
+#   update-scorecard
+#            As `reference`, but deliberately re-baselines the compositional cases in
+#            `opm/reference-decks/small-direct/scorecard.json`. Run it on a committed tree.
 #   refinement C12's timestep and grid refinement study, in RELEASE. Runs the deck's case at four
 #            sub-steps and on four grids against references re-solved on each grid. ~3 min, which
 #            is why the plan puts it behind an explicit runner rather than in the default gate.
@@ -35,7 +41,8 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 manifest_path="$repo_root/src/lib/ressim/Cargo.toml"
 
 log_file="$(mktemp)"
-trap 'rm -f "$log_file"' EXIT
+cleanup_dirs=()
+trap 'rm -rf "${cleanup_dirs[@]}" 2>/dev/null || true; rm -f "$log_file"' EXIT
 
 # Every filter below must be shown to have actually executed tests. `cargo test <filter>` exits 0
 # when the filter matches nothing, so a renamed or cfg-ed-out test would otherwise turn its gate
@@ -135,22 +142,65 @@ run_fixture() {
 }
 
 run_reference() {
-    echo "== reference: re-run the 1D compositional case and verify its fixture =="
+    echo "== reference: re-run the compositional cases and verify their fixtures =="
     local binary="${FLOWEXP_COMP:-$(cd "${repo_root}/.." && pwd)/ressim-opm-build/opm-simulators/build/bin/flowexp_comp}"
     if [ ! -x "${binary}" ]; then
-        echo "SKIP: flowexp_comp not built; the committed fixture is still checked by the" >&2
-        echo "      comp_reference_* tests, but it was not regenerated." >&2
+        echo "SKIP: flowexp_comp not built; the committed fixtures are still checked by the" >&2
+        echo "      comp_reference_* tests and by the run-record comparison below, but they" >&2
+        echo "      were not regenerated." >&2
         echo "      Build it with: bash tools/opm_compositional/build-flowexp-comp.sh" >&2
-        return 0
+    else
+        bash "$repo_root/tools/opm_compositional/run-1d-comp.sh" --check
+        bash "$repo_root/tools/opm_compositional/run-refinement.sh" --check
+        bash "$repo_root/tools/opm_compositional/run-depletion.sh" --check
+        bash "$repo_root/tools/opm_compositional/run-injection.sh" --check
+        bash "$repo_root/tools/opm_compositional/run-quarter-five-spot.sh" --check
+        bash "$repo_root/tools/opm_compositional/check-reference-convergence.sh" --check
+        echo "gate ok: every compositional reference fixture reproduces from flowexp_comp, and each"
+        echo "         one's distance from timestep-convergence is what the census records"
     fi
-    bash "$repo_root/tools/opm_compositional/run-1d-comp.sh" --check
-    bash "$repo_root/tools/opm_compositional/run-refinement.sh" --check
-    bash "$repo_root/tools/opm_compositional/run-depletion.sh" --check
-    bash "$repo_root/tools/opm_compositional/run-injection.sh" --check
-    bash "$repo_root/tools/opm_compositional/run-quarter-five-spot.sh" --check
-    bash "$repo_root/tools/opm_compositional/check-reference-convergence.sh" --check
-    echo "gate ok: every compositional reference fixture reproduces from flowexp_comp, and each"
-    echo "         one's distance from timestep-convergence is what the census records"
+
+    # The same `<case>.<run>.json` record and scorecard the black-oil gate uses (#22, Part C).
+    # The committed fixture is the oracle here, so this half needs neither flowexp_comp nor the
+    # OPM Python bindings - only the release build and the shared scorecard.
+    local mode="--check"
+    local provenance="bash scripts/validate-compositional.sh reference"
+    if [ "${1:-}" = "update-scorecard" ]; then
+        mode="--write-scorecard"
+        provenance="bash scripts/validate-compositional.sh update-scorecard"
+    fi
+
+    local records_dir
+    if [ -n "${COMP_REFERENCE_OUT:-}" ]; then
+        records_dir="$COMP_REFERENCE_OUT"
+        mkdir -p "$records_dir"
+    else
+        records_dir="$(mktemp -d)"
+        cleanup_dirs+=("$records_dir")
+    fi
+
+    echo "== records: ResSim trajectories against the committed fixtures and the shared scorecard =="
+    local status=0
+    COMP_REFERENCE_OUT="$records_dir" cargo test --release --manifest-path "$manifest_path" --lib \
+        comp_reference_run_records -- --ignored --nocapture 2>&1 | tee "$log_file" || status=$?
+    if [ "$status" -ne 0 ]; then
+        echo "FAIL: comp_reference_run_records exited $status." >&2
+        exit "$status"
+    fi
+    local passed
+    passed="$(awk '/^test result:/ { gsub(/;/, ""); for (i = 2; i <= NF; i++) if ($i == "passed") p += $(i - 1) } END { print (p + 0) }' "$log_file")"
+    if [ "$passed" -lt 1 ]; then
+        echo "FAIL: comp_reference_run_records did not run; the record gate would be a no-op." >&2
+        exit 1
+    fi
+    echo "gate ok: 'comp_reference_run_records' ran $passed test(s)"
+
+    python3 "$repo_root/tools/opm_flow/compare_small_direct.py" \
+        --ressim-dir "$records_dir" \
+        --comp-reference-dir "$repo_root/opm/compositional" \
+        --scorecard "$repo_root/opm/reference-decks/small-direct/scorecard.json" \
+        "$mode" --provenance-command "$provenance"
+    echo "gate ok: every compositional trajectory matches its fixture within the scorecard bands"
 }
 
 # The refinement study. Release, because a debug build turns three minutes into forty.
@@ -195,10 +245,11 @@ case "$mode" in
     native)  run_thermo; run_fixture; run_reference ;;
     wasm)    run_wasm ;;
     reference) run_reference ;;
+    update-scorecard) run_reference update-scorecard ;;
     refinement) run_refinement ;;
     all)     run_thermo; run_fixture; run_reference; run_wasm ;;
     *)
-        echo "usage: $0 {thermo|fixture|reference|refinement|native|wasm|all}" >&2
+        echo "usage: $0 {thermo|fixture|reference|update-scorecard|refinement|native|wasm|all}" >&2
         exit 2
         ;;
 esac

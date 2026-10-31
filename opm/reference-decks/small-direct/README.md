@@ -69,10 +69,15 @@ bash scripts/validate-cross-solver.sh --refine 0.025 --case ow-2d-12x12   # time
 
 The script runs the three steps under "Replay" for every ResSim solver and checks the result against
 [`scorecard.json`](scorecard.json). That file is written by the comparator and never edited by hand.
-It fails when:
+It also holds the six compositional trajectory cases from
+[`opm/compositional/trajectory_cases.json`](../../compositional/trajectory_cases.json), written by
+`bash scripts/validate-compositional.sh update-scorecard`. A write merges the cases it measured and
+keeps the rest; `--prune-scorecard` replaces the file instead. For those cases the reference is the
+committed `flowexp_comp` fixture and the fields are pressure, gas saturation and overall composition
+`z`, not Sw. It fails when:
 
-- an accuracy metric against Flow gets worse than its band: worst and final cell Δp/ΔSw/ΔSg, and
-  cumulatives;
+- an accuracy metric against the reference gets worse than its band: worst and final cell
+  Δp/ΔSw/ΔSg (black oil) or Δp/ΔSg/Δz (compositional), and cumulatives;
 - a work metric gets worse than its band: substeps, Newton;
 - a run raises a solver warning the scorecard did not record;
 - sparse and dense stop agreeing;
@@ -88,7 +93,9 @@ Newton numbers in the dated tables below and in older docs read about one per su
 
 Improvements past the band are printed. Record them with `--update` and commit the scorecard with
 the change that earned them. Its `provenance` then names the commit, the Flow version and the
-command. Flow output is cached per deck SHA-256, so a warm check takes about 20 s.
+command, and `provenance.cases` scopes that write to the cases it actually measured; cases kept
+from an earlier write are unchanged. Flow output is cached per deck SHA-256, so a warm check takes
+about 20 s.
 
 Before this gate, every result table below was typed into this README by hand after each fix, and
 nothing noticed when a later change moved a number.

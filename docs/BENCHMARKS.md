@@ -434,7 +434,7 @@ compositional quantities (#29).
 <!-- /GENERATED:compositional -->
 
 ```bash
-bash scripts/validate-compositional.sh reference   # skips with a note without flowexp_comp
+bash scripts/validate-compositional.sh reference   # fixture half skips without flowexp_comp; the record check still runs
 ```
 
 ## 9. Second simulator: JutulDarcy

@@ -164,6 +164,7 @@ answer:
 
 ```bash
 bash scripts/validate-cross-solver.sh     # FIM and IMPES vs OPM Flow on the small-direct decks
+bash scripts/validate-compositional.sh reference   # compositional trajectories vs their fixtures
 ```
 
 Full `cargo test` is not used as a gate, because FIM diagnostic tests can dominate its runtime

@@ -1051,7 +1051,13 @@ Fixtures:              opm/compositional/1d_comp/reference.json          (the de
                        run-injection.sh and check-reference-convergence.sh; refine_deck.py asserts
                        on every keyword it rewrites, so a change to the source deck fails there
                        rather than quietly producing a different case
-Gates:                 bash scripts/validate-compositional.sh reference   (fixtures reproduce)
+Gates:                 bash scripts/validate-compositional.sh reference   (fixtures reproduce;
+                                                                           then <case>.comp.json
+                                                                           records check the shared
+                                                                           scorecard)
+                       bash scripts/validate-compositional.sh update-scorecard
+                                                                          (re-baseline those records,
+                                                                           committed tree only)
                        bash scripts/validate-compositional.sh all         (10 comp_reference_*
                                                                            + 3 comp_skin_*
                                                                            + 9 comp_depletion_*

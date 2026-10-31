@@ -3564,6 +3564,28 @@ fn run_quarter_five_spot(molar_rate: f64) -> super::api::CompositionalCase {
     CompositionalCase::restore(&checkpoint).expect("the 2-D case must restore with wells")
 }
 
+/// The 2-D deck's injector target as a molar rate, plus the molar volume the conversion used.
+///
+/// The deck asks for 100 000 sm³/day of surface gas. ResSim's pinned-fluid payload has no
+/// surface-rate control, so both the test and the shared run-record writer drive it at this
+/// equivalent molar rate at the deck's `STCOND`.
+fn quarter_five_spot_molar_rate() -> (f64, f64) {
+    let spec = crate::fluid::pinned::ternary().unwrap();
+    let injected = flash(
+        &spec,
+        quarter_five_spot::SURFACE_PRESSURE_PA,
+        quarter_five_spot::surface_temperature_k(),
+        &[1.0, 0.0, 0.0],
+        None,
+    )
+    .expect("surface CO2 must flash");
+    let molar_volume = injected.mixture_molar_volume();
+    (
+        quarter_five_spot::INJECTOR_SURFACE_RATE_SM3_PER_DAY / molar_volume,
+        molar_volume,
+    )
+}
+
 /// **#47's structured-grid trajectory result.** Run the 2-D quarter-five-spot deck through the
 /// public case payload and compare every cell at every report step against `flowexp_comp`.
 ///
@@ -3579,20 +3601,10 @@ fn run_quarter_five_spot(molar_rate: f64) -> super::api::CompositionalCase {
 #[test]
 fn comp_reference_quarter_five_spot_matches_opm() {
     let reference = quarter_five_spot_reference();
-    let spec = crate::fluid::pinned::ternary().unwrap();
 
     // 100 000 sm3/day of pure CO2 at the deck's STCOND, as moles. The pinned ternary is the deck's
     // fluid, so this is also the reference's own surface conversion.
-    let injected = flash(
-        &spec,
-        quarter_five_spot::SURFACE_PRESSURE_PA,
-        quarter_five_spot::surface_temperature_k(),
-        &[1.0, 0.0, 0.0],
-        None,
-    )
-    .expect("surface CO2 must flash");
-    let molar_volume = injected.mixture_molar_volume();
-    let molar_rate = quarter_five_spot::INJECTOR_SURFACE_RATE_SM3_PER_DAY / molar_volume;
+    let (molar_rate, molar_volume) = quarter_five_spot_molar_rate();
 
     let times = reference.summary.get("TIME").expect("TIME").clone();
     assert_eq!(times.len(), reference.report_steps.len());
@@ -3735,5 +3747,343 @@ fn comp_reference_quarter_five_spot_matches_opm() {
         cumulative_relative < 1e-8,
         "cumulative injection differs by {:.3e}: {ours_moles:.6e} vs {theirs_moles:.6e} mol",
         cumulative_relative
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The shared `<case>.<run>.json` record (#22, Part C)
+// ---------------------------------------------------------------------------------------------
+//
+// `compare_small_direct.py` already reports black-oil runs and gates them against one committed
+// scorecard. Its compositional side has to be the same record, not a second comparator: the only
+// difference is that a compositional cell carries overall composition and that the oracle is a
+// committed `flowexp_comp` fixture rather than a Flow restart. This writer is the producer half;
+// the comparator reads `<case>.comp.json` exactly as it reads `<case>.sparse.json`.
+
+struct CompRunReport {
+    t: f64,
+    p: Vec<f64>,
+    sw: Vec<f64>,
+    sg: Vec<f64>,
+    /// Component-major, like the API's snapshot.
+    z: Vec<Vec<f64>>,
+}
+
+/// A record report from accepted cell states. Gas saturation comes from the same flash the
+/// simulator used, and overall composition is the cell's own `z`.
+fn comp_report_from_cells(
+    spec: &FluidSpecification,
+    t: f64,
+    cells: &[CompositionalCellState],
+) -> CompRunReport {
+    let mut p = Vec::with_capacity(cells.len());
+    let mut sw = Vec::with_capacity(cells.len());
+    let mut sg = Vec::with_capacity(cells.len());
+    let mut z = vec![Vec::with_capacity(cells.len()); spec.component_count()];
+    for cell in cells {
+        let overall = cell.overall_composition();
+        let state = flash(
+            spec,
+            bar_to_pa(cell.pressure_bar),
+            spec.reservoir_temperature_k(),
+            &overall,
+            None,
+        )
+        .expect("a converged compositional state must flash for the run record");
+        p.push(cell.pressure_bar);
+        sw.push(cell.water_saturation);
+        sg.push((1.0 - cell.water_saturation) * state.vapour_saturation());
+        for (component, value) in overall.into_iter().enumerate() {
+            z[component].push(value);
+        }
+    }
+    CompRunReport { t, p, sw, sg, z }
+}
+
+/// The same report from the public payload's snapshot, used by the 2-D case.
+fn comp_report_from_snapshot(snapshot: &super::api::Snapshot) -> CompRunReport {
+    let cells = snapshot.pressure.len();
+    CompRunReport {
+        t: snapshot.time_days,
+        p: snapshot.pressure.clone(),
+        sw: snapshot
+            .water
+            .as_ref()
+            .map(|water| water.saturation.clone())
+            .unwrap_or_else(|| vec![0.0; cells]),
+        sg: snapshot.vapour_saturation.clone(),
+        z: snapshot.composition.clone(),
+    }
+}
+
+fn write_comp_record(
+    out: &str,
+    case: &str,
+    spec: &FluidSpecification,
+    reports: &[CompRunReport],
+    wall_ms: f64,
+) {
+    let component_ids: Vec<String> = (0..spec.component_count())
+        .map(|index| spec.component(index).id.clone())
+        .collect();
+    let reports: Vec<serde_json::Value> = reports
+        .iter()
+        .map(|report| {
+            serde_json::json!({
+                "t": report.t,
+                // The compositional driver has no Flow-convention Newton counter yet; null is
+                // honest and the comparator omits absent work metrics rather than inventing them.
+                "substeps": null,
+                "newton": null,
+                "retries": null,
+                "retry_newton": null,
+                "p": report.p,
+                "sw": report.sw,
+                "sg": report.sg,
+                "z": report.z,
+            })
+        })
+        .collect();
+    let document = serde_json::json!({
+        "case": case,
+        "solver": "compositional",
+        "backend": "",
+        "run": "comp",
+        "wall_ms": wall_ms,
+        "injected": "gas",
+        "warnings": [],
+        "component_ids": component_ids,
+        "history_columns": [],
+        "history": [],
+        "reports": reports,
+    });
+    std::fs::write(
+        std::path::Path::new(out).join(format!("{case}.comp.json")),
+        serde_json::to_string(&document).expect("the compositional run record must serialize")
+            + "\n",
+    )
+    .expect("write the compositional run record");
+    println!(
+        "{case:<18} reports={} wall={wall_ms:.1} ms",
+        report_count(&document)
+    );
+}
+
+fn report_count(document: &serde_json::Value) -> usize {
+    document["reports"]
+        .as_array()
+        .expect("reports is an array")
+        .len()
+}
+
+/// The injection fixture's trajectory. The reference takes one backward-Euler step per day and
+/// does not converge in the timestep, so the record matches its resolution rather than comparing
+/// two controllers. See `opm/compositional/injection/README.md`.
+fn run_injection_trajectory(
+    report_times_days: &[f64],
+    max_sub_step_days: f64,
+) -> Vec<CompositionalCellState> {
+    let spec = deck_fluid();
+    let relperm = deck_relperm();
+    let layout = CompositionalLayout::new(3, 1, 2, 2).unwrap();
+    let pore_volumes = vec![depletion_deck::PORE_VOLUME_M3];
+    let rock = RockView {
+        pore_volume_ref_m3: &pore_volumes,
+        reference_pressure_bar: depletion_deck::ROCK_REFERENCE_BAR,
+        compressibility_per_bar: depletion_deck::ROCK_COMPRESSIBILITY,
+    };
+
+    let r_w = depletion_deck::WELL_DIAMETER_M / 2.0;
+    let r_eq = 0.28 * (100.0f64 * 100.0 + 100.0 * 100.0).sqrt() / 2.0;
+    let well_index =
+        deck::DARCY * 2.0 * std::f64::consts::PI * 100.0 * 10.0 / crate::math::ln(r_eq / r_w);
+
+    let injector = CompositionalWell {
+        id: "INJ".to_string(),
+        completions: vec![Completion {
+            cell: 0,
+            well_index,
+            head_offset_bar: 0.0,
+        }],
+        control: WellControl::SurfaceRate {
+            target_m3_per_day: INJECTION_RATE_SM3_PER_DAY,
+            // The stream splits at surface, so the deck's RATE is the total volume. This is the
+            // same expression the mixture-conversion test uses.
+            phase: SurfacePhase::Total,
+            bhp_limit_bar: INJECTION_BHP_LIMIT_BAR,
+        },
+        injection: Some(InjectedFluid::Hydrocarbon(INJECTION_STREAM.to_vec())),
+    };
+
+    let initial = CompositionalState::new(
+        &layout,
+        vec![
+            CompositionalCellState::new(
+                depletion_deck::INITIAL_PRESSURE_BAR,
+                vec![depletion_deck::INITIAL_Z[0], depletion_deck::INITIAL_Z[1]],
+            )
+            .unwrap(),
+        ],
+    )
+    .unwrap();
+
+    let wells = vec![injector];
+    let sources = vec![vec![0.0; 3]];
+    let mut run = CompositionalRun::new(initial);
+    let options = TimestepOptions::default();
+
+    let mut out = Vec::with_capacity(report_times_days.len());
+    for &target in report_times_days {
+        let mut guard = 0;
+        while target - run.time_days() > options.min_dt_days {
+            guard += 1;
+            assert!(guard < 5000, "sub-stepping did not reach {target} days");
+            let dt = (target - run.time_days()).min(max_sub_step_days);
+            let report = run.step(
+                &spec,
+                &layout,
+                &rock,
+                &relperm,
+                &[],
+                &wells,
+                &sources,
+                dt,
+                options,
+            );
+            assert!(
+                report.succeeded(),
+                "injection step at {} days failed: {:?}",
+                run.time_days(),
+                report.failure
+            );
+        }
+        out.push(run.state().cell(0).clone());
+    }
+    out
+}
+
+/// Write every compositional trajectory fixture's ResSim counterpart in the shared record shape.
+///
+/// Run by `bash scripts/validate-compositional.sh reference`; the comparator then grades these
+/// against the committed `reference.json` fixtures and the same scorecard as the black-oil decks.
+#[test]
+#[ignore = "writes compositional <case>.comp.json run records; set COMP_REFERENCE_OUT"]
+fn comp_reference_run_records() {
+    let out = std::env::var("COMP_REFERENCE_OUT").expect("set COMP_REFERENCE_OUT");
+    std::fs::create_dir_all(&out).expect("create COMP_REFERENCE_OUT");
+    let spec = deck_fluid();
+
+    let plain = reference();
+    let times = plain.summary.get("TIME").expect("TIME").clone();
+    let started = std::time::Instant::now();
+    let (_, cells) = run_deck_case_with_totals(&times);
+    let reports: Vec<CompRunReport> = times
+        .iter()
+        .zip(cells.iter())
+        .map(|(&t, cell)| comp_report_from_cells(&spec, t, cell))
+        .collect();
+    write_comp_record(
+        &out,
+        "1d_comp",
+        &spec,
+        &reports,
+        started.elapsed().as_secs_f64() * 1e3,
+    );
+
+    let skin = skin_reference();
+    let times = skin.summary.get("TIME").expect("TIME").clone();
+    let started = std::time::Instant::now();
+    let (_, cells) = run_deck_case_full(deck::CELLS, MATCHED_SUB_STEP_DAYS, deck::SKIN, &times);
+    let reports: Vec<CompRunReport> = times
+        .iter()
+        .zip(cells.iter())
+        .map(|(&t, cell)| comp_report_from_cells(&spec, t, cell))
+        .collect();
+    write_comp_record(
+        &out,
+        "1d_comp_skin",
+        &spec,
+        &reports,
+        started.elapsed().as_secs_f64() * 1e3,
+    );
+
+    let depletion = depletion_reference();
+    let times = depletion.summary.get("TIME").expect("TIME").clone();
+    let started = std::time::Instant::now();
+    let cells = run_depletion(&times, 0.05);
+    let reports: Vec<CompRunReport> = times
+        .iter()
+        .zip(cells.iter())
+        .map(|(&t, cell)| comp_report_from_cells(&spec, t, std::slice::from_ref(cell)))
+        .collect();
+    write_comp_record(
+        &out,
+        "depletion",
+        &spec,
+        &reports,
+        started.elapsed().as_secs_f64() * 1e3,
+    );
+
+    let depletion_bhp = depletion_bhp_reference();
+    let times = depletion_bhp.summary.get("TIME").expect("TIME").clone();
+    let started = std::time::Instant::now();
+    let cells = run_depletion_bhp(&times, MATCHED_SUB_STEP_DAYS);
+    let reports: Vec<CompRunReport> = times
+        .iter()
+        .zip(cells.iter())
+        .map(|(&t, cell)| comp_report_from_cells(&spec, t, std::slice::from_ref(cell)))
+        .collect();
+    write_comp_record(
+        &out,
+        "depletion_bhp",
+        &spec,
+        &reports,
+        started.elapsed().as_secs_f64() * 1e3,
+    );
+
+    let injection = injection_reference();
+    let times = injection.summary.get("TIME").expect("TIME").clone();
+    let started = std::time::Instant::now();
+    let cells = run_injection_trajectory(&times, MATCHED_SUB_STEP_DAYS);
+    let reports: Vec<CompRunReport> = times
+        .iter()
+        .zip(cells.iter())
+        .map(|(&t, cell)| comp_report_from_cells(&spec, t, std::slice::from_ref(cell)))
+        .collect();
+    write_comp_record(
+        &out,
+        "injection",
+        &spec,
+        &reports,
+        started.elapsed().as_secs_f64() * 1e3,
+    );
+
+    let quarter_five_spot = quarter_five_spot_reference();
+    let times = quarter_five_spot.summary.get("TIME").expect("TIME").clone();
+    let (molar_rate, _) = quarter_five_spot_molar_rate();
+    let mut case = run_quarter_five_spot(molar_rate);
+    let started = std::time::Instant::now();
+    let mut reports = vec![comp_report_from_snapshot(&case.snapshot())];
+    for (index, &target) in times.iter().enumerate().skip(1) {
+        let outcome = case.step(quarter_five_spot::REPORT_INTERVAL_DAYS);
+        assert!(
+            outcome.succeeded(),
+            "quarter-five-spot report step {index} failed: {:?}",
+            outcome.failure
+        );
+        let snapshot = case.snapshot();
+        assert!(
+            (snapshot.time_days - target).abs() < 1e-6,
+            "report step {index} ended at {} d, the reference says {target} d",
+            snapshot.time_days
+        );
+        reports.push(comp_report_from_snapshot(&snapshot));
+    }
+    write_comp_record(
+        &out,
+        "quarter_five_spot",
+        &spec,
+        &reports,
+        started.elapsed().as_secs_f64() * 1e3,
     );
 }
