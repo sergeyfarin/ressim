@@ -964,6 +964,13 @@ pub struct CompositionalCase {
     /// How many schedule events have been applied. The schedule itself lives in `config`, because
     /// a checkpoint already carries it; this is the cursor into it.
     schedule_position: usize,
+    /// True when the accepted state sits exactly on an event that was applied after the step.
+    ///
+    /// The next call is the report remainder after that event. It may legitimately be shorter than
+    /// the minimum timestep, and unlike an interval ending at an event it is not capped. This flag
+    /// grants the allowance for that one remainder only; a caller's tiny step at any other time is
+    /// still refused. It is not checkpointed: restore derives it by replaying to the clock.
+    schedule_boundary_pending: bool,
 }
 
 /// `DARCY_METRIC_FACTOR`, the same constant the black-oil path uses.
@@ -1118,6 +1125,7 @@ impl CompositionalCase {
             options: TimestepOptions::default(),
             run: CompositionalRun::new(initial),
             schedule_position: 0,
+            schedule_boundary_pending: false,
             config,
         };
         // A t = 0 event is the initial condition, not a step-1 surprise.
@@ -1175,6 +1183,9 @@ impl CompositionalCase {
             self.schedule_position += 1;
             applied = true;
         }
+        if applied && self.run.time_days() > 0.0 {
+            self.schedule_boundary_pending = true;
+        }
         if applied && self.run.well_bhp_bar().len() == self.wells.len() {
             // The accepted BHP belongs to the interval that just ended. A well the new event
             // shuts in has no flowing pressure from this instant, so report zero rather than the
@@ -1197,14 +1208,16 @@ impl CompositionalCase {
     /// part-way through an accepted step. The caller sees the smaller accepted `dt` and continues
     /// on the remainder; [`super::frontend`] and the worker session already do this.
     ///
-    /// A boundary interval may be shorter than the normal minimum timestep (an event at day
-    /// 1.0000005 leaves 5e-7 d after a daily step). That interval is explicitly requested by the
-    /// schedule, so its cap also lowers the retry ladder's floor: refusing to attempt it would
-    /// end the run with `Budget` rather than switching. A caller's own tiny `dt` is still refused
-    /// by the configured minimum.
+    /// A boundary interval may be shorter than the normal minimum timestep. That happens in both
+    /// directions: an event at day `1.0000005` leaves `5e-7 d` before it, and an event at day
+    /// `0.9999995` leaves `5e-7 d` of a daily report interval *after* it. Both intervals are
+    /// explicitly requested by the schedule, so they lower the retry ladder's floor; refusing
+    /// either would end the run with `Budget` rather than stepping. A caller's own tiny `dt` away
+    /// from a schedule boundary is still refused by the configured minimum.
     pub fn step(&mut self, dt_days: f64) -> StepOutcome {
         let requested_dt_days = dt_days;
         self.apply_schedule_through(self.run.time_days());
+        let starts_at_event = self.schedule_boundary_pending;
         let dt_days = crate::schedule::cap_dt_at_next_event(
             &self.config.schedule,
             self.schedule_position,
@@ -1212,7 +1225,8 @@ impl CompositionalCase {
             dt_days,
         );
         let mut options = self.options;
-        if dt_days < requested_dt_days && dt_days > 0.0 {
+        let schedule_created_interval = dt_days < requested_dt_days || starts_at_event;
+        if schedule_created_interval && dt_days > 0.0 {
             options.min_dt_days = options.min_dt_days.min(dt_days);
         }
         let next_event = self
@@ -1238,11 +1252,13 @@ impl CompositionalCase {
             dt_days,
             options,
         );
-        if report.succeeded()
-            && next_event
+        if report.succeeded() {
+            self.schedule_boundary_pending = false;
+            if next_event
                 .is_some_and(|time| crate::schedule::event_reached(self.run.time_days(), time))
-        {
-            self.apply_schedule_through(self.run.time_days());
+            {
+                self.apply_schedule_through(self.run.time_days());
+            }
         }
         StepOutcome {
             accepted_dt_days: report.accepted_dt_days,

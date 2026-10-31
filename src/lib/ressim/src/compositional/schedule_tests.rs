@@ -217,6 +217,67 @@ fn comp_schedule_short_boundary_interval_is_attempted() {
     );
 }
 
+/// The symmetric case: an event *before* the report time leaves a sub-minimum remainder after it.
+/// That call is no longer capped by the event, so the boundary it starts from has to grant the
+/// same allowance as an interval ending at an event.
+#[test]
+fn comp_schedule_short_remainder_after_event_is_attempted() {
+    let mut config = wag_case();
+    config.schedule = vec![gas_event(0.999_999_5, 10.0)];
+    let mut case = CompositionalCase::new(config).unwrap();
+
+    let first = case.step(1.0);
+    assert!(first.succeeded(), "{:?}", first.failure);
+    assert!(
+        (first.accepted_dt_days.expect("accepted") - 0.999_999_5).abs() < 1e-12,
+        "the first step did not stop at the event: {:?}",
+        first.accepted_dt_days
+    );
+    assert_eq!(case.checkpoint().schedule_position, Some(1));
+
+    // This is exactly the daily report remainder: target day 1 minus the event time.
+    let before = case.snapshot().cumulative_well_moles.clone();
+    let remainder = 1.0 - case.time_days();
+    let outcome = case.step(remainder);
+    assert!(
+        outcome.succeeded(),
+        "the {remainder:e} d remainder after the event failed: {:?}",
+        outcome.failure
+    );
+    assert!(
+        (outcome.accepted_dt_days.expect("accepted") - remainder).abs() < 1e-12,
+        "accepted {:?} d rather than the report remainder",
+        outcome.accepted_dt_days
+    );
+    assert!(
+        (case.time_days() - 1.0).abs() < 1e-12,
+        "the clock is {} after the remainder",
+        case.time_days()
+    );
+    assert_eq!(case.checkpoint().schedule_position, Some(1));
+
+    // The event was in force over the remainder, not deferred to the next report step.
+    let after = case.snapshot();
+    assert!(
+        well_delta(&before, &after.cumulative_well_moles, 0, 0) > 0.0,
+        "the gas event did not govern the remainder after it"
+    );
+}
+
+/// A caller-supplied tiny step away from a schedule boundary is still refused before Newton.
+#[test]
+fn comp_schedule_a_caller_tiny_step_is_still_refused() {
+    let config = wag_case();
+    let mut case = CompositionalCase::new(config).unwrap();
+    let outcome = case.step(5e-7);
+    assert!(
+        !outcome.succeeded(),
+        "an unscheduled 5e-7 d caller step must not bypass the minimum timestep"
+    );
+    assert_eq!(outcome.attempts, 0);
+    assert_eq!(outcome.failure.expect("failure").kind, "Budget");
+}
+
 /// **#50's gate.** Each WAG switch is exact in time, changes the prescribed stream, and the
 /// inventory change equals the well ledger across the switch.
 #[test]
