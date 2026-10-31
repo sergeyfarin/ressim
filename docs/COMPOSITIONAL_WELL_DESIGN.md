@@ -274,7 +274,10 @@ rather than two.
 - **Restart carries the cursor.** A checkpoint stores `schedule_position` — the number of events
   applied — because two events at one time for different wells are not recoverable from the state
   alone. Restore replays the schedule to the checkpoint clock and requires the stored position to
-  agree. Checkpoints written before the field existed are replayed by time instead of refused.
+  agree. The short-remainder allowance is derived from an event *at* that clock, not from whether
+  replay applied any historical event, so a checkpoint past an event behaves exactly like the run
+  that produced it. Checkpoints written before the field existed are replayed by time instead of
+  refused.
 - **One event can change both halves.** A WAG switch changes the control target and the injected
   stream together, so there is no instant at which the well is injecting the old fluid at the new
   target (or the new fluid at the old one).

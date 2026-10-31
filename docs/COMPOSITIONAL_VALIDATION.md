@@ -610,7 +610,7 @@ No existing black-oil benchmark tolerance is changed by any of this.
 | #45 | Up to 10 components; per-fluid temperature and BIPs; SPE5 fluid pinned from OPM | **COMPLETE** | `MAX_COMPONENTS = 10` in `fluid/specification.rs` (re-exported by `compositional/layout.rs`); `pinned::spe5()`; `EosVariant::PengRobinsonCorrected`; SPE5 in the fixture (§3a) and in every fixture-driven test; `comp_surface_separation_matches_opm_on_the_spe5_fluid`; N=10 kernels FD-checked in `compositional/cost_tests.rs`. Cost record below |
 | #51 | SPE3 characterization, staged separators, dew-point robustness | **Implemented** | [SPE3 validation](SPE3_VALIDATION.md): published nine-component fluid with volume translations; OPM PTFlash admission, independent Jutul separator/CVD fixtures and a matched 1D dew-point crossing; eight `comp_spe3_*` contracts. Full reservoir execution remains #52 |
 | #48 | Rate-controlled wells at BHP-control cost | **COMPLETE** (2026-10-30) | `comp_well_rate_*` and `comp_cost_rate_controlled_*`: BHP as a Newton unknown with a locally eliminated rate row, 5% control hysteresis, FD-checked rate-row derivatives, and two source evaluations per assembly. §8 |
-| #50 | Compositional well schedules: WAG alternation and shut-in | **COMPLETE** (2026-10-30) | One engine-neutral event envelope (`schedule.rs`) shared with #17, compositional control/injection changes, exact-time step capping, both directions of short event boundaries, a `ShutIn` control and an explicit checkpoint cursor. Scheduled cases use schema `/2` so pre-schedule builds refuse them. Eight `comp_schedule_*` tests; the WAG gate switches water → gas → water → gas → shut-in → open on exact days with a closed component ledger. §8 |
+| #50 | Compositional well schedules: WAG alternation and shut-in | **COMPLETE** (2026-10-30) | One engine-neutral event envelope (`schedule.rs`) shared with #17, compositional control/injection changes, exact-time step capping, both directions of short event boundaries, a `ShutIn` control and an explicit checkpoint cursor. Scheduled cases use schema `/2` so pre-schedule builds refuse them. Nine `comp_schedule_*` tests; the WAG gate switches water → gas → water → gas → shut-in → open on exact days with a closed component ledger. §8 |
 | #47 | Structured grids, gravity, multi-layer completions | **COMPLETE** (2026-10-29) | `grid.box_grid` with per-layer `dz/kx/ky/kz`, TPFA x/y/z faces, a hydrostatic gradient initialization and multi-completion head offsets; 1-D path unchanged. 2-D quarter five spot against `flowexp_comp`: 0.0070 bar, 2.8e-5 saturation, 4.2e-5 composition, 5.4e-12 cumulative. #49 already measured the 7 × 7 × 3 and 9 × 9 × 4 wasm memory/time budget — see §8 |
 
 ## 8. Completion records
@@ -786,11 +786,13 @@ holds per component to `1e-8` relative, water last. A shut-in injector contribut
 a flowing BHP of zero; opening it changes no completions and the next interval injects again.
 `comp_schedule_short_boundary_interval_is_attempted` and
 `comp_schedule_short_remainder_after_event_is_attempted` cover both short-boundary directions;
+`comp_schedule_restore_derives_boundary_from_clock_only` checks that restore does not grant the
+remainder allowance merely because replay applied a historical event;
 `comp_schedule_a_caller_tiny_step_is_still_refused` keeps the guard from becoming a general bypass.
 The validation test covers the non-adjacent same-time conflict and the `/1`-with-events refusal.
-Measured on `13361080` in release: the WAG gate **0.11 s**, all eight `comp_schedule_*` tests
+Measured on `0d0a9e02` in release: the WAG gate **0.11 s**, all nine `comp_schedule_*` tests
 **0.16 s** (`cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib comp_schedule_`).
-Gate command: `bash scripts/validate-compositional.sh thermo` (`comp_schedule_`, 8 tests, plus the
+Gate command: `bash scripts/validate-compositional.sh thermo` (`comp_schedule_`, 9 tests, plus the
 shared `schedule::tests::` envelope tests). That tree also passed
 `bash scripts/validate-solver-coverage.sh all`, `bash scripts/validate-cross-solver.sh`,
 `bash scripts/benchmarks.sh check --tier fast` and `pnpm run validate:product`.
