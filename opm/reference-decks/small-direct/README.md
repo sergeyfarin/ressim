@@ -133,8 +133,8 @@ baseline, and `--markdown` includes those rows when a table is regenerated.
 ## Replay
 
 ```bash
-# decks (only after changing a case)
-OPM_SMALL_DECK_DIR=$PWD/opm/reference-decks/small-direct cargo test --release \
+# decks (only after changing a case; legacy layout keeps the five wasm-preset decks top-level)
+OPM_SMALL_DECK_DIR=$PWD/opm/reference-decks/small-direct OPM_SMALL_DECK_LAYOUT=legacy cargo test --release \
   --manifest-path src/lib/ressim/Cargo.toml opm_small_direct_write_decks -- --ignored
 # ResSim: FIM once per small-system LU, then IMPES
 for b in sparse dense; do OPM_SMALL_OUT=/tmp/small-direct OPM_SMALL_SOLVER=fim OPM_SMALL_BACKEND=$b cargo test --release \

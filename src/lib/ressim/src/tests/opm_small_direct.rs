@@ -10,8 +10,8 @@
 //! Both halves are `#[ignore]`d drivers, not gates:
 //!
 //! ```bash
-//! # write the decks (committed under opm/reference-decks/small-direct/)
-//! OPM_SMALL_DECK_DIR=opm/reference-decks/small-direct cargo test --release \
+//! # write the decks (committed under opm/reference-decks/small-direct/ and the five top-level wasm-preset dirs)
+//! OPM_SMALL_DECK_DIR=opm/reference-decks/small-direct OPM_SMALL_DECK_LAYOUT=legacy cargo test --release \
 //!   --manifest-path src/lib/ressim/Cargo.toml opm_small_direct_write_decks -- --ignored
 //! # run ResSim: FIM once per small-system LU (OPM_SMALL_BACKEND), and IMPES
 //! OPM_SMALL_OUT=/tmp/small-direct OPM_SMALL_SOLVER=fim OPM_SMALL_BACKEND=sparse cargo test --release \
@@ -444,8 +444,9 @@ fn catalog_waterflood(w: &Waterflood) -> ReservoirSimulator {
 }
 
 /// The wasm `water-pressure` preset: uniform 2000/200 mD layers, 10 x 10 x 1 m cells, BHP
-/// injector at (0, 0, 0) and producer at the opposite corner. The grid size is the only knob the
-/// tracked decks vary.
+/// injector at (0, 0, 0) and producer at the opposite corner. Both wells complete only layer 0,
+/// and gravity follows the preset's `nz > 1` default. The grid size is the only knob the tracked
+/// decks vary.
 fn water_pressure_case(nx: usize, ny: usize, nz: usize) -> ReservoirSimulator {
     catalog_waterflood(&Waterflood {
         dims: [nx, ny, nz],
@@ -453,6 +454,9 @@ fn water_pressure_case(nx: usize, ny: usize, nz: usize) -> ReservoirSimulator {
         perm_xy: vec![2000.0; nz],
         perm_z: vec![200.0; nz],
         producer_ij: (nx - 1, ny - 1),
+        injector_layers: Some(vec![0]),
+        producer_layers: Some(vec![0]),
+        gravity: nz > 1,
         fim: true,
         ..Waterflood::default()
     })

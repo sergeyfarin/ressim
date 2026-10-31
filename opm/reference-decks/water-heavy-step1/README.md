@@ -1,9 +1,9 @@
 # water-heavy-step1
 
 Generated deck for the FIM heavy-water control: the wasm `water-pressure` preset at 12×12×3,
-`TSTEP 1.0`, BHP injector 500 / producer 100. The deck is written by
-`src/lib/ressim/src/tests/opm_small_direct.rs` from the same simulator configuration the wasm
-preset uses; it is not hand-mapped.
+`TSTEP 1.0`, BHP injector 500 / producer 100, layer-0 completions and gravity on (`nz > 1`). The
+deck is written by `src/lib/ressim/src/tests/opm_small_direct.rs` from the same simulator
+configuration the wasm preset uses; it is not hand-mapped.
 
 Regenerate it with the command in [`../README.md`](../README.md), then update
 [`manifest.json`](manifest.json). Its current Flow/ResSim measurements are the

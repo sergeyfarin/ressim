@@ -68,7 +68,7 @@ Also fixed in the 2026-07-16 pass in the same pass, two pre-existing deck bugs u
 
 ## Adding a case
 
-1. Prefer a small-direct case: add it to `CASES`/`build` in `opm_small_direct.rs`, mirroring the worker's `configureReservoirSimulator` order, and regenerate the decks (`OPM_SMALL_DECK_DIR=$PWD/opm/reference-decks/small-direct cargo test --release --manifest-path src/lib/ressim/Cargo.toml opm_small_direct_write_decks -- --ignored`). Any scenario input that is not a scalar (a PVT table) goes in a committed fixture both sides assert against (`dep-pvt-tables.json`).
+1. Prefer a small-direct case: add it to `CASES`/`build` in `opm_small_direct.rs`, mirroring the worker's `configureReservoirSimulator` order, and regenerate the decks (`OPM_SMALL_DECK_DIR=$PWD/opm/reference-decks/small-direct OPM_SMALL_DECK_LAYOUT=legacy cargo test --release --manifest-path src/lib/ressim/Cargo.toml opm_small_direct_write_decks -- --ignored`). The legacy layout keeps the five wasm-preset decks in their top-level directories; without it the writer creates duplicates under `small-direct/`. Any scenario input that is not a scalar (a PVT table) goes in a committed fixture both sides assert against (`dep-pvt-tables.json`).
 2. Add the `OpmCase` (deck via `_committed_deck`), run `run-flow <key>` then `build-artifacts <key>`, register the JSON in `opmFlowArtifacts.ts`, declare it on the scenario, and extend `EXPECTED` in `opmReferenceWiring.test.ts`.
 3. Grade ResSim against the same run with `compare_small_direct.py` and record it in `opm/reference-decks/small-direct/README.md`.
 

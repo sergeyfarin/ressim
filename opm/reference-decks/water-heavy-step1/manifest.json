@@ -5,7 +5,7 @@
   "source": "wasm preset water-pressure",
   "deck": {
     "path": "CASE.DATA",
-    "sha256": "9f813f150e9b07fbc49721493cdb25b5c612fcb16616176cc198a77e33f62abb"
+    "sha256": "c3e97aa32a6740704ce796689d8b99e314496a232be568bc39135d954acdb287"
   },
   "ressim": {
     "command": [
