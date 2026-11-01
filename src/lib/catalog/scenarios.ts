@@ -43,6 +43,8 @@ import { gas_injection } from './scenarios/gas_injection';
 import { gas_drive } from './scenarios/gas_drive';
 import { spe1_gas_injection } from './scenarios/spe1_gas_injection';
 import { comp_co2_1d } from './scenarios/comp_co2_1d';
+import { comp_spe5_wag } from './scenarios/comp_spe5_wag';
+import { comp_spe3_gas_cycling } from './scenarios/comp_spe3_gas_cycling';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -781,6 +783,11 @@ const SOURCE_SCENARIOS: Scenario[] = [
  * source compositional curves (#29).
  */
 const WITHHELD_SCENARIOS: Scenario[] = [
+    // #52: the payloads are authored and tested, but SPE5 does not yet complete its published
+    // horizon (#93) and neither case has its independent JutulDarcy reference committed. Shipping
+    // either now would offer a benchmark whose comparison does not exist yet.
+    comp_spe5_wag,
+    comp_spe3_gas_cycling,
 ];
 
 export const SCENARIOS: CatalogScenario[] = SOURCE_SCENARIOS;

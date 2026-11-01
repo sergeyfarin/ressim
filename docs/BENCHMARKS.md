@@ -510,6 +510,8 @@ time step, which is where discretization error shows.
 | Scenario | Analytical | OPM Flow artifact | Engine benchmark | Refinement dimension | Second simulator | Own `<key>.test.ts` |
 |---|---|---|---|---|---|---|
 | `comp_co2_1d` | — | — | §8 | grid_refinement, timestep | — | yes |
+| `comp_spe3_gas_cycling` (withheld) | — | — | — | — | — | yes |
+| `comp_spe5_wag` (withheld) | — | — | — | — | — | yes |
 | `dep_arps` | depletion | — | — | — | — | yes |
 | `dep_decline` | depletion | — | — | timestep, grid_refinement | — | yes |
 | `dep_gas_pz` | gas-material-balance | yes | — | — | — | yes |
@@ -529,7 +531,7 @@ time step, which is where discretization error shows.
 | `wf_gravity_stability` | buckley-leverett | yes | — | resolution | — | yes |
 | `wf_numerics` | buckley-leverett | yes | — | grid_refinement, time_truncation | — | yes |
 
-**4 scenario(s) have no numerical reference** (neither a Flow artifact nor an engine benchmark), only an analytical one or none: `dep_arps`, `dep_decline`, `dep_pss`, `dep_welltest`. 3 scenario(s) are graded against a second independent simulator. 1 scenario(s) have no test file of their own, only the catalog-wide contract tests: `spe1_gas_injection`.
+**6 scenario(s) have no numerical reference** (neither a Flow artifact nor an engine benchmark), only an analytical one or none: `comp_spe3_gas_cycling`, `comp_spe5_wag`, `dep_arps`, `dep_decline`, `dep_pss`, `dep_welltest`. 3 scenario(s) are graded against a second independent simulator. 1 scenario(s) have no test file of their own, only the catalog-wide contract tests: `spe1_gas_injection`.
 <!-- /GENERATED:coverage -->
 
 ## Not benchmarked

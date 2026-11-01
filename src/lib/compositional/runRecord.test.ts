@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { comp_co2_1d } from '../catalog/scenarios/comp_co2_1d';
+import { comp_spe5_wag } from '../catalog/scenarios/comp_spe5_wag';
 import {
     buildCompositionalRunRecord,
     compositionalWellState,
@@ -67,6 +68,41 @@ describe('toSpatialSnapshot', () => {
     it('carries the overall composition per component, in the engine order', () => {
         expect(spatial.grid.composition?.componentIds).toEqual(['CO2', 'C1', 'C10']);
         expect(spatial.grid.composition?.values.map((values) => [...values])).toEqual(snapshot.composition);
+    });
+});
+
+describe('toSpatialSnapshot with water and a structured grid', () => {
+    const spatialConfig = comp_spe5_wag.params.compositional as CompositionalCaseConfig;
+    const cells = spatialConfig.grid.cells;
+    const waterSnapshot: CompositionalSnapshot = {
+        time_days: 1,
+        component_ids: ['C1', 'C3', 'C6', 'C10', 'C15', 'C20'],
+        pressure: Array.from({ length: cells }, () => 200),
+        composition: Array.from({ length: 6 }, () => Array.from({ length: cells }, () => 1 / 6)),
+        phase_state: Array.from({ length: cells }, () => 'two-phase'),
+        vapour_saturation: Array.from({ length: cells }, () => 0.2),
+        inventory: [1, 1, 1, 1, 1, 1],
+        cumulative_well_moles: [],
+        water: {
+            saturation: Array.from({ length: cells }, () => 0.3),
+            inventory_moles: 100,
+        },
+    };
+
+    it('puts oil at 1 - Sg - Sw rather than 1 - Sg', () => {
+        const spatial = toSpatialSnapshot(waterSnapshot, []);
+        expect(spatial.grid.sat_water[0]).toBeCloseTo(0.3, 12);
+        expect(spatial.grid.sat_gas[0]).toBeCloseTo(0.2, 12);
+        expect(spatial.grid.sat_oil[0]).toBeCloseTo(0.5, 12);
+    });
+
+    it('decodes a box-grid completion into i, j and k', () => {
+        const wells = compositionalWellState(spatialConfig);
+        expect(wells.map((well) => [well.physical_well_id, well.i, well.j, well.k, well.injector])).toEqual([
+            ['PROD', 6, 6, 2, false],
+            ['INJW', 0, 0, 0, true],
+            ['INJG', 0, 0, 0, true],
+        ]);
     });
 });
 

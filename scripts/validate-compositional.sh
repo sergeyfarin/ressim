@@ -123,7 +123,8 @@ run_thermo() {
     run_filter comp_matched_      1   # C12 at the reference's own timestep - see the forensics doc
     run_filter comp_oracle_       3   # the oracle convergence census, and the band rule it enforces
     run_filter comp_injection_    1   # surface-rate control on a MIXTURE, against OPM's own flash
-    run_filter comp_spe3_         8   # #51: OPM/Jutul fluid, separator train, CVD and 1D dew crossing
+    run_filter comp_spe3_        10   # #51/#52: fluid/separator/CVD/1D gates and the authored payload
+    run_filter comp_spe5_         3   # #52: payload, EOS gradient and closed-well equilibrium
     run_filter comp_water_       18   # #46: immiscible water, Stone II, FD Jacobian, conservation, JutulDarcy
     run_filter comp_schedule_    10   # #50: WAG, both short boundaries, restore policy, mass ledger and restart
     run_filter schedule::tests::  5   # #50/#17: the engine-neutral event envelope, ordering and clock rules

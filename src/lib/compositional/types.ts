@@ -36,7 +36,11 @@ export type CompositionalCaseSchema =
  * oracle and C6 measured the pressure and composition range they are valid over. A scenario that
  * could supply its own critical properties could leave that range without anything noticing.
  */
-export type CompositionalFluidChoice = 'pinned-ternary' | 'pinned-binary';
+export type CompositionalFluidChoice =
+  | 'pinned-ternary'
+  | 'pinned-binary'
+  | 'pinned-spe5'
+  | 'pinned-spe3';
 
 /**
  * A structured `nx x ny x nz` box with per-layer thickness and directional permeability (#47).

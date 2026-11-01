@@ -1,0 +1,590 @@
+{
+  "schema": "ressim-compositional-case/2",
+  "fluid": "pinned-spe5",
+  "grid": {
+    "cells": 147,
+    "dx_m": 152.4,
+    "dy_m": 152.4,
+    "dz_m": 6.096,
+    "porosity": 0.3,
+    "permeability_md": 500,
+    "rock_reference_pressure_bar": 1.01352972,
+    "rock_compressibility_per_bar": 0.00007251884039473456,
+    "box_grid": {
+      "nx": 7,
+      "ny": 7,
+      "nz": 3,
+      "layer_dz_m": [
+        6.096,
+        9.144,
+        15.24
+      ],
+      "layer_kx_md": [
+        500,
+        50,
+        200
+      ],
+      "layer_ky_md": [
+        500,
+        50,
+        200
+      ],
+      "layer_kz_md": [
+        50,
+        50,
+        25
+      ],
+      "top_depth_m": 2537.46
+    }
+  },
+  "relperm": {
+    "model": "stone-ii",
+    "swof": [
+      {
+        "sw": 0.2,
+        "krw": 0,
+        "krow": 1,
+        "pcow": 0
+      },
+      {
+        "sw": 0.25,
+        "krw": 0.0012235817575083426,
+        "krow": 0.8182789651293588,
+        "pcow": 0
+      },
+      {
+        "sw": 0.28890000000000005,
+        "krw": 0.0021755283648498347,
+        "krow": 0.6769,
+        "pcow": 0
+      },
+      {
+        "sw": 0.2899,
+        "krw": 0.0022,
+        "krow": 0.6739573678290214,
+        "pcow": 0
+      },
+      {
+        "sw": 0.3778,
+        "krw": 0.018,
+        "krow": 0.4153,
+        "pcow": 0
+      },
+      {
+        "sw": 0.4667,
+        "krw": 0.060700000000000004,
+        "krow": 0.2178,
+        "pcow": 0
+      },
+      {
+        "sw": 0.5556,
+        "krw": 0.1438,
+        "krow": 0.0835,
+        "pcow": 0
+      },
+      {
+        "sw": 0.6444,
+        "krw": 0.2809,
+        "krow": 0.0123,
+        "pcow": 0
+      },
+      {
+        "sw": 0.7,
+        "krw": 0.4089,
+        "krow": 1.2280344606914942e-17,
+        "pcow": 0
+      },
+      {
+        "sw": 0.7333,
+        "krw": 0.4855,
+        "krow": 0,
+        "pcow": 0
+      },
+      {
+        "sw": 0.8222,
+        "krw": 0.7709,
+        "krow": 0,
+        "pcow": 0
+      },
+      {
+        "sw": 0.85,
+        "krw": 0.8425420697412822,
+        "krow": 0,
+        "pcow": 0
+      },
+      {
+        "sw": 0.9111,
+        "krw": 1,
+        "krow": 0,
+        "pcow": 0
+      },
+      {
+        "sw": 1,
+        "krw": 1,
+        "krow": 0,
+        "pcow": 0
+      }
+    ],
+    "sgof": [
+      {
+        "sg": 0,
+        "krg": 0,
+        "krog": 1,
+        "pcog": 0
+      },
+      {
+        "sg": 0.05,
+        "krg": 0,
+        "krog": 0.88,
+        "pcog": 0
+      },
+      {
+        "sg": 0.0889,
+        "krg": 0.001,
+        "krog": 0.7023000000000006,
+        "pcog": 0
+      },
+      {
+        "sg": 0.1778,
+        "krg": 0.010000000000000002,
+        "krog": 0.47050000000000025,
+        "pcog": 0
+      },
+      {
+        "sg": 0.2667,
+        "krg": 0.03,
+        "krog": 0.29630000000000023,
+        "pcog": 0
+      },
+      {
+        "sg": 0.3556,
+        "krg": 0.05,
+        "krog": 0.1715,
+        "pcog": 0
+      },
+      {
+        "sg": 0.4443,
+        "krg": 0.1,
+        "krog": 0.0878942567567568,
+        "pcog": 0
+      },
+      {
+        "sg": 0.4444,
+        "krg": 0.10011235955056186,
+        "krog": 0.0878,
+        "pcog": 0
+      },
+      {
+        "sg": 0.5,
+        "krg": 0.1625842696629214,
+        "krog": 0.056028571428571455,
+        "pcog": 0
+      },
+      {
+        "sg": 0.5333,
+        "krg": 0.2,
+        "krog": 0.03700000000000003,
+        "pcog": 0
+      },
+      {
+        "sg": 0.6222,
+        "krg": 0.35,
+        "krog": 0.011000000000000015,
+        "pcog": 0
+      },
+      {
+        "sg": 0.65,
+        "krg": 0.39,
+        "krog": 1.0982422006184094e-17,
+        "pcog": 0
+      },
+      {
+        "sg": 0.7111,
+        "krg": 0.56,
+        "krog": 0,
+        "pcog": 0
+      },
+      {
+        "sg": 0.8,
+        "krg": 1,
+        "krog": 0,
+        "pcog": 0
+      }
+    ]
+  },
+  "initial_pressure_bar": 274.54198805944,
+  "initial_composition": [
+    0.5,
+    0.03,
+    0.07,
+    0.2,
+    0.15,
+    0.05
+  ],
+  "wells": [
+    {
+      "id": "PROD",
+      "completions": [
+        {
+          "cell": 146,
+          "well_index": 27.301741456266907,
+          "head_offset_bar": 0
+        }
+      ],
+      "control": "surface-rate",
+      "target_m3_per_day": -1907.8475391360003,
+      "phase": "liquid",
+      "bhp_limit_bar": 68.9476
+    },
+    {
+      "id": "INJW",
+      "completions": [
+        {
+          "cell": 0,
+          "well_index": 27.301741456266907,
+          "head_offset_bar": 0
+        }
+      ],
+      "control": "shut-in",
+      "inject_water": true
+    },
+    {
+      "id": "INJG",
+      "completions": [
+        {
+          "cell": 0,
+          "well_index": 27.301741456266907,
+          "head_offset_bar": 0
+        }
+      ],
+      "control": "shut-in",
+      "injection_composition": [
+        0.77,
+        0.2,
+        0.03,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "schedule": [
+    {
+      "time_days": 730.5,
+      "well": "INJW",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 1907.8475391360003,
+        "phase": "water",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 730.5,
+      "well": "INJG",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 1095.75,
+      "well": "INJW",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 1095.75,
+      "well": "INJG",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 339802.159104,
+        "phase": "vapour",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 1461,
+      "well": "INJW",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 1907.8475391360003,
+        "phase": "water",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 1461,
+      "well": "INJG",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 1826.25,
+      "well": "INJW",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 1826.25,
+      "well": "INJG",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 339802.159104,
+        "phase": "vapour",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 2191.5,
+      "well": "INJW",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 1907.8475391360003,
+        "phase": "water",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 2191.5,
+      "well": "INJG",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 2556.75,
+      "well": "INJW",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 2556.75,
+      "well": "INJG",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 339802.159104,
+        "phase": "vapour",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 2922,
+      "well": "INJW",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 1907.8475391360003,
+        "phase": "water",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 2922,
+      "well": "INJG",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 3287.25,
+      "well": "INJW",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 3287.25,
+      "well": "INJG",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 339802.159104,
+        "phase": "vapour",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 3652.5,
+      "well": "INJW",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 1907.8475391360003,
+        "phase": "water",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 3652.5,
+      "well": "INJG",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 4017.75,
+      "well": "INJW",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 4017.75,
+      "well": "INJG",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 339802.159104,
+        "phase": "vapour",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 4383,
+      "well": "INJW",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 1907.8475391360003,
+        "phase": "water",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 4383,
+      "well": "INJG",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 4748.25,
+      "well": "INJW",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 4748.25,
+      "well": "INJG",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 339802.159104,
+        "phase": "vapour",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 5113.5,
+      "well": "INJW",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 1907.8475391360003,
+        "phase": "water",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 5113.5,
+      "well": "INJG",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 5478.75,
+      "well": "INJW",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 5478.75,
+      "well": "INJG",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 339802.159104,
+        "phase": "vapour",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 5844,
+      "well": "INJW",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 1907.8475391360003,
+        "phase": "water",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 5844,
+      "well": "INJG",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 6209.25,
+      "well": "INJW",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 6209.25,
+      "well": "INJG",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 339802.159104,
+        "phase": "vapour",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 6574.5,
+      "well": "INJW",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 1907.8475391360003,
+        "phase": "water",
+        "bhp_limit_bar": 689.476
+      }
+    },
+    {
+      "time_days": 6574.5,
+      "well": "INJG",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 6939.75,
+      "well": "INJW",
+      "control": {
+        "control": "shut-in"
+      }
+    },
+    {
+      "time_days": 6939.75,
+      "well": "INJG",
+      "control": {
+        "control": "surface-rate",
+        "target_m3_per_day": 339802.159104,
+        "phase": "vapour",
+        "bhp_limit_bar": 689.476
+      }
+    }
+  ],
+  "water": {
+    "reference_pressure_bar": 1.01352972,
+    "formation_volume_factor": 1,
+    "compressibility_per_bar": 0.00004786243466052481,
+    "viscosity_cp": 0.7,
+    "viscosibility_per_bar": 0,
+    "surface_density_kg_per_m3": 999.5520912000001,
+    "initial_saturation": 0.2
+  },
+  "gravity_enabled": true,
+  "initial_pressure_gradient_bar_per_m": 0.054611196
+}

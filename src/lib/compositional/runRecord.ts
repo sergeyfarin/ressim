@@ -47,8 +47,9 @@ export function buildCompositionalRunRecord(input: {
 /**
  * The wells as the 3D view draws them.
  *
- * The compositional grid is a 1D column of `cells`, so a completion's cell index is its `i`. A well
- * with an injection stream is an injector; that is the engine's own rule.
+ * A completion stores a flat cell index. A 1D column is therefore `i = cell`; a structured box
+ * (#47) decodes it with the same row-major `(k*ny + j)*nx + i` order the engine builds. A well with
+ * a hydrocarbon stream or `inject_water` is an injector; that is the engine's own rule.
  *
  * `bhp` is the configured pressure a BHP-controlled well asks for. `flowing_bhp`, when a snapshot
  * supplies it, is the pressure the accepted solve actually ran at — for a rate-controlled well
@@ -58,14 +59,17 @@ export function compositionalWellState(
   config: CompositionalCaseConfig,
   snapshot?: CompositionalSnapshot,
 ): WellState {
+  const box = config.grid.box_grid;
+  const location = (cell: number) =>
+    box
+      ? { i: cell % box.nx, j: Math.floor(cell / box.nx) % box.ny, k: Math.floor(cell / (box.nx * box.ny)) }
+      : { i: cell, j: 0, k: 0 };
   return config.wells.flatMap((well, wellIndex) => {
     const flowing = snapshot?.well_bhp_bar?.[wellIndex];
     return well.completions.map((completion) => ({
       physical_well_id: well.id,
-      i: completion.cell,
-      j: 0,
-      k: 0,
-      injector: well.injection_composition !== undefined,
+      ...location(completion.cell),
+      injector: well.injection_composition !== undefined || well.inject_water === true,
       ...(well.control === 'bhp' ? { bhp: well.target_bar } : {}),
       ...(flowing !== undefined && Number.isFinite(flowing) ? { flowing_bhp: flowing } : {}),
     }));
@@ -75,11 +79,11 @@ export function compositionalWellState(
 /**
  * A compositional snapshot in the 3D view's per-cell vocabulary.
  *
- * The case has two hydrocarbon phases and no water, so the vapour saturation is the gas
- * saturation, the liquid takes the rest, and water is zero everywhere. That is a relabelling of the
- * engine's own values, not a model: nothing is recomputed. A cell whose flash did not resolve has
- * no saturation, and it stays not-a-number rather than being filled in. The overall composition
- * rides along unchanged, so each component can be shown per cell.
+ * The vapour saturation is the gas saturation and water is carried when the case has it; oil takes
+ * what is left. That is a relabelling of the engine's own values, not a model: nothing is
+ * recomputed. A cell whose flash did not resolve has no saturation, and it stays not-a-number
+ * rather than being filled in. The overall composition rides along unchanged, so each component
+ * can be shown per cell.
  */
 export function toSpatialSnapshot(
   snapshot: CompositionalSnapshot,
@@ -89,10 +93,15 @@ export function toSpatialSnapshot(
   const satGas = Float64Array.from(snapshot.vapour_saturation, (value) =>
     Number.isFinite(value) ? value : Number.NaN,
   );
+  const satWater = snapshot.water
+    ? Float64Array.from(snapshot.water.saturation)
+    : new Float64Array(cells);
   const grid: GridState = {
     pressure: Float64Array.from(snapshot.pressure),
-    sat_water: new Float64Array(cells),
-    sat_oil: Float64Array.from(satGas, (sv) => (Number.isFinite(sv) ? 1 - sv : Number.NaN)),
+    sat_water: satWater,
+    sat_oil: Float64Array.from(satGas, (sv, index) =>
+      Number.isFinite(sv) ? 1 - sv - satWater[index] : Number.NaN,
+    ),
     sat_gas: satGas,
     composition: {
       componentIds: [...snapshot.component_ids],

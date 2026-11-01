@@ -66,7 +66,11 @@ mod relperm_tests;
 #[cfg(test)]
 mod schedule_tests;
 #[cfg(test)]
+mod spe3_case_tests;
+#[cfg(test)]
 mod spe3_tests;
+#[cfg(test)]
+mod spe5_tests;
 #[cfg(test)]
 mod state_tests;
 #[cfg(test)]

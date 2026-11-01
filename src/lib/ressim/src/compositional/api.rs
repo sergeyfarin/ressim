@@ -150,6 +150,10 @@ pub enum FluidChoice {
     PinnedTernary,
     /// Methane / decane, the V1 binary.
     PinnedBinary,
+    /// The six-component SPE5 hydrocarbon system from `Opm::Spe5FluidSystem` (#45).
+    PinnedSpe5,
+    /// The nine-component SPE3 characterization of Juell, Whitson & Hoda (#51).
+    PinnedSpe3,
 }
 
 impl FluidChoice {
@@ -157,6 +161,8 @@ impl FluidChoice {
         let result = match self {
             Self::PinnedTernary => pinned::ternary(),
             Self::PinnedBinary => pinned::binary(),
+            Self::PinnedSpe5 => pinned::spe5(),
+            Self::PinnedSpe3 => pinned::spe3(),
         };
         result.map_err(|e| ConfigError::Rejected {
             field: "fluid".to_string(),
@@ -168,6 +174,8 @@ impl FluidChoice {
         match self {
             Self::PinnedTernary => 3,
             Self::PinnedBinary => 2,
+            Self::PinnedSpe5 => 6,
+            Self::PinnedSpe3 => 9,
         }
     }
 }
