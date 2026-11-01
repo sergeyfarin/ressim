@@ -16,21 +16,27 @@ import type {
  * `Opm::Spe5FluidSystem` (#45), the water phase and Stone II relative permeability are #46, the
  * 3-D box and gravity are #47, the surface-rate controls are #48, and the WAG schedule is #50.
  *
- * **The model is compositional, not the deck's black-oil + solvent formulation.** The published
- * comparison used a solvent option that ResSim does not have; what runs here is the same six
- * components through the Peng–Robinson engine, with the same grid, rock, relative permeability,
- * initial composition and well schedule. The reference is therefore a compositional JutulDarcy
- * run of this case, not the 1987 black-oil curves — see `docs/SPE5_VALIDATION.md`.
+ * **The published project compared four-component and fully compositional models as well as
+ * black-oil + solvent representations.** ResSim runs a six-component Peng–Robinson model, which is
+ * one of the published model classes. The OPM deck available locally implements the case as
+ * black-oil + solvent; that deck is a grid/rock/relperm/schedule source, not the benchmark itself.
+ * The appropriate published comparison is the compositional participants' curves, and the
+ * independent reference is a JutulDarcy compositional run of this payload — see
+ * `docs/SPE5_VALIDATION.md`.
  *
- * **Deliberate differences from the deck, recorded rather than hidden.**
+ * **Deliberate differences from the OPM deck implementation, recorded rather than hidden.**
  * - Capillary pressure is zero. The compositional engine has no hydrocarbon capillary pressure;
  *   the deck's water–oil and gas–oil columns are small but not zero.
  * - Relative permeability is the deck's table, interpreted by Stone II. The deck's `SOF3` table is
- *   keyed on oil saturation; the engine's `SWOF`/`SGOF` rows are sampled from it at the deck's own
- *   saturation nodes.
+ *   keyed on oil saturation; the engine's `SWOF`/`SGOF` rows are the union of the two tables'
+ *   transformed knots, so no original breakpoint is dropped.
  * - Surface separation is the compositional model's single equilibrium stage at 1 atm / 288.71 K.
  *   The deck's stock-tank rates are converted through that stage, not through the black-oil PVT
  *   table. The rate targets are the deck's.
+ *
+ * **Recorded deviation.** The paper's GOR 10 Mscf/STB and WOR 5 STB/STB shut-in criteria are not
+ * enforced: the compositional run loop has no surface-rate history (#95) or termination evaluation
+ * (#98). The payload always requests the full 240 reports.
  */
 
 /** 500 ft in metres. */
@@ -48,10 +54,11 @@ const LAYER_KY_MD = [500, 50, 200];
 const LAYER_KZ_MD = [50, 50, 25];
 /** 8325 ft, the top of the reservoir in the deck's `TOPS`. */
 const TOP_DEPTH_M = 8325 * 0.3048;
+/** The pinned EOS's mass density at 4000 psia / 160 °F gives the hydrostatic gradient. */
+const INITIAL_PRESSURE_GRADIENT_BAR_PER_M = 0.054611196;
 /** 4000 psia at the 8400 ft datum; the top is 75 ft above it. */
-const INITIAL_PRESSURE_BAR = 4000 * 0.0689476 - 75 * 0.3048 * 0.0605;
-/** 0.0605 bar/m, the hydrostatic gradient of the deck's 38.53 lb/ft³ oil. */
-const INITIAL_PRESSURE_GRADIENT_BAR_PER_M = 0.0605;
+const INITIAL_PRESSURE_BAR =
+    4000 * 0.0689476 - 75 * 0.3048 * INITIAL_PRESSURE_GRADIENT_BAR_PER_M;
 
 const INITIAL_COMPOSITION = [0.5, 0.03, 0.07, 0.2, 0.15, 0.05];
 const INJECTION_GAS = [0.77, 0.2, 0.03, 0, 0, 0];
@@ -79,7 +86,9 @@ function layerWellIndex(permeabilityMd: number, dzM: number): number {
 
 const PRODUCER_CELL = (NZ - 1) * NY * NX + (NY - 1) * NX + (NX - 1);
 const INJECTOR_CELL = 0;
-/** Equal kh = 10000 mD·ft by design: 500×20, 50×30 and 200×50 all come to the same. */
+/** `COMPDAT` item 10 sets Kh = 10000 mD·ft on every completion. Layers 1 and 3 already have that
+ * (500×20 and 200×50); the middle layer's own kh is 50×30 = 1500 and is overridden. These wells sit
+ * in layers 1 and 3, so the override does not change their index. */
 const PRODUCER_WI = layerWellIndex(LAYER_KX_MD[NZ - 1], LAYER_DZ_M[NZ - 1]);
 const INJECTOR_WI = layerWellIndex(LAYER_KX_MD[0], LAYER_DZ_M[0]);
 
@@ -104,38 +113,66 @@ const SGFN: Array<[number, number]> = [
     [0.4443, 0.1], [0.5333, 0.2], [0.6222, 0.35], [0.65, 0.39], [0.7111, 0.56], [0.8, 1],
 ];
 
-/**
- * Sample a table whose rows may carry a missing entry.
- *
- * A missing `krow`/`krog` is the deck's `1*`, not a zero: linear interpolation between the nearest
- * stated neighbours is the same table the simulator reads.
- */
-function interpolateSo(column: 1 | 2, so: number): number {
-    const stated = SOF3.filter((row) => row[column] !== null);
-    for (let i = 1; i < stated.length; i += 1) {
-        const x1 = stated[i - 1][0];
-        const x2 = stated[i][0];
-        const y1 = stated[i - 1][column] as number;
-        const y2 = stated[i][column] as number;
-        if (so <= x2) {
-            const t = (so - x1) / (x2 - x1);
-            return y1 + t * (y2 - y1);
+/** Linear interpolation on a piecewise-linear table, for a query inside its stated range. */
+function interpolate(points: Array<[number, number]>, x: number): number {
+    for (let i = 1; i < points.length; i += 1) {
+        const [x1, y1] = points[i - 1];
+        const [x2, y2] = points[i];
+        if (x <= x2) {
+            return y1 + ((x - x1) / (x2 - x1)) * (y2 - y1);
         }
     }
-    return stated[stated.length - 1][column] as number;
+    return points[points.length - 1][1];
 }
 
+/** The union of two knot sets, sorted. A missing `1*` entry is dropped before interpolation. */
+function unionKnots(first: number[], second: number[]): number[] {
+    const out: number[] = [];
+    for (const value of [...first, ...second]) {
+        // A transformed knot can differ from the first table's own value by one ulp. Keep the
+        // first occurrence so a raw breakpoint is never replaced by its arithmetic image.
+        if (!out.some((existing) => Math.abs(existing - value) <= 1e-12)) {
+            out.push(value);
+        }
+    }
+    return out.sort((a, b) => a - b);
+}
+
+function statedSo(column: 1 | 2): Array<[number, number]> {
+    return SOF3.filter((row) => row[column] !== null).map((row) => [
+        row[0],
+        row[column] as number,
+    ]);
+}
+
+/**
+ * Build Stone II's `SWOF`/`SGOF` tables from the deck's three tables.
+ *
+ * The sample nodes are the **union** of each curve's own knots and the transformed `SOF3` knots,
+ * so every breakpoint the deck states is preserved exactly. A missing `krow`/`krog` is the deck's
+ * `1*`, not a zero: interpolation uses the nearest stated neighbours.
+ */
 function builtRelperm(): CompositionalRelPermConfig {
-    const swof: CompositionalSwofRow[] = SWFN.map(([sw, krw]) => ({
+    const krow = statedSo(1);
+    const krog = statedSo(2);
+    const swNodes = unionKnots(
+        SWFN.map(([sw]) => sw),
+        SOF3.map(([so]) => 1 - so),
+    );
+    const sgNodes = unionKnots(
+        SGFN.map(([sg]) => sg),
+        SOF3.map(([so]) => 1 - CONNATE_WATER - so),
+    );
+    const swof: CompositionalSwofRow[] = swNodes.map((sw) => ({
         sw,
-        krw,
-        krow: Math.max(0, interpolateSo(1, 1 - sw)),
+        krw: interpolate(SWFN, sw),
+        krow: Math.max(0, interpolate(krow, 1 - sw)),
         pcow: 0,
     }));
-    const sgof: CompositionalSgofRow[] = SGFN.map(([sg, krg]) => ({
+    const sgof: CompositionalSgofRow[] = sgNodes.map((sg) => ({
         sg,
-        krg,
-        krog: Math.max(0, interpolateSo(2, 1 - CONNATE_WATER - sg)),
+        krg: interpolate(SGFN, sg),
+        krog: Math.max(0, interpolate(krog, 1 - CONNATE_WATER - sg)),
         pcog: 0,
     }));
     return { model: 'stone-ii', swof, sgof };

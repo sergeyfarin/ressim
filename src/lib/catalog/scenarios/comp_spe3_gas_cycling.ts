@@ -9,12 +9,14 @@ import type {
 } from '../../compositional/types';
 
 /**
- * SPE3 Case 1 — gas cycling of a retrograde condensate reservoir.
+ * SPE3 Case 1 — **modified: fixed recycle composition**.
  *
  * Kenyon & Behie (1987) cycle separator gas through a 9×9×4, four-layer reservoir for ten years,
- * then blow it down for five. The nine-component characterization is the Juell–Whitson–Hoda
- * (2009) one pinned and independently admitted in #51; the three-stage separator and the
- * dew-point-crossing contract are in `docs/SPE3_VALIDATION.md`.
+ * then blow it down for five. The published problem recycles the combined separator vapour, whose
+ * composition changes as the reservoir produces. This payload holds the injected stream at the
+ * initial separator-gas composition because the engine has no produced-gas composition feedback
+ * (#97). The 4700 Mscf/d rate is the published rate; the frozen composition is an explicit
+ * admission gap, not a property established by the black-oil deck's missing `WELLSTRE`.
  *
  * **The separator train is fixed at its initial high-pressure primary (815 psia).** #51 records
  * the published rule that the primary switches to 315 psia below 2500 psia reservoir pressure.
@@ -23,13 +25,17 @@ import type {
  * which that matters rather than hiding it; the cycling period is above it in the reference run,
  * and the blowdown tail is labelled in `docs/SPE3_VALIDATION.md`.
  *
- * **Deliberate differences from the deck, recorded rather than hidden.**
+ * **The published project solicited compositional simulations.** The OPM deck available locally
+ * is a black-oil approximation with `VAPOIL`, not the benchmark itself; it is a grid, rock, well
+ * and schedule source. This scenario runs the nine-component Juell–Whitson–Hoda characterization
+ * #51 admitted, so the appropriate published comparison is the compositional participants'
+ * curves, and the independent reference is a JutulDarcy compositional run of this payload.
+ *
+ * **Deliberate differences from the OPM deck implementation, recorded rather than hidden.**
  * - Capillary pressure is zero; the deck's water–oil column is negligible and its gas–oil column
  *   is zero.
- * - The deck is a black-oil model with vaporized oil. This scenario runs the published
- *   nine-component EOS, which is the characterization #51 admitted. The reference is therefore a
- *   compositional JutulDarcy run of this case, not the 1987 black-oil curves.
  * - Surface separation is the three-stage train in the pinned fluid, not the deck's PVT table.
+ * - The recycle composition is frozen; see #97 and `docs/SPE3_VALIDATION.md`.
  */
 
 /** 293.3 ft in metres. */
@@ -47,10 +53,11 @@ const LAYER_KY_MD = [130, 40, 20, 150];
 const LAYER_KZ_MD = [13, 4, 2, 15];
 /** 7315 ft, the top of the reservoir in the deck's `TOPS`. */
 const TOP_DEPTH_M = 7315 * 0.3048;
+/** The pinned EOS's mass density at 3550 psia / 200 °F gives the hydrostatic gradient. */
+const INITIAL_PRESSURE_GRADIENT_BAR_PER_M = 0.030348685;
 /** 3550 psia at the 7500 ft datum, 185 ft below the top. */
-const INITIAL_PRESSURE_BAR = 3550 * 0.0689476 - 185 * 0.3048 * 0.0226;
-/** 0.0226 bar/m, a 0.1 psi/ft gas gradient. */
-const INITIAL_PRESSURE_GRADIENT_BAR_PER_M = 0.0226;
+const INITIAL_PRESSURE_BAR =
+    3550 * 0.0689476 - 185 * 0.3048 * INITIAL_PRESSURE_GRADIENT_BAR_PER_M;
 
 /** The nine-component Juell–Whitson–Hoda original, in the pinned component order. */
 const INITIAL_COMPOSITION = [0.0121, 0.0194, 0.6599, 0.0869, 0.0591, 0.0967, 0.0472, 0.0153, 0.0034];
@@ -202,19 +209,19 @@ function buildCase(): CompositionalCaseConfig {
 
 export const comp_spe3_gas_cycling: Scenario = {
     key: 'comp_spe3_gas_cycling',
-    label: 'SPE3 Compositional Gas Cycling Benchmark',
+    label: 'SPE3 Gas Cycling Benchmark (modified fixed recycle)',
     catalog: {
         group: 'published-benchmark-decks',
         role: 'benchmark',
         caseMode: '3p',
-        parameterSummary: 'SPE3 Case 1 · 9×9×4 nine-component gas cycling · JutulDarcy reference',
+        parameterSummary: 'SPE3 Case 1 (modified) · fixed recycle composition · 9×9×4 nine components · withheld',
     },
     description:
-        'SPE3 Case 1: separator gas is recycled through a four-layer retrograde-condensate reservoir for ten years, then the field is blown down for five. Liquid condenses out of the gas as pressure crosses the dew point, so composition and phase behaviour decide recovery.',
+        'Modified SPE3 Case 1: ten years of gas cycling in a four-layer retrograde-condensate reservoir, then five years of blowdown. The recycle composition is frozen; the published case recycles changing separator vapour (#97).',
     analyticalMethodSummary:
-        'Simulation-only — there is no closed-form solution for multicomponent retrograde condensation with cycling. The independent compositional JutulDarcy reference of the same grid, characterization, separator train and schedule is not committed yet; docs/SPE3_VALIDATION.md records the case and the remaining validation work.',
+        'Simulation-only — there is no closed-form solution for multicomponent retrograde condensation with cycling. The independent compositional JutulDarcy reference of this modified case — same grid, characterization and separator train, fixed recycle stream — is not committed yet; docs/SPE3_VALIDATION.md records the admission gap and the remaining validation work.',
     analyticalMethodReference:
-        'Kenyon, D.E. & Behie, G.A. (1987) “Third SPE Comparative Solution Project: Gas Cycling of Retrograde Condensate Reservoirs”, JPT 39(8), 981–997. Characterization: Juell, Whitson & Hoda (2009), SPE 121252, Tables 3–5. Deck: OPM/opm-tests spe3/SPE3CASE1.DATA, Open Database License. Validation: docs/SPE3_VALIDATION.md.',
+        'Kenyon, D.E. & Behie, G.A. (1987) “Third SPE Comparative Solution Project: Gas Cycling of Retrograde Condensate Reservoirs”, JPT 39(8), 981–997. Characterization: Juell, Whitson & Hoda (2009), SPE 121252, Tables 3–5. Deck: OPM/opm-tests spe3/SPE3CASE1.DATA, Open Database License. This is a modified case: the recycle composition is fixed (#97). Validation: docs/SPE3_VALIDATION.md.',
     chartLayoutKey: 'compositional',
     capabilities: {
         analyticalMethod: 'none',
@@ -244,7 +251,7 @@ export const comp_spe3_gas_cycling: Scenario = {
         initialSaturation: CONNATE_WATER,
         injectorEnabled: true,
         injectorI: 0, injectorJ: 0, injectorKLayers: [0, 1],
-        producerI: NX - 1, producerJ: NY - 1, producerKLayers: [2, 3],
+        producerI: 6, producerJ: 6, producerKLayers: [2, 3],
         injectorControlMode: 'rate',
         producerControlMode: 'rate',
         targetProducerSurfaceRate: PRODUCER_GAS_RATE_M3_PER_DAY,

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { COMPOSITIONAL_SCHEDULE_CASE_SCHEMA } from '../../compositional/types';
 import type { CompositionalCaseConfig } from '../../compositional/types';
 import { getScenario, listScenarios } from '../scenarios';
+import { compositionalWellState } from '../../compositional/runRecord';
 import committedCase from '../../../../opm/compositional/spe3/case.json';
 import { comp_spe3_gas_cycling } from './comp_spe3_gas_cycling';
 
@@ -18,6 +19,13 @@ describe('comp_spe3_gas_cycling', () => {
 
     it('matches the committed native/offline payload', () => {
         expect(committedCase).toEqual(base);
+    });
+
+    it('labels the frozen recycle stream as a modified case with its own admission gap', () => {
+        expect(comp_spe3_gas_cycling.label).toMatch(/modified/i);
+        expect(comp_spe3_gas_cycling.description).toMatch(/frozen|fixed/i);
+        expect(comp_spe3_gas_cycling.description).toMatch(/#97/);
+        expect(comp_spe3_gas_cycling.analyticalMethodReference).toMatch(/#97/);
     });
 
     it('runs the nine-component SPE3 characterization on a scheduled case', () => {
@@ -58,6 +66,22 @@ describe('comp_spe3_gas_cycling', () => {
         }
         expect(producer?.completions.some((completion) => (completion.head_offset_bar ?? 0) > 0)).toBe(true);
         expect(injector?.completions.some((completion) => (completion.head_offset_bar ?? 0) > 0)).toBe(true);
+    });
+
+    it('keeps the generic spatial-profile metadata on the decoded completion cells', () => {
+        const wells = compositionalWellState(base);
+        const at = (id: string) =>
+            wells.filter((well) => well.physical_well_id === id).map((well) => [well.i, well.j, well.k]);
+        const producer = at('PROD');
+        const injector = at('INJ');
+        expect(producer).toEqual([
+            [comp_spe3_gas_cycling.params.producerI, comp_spe3_gas_cycling.params.producerJ, 2],
+            [comp_spe3_gas_cycling.params.producerI, comp_spe3_gas_cycling.params.producerJ, 3],
+        ]);
+        expect(injector).toEqual([
+            [comp_spe3_gas_cycling.params.injectorI, comp_spe3_gas_cycling.params.injectorJ, 0],
+            [comp_spe3_gas_cycling.params.injectorI, comp_spe3_gas_cycling.params.injectorJ, 1],
+        ]);
     });
 
     it('injects the initial separator gas, normalised to a composition', () => {

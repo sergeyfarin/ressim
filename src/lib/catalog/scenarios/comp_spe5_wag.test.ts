@@ -41,7 +41,7 @@ describe('comp_spe5_wag', () => {
         expect(base.grid.box_grid?.layer_kz_md).toEqual([50, 50, 25]);
         expect(base.grid.porosity).toBeCloseTo(0.3, 12);
         expect(base.gravity_enabled).toBe(true);
-        expect(base.initial_pressure_gradient_bar_per_m).toBeCloseTo(0.0605, 12);
+        expect(base.initial_pressure_gradient_bar_per_m).toBeCloseTo(0.054611196, 12);
     });
 
     it('starts on the paper oil and injects the paper gas', () => {
@@ -56,13 +56,25 @@ describe('comp_spe5_wag', () => {
         expect(base.relperm.model).toBe('stone-ii');
         if (base.relperm.model !== 'stone-ii') return;
         const { swof, sgof } = base.relperm;
-        expect(swof).toHaveLength(11);
-        expect(sgof).toHaveLength(12);
+        // The union of the raw table knots and the transformed SOF3 knots; no original
+        // breakpoint may be dropped.
+        expect(swof).toHaveLength(14);
+        expect(sgof).toHaveLength(14);
         for (let i = 1; i < swof.length; i += 1) {
             expect(swof[i].sw).toBeGreaterThan(swof[i - 1].sw);
         }
         for (let i = 1; i < sgof.length; i += 1) {
             expect(sgof[i].sg).toBeGreaterThan(sgof[i - 1].sg);
+        }
+        // Every stated knot survives: the raw SWFN/SGFN nodes and the transformed SOF3 nodes.
+        const swfn = [0.2, 0.2899, 0.3778, 0.4667, 0.5556, 0.6444, 0.7, 0.7333, 0.8222, 0.9111, 1];
+        const sgfn = [0, 0.05, 0.0889, 0.1778, 0.2667, 0.3556, 0.4443, 0.5333, 0.6222, 0.65, 0.7111, 0.8];
+        const sof3 = [0, 0.0889, 0.15, 0.1778, 0.2667, 0.3, 0.3556, 0.4444, 0.5333, 0.6222, 0.7111, 0.75, 0.8];
+        for (const sw of [...swfn, ...sof3.map((so) => 1 - so)]) {
+            expect(swof.some((row) => Math.abs(row.sw - sw) < 1e-12), `Sw = ${sw}`).toBe(true);
+        }
+        for (const sg of [...sgfn, ...sof3.map((so) => 0.8 - so)]) {
+            expect(sgof.some((row) => Math.abs(row.sg - sg) < 1e-12), `Sg = ${sg}`).toBe(true);
         }
         expect(swof[0]).toMatchObject({ sw: 0.2, krw: 0, krow: 1, pcow: 0 });
         expect(swof[swof.length - 1]).toMatchObject({ sw: 1, krw: 1, krow: 0 });

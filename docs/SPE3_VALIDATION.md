@@ -135,25 +135,42 @@ bash scripts/validate-compositional.sh native
 The normal `thermo` gate includes every `comp_spe3_*` test. Julia is an offline fixture producer,
 not a browser dependency. The public scenario picker remains governed by #52's admission gates.
 
-## Reservoir scenario (#52)
+## Reservoir scenario (#52) — modified case
 
-`src/lib/catalog/scenarios/comp_spe3_gas_cycling.ts` builds SPE3 Case 1's 9×9×4 reservoir payload:
-the published nine-component characterization, the deck's four-layer grid and two-completion wells,
+`src/lib/catalog/scenarios/comp_spe3_gas_cycling.ts` builds a **modified** SPE3 Case 1 payload: the
+published nine-component characterization, the deck's four-layer grid and two-completion wells,
 6200 Mscf/d separator-gas production, 4700 Mscf/d recycle for ten years, then shut-in for the
 five-year blowdown. It is exported as `opm/compositional/spe3/case.json` and is **withheld from the
-picker**, because the independent 3-D JutulDarcy reference and its scorecard row are not committed
-yet and the full run has not been exercised. Nothing on this page claims that reservoir run.
+picker**, because the recycle is not yet the published one, the independent 3-D JutulDarcy reference
+and its scorecard row are not committed, and the full run has not been exercised. Nothing on this
+page claims that reservoir run.
 
-Two model decisions are explicit in the payload:
+### Explicit admission gap: frozen recycle composition
 
-- **Fixed separator-gas stream.** The deck has no `WELLSTRE`; the recycled stream is the stock-tank
-  gas the independent flash returns from the initial fluid at the 815 psia / 80 °F primary,
-  normalised to a composition. It is not a time-varying produced-gas recycle; that would be a
-  separately named case.
+The published problem recycles the **combined separator vapour**, whose composition changes as the
+reservoir produces. The engine can prescribe an injected composition but has no produced-gas
+composition feedback, so this payload holds the recycle stream at the initial separator-gas
+composition for ten years. That is a modified case, not unmodified SPE3 Case 1. The fixed 4700
+Mscf/d rate in #51 does not establish a fixed composition, and the black-oil OPM deck's absence of
+`WELLSTRE` cannot establish an EOS stream composition. Tracked as
+[#97](https://github.com/sergeyfarin/ressim/issues/97).
+
+The published project solicited compositional simulations. The OPM deck available locally is a
+black-oil approximation with `VAPOIL`; it supplies the grid, rock, wells and schedule, not the
+benchmark's fluid model. A published comparison should use the compositional participants' curves.
+
+### Other recorded model choices
+
+- **Initial gradient 0.030348685 bar/m**, from the pinned EOS density at the 3550 psia / 200 °F
+  datum. The completion head offsets use the same gradient. A closed-well replay holds the initial
+  pressure (Δp < 0.01 bar over one day) and water saturation (ΔSw < 1e-6).
 - **High-pressure train throughout.** The engine carries one separator train per case. #51 records
   the published rule that the primary switches to 315 psia below 2500 psia reservoir pressure; a
   run that crosses it would need a runtime switch the engine does not have. The blowdown tail is
   where that matters.
+- **Metadata agreement.** The generic `producerI/producerJ` are `(6, 6)`, matching the decoded
+  completion cells, so spatial profiles sample the producer's actual location.
 
-The reservoir case needs the same three things as SPE5: a JutulDarcy 3-D reference, its rows on
-the shared scorecard, and a full-horizon replay. It should not be offered before those exist.
+The reservoir case needs the same things as SPE5: produced-gas recycle (#97), a JutulDarcy 3-D
+reference, its rows on the shared scorecard, and a full-horizon replay. It should not be offered
+before those exist.

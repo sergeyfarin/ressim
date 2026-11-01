@@ -312,7 +312,7 @@
       }
     ]
   },
-  "initial_pressure_bar": 243.4896112,
+  "initial_pressure_bar": 243.05267835022,
   "initial_composition": [
     0.0121,
     0.0194,
@@ -331,12 +331,12 @@
         {
           "cell": 222,
           "well_index": 4.020567052501645,
-          "head_offset_bar": 0.172212
+          "head_offset_bar": 0.2312569797
         },
         {
           "cell": 303,
           "well_index": 30.15425289376234,
-          "head_offset_bar": 0.516636
+          "head_offset_bar": 0.6937709391
         }
       ],
       "control": "surface-rate",
@@ -350,12 +350,12 @@
         {
           "cell": 0,
           "well_index": 15.680211504756416,
-          "head_offset_bar": 0.1033272
+          "head_offset_bar": 0.13875418782
         },
         {
           "cell": 81,
           "well_index": 4.8246804630019735,
-          "head_offset_bar": 0.3099816
+          "head_offset_bar": 0.41626256346
         }
       ],
       "control": "surface-rate",
@@ -394,5 +394,5 @@
     "initial_saturation": 0.16
   },
   "gravity_enabled": true,
-  "initial_pressure_gradient_bar_per_m": 0.0226
+  "initial_pressure_gradient_bar_per_m": 0.030348685
 }
