@@ -281,8 +281,8 @@ The fixture gained a separate `spe5_dew_sweep` block: SPE5's injection gas with 
 heavies at the same trace `t` = 1e-7 to 1e-3 in half-decade steps, at `STCOND` and at 160 °F
 from 10 to 276 bar, 72 states. It sits outside `systems` so the fixture-wide tests do not iterate
 it; `comp_domain_spe5_dew_sweep_matches_the_oracle` gates it on phase state, `L`, `x` and `y` at
-the fixture's 1e-8 bounds, and on derivatives at SPE5's 1e-8 derivative bound against whichever
-oracle each state can support (below).
+the fixture's 1e-8 bounds, and on derivatives against whichever oracle each state can support:
+1e-8 against OPM, 2e-8 against the five-point difference (below).
 
 **The sweep's derivative gap was OPM's `L`, not ResSim's derivatives** (#75 follow-up). A step
 from the dew point the two first differed on `dbeta/dz` by up to 2.4e-6 relative (at
