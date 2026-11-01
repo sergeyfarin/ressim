@@ -828,3 +828,100 @@ fn comp_flash_report_iteration_counts() {
         );
     }
 }
+
+/// SPE5's late-life near-critical states need the full-equilibrium Newton acceleration (#99).
+///
+/// Captured from the 5-day replay restarted at the committed month-192 checkpoint. With plain
+/// successive substitution the last state does not converge at all inside the 5,000-iteration cap
+/// (residual 4.3e-8), and the others need 78, 173 and 4,520 iterations. The damped Newton step on
+/// `[ln K, beta]` reaches the same split in fewer than 100 iterations.
+///
+/// Each case also checks the reconstruction `(1-beta) x + beta y = z` and the fugacity residual, so
+/// this is the physical fixed point rather than merely a different convergence path.
+#[test]
+fn comp_flash_accelerates_spe5_late_life_near_critical_states() {
+    let spec = pinned::spe5().expect("SPE5 specification");
+    let t = spec.reservoir_temperature_k();
+
+    // (label, pressure [bar], z, substitution iterations recorded before the acceleration)
+    let cases: [(&str, f64, [f64; 6], usize); 4] = [
+        (
+            "6179 d cell 40",
+            206.3113,
+            [
+                0.672_609_871_531_558_8,
+                0.215_209_216_835_399_45,
+                0.059_100_987_295_335_33,
+                0.026_608_356_692_862_9,
+                0.020_286_474_704_578_443,
+                0.006_185_092_940_265_036,
+            ],
+            173,
+        ),
+        (
+            "6319 d cell 9",
+            242.9302,
+            [
+                0.707_562_110_750_031_7,
+                0.209_854_144_509_432_4,
+                0.044_403_160_625_828_345,
+                0.013_955_417_480_633_463,
+                0.015_880_544_870_743_224,
+                0.008_344_621_763_330_84,
+            ],
+            4_520,
+        ),
+        (
+            "near-critical beta band",
+            185.74289,
+            [
+                0.612_748_353_310_214_4,
+                0.227_261_520_507_129_7,
+                0.074_081_339_936_770_14,
+                0.042_405_622_842_905_11,
+                0.032_905_440_043_285_834,
+                0.010_597_723_359_694_888,
+            ],
+            78,
+        ),
+        (
+            "6366.59 d cell 10",
+            238.644,
+            [
+                0.697_495_212_171_075_6,
+                0.213_755_961_717_626_15,
+                0.047_823_904_858_267_07,
+                0.015_042_477_891_833_673,
+                0.017_664_421_791_299_064,
+                0.008_218_021_569_898_593,
+            ],
+            5_000,
+        ),
+    ];
+
+    for (label, p_bar, z, substitution_iterations) in cases {
+        let state = flash(&spec, p_bar * 1e5, t, &z, None)
+            .unwrap_or_else(|e| panic!("{label}: accelerated flash failed: {e}"));
+        assert_eq!(state.phase_state, PhaseState::TwoPhase, "{label}");
+        assert!(
+            state.iterations < 100,
+            "{label}: {} iterations after the acceleration, {substitution_iterations} before",
+            state.iterations
+        );
+        assert!(
+            state.equilibrium_residual < super::flash::EQUILIBRIUM_TOLERANCE,
+            "{label}: equilibrium residual {:e}",
+            state.equilibrium_residual
+        );
+
+        let mut worst_reconstruction = 0.0_f64;
+        for i in 0..spec.component_count() {
+            let reconstructed = (1.0 - state.beta) * state.x[i] + state.beta * state.y[i];
+            worst_reconstruction = worst_reconstruction.max((reconstructed - z[i]).abs());
+        }
+        assert!(
+            worst_reconstruction < 1e-9,
+            "{label}: worst reconstruction error {worst_reconstruction:e}"
+        );
+    }
+}
