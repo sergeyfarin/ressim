@@ -783,9 +783,10 @@ const SOURCE_SCENARIOS: Scenario[] = [
  * source compositional curves (#29).
  */
 const WITHHELD_SCENARIOS: Scenario[] = [
-    // #52: the payloads are authored and tested, but SPE5 does not yet complete its published
-    // horizon (#93) and neither case has its independent JutulDarcy reference committed. Shipping
-    // either now would offer a benchmark whose comparison does not exist yet.
+    // #52: the payloads are authored and tested. SPE5 clears the #93 6114.8 d stall, but a later
+    // near-critical region (#99) still blocks the full horizon, and neither case has its
+    // independent JutulDarcy reference committed. Shipping either now would offer a benchmark
+    // whose comparison does not exist yet.
     comp_spe5_wag,
     comp_spe3_gas_cycling,
 ];
