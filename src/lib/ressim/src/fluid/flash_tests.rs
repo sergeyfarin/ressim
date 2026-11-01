@@ -88,6 +88,124 @@ fn comp_rr_ignores_absent_components_exactly() {
 // Flash against the fixture
 // ---------------------------------------------------------------------------------------------
 
+/// The near-critical SPE5 split must stay two-phase across the old stability switch.
+///
+/// The `z` below is cell 17 of the 6114.808 d SPE5 failing state, at 160 °F. At 224.6557 bar the
+/// trial-sum instability is `1 + 9.2e-6`: below OPM's inherited `1e-5` margin but real. The old
+/// margin called this stable, so the flash jumped from `beta = 0.065` to a single liquid and the
+/// mixture molar volume dropped by 5.2e-4 relative. Newton cannot cross that jump, which stalled
+/// the SPE5 water year (#93). The test also scans the true switch at 225.0379687 bar: the first
+/// correction, with a `1e-8` margin, still left `beta = 9.3e-5` there and a `6.2e-7` volume jump,
+/// so the scan and the `1e-8` jump bound are the regression for that second-order defect.
+#[test]
+fn comp_flash_keeps_a_near_critical_split_continuous() {
+    let spec = pinned::spe5().expect("SPE5 specification");
+    let z = [
+        0.676_257_702_181_890_7,
+        0.224_125_387_841_791_12,
+        0.056_109_871_643_677_74,
+        0.016_735_726_469_492_933,
+        0.019_747_981_370_113_514,
+        0.007_023_330_493_033_941,
+    ];
+    let t = spec.reservoir_temperature_k();
+
+    let mut previous_beta = f64::INFINITY;
+    for p_bar in [224.6554, 224.6556, 224.6557, 224.7, 224.8, 224.9] {
+        let state = flash(&spec, p_bar * 1e5, t, &z, None)
+            .unwrap_or_else(|e| panic!("p = {p_bar} bar: {e}"));
+        assert_eq!(
+            state.phase_state,
+            PhaseState::TwoPhase,
+            "p = {p_bar} bar: the split disappeared at the old stability switch"
+        );
+        assert!(
+            state.beta > 0.0 && state.beta < previous_beta,
+            "p = {p_bar} bar: beta = {} did not continue the decreasing split",
+            state.beta
+        );
+        previous_beta = state.beta;
+    }
+
+    // Across the old switch (0.0001 bar) the molar volume must not jump. Before the tolerance
+    // fix this pair straddled a 5.2e-4 relative discontinuity.
+    let below = flash(&spec, 224.6556e5, t, &z, None).expect("below the old switch");
+    let above = flash(&spec, 224.6557e5, t, &z, None).expect("above the old switch");
+    let relative = (above.mixture_molar_volume() - below.mixture_molar_volume()).abs()
+        / above.mixture_molar_volume();
+    assert!(
+        relative < 1e-6,
+        "the molar volume still jumps by {relative:e} relative at the old stability switch"
+    );
+
+    // The true switch is near 225.0379687 bar. A 1e-6 bar scan brackets it, then a 1e-8 bar scan
+    // finds the adjacent pair. This is the regression the first version of the test missed: a
+    // 1e-8 trial-sum margin left a 9.3e-5 vapour fraction and a 6.2e-7 relative volume jump here,
+    // which is above the Newton acceptance tolerance even though 224.9 bar looked continuous.
+    let mut previous = flash(&spec, 225.0375e5, t, &z, None).expect("start of the switch scan");
+    let mut bracket = None;
+    for step in 1..=600 {
+        let p_bar = 225.0375 + step as f64 * 1.0e-6;
+        let current = flash(&spec, p_bar * 1e5, t, &z, None).expect("switch scan");
+        if previous.phase_state == PhaseState::TwoPhase
+            && current.phase_state == PhaseState::SingleLiquid
+        {
+            bracket = Some((p_bar - 1.0e-6, p_bar));
+            break;
+        }
+        previous = current;
+    }
+    let (lo, hi) = bracket.expect("the near-critical split did not switch in 225.0375..225.0385");
+    let mut previous = flash(&spec, lo * 1e5, t, &z, None).expect("below the switch");
+    let mut switch_jump = None;
+    for step in 1..=100 {
+        let p_bar = lo + (hi - lo) * step as f64 / 100.0;
+        let current = flash(&spec, p_bar * 1e5, t, &z, None).expect("fine switch scan");
+        if previous.phase_state == PhaseState::TwoPhase
+            && current.phase_state == PhaseState::SingleLiquid
+        {
+            assert!(
+                previous.beta < 1e-7,
+                "the switch still happens at beta = {:e}",
+                previous.beta
+            );
+            switch_jump = Some(
+                (current.mixture_molar_volume() - previous.mixture_molar_volume()).abs()
+                    / current.mixture_molar_volume(),
+            );
+            break;
+        }
+        previous = current;
+    }
+    let switch_jump = switch_jump.expect("the fine scan did not cross the switch");
+    assert!(
+        switch_jump < 1e-8,
+        "phase classification still jumps the molar volume by {switch_jump:e} relative, above \
+         the nonlinear acceptance tolerance"
+    );
+
+    // A warm seed from just below the new switch must not change the phase state above the old
+    // switch. Before the trial-sum convergence check this point was cold single-phase and warm
+    // two-phase.
+    let seed = flash(&spec, 225.0379e5, t, &z, None).expect("warm seed state");
+    assert_eq!(seed.phase_state, PhaseState::TwoPhase);
+    let cold = flash(&spec, 225.0376e5, t, &z, None).expect("cold above the old switch");
+    let warm = flash(&spec, 225.0376e5, t, &z, Some(&seed.k)).expect("warm above the old switch");
+    assert_eq!(cold.phase_state, PhaseState::TwoPhase);
+    assert_eq!(warm.phase_state, PhaseState::TwoPhase);
+    assert!(
+        (cold.beta - warm.beta).abs() < 1e-9,
+        "warm/cold beta disagree: {:e} vs {:e}",
+        cold.beta,
+        warm.beta
+    );
+
+    // Above the true bubble point the two-phase split ends and the single liquid is correct.
+    let state = flash(&spec, 225.2e5, t, &z, None).expect("p = 225.2 bar");
+    assert_eq!(state.phase_state, PhaseState::SingleLiquid);
+    assert_eq!(state.beta, 0.0);
+}
+
 /// The headline comparison: phase state, vapour fraction and both phase compositions against
 /// OPM's, on every flashed state.
 #[test]

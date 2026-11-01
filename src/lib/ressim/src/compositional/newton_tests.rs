@@ -479,3 +479,89 @@ fn comp_newton_uses_one_step_scale_for_the_whole_system() {
         );
     }
 }
+
+/// A one-cell depletion whose Newton step crosses the near-critical phase switch.
+///
+/// At 225.0379688 bar the cell is single-phase; removing `1e-6` of its inventory in one day drops
+/// the pressure into the two-phase branch. Before the stability-test correction the phase switch
+/// jumped the inventory across a `6.2e-7` relative discontinuity and the iteration alternated
+/// between residuals of roughly `4.8e-7` and `8.9e-7`; it now converges in three iterations.
+#[test]
+fn comp_newton_one_cell_near_critical_depletion_crosses_the_switch() {
+    let spec = pinned::spe5().expect("SPE5 specification");
+    let z5 = [
+        0.676_257_702_181_890_7,
+        0.224_125_387_841_791_12,
+        0.056_109_871_643_677_74,
+        0.016_735_726_469_492_933,
+        0.019_747_981_370_113_514,
+    ];
+    let p0 = 225.037_968_8;
+    let case = column(spec, 1, p0, &z5);
+    let rock = case.rock();
+    let previous = case.previous();
+    let sources = vec![previous[0].iter().map(|m| -1.0e-6 * m).collect::<Vec<_>>()];
+
+    let initial = crate::fluid::flash::flash(
+        &case.spec,
+        p0 * 1e5,
+        case.spec.reservoir_temperature_k(),
+        &case.state.cell(0).overall_composition(),
+        None,
+    )
+    .expect("initial flash");
+    assert_eq!(
+        initial.phase_state,
+        crate::fluid::flash::PhaseState::SingleLiquid
+    );
+
+    let problem = NewtonProblem {
+        spec: &case.spec,
+        layout: &case.layout,
+        rock,
+        relperm: &relperm(),
+        faces: &case.faces,
+        wells: &[],
+        previous_moles: &previous,
+        sources: &sources,
+        dt_days: 1.0,
+    };
+    let (outcome, report) = solve_newton(&problem, &case.state, NewtonOptions::default());
+    let accepted =
+        outcome.unwrap_or_else(|e| panic!("near-critical depletion failed: {e} ({report:?})"));
+
+    assert!(
+        report.iterations <= 5,
+        "the cross-switch step took {} iterations: {:?}",
+        report.iterations,
+        report.residual_history
+    );
+    let last = *report.residual_history.last().expect("residual history");
+    assert!(last < 1e-8, "final scaled residual {last:e}");
+    assert!(
+        accepted.cell(0).pressure_bar < p0,
+        "production must lower the pressure"
+    );
+
+    let final_state = crate::fluid::flash::flash(
+        &case.spec,
+        accepted.cell(0).pressure_bar * 1e5,
+        case.spec.reservoir_temperature_k(),
+        &accepted.cell(0).overall_composition(),
+        None,
+    )
+    .expect("final flash");
+    assert_eq!(
+        final_state.phase_state,
+        crate::fluid::flash::PhaseState::TwoPhase,
+        "the depletion did not cross into the two-phase branch"
+    );
+    println!(
+        "near-critical depletion: p {p0:.9} -> {:.9} bar, {:?} -> {:?}, iterations={}, residuals={:?}",
+        accepted.cell(0).pressure_bar,
+        initial.phase_state,
+        final_state.phase_state,
+        report.iterations,
+        report.residual_history
+    );
+}

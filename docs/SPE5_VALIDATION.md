@@ -8,12 +8,17 @@ differs from the OPM deck implementation, and what still blocks offering it.
 **Status: authored, not shipped.** `src/lib/catalog/scenarios/comp_spe5_wag.ts` builds the complete
 payload and is withheld from the picker. Two things are outstanding:
 
-1. The 20-year replay stalls in Newton at **6114.808 d (month 201, year 17)**. See
-   [#93](https://github.com/sergeyfarin/ressim/issues/93) for the reproducer.
+1. The full 20-year replay still stops in a later near-critical region around **6375 d (month
+   209)**, where successive substitution needs more than 20,000 iterations and the Newton solve then
+   cuts the timestep. This is separate from #93 and is tracked as
+   [#99](https://github.com/sergeyfarin/ressim/issues/99).
 2. The independent JutulDarcy compositional reference is not committed yet. No UI overlay or
    scorecard row exists for this case.
 
-The scenario is not presented as validated, and no result from it should be quoted until both land.
+[#93](https://github.com/sergeyfarin/ressim/issues/93) itself — the **6114.808 d** stall — was a
+near-critical stability-tolerance defect in the flash, fixed below. The month-201 segment now
+clears, but the scenario is still not presented as validated, and no result from it should be
+quoted until the later region and the reference land.
 
 ## Case definition
 
@@ -69,6 +74,63 @@ requests the full 240 reports. The compositional run loop has no surface-rate hi
 not evaluate termination policies (#98), so neither criterion is enforced yet. This must be fixed
 before a published-trajectory comparison or an explicit stopping rule is claimed.
 
+### Late-life stall (#93): fixed
+
+The replay used to stop at **6114.808 d** with `Budget` over `Nonlinear: Newton did not converge in
+20 iterations (scaled residual 1.0414404786341731e-3)`. The trigger is a near-critical state in the
+top-layer cells next to the water injector (cell 17 and its mirror cell 23). At 160 °F and
+`z = (0.676258, 0.224125, 0.056110, 0.016736, 0.019748, 0.007023)` the two-phase split has
+`beta = 0.0649` at 224.6557 bar, and the true bubble point is about 225.0 bar.
+
+The Michelsen stability test inherited OPM's `sum W >= 1 + 1e-5` acceptance margin. At 224.6557 bar
+the two-phase branch has lower Gibbs energy and the trial sum is only `1 + 9.2e-6`, inside that
+margin, so the test called the feed stable. The flash then jumped from a two-phase split with
+`beta = 0.0649` to a single liquid; the mixture molar volume dropped by 5.2e-4 relative and the
+scaled residual changed sign across the jump. A monotone line search cannot cross a residual
+discontinuity, and the full Newton iteration two-cycled between the branches. Cutting the timestep
+only shrinks the jump until the whole transition is avoided; it does not make the step affordable.
+
+`TRIAL_SUM_TOLERANCE` is now `1e-12`, and the trial iteration must itself stop changing the trial
+sum to `1e-14` relative before the verdict is used. The squared K-update residual alone does not
+bound the trial sum — the sum is stationary at the fixed point, so its error is second order in K
+and judging it from the residual needs an unmeasured curvature factor — which is why the sum-step
+check is explicit. The split now continues from `beta = 0.0649` to zero; the true switch is at
+**225.0379687 bar**, where `beta = 1.1e-8` and the relative molar-volume jump is **8.9e-11**, below
+the `1e-8` nonlinear acceptance tolerance. A warm seed from below the switch and a cold start agree
+at 225.0376 bar, where the first version of this fix had cold single-phase and warm two-phase.
+
+The switch regression is `comp_flash_keeps_a_near_critical_split_continuous` (it scans through the
+true switch and bounds the volume jump), and the one-cell Newton regression is
+`comp_newton_one_cell_near_critical_depletion_crosses_the_switch` (single → two-phase in three
+iterations). OPM's scalar flash carries the same `1e-5` margin and switches earlier; the committed
+OPM fixtures still agree after the change: 84 stability verdicts, 47 flash phase states and 140
+trajectory states.
+
+The month-192 → month-201 segment now clears in 56 calls and 117 s. A later near-critical region
+around **6375 d (month 209)** is a separate gap: the flash's successive substitution needs about
+20,700 iterations even with a 100,000 cap, and the Newton solve then needs six timestep cuts to
+advance 0.156 d. That is a flash-acceleration and nonlinearity problem, not the stability verdict
+fixed here; it is tracked as [#99](https://github.com/sergeyfarin/ressim/issues/99). The 20-year
+replay therefore does not complete yet and the scenario stays withheld.
+
+Evidence:
+
+```bash
+# The exact failing call, from the committed pre-fix state: one attempt, 5 Newton iterations.
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
+  comp_spe5_resume_192_first_stalled_call_converges -- --ignored --nocapture
+
+# The month-192 to month-201 segment that used to stall: 56 calls, 117 s.
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
+  comp_spe5_resume_192_clears_the_201_report -- --ignored --nocapture
+```
+
+The 16-year from-scratch replay (`comp_spe5_case_reaches_the_late_life_checkpoint`) also passes
+with the fix, in about 220 s. The unit regressions are part of the thermodynamic gate:
+`comp_stability_detects_a_near_critical_tangent_plane` pins the verdict on both sides of the true
+bubble point, and `comp_flash_keeps_a_near_critical_split_continuous` pins the continuous split and
+the no-jump molar volume across the old switch.
+
 ## Reference plan
 
 1. Generate the JutulDarcy compositional reference from the same `case.json` (grid, EOS, BIC,
@@ -92,19 +154,25 @@ cargo test --manifest-path src/lib/ressim/Cargo.toml comp_spe5_ -- --nocapture
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
   comp_spe5_case_accepts_its_first_water_and_gas_slugs -- --ignored --nocapture
 
-# Everything up to the late-life stall; release and --ignored because it is minutes of work.
+# Everything up to the month-192 checkpoint; release and --ignored because it is minutes of work.
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
   comp_spe5_case_reaches_the_late_life_checkpoint -- --ignored --nocapture
 
-# The stall itself (#93). The committed seed is the accepted state at month 192.
+# #93: the exact failing call from the committed pre-fix state; seconds.
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
-  comp_spe5_resume_192_reproduces_the_stall -- --ignored --nocapture
+  comp_spe5_resume_192_first_stalled_call_converges -- --ignored --nocapture
+
+# #93: the month-192 to month-201 segment from the pre-fix seed; release and --ignored.
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
+  comp_spe5_resume_192_clears_the_201_report -- --ignored --nocapture
 ```
 
-The resumed reproducer fails at the same 6114.808 d with `Budget` over `Nonlinear: Newton did not
-converge in 20 iterations (scaled residual 1.04e-3)`. Smaller timesteps and sparse LU reproduce it.
-Replacing the producer control with its BHP limit reproduces it. Raising the Newton budget to 50
-was started, did not finish the segment within ten minutes, and was stopped: that experiment is
-**inconclusive**, not evidence that the iteration budget is irrelevant.
+The failing call now completes in one timestep attempt and 5 Newton iterations. The pre-fix failure
+was not a linear-solve or timestep-size defect: smaller timesteps and sparse LU reproduced it,
+replacing the producer control with its BHP limit reproduced it, and a monotone line search stalled
+at the residual jump. The 50-iteration experiment recorded in #93 was inconclusive and remains so;
+the fix does not rely on it.
 
-No black-oil or compositional tolerance is changed by this case.
+No black-oil or compositional tolerance is changed by this case. The stability margin change is a
+thermodynamic correction, not a case-specific tolerance: it is covered by the two unit regressions
+above and by the full `comp_stability_`/`comp_flash_` gate.

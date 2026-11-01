@@ -68,6 +68,55 @@ fn comp_stability_verdict_matches_the_fixture_on_every_state() {
     );
 }
 
+/// A near-critical SPE5 feed whose tangent-plane signal is smaller than the old `1e-5` margin.
+///
+/// At 160 °F this CO2-rich mixture has a two-phase split with `beta` falling smoothly from 0.065
+/// to zero between 224.66 and 225.04 bar. The trial sum on the unstable side is only
+/// `1 + O(1e-6)`, so a `1e-5` acceptance margin calls the feed stable and the flash jumps from a
+/// two-phase split to a single liquid. That jump is what stalled the SPE5 water year (#93). This
+/// pins the verdict on both sides of the true bubble point, not on the old switch.
+#[test]
+fn comp_stability_detects_a_near_critical_tangent_plane() {
+    let spec = pinned::spe5().expect("SPE5 specification");
+    let z = [
+        0.676_257_702_181_890_7,
+        0.224_125_387_841_791_12,
+        0.056_109_871_643_677_74,
+        0.016_735_726_469_492_933,
+        0.019_747_981_370_113_514,
+        0.007_023_330_493_033_941,
+    ];
+    let t = spec.reservoir_temperature_k();
+
+    for p_bar in [224.655_7, 224.7, 224.8, 224.9] {
+        let verdict = test_stability(&spec, p_bar * 1e5, t, &z, None)
+            .unwrap_or_else(|e| panic!("p = {p_bar} bar: {e}"));
+        assert!(
+            matches!(verdict, StabilityVerdict::Unstable { .. }),
+            "p = {p_bar} bar: the two-phase branch has lower Gibbs energy, but the stability \
+             test called the feed stable"
+        );
+    }
+
+    // Above the old switch but below the true switch, a warm seed from just below must not
+    // change the verdict. Before the trial sum was converged, this point was cold stable and
+    // warm unstable.
+    let warm_state = super::flash::flash(&spec, 225.0379e5, t, &z, None).expect("warm seed flash");
+    assert_eq!(warm_state.phase_state, super::flash::PhaseState::TwoPhase);
+    let cold = test_stability(&spec, 225.0376e5, t, &z, None).expect("cold at 225.0376");
+    let warm =
+        test_stability(&spec, 225.0376e5, t, &z, Some(&warm_state.k)).expect("warm at 225.0376");
+    assert!(matches!(cold, StabilityVerdict::Unstable { .. }));
+    assert!(
+        matches!(warm, StabilityVerdict::Unstable { .. }),
+        "the warm seed changed the phase verdict at 225.0376 bar"
+    );
+
+    // Above the true bubble point the single liquid is the stable branch.
+    let verdict = test_stability(&spec, 225.2e5, t, &z, None).expect("p = 225.2 bar");
+    assert!(matches!(verdict, StabilityVerdict::Stable));
+}
+
 /// The converged verdict must not depend on the starting guess. If it did, a cell's phase state
 /// would be a function of iteration history rather than of the fluid — and warm-starting from the
 /// previous timestep, which C10 will do everywhere, would change physics.

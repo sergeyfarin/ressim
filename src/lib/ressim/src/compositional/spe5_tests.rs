@@ -157,10 +157,12 @@ fn comp_spe5_case_accepts_its_first_water_and_gas_slugs() {
 
 /// Sixteen years of WAG. Release only: the monthly replay is minutes of work.
 ///
-/// The last four years are blocked by the late-life Newton stall filed as #93. Stopping before it
-/// is a regression replay of everything up to the stall, not a claim that Case 1 completes.
+/// This is the checkpoint generator and the from-scratch replay up to the month-192 seed. The
+/// month-192 → 201 segment that [#93](https://github.com/sergeyfarin/ressim/issues/93) used to
+/// stall is covered by `comp_spe5_resume_192_clears_the_201_report`; the later horizon is blocked
+/// by the separate flash-acceleration gap (#99).
 #[test]
-#[ignore = "16-year SPE5 replay; #93 blocks the last four years"]
+#[ignore = "16-year SPE5 replay; run with --release"]
 fn comp_spe5_case_reaches_the_late_life_checkpoint() {
     let mut case = CompositionalCase::new(case_config()).expect("admissible");
     let dt = 30.4375;
@@ -215,13 +217,62 @@ fn comp_spe5_case_reaches_the_late_life_checkpoint() {
     );
 }
 
-/// #93: restore the accepted month-192 state and walk into the late-life stall.
+/// Fast #93 regression: the exact failing call must converge cleanly.
 ///
-/// This is a reproducer, not an acceptance test. It fails if the stall disappears, which is the
-/// signal that #93 has been fixed and the full 20-year replay should replace it.
+/// `stall_call_058.json` is the accepted state at 6114.808 d, immediately before the call that
+/// used to exhaust all 20 Newton iterations at a scaled residual of 1.04e-3. With the
+/// near-critical stability fix the same call takes a handful.
 #[test]
-#[ignore = "reproduces #93 from the committed month-192 checkpoint; run with --release"]
-fn comp_spe5_resume_192_reproduces_the_stall() {
+#[ignore = "fast #93 regression from the committed failing state; run with --release"]
+fn comp_spe5_resume_192_first_stalled_call_converges() {
+    let text = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../opm/compositional/spe5/stall_call_058.json"),
+    )
+    .expect("read the committed SPE5 failing state");
+    let checkpoint: Checkpoint = serde_json::from_str(&text).expect("parse the checkpoint");
+    assert!(
+        (checkpoint.time_days - 6114.808).abs() < 0.01,
+        "the failing-state fixture moved to {:.3} d",
+        checkpoint.time_days
+    );
+    let mut case = CompositionalCase::restore(&checkpoint).expect("restore the failing state");
+    let outcome = case.step(3.129044);
+    assert!(
+        outcome.succeeded(),
+        "the #93 call failed again at {:.3} d: {:?}",
+        outcome.time_days,
+        outcome.failure
+    );
+    assert_eq!(outcome.attempts, 1, "the call still needs a timestep cut");
+    assert!(
+        outcome.newton_iterations <= 10,
+        "the call converged only after {} Newton iterations",
+        outcome.newton_iterations
+    );
+    println!(
+        "SPE5 #93 call: t={:.3} d, dt={:.3} d, attempts={}, Newton iterations={}",
+        outcome.time_days,
+        outcome.accepted_dt_days.expect("accepted"),
+        outcome.attempts,
+        outcome.newton_iterations
+    );
+}
+
+/// #93 regression: the month-192 → 201 segment that used to stall.
+///
+/// The seed is the **pre-fix** checkpoint that reproduced the 6114.808 d stall. It is deliberately
+/// kept rather than regenerated, so the regression starts exactly where the solver used to stop.
+/// Before the fix this failed after 58 calls with `Budget` over `Nonlinear: Newton did not converge`
+/// at a scaled residual of 1.04e-3; the flash jumped from a real two-phase split to a single liquid
+/// at a near-critical bubble point and Newton could not cross the jump.
+///
+/// The segment ends at the month-201 report the #93 reproducer named. A later near-critical region
+/// around 6375 d (month 209) needs flash acceleration and is tracked separately as #99; it is not
+/// part of this regression.
+#[test]
+#[ignore = "SPE5 month-192 to month-201 segment; run with --release"]
+fn comp_spe5_resume_192_clears_the_201_report() {
     let text = std::fs::read_to_string(
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../../opm/compositional/spe5/stall_192.json"),
@@ -231,24 +282,34 @@ fn comp_spe5_resume_192_reproduces_the_stall() {
     let mut case = CompositionalCase::restore(&checkpoint).expect("restore the checkpoint");
     let target = 201.0 * 30.4375;
     let budget = 80;
-    for call in 1..=budget {
+    let started = std::time::Instant::now();
+    let mut calls = 0;
+    while case.time_days() < target - 1e-9 {
+        calls += 1;
+        assert!(
+            calls <= budget,
+            "SPE5 did not reach month 201 within {budget} calls (last t={:.3} d)",
+            case.time_days()
+        );
         let dt = (target - case.time_days()).min(5.0);
         let outcome = case.step(dt);
-        if !outcome.succeeded() {
-            let failure = outcome.failure.expect("a failed step carries a failure");
-            println!(
-                "SPE5 stalled at {:.3} d after {} calls: {} — {}",
-                outcome.time_days, call, failure.kind, failure.message
-            );
-            assert_eq!(failure.kind, "Budget");
-            assert!(failure.message.contains("Nonlinear"), "{}", failure.message);
-            assert!(
-                (outcome.time_days - 6114.808).abs() < 0.01,
-                "stall moved to {:.3} d; update #93",
-                outcome.time_days
-            );
-            return;
-        }
+        assert!(
+            outcome.succeeded(),
+            "SPE5 failed at {:.3} d after {calls} calls: {:?}",
+            outcome.time_days,
+            outcome.failure
+        );
     }
-    panic!("the #93 stall did not reproduce within {budget} calls; update the issue");
+    let snapshot = case.snapshot();
+    assert!(
+        (snapshot.time_days - target).abs() < 1e-6,
+        "resumed replay ended at {:.6} d, expected {target:.6}",
+        snapshot.time_days
+    );
+    assert!(snapshot.pressure.iter().all(|p| p.is_finite() && *p > 0.0));
+    println!(
+        "SPE5 cleared month 201: t={:.3} d, {calls} calls, wall={:?}",
+        snapshot.time_days,
+        started.elapsed()
+    );
 }
