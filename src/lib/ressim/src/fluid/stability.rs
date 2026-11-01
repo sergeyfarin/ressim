@@ -16,14 +16,16 @@
 //! `/usr/include/opm/material/constraintsolvers/PTFlash.hpp`, `phaseStabilityTest_` and
 //! `checkStability_`, from `libopm-common-dev 2026.04-1~noble`. Two trial phases are tested — one
 //! vapour-like, seeded `W_i = K_i z_i`, and one liquid-like, seeded `W_i = z_i / K_i` — and the
-//! feed is stable only if neither indicates a lower tangent plane. The trivial-solution and
-//! residual thresholds (`1e-5` and `1e-10`) are that source's, reproduced so this module and
+//! feed is stable only if neither indicates a lower tangent plane. The trivial-solution threshold
+//! (`1e-5`) is that source's, reproduced so this module and
 //! `opm/compositional/ptflash_fixtures.json` agree on every verdict.
 //!
-//! One threshold deliberately departs from the source: the trial-sum margin is `1e-8`, not OPM's
-//! `1e-5`. See [`TRIAL_SUM_TOLERANCE`] and the SPE5 late-life stall (#93); OPM's margin is wider
-//! than a near-critical feed's tangent-plane signal, and the resulting premature phase switch is
-//! a residual discontinuity the reservoir Newton solve cannot cross.
+//! Two thresholds deliberately depart from the source. The trial-sum margin is `1e-12`, not OPM's
+//! `1e-5`; OPM's margin is wider than a near-critical feed's tangent-plane signal, and the
+//! resulting premature phase switch is a residual discontinuity the reservoir Newton solve cannot
+//! cross. The trial update residual is `1e-15`, not OPM's `1e-10`, because the trial sum itself
+//! must be measured before the verdict is used (see [`TRIAL_SUM_STEP_TOLERANCE`]). See
+//! [`TRIAL_SUM_TOLERANCE`] and the SPE5 late-life stall (#93).
 //!
 //! The failure contract is the other departure from the source: OPM throws after 20000
 //! iterations, and here a non-converged trial is a typed [`StabilityError`] carrying the iteration
@@ -43,17 +45,29 @@ const MAX_TRIAL_ITERATIONS: usize = 20_000;
 /// OPM's source uses `1e-5`, but that margin is larger than the tangent-plane signal of a
 /// near-critical feed: at the SPE5 bubble point the trial sum is `1 + 9.2e-6`, so the source
 /// threshold calls a genuinely unstable state stable and the flash jumps from a two-phase split
-/// with `beta = 0.065` to a single liquid. The trial equilibrium is converged to a residual of
-/// `1e-10`, which bounds the trial-sum error far below this value, so the margin only needs to
-/// cover the converged trial's own noise. (See #93.)
-const TRIAL_SUM_TOLERANCE: f64 = 1e-8;
+/// with `beta = 0.065` to a single liquid. The trial sum itself is now required to stop moving to
+/// within [`TRIAL_SUM_STEP_TOLERANCE`] (`1e-14`), so this `1e-12` margin keeps the phase switch
+/// at `beta ~ 1e-8` rather than at a numerically ambiguous point. (See #93.)
+const TRIAL_SUM_TOLERANCE: f64 = 1e-12;
 
 /// `sum (ln K_i)^2` below this means the trial collapsed onto the feed — the trivial solution,
 /// which carries no information about instability.
 const TRIVIAL_SOLUTION_TOLERANCE: f64 = 1e-5;
 
 /// `sum (R_i - 1)^2` below this means the trial phase converged.
-const TRIAL_RESIDUAL_TOLERANCE: f64 = 1e-10;
+const TRIAL_RESIDUAL_TOLERANCE: f64 = 1e-15;
+
+/// The largest relative change in the trial sum between the last two substitution steps.
+///
+/// The squared update residual does not bound the trial sum directly: the sum is stationary at
+/// the fixed point, so its error is second order in the K error, and judging it from the K
+/// residual alone needs an unmeasured curvature factor. Requiring the sum itself to stop moving
+/// gives the phase decision a measured noise floor. The check is relative to `1 + |sum|` because
+/// far from the boundary the trial sum can be large and its last-bit noise scales with it; near
+/// the boundary the sum is order one and this reduces to the absolute `1e-14`.
+/// [`TRIAL_SUM_TOLERANCE`] is two orders above this, so a verdict cannot flip on the trial
+/// iteration's own roundoff.
+const TRIAL_SUM_STEP_TOLERANCE: f64 = 1e-14;
 
 /// What the stability test concluded.
 #[derive(Clone, Debug, PartialEq)]
@@ -233,10 +247,24 @@ fn run_trial(
             k_norm += math::ln(k[i]) * math::ln(k[i]);
         }
 
+        // Recompute the trial sum at the updated K. The sum is what the phase decision reads,
+        // and it must stop moving before the decision is allowed to use it.
+        let mut next_sum = 0.0;
+        for i in 0..n {
+            if !active[i] {
+                continue;
+            }
+            next_sum += match trial {
+                TrialPhase::VapourLike => k[i] * z[i],
+                TrialPhase::LiquidLike => z[i] / k[i],
+            };
+        }
+
         let trivial = k_norm < TRIVIAL_SOLUTION_TOLERANCE;
-        if trivial || residual_norm < TRIAL_RESIDUAL_TOLERANCE {
+        let sum_stopped = (next_sum - sum).abs() < TRIAL_SUM_STEP_TOLERANCE * (1.0 + sum.abs());
+        if trivial || (residual_norm < TRIAL_RESIDUAL_TOLERANCE && sum_stopped) {
             return Ok(TrialOutcome {
-                sum,
+                sum: next_sum,
                 trivial,
                 composition: normalized,
             });

@@ -308,10 +308,12 @@ within 3e-9 of ResSim on every column across the plateau and 4e-7 to 2.4e-6 from
 cold, the perturbed flashes add up to 3.5e-7 of iteration-path noise at `spe5_dew_p20_t1e-3`,
 which is why the gate warm-starts them. Verdict: an **oracle limit**. ResSim's derivatives are
 right and OPM's plain-`ssi` references are not, to that extent. The gate now checks derivatives
-against OPM on the 26 states whose reference closes its mass balance to 1e-12 (`dbeta`, `dx`,
-`dy`, `dcL`, `dcV`; worst 1.9e-9), and `dL/du` against the difference at a 5e-3 step on the other
-7 (worst 4.2e-9). The same bisection floor is in the flash comparison too: the sweep's worst
-\|ΔL\| of 3.7e-11 (`spe5_dew_stcond_t3e-5`) is OPM's error, 4.7e-7 relative.
+against OPM on the states whose reference closes its mass balance to 1e-12 (24 on the current
+oracle build; `dbeta`, `dx`, `dy`, `dcL`, `dcV`; worst 1.9e-9), and `dL/du` against the difference
+at a 5e-3 step on the other 9. The smallest-step stencil floor moved from 1.0e-8 to 1.6e-8 when the
+near-critical switch was moved to `beta ~ 1e-8` (#93), so that difference-only bound is 2e-8; the
+OPM-checked bound stays 1e-8. The same bisection floor is in the flash comparison too: the sweep's
+worst |ΔL| of 3.7e-11 (`spe5_dew_stcond_t3e-5`) is OPM's error, 4.7e-7 relative.
 
 The derivative pass still forms the liquid denominators as `1 + beta (K_i - 1)`, as the flash did
 before #75. `FlashState` carries only `beta`, so the derivatives inherit a relative error of

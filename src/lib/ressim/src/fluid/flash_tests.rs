@@ -94,7 +94,9 @@ fn comp_rr_ignores_absent_components_exactly() {
 /// trial-sum instability is `1 + 9.2e-6`: below OPM's inherited `1e-5` margin but real. The old
 /// margin called this stable, so the flash jumped from `beta = 0.065` to a single liquid and the
 /// mixture molar volume dropped by 5.2e-4 relative. Newton cannot cross that jump, which stalled
-/// the SPE5 water year (#93). The split is physical and continuous; this pins it.
+/// the SPE5 water year (#93). The test also scans the true switch at 225.0379687 bar: the first
+/// correction, with a `1e-8` margin, still left `beta = 9.3e-5` there and a `6.2e-7` volume jump,
+/// so the scan and the `1e-8` jump bound are the regression for that second-order defect.
 #[test]
 fn comp_flash_keeps_a_near_critical_split_continuous() {
     let spec = pinned::spe5().expect("SPE5 specification");
@@ -134,6 +136,68 @@ fn comp_flash_keeps_a_near_critical_split_continuous() {
     assert!(
         relative < 1e-6,
         "the molar volume still jumps by {relative:e} relative at the old stability switch"
+    );
+
+    // The true switch is near 225.0379687 bar. A 1e-6 bar scan brackets it, then a 1e-8 bar scan
+    // finds the adjacent pair. This is the regression the first version of the test missed: a
+    // 1e-8 trial-sum margin left a 9.3e-5 vapour fraction and a 6.2e-7 relative volume jump here,
+    // which is above the Newton acceptance tolerance even though 224.9 bar looked continuous.
+    let mut previous = flash(&spec, 225.0375e5, t, &z, None).expect("start of the switch scan");
+    let mut bracket = None;
+    for step in 1..=600 {
+        let p_bar = 225.0375 + step as f64 * 1.0e-6;
+        let current = flash(&spec, p_bar * 1e5, t, &z, None).expect("switch scan");
+        if previous.phase_state == PhaseState::TwoPhase
+            && current.phase_state == PhaseState::SingleLiquid
+        {
+            bracket = Some((p_bar - 1.0e-6, p_bar));
+            break;
+        }
+        previous = current;
+    }
+    let (lo, hi) = bracket.expect("the near-critical split did not switch in 225.0375..225.0385");
+    let mut previous = flash(&spec, lo * 1e5, t, &z, None).expect("below the switch");
+    let mut switch_jump = None;
+    for step in 1..=100 {
+        let p_bar = lo + (hi - lo) * step as f64 / 100.0;
+        let current = flash(&spec, p_bar * 1e5, t, &z, None).expect("fine switch scan");
+        if previous.phase_state == PhaseState::TwoPhase
+            && current.phase_state == PhaseState::SingleLiquid
+        {
+            assert!(
+                previous.beta < 1e-7,
+                "the switch still happens at beta = {:e}",
+                previous.beta
+            );
+            switch_jump = Some(
+                (current.mixture_molar_volume() - previous.mixture_molar_volume()).abs()
+                    / current.mixture_molar_volume(),
+            );
+            break;
+        }
+        previous = current;
+    }
+    let switch_jump = switch_jump.expect("the fine scan did not cross the switch");
+    assert!(
+        switch_jump < 1e-8,
+        "phase classification still jumps the molar volume by {switch_jump:e} relative, above \
+         the nonlinear acceptance tolerance"
+    );
+
+    // A warm seed from just below the new switch must not change the phase state above the old
+    // switch. Before the trial-sum convergence check this point was cold single-phase and warm
+    // two-phase.
+    let seed = flash(&spec, 225.0379e5, t, &z, None).expect("warm seed state");
+    assert_eq!(seed.phase_state, PhaseState::TwoPhase);
+    let cold = flash(&spec, 225.0376e5, t, &z, None).expect("cold above the old switch");
+    let warm = flash(&spec, 225.0376e5, t, &z, Some(&seed.k)).expect("warm above the old switch");
+    assert_eq!(cold.phase_state, PhaseState::TwoPhase);
+    assert_eq!(warm.phase_state, PhaseState::TwoPhase);
+    assert!(
+        (cold.beta - warm.beta).abs() < 1e-9,
+        "warm/cold beta disagree: {:e} vs {:e}",
+        cold.beta,
+        warm.beta
     );
 
     // Above the true bubble point the two-phase split ends and the single liquid is correct.

@@ -90,14 +90,23 @@ scaled residual changed sign across the jump. A monotone line search cannot cros
 discontinuity, and the full Newton iteration two-cycled between the branches. Cutting the timestep
 only shrinks the jump until the whole transition is avoided; it does not make the step affordable.
 
-`TRIAL_SUM_TOLERANCE` is now `1e-8`. The converged trial's residual is `1e-10`, which bounds the
-trial-sum error far below the new margin, while the physical signal at the switch is `9.2e-6`. The
-flash now continues the split smoothly from `beta = 0.0649` to zero and the single liquid above the
-true bubble point. OPM's scalar flash carries the same `1e-5` margin and switches at the same point;
-the committed OPM fixtures still agree on every state after the change (47 stability/flash states
-and 140 trajectory states).
+`TRIAL_SUM_TOLERANCE` is now `1e-12`, and the trial iteration must itself stop changing the trial
+sum to `1e-14` relative before the verdict is used. The squared K-update residual alone does not
+bound the trial sum — the sum is stationary at the fixed point, so its error is second order in K
+and judging it from the residual needs an unmeasured curvature factor — which is why the sum-step
+check is explicit. The split now continues from `beta = 0.0649` to zero; the true switch is at
+**225.0379687 bar**, where `beta = 1.1e-8` and the relative molar-volume jump is **8.9e-11**, below
+the `1e-8` nonlinear acceptance tolerance. A warm seed from below the switch and a cold start agree
+at 225.0376 bar, where the first version of this fix had cold single-phase and warm two-phase.
 
-The month-192 → month-201 segment now clears in 55 calls and 84 s. A later near-critical region
+The switch regression is `comp_flash_keeps_a_near_critical_split_continuous` (it scans through the
+true switch and bounds the volume jump), and the one-cell Newton regression is
+`comp_newton_one_cell_near_critical_depletion_crosses_the_switch` (single → two-phase in three
+iterations). OPM's scalar flash carries the same `1e-5` margin and switches earlier; the committed
+OPM fixtures still agree after the change: 84 stability verdicts, 47 flash phase states and 140
+trajectory states.
+
+The month-192 → month-201 segment now clears in 56 calls and 117 s. A later near-critical region
 around **6375 d (month 209)** is a separate gap: the flash's successive substitution needs about
 20,700 iterations even with a 100,000 cap, and the Newton solve then needs six timestep cuts to
 advance 0.156 d. That is a flash-acceleration and nonlinearity problem, not the stability verdict
@@ -111,13 +120,13 @@ Evidence:
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
   comp_spe5_resume_192_first_stalled_call_converges -- --ignored --nocapture
 
-# The month-192 to month-201 segment that used to stall: 55 calls, 84 s.
+# The month-192 to month-201 segment that used to stall: 56 calls, 117 s.
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
   comp_spe5_resume_192_clears_the_201_report -- --ignored --nocapture
 ```
 
 The 16-year from-scratch replay (`comp_spe5_case_reaches_the_late_life_checkpoint`) also passes
-with the fix, in about 248 s. The unit regressions are part of the thermodynamic gate:
+with the fix, in about 220 s. The unit regressions are part of the thermodynamic gate:
 `comp_stability_detects_a_near_critical_tangent_plane` pins the verdict on both sides of the true
 bubble point, and `comp_flash_keeps_a_near_critical_split_continuous` pins the continuous split and
 the no-jump molar volume across the old switch.

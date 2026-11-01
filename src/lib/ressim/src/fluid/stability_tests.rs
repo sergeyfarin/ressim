@@ -98,6 +98,20 @@ fn comp_stability_detects_a_near_critical_tangent_plane() {
         );
     }
 
+    // Above the old switch but below the true switch, a warm seed from just below must not
+    // change the verdict. Before the trial sum was converged, this point was cold stable and
+    // warm unstable.
+    let warm_state = super::flash::flash(&spec, 225.0379e5, t, &z, None).expect("warm seed flash");
+    assert_eq!(warm_state.phase_state, super::flash::PhaseState::TwoPhase);
+    let cold = test_stability(&spec, 225.0376e5, t, &z, None).expect("cold at 225.0376");
+    let warm =
+        test_stability(&spec, 225.0376e5, t, &z, Some(&warm_state.k)).expect("warm at 225.0376");
+    assert!(matches!(cold, StabilityVerdict::Unstable { .. }));
+    assert!(
+        matches!(warm, StabilityVerdict::Unstable { .. }),
+        "the warm seed changed the phase verdict at 225.0376 bar"
+    );
+
     // Above the true bubble point the single liquid is the stable branch.
     let verdict = test_stability(&spec, 225.2e5, t, &z, None).expect("p = 225.2 bar");
     assert!(matches!(verdict, StabilityVerdict::Stable));
