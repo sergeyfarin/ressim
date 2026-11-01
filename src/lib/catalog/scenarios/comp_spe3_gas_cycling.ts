@@ -192,11 +192,11 @@ function buildCase(): CompositionalCaseConfig {
                 target_m3_per_day: INJECTOR_GAS_RATE_M3_PER_DAY,
                 phase: 'vapour',
                 bhp_limit_bar: INJECTOR_BHP_LIMIT_BAR,
-                // Recycled separator gas at the published 815 psia / 80 °F primary, from the
-                // pinned fluid and initial composition. This is the stock-tank gas the
-                // independent Jutul reference returns, normalised to a composition; the deck
-                // has no WELLSTRE, so a fixed stream is the deck's own convention. It is not a
-                // time-varying produced-gas recycle, which would be a different case.
+                // The recycle stream is frozen at the initial separator-gas composition. The
+                // published case recycles the changing combined separator vapour; that feedback
+                // is not implemented, so this payload is the explicit modified case tracked by
+                // #97. The composition is the stock-tank gas of the pinned fluid at the
+                // 815 psia / 80 °F primary, normalised, not a value inferred from the deck.
                 injection_composition: [
                     0.013228073195, 0.02122247367, 0.721862750614, 0.09465804254,
                     0.06114881315, 0.08615072872, 0.001683906626, 0.000045210653, 8.32e-10,
