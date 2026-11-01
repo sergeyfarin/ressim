@@ -229,7 +229,7 @@ fn dp_dz_at(a: f64, b: f64, z_value: f64) -> f64 {
 /// a linear solve rather than an explicit inverse, and at this size the pivoting is what makes it
 /// worth writing rather than the asymptotics. Returns the smallest pivot magnitude seen, which is
 /// the conditioning signal the diagnostics report.
-fn solve_in_place(matrix: &mut [Vec<f64>], rhs: &mut [Vec<f64>]) -> f64 {
+pub(super) fn solve_in_place(matrix: &mut [Vec<f64>], rhs: &mut [Vec<f64>]) -> f64 {
     let n = matrix.len();
     let cols = if rhs.is_empty() { 0 } else { rhs[0].len() };
     let mut min_pivot = f64::INFINITY;
@@ -474,7 +474,7 @@ fn phase_density_ad<const M: usize>(
 /// The equilibrium equations `F(y, u)`, over any scalar.
 ///
 /// `N` fugacity-equality rows plus the Rachford–Rice row, in that order.
-fn equilibrium_residual<S: Scalar>(
+pub(super) fn equilibrium_residual<S: Scalar>(
     spec: &FluidSpecification,
     pressure_pa: S,
     temperature_k: f64,

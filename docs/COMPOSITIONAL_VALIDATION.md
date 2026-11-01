@@ -341,6 +341,48 @@ moved by at most one iteration each (net -2), since their split is now rounded d
 GDEM measurement above was taken on an uncommitted tree and is provisional. Reproduce with
 `cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib -- comp_flash_report_iteration_counts comp_domain_report --ignored --nocapture --test-threads=1`.
 
+**Near-critical flash acceleration (#99).** SPE5 Case 1's late-life states are
+near-critical enough that successive substitution's convergence ratio approaches one. With the
+acceleration disabled on the final tree, four states captured from the 5-day replay restarted at
+the month-192 checkpoint needed 78, 173, 4,520 and more than 5,000 substitutions; the last one
+failed at residual 4.3e-8 and ended the timestep at 6366.59 d. The flash now takes a **damped
+Newton step on the full equilibrium system** `[ln K, beta]` — the fugacity-equality rows plus the
+Rachford–Rice row that `fluid/derivatives.rs` already differentiates — when a substitution step
+retains at least 70% of its residual after ten iterations. The line search accepts only a decrease
+in the full-system residual; a singular Jacobian, an EOS-domain failure, a trial outside the
+physical window or a failed line search returns to substitution, so acceleration can shorten a
+slow path but cannot turn a convergent flash into a failure. The Newton answer is checked by the
+same reconstruction and fugacity-residual assertions as every other flash, and the final state is
+built with the `L`-carried split so the dew-point precision of #75 is preserved.
+
+| State (5-day replay from `stall_192.json`) | beta | substitution | accelerated |
+|---|---|---|---|
+| 6179.0 d, cell 40 | 0.377 | 173 | 15 |
+| 6319.25 d, cell 9 | 0.635 | 4,520 | 16 |
+| 195.58 bar near-critical state | 0.644 | 133 | 29 |
+| 239.0 bar near-dew state | 0.945 | 1,403 | 18 |
+| 6366.59 d, cell 10 | 0.155 | >5,000 (failed) | 20 |
+
+`comp_flash_accelerates_spe5_late_life_near_critical_states` pins the four states with the
+recorded substitution counts. The fixture answers are unchanged: the binary and ternary keep their
+substitution path, one SPE5 state (`spe5_mix3000_g8`) now uses Newton, and every fixture comparison
+against OPM still passes. The C6 domain sweep's worst substitution count falls from **2,497 to 60**
+(binary) and **765 to 62** (ternary) over 7,620 samples, with no classification change. Its
+reconstruction floor moves from 2.2e-16 to 1.2e-13 because Newton stops on the full-system
+residual, leaving a raw phase-sum imbalance of order 1e-11; that is still three orders below the
+1e-10 sweep gate.
+
+The flash acceleration alone did not unblock the replay. The next step at 6366.59 d failed in the
+stability test's `LiquidLike` trial, which needs **28,946** substitutions and was rejected by the
+inherited OPM cap of 20,000. That is the same cap-as-correctness-limit defect one level down;
+`MAX_TRIAL_ITERATIONS` is now 100,000, and
+`comp_stability_converges_a_trial_beyond_opms_iteration_cap` pins the state. That is not the end of
+the trial-substitution problem: a later trial at **6646.0625 d**, cell 33, still needs more than
+100,000 substitutions (residual 5.5e-14, K norm 1.01e-5), so the 20-year replay from the month-192
+checkpoint still stops there. Accelerating the trial or replacing the absolute trivial-solution
+threshold with a measured stagnation criterion is filed as
+[#102](https://github.com/sergeyfarin/ressim/issues/102).
+
 **Derivatives are a first-class part of this oracle, not a bonus.** PTFlash reconstructs them by
 implicit differentiation of the converged equilibrium, which is the pattern C4 is instructed to
 follow. The harness seeds the dependent `z_(N-1)` with `dz_(N-1)/dz_k = -1`, so C4's required
@@ -444,12 +486,12 @@ oracle's own quality, which bounds any target a test can hold ResSim to.
 | **C5 saturations** | reconstruction exact | `< 1e-14` against an independent volume split; `S_V - beta` reaches `> 0.3` | **Met** |
 | **C5 surface** — component conservation | — | `<= 1e-9` relative per component, on binary and ternary streams | **Met** |
 | **C5 surface** — gas molar volume | — | within 2% of `RT/p` at 1 atm, as an ideal-gas sanity anchor | **Met** |
-| **C6 sweep** — binary, 2 940 samples | every sample classified | 0 failures: 743 two-phase, 1 901 liquid, 296 vapour | **Met** |
+| **C6 sweep** — binary, 2 940 samples | every sample classified | 0 failures: 744 two-phase, 1 901 liquid, 295 vapour | **Met** |
 | **C6 sweep** — ternary, 4 680 samples | every sample classified | 0 failures: 1 273 two-phase, 2 826 liquid, 581 vapour | **Met** |
-| **C6 sweep** — `z` reconstruction | 1e-10 | 1.1e-14 worst over 7 620 samples | **Met** |
+| **C6 sweep** — `z` reconstruction | 1e-10 | 1.2e-13 worst over 7 620 samples (#99) | **Met** |
 | **C6 sweep** — `sum_i dx_i/du = 0` | — | 2.9e-16 worst | **Met** |
 | **C6 sweep** — equilibrium-Jacobian pivot | — | 4.8e-4 worst | Recorded |
-| **C6 sweep** — substitution iterations | bounded below the 5 000 cap | 747 worst | Recorded |
+| **C6 sweep** — substitution iterations | bounded below the 5 000 cap | 60 binary / 62 ternary worst (#99; 2 497 / 765 before) | Recorded |
 | **C6 trace components** | conserved | `< 1e-8` relative down to `z_i = 1e-10` | **Met** |
 | **C7 layout** — indexing | bijective for N=2,3,4 | every cell column and row reached exactly once, round-tripping through the split | **Met** |
 | **C7 layout** — shared metadata | identical partition | `FimLinearBlockLayout` and `CompositionalLayout` agree on every cell column, for all three N | **Met** |

@@ -31,14 +31,23 @@
 //! iterations, and here a non-converged trial is a typed [`StabilityError`] carrying the iteration
 //! count and the norms it stalled at. A stability test that cannot decide must say so — silently
 //! reporting "stable" because the trial ran out of iterations is the specific failure the plan
-//! calls out, since it turns a two-phase cell into a single-phase one with no diagnostic.
+//! calls out, since it turns a two-phase cell into a single-phase one with no diagnostic. The cap
+//! is a backstop, not an accuracy limit: the SPE5 late-life trial that needs 28,946 iterations
+//! converged once the cap no longer rejected it (#99); accelerating that substitution is #102.
 
 use super::eos::{EosError, PhaseBranch, evaluate};
 use super::specification::FluidSpecification;
 use crate::math;
 
-/// Iteration cap for one trial-phase substitution loop. OPM uses 20000.
-const MAX_TRIAL_ITERATIONS: usize = 20_000;
+/// Iteration cap for one trial-phase substitution loop.
+///
+/// OPM uses 20000. C3 kept that as a correctness backstop on the same reasoning as the flash cap,
+/// but the SPE5 late-life replay found a near-critical `LiquidLike` trial that needs **28,946**
+/// iterations to reach its 1e-15 residual (`docs/SPE5_VALIDATION.md`, #99). Failing there is the
+/// same kind of cap-as-correctness-limit defect the flash acceleration removed, so the cap is
+/// raised rather than left to reject a convergent trial. Trial acceleration is a separate
+/// performance question ([#102]); substitution remains the route and this remains a backstop.
+const MAX_TRIAL_ITERATIONS: usize = 100_000;
 
 /// A trial sum above `1 + TRIAL_SUM_TOLERANCE` indicates the feed is unstable.
 ///

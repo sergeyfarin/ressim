@@ -313,3 +313,74 @@ fn comp_spe5_resume_192_clears_the_201_report() {
         started.elapsed()
     );
 }
+
+/// #99 regression: the month-192 → 6375 d near-critical region that used to stall.
+///
+/// The seed is the committed month-192 checkpoint, so this starts exactly where #93 left off.
+/// Before the flash acceleration, the 6375.188 d flash needed 20,696 substitutions and then the
+/// timestep collapsed 32× to 0.156 d; the stability test's `LiquidLike` trial at 6366.59 d also
+/// exhausted its 20,000-iteration cap. Both caps are now backstops: every call in the segment
+/// succeeds, no accepted step is shorter than 2.5 d (except a final report remainder), and the
+/// Newton solve takes at most 20 iterations.
+#[test]
+#[ignore = "SPE5 month-192 to 6375 d near-critical region; run with --release"]
+fn comp_spe5_resume_192_clears_the_near_critical_region() {
+    let text = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../opm/compositional/spe5/stall_192.json"),
+    )
+    .expect("read the committed SPE5 checkpoint");
+    let checkpoint: super::api::Checkpoint =
+        serde_json::from_str(&text).expect("parse the checkpoint");
+    let mut case = CompositionalCase::restore(&checkpoint).expect("restore the checkpoint");
+
+    let target = 6375.2;
+    let budget = 140;
+    let started = std::time::Instant::now();
+    let mut calls = 0usize;
+    let mut shortest = f64::INFINITY;
+    let mut worst_newton = 0usize;
+    while case.time_days() < target - 1e-9 {
+        calls += 1;
+        assert!(
+            calls <= budget,
+            "SPE5 did not reach {target} d within {budget} calls (last t={:.3} d)",
+            case.time_days()
+        );
+        let dt = (target - case.time_days()).min(5.0);
+        let outcome = case.step(dt);
+        assert!(
+            outcome.succeeded(),
+            "SPE5 failed at {:.3} d after {calls} calls: {:?}",
+            outcome.time_days,
+            outcome.failure
+        );
+        // Only a retry is evidence of a collapse. A single-attempt step shorter than the request
+        // is a schedule event or the final report remainder, both legitimate.
+        if outcome.attempts > 1 {
+            if let Some(accepted) = outcome.accepted_dt_days {
+                if dt >= 2.5 {
+                    shortest = shortest.min(accepted);
+                }
+            }
+        }
+        worst_newton = worst_newton.max(outcome.newton_iterations);
+    }
+
+    let snapshot = case.snapshot();
+    assert!((snapshot.time_days - target).abs() < 1e-6);
+    assert!(snapshot.pressure.iter().all(|p| p.is_finite() && *p > 0.0));
+    assert!(
+        shortest >= 2.5 - 1e-9,
+        "the near-critical region still collapses the timestep: shortest retried step {shortest:.6} d"
+    );
+    assert!(
+        worst_newton <= 20,
+        "the near-critical region needed {worst_newton} Newton iterations"
+    );
+    println!(
+        "SPE5 cleared 6375 d: t={:.3} d, {calls} calls, shortest {shortest:.3} d, worst {worst_newton} Newton, wall={:?}",
+        snapshot.time_days,
+        started.elapsed()
+    );
+}

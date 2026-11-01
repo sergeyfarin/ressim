@@ -24,12 +24,25 @@
 //! itself — `max_i |ln(f_i^L / f_i^V)|` — which is the quantity equilibrium is *defined* by, not a
 //! proxy for it.
 //!
-//! This deliberately does not reproduce OPM's `ssi+newton` staging. OPM runs five substitution
-//! steps and then a Newton solve on the full equilibrium system, because it needs a fixed small
-//! iteration count per cell. Both methods converge to the same fixed point, so reproducing the
-//! *path* would buy nothing while making the comparison against the fixture circular: converging
-//! independently and agreeing is evidence, converging by the same route is not. Newton
-//! acceleration belongs in C14 if profiling asks for it.
+//! Substitution is the robust route, but it is linearly convergent and its ratio approaches one
+//! in the near-critical region: the SPE5 Case 1 late-life states need tens of thousands of
+//! iterations to reach the admission tolerance ([#99]). When a substitution step keeps at least
+//! [`NEWTON_TRIGGER_RATIO`] of the residual, the flash tries a damped Newton solve of the full
+//! equilibrium system `[ln K, beta]` from the current iterate. If that fails — singular Jacobian,
+//! a trial outside the EOS domain, or no line-search decrease — substitution continues, so the
+//! acceleration can only shorten a slow path to the same fixed point, never turn a convergent
+//! flash into a failure.
+//!
+//! The Newton system is the one [`super::derivatives`] already uses for implicit differentiation:
+//! fugacity equality for every active component plus the Rachford–Rice equation. Keeping one
+//! definition of the equations is what makes the accelerated answer and the derivatives describe
+//! the same state.
+//!
+//! Almost every fixture state still reaches tolerance through substitution — only one slow SPE5
+//! state crosses the trigger — so the comparison against the OPM fixture remains an independent
+//! check of the converged answer rather than a replay of OPM's own `ssi+newton` route.
+//!
+//! [#99]: https://github.com/sergeyfarin/ressim/issues/99
 //!
 //! Near a dew point the vapour fraction approaches one, and the Rachford–Rice root is carried in
 //! the liquid fraction `L` instead (see `PhaseSplit`). Before that, states a step from the dew
@@ -44,16 +57,18 @@
 //! not an approximation. There is no incipient-phase estimate in the result, because an incipient
 //! phase carries no material and reporting one invites it to be treated as though it did.
 
+use super::derivatives::{MIN_PIVOT, equilibrium_residual, solve_in_place};
 use super::eos::{EosError, PhaseBranch, PhaseProperties, evaluate};
 use super::specification::FluidSpecification;
 use super::stability::{self, StabilityError, StabilityVerdict};
+use crate::ad::Ad;
 use crate::math;
 
-/// Iteration cap for successive substitution on `K`.
+/// Iteration cap for the flash (successive substitution plus Newton acceleration).
 ///
 /// Generous because C3 is a correctness task: a state that needs many iterations must converge and
-/// be measured, not be declared a failure to keep a budget. C14 owns the performance question and
-/// may add acceleration; it may not tighten this into a correctness limit.
+/// be measured, not be declared a failure to keep a budget. The near-critical acceleration of #99
+/// exists so this stays a backstop rather than the binding limit; it is not tightened.
 pub const MAX_SUBSTITUTION_ITERATIONS: usize = 5_000;
 
 /// Convergence threshold on `max_i |ln(f_i^L / f_i^V)|`.
@@ -68,6 +83,38 @@ const RACHFORD_RICE_TOLERANCE: f64 = 1e-14;
 
 /// Iteration cap for one Rachford–Rice solve.
 const MAX_RACHFORD_RICE_ITERATIONS: usize = 200;
+
+/// Substitution iterations before a slow state may try Newton acceleration.
+///
+/// A flash that converges in a handful of substitutions never reaches this, so its path and its
+/// recorded iteration count are unchanged. The staged start gives Newton a state that has already
+/// shaken off the stability test's crude `K` estimate.
+const NEWTON_TRIGGER_AFTER: usize = 10;
+
+/// A substitution step that keeps at least this fraction of the previous residual is "slow".
+///
+/// Successive substitution is linearly convergent; a ratio near one is the near-critical stall
+/// this exists for. A ratio of 0.7 means the tolerance is still roughly seventy iterations away,
+/// which is the point at which the full-system Newton step starts to pay for its AD assembly.
+/// Almost every fixture state converges faster and keeps its substitution path; the one slow SPE5
+/// state that crosses the trigger is still checked against the same OPM reference.
+const NEWTON_TRIGGER_RATIO: f64 = 0.7;
+
+/// Substitution iterations to let pass after a failed Newton attempt before retrying.
+///
+/// A Newton step can fail because the iterate is still outside the basin where its Jacobian is
+/// useful. Retrying every iteration would pay an AD assembly each time for no new information;
+/// waiting lets substitution move the state and usually makes the next attempt succeed.
+const NEWTON_RETRY_INTERVAL: usize = 20;
+
+/// Iteration cap for one Newton acceleration attempt.
+///
+/// The full equilibrium system is quadratically convergent when it converges, so this is a
+/// failure bound rather than a work budget. Exhausting it returns the flash to substitution.
+const MAX_NEWTON_ITERATIONS: usize = 50;
+
+/// Maximum number of step halvings in one Newton line search.
+const MAX_NEWTON_HALVINGS: usize = 30;
 
 /// Which phases are present.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -100,7 +147,8 @@ pub struct FlashState {
     /// `max_i |ln(f_i^L / f_i^V)|` at convergence. Zero for a single-phase state, where there is
     /// no second phase to be in equilibrium with.
     pub equilibrium_residual: f64,
-    /// Substitution iterations used. Zero for a single-phase state.
+    /// Flash iterations used: successive substitution plus any damped Newton steps taken by the
+    /// acceleration. Zero for a single-phase state.
     pub iterations: usize,
 }
 
@@ -156,7 +204,7 @@ pub enum FlashError {
     Stability(StabilityError),
     /// A phase composition left the EOS's domain.
     Eos(EosError),
-    /// Successive substitution exhausted its budget.
+    /// The flash exhausted its iteration budget.
     NotConverged {
         iterations: usize,
         equilibrium_residual: f64,
@@ -269,6 +317,19 @@ enum PhaseSplit {
 }
 
 impl PhaseSplit {
+    /// Carry `beta` in whichever phase amount is nearer zero.
+    ///
+    /// Newton treats `beta` as one unknown, so it can land on either side of one half. Converting
+    /// the converged value to the same `L`-carried form the substitution loop uses keeps the final
+    /// compositions accurate near a dew point.
+    fn from_beta(beta: f64) -> Self {
+        if beta <= 0.5 {
+            Self::Vapour(beta)
+        } else {
+            Self::Liquid(1.0 - beta)
+        }
+    }
+
     fn beta(self) -> f64 {
         match self {
             Self::Vapour(beta) => beta,
@@ -404,6 +465,297 @@ fn phase_compositions(k: &[f64], z: &[f64], split: PhaseSplit) -> (Vec<f64>, Vec
     (x, y)
 }
 
+/// The largest absolute entry of the full equilibrium residual.
+fn equilibrium_norm(residual: &[f64]) -> f64 {
+    residual
+        .iter()
+        .fold(0.0_f64, |acc, value| acc.max(value.abs()))
+}
+
+/// The equilibrium system `F(y)` and its Jacobian `F_y`, at `y = [ln K, beta]`.
+struct NewtonSystem {
+    residual: Vec<f64>,
+    jacobian: Vec<Vec<f64>>,
+}
+
+/// Evaluate [`super::derivatives::equilibrium_residual`] and its Jacobian in one AD pass.
+///
+/// `N` is the component count and `M = N + 1` the number of equilibrium unknowns. The two are
+/// separate const parameters only because a generic const expression cannot appear in a type
+/// here; the dispatch below instantiates them together.
+fn newton_system<const N: usize, const M: usize>(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    ln_k: &[f64],
+    beta: f64,
+) -> Option<NewtonSystem> {
+    debug_assert_eq!(M, N + 1);
+    let ln_k_ad: Vec<Ad<M>> = (0..N).map(|i| Ad::variable(ln_k[i], i)).collect();
+    let beta_ad = Ad::<M>::variable(beta, N);
+    let z_ad: Vec<Ad<M>> = z.iter().map(|&value| Ad::constant(value)).collect();
+
+    let residual = equilibrium_residual::<Ad<M>>(
+        spec,
+        Ad::constant(pressure_pa),
+        temperature_k,
+        &ln_k_ad,
+        &z_ad,
+        beta_ad,
+    )
+    .ok()?;
+
+    Some(NewtonSystem {
+        residual: residual.iter().map(|value| value.value()).collect(),
+        jacobian: (0..=N)
+            .map(|row| (0..=N).map(|col| residual[row].d(col)).collect())
+            .collect(),
+    })
+}
+
+/// Build the two-phase result for a converged `(K, beta)`, recomputing its physical residual.
+fn two_phase_from_iterate(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    k: &[f64],
+    beta: f64,
+    iterations: usize,
+) -> Result<FlashState, FlashError> {
+    let split = PhaseSplit::from_beta(beta);
+    if !split.is_physical() {
+        return single_phase(spec, pressure_pa, temperature_k, z);
+    }
+    let (x, y) = phase_compositions(k, z, split);
+    let xs: f64 = x.iter().sum();
+    let ys: f64 = y.iter().sum();
+    if !(xs > 0.0) || !(ys > 0.0) {
+        return Err(FlashError::InvalidFeed {
+            reason: "a phase composition vanished",
+        });
+    }
+    let xn: Vec<f64> = x.iter().map(|v| v / xs).collect();
+    let yn: Vec<f64> = y.iter().map(|v| v / ys).collect();
+
+    let liquid = evaluate(spec, pressure_pa, temperature_k, &xn, PhaseBranch::Liquid)
+        .map_err(FlashError::Eos)?;
+    let vapour = evaluate(spec, pressure_pa, temperature_k, &yn, PhaseBranch::Vapour)
+        .map_err(FlashError::Eos)?;
+
+    let mut residual: f64 = 0.0;
+    for i in 0..spec.component_count() {
+        if z[i] == 0.0 {
+            continue;
+        }
+        let ln_ratio = math::ln(xn[i]) + liquid.ln_phi[i] - math::ln(yn[i]) - vapour.ln_phi[i];
+        residual = residual.max(ln_ratio.abs());
+    }
+
+    Ok(FlashState {
+        phase_state: PhaseState::TwoPhase,
+        beta: split.beta(),
+        x: xn,
+        y: yn,
+        k: k.to_vec(),
+        liquid: Some(liquid),
+        vapour: Some(vapour),
+        equilibrium_residual: residual,
+        iterations,
+    })
+}
+
+/// Try a damped Newton solve of the full equilibrium system, from a stalled SSI iterate.
+///
+/// Returns `None` — never an error — when the system is singular, a trial leaves the EOS domain,
+/// the line search cannot find a decrease, or the converged point misses the tolerance. The caller
+/// then continues successive substitution, so acceleration can only replace a slow route to the
+/// same answer and can never turn a flash that would have converged into a failure.
+fn newton_acceleration_generic<const N: usize, const M: usize>(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    ln_k: &[f64],
+    beta: f64,
+    substitution_iterations: usize,
+) -> Option<FlashState> {
+    let mut ln_k = ln_k.to_vec();
+    let mut beta = beta;
+    let mut system = newton_system::<N, M>(spec, pressure_pa, temperature_k, z, &ln_k, beta)?;
+    let mut norm = equilibrium_norm(&system.residual);
+
+    for step in 1..=MAX_NEWTON_ITERATIONS {
+        let mut jacobian = system.jacobian.clone();
+        let mut rhs: Vec<Vec<f64>> = system.residual.iter().map(|&value| vec![-value]).collect();
+        let min_pivot = solve_in_place(&mut jacobian, &mut rhs);
+        if !(min_pivot >= MIN_PIVOT) {
+            return None;
+        }
+        let delta: Vec<f64> = rhs.iter().map(|row| row[0]).collect();
+        if delta.iter().any(|value| !value.is_finite()) {
+            return None;
+        }
+
+        // Damped step: accept only a decrease in the full-system residual. A full Newton step is
+        // tried first because that is what makes the final convergence quadratic.
+        let mut accepted = None;
+        let mut alpha = 1.0;
+        for _ in 0..MAX_NEWTON_HALVINGS {
+            let candidate_ln_k: Vec<f64> = ln_k
+                .iter()
+                .zip(&delta)
+                .map(|(value, step)| value + alpha * step)
+                .collect();
+            let candidate_beta = beta + alpha * delta[N];
+            if candidate_beta.is_finite() && candidate_ln_k.iter().all(|value| value.is_finite()) {
+                if let Some(candidate) = newton_system::<N, M>(
+                    spec,
+                    pressure_pa,
+                    temperature_k,
+                    z,
+                    &candidate_ln_k,
+                    candidate_beta,
+                ) {
+                    let candidate_norm = equilibrium_norm(&candidate.residual);
+                    if candidate_norm <= (1.0 - 1e-4 * alpha) * norm
+                        || candidate_norm < EQUILIBRIUM_TOLERANCE
+                    {
+                        accepted =
+                            Some((candidate_ln_k, candidate_beta, candidate, candidate_norm));
+                        break;
+                    }
+                }
+            }
+            alpha *= 0.5;
+        }
+
+        let (next_ln_k, next_beta, next_system, next_norm) = accepted?;
+        ln_k = next_ln_k;
+        beta = next_beta;
+        system = next_system;
+        norm = next_norm;
+
+        if norm < EQUILIBRIUM_TOLERANCE {
+            let k: Vec<f64> = ln_k.iter().map(|value| math::exp(*value)).collect();
+            let state = two_phase_from_iterate(
+                spec,
+                pressure_pa,
+                temperature_k,
+                z,
+                &k,
+                beta,
+                substitution_iterations + step,
+            )
+            .ok()?;
+            // The full-system norm and the reported physical residual differ by the raw phase-sum
+            // imbalance; both have to meet the admission target before this replaces SSI.
+            if state.equilibrium_residual < EQUILIBRIUM_TOLERANCE {
+                return Some(state);
+            }
+            return None;
+        }
+    }
+    None
+}
+
+/// Dispatch the Newton attempt to the compiled AD instantiation for this component count.
+fn newton_acceleration(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    ln_k: &[f64],
+    beta: f64,
+    substitution_iterations: usize,
+) -> Option<FlashState> {
+    match spec.component_count() {
+        2 => newton_acceleration_generic::<2, 3>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            beta,
+            substitution_iterations,
+        ),
+        3 => newton_acceleration_generic::<3, 4>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            beta,
+            substitution_iterations,
+        ),
+        4 => newton_acceleration_generic::<4, 5>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            beta,
+            substitution_iterations,
+        ),
+        5 => newton_acceleration_generic::<5, 6>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            beta,
+            substitution_iterations,
+        ),
+        6 => newton_acceleration_generic::<6, 7>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            beta,
+            substitution_iterations,
+        ),
+        7 => newton_acceleration_generic::<7, 8>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            beta,
+            substitution_iterations,
+        ),
+        8 => newton_acceleration_generic::<8, 9>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            beta,
+            substitution_iterations,
+        ),
+        9 => newton_acceleration_generic::<9, 10>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            beta,
+            substitution_iterations,
+        ),
+        10 => newton_acceleration_generic::<10, 11>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            beta,
+            substitution_iterations,
+        ),
+        _ => None,
+    }
+}
+
 /// Flash at `(p, T, z)`.
 ///
 /// `k_seed` warm-starts both the stability test and the substitution loop. It is a hint: the
@@ -441,6 +793,8 @@ pub fn flash(
     // poor estimate can put the root outside [0, 1] on the way to a converged answer well inside
     // it. Whether the state is really two-phase is decided at convergence, not at the first step.
     let mut residual = f64::INFINITY;
+    let mut previous_residual = f64::INFINITY;
+    let mut next_newton_attempt = NEWTON_TRIGGER_AFTER + 1;
 
     for iteration in 1..=MAX_SUBSTITUTION_ITERATIONS {
         let split = solve_phase_split(&k, z)?;
@@ -470,23 +824,20 @@ pub fn flash(
             }
             let ln_ratio = math::ln(xn[i]) + liquid.ln_phi[i] - math::ln(yn[i]) - vapour.ln_phi[i];
             residual = residual.max(ln_ratio.abs());
-
-            // Successive substitution: K_i <- phi_i^L / phi_i^V. Equilibrium is
-            // `x_i phi_i^L = y_i phi_i^V`, so `K_i = y_i / x_i = phi_i^L / phi_i^V` at the fixed
-            // point, and the update assigns that ratio rather than multiplying by it. Multiplying
-            // is the same expression written with fugacities instead of fugacity coefficients -
-            // `K_i *= (x_i phi_i^L)/(y_i phi_i^V)` - and mixing the two forms leaves an extra
-            // factor of `K` in the step, which drives `K` away from equilibrium toward the
-            // degenerate split into two pure phases instead of toward it.
-            k[i] = math::exp(liquid.ln_phi[i] - vapour.ln_phi[i]);
-            if !k[i].is_finite() || k[i] <= 0.0 {
-                return Err(FlashError::InvalidFeed {
-                    reason: "an equilibrium ratio left the physical range",
-                });
-            }
         }
 
         if residual < EQUILIBRIUM_TOLERANCE {
+            // Take the final substitution update before reporting the state, as the loop always
+            // has: the converged answer is the fixed point, and one more assignment of
+            // `K_i <- phi_i^L / phi_i^V` is the update whose residual just passed the test.
+            for i in 0..n {
+                k[i] = math::exp(liquid.ln_phi[i] - vapour.ln_phi[i]);
+                if !k[i].is_finite() || k[i] <= 0.0 {
+                    return Err(FlashError::InvalidFeed {
+                        reason: "an equilibrium ratio left the physical range",
+                    });
+                }
+            }
             let split = solve_phase_split(&k, z)?;
             // Converged with the vapour fraction outside the physical window: the two phases have
             // collapsed onto one another, and the stability test's instability verdict is not
@@ -516,6 +867,46 @@ pub fn flash(
                 equilibrium_residual: residual,
                 iterations: iteration,
             });
+        }
+
+        // Successive substitution decelerates to a fixed-point iteration whose ratio approaches
+        // one in the near-critical region. When a step keeps at least `NEWTON_TRIGGER_RATIO` of
+        // the residual, try the full equilibrium system's damped Newton step from this iterate.
+        // A failed attempt leaves substitution in charge and is retried only after a cooldown, so
+        // this can only shorten a slow path to the same fixed point.
+        let slow = iteration >= next_newton_attempt
+            && residual >= NEWTON_TRIGGER_RATIO * previous_residual;
+        previous_residual = residual;
+        if slow {
+            let ln_k: Vec<f64> = k.iter().map(|&value| math::ln(value)).collect();
+            if let Some(state) = newton_acceleration(
+                spec,
+                pressure_pa,
+                temperature_k,
+                z,
+                &ln_k,
+                split.beta(),
+                iteration,
+            ) {
+                return Ok(state);
+            }
+            next_newton_attempt = iteration + NEWTON_RETRY_INTERVAL;
+        }
+
+        // Successive substitution: K_i <- phi_i^L / phi_i^V. Equilibrium is
+        // `x_i phi_i^L = y_i phi_i^V`, so `K_i = y_i / x_i = phi_i^L / phi_i^V` at the fixed
+        // point, and the update assigns that ratio rather than multiplying by it. Multiplying is
+        // the same expression written with fugacities instead of fugacity coefficients -
+        // `K_i *= (x_i phi_i^L)/(y_i phi_i^V)` - and mixing the two forms leaves an extra factor
+        // of `K` in the step, which drives `K` away from equilibrium toward the degenerate split
+        // into two pure phases instead of toward it.
+        for i in 0..n {
+            k[i] = math::exp(liquid.ln_phi[i] - vapour.ln_phi[i]);
+            if !k[i].is_finite() || k[i] <= 0.0 {
+                return Err(FlashError::InvalidFeed {
+                    reason: "an equilibrium ratio left the physical range",
+                });
+            }
         }
     }
 
