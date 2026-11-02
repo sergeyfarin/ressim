@@ -36,7 +36,7 @@ Not every source applies to every exhibit — the value is in choosing the right
 | S1 | Analytical solution | Exact truth *within its assumptions*; exposes what the assumptions cost | TS analytical layer (BL/Welge, Dietz PSS, Fetkovich/Arps, Craig, Dykstra-Parsons/Stiles, gas-oil BL, MB diagnostics) |
 | S2 | WASM IMPES (live) | The app's interactive baseline; user can perturb it | Now |
 | S3 | WASM FIM (live) | Implicit scheme; isolate time discretization only after matching the two solvers' admitted model conventions | Shipped under scenario-declared policy; numerical comparison variants already exist |
-| S4 | OPM Flow (pre-run) | Independent reference; can also illustrate physics outside the live case's envelope | 11 parsed committed artifacts; shown where a scenario declares a reference source |
+| S4 | OPM Flow (pre-run) | Independent reference; can also illustrate physics outside the live case's envelope | 19 parsed committed artifacts; shown where a scenario declares a reference source |
 | S5 | Published results | External ground truth: digitized benchmark-paper curves (SPE1 Eclipse precedent), inter-simulator CSP datasets (SPE11), published lab experiments | Per-case curation |
 | S6 | Other sources | Everything fitted or borrowed: in-browser reduced-order models (CRM, Arps fits, MB straight-line), MRST textbook results, open field datasets (Norne/Volve/Egg), a second open simulator's published output | Mostly TS-implementable or data curation |
 

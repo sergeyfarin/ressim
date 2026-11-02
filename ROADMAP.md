@@ -20,14 +20,19 @@ The [milestone](https://github.com/sergeyfarin/ressim/milestone/1) has no open i
 
 ## 1. Scientific validation and closure
 
-Current execution order (reconciled 2026-10-08):
+Current execution order (reconciled 2026-11-02):
 
-1. [#72 — The remaining 1.5× Newton gap to Flow](https://github.com/sergeyfarin/ressim/issues/72) on
-   the black-oil decks, at matched substeps. A diagnosis first: #35 closed the PVT table-edge
-   conventions (FIM-KINK-002/003) and they account for only 4–12 % of it.
-2. [#52 — Run SPE5, then SPE3](https://github.com/sergeyfarin/ressim/issues/52), after their
-   enablers. C13 ([#29](https://github.com/sergeyfarin/ressim/issues/29)) is complete: chart
+1. [#52 — Run SPE5, then SPE3](https://github.com/sergeyfarin/ressim/issues/52), after their
+   enablers (§4a). C13 ([#29](https://github.com/sergeyfarin/ressim/issues/29)) is complete: chart
    sourcing shipped in `1490f34`, per-cell composition views after it.
+2. [#56 — Benchmark signals](https://github.com/sergeyfarin/ressim/issues/56): act on what the
+   nightly run flags against the re-baselined records in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
+   Its one tracked same-model gap is [#104](https://github.com/sergeyfarin/ressim/issues/104)
+   (`gas-rate` FGIT above Flow after report-step refinement).
+
+[#72](https://github.com/sergeyfarin/ressim/issues/72) (the 1.5–1.7× Newton gap to Flow) is
+closed: most of it was a counting convention, and the rest a DRSDT0 Rs-cap derivative and the CPR
+pressure weights (`3c2686e`). The registry entries are FIM-NEWTON-GAP-001 to 003.
 
 [#15](https://github.com/sergeyfarin/ressim/issues/15) (shipped chart correctness) closed with
 `9db0a28`.
@@ -49,8 +54,9 @@ volume-correction cost by removing scale-dependent LU fallback and redundant clo
 The [controlled replays](docs/IMPES_VOLUME_CLOSURE_PROFILE.md) retain the conservation and Flow
 contracts; the combined-sweep FIM default remains unchanged.
 
-Closed since the last revision of this list: #10 (gravity wells), #11 (FIM/IMPES depletion,
-an unstable PVT table), #13 (CI), #21 (Flow oil bias, no solver defect), #36–#39, #42–#44.
+Closed since the 2026-10-08 revision of this list: #72 (Newton gap), #45–#51 (compositional
+enablers for #52), #64. Before that: #10 (gravity wells), #11 (FIM/IMPES depletion, an unstable
+PVT table), #13 (CI), #21 (Flow oil bias, no solver defect), #36–#39, #42–#44.
 
 Current numbers: [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md). Authoritative evidence:
 `docs/BLACK_OIL_VALIDATION.md`, `docs/THREE_PHASE_VALIDATION.md` and
@@ -84,7 +90,7 @@ Tier 7 IDs, and enabler dependencies remain in `docs/CASE_LIBRARY_ROADMAP.md`.
 
 - [#19 — Assumption-checked analytical cases](https://github.com/sergeyfarin/ressim/issues/19)
 
-#20 (OPM references and artifact provenance) is closed; eleven parsed artifacts ship. Preferred
+#20 (OPM references and artifact provenance) is closed; nineteen parsed artifacts ship. Preferred
 order: gravity-modified fractional flow; gravity-capillary equilibrium; Koval; gas-cap blowdown;
 then interaction/uncertainty cases after their enablers. Dataset licensing and provenance are
 admission requirements, not cleanup after publication.
@@ -94,10 +100,19 @@ admission requirements, not cleanup after publication.
 The native engine is validated against OPM `flowexp_comp` (`docs/COMPOSITIONAL_VALIDATION.md`),
 and C13's product integration is complete (#29). Next:
 
-- [#52 — Run SPE5, then SPE3](https://github.com/sergeyfarin/ressim/issues/52), which needs
+- [#52 — Run SPE5, then SPE3](https://github.com/sergeyfarin/ressim/issues/52). Its first enablers,
   [#45](https://github.com/sergeyfarin/ressim/issues/45)–[#51](https://github.com/sergeyfarin/ressim/issues/51)
   (components, immiscible water, 3-D and gravity, rate control, a sparse linear route, schedules,
-  SPE3 characterization)
+  SPE3 characterization), are closed, and both payloads are authored but withheld from the picker.
+  What remains before either is a graded benchmark:
+  - [#95 — Compositional well surface volumes](https://github.com/sergeyfarin/ressim/issues/95)
+    (oil rate and GOR to chart and score)
+  - [#98 — Termination policies in the compositional run loop](https://github.com/sergeyfarin/ressim/issues/98)
+    (SPE5's GOR/WOR shut-in; needs #95)
+  - [#96 — Switchable separator train](https://github.com/sergeyfarin/ressim/issues/96) and
+    [#97 — Produced-gas recycling](https://github.com/sergeyfarin/ressim/issues/97) (SPE3)
+  - [#88 — Checkpoints keep the cumulative ledgers](https://github.com/sergeyfarin/ressim/issues/88)
+    (restart reporting, not blocking)
 
 ## 5. FIM research frontier
 
@@ -110,7 +125,6 @@ The registry and worklog own experiment detail. Missing backend-neutral diagnost
 
 - [#24 — UI-audit and developer-maintenance debt](https://github.com/sergeyfarin/ressim/issues/24)
 - [#31 — `scripts/debug-spe1-*.ts` do not run under Node ESM](https://github.com/sergeyfarin/ressim/issues/31)
-- [#64 — Python configuration coverage and catalog-driven parity](https://github.com/sergeyfarin/ressim/issues/64)
 - [#65 — Saved GridState versioning/compatibility](https://github.com/sergeyfarin/ressim/issues/65)
 - [#66 — Explicit workspace package exports](https://github.com/sergeyfarin/ressim/issues/66)
 
