@@ -777,6 +777,12 @@ SCENARIO_SECTIONS = {
     "gas_drive": ["three_phase", "cross_solver", "jutul"],
     "gas_injection": ["three_phase", "cross_solver", "jutul"],
     "dep_pvt": ["cross_solver", "jutul"],
+    "sweep_areal": ["cross_solver", "jutul"],
+    "sweep_vertical": ["cross_solver", "jutul"],
+    "sweep_crossflow": ["cross_solver", "jutul"],
+    "sweep_combined": ["cross_solver", "jutul"],
+    "wf_capillary": ["cross_solver", "jutul"],
+    "wf_gravity_stability": ["cross_solver", "jutul"],
     "comp_co2_1d": ["compositional"],
 }
 # The records, by (section, case pattern), that grade a scenario against a second simulator.
@@ -784,8 +790,31 @@ SCENARIO_SECOND_SIMULATOR = {
     "gas_drive": [("three_phase", "gas_drive"), ("jutul", "gas-drive-20")],
     "gas_injection": [("jutul", "go-1d-50")],
     "dep_pvt": [("jutul", "dep-pvt-*")],
+    "sweep_areal": [("jutul", "sweep-areal")],
+    "sweep_vertical": [("jutul", "sweep-vertical")],
+    "sweep_crossflow": [("jutul", "sweep-crossflow")],
+    "sweep_combined": [("jutul", "sweep-combined")],
+    "wf_capillary": [("jutul", "wf-capillary")],
+    "wf_gravity_stability": [("jutul", "wf-gravity-stability")],
 }
 REFINEMENT_DIMENSION = re.compile(r"grid|refine|resolution|timestep|time_truncation")
+# A scenario's own test counts only when the file names the scenario in executable code and
+# declares at least one test. A correctly named file that tests something else is not coverage.
+TEST_DECLARATION = re.compile(r"^\s*(?:it|test)(?:\.\w+)?\s*\(", re.M)
+COMMENTS = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
+
+
+def scenario_test(path: Path, key: str) -> str | None:
+    """The scenario's own test file, when it exercises the scenario rather than another one."""
+    test_path = SCENARIOS / f"{path.stem}.test.ts"
+    if not test_path.exists():
+        return None
+    code = COMMENTS.sub("", test_path.read_text())
+    if not TEST_DECLARATION.search(code):
+        return None
+    if not re.search(rf"['\"]{re.escape(key)}['\"]", code):
+        return None
+    return test_path.name
 
 
 def scenario_catalog() -> list[dict]:
@@ -804,6 +833,7 @@ def scenario_catalog() -> list[dict]:
         key_ = key_match.group(1)
         methods = sorted(set(re.findall(r"analyticalMethod: '([^']+)'", text)) - {"none"})
         dims = re.findall(r"^\s{12}key: '([^']+)'", text, re.M)
+        test_file = scenario_test(path, key_)
         out.append({
             "key": key_,
             "withheld": path.stem in withheld,
@@ -811,7 +841,8 @@ def scenario_catalog() -> list[dict]:
             "flow": key_ in flow,
             "refinement": [d for d in dims if REFINEMENT_DIMENSION.search(d)],
             "sections": SCENARIO_SECTIONS.get(key_, []),
-            "tested": (SCENARIOS / f"{path.stem}.test.ts").exists(),
+            "test": test_file,
+            "tested": test_file is not None,
         })
     return out
 
@@ -849,8 +880,8 @@ def render_coverage(doc: dict) -> str:
         f"benchmark), only an analytical one or none: {', '.join(f'`{k}`' for k in gaps) or 'none'}. "
         f"{sum(1 for c in scenario_catalog() if second_simulator(doc, c['key']) != '—')} scenario(s) "
         "are graded against a second independent simulator. "
-        f"{len(untested)} scenario(s) have no test file of their own, only the catalog-wide contract "
-        f"tests: {', '.join(f'`{k}`' for k in untested) or 'none'}.",
+        f"{len(untested)} scenario(s) have no test of their own that names and exercises the scenario, "
+        f"only the catalog-wide contract tests: {', '.join(f'`{k}`' for k in untested) or 'none'}.",
     ])
 
 
