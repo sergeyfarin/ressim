@@ -63,7 +63,7 @@ test('public deployment loads assets and runs IMPES, FIM, charts, and 3D', async
   expect(buildInfo.basePath).toBe(new URL(baseURL!).pathname)
   expect(buildInfoResponse.headers()['set-cookie']).toBeUndefined()
 
-  const socialImage = await request.get('social-preview.png')
+  const socialImage = await request.get('social-preview-curves.png')
   expect(socialImage.ok()).toBeTruthy()
   expect(socialImage.headers()['content-type']).toContain('image/png')
 
@@ -72,7 +72,7 @@ test('public deployment loads assets and runs IMPES, FIM, charts, and 3D', async
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://ressim.farin.nl/')
   await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://ressim.farin.nl/')
   for (const selector of ['meta[property="og:image"]', 'meta[name="twitter:image"]']) {
-    await expect(page.locator(selector)).toHaveAttribute('content', 'https://ressim.farin.nl/social-preview.png')
+    await expect(page.locator(selector)).toHaveAttribute('content', 'https://ressim.farin.nl/social-preview-curves.png')
   }
   await expect(page.getByTestId('run-status')).toHaveText('Ready')
 
