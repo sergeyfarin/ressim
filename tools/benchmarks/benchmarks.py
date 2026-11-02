@@ -684,6 +684,11 @@ def compute_signals(doc: dict, explained: list[dict]) -> dict:
 
 def shown(r: dict) -> str:
     if r["unit"] == "frac":
+        # compare_small_direct.py stores cross-solver cumulative differences as
+        # abs(a-b)/abs(b), so they have no direction to sign. Its own table prints
+        # magnitudes; do the same here instead of inventing a plus.
+        if ".cum." in r["metric"]:
+            return pct(abs(r["value"]), 2)
         return signed_pct(r["value"], 2)
     return f"{g(r['value'])} {r['unit']}"
 
@@ -712,6 +717,9 @@ def render_signals(doc: dict) -> str:
                f"until explained. {len(open_gaps)} unexplained and untracked, "
                f"{sum(1 for x in gaps if x[2] and x[2]['status'] == 'tracked')} tracked, "
                f"{sum(1 for x in gaps if x[2] and x[2]['status'] == 'explained')} explained.")
+    out.append("")
+    out.append("`cross_solver` cumulative rows are absolute relative differences "
+               "(`abs(a-b)/abs(b)` in `compare_small_direct.py`) and do not assert a direction.")
     out.append("")
     if gaps:
         out.append(table(["Section", "Case", "Metric", "Value", "Where", "Status"],
