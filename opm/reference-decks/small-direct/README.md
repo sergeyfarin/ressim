@@ -802,12 +802,14 @@ schedules and marks these rows explained.
 reports, 3.93 % at 0.05 d, 2.93 % at 0.0125 d and 2.67 % at 0.003125 d, while FOPT/FGPT agree to
 0.04 % and the worst pressure gap is 3.39 bar at the finest report step. The established RESV
 control difference comes first: Flow constrains surface injection through a report-step regional
-`B_g,ref` (`B_g,ref * WQTotal = Q_resv`, 0.0065 rm3/Sm3 at this deck's uniform initial state),
+`B_g,ref` (`B_g,ref * WQTotal = Q_resv`; the deck's PVDG row at 200 bar gives
+`B_g,ref = 0.006153846` rm3/Sm3, so the initial source is `500 / B_g,ref = 81,250` Sm3/day),
 while the historical ResSim route controls local reservoir volume and converts through the
-current cell `B_g` (`docs/FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md` §1–2). The Flow-matching
-RESV route is a default-off native diagnostic, and the generated `gas-rate` case does not enable
-it. ResSim injecting more surface gas than Flow is consistent with local `B_g < B_g,ref`, and the
-residual shrinking with the report step is consistent with that local-vs-regional difference
-shrinking too. That does not prove the residual is only this semantics, and refinement alone does
+current cell `B_g` (`docs/FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md` §1–2; its `0.0065` predates
+the G4c1 reciprocal-PVDG correction in `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`). The
+Flow-matching RESV route is a default-off native diagnostic, and the generated `gas-rate` case
+does not enable it. ResSim injecting more surface gas than Flow is consistent with local
+`B_g < B_g,ref`, and the residual shrinking with the report step is consistent with that
+local-vs-regional difference shrinking too. That does not prove the residual is only this semantics, and refinement alone does
 not isolate a gas-PVT interpolation defect; the remaining error is tracked in
 [#104](https://github.com/sergeyfarin/ressim/issues/104).

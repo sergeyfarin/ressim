@@ -95,7 +95,7 @@
    "metric": "*.cum.FGIT",
    "status": "tracked",
    "ref": "#104; FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md §1–2",
-   "note": "Does not close under report-step refinement: the absolute FGIT gaps are 9.29 % at six 0.25 d reports, 3.93 % at 0.05 d, 2.93 % at 0.0125 d and 2.67 % at 0.003125 d, while FOPT/FGPT agree to 0.04 % and the worst pressure gap is 3.39 bar at the finest step. The established RESV control difference comes first: Flow uses a report-step regional B_g,ref for the surface-rate constraint, while the historical ResSim route converts a local reservoir rate through the current cell B_g (FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md §1-2). The sign (ResSim higher) and the shrinking residual are consistent with that difference; refinement alone does not isolate a gas-PVT interpolation defect."
+   "note": "Does not close under report-step refinement: the absolute FGIT gaps are 9.29 % at six 0.25 d reports, 3.93 % at 0.05 d, 2.93 % at 0.0125 d and 2.67 % at 0.003125 d, while FOPT/FGPT agree to 0.04 % and the worst pressure gap is 3.39 bar at the finest step. The established RESV control difference comes first: Flow uses a report-step regional B_g,ref for the surface-rate constraint (0.006153846 rm3/Sm3 at 200 bar, so 500/B_g,ref = 81,250 Sm3/day; the lifecycle design's 0.0065 predates the G4c1 reciprocal-PVDG correction), while the historical ResSim route converts a local reservoir rate through the current cell B_g (FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md §1-2; FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md G4c0/G4c1). The sign (ResSim higher) and the shrinking residual are consistent with that difference; refinement alone does not isolate a gas-PVT interpolation defect."
   }
  ]
 }
