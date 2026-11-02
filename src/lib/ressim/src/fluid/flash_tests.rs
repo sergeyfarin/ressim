@@ -925,3 +925,97 @@ fn comp_flash_accelerates_spe5_late_life_near_critical_states() {
         );
     }
 }
+
+/// A warm start must not let flash Newton fall into the trivial `K ~ 1` root.
+///
+/// The SPE3 state below is two-phase from a cold start (`beta = 0.4356`). With the warm seed the
+/// old Newton admission accepted a converged trivial root with an unphysical phase fraction,
+/// `two_phase_from_iterate` turned it into a zero-residual single liquid, and the flash reported
+/// success. Rejecting the root and resuming substitution must return the same two-phase state as
+/// the cold start.
+#[test]
+fn comp_flash_rejects_a_trivial_newton_root() {
+    let spec = pinned::spe3().expect("SPE3 specification");
+    let pressure_pa = 185.321_239e5;
+    let temperature_k = 366.483_333_333_333_35;
+    let z = [
+        0.198_764_334_656_796_83,
+        0.270_905_395_689_927_2,
+        0.119_167_873_326_454_83,
+        0.123_473_334_619_155_72,
+        0.015_151_409_347_768_829,
+        0.130_373_414_462_357_65,
+        0.080_913_469_357_612_64,
+        0.032_261_540_231_547_536,
+        0.028_989_228_308_378_846,
+    ];
+    let seed = [
+        0.001_702_806_485_720_836_4,
+        0.010_956_420_162_814_8,
+        0.001_294_583_984_436_809_4,
+        3.218_733_813_111_028_6,
+        223.880_326_602_638_75,
+        8.021_712_613_847_079,
+        82.418_531_518_153_32,
+        123.260_756_060_110_35,
+        0.001_128_471_334_371_312_6,
+    ];
+
+    let cold = flash(&spec, pressure_pa, temperature_k, &z, None).expect("cold flash");
+    assert_eq!(cold.phase_state, PhaseState::TwoPhase);
+    assert!((cold.beta - 0.435_567_583_366_958_4).abs() < 1e-9);
+
+    let warm = flash(&spec, pressure_pa, temperature_k, &z, Some(&seed)).expect("warm flash");
+    assert_eq!(
+        warm.phase_state,
+        PhaseState::TwoPhase,
+        "the warm start collapsed onto the trivial Newton root"
+    );
+    // The warm seed selects the complementary phase labelling, exactly as the pre-acceleration
+    // base revision did; the bug was the single-phase collapse, not the orientation.
+    assert!(
+        (warm.beta - (1.0 - cold.beta)).abs() < 1e-9,
+        "warm beta {} vs base-compatible {}",
+        warm.beta,
+        1.0 - cold.beta
+    );
+    assert!(warm.equilibrium_residual < super::flash::EQUILIBRIUM_TOLERANCE);
+    // The rejected Newton attempt used 5 iterations before substitution finished at 55. The
+    // reported count must include that discarded work, not just the route that accepted.
+    assert_eq!(
+        warm.iterations, 60,
+        "reported iterations omit the failed Newton attempt"
+    );
+}
+
+/// A warm start must survive an accelerated stability pair whose trials coincide.
+///
+/// Both Michelsen trials converge to the same stationary composition from the seed `[1, 1.2]`, so
+/// their composition ratio is `K ~ 1`. The old stability path returned that trivial vector as an
+/// "unstable" seed and the flash declared a single vapour. Substitution reaches two distinct
+/// stationary points, so the fallback must recover a usable `K` and the two-phase split.
+#[test]
+fn comp_flash_warm_start_survives_coincident_stability_trials() {
+    let spec = pinned::binary().expect("binary specification");
+    let pressure_pa = 196.148_228e5;
+    let temperature_k = 428.436_518;
+    let z = [0.9, 0.1];
+    let seed = [1.0, 1.2];
+
+    let cold = flash(&spec, pressure_pa, temperature_k, &z, None).expect("cold flash");
+    assert_eq!(cold.phase_state, PhaseState::TwoPhase);
+    assert!((cold.beta - 0.850_048_948_054_015_5).abs() < 1e-9);
+
+    let warm = flash(&spec, pressure_pa, temperature_k, &z, Some(&seed)).expect("warm flash");
+    assert_eq!(
+        warm.phase_state,
+        PhaseState::TwoPhase,
+        "the warm start inherited the coincident stability seed"
+    );
+    assert!(
+        (warm.beta - (1.0 - cold.beta)).abs() < 1e-9,
+        "warm beta {} vs base-compatible {}",
+        warm.beta,
+        1.0 - cold.beta
+    );
+}

@@ -147,8 +147,8 @@ pub struct FlashState {
     /// `max_i |ln(f_i^L / f_i^V)|` at convergence. Zero for a single-phase state, where there is
     /// no second phase to be in equilibrium with.
     pub equilibrium_residual: f64,
-    /// Flash iterations used: successive substitution plus any damped Newton steps taken by the
-    /// acceleration. Zero for a single-phase state.
+    /// Flash iterations used: successive substitution plus every Newton iteration attempted,
+    /// including attempts that fell back to substitution. Zero for a single-phase state.
     pub iterations: usize,
 }
 
@@ -569,9 +569,13 @@ fn two_phase_from_iterate(
 /// Try a damped Newton solve of the full equilibrium system, from a stalled SSI iterate.
 ///
 /// Returns `None` — never an error — when the system is singular, a trial leaves the EOS domain,
-/// the line search cannot find a decrease, or the converged point misses the tolerance. The caller
-/// then continues successive substitution, so acceleration can only replace a slow route to the
-/// same answer and can never turn a flash that would have converged into a failure.
+/// the line search cannot find a decrease, the converged point misses the tolerance, or it lands
+/// on a trivial/unphysical split. The caller then continues successive substitution, so
+/// acceleration can only replace a slow route to the same answer and can never turn a flash that
+/// would have converged into a failure.
+///
+/// `newton_steps` accumulates every Newton iteration attempted, successful or not, so the reported
+/// work count does not hide discarded attempts.
 fn newton_acceleration_generic<const N: usize, const M: usize>(
     spec: &FluidSpecification,
     pressure_pa: f64,
@@ -580,13 +584,15 @@ fn newton_acceleration_generic<const N: usize, const M: usize>(
     ln_k: &[f64],
     beta: f64,
     substitution_iterations: usize,
+    newton_steps: &mut usize,
 ) -> Option<FlashState> {
     let mut ln_k = ln_k.to_vec();
     let mut beta = beta;
     let mut system = newton_system::<N, M>(spec, pressure_pa, temperature_k, z, &ln_k, beta)?;
     let mut norm = equilibrium_norm(&system.residual);
 
-    for step in 1..=MAX_NEWTON_ITERATIONS {
+    for _ in 1..=MAX_NEWTON_ITERATIONS {
+        *newton_steps += 1;
         let mut jacobian = system.jacobian.clone();
         let mut rhs: Vec<Vec<f64>> = system.residual.iter().map(|&value| vec![-value]).collect();
         let min_pivot = solve_in_place(&mut jacobian, &mut rhs);
@@ -638,7 +644,26 @@ fn newton_acceleration_generic<const N: usize, const M: usize>(
         norm = next_norm;
 
         if norm < EQUILIBRIUM_TOLERANCE {
+            let split = PhaseSplit::from_beta(beta);
             let k: Vec<f64> = ln_k.iter().map(|value| math::exp(*value)).collect();
+            let k_norm: f64 = k
+                .iter()
+                .map(|value| {
+                    let ln = math::ln(*value);
+                    ln * ln
+                })
+                .sum();
+            // A smaller residual is not proof of the same physical solution. Near the phase
+            // boundary the trivial root `K ~ 1` exists for any `beta`, and it can carry a wildly
+            // non-physical phase fraction. Either condition means this Newton answer does not
+            // establish a two-phase state; fall back to substitution rather than let
+            // `two_phase_from_iterate` turn it into a zero-residual single-phase result.
+            if !split.is_physical()
+                || k_norm < stability::TRIVIAL_SOLUTION_TOLERANCE
+                || !k.iter().all(|value| value.is_finite() && *value > 0.0)
+            {
+                return None;
+            }
             let state = two_phase_from_iterate(
                 spec,
                 pressure_pa,
@@ -646,9 +671,15 @@ fn newton_acceleration_generic<const N: usize, const M: usize>(
                 z,
                 &k,
                 beta,
-                substitution_iterations + step,
+                substitution_iterations + *newton_steps,
             )
             .ok()?;
+            // `two_phase_from_iterate` reports a collapsed split as single phase; that is a
+            // determination for the negative flash, but it is not a Newton replacement for the
+            // two-phase iterate the stability test asked us to solve.
+            if state.phase_state != PhaseState::TwoPhase {
+                return None;
+            }
             // The full-system norm and the reported physical residual differ by the raw phase-sum
             // imbalance; both have to meet the admission target before this replaces SSI.
             if state.equilibrium_residual < EQUILIBRIUM_TOLERANCE {
@@ -669,6 +700,7 @@ fn newton_acceleration(
     ln_k: &[f64],
     beta: f64,
     substitution_iterations: usize,
+    newton_steps: &mut usize,
 ) -> Option<FlashState> {
     match spec.component_count() {
         2 => newton_acceleration_generic::<2, 3>(
@@ -679,6 +711,7 @@ fn newton_acceleration(
             ln_k,
             beta,
             substitution_iterations,
+            newton_steps,
         ),
         3 => newton_acceleration_generic::<3, 4>(
             spec,
@@ -688,6 +721,7 @@ fn newton_acceleration(
             ln_k,
             beta,
             substitution_iterations,
+            newton_steps,
         ),
         4 => newton_acceleration_generic::<4, 5>(
             spec,
@@ -697,6 +731,7 @@ fn newton_acceleration(
             ln_k,
             beta,
             substitution_iterations,
+            newton_steps,
         ),
         5 => newton_acceleration_generic::<5, 6>(
             spec,
@@ -706,6 +741,7 @@ fn newton_acceleration(
             ln_k,
             beta,
             substitution_iterations,
+            newton_steps,
         ),
         6 => newton_acceleration_generic::<6, 7>(
             spec,
@@ -715,6 +751,7 @@ fn newton_acceleration(
             ln_k,
             beta,
             substitution_iterations,
+            newton_steps,
         ),
         7 => newton_acceleration_generic::<7, 8>(
             spec,
@@ -724,6 +761,7 @@ fn newton_acceleration(
             ln_k,
             beta,
             substitution_iterations,
+            newton_steps,
         ),
         8 => newton_acceleration_generic::<8, 9>(
             spec,
@@ -733,6 +771,7 @@ fn newton_acceleration(
             ln_k,
             beta,
             substitution_iterations,
+            newton_steps,
         ),
         9 => newton_acceleration_generic::<9, 10>(
             spec,
@@ -742,6 +781,7 @@ fn newton_acceleration(
             ln_k,
             beta,
             substitution_iterations,
+            newton_steps,
         ),
         10 => newton_acceleration_generic::<10, 11>(
             spec,
@@ -751,6 +791,7 @@ fn newton_acceleration(
             ln_k,
             beta,
             substitution_iterations,
+            newton_steps,
         ),
         _ => None,
     }
@@ -795,6 +836,7 @@ pub fn flash(
     let mut residual = f64::INFINITY;
     let mut previous_residual = f64::INFINITY;
     let mut next_newton_attempt = NEWTON_TRIGGER_AFTER + 1;
+    let mut newton_steps = 0usize;
 
     for iteration in 1..=MAX_SUBSTITUTION_ITERATIONS {
         let split = solve_phase_split(&k, z)?;
@@ -865,7 +907,7 @@ pub fn flash(
                 liquid: Some(liquid),
                 vapour: Some(vapour),
                 equilibrium_residual: residual,
-                iterations: iteration,
+                iterations: iteration + newton_steps,
             });
         }
 
@@ -887,6 +929,7 @@ pub fn flash(
                 &ln_k,
                 split.beta(),
                 iteration,
+                &mut newton_steps,
             ) {
                 return Ok(state);
             }
@@ -911,7 +954,7 @@ pub fn flash(
     }
 
     Err(FlashError::NotConverged {
-        iterations: MAX_SUBSTITUTION_ITERATIONS,
+        iterations: MAX_SUBSTITUTION_ITERATIONS + newton_steps,
         equilibrium_residual: residual,
         beta: solve_rachford_rice_extended(&k, z).unwrap_or(f64::NAN),
     })

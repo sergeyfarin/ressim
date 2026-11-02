@@ -352,3 +352,41 @@ fn comp_stability_accelerates_a_near_critical_trial() {
         );
     }
 }
+
+/// Accelerated trials that coincide must not be returned as a `K ~ 1` instability seed.
+///
+/// At this binary state the cold path returns distinct trial compositions (K spread ~1.81), while
+/// the warm seed `[1, 1.2]` makes both accelerated trials converge to the same composition and
+/// their ratio collapses to `K ~ 1`. The substitution fallback recovers the usable cold-path
+/// estimate instead of handing the flash a trivial seed.
+#[test]
+fn comp_stability_rejects_a_coincident_trial_pair() {
+    let spec = pinned::binary().expect("binary specification");
+    let pressure_pa = 196.148_228e5;
+    let temperature_k = 428.436_518;
+    let z = [0.9, 0.1];
+    let seed = [1.0, 1.2];
+
+    let StabilityVerdict::Unstable { k: cold } =
+        test_stability(&spec, pressure_pa, temperature_k, &z, None).expect("cold stability")
+    else {
+        panic!("the cold path must be unstable");
+    };
+    let cold_spread = cold.iter().map(|v| v.ln().abs()).fold(0.0, f64::max);
+    assert!(cold_spread > 1e-2, "cold K is already trivial: {cold:?}");
+
+    let StabilityVerdict::Unstable { k: warm } =
+        test_stability(&spec, pressure_pa, temperature_k, &z, Some(&seed)).expect("warm stability")
+    else {
+        panic!("the warm path must be unstable");
+    };
+    let warm_spread = warm.iter().map(|v| v.ln().abs()).fold(0.0, f64::max);
+    assert!(
+        warm_spread > 1e-2,
+        "the warm path returned a trivial instability seed: {warm:?}"
+    );
+    // The two seeds may select complementary phase labellings, as the base revision's
+    // substitution path does; what matters is that both are non-trivial and usable.
+    assert!(cold.iter().all(|v| v.is_finite() && *v > 0.0));
+    assert!(warm.iter().all(|v| v.is_finite() && *v > 0.0));
+}

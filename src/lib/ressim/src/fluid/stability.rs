@@ -107,7 +107,7 @@ const TRIAL_SUM_TOLERANCE: f64 = 1e-12;
 
 /// `sum (ln K_i)^2` below this means the trial collapsed onto the feed — the trivial solution,
 /// which carries no information about instability.
-const TRIVIAL_SOLUTION_TOLERANCE: f64 = 1e-5;
+pub(super) const TRIVIAL_SOLUTION_TOLERANCE: f64 = 1e-5;
 
 /// `sum (R_i - 1)^2` below this means the trial phase converged.
 const TRIAL_RESIDUAL_TOLERANCE: f64 = 1e-15;
@@ -545,6 +545,7 @@ fn run_trial(
     z: &[f64],
     k_seed: &[f64],
     trial: TrialPhase,
+    accelerate: bool,
 ) -> Result<TrialOutcome, StabilityError> {
     let n = spec.component_count();
     let mut k = k_seed.to_vec();
@@ -660,7 +661,8 @@ fn run_trial(
         // A substitution step that retains most of its residual is the near-critical stall. Hand
         // the updated K to the stationarity Newton solve; if it cannot improve the iterate, the
         // loop keeps substituting and retries only after a cooldown.
-        let slow = iteration + 1 >= next_newton_attempt
+        let slow = accelerate
+            && iteration + 1 >= next_newton_attempt
             && residual_norm >= TRIAL_NEWTON_TRIGGER_RATIO * previous_residual;
         previous_residual = residual_norm;
         if slow {
@@ -700,7 +702,8 @@ pub(super) fn trial_iteration_count(
     k_seed: &[f64],
     trial: TrialPhase,
 ) -> Result<usize, StabilityError> {
-    run_trial(spec, pressure_pa, temperature_k, z, k_seed, trial).map(|outcome| outcome.iterations)
+    run_trial(spec, pressure_pa, temperature_k, z, k_seed, trial, true)
+        .map(|outcome| outcome.iterations)
 }
 
 /// `ln x`, with an exactly zero component mapped to a large negative number rather than `-inf`.
@@ -711,6 +714,80 @@ pub(super) fn trial_iteration_count(
 /// this only fires on exact zero.
 fn safe_ln(x: f64) -> f64 {
     if x == 0.0 { -700.0 } else { math::ln(x) }
+}
+
+/// Run both Michelsen trials for one seed, with or without Newton acceleration.
+///
+/// Each trial starts from its own copy of the seed: OPM's `K0` and `K1`. Sharing one vector would
+/// make the second trial depend on the first, and the two are meant to be independent probes of
+/// the same tangent plane.
+fn run_trial_pair(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    seed: &[f64],
+    accelerate: bool,
+) -> Result<(TrialOutcome, TrialOutcome), StabilityError> {
+    let vapour = run_trial(
+        spec,
+        pressure_pa,
+        temperature_k,
+        z,
+        seed,
+        TrialPhase::VapourLike,
+        accelerate,
+    );
+    let liquid = run_trial(
+        spec,
+        pressure_pa,
+        temperature_k,
+        z,
+        seed,
+        TrialPhase::LiquidLike,
+        accelerate,
+    );
+    match (vapour, liquid) {
+        (Ok(v), Ok(l)) => Ok((v, l)),
+        (Err(e), _) | (_, Err(e)) => Err(e),
+    }
+}
+
+/// A trial pair indicates instability when either sum exceeds one and did not collapse onto the
+/// feed. `PTFlash.hpp::phaseStabilityTest_` writes the same condition in the negative.
+fn pair_indicates_instability(vapour: &TrialOutcome, liquid: &TrialOutcome) -> bool {
+    let vapour_indicates = vapour.sum >= 1.0 + TRIAL_SUM_TOLERANCE && !vapour.trivial;
+    let liquid_indicates = liquid.sum >= 1.0 + TRIAL_SUM_TOLERANCE && !liquid.trivial;
+    vapour_indicates || liquid_indicates
+}
+
+/// `K_i = y_i / x_i` from the two normalized trial compositions.
+///
+/// An absent component has `y_i = x_i = 0` and no split to describe, so it falls back to the
+/// Wilson value, which Rachford-Rice then skips anyway.
+fn pair_k_estimate(vapour: &TrialOutcome, liquid: &TrialOutcome, wilson: &[f64]) -> Vec<f64> {
+    (0..wilson.len())
+        .map(|i| {
+            let y = vapour.composition[i];
+            let x = liquid.composition[i];
+            if x > 0.0 && y > 0.0 { y / x } else { wilson[i] }
+        })
+        .collect()
+}
+
+/// True when `K` can seed the flash: finite, positive and not the trivial solution.
+fn k_is_usable(k: &[f64]) -> bool {
+    if !k.iter().all(|value| value.is_finite() && *value > 0.0) {
+        return false;
+    }
+    let norm: f64 = k
+        .iter()
+        .map(|value| {
+            let ln = math::ln(*value);
+            ln * ln
+        })
+        .sum();
+    norm >= TRIVIAL_SOLUTION_TOLERANCE
 }
 
 /// Test the feed for stability at `(p, T, z)`.
@@ -757,56 +834,48 @@ pub fn test_stability(
 
     let mut first_error = None;
     let mut any_trial_converged = false;
+    let mut saw_unusable_instability = false;
 
     for seed in &seeds {
-        // Each trial starts from its own copy of the seed: OPM's `K0` and `K1`. Sharing one vector
-        // would make the second trial depend on the first, and the two are meant to be independent
-        // probes of the same tangent plane.
-        let vapour = run_trial(
-            spec,
-            pressure_pa,
-            temperature_k,
-            z,
-            seed,
-            TrialPhase::VapourLike,
-        );
-        let liquid = run_trial(
-            spec,
-            pressure_pa,
-            temperature_k,
-            z,
-            seed,
-            TrialPhase::LiquidLike,
-        );
-
-        let (vapour, liquid) = match (vapour, liquid) {
-            (Ok(v), Ok(l)) => (v, l),
-            (Err(e), _) | (_, Err(e)) => {
+        let (vapour, liquid) = match run_trial_pair(spec, pressure_pa, temperature_k, z, seed, true)
+        {
+            Ok(pair) => pair,
+            Err(e) => {
                 first_error.get_or_insert(e);
                 continue;
             }
         };
         any_trial_converged = true;
 
-        // A trial indicates instability only if its sum exceeds one *and* it did not collapse onto
-        // the feed. `PTFlash.hpp::phaseStabilityTest_` writes the same condition in the negative.
-        let vapour_indicates = vapour.sum >= 1.0 + TRIAL_SUM_TOLERANCE && !vapour.trivial;
-        let liquid_indicates = liquid.sum >= 1.0 + TRIAL_SUM_TOLERANCE && !liquid.trivial;
-        if !vapour_indicates && !liquid_indicates {
+        if !pair_indicates_instability(&vapour, &liquid) {
             continue;
         }
 
-        // `PTFlash.hpp::phaseStabilityTest_` recovers K from the two trial *compositions*:
-        // `K_i = y_i / x_i`, with `y` the normalized vapour-like trial and `x` the normalized
-        // liquid-like one. An absent component has `y_i = x_i = 0` and no split to describe, so it
-        // falls back to the Wilson value, which Rachford-Rice then skips anyway.
-        let mut k = Vec::with_capacity(n);
-        for i in 0..n {
-            let y = vapour.composition[i];
-            let x = liquid.composition[i];
-            k.push(if x > 0.0 && y > 0.0 { y / x } else { wilson[i] });
+        let mut k = pair_k_estimate(&vapour, &liquid, &wilson);
+        if k_is_usable(&k) {
+            return Ok(StabilityVerdict::Unstable { k });
         }
-        return Ok(StabilityVerdict::Unstable { k });
+
+        // Newton can converge both trials onto the same stationary composition while substitution
+        // reaches two distinct ones. The ratio of coincident compositions is `K ~ 1`, which is
+        // not a usable instability seed. Re-run this seed on plain substitution before giving up
+        // on it; the accelerated pair is accepted only when it returns a non-trivial `K`.
+        let (vapour, liquid) =
+            match run_trial_pair(spec, pressure_pa, temperature_k, z, seed, false) {
+                Ok(pair) => pair,
+                Err(e) => {
+                    first_error.get_or_insert(e);
+                    continue;
+                }
+            };
+        if !pair_indicates_instability(&vapour, &liquid) {
+            continue;
+        }
+        k = pair_k_estimate(&vapour, &liquid, &wilson);
+        if k_is_usable(&k) {
+            return Ok(StabilityVerdict::Unstable { k });
+        }
+        saw_unusable_instability = true;
     }
 
     if !any_trial_converged {
@@ -814,6 +883,12 @@ pub fn test_stability(
         return Err(first_error.unwrap_or(StabilityError::InvalidFeed {
             reason: "no stability seed produced a converged trial",
         }));
+    }
+    if saw_unusable_instability {
+        // The trials did find a lower tangent plane, but every trial pair collapsed to a trivial
+        // composition ratio. Return the Wilson estimate rather than a `K ~ 1` vector: the verdict
+        // is what matters, and Wilson is at least a non-trivial seed for the flash.
+        return Ok(StabilityVerdict::Unstable { k: wilson });
     }
     Ok(StabilityVerdict::Stable)
 }

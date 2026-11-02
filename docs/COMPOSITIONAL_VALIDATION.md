@@ -387,6 +387,16 @@ month-192 → month-240 SPE5 replay now completes; the C6 sweep tallies and reco
 unchanged, and `comp_stability_accelerates_a_near_critical_trial` pins both trials below 100
 substitutions. `MAX_TRIAL_ITERATIONS` remains at 100,000 as a backstop. (#102)
 
+Newton is an accelerator, not an oracle. A converged flash root is admitted only when its phase
+split is physical, its `K` is non-trivial and `two_phase_from_iterate` still reports a two-phase
+state; otherwise the flash resumes substitution. A stability seed is admitted only when the two
+trial compositions give a usable non-trivial `K`; if accelerated trials coincide, that seed is
+re-run on plain substitution before the verdict is returned. Reported flash iterations include
+every Newton iteration attempted, whether the attempt was accepted, rejected or followed by
+substitution. These safeguards are pinned by `comp_flash_rejects_a_trivial_newton_root`,
+`comp_flash_warm_start_survives_coincident_stability_trials` and
+`comp_stability_rejects_a_coincident_trial_pair`.
+
 **Derivatives are a first-class part of this oracle, not a bonus.** PTFlash reconstructs them by
 implicit differentiation of the converged equilibrium, which is the pattern C4 is instructed to
 follow. The harness seeds the dependent `z_(N-1)` with `dz_(N-1)/dz_k = -1`, so C4's required
