@@ -776,18 +776,25 @@ fn pair_k_estimate(vapour: &TrialOutcome, liquid: &TrialOutcome, wilson: &[f64])
 }
 
 /// True when `K` can seed the flash: finite, positive and not the trivial solution.
-fn k_is_usable(k: &[f64]) -> bool {
-    if !k.iter().all(|value| value.is_finite() && *value > 0.0) {
-        return false;
+///
+/// Only components present in the feed count. An absent component is filled with its Wilson
+/// value by [`pair_k_estimate`], which is deliberately non-trivial; including it in the norm
+/// would let it mask a coincident pair of active-component ratios.
+fn k_is_usable(k: &[f64], z: &[f64]) -> bool {
+    let mut active = false;
+    let mut norm = 0.0;
+    for (value, zi) in k.iter().zip(z) {
+        if *zi <= 0.0 {
+            continue;
+        }
+        active = true;
+        if !value.is_finite() || *value <= 0.0 {
+            return false;
+        }
+        let ln = math::ln(*value);
+        norm += ln * ln;
     }
-    let norm: f64 = k
-        .iter()
-        .map(|value| {
-            let ln = math::ln(*value);
-            ln * ln
-        })
-        .sum();
-    norm >= TRIVIAL_SOLUTION_TOLERANCE
+    active && norm >= TRIVIAL_SOLUTION_TOLERANCE
 }
 
 /// Test the feed for stability at `(p, T, z)`.
@@ -852,7 +859,7 @@ pub fn test_stability(
         }
 
         let mut k = pair_k_estimate(&vapour, &liquid, &wilson);
-        if k_is_usable(&k) {
+        if k_is_usable(&k, z) {
             return Ok(StabilityVerdict::Unstable { k });
         }
 
@@ -860,6 +867,10 @@ pub fn test_stability(
         // reaches two distinct ones. The ratio of coincident compositions is `K ~ 1`, which is
         // not a usable instability seed. Re-run this seed on plain substitution before giving up
         // on it; the accelerated pair is accepted only when it returns a non-trivial `K`.
+        //
+        // Record the instability before the retry: a retry that errors or fails to reproduce it
+        // must not erase the lower tangent plane already found.
+        saw_unusable_instability = true;
         let (vapour, liquid) =
             match run_trial_pair(spec, pressure_pa, temperature_k, z, seed, false) {
                 Ok(pair) => pair,
@@ -872,10 +883,9 @@ pub fn test_stability(
             continue;
         }
         k = pair_k_estimate(&vapour, &liquid, &wilson);
-        if k_is_usable(&k) {
+        if k_is_usable(&k, z) {
             return Ok(StabilityVerdict::Unstable { k });
         }
-        saw_unusable_instability = true;
     }
 
     if !any_trial_converged {

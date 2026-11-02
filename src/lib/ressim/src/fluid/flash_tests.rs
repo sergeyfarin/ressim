@@ -1019,3 +1019,33 @@ fn comp_flash_warm_start_survives_coincident_stability_trials() {
         1.0 - cold.beta
     );
 }
+
+/// A warm start with an exactly absent component must not inherit a trivial active-component seed.
+///
+/// The absent CO2's Wilson fallback made the stability seed look nontrivial while the two active
+/// components had `K ~ 1`; the flash then declared a single vapour. The base revision and the cold
+/// start find two phases.
+#[test]
+fn comp_flash_warm_start_with_an_absent_component_stays_two_phase() {
+    let spec = pinned::ternary().expect("ternary specification");
+    let pressure_pa = 196.148_228e5;
+    let temperature_k = 428.436_518;
+    let z = [0.0, 0.9, 0.1];
+    let seed = [1.0, 1.0, 1.2];
+
+    let cold = flash(&spec, pressure_pa, temperature_k, &z, None).expect("cold flash");
+    assert_eq!(cold.phase_state, PhaseState::TwoPhase);
+
+    let warm = flash(&spec, pressure_pa, temperature_k, &z, Some(&seed)).expect("warm flash");
+    assert_eq!(
+        warm.phase_state,
+        PhaseState::TwoPhase,
+        "the warm start inherited a trivial active-component seed"
+    );
+    assert!(
+        (warm.beta - (1.0 - cold.beta)).abs() < 1e-9,
+        "warm beta {} vs base-compatible {}",
+        warm.beta,
+        1.0 - cold.beta
+    );
+}

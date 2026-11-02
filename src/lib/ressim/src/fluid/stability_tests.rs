@@ -390,3 +390,45 @@ fn comp_stability_rejects_a_coincident_trial_pair() {
     assert!(cold.iter().all(|v| v.is_finite() && *v > 0.0));
     assert!(warm.iter().all(|v| v.is_finite() && *v > 0.0));
 }
+
+/// An absent component must not mask a coincident pair of active-component ratios.
+///
+/// The ternary's CO2 is exactly absent. `pair_k_estimate` gives it its Wilson value (~2.537),
+/// which made `k_is_usable` call the vector nontrivial even though both active components had
+/// `K ~ 1`. The warm start then handed the flash a trivial seed and it reported a single vapour.
+#[test]
+fn comp_stability_ignores_an_absent_component_in_the_seed_norm() {
+    let spec = pinned::ternary().expect("ternary specification");
+    let pressure_pa = 196.148_228e5;
+    let temperature_k = 428.436_518;
+    let z = [0.0, 0.9, 0.1];
+    let seed = [1.0, 1.0, 1.2];
+
+    let StabilityVerdict::Unstable { k: cold } =
+        test_stability(&spec, pressure_pa, temperature_k, &z, None).expect("cold stability")
+    else {
+        panic!("the cold path must be unstable");
+    };
+    let active_spread = |k: &[f64]| {
+        k.iter()
+            .zip(z)
+            .filter(|(_, zi)| *zi > 0.0)
+            .map(|(value, _)| value.ln().abs())
+            .fold(0.0, f64::max)
+    };
+    assert!(
+        active_spread(&cold) > 1e-2,
+        "cold active K is trivial: {cold:?}"
+    );
+
+    let StabilityVerdict::Unstable { k: warm } =
+        test_stability(&spec, pressure_pa, temperature_k, &z, Some(&seed)).expect("warm stability")
+    else {
+        panic!("the warm path must be unstable");
+    };
+    assert!(
+        active_spread(&warm) > 1e-2,
+        "the absent component masked a trivial active K: {warm:?}"
+    );
+    assert!(warm.iter().all(|v| v.is_finite() && *v > 0.0));
+}

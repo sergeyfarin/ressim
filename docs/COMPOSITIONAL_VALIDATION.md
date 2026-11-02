@@ -390,12 +390,17 @@ substitutions. `MAX_TRIAL_ITERATIONS` remains at 100,000 as a backstop. (#102)
 Newton is an accelerator, not an oracle. A converged flash root is admitted only when its phase
 split is physical, its `K` is non-trivial and `two_phase_from_iterate` still reports a two-phase
 state; otherwise the flash resumes substitution. A stability seed is admitted only when the two
-trial compositions give a usable non-trivial `K`; if accelerated trials coincide, that seed is
-re-run on plain substitution before the verdict is returned. Reported flash iterations include
-every Newton iteration attempted, whether the attempt was accepted, rejected or followed by
-substitution. These safeguards are pinned by `comp_flash_rejects_a_trivial_newton_root`,
-`comp_flash_warm_start_survives_coincident_stability_trials` and
-`comp_stability_rejects_a_coincident_trial_pair`.
+trial compositions give a usable non-trivial `K`; the norm counts only components present in the
+feed, so an absent component's Wilson fallback cannot mask a coincident active pair. If
+accelerated trials coincide, that seed is re-run on plain substitution before the verdict is
+returned, and the instability is recorded before the retry so a failed retry cannot erase the
+lower tangent plane. Reported flash iterations include every Newton iteration attempted, whether
+the attempt was accepted, rejected or followed by substitution. These safeguards are pinned by
+`comp_flash_rejects_a_trivial_newton_root`,
+`comp_flash_warm_start_survives_coincident_stability_trials`,
+`comp_stability_rejects_a_coincident_trial_pair`,
+`comp_stability_ignores_an_absent_component_in_the_seed_norm` and
+`comp_flash_warm_start_with_an_absent_component_stays_two_phase`.
 
 **Derivatives are a first-class part of this oracle, not a bonus.** PTFlash reconstructs them by
 implicit differentiation of the converged equilibrium, which is the pattern C4 is instructed to
