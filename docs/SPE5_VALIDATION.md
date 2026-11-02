@@ -6,19 +6,18 @@ control and WAG schedule are the enablers recorded in `COMPOSITIONAL_VALIDATION.
 differs from the OPM deck implementation, and what still blocks offering it.
 
 **Status: authored, not shipped.** `src/lib/catalog/scenarios/comp_spe5_wag.ts` builds the complete
-payload and is withheld from the picker. Two things are outstanding:
+payload and is withheld from the picker. The independent JutulDarcy compositional reference is not
+committed yet, so no UI overlay or scorecard row exists for this case; no result from it should be
+quoted until that reference lands.
 
-1. The full 20-year replay still stops in a later near-critical region around **6375 d (month
-   209)**, where successive substitution needs more than 20,000 iterations and the Newton solve then
-   cuts the timestep. This is separate from #93 and is tracked as
-   [#99](https://github.com/sergeyfarin/ressim/issues/99).
-2. The independent JutulDarcy compositional reference is not committed yet. No UI overlay or
-   scorecard row exists for this case.
-
-[#93](https://github.com/sergeyfarin/ressim/issues/93) itself — the **6114.808 d** stall — was a
-near-critical stability-tolerance defect in the flash, fixed below. The month-201 segment now
-clears, but the scenario is still not presented as validated, and no result from it should be
-quoted until the later region and the reference land.
+[#93](https://github.com/sergeyfarin/ressim/issues/93) — the **6114.808 d** stall — was a
+near-critical stability-tolerance defect in the flash, fixed below.
+[#99](https://github.com/sergeyfarin/ressim/issues/99) — the **6375 d** region — was a
+successive-substitution and iteration-cap limit, also fixed below. The replay clears that region
+without a timestep collapse.
+[#102](https://github.com/sergeyfarin/ressim/issues/102) — the **6646.0625 d** stability-trial
+stall — applied the same acceleration one level lower, to the Michelsen trial. The month-192 →
+month-240 replay now completes.
 
 ## Case definition
 
@@ -106,12 +105,45 @@ iterations). OPM's scalar flash carries the same `1e-5` margin and switches earl
 OPM fixtures still agree after the change: 84 stability verdicts, 47 flash phase states and 140
 trajectory states.
 
-The month-192 → month-201 segment now clears in 56 calls and 117 s. A later near-critical region
-around **6375 d (month 209)** is a separate gap: the flash's successive substitution needs about
-20,700 iterations even with a 100,000 cap, and the Newton solve then needs six timestep cuts to
-advance 0.156 d. That is a flash-acceleration and nonlinearity problem, not the stability verdict
-fixed here; it is tracked as [#99](https://github.com/sergeyfarin/ressim/issues/99). The 20-year
-replay therefore does not complete yet and the scenario stays withheld.
+The month-192 → month-201 segment now clears in 56 calls and 117 s.
+
+### Late-life flash acceleration (#99): fixed
+
+The next region was a genuine successive-substitution stall, not the stability verdict. Around
+6366–6375 d the flash's convergence ratio approached one: captured states needed 78, 173, 4,520
+and more than 5,000 substitutions, and at 6366.59 d the flash failed at residual 4.3e-8. Even with
+a 100,000 cap the 5-day step was then cut 32× to 0.156 d.
+
+The flash now takes a damped Newton step on the full equilibrium system `[ln K, beta]` — the same
+fugacity-equality plus Rachford–Rice rows that `fluid/derivatives.rs` differentiates — when a
+substitution step retains at least 70% of its residual after ten iterations. The line search only
+accepts a decrease in the full-system residual, and a singular Jacobian, an EOS-domain failure or a
+failed line search returns to substitution, so acceleration cannot turn a convergent flash into a
+failure. The recorded late-life states now converge in 14–20 iterations, and the fixture and C6
+sweep answers are unchanged (`docs/COMPOSITIONAL_VALIDATION.md` §5).
+
+The flash acceleration alone did not unblock the replay: the next step failed in the stability
+test's `LiquidLike` trial, which needed **28,946** substitutions and was rejected by the inherited
+OPM cap of 20,000. `MAX_TRIAL_ITERATIONS` is now 100,000, a correctness backstop on the same
+argument. That trial is the same linearly convergent near-critical stall as the flash, one level
+down. It now takes a damped Newton step on the tangent-plane stationarity system for the active
+components — `ln K_i + ln phi_i^trial(W) - ln phi_i^feed(z) = 0` for the vapour-like trial, with
+the trial and feed terms reversed for the liquid-like one — when a substitution step retains at
+least 95% of its residual after ten iterations. The line search accepts only a decrease in the
+full-system residual, and a singular Jacobian, an EOS-domain failure, a failed line search or an
+iteration cap returns to substitution, so acceleration cannot turn a convergent trial into a
+failure. The trial-sum and trivial-solution verdict criteria are unchanged.
+
+The 6366.59 d state's `LiquidLike` trial now reaches its verdict in **60 substitutions** (65 for
+`VapourLike`), down from 28,946, and the same acceleration clears the later **6646.0625 d** trial
+at cell 33 that sat just above the trivial-solution threshold and needed more than 100,000
+substitutions. No verdict changes: the 47-state stability fixture, the flash fixture and the C6
+sweep are unchanged.
+
+The 6375 d segment now advances without a timestep collapse: the month-192 → 6375 d replay takes
+**108 calls, no retried step below 2.5 d (event-capped single-attempt steps are unaffected),
+at most 10 Newton iterations, 193 s**. The full month-192 → month-240 replay completes in
+**302 calls, worst 11 Newton iterations, 970 s**.
 
 Evidence:
 
@@ -123,13 +155,25 @@ cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
 # The month-192 to month-201 segment that used to stall: 56 calls, 117 s.
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
   comp_spe5_resume_192_clears_the_201_report -- --ignored --nocapture
+
+# The month-192 to 6375 d near-critical region: 108 calls, no retried step below 2.5 d,
+# worst 10 Newton iterations, 193 s.
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
+  comp_spe5_resume_192_clears_the_near_critical_region -- --ignored --nocapture
+
+# The rest of the 20-year replay across the 6646.0625 d trial stall: 302 calls, 970 s.
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
+  comp_spe5_resume_192_completes_the_20_year_replay -- --ignored --nocapture
 ```
 
 The 16-year from-scratch replay (`comp_spe5_case_reaches_the_late_life_checkpoint`) also passes
-with the fix, in about 220 s. The unit regressions are part of the thermodynamic gate:
+with the #93 fix, in about 220 s. The unit regressions are part of the thermodynamic gate:
 `comp_stability_detects_a_near_critical_tangent_plane` pins the verdict on both sides of the true
-bubble point, and `comp_flash_keeps_a_near_critical_split_continuous` pins the continuous split and
-the no-jump molar volume across the old switch.
+bubble point, `comp_flash_keeps_a_near_critical_split_continuous` pins the continuous split and the
+no-jump molar volume across the old switch,
+`comp_flash_accelerates_spe5_late_life_near_critical_states` pins the #99 states below 100
+iterations, and `comp_stability_accelerates_a_near_critical_trial` pins the #102 state at fewer
+than 100 substitutions for both trial phases.
 
 ## Reference plan
 

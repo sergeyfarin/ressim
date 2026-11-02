@@ -8,7 +8,9 @@
 use super::fixture::{self, FixtureSystem};
 use super::pinned;
 use super::specification::FluidSpecification;
-use super::stability::{StabilityVerdict, test_stability, wilson_k};
+use super::stability::{
+    StabilityVerdict, TrialPhase, test_stability, trial_iteration_count, wilson_k,
+};
 
 fn spec_for(system: &FixtureSystem) -> FluidSpecification {
     fixture::spec_for(system)
@@ -313,4 +315,120 @@ fn comp_stability_unstable_verdict_returns_a_usable_k_estimate() {
 fn comp_stability_rejects_a_mismatched_composition_length() {
     let spec = pinned::ternary().unwrap();
     assert!(test_stability(&spec, 1.5e7, 423.15, &[0.5, 0.5], None).is_err());
+}
+
+/// A near-critical LiquidLike trial that used to need tens of thousands of substitutions (#99/#102).
+///
+/// This is the SPE5 cell-10 flash state at 6366.59 d that the replay's next step called. Its
+/// `LiquidLike` trial converged only after **28,946** plain substitutions (residual 1e-15), so the
+/// inherited 20,000 cap rejected a convergent trial and the timestep failed with `Budget`. The cap
+/// is now a backstop, and the Newton acceleration reaches the same verdict in fewer than 100
+/// substitutions, so this also pins the #102 acceptance target rather than just the cap fix.
+#[test]
+fn comp_stability_accelerates_a_near_critical_trial() {
+    let spec = pinned::spe5().expect("SPE5 specification");
+    let z = [
+        0.699_490_272_019_475_8,
+        0.213_297_342_554_516_38,
+        0.047_299_773_888_730_155,
+        0.014_677_628_644_956_81,
+        0.017_203_862_831_964_66,
+        0.008_031_120_060_356_223,
+    ];
+    let pressure_pa = 238.881_595_643_606_07e5;
+    let temperature_k = 344.261_111_111_111_2;
+    let verdict = test_stability(&spec, pressure_pa, temperature_k, &z, None)
+        .unwrap_or_else(|e| panic!("the convergent near-critical trial was rejected: {e}"));
+    assert!(matches!(verdict, StabilityVerdict::Unstable { .. }));
+
+    let seed = wilson_k(&spec, pressure_pa, temperature_k);
+    for trial in [TrialPhase::VapourLike, TrialPhase::LiquidLike] {
+        let iterations = trial_iteration_count(&spec, pressure_pa, temperature_k, &z, &seed, trial)
+            .unwrap_or_else(|e| panic!("{trial:?} trial rejected: {e}"));
+        println!("SPE5 6366.59 d {trial:?}: {iterations} substitutions");
+        assert!(
+            iterations < 100,
+            "{trial:?} needed {iterations} substitutions; #102's target is fewer than 100"
+        );
+    }
+}
+
+/// Accelerated trials that coincide must not be returned as a `K ~ 1` instability seed.
+///
+/// At this binary state the cold path returns distinct trial compositions (K spread ~1.81), while
+/// the warm seed `[1, 1.2]` makes both accelerated trials converge to the same composition and
+/// their ratio collapses to `K ~ 1`. The substitution fallback recovers the usable cold-path
+/// estimate instead of handing the flash a trivial seed.
+#[test]
+fn comp_stability_rejects_a_coincident_trial_pair() {
+    let spec = pinned::binary().expect("binary specification");
+    let pressure_pa = 196.148_228e5;
+    let temperature_k = 428.436_518;
+    let z = [0.9, 0.1];
+    let seed = [1.0, 1.2];
+
+    let StabilityVerdict::Unstable { k: cold } =
+        test_stability(&spec, pressure_pa, temperature_k, &z, None).expect("cold stability")
+    else {
+        panic!("the cold path must be unstable");
+    };
+    let cold_spread = cold.iter().map(|v| v.ln().abs()).fold(0.0, f64::max);
+    assert!(cold_spread > 1e-2, "cold K is already trivial: {cold:?}");
+
+    let StabilityVerdict::Unstable { k: warm } =
+        test_stability(&spec, pressure_pa, temperature_k, &z, Some(&seed)).expect("warm stability")
+    else {
+        panic!("the warm path must be unstable");
+    };
+    let warm_spread = warm.iter().map(|v| v.ln().abs()).fold(0.0, f64::max);
+    assert!(
+        warm_spread > 1e-2,
+        "the warm path returned a trivial instability seed: {warm:?}"
+    );
+    // The two seeds may select complementary phase labellings, as the base revision's
+    // substitution path does; what matters is that both are non-trivial and usable.
+    assert!(cold.iter().all(|v| v.is_finite() && *v > 0.0));
+    assert!(warm.iter().all(|v| v.is_finite() && *v > 0.0));
+}
+
+/// An absent component must not mask a coincident pair of active-component ratios.
+///
+/// The ternary's CO2 is exactly absent. `pair_k_estimate` gives it its Wilson value (~2.537),
+/// which made `k_is_usable` call the vector nontrivial even though both active components had
+/// `K ~ 1`. The warm start then handed the flash a trivial seed and it reported a single vapour.
+#[test]
+fn comp_stability_ignores_an_absent_component_in_the_seed_norm() {
+    let spec = pinned::ternary().expect("ternary specification");
+    let pressure_pa = 196.148_228e5;
+    let temperature_k = 428.436_518;
+    let z = [0.0, 0.9, 0.1];
+    let seed = [1.0, 1.0, 1.2];
+
+    let StabilityVerdict::Unstable { k: cold } =
+        test_stability(&spec, pressure_pa, temperature_k, &z, None).expect("cold stability")
+    else {
+        panic!("the cold path must be unstable");
+    };
+    let active_spread = |k: &[f64]| {
+        k.iter()
+            .zip(z)
+            .filter(|(_, zi)| *zi > 0.0)
+            .map(|(value, _)| value.ln().abs())
+            .fold(0.0, f64::max)
+    };
+    assert!(
+        active_spread(&cold) > 1e-2,
+        "cold active K is trivial: {cold:?}"
+    );
+
+    let StabilityVerdict::Unstable { k: warm } =
+        test_stability(&spec, pressure_pa, temperature_k, &z, Some(&seed)).expect("warm stability")
+    else {
+        panic!("the warm path must be unstable");
+    };
+    assert!(
+        active_spread(&warm) > 1e-2,
+        "the absent component masked a trivial active K: {warm:?}"
+    );
+    assert!(warm.iter().all(|v| v.is_finite() && *v > 0.0));
 }
