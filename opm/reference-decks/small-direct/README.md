@@ -779,24 +779,35 @@ and the hash-matched Flow comparison command recorded there.
 
 The first benchmark record of the generated wasm-preset decks (2026-11-02, `99dac756`) flagged
 their FIM cumulatives as same-model gaps at the decks' native single-report schedules. Re-running
-the same decks at finer report steps with `validate-cross-solver.sh --refine` closes them; sparse
-and dense are identical, so the table shows one FIM column.
+the same decks at finer report steps with `validate-cross-solver.sh --refine` closes them. The
+sparse and dense configurations agree, but these decks are above the 512-row forced-direct
+threshold, so both use the iterative route; the agreement is not an independent LU check. The
+table shows one FIM column. Values are absolute magnitudes: `compare_small_direct.py` records
+`abs(a-b)/abs(b)` and does not carry a direction.
 
 | Case | Native report | FOPT | FWPT | FWIT | Refined report | FOPT | FWPT | FWIT |
 |---|---|---|---|---|---|---|---|---|
-| `water-heavy-step1` | 1 d | +27.36 % | +70.44 % | +15.80 % | 0.05 d | 0.00 % | +0.27 % | +0.01 % |
-| `water-pressure-20x20x3` | 0.25 d | +2.17 % | — | +2.62 % | 0.05 d | 0.00 % | — | 0.00 % |
-| `water-pressure-22x22x1` | 0.25 d | +2.52 % | — | +2.91 % | 0.05 d | 0.00 % | — | 0.00 % |
-| `water-pressure-23x23x1` | 0.25 d | +2.46 % | — | +2.89 % | 0.05 d | 0.00 % | — | 0.00 % |
+| `water-heavy-step1` | 1 d | 27.36 % | 70.44 % | 15.80 % | 0.05 d | 0.00 % | 0.27 % | 0.01 % |
+| `water-pressure-20x20x3` | 0.25 d | 2.17 % | — | 2.62 % | 0.05 d | 0.00 % | — | 0.00 % |
+| `water-pressure-22x22x1` | 0.25 d | 2.52 % | — | 2.91 % | 0.05 d | 0.00 % | — | 0.00 % |
+| `water-pressure-23x23x1` | 0.25 d | 2.46 % | — | 2.89 % | 0.05 d | 0.00 % | — | 0.00 % |
 
-The water-heavy 1 d control is the largest: its 27.36 / 70.44 / 15.80 % cumulative gaps fall to
-0.00 / 0.27 / 0.01 % with twenty 0.05 d reports. The three `water-pressure-*` decks fall from
-2.17–2.91 % to 0.00 % on five 0.05 d reports. That is report-step error, not a spatial, PVT or
-well-model gap. No tolerance changed; `docs/BENCHMARKS.md` records the decks at their native
+The water-heavy 1 d control is the largest: its 27.36 / 70.44 / 15.80 % absolute cumulative gaps
+fall to 0.00 / 0.27 / 0.01 % with twenty 0.05 d reports. The three `water-pressure-*` decks fall
+from 2.17–2.91 % to 0.00 % on five 0.05 d reports. That is report-step error, not a spatial, PVT
+or well-model gap. No tolerance changed; `docs/BENCHMARKS.md` records the decks at their native
 schedules and marks these rows explained.
 
-`gas-rate-10x10x3` does not close. Its FGIT gap is 9.29 % at the native six 0.25 d reports,
-3.93 % at 0.05 d and 2.93 % at 0.0125 d, while FOPT/FGPT agree to 0.04 % and the worst pressure
-gap is 3.69 bar. With `RESV` gas injection, FGIT follows the gas FVF at the injector, so the
-residual is a pressure/PVT question rather than a timestep one; tracked in
+`gas-rate-10x10x3` does not close. Its absolute FGIT gap is 9.29 % at the native six 0.25 d
+reports, 3.93 % at 0.05 d, 2.93 % at 0.0125 d and 2.67 % at 0.003125 d, while FOPT/FGPT agree to
+0.04 % and the worst pressure gap is 3.39 bar at the finest report step. The established RESV
+control difference comes first: Flow constrains surface injection through a report-step regional
+`B_g,ref` (`B_g,ref * WQTotal = Q_resv`, 0.0065 rm3/Sm3 at this deck's uniform initial state),
+while the historical ResSim route controls local reservoir volume and converts through the
+current cell `B_g` (`docs/FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md` §1–2). The Flow-matching
+RESV route is a default-off native diagnostic, and the generated `gas-rate` case does not enable
+it. ResSim injecting more surface gas than Flow is consistent with local `B_g < B_g,ref`, and the
+residual shrinking with the report step is consistent with that local-vs-regional difference
+shrinking too. That does not prove the residual is only this semantics, and refinement alone does
+not isolate a gas-PVT interpolation defect; the remaining error is tracked in
 [#104](https://github.com/sergeyfarin/ressim/issues/104).

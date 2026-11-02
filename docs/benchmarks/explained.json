@@ -76,7 +76,7 @@
    ],
    "status": "explained",
    "ref": "opm/reference-decks/small-direct/README.md, \"Generated wasm-preset cumulatives are report-step error\" (#56)",
-   "note": "Report-step error: at the deck's native 1 d schedule the FIM gaps are +27.36 / +70.44 / +15.80 %, but with twenty 0.05 d reports they are 0.00 / +0.27 / +0.01 %. Sparse and dense are identical. No tolerance changed."
+   "note": "Report-step error: at the deck's native 1 d schedule the absolute FIM gaps are 27.36 / 70.44 / 15.80 %, but with twenty 0.05 d reports they are 0.00 / 0.27 / 0.01 %. The sparse and dense configurations agree; both are above the 512-row forced-direct threshold, so the agreement is not an independent LU check. No tolerance changed."
   },
   {
    "section": "cross_solver",
@@ -87,15 +87,15 @@
    ],
    "status": "explained",
    "ref": "opm/reference-decks/small-direct/README.md, \"Generated wasm-preset cumulatives are report-step error\" (#56)",
-   "note": "Report-step error: the three decks' native 0.25 d FIM gaps of +2.17 to +2.91 % fall to 0.00 % with five 0.05 d reports. Sparse and dense are identical. No tolerance changed."
+   "note": "Report-step error: the three decks' native 0.25 d absolute FIM gaps of 2.17–2.91 % fall to 0.00 % with five 0.05 d reports. The sparse and dense configurations agree; both are above the 512-row forced-direct threshold, so the agreement is not an independent LU check. No tolerance changed."
   },
   {
    "section": "cross_solver",
    "case": "gas-rate-10x10x3",
    "metric": "*.cum.FGIT",
    "status": "tracked",
-   "ref": "#104",
-   "note": "Does not close under report-step refinement: FGIT is +9.29 % at six 0.25 d reports, +3.93 % at 0.05 d and +2.93 % at 0.0125 d, while FOPT/FGPT agree to 0.04 % and the worst pressure gap is 3.69 bar. With RESV gas injection, FGIT follows the injector gas FVF; the residual is a pressure/PVT question, not a timestep one."
+   "ref": "#104; FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md §1–2",
+   "note": "Does not close under report-step refinement: the absolute FGIT gaps are 9.29 % at six 0.25 d reports, 3.93 % at 0.05 d, 2.93 % at 0.0125 d and 2.67 % at 0.003125 d, while FOPT/FGPT agree to 0.04 % and the worst pressure gap is 3.39 bar at the finest step. The established RESV control difference comes first: Flow uses a report-step regional B_g,ref for the surface-rate constraint, while the historical ResSim route converts a local reservoir rate through the current cell B_g (FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md §1-2). The sign (ResSim higher) and the shrinking residual are consistent with that difference; refinement alone does not isolate a gas-PVT interpolation defect."
   }
  ]
 }

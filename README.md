@@ -240,7 +240,7 @@ reference solving the same discrete model, and the commit it was measured on. Th
 | SPE1 Case 1, 10 years | Published SPE1 / Flow | 10x10x3: gor_rel_err 1.41 % | 12.0 % | 12% | 10x10x3: vs_flow.WGOR_rel_err -0.90 % (explained) | `99dac756` |
 | Three-phase gas drive and injection | OPM Flow | gas_drive: gor_rel_err 0.56 % | 1.0 % | 56% | gas_drive: vs_jutul.FOPR_rel_err +4.49 % (explained) | `99dac756` |
 | Black-oil depletion column | Grid self-convergence, Flow | FIM: sat_gas_finest_pair_gap 1.20 % | 1.5 % | 80% | — | `99dac756` |
-| Generated decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | water-heavy-step1: sparse.cum.FWPT +70.44 % (explained) | `99dac756` |
+| Generated decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | water-heavy-step1: sparse.cum.FWPT 70.44 % (explained) | `99dac756` |
 | Native vs wasm bindings | Each other | buckley-impes (IMPES): cells_max_abs_diff 0 abs | 1e-09 abs | 0% | — | `99dac756` |
 | FIM convergence, long horizons | Substeps per report step | no banded criterion | — | — | — | `99dac756` |
 | Compositional, matched timestep | OPM flowexp_comp | depletion BHP: worst_pressure_diff 0.00951 bar | 0.02 bar | 48% | depletion BHP: cum_production_worst_component_rel_err +0.09 % | `99dac756` |

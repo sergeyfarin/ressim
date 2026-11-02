@@ -41,7 +41,7 @@ it is never the tightest criterion, and it can be the larger error (see Signals 
 | SPE1 Case 1, 10 years | Published SPE1 / Flow | 10x10x3: gor_rel_err 1.41 % | 12.0 % | 12% | 10x10x3: vs_flow.WGOR_rel_err -0.90 % (explained) | `99dac756` |
 | Three-phase gas drive and injection | OPM Flow | gas_drive: gor_rel_err 0.56 % | 1.0 % | 56% | gas_drive: vs_jutul.FOPR_rel_err +4.49 % (explained) | `99dac756` |
 | Black-oil depletion column | Grid self-convergence, Flow | FIM: sat_gas_finest_pair_gap 1.20 % | 1.5 % | 80% | — | `99dac756` |
-| Generated decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | water-heavy-step1: sparse.cum.FWPT +70.44 % (explained) | `99dac756` |
+| Generated decks, three solvers | OPM Flow, generated decks | no banded criterion | — | — | water-heavy-step1: sparse.cum.FWPT 70.44 % (explained) | `99dac756` |
 | Native vs wasm bindings | Each other | buckley-impes (IMPES): cells_max_abs_diff 0 abs | 1e-09 abs | 0% | — | `99dac756` |
 | FIM convergence, long horizons | Substeps per report step | no banded criterion | — | — | — | `99dac756` |
 | Compositional, matched timestep | OPM flowexp_comp | depletion BHP: worst_pressure_diff 0.00951 bar | 0.02 bar | 48% | depletion BHP: cum_production_worst_component_rel_err +0.09 % | `99dac756` |
@@ -66,32 +66,34 @@ commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
 <!-- GENERATED:signals -->
 **Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 0 unexplained and untracked, 2 tracked, 24 explained.
 
+`cross_solver` cumulative rows are absolute relative differences (`abs(a-b)/abs(b)` in `compare_small_direct.py`) and do not assert a direction.
+
 | Section | Case | Metric | Value | Where | Status |
 |---|---|---|---|---|---|
-| cross_solver | gas-rate-10x10x3 | sparse.cum.FGIT | +9.29 % |  | tracked: #104 |
-| cross_solver | gas-rate-10x10x3 | dense.cum.FGIT | +9.29 % |  | tracked: #104 |
+| cross_solver | gas-rate-10x10x3 | sparse.cum.FGIT | 9.29 % |  | tracked: #104; FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md §1–2 |
+| cross_solver | gas-rate-10x10x3 | dense.cum.FGIT | 9.29 % |  | tracked: #104; FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md §1–2 |
 | three_phase | gas_drive | cum_oil_rel_err | -1.37 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
 | three_phase | gas_drive | oil_rate_rel_err | +3.92 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
 | three_phase | gas_drive | vs_jutul.FOPR_rel_err | +4.49 % | t=20 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
 | three_phase | gas_drive | jutul_vs_flow.FOPR_rel_err | -2.10 % | t=10 d | explained: THREE_PHASE_VALIDATION.md §2 (#55) |
-| cross_solver | water-heavy-step1 | sparse.cum.FOPT | +27.36 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-heavy-step1 | sparse.cum.FWPT | +70.44 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-heavy-step1 | sparse.cum.FWIT | +15.80 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-heavy-step1 | dense.cum.FOPT | +27.36 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-heavy-step1 | dense.cum.FWPT | +70.44 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-heavy-step1 | dense.cum.FWIT | +15.80 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-pressure-20x20x3 | sparse.cum.FOPT | +2.17 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-pressure-20x20x3 | sparse.cum.FWIT | +2.62 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-pressure-20x20x3 | dense.cum.FOPT | +2.17 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-pressure-20x20x3 | dense.cum.FWIT | +2.62 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-pressure-22x22x1 | sparse.cum.FOPT | +2.52 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-pressure-22x22x1 | sparse.cum.FWIT | +2.91 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-pressure-22x22x1 | dense.cum.FOPT | +2.52 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-pressure-22x22x1 | dense.cum.FWIT | +2.91 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-pressure-23x23x1 | sparse.cum.FOPT | +2.46 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-pressure-23x23x1 | sparse.cum.FWIT | +2.89 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-pressure-23x23x1 | dense.cum.FOPT | +2.46 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
-| cross_solver | water-pressure-23x23x1 | dense.cum.FWIT | +2.89 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-heavy-step1 | sparse.cum.FOPT | 27.36 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-heavy-step1 | sparse.cum.FWPT | 70.44 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-heavy-step1 | sparse.cum.FWIT | 15.80 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-heavy-step1 | dense.cum.FOPT | 27.36 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-heavy-step1 | dense.cum.FWPT | 70.44 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-heavy-step1 | dense.cum.FWIT | 15.80 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-pressure-20x20x3 | sparse.cum.FOPT | 2.17 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-pressure-20x20x3 | sparse.cum.FWIT | 2.62 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-pressure-20x20x3 | dense.cum.FOPT | 2.17 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-pressure-20x20x3 | dense.cum.FWIT | 2.62 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-pressure-22x22x1 | sparse.cum.FOPT | 2.52 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-pressure-22x22x1 | sparse.cum.FWIT | 2.91 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-pressure-22x22x1 | dense.cum.FOPT | 2.52 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-pressure-22x22x1 | dense.cum.FWIT | 2.91 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-pressure-23x23x1 | sparse.cum.FOPT | 2.46 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-pressure-23x23x1 | sparse.cum.FWIT | 2.89 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-pressure-23x23x1 | dense.cum.FOPT | 2.46 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
+| cross_solver | water-pressure-23x23x1 | dense.cum.FWIT | 2.89 % |  | explained: opm/reference-decks/small-direct/README.md, "Generated wasm-preset cumulatives are report-step error" (#56) |
 | jutul | dep-pvt-lab-report | jutul_vs_flow.final_FGPR_rel_err | -1.31 % |  | explained: opm/reference-decks/small-direct/README.md, "Saturation tables: nodes above S_gc, and a table's own knots" (#55); OPEN_ITEMS_2026-09-21.md §11 |
 | jutul | dep-pvt-lab-report | fim_vs_jutul.final_FGPR_rel_err | +1.31 % |  | explained: opm/reference-decks/small-direct/README.md, "Saturation tables: nodes above S_gc, and a table's own knots" (#55); OPEN_ITEMS_2026-09-21.md §11 |
 
