@@ -774,3 +774,29 @@ and the hash-matched Flow comparison command recorded there.
 | sweep-vertical | 3.773e-11 | 7.696e-12 | 0.000e+00 |
 | wf-capillary | 2.896e-11 | 5.740e-12 | 0.000e+00 |
 | wf-gravity-stability | 8.405e-12 | 1.952e-12 | 0.000e+00 |
+
+### Generated wasm-preset cumulatives are report-step error (#56, base `99dac756`, flow 2026.04)
+
+The first benchmark record of the generated wasm-preset decks (2026-11-02, `99dac756`) flagged
+their FIM cumulatives as same-model gaps at the decks' native single-report schedules. Re-running
+the same decks at finer report steps with `validate-cross-solver.sh --refine` closes them; sparse
+and dense are identical, so the table shows one FIM column.
+
+| Case | Native report | FOPT | FWPT | FWIT | Refined report | FOPT | FWPT | FWIT |
+|---|---|---|---|---|---|---|---|---|
+| `water-heavy-step1` | 1 d | +27.36 % | +70.44 % | +15.80 % | 0.05 d | 0.00 % | +0.27 % | +0.01 % |
+| `water-pressure-20x20x3` | 0.25 d | +2.17 % | — | +2.62 % | 0.05 d | 0.00 % | — | 0.00 % |
+| `water-pressure-22x22x1` | 0.25 d | +2.52 % | — | +2.91 % | 0.05 d | 0.00 % | — | 0.00 % |
+| `water-pressure-23x23x1` | 0.25 d | +2.46 % | — | +2.89 % | 0.05 d | 0.00 % | — | 0.00 % |
+
+The water-heavy 1 d control is the largest: its 27.36 / 70.44 / 15.80 % cumulative gaps fall to
+0.00 / 0.27 / 0.01 % with twenty 0.05 d reports. The three `water-pressure-*` decks fall from
+2.17–2.91 % to 0.00 % on five 0.05 d reports. That is report-step error, not a spatial, PVT or
+well-model gap. No tolerance changed; `docs/BENCHMARKS.md` records the decks at their native
+schedules and marks these rows explained.
+
+`gas-rate-10x10x3` does not close. Its FGIT gap is 9.29 % at the native six 0.25 d reports,
+3.93 % at 0.05 d and 2.93 % at 0.0125 d, while FOPT/FGPT agree to 0.04 % and the worst pressure
+gap is 3.69 bar. With `RESV` gas injection, FGIT follows the gas FVF at the injector, so the
+residual is a pressure/PVT question rather than a timestep one; tracked in
+[#104](https://github.com/sergeyfarin/ressim/issues/104).

@@ -65,6 +65,37 @@
    "status": "explained",
    "ref": "opm/reference-decks/small-direct/README.md, \"Saturation tables: nodes above S_gc, and a table's own knots\" (#55); OPEN_ITEMS_2026-09-21.md §11",
    "note": "Not a ResSim gap. On the fixed decks FIM matches Flow's final gas rate to -0.22 % / -0.01 %, and JutulDarcy 0.3.7 is -2.3 % / -4.5 % from both (-1.7 % / -1.9 % on the corrected Standing fluid, #60; -0.57 % / -1.31 % at #26's c_f and 360 d, and -0.23 % / -0.46 % on the Petrosky-Farshad / Al-Marhoun rungs), unchanged by SGOF density or a 10x finer report step. Its producer pressure is already 0.07 bar off Flow before free gas flows, so the two reference simulators read the PVT tables differently. Not pursued (OPEN_ITEMS §11)."
+  },
+  {
+   "section": "cross_solver",
+   "case": "water-heavy-step1",
+   "metric": [
+    "*.cum.FOPT",
+    "*.cum.FWPT",
+    "*.cum.FWIT"
+   ],
+   "status": "explained",
+   "ref": "opm/reference-decks/small-direct/README.md, \"Generated wasm-preset cumulatives are report-step error\" (#56)",
+   "note": "Report-step error: at the deck's native 1 d schedule the FIM gaps are +27.36 / +70.44 / +15.80 %, but with twenty 0.05 d reports they are 0.00 / +0.27 / +0.01 %. Sparse and dense are identical. No tolerance changed."
+  },
+  {
+   "section": "cross_solver",
+   "case": "water-pressure-*",
+   "metric": [
+    "*.cum.FOPT",
+    "*.cum.FWIT"
+   ],
+   "status": "explained",
+   "ref": "opm/reference-decks/small-direct/README.md, \"Generated wasm-preset cumulatives are report-step error\" (#56)",
+   "note": "Report-step error: the three decks' native 0.25 d FIM gaps of +2.17 to +2.91 % fall to 0.00 % with five 0.05 d reports. Sparse and dense are identical. No tolerance changed."
+  },
+  {
+   "section": "cross_solver",
+   "case": "gas-rate-10x10x3",
+   "metric": "*.cum.FGIT",
+   "status": "tracked",
+   "ref": "#104",
+   "note": "Does not close under report-step refinement: FGIT is +9.29 % at six 0.25 d reports, +3.93 % at 0.05 d and +2.93 % at 0.0125 d, while FOPT/FGPT agree to 0.04 % and the worst pressure gap is 3.69 bar. With RESV gas injection, FGIT follows the injector gas FVF; the residual is a pressure/PVT question, not a timestep one."
   }
  ]
 }
