@@ -104,15 +104,22 @@ and C13's product integration is complete (#29). Next:
   [#45](https://github.com/sergeyfarin/ressim/issues/45)–[#51](https://github.com/sergeyfarin/ressim/issues/51)
   (components, immiscible water, 3-D and gravity, rate control, a sparse linear route, schedules,
   SPE3 characterization), are closed, and both payloads are authored but withheld from the picker.
-  What remains before either is a graded benchmark:
-  - [#95 — Compositional well surface volumes](https://github.com/sergeyfarin/ressim/issues/95)
-    (oil rate and GOR to chart and score)
-  - [#98 — Termination policies in the compositional run loop](https://github.com/sergeyfarin/ressim/issues/98)
-    (SPE5's GOR/WOR shut-in; needs #95)
-  - [#96 — Switchable separator train](https://github.com/sergeyfarin/ressim/issues/96) and
-    [#97 — Produced-gas recycling](https://github.com/sergeyfarin/ressim/issues/97) (SPE3)
-  - [#88 — Checkpoints keep the cumulative ledgers](https://github.com/sergeyfarin/ressim/issues/88)
-    (restart reporting, not blocking)
+  SPE5 is no longer solver-blocked: the near-critical flash stalls (#93, #99, #102) are fixed and
+  the 16-year from-scratch run and the month-192 → 240 replay complete (`docs/SPE5_VALIDATION.md`).
+  SPE5 order from here:
+  1. [#95 — Compositional well surface volumes](https://github.com/sergeyfarin/ressim/issues/95)
+     (oil rate, gas rate, GOR and water cut to chart and score)
+  2. [#98 — Termination policies in the compositional run loop](https://github.com/sergeyfarin/ressim/issues/98)
+     (SPE5's GOR 10 Mscf/STB and WOR 5 shut-in; needs #95)
+  3. The JutulDarcy SPE5 reference and its scorecard row (no `opm/compositional/spe5/reference.json`
+     yet; can start alongside #95/#98)
+  4. Published Killough–Kossack curves and oil-rate/GOR/pressure bands against both references
+  5. Remove `comp_spe5_wag` from `WITHHELD_SCENARIOS`, with the browser/memory check
+
+  SPE3 additionally needs [#96 — Switchable separator train](https://github.com/sergeyfarin/ressim/issues/96),
+  [#97 — Produced-gas recycling](https://github.com/sergeyfarin/ressim/issues/97) and its own 3-D
+  JutulDarcy reference. [#88 — Checkpoints keep the cumulative ledgers](https://github.com/sergeyfarin/ressim/issues/88)
+  affects resumed runs only, not from-scratch scoring.
 
 ## 5. FIM research frontier
 
