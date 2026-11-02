@@ -373,15 +373,19 @@ residual, leaving a raw phase-sum imbalance of order 1e-11; that is still three 
 1e-10 sweep gate.
 
 The flash acceleration alone did not unblock the replay. The next step at 6366.59 d failed in the
-stability test's `LiquidLike` trial, which needs **28,946** substitutions and was rejected by the
-inherited OPM cap of 20,000. That is the same cap-as-correctness-limit defect one level down;
-`MAX_TRIAL_ITERATIONS` is now 100,000, and
-`comp_stability_converges_a_trial_beyond_opms_iteration_cap` pins the state. That is not the end of
-the trial-substitution problem: a later trial at **6646.0625 d**, cell 33, still needs more than
-100,000 substitutions (residual 5.5e-14, K norm 1.01e-5), so the 20-year replay from the month-192
-checkpoint still stops there. Accelerating the trial or replacing the absolute trivial-solution
-threshold with a measured stagnation criterion is filed as
-[#102](https://github.com/sergeyfarin/ressim/issues/102).
+stability test's `LiquidLike` trial, which needed **28,946** substitutions and was rejected by the
+inherited OPM cap of 20,000. That is the same linear near-critical stall one level down, so the
+trial now takes its own damped Newton step on the tangent-plane stationarity equations when a
+substitution step retains at least 95% of its residual after ten iterations. The fallback set is
+the same as the flash's — singular Jacobian, EOS-domain failure, failed line search or iteration
+cap — and an accelerated trial must still meet the existing 1e-15 residual and trial-sum-stopped
+criteria, so the verdict rules are unchanged. The 6366.59 d `LiquidLike` trial converges in **60
+substitutions** and `VapourLike` in 65, down from 28,946, and the later **6646.0625 d** cell-33
+trial that sat just above the trivial-solution threshold and needed more than 100,000 substitutions
+no longer stalls. The
+month-192 → month-240 SPE5 replay now completes; the C6 sweep tallies and reconstruction floor are
+unchanged, and `comp_stability_accelerates_a_near_critical_trial` pins both trials below 100
+substitutions. `MAX_TRIAL_ITERATIONS` remains at 100,000 as a backstop. (#102)
 
 **Derivatives are a first-class part of this oracle, not a bonus.** PTFlash reconstructs them by
 implicit differentiation of the converged equilibrium, which is the pattern C4 is instructed to
