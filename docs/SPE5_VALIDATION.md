@@ -142,8 +142,8 @@ sweep are unchanged.
 
 The 6375 d segment now advances without a timestep collapse: the month-192 → 6375 d replay takes
 **108 calls, no retried step below 2.5 d (event-capped single-attempt steps are unaffected),
-at most 10 Newton iterations, 193 s**. The full month-192 → month-240 replay completes in
-**302 calls, worst 11 Newton iterations, 976 s**.
+at most 10 Newton iterations, 192 s**. The full month-192 → month-240 replay completes in
+**302 calls, worst 11 Newton iterations, 974 s**.
 
 Evidence:
 
@@ -157,11 +157,11 @@ cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
   comp_spe5_resume_192_clears_the_201_report -- --ignored --nocapture
 
 # The month-192 to 6375 d near-critical region: 108 calls, no retried step below 2.5 d,
-# worst 10 Newton iterations, 193 s.
+# worst 10 Newton iterations, 192 s.
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
   comp_spe5_resume_192_clears_the_near_critical_region -- --ignored --nocapture
 
-# The rest of the 20-year replay across the 6646.0625 d trial stall: 302 calls, 976 s.
+# The rest of the 20-year replay across the 6646.0625 d trial stall: 302 calls, 974 s.
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
   comp_spe5_resume_192_completes_the_20_year_replay -- --ignored --nocapture
 ```
