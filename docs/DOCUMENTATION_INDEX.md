@@ -112,7 +112,8 @@ in `FIM_EXPERIMENT_REGISTRY.md`; the docs themselves are provenance, not live sp
 
 - `src/lib/catalog/scenarios/` is the primary scenario registry: **19 scenarios are offered in the
   picker**. `scenarios.ts` keeps a `WITHHELD_SCENARIOS` list for definitions that are resolvable
-  and tested but not offered; it is currently empty. `dep_pvt` was withheld until it gained its
+  and tested but not offered; it holds `comp_spe5_wag` and `comp_spe3_gas_cycling` until their
+  benchmark comparisons exist (#52). `dep_pvt` was withheld until it gained its
   second sensitivity dimension (#26), and `comp_co2_1d` until the chart stack could source
   compositional curves (#29).
 - `ScenarioPicker.svelte` is the only live case-selection surface, driven entirely by
@@ -121,7 +122,7 @@ in `FIM_EXPERIMENT_REGISTRY.md`; the docs themselves are provenance, not live sp
   production case definitions live only in `src/lib/catalog/scenarios/`.
 - Public simulations execute in browser-side WASM through scenario-declared **IMPES or FIM**
   policies. Offline OPM Flow artifacts are precomputed reference data, not live simulation. The
-  **11 committed artifacts** are `status: "parsed"` and are rendered only when a scenario declares
+  **19 committed artifacts** are `status: "parsed"` and are rendered only when a scenario declares
   them as a reference source.
 - Black-oil and three-phase modes are implemented and exposed. SPE1 has published reference
   overlays, OPM artifacts, and

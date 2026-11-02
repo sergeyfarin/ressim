@@ -16,8 +16,8 @@ its milestone is closed. See [ROADMAP.md](ROADMAP.md) for the current order.
 
 ### Next
 
-- [#72 — FIM black-oil: diagnose the remaining 1.5× Newton gap to Flow at matched substeps](https://github.com/sergeyfarin/ressim/issues/72)
 - [#52 — Run SPE5, then SPE3, after their enablers](https://github.com/sergeyfarin/ressim/issues/52)
+- [#56 — Benchmark signals (nightly)](https://github.com/sergeyfarin/ressim/issues/56)
 
 #12's remaining second black-oil envelope case is blocked on #16/#17. The roadmap owns the full
 order; this list is a dashboard, not a second execution tracker.

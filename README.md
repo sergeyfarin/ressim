@@ -5,7 +5,7 @@ classical solution it is supposed to reproduce. Three-phase black-oil flow on a 
 grid — implicit-pressure (IMPES) or fully implicit — with Peaceman wells, gravity, capillarity
 and correlation or tabular PVT, plotted live against Buckley–Leverett, Craig, Dykstra–Parsons,
 Stiles, Dietz, Fetkovich, Arps, Havlena–Odeh and line-source well-test solutions, plus
-precomputed OPM Flow runs where no closed form exists. Seventeen scenarios ship as
+precomputed OPM Flow runs where no closed form exists. Nineteen scenarios ship as
 self-contained studies with sensitivity dimensions, scenario-appropriate charts and (where the
 case is spatial) a 3D view and saturation profile. Each states what its reference assumes and
 where the simulation is expected to leave it. Nothing is uploaded: the solver is WebAssembly running on the page, fonts are bundled
@@ -336,12 +336,12 @@ page" is demonstrated rather than asserted; see `docs/ARCHITECTURE_SPLIT_PLAN_20
 The limited public release is deployed. See `ROADMAP.md` for current ordering. The next
 priorities are:
 
-1. Close the remaining black-oil gaps: FIM's Newton cost against Flow at matched substeps
-   ([#72](https://github.com/sergeyfarin/ressim/issues/72)) and the second SPE-style case
-   ([#12](https://github.com/sergeyfarin/ressim/issues/12), blocked on #16/#17).
-2. Extend the compositional engine, whose `comp_co2_1d` product path is complete
+1. Extend the compositional engine, whose `comp_co2_1d` product path is complete
    ([#29](https://github.com/sergeyfarin/ressim/issues/29)), to SPE5 and then SPE3
    ([#52](https://github.com/sergeyfarin/ressim/issues/52)).
+2. Keep the benchmark signals clean after the re-baseline
+   ([#56](https://github.com/sergeyfarin/ressim/issues/56)), and add the second SPE-style
+   black-oil case ([#12](https://github.com/sergeyfarin/ressim/issues/12), blocked on #16/#17).
 3. Add scenario enablers only with consuming cases and independent references.
 4. Keep the FIM OPM-parity frontier parked behind product validation unless a user-visible defect
    requires it.
