@@ -202,10 +202,13 @@ python3 tools/opm_flow/spe1_refinement_oracle.py --out /tmp/spe1-refinement
 ## 3. Three-phase: solution gas drive and gas injection
 
 Owning document: [`THREE_PHASE_VALIDATION.md`](THREE_PHASE_VALIDATION.md). Both cases share their
-PVT table, SCAL, grid and wells with the Flow deck by construction. The gas-drive Flow deck is
-hand-mapped; the gas-injection twin (`small-direct/go-1d-50`) is written by the simulator itself.
-Errors are signed (ResSim − Flow), so a one-sided bias reads as one; the gas-drive cumulative-oil
-bias is inside its band but unexplained (`THREE_PHASE_VALIDATION.md` §6).
+PVT table, SCAL, grid and wells with the Flow deck by construction: both Flow decks
+(`small-direct/gas-drive-20` and the gas-injection twin `small-direct/go-1d-50`) are written by the
+simulator itself (§5). Errors are signed (ResSim − Flow), so a one-sided bias reads as one. The
+gas-drive oil-rate and cumulative-oil worsts sit in the first transient and are time
+discretization: matched refinement of both simulators to 1-day reports closes them
+(`THREE_PHASE_VALIDATION.md` §2, "Where the remaining error sits"). The cumulative-oil bias once
+recorded here came from the hand-written deck that `gas-drive-20` replaced (#55).
 
 <!-- GENERATED:three_phase -->
 *Measured on `99dac756` (clean tree), 2026-11-02.*
@@ -284,8 +287,11 @@ cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib physics_dep
 
 Owning documents: [`opm/reference-decks/small-direct/README.md`](../opm/reference-decks/small-direct/README.md)
 and the committed `scorecard.json`, the regression ratchet for this table (its own bands, its own
-`--update`). Every deck under `opm/reference-decks/small-direct/`, written by the simulator itself,
-run through FIM (sparse and dense LU), IMPES and Flow.
+`--update`). Every deck under `opm/reference-decks/small-direct/`, plus the five generated wasm
+presets (`opm/reference-decks/{gas-rate,water-*}`), all written by the simulator itself, run through
+FIM (sparse and dense LU), IMPES and Flow. The wasm presets' large cumulative gaps at their native
+report steps are report-step error, except `gas-rate-10x10x3` FGIT, which is tracked in #104 (see
+Signals).
 
 <!-- GENERATED:cross_solver -->
 *Measured on `99dac756` (clean tree), 2026-11-02, flow `flow 2026.04`.*
@@ -587,8 +593,10 @@ time step, which is where discretization error shows.
 - No SPE case beyond SPE1 (SPE3, SPE5 and SPE9 are not run; the compositional roadmap is #52).
 - JutulDarcy (§9) is the second simulator for the small-direct decks and `gas_drive` only: not
   SPE1 (it ignores `DRSDT`), not compositional, and not for cumulatives.
-- The large wasm presets (`opm/reference-decks/{gas-rate,water-*}`) are hand-mapped decks and are
-  not on the cross-solver scorecard. Their history is in `SOLVER_COMPARISON_SUMMARY.md`.
+- The large wasm presets (`opm/reference-decks/{gas-rate,water-*}`) are on the cross-solver
+  scorecard (§5) with generated decks, but only over their short preset horizons (one to six
+  0.25 d reports, or one 1 d step). Their longer-horizon solver history is in
+  `SOLVER_COMPARISON_SUMMARY.md`.
 
 ## Superseded baselines
 
