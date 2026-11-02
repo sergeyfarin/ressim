@@ -8,7 +8,9 @@
 use super::fixture::{self, FixtureSystem};
 use super::pinned;
 use super::specification::FluidSpecification;
-use super::stability::{StabilityVerdict, test_stability, wilson_k};
+use super::stability::{
+    StabilityVerdict, TrialPhase, test_stability, trial_iteration_count, wilson_k,
+};
 
 fn spec_for(system: &FixtureSystem) -> FluidSpecification {
     fixture::spec_for(system)
@@ -315,14 +317,15 @@ fn comp_stability_rejects_a_mismatched_composition_length() {
     assert!(test_stability(&spec, 1.5e7, 423.15, &[0.5, 0.5], None).is_err());
 }
 
-/// A near-critical LiquidLike trial that needs more than OPM's 20,000-iteration cap (#99).
+/// A near-critical LiquidLike trial that used to need tens of thousands of substitutions (#99/#102).
 ///
 /// This is the SPE5 cell-10 flash state at 6366.59 d that the replay's next step called. Its
-/// `LiquidLike` trial converges only after **28,946** iterations (residual 1e-15), so the inherited
-/// 20,000 cap rejected a convergent trial and the timestep failed with `Budget`. The cap is a
-/// backstop, not an accuracy limit: with it raised, the trial decides and the feed is unstable.
+/// `LiquidLike` trial converged only after **28,946** plain substitutions (residual 1e-15), so the
+/// inherited 20,000 cap rejected a convergent trial and the timestep failed with `Budget`. The cap
+/// is now a backstop, and the Newton acceleration reaches the same verdict in fewer than 100
+/// substitutions, so this also pins the #102 acceptance target rather than just the cap fix.
 #[test]
-fn comp_stability_converges_a_trial_beyond_opms_iteration_cap() {
+fn comp_stability_accelerates_a_near_critical_trial() {
     let spec = pinned::spe5().expect("SPE5 specification");
     let z = [
         0.699_490_272_019_475_8,
@@ -332,13 +335,20 @@ fn comp_stability_converges_a_trial_beyond_opms_iteration_cap() {
         0.017_203_862_831_964_66,
         0.008_031_120_060_356_223,
     ];
-    let verdict = test_stability(
-        &spec,
-        238.881_595_643_606_07e5,
-        344.261_111_111_111_2,
-        &z,
-        None,
-    )
-    .unwrap_or_else(|e| panic!("the convergent near-critical trial was rejected: {e}"));
+    let pressure_pa = 238.881_595_643_606_07e5;
+    let temperature_k = 344.261_111_111_111_2;
+    let verdict = test_stability(&spec, pressure_pa, temperature_k, &z, None)
+        .unwrap_or_else(|e| panic!("the convergent near-critical trial was rejected: {e}"));
     assert!(matches!(verdict, StabilityVerdict::Unstable { .. }));
+
+    let seed = wilson_k(&spec, pressure_pa, temperature_k);
+    for trial in [TrialPhase::VapourLike, TrialPhase::LiquidLike] {
+        let iterations = trial_iteration_count(&spec, pressure_pa, temperature_k, &z, &seed, trial)
+            .unwrap_or_else(|e| panic!("{trial:?} trial rejected: {e}"));
+        println!("SPE5 6366.59 d {trial:?}: {iterations} substitutions");
+        assert!(
+            iterations < 100,
+            "{trial:?} needed {iterations} substitutions; #102's target is fewer than 100"
+        );
+    }
 }

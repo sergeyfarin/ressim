@@ -516,7 +516,7 @@ pub(super) fn equilibrium_residual<S: Scalar>(
 
 /// The compressibility factor for a branch, as a scalar of the same type, with its derivatives
 /// supplied by implicit differentiation of the cubic.
-fn scalar_root<S: Scalar>(
+pub(super) fn scalar_root<S: Scalar>(
     params: &super::eos::MixtureParams<S>,
     branch: PhaseBranch,
 ) -> Result<S, EosError> {

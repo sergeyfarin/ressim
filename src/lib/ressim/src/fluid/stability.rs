@@ -32,22 +32,68 @@
 //! count and the norms it stalled at. A stability test that cannot decide must say so — silently
 //! reporting "stable" because the trial ran out of iterations is the specific failure the plan
 //! calls out, since it turns a two-phase cell into a single-phase one with no diagnostic. The cap
-//! is a backstop, not an accuracy limit: the SPE5 late-life trial that needs 28,946 iterations
-//! converged once the cap no longer rejected it (#99); accelerating that substitution is #102.
+//! is a backstop, not an accuracy limit: the SPE5 late-life trial that needed 28,946 plain
+//! substitutions converged once the cap no longer rejected it (#99).
+//!
+//! Substitution is still the robust route, but it is linearly convergent and its ratio approaches
+//! one in the same near-critical region that stalls the flash. When a trial step retains at least
+//! [`TRIAL_NEWTON_TRIGGER_RATIO`] of the residual after [`TRIAL_NEWTON_TRIGGER_AFTER`] iterations,
+//! the loop tries a damped Newton step on the tangent-plane stationarity equations for the active
+//! components: `ln K_i + ln phi_i^trial(W) - ln phi_i^feed(z) = 0` for the vapour-like trial, with
+//! the trial and feed terms reversed for the liquid-like one. A singular Jacobian, an EOS-domain
+//! failure or a failed line search returns to substitution, so the acceleration can only shorten a
+//! slow path to the same fixed point. The trial-sum and trivial-solution verdict criteria are
+//! unchanged (#102).
 
-use super::eos::{EosError, PhaseBranch, evaluate};
+use super::derivatives::{MIN_PIVOT, scalar_root, solve_in_place};
+use super::eos::{
+    EosError, PhaseBranch, evaluate, ln_fugacity_coefficients_generic, mixture_params_generic,
+};
 use super::specification::FluidSpecification;
+use crate::ad::{Ad, Scalar};
 use crate::math;
 
 /// Iteration cap for one trial-phase substitution loop.
 ///
 /// OPM uses 20000. C3 kept that as a correctness backstop on the same reasoning as the flash cap,
-/// but the SPE5 late-life replay found a near-critical `LiquidLike` trial that needs **28,946**
-/// iterations to reach its 1e-15 residual (`docs/SPE5_VALIDATION.md`, #99). Failing there is the
-/// same kind of cap-as-correctness-limit defect the flash acceleration removed, so the cap is
-/// raised rather than left to reject a convergent trial. Trial acceleration is a separate
-/// performance question ([#102]); substitution remains the route and this remains a backstop.
+/// but the SPE5 late-life replay found a near-critical `LiquidLike` trial that needed **28,946**
+/// plain substitutions to reach its 1e-15 residual (`docs/SPE5_VALIDATION.md`, #99). Failing there
+/// is the same kind of cap-as-correctness-limit defect the flash acceleration removed, so the cap
+/// is raised rather than left to reject a convergent trial. Newton acceleration now shortens that
+/// path to tens of iterations; this remains a backstop, not an accuracy limit.
 const MAX_TRIAL_ITERATIONS: usize = 100_000;
+
+/// Trial iterations before a slow state may try Newton acceleration.
+///
+/// A trial that converges in a handful of substitutions never reaches this, so its path and
+/// recorded iteration count are unchanged. The staged start gives Newton a state that has already
+/// moved away from the crude Wilson estimate.
+const TRIAL_NEWTON_TRIGGER_AFTER: usize = 10;
+
+/// A trial step that keeps at least this fraction of the previous residual is "slow".
+///
+/// Successive substitution's ratio approaches one near the critical point: at the SPE5 late-life
+/// state the ratio is close enough to one that the 1e-15 target is tens of thousands of
+/// substitutions away. The threshold is deliberately tighter than the flash's `0.7`: a stability
+/// test runs several trials per state and the C6 sweep runs thousands of states, so a merely
+/// ordinary path must stay on substitution rather than pay for an AD assembly.
+const TRIAL_NEWTON_TRIGGER_RATIO: f64 = 0.95;
+
+/// Trial iterations to let pass after a Newton attempt before retrying.
+///
+/// A Newton step can fail while the iterate is still outside its basin. Retrying every iteration
+/// would pay an AD assembly for no new information, so substitution gets a cooldown to move the
+/// state first.
+const TRIAL_NEWTON_RETRY_INTERVAL: usize = 50;
+
+/// Iteration cap for one Newton acceleration attempt.
+///
+/// Quadratic convergence makes this a failure bound rather than a work budget; a near-critical
+/// trial that has not converged in this many steps is better served by the substitution fallback.
+const MAX_TRIAL_NEWTON_ITERATIONS: usize = 20;
+
+/// Maximum number of step halvings in one Newton line search.
+const MAX_TRIAL_NEWTON_HALVINGS: usize = 30;
 
 /// A trial sum above `1 + TRIAL_SUM_TOLERANCE` indicates the feed is unstable.
 ///
@@ -170,12 +216,328 @@ struct TrialOutcome {
     /// instead gives a meaningless product — in the C1/C10 binary at 20 bar it produced
     /// `K = [3.1e13, 1.4e-17]`, which sends Rachford–Rice to `-inf` at `beta = 1`.
     composition: Vec<f64>,
+    /// Outer substitution iterations used, including the one that accepted a Newton candidate.
+    iterations: usize,
+}
+
+/// The tangent-plane stationarity residual, over any differentiable scalar.
+///
+/// For the vapour-like trial `r_i = ln K_i + ln phi_i^trial(W) - ln phi_i^feed(z)`; for the
+/// liquid-like trial the trial and feed swap roles in the fugacity ratio, so the corresponding
+/// fixed point is `r_i = ln K_i - ln phi_i^trial(W) + ln phi_i^feed(z)`. This is exactly the
+/// equation the substitution loop's ratio form satisfies, written without the trial sum so its
+/// derivative includes the composition normalization exactly once. An inactive component has no
+/// material and no equation; its row pins `ln K` to the value the substitution loop would have
+/// frozen it at.
+fn trial_residual<S: Scalar>(
+    spec: &FluidSpecification,
+    pressure_pa: S,
+    temperature_k: f64,
+    z: &[S],
+    ln_k: &[S],
+    k_reference: &[f64],
+    active: &[bool],
+    trial: TrialPhase,
+    feed_ln_phi: &[f64],
+) -> Result<Vec<S>, EosError> {
+    let n = spec.component_count();
+    let mut w = Vec::with_capacity(n);
+    let mut sum = S::from_f64(0.0);
+    for i in 0..n {
+        if !active[i] {
+            w.push(S::from_f64(0.0));
+            continue;
+        }
+        let k = ln_k[i].exp();
+        let value = match trial {
+            TrialPhase::VapourLike => k * z[i],
+            TrialPhase::LiquidLike => z[i] / k,
+        };
+        let value_f64 = value.value();
+        if !value_f64.is_finite() {
+            return Err(EosError::NotFinite {
+                what: "trial mole number",
+                value: value_f64,
+            });
+        }
+        sum = sum + value;
+        w.push(value);
+    }
+    if !(sum.value() > 0.0) || !sum.value().is_finite() {
+        return Err(EosError::NotFinite {
+            what: "trial mole number sum",
+            value: sum.value(),
+        });
+    }
+    let normalized: Vec<S> = w.iter().map(|value| *value / sum).collect();
+    let trial_branch = match trial {
+        TrialPhase::VapourLike => PhaseBranch::Vapour,
+        TrialPhase::LiquidLike => PhaseBranch::Liquid,
+    };
+    let params = mixture_params_generic(spec, pressure_pa, temperature_k, &normalized)?;
+    let root = scalar_root(&params, trial_branch)?;
+    let ln_phi = ln_fugacity_coefficients_generic(spec, &params, root, &normalized)?;
+
+    let mut residual = Vec::with_capacity(n);
+    for i in 0..n {
+        if active[i] {
+            let feed = S::from_f64(feed_ln_phi[i]);
+            residual.push(match trial {
+                TrialPhase::VapourLike => ln_k[i] + ln_phi[i] - feed,
+                TrialPhase::LiquidLike => ln_k[i] - ln_phi[i] + feed,
+            });
+        } else {
+            residual.push(ln_k[i] - S::from_f64(k_reference[i]));
+        }
+    }
+    Ok(residual)
+}
+
+/// The trial stationarity system and its Jacobian at one `ln K`.
+struct TrialNewtonSystem {
+    residual: Vec<f64>,
+    jacobian: Vec<Vec<f64>>,
+}
+
+/// Evaluate [`trial_residual`] and its Jacobian in one AD pass.
+fn trial_newton_system<const N: usize>(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    ln_k: &[f64],
+    active: &[bool],
+    trial: TrialPhase,
+    feed_ln_phi: &[f64],
+) -> Option<TrialNewtonSystem> {
+    let ln_k_ad: Vec<Ad<N>> = (0..N).map(|i| Ad::variable(ln_k[i], i)).collect();
+    let z_ad: Vec<Ad<N>> = z.iter().map(|&value| Ad::constant(value)).collect();
+    let residual = trial_residual::<Ad<N>>(
+        spec,
+        Ad::constant(pressure_pa),
+        temperature_k,
+        &z_ad,
+        &ln_k_ad,
+        ln_k,
+        active,
+        trial,
+        feed_ln_phi,
+    )
+    .ok()?;
+
+    Some(TrialNewtonSystem {
+        residual: residual.iter().map(|value| value.value()).collect(),
+        jacobian: (0..N)
+            .map(|row| (0..N).map(|col| residual[row].d(col)).collect())
+            .collect(),
+    })
+}
+
+fn residual_square_sum(residual: &[f64]) -> f64 {
+    residual.iter().map(|value| value * value).sum()
+}
+
+/// Try a damped Newton solve of the tangent-plane stationarity system on the active components.
+///
+/// Returns the converged `K` — never an error. A singular Jacobian, an EOS-domain failure, a line
+/// search that cannot decrease the residual, or a solve that exhausts its iteration cap returns
+/// `None`, and the caller continues substitution from its own iterate. Acceleration therefore
+/// replaces a slow path only when it reaches the same admission tolerance; a partial Newton step
+/// cannot move the trial into a different basin and then leave substitution there.
+fn trial_newton_acceleration_generic<const N: usize>(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    ln_k: &[f64],
+    active: &[bool],
+    trial: TrialPhase,
+    feed_ln_phi: &[f64],
+) -> Option<Vec<f64>> {
+    let mut ln_k = ln_k.to_vec();
+    let mut system = trial_newton_system::<N>(
+        spec,
+        pressure_pa,
+        temperature_k,
+        z,
+        &ln_k,
+        active,
+        trial,
+        feed_ln_phi,
+    )?;
+    let mut norm = residual_square_sum(&system.residual);
+    if norm < TRIAL_RESIDUAL_TOLERANCE {
+        return Some(ln_k.iter().map(|value| math::exp(*value)).collect());
+    }
+
+    for _ in 0..MAX_TRIAL_NEWTON_ITERATIONS {
+        let mut jacobian = system.jacobian.clone();
+        let mut rhs: Vec<Vec<f64>> = system.residual.iter().map(|&value| vec![-value]).collect();
+        let min_pivot = solve_in_place(&mut jacobian, &mut rhs);
+        if !(min_pivot >= MIN_PIVOT) {
+            break;
+        }
+        let delta: Vec<f64> = rhs.iter().map(|row| row[0]).collect();
+        if delta.iter().any(|value| !value.is_finite()) {
+            break;
+        }
+
+        let mut accepted = None;
+        let mut alpha = 1.0;
+        for _ in 0..MAX_TRIAL_NEWTON_HALVINGS {
+            let candidate_ln_k: Vec<f64> = ln_k
+                .iter()
+                .zip(&delta)
+                .map(|(value, step)| value + alpha * step)
+                .collect();
+            if candidate_ln_k.iter().all(|value| value.is_finite()) {
+                if let Some(candidate) = trial_newton_system::<N>(
+                    spec,
+                    pressure_pa,
+                    temperature_k,
+                    z,
+                    &candidate_ln_k,
+                    active,
+                    trial,
+                    feed_ln_phi,
+                ) {
+                    let candidate_norm = residual_square_sum(&candidate.residual);
+                    if candidate_norm <= (1.0 - 1e-4 * alpha) * norm
+                        || candidate_norm < TRIAL_RESIDUAL_TOLERANCE
+                    {
+                        accepted = Some((candidate_ln_k, candidate, candidate_norm));
+                        break;
+                    }
+                }
+            }
+            alpha *= 0.5;
+        }
+
+        let Some((next_ln_k, next_system, next_norm)) = accepted else {
+            break;
+        };
+        ln_k = next_ln_k;
+        system = next_system;
+        norm = next_norm;
+        if norm < TRIAL_RESIDUAL_TOLERANCE {
+            return Some(ln_k.iter().map(|value| math::exp(*value)).collect());
+        }
+    }
+
+    None
+}
+
+/// Dispatch the trial Newton attempt to the compiled AD instantiation for this component count.
+fn trial_newton_acceleration(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    ln_k: &[f64],
+    active: &[bool],
+    trial: TrialPhase,
+    feed_ln_phi: &[f64],
+) -> Option<Vec<f64>> {
+    match spec.component_count() {
+        2 => trial_newton_acceleration_generic::<2>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            active,
+            trial,
+            feed_ln_phi,
+        ),
+        3 => trial_newton_acceleration_generic::<3>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            active,
+            trial,
+            feed_ln_phi,
+        ),
+        4 => trial_newton_acceleration_generic::<4>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            active,
+            trial,
+            feed_ln_phi,
+        ),
+        5 => trial_newton_acceleration_generic::<5>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            active,
+            trial,
+            feed_ln_phi,
+        ),
+        6 => trial_newton_acceleration_generic::<6>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            active,
+            trial,
+            feed_ln_phi,
+        ),
+        7 => trial_newton_acceleration_generic::<7>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            active,
+            trial,
+            feed_ln_phi,
+        ),
+        8 => trial_newton_acceleration_generic::<8>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            active,
+            trial,
+            feed_ln_phi,
+        ),
+        9 => trial_newton_acceleration_generic::<9>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            active,
+            trial,
+            feed_ln_phi,
+        ),
+        10 => trial_newton_acceleration_generic::<10>(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            ln_k,
+            active,
+            trial,
+            feed_ln_phi,
+        ),
+        _ => None,
+    }
 }
 
 /// One Michelsen trial phase, by successive substitution on `K`.
 ///
 /// Transcribed from `PTFlash.hpp::checkStability_`, including its choice to evaluate the feed on
-/// the *opposite* EOS branch from the trial phase.
+/// the *opposite* EOS branch from the trial phase. The substitution loop is the fallback; a slow
+/// step may hand the iterate to [`trial_newton_acceleration_generic`] and continue from its answer.
 fn run_trial(
     spec: &FluidSpecification,
     pressure_pa: f64,
@@ -205,7 +567,15 @@ fn run_trial(
         TrialPhase::LiquidLike => (PhaseBranch::Liquid, PhaseBranch::Vapour),
     };
 
+    // The feed is evaluated on the opposite branch and does not move during the trial, so its
+    // fugacity coefficients are computed once rather than once per substitution step.
+    let feed_props = evaluate(spec, pressure_pa, temperature_k, z, feed_branch)
+        .map_err(|source| StabilityError::Eos { trial, source })?;
+    let feed_ln_phi = feed_props.ln_phi;
+
     let mut w = vec![0.0; n];
+    let mut previous_residual = f64::INFINITY;
+    let mut next_newton_attempt = TRIAL_NEWTON_TRIGGER_AFTER;
 
     for iteration in 0..MAX_TRIAL_ITERATIONS {
         let mut sum = 0.0;
@@ -234,8 +604,6 @@ fn run_trial(
 
         let trial_props = evaluate(spec, pressure_pa, temperature_k, &normalized, trial_branch)
             .map_err(|source| StabilityError::Eos { trial, source })?;
-        let feed_props = evaluate(spec, pressure_pa, temperature_k, z, feed_branch)
-            .map_err(|source| StabilityError::Eos { trial, source })?;
 
         // R_i drives K toward the tangent-plane stationary point. The pressure factor in the
         // fugacity cancels in the ratio, so it is left out; `ln phi + ln x` is the whole content.
@@ -246,7 +614,7 @@ fn run_trial(
                 continue;
             }
             let ln_f_trial = trial_props.ln_phi[i] + safe_ln(normalized[i]);
-            let ln_f_feed = feed_props.ln_phi[i] + safe_ln(z[i]);
+            let ln_f_feed = feed_ln_phi[i] + safe_ln(z[i]);
             let ratio = match trial {
                 TrialPhase::VapourLike => math::exp(ln_f_feed - ln_f_trial) / sum,
                 TrialPhase::LiquidLike => math::exp(ln_f_trial - ln_f_feed) * sum,
@@ -276,6 +644,7 @@ fn run_trial(
                 sum: next_sum,
                 trivial,
                 composition: normalized,
+                iterations: iteration + 1,
             });
         }
 
@@ -287,6 +656,30 @@ fn run_trial(
                 k_norm,
             });
         }
+
+        // A substitution step that retains most of its residual is the near-critical stall. Hand
+        // the updated K to the stationarity Newton solve; if it cannot improve the iterate, the
+        // loop keeps substituting and retries only after a cooldown.
+        let slow = iteration + 1 >= next_newton_attempt
+            && residual_norm >= TRIAL_NEWTON_TRIGGER_RATIO * previous_residual;
+        previous_residual = residual_norm;
+        if slow {
+            let ln_k: Vec<f64> = k.iter().map(|&value| math::ln(value)).collect();
+            next_newton_attempt = iteration + 1 + TRIAL_NEWTON_RETRY_INTERVAL;
+            if let Some(candidate) = trial_newton_acceleration(
+                spec,
+                pressure_pa,
+                temperature_k,
+                z,
+                &ln_k,
+                &active,
+                trial,
+                &feed_ln_phi,
+            ) {
+                k = candidate;
+                continue;
+            }
+        }
     }
 
     Err(StabilityError::TrialNotConverged {
@@ -295,6 +688,19 @@ fn run_trial(
         residual_norm: f64::NAN,
         k_norm: f64::NAN,
     })
+}
+
+/// The outer substitution count used by one trial, for the regression that pins the acceleration.
+#[cfg(test)]
+pub(super) fn trial_iteration_count(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    k_seed: &[f64],
+    trial: TrialPhase,
+) -> Result<usize, StabilityError> {
+    run_trial(spec, pressure_pa, temperature_k, z, k_seed, trial).map(|outcome| outcome.iterations)
 }
 
 /// `ln x`, with an exactly zero component mapped to a large negative number rather than `-inf`.

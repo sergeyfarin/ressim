@@ -384,3 +384,54 @@ fn comp_spe5_resume_192_clears_the_near_critical_region() {
         started.elapsed()
     );
 }
+
+/// #102 regression: the rest of the 20-year replay from the month-192 checkpoint.
+///
+/// The next trial-substitution stall after #99 was at 6646.0625 d, cell 33, where a `LiquidLike`
+/// trial sat just above the trivial-solution threshold and needed more than 100,000 substitutions.
+/// The first half of this segment is covered by `comp_spe5_resume_192_clears_the_near_critical_region`;
+/// here the whole month-192 → month-240 replay must finish without a failure.
+#[test]
+#[ignore = "SPE5 month-192 to month-240 replay; run with --release"]
+fn comp_spe5_resume_192_completes_the_20_year_replay() {
+    let text = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../opm/compositional/spe5/stall_192.json"),
+    )
+    .expect("read the committed SPE5 checkpoint");
+    let checkpoint: super::api::Checkpoint =
+        serde_json::from_str(&text).expect("parse the checkpoint");
+    let mut case = CompositionalCase::restore(&checkpoint).expect("restore the checkpoint");
+
+    let target = 240.0 * 30.4375;
+    let budget = 500;
+    let started = std::time::Instant::now();
+    let mut calls = 0usize;
+    let mut worst_newton = 0usize;
+    while case.time_days() < target - 1e-9 {
+        calls += 1;
+        assert!(
+            calls <= budget,
+            "SPE5 did not reach {target} d within {budget} calls (last t={:.3} d)",
+            case.time_days()
+        );
+        let dt = (target - case.time_days()).min(5.0);
+        let outcome = case.step(dt);
+        assert!(
+            outcome.succeeded(),
+            "SPE5 failed at {:.3} d after {calls} calls: {:?}",
+            outcome.time_days,
+            outcome.failure
+        );
+        worst_newton = worst_newton.max(outcome.newton_iterations);
+    }
+
+    let snapshot = case.snapshot();
+    assert!((snapshot.time_days - target).abs() < 1e-6);
+    assert!(snapshot.pressure.iter().all(|p| p.is_finite() && *p > 0.0));
+    println!(
+        "SPE5 completed month 240: t={:.3} d, {calls} calls, worst {worst_newton} Newton, wall={:?}",
+        snapshot.time_days,
+        started.elapsed()
+    );
+}
