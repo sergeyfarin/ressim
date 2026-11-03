@@ -113,6 +113,37 @@ class CompositionalRecordTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, r"non-finite"):
             self.compare()
 
+    def test_final_surface_cumulatives_are_compared(self):
+        reference = json.loads(self.reference.read_text())
+        reference["summary"]["FOPT"] = [10.0]
+        reference["summary"]["FGPT"] = [40.0]
+        self.reference.write_text(json.dumps(reference))
+        self.record["reports"][0]["surface"] = {
+            "cumulative_liquid_m3": 10.5,
+            "cumulative_vapour_m3": 41.0,
+        }
+        report = self.compare()
+        cum = report["runs"]["comp"]["cum_rel_vs_flow"]
+        self.assertAlmostEqual(cum["FOPT"], 0.05)
+        self.assertAlmostEqual(cum["FGPT"], 0.025)
+        self.assertEqual(report["flow"]["cum"], {"FOPT": 10.0, "FGPT": 40.0})
+
+    def test_missing_surface_ledger_is_not_read_as_zero(self):
+        reference = json.loads(self.reference.read_text())
+        reference["summary"]["FOPT"] = [10.0]
+        self.reference.write_text(json.dumps(reference))
+        report = self.compare()
+        self.assertEqual(report["runs"]["comp"]["cum_rel_vs_flow"], {})
+        self.assertEqual(report["flow"]["cum_unreported"], ["FOPT"])
+
+    def test_nonfinite_surface_cumulative_is_rejected(self):
+        self.record["reports"][0]["surface"] = {
+            "cumulative_liquid_m3": float("nan"),
+            "cumulative_vapour_m3": 0.0,
+        }
+        with self.assertRaisesRegex(SystemExit, r"not finite"):
+            self.compare()
+
 
 @unittest.skipIf(merge_scorecard is None, "requires Flow's numpy environment")
 class ScorecardMergeTests(unittest.TestCase):

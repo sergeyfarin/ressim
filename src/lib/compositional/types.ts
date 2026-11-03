@@ -258,6 +258,29 @@ export interface CompositionalStepOutcome {
 }
 
 /**
+ * One well's surface volumetric rates at the accepted state [m³/day].
+ *
+ * These are the engine's separator products, **not** black-oil `Bo`/`Bg`/`Rs` quantities. Signs
+ * follow the component stream: positive injects, negative produces. The flash labels a
+ * single-phase surface stream by its own phase rule, so a pure CO2 stream may be reported as
+ * separator liquid; the names keep that convention visible.
+ */
+export interface CompositionalWellSurfaceRates {
+  liquid_m3_per_day: number;
+  vapour_m3_per_day: number;
+  /** Present exactly when the case has a water phase. */
+  water_m3_per_day?: number;
+}
+
+/** One well's cumulative surface volume over accepted steps [m³], signed like the rates. */
+export interface CompositionalWellSurfaceVolumes {
+  liquid_m3: number;
+  vapour_m3: number;
+  /** Present exactly when the case has a water phase. */
+  water_m3?: number;
+}
+
+/**
  * The accepted state and its totals.
  *
  * Carries **no derivative arrays** — the Jacobian blocks are per-cell, large and of no use to a
@@ -276,6 +299,17 @@ export interface CompositionalSnapshot {
   inventory: number[];
   /** Per well, cumulative component moles. Positive into the reservoir. With water, water is last. */
   cumulative_well_moles: number[][];
+  /**
+   * Per well, surface volumetric rates at the accepted state [m³/day], from the engine's own
+   * surface separation. Positive injects, negative produces.
+   *
+   * Absent when the fluid pins no surface conditions, so a consumer must read a missing field as
+   * **not reported**, never as zero. Present at t = 0 as zeros for a fresh case. A snapshot from
+   * before this field existed also lacks it.
+   */
+  well_surface_rates?: CompositionalWellSurfaceRates[];
+  /** Per well, cumulative surface volume over accepted steps [m³], signed like the rates. */
+  cumulative_well_surface_volumes?: CompositionalWellSurfaceVolumes[];
   /**
    * Per well, the BHP the accepted solve ran at [bar], or zero while the well is shut in (and for
    * a well just reopened by an event, until its first accepted step). Absent before the first

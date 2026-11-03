@@ -31,6 +31,7 @@ use super::newton::{NewtonError, NewtonOptions, NewtonProblem, NewtonReport, sol
 use super::relperm::RelativePermeabilityModel;
 use super::state::{CompositionalState, FlashCache, RockView};
 use super::water::WaterProperties;
+use super::wells::{WellSurfaceRates, WellSurfaceVolumes, surface_rates_from_components};
 
 /// What kind of failure a rejected attempt hit.
 ///
@@ -135,6 +136,13 @@ pub struct CompositionalRun {
     cumulative_source_moles: Vec<f64>,
     /// The same, per well, from the rates the accepted solve actually ran at.
     cumulative_well_moles: Vec<Vec<f64>>,
+    /// Surface volumetric rates per well at the last accepted state [m³/day], from the same
+    /// accepted component rates and `surface_separation` the controls use. `None` when the fluid
+    /// has no pinned surface conditions, so a consumer cannot mistake "not reported" for zero.
+    well_surface_rates: Option<Vec<WellSurfaceRates>>,
+    /// Cumulative surface volumes per well over accepted steps [m³], signed like the rates.
+    /// `None` under the same condition as [`Self::well_surface_rates`].
+    cumulative_well_surface_volumes: Option<Vec<WellSurfaceVolumes>>,
     /// Flowing BHP per well at the last accepted state. Empty until a step with wells is accepted.
     ///
     /// Carried for reporting and restart evidence, not as a Newton initial guess: the solve starts
@@ -152,6 +160,8 @@ impl CompositionalRun {
             cache: FlashCache::with_cells(cells),
             cumulative_source_moles: vec![0.0; n],
             cumulative_well_moles: Vec::new(),
+            well_surface_rates: None,
+            cumulative_well_surface_volumes: None,
             well_bhp_bar: Vec::new(),
         }
     }
@@ -182,6 +192,39 @@ impl CompositionalRun {
     /// Positive means into the reservoir. Empty until a step with wells has been accepted.
     pub fn cumulative_well_moles(&self) -> &[Vec<f64>] {
         &self.cumulative_well_moles
+    }
+
+    /// Surface volumetric rates per well at the accepted state [m³/day], when the fluid pins
+    /// surface conditions.
+    pub fn well_surface_rates(&self) -> Option<&[WellSurfaceRates]> {
+        self.well_surface_rates.as_deref()
+    }
+
+    /// Cumulative surface volumes per well over accepted steps [m³], when the fluid pins surface
+    /// conditions.
+    pub fn cumulative_well_surface_volumes(&self) -> Option<&[WellSurfaceVolumes]> {
+        self.cumulative_well_surface_volumes.as_deref()
+    }
+
+    /// Seed the surface ledger at t = 0, before the first accepted step.
+    ///
+    /// A fresh case knows its wells and whether it has water, so its initial surface totals are
+    /// exactly zero. Restore deliberately does not call this: a checkpoint carries no surface
+    /// ledger (the same limitation as the component ledger, #88), and zeros there would claim a
+    /// history the restored run does not have.
+    pub fn seed_surface_reporting(
+        &mut self,
+        spec: &FluidSpecification,
+        relperm: &RelativePermeabilityModel,
+        well_count: usize,
+    ) {
+        if spec.surface().is_none() {
+            return;
+        }
+        let has_water = relperm.water().is_some();
+        self.well_surface_rates = Some(vec![WellSurfaceRates::zero(has_water); well_count]);
+        self.cumulative_well_surface_volumes =
+            Some(vec![WellSurfaceVolumes::zero(has_water); well_count]);
     }
 
     /// Flowing BHP per well at the accepted state [bar]; empty until a well step is accepted.
@@ -314,6 +357,45 @@ impl CompositionalRun {
                         }
                         for (i, value) in rate.iter().enumerate() {
                             self.cumulative_well_moles[index][i] += dt * value;
+                        }
+                    }
+
+                    // Surface reporting shares the well control's own separation. A failure here
+                    // cannot invalidate an accepted flow step — the fluid may simply have no
+                    // pinned surface conditions — so reporting becomes absent rather than zero.
+                    match accepted_well_rates
+                        .iter()
+                        .map(|rate| surface_rates_from_components(spec, relperm, rate))
+                        .collect::<Result<Vec<_>, _>>()
+                    {
+                        Ok(rates) => {
+                            let has_water = relperm.water().is_some();
+                            match self.cumulative_well_surface_volumes.as_mut() {
+                                Some(cumulative) => {
+                                    if cumulative.len() < rates.len() {
+                                        cumulative.resize(
+                                            rates.len(),
+                                            WellSurfaceVolumes::zero(has_water),
+                                        );
+                                    }
+                                    for (total, rate) in cumulative.iter_mut().zip(&rates) {
+                                        total.add(rate, dt);
+                                    }
+                                }
+                                None => {
+                                    self.cumulative_well_surface_volumes = Some(
+                                        rates
+                                            .iter()
+                                            .map(|rate| WellSurfaceVolumes::over_step(rate, dt))
+                                            .collect(),
+                                    );
+                                }
+                            }
+                            self.well_surface_rates = Some(rates);
+                        }
+                        Err(_) => {
+                            self.well_surface_rates = None;
+                            self.cumulative_well_surface_volumes = None;
                         }
                     }
                     // Keyed on the state version, so the old entries are already unreachable;

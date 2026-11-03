@@ -66,6 +66,17 @@ same `<case>.<run>.json` shape as the black-oil runs (`run: "comp"`). The cells 
 fixture carries water. `sw` is extra in the record, not compared. This mode needs neither
 `flowexp_comp` nor the OPM Python bindings, so it is what normal CI runs.
 
+Each report also carries `average_pressure_bar` and, when the fluid pins surface conditions, a
+`surface` block with the **produced** separator liquid, vapour and water rates, their cumulative
+volumes, the separator gas/liquid ratio and the surface water cut. These are the engine's own
+`surface_separation` products, not black-oil `Bo`/`Bg`/`Rs` quantities; the ratio is deliberately
+not called GOR. The comparator maps the final cumulative liquid/vapour volumes to the fixture's
+`FOPT`/`FGPT`. A fluid that pins no surface conditions omits the block, and the comparator reports
+the cumulative as unreported rather than zero. The phase split inherits the engine's single-phase
+surface label, which is pressure-blind (`comp_reference_surface_phase_label_is_pressure_blind`), so
+a CO2-rich stream can be metered as separator liquid where the fixture meters gas; the record
+keeps the phase names visible rather than relabelling one side.
+
 `bash scripts/validate-compositional.sh reference` runs the same checks after re-deriving the
 committed fixtures from `flowexp_comp`; use it when the fixture or deck changed.
 

@@ -49,7 +49,24 @@ fn comp_spe3_case_payload_is_admissible() {
     assert_eq!(config.grid.cells, 9 * 9 * 4);
     assert_eq!(config.initial_composition.len(), 9);
     assert_eq!(config.schedule.len(), 1);
-    assert!(CompositionalCase::new(config).is_ok());
+    let well_count = config.wells.len();
+    let case = CompositionalCase::new(config).expect("the SPE3 payload is admissible");
+    // #95: the separator train pins surface conditions, so the case starts with a surface ledger
+    // at exactly zero for every well.
+    let snapshot = case.snapshot();
+    let rates = snapshot
+        .well_surface_rates
+        .expect("SPE3 must report surface rates");
+    let volumes = snapshot
+        .cumulative_well_surface_volumes
+        .expect("SPE3 must report surface volumes");
+    assert_eq!(rates.len(), well_count);
+    assert_eq!(volumes.len(), well_count);
+    for rate in &rates {
+        assert_eq!(rate.liquid_m3_per_day, 0.0);
+        assert_eq!(rate.vapour_m3_per_day, 0.0);
+        assert_eq!(rate.water_m3_per_day, Some(0.0));
+    }
 }
 
 #[test]

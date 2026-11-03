@@ -469,7 +469,28 @@ use super::flux::Gravity;
 use super::relperm::{RelativePermeabilityModel, RelativePermeabilityTable};
 use super::state::RockView;
 use super::timestep::{CompositionalRun, TimestepOptions};
-use super::wells::{Completion, CompositionalWell, InjectedFluid, SurfacePhase, WellControl};
+use super::wells::{
+    Completion, CompositionalWell, InjectedFluid, SurfacePhase, WellControl, WellSurfaceRates,
+    WellSurfaceVolumes,
+};
+
+/// The surface ledger at one report time, captured from the run before its state is cloned.
+#[derive(Clone, Debug, Default)]
+struct SurfaceObservation {
+    rates: Option<Vec<WellSurfaceRates>>,
+    cumulative: Option<Vec<WellSurfaceVolumes>>,
+}
+
+impl SurfaceObservation {
+    fn capture(run: &CompositionalRun) -> Self {
+        Self {
+            rates: run.well_surface_rates().map(|rates| rates.to_vec()),
+            cumulative: run
+                .cumulative_well_surface_volumes()
+                .map(|volumes| volumes.to_vec()),
+        }
+    }
+}
 
 /// The deck's geometry, as constants so each one can be checked against `1D_COMP.DATA` by eye.
 mod deck {
@@ -647,9 +668,14 @@ fn run_deck_case(report_times_days: &[f64]) -> Vec<Vec<CompositionalCellState>> 
 }
 
 /// As [`run_deck_case`], on the deck's own five-cell grid at the default sub-step.
+#[allow(clippy::type_complexity)]
 fn run_deck_case_with_totals(
     report_times_days: &[f64],
-) -> (Vec<Vec<f64>>, Vec<Vec<CompositionalCellState>>) {
+) -> (
+    Vec<Vec<f64>>,
+    Vec<Vec<CompositionalCellState>>,
+    Vec<SurfaceObservation>,
+) {
     run_deck_case_on_grid(deck::CELLS, MAX_SUB_STEP_DAYS, report_times_days)
 }
 
@@ -658,21 +684,31 @@ fn run_deck_case_with_totals(
 /// Both knobs are what the refinement study varies. The grid matches
 /// `tools/opm_compositional/refine_deck.py`: same length, same rock, same fluid, same wells in the
 /// first and last cell, only the discretisation changes.
+#[allow(clippy::type_complexity)]
 fn run_deck_case_on_grid(
     cells: usize,
     max_sub_step_days: f64,
     report_times_days: &[f64],
-) -> (Vec<Vec<f64>>, Vec<Vec<CompositionalCellState>>) {
+) -> (
+    Vec<Vec<f64>>,
+    Vec<Vec<CompositionalCellState>>,
+    Vec<SurfaceObservation>,
+) {
     run_deck_case_full(cells, max_sub_step_days, 0.0, report_times_days)
 }
 
 /// As [`run_deck_case_on_grid`], with a connection `skin` on both wells.
+#[allow(clippy::type_complexity)]
 fn run_deck_case_full(
     cells: usize,
     max_sub_step_days: f64,
     skin: f64,
     report_times_days: &[f64],
-) -> (Vec<Vec<f64>>, Vec<Vec<CompositionalCellState>>) {
+) -> (
+    Vec<Vec<f64>>,
+    Vec<Vec<CompositionalCellState>>,
+    Vec<SurfaceObservation>,
+) {
     let spec = deck_fluid();
     let relperm = deck_relperm();
     let layout = CompositionalLayout::new(3, cells, 2, 2).unwrap();
@@ -749,6 +785,7 @@ fn run_deck_case_full(
     let mut run = CompositionalRun::new(initial);
     let mut snapshots = Vec::with_capacity(report_times_days.len());
     let mut cumulative = Vec::with_capacity(report_times_days.len());
+    let mut surface = Vec::with_capacity(report_times_days.len());
     // A looser Newton tolerance than the default 1e-8, and the reason is specific rather than
     // convenient. Late in this displacement the cells are almost pure CO2, so methane and decane
     // sit at ~1e-5 of the cell's inventory; C8's per-component row scaling then divides their
@@ -813,8 +850,9 @@ fn run_deck_case_full(
                 .cloned()
                 .unwrap_or_else(|| vec![0.0; 3]),
         );
+        surface.push(SurfaceObservation::capture(&run));
     }
-    (cumulative, snapshots)
+    (cumulative, snapshots, surface)
 }
 
 /// **The transport half of C12.** Run the deck's case in ResSim and compare the trajectory
@@ -975,7 +1013,7 @@ fn comp_reference_cumulative_injection_tracks_opm() {
     .unwrap();
     let molar_volume = injected_state.mixture_molar_volume();
 
-    let (ours_moles, _) = run_deck_case_with_totals(&times);
+    let (ours_moles, _, _) = run_deck_case_with_totals(&times);
 
     // Compare at the end, where the cumulative is largest and the relative error most meaningful.
     let theirs_moles = fgit.last().unwrap() / molar_volume;
@@ -1002,6 +1040,56 @@ fn comp_reference_cumulative_injection_tracks_opm() {
         relative < 0.015,
         "cumulative injection differs by {:.2}%: {ours_total:.4e} vs {theirs_moles:.4e} moles",
         relative * 100.0
+    );
+}
+
+/// **#95's closure on the 1-D rate-controlled case.** The surface ledger the snapshot reports is
+/// the same separation applied to the same component stream the well ledger records, so the two
+/// must agree at every report. Separation is homogeneous, which makes the comparison exact: the
+/// stored cumulative volume is the integral of `dt · q_surface`, and separating the cumulative
+/// component moles gives the same volume.
+#[test]
+fn comp_reference_surface_ledger_closes_through_the_separation() {
+    let reference = reference();
+    let times = reference.summary.get("TIME").expect("TIME").clone();
+    let (moles, _, surface) = run_deck_case_with_totals(&times);
+    let spec = deck_fluid();
+
+    let mut checked = 0usize;
+    for (report, (moles, observation)) in moles.iter().zip(&surface).enumerate() {
+        let Some(cumulative) = observation.cumulative.as_ref() else {
+            continue;
+        };
+        if cumulative.is_empty() {
+            // The deck opens its wells after the first few report times.
+            continue;
+        }
+        // The 1-D deck injects with well 0 and produces with well 1. `moles` carries well 0.
+        let separated = crate::fluid::transport::surface_separation(&spec, moles)
+            .expect("the accumulated injector stream must separate");
+        let stored = &cumulative[0];
+        let scale = separated.liquid_volume.abs().max(1.0);
+        assert!(
+            (stored.liquid_m3 - separated.liquid_volume).abs() <= 1e-9 * scale,
+            "report {report}: stored liquid {} m³ vs separation {} m³",
+            stored.liquid_m3,
+            separated.liquid_volume
+        );
+        assert!(
+            (stored.vapour_m3 - separated.vapour_volume).abs() <= 1e-9 * scale,
+            "report {report}: stored vapour {} m³ vs separation {} m³",
+            stored.vapour_m3,
+            separated.vapour_volume
+        );
+        checked += 1;
+    }
+    assert!(checked > 0, "no report carried a surface ledger");
+    assert!(
+        surface.last().is_some_and(|observation| observation
+            .cumulative
+            .as_ref()
+            .is_some_and(|v| !v.is_empty())),
+        "the final report must carry the surface ledger"
     );
 }
 
@@ -1175,7 +1263,7 @@ fn measure_refinement(cells: usize, sub_step_days: f64) -> RefinementPoint {
     let times = reference.summary.get("TIME").expect("TIME").clone();
     let fgit = reference.summary.get("FGIT").expect("FGIT").clone();
 
-    let (ours_moles, ours) = run_deck_case_on_grid(cells, sub_step_days, &times);
+    let (ours_moles, ours, _) = run_deck_case_on_grid(cells, sub_step_days, &times);
 
     let mut trajectory_pressure_bar = 0.0f64;
     for (index, step) in reference.report_steps.iter().enumerate() {
@@ -1569,7 +1657,7 @@ fn comp_skin_cumulative_injection_meets_the_plan_target() {
     .unwrap()
     .mixture_molar_volume();
 
-    let (ours_moles, _) = run_deck_case_full(5, MAX_SUB_STEP_DAYS, deck::SKIN, &times);
+    let (ours_moles, _, _) = run_deck_case_full(5, MAX_SUB_STEP_DAYS, deck::SKIN, &times);
 
     let theirs = fgit.last().unwrap() / molar_volume;
     let ours = ours_moles.last().unwrap()[0];
@@ -1606,7 +1694,7 @@ fn comp_skin_cumulative_injection_meets_the_plan_target() {
 fn comp_skin_transport_trajectory_tracks_opm() {
     let reference = skin_reference();
     let times = reference.summary.get("TIME").expect("TIME").clone();
-    let (_, ours) = run_deck_case_full(5, MAX_SUB_STEP_DAYS, deck::SKIN, &times);
+    let (_, ours, _) = run_deck_case_full(5, MAX_SUB_STEP_DAYS, deck::SKIN, &times);
 
     let mut worst = (0.0f64, String::new());
     let mut worst_developed = 0.0f64;
@@ -1786,7 +1874,10 @@ fn comp_depletion_surface_separation_matches_opm() {
 
 /// Run the deck's depletion in ResSim and return the pressure and vapour saturation at each of the
 /// reference's report times.
-fn run_depletion(report_times_days: &[f64], max_sub_step_days: f64) -> Vec<CompositionalCellState> {
+fn run_depletion(
+    report_times_days: &[f64],
+    max_sub_step_days: f64,
+) -> (Vec<CompositionalCellState>, Vec<SurfaceObservation>) {
     let spec = deck_fluid();
     let relperm = deck_relperm();
     let layout = CompositionalLayout::new(3, depletion_deck::CELLS, 2, 2).unwrap();
@@ -1845,6 +1936,7 @@ fn run_depletion(report_times_days: &[f64], max_sub_step_days: f64) -> Vec<Compo
     };
 
     let mut out = Vec::with_capacity(report_times_days.len());
+    let mut surface = Vec::with_capacity(report_times_days.len());
     for &target in report_times_days {
         let mut guard = 0;
         while target - run.time_days() > options.min_dt_days {
@@ -1870,8 +1962,9 @@ fn run_depletion(report_times_days: &[f64], max_sub_step_days: f64) -> Vec<Compo
             );
         }
         out.push(run.state().cell(0).clone());
+        surface.push(SurfaceObservation::capture(&run));
     }
-    out
+    (out, surface)
 }
 
 /// **The reference's rate-controlled withdrawal does not converge**, and 3.8% is what it happens
@@ -2099,7 +2192,7 @@ fn comp_depletion_reference_withdrawal_disagrees_with_its_own_flash() {
 fn comp_depletion_pressure_path_matches_opm() {
     let reference = depletion_reference();
     let times = reference.summary.get("TIME").expect("TIME").clone();
-    let ours = run_depletion(&times, 0.05);
+    let (ours, _) = run_depletion(&times, 0.05);
 
     let mut worst_single_phase = (0.0f64, String::new());
     let mut worst_overall = 0.0f64;
@@ -2160,7 +2253,7 @@ fn comp_depletion_pressure_path_matches_opm() {
 fn comp_depletion_phase_appearance_matches_opm() {
     let reference = depletion_reference();
     let times = reference.summary.get("TIME").expect("TIME").clone();
-    let ours = run_depletion(&times, 0.05);
+    let (ours, _) = run_depletion(&times, 0.05);
 
     let spec = deck_fluid();
     for (index, step) in reference.report_steps.iter().enumerate() {
@@ -2243,16 +2336,22 @@ const MATCHED_SUB_STEP_DAYS: f64 = 1.0e6;
 fn run_depletion_bhp(
     report_times_days: &[f64],
     max_sub_step_days: f64,
-) -> Vec<CompositionalCellState> {
-    run_depletion_bhp_with_totals(report_times_days, max_sub_step_days).1
+) -> (Vec<CompositionalCellState>, Vec<SurfaceObservation>) {
+    let (_, cells, surface) = run_depletion_bhp_with_totals(report_times_days, max_sub_step_days);
+    (cells, surface)
 }
 
 /// As [`run_depletion_bhp`], and also the producer's cumulative component moles at each report
 /// time, from the rates the accepted solves actually ran at.
+#[allow(clippy::type_complexity)]
 fn run_depletion_bhp_with_totals(
     report_times_days: &[f64],
     max_sub_step_days: f64,
-) -> (Vec<Vec<f64>>, Vec<CompositionalCellState>) {
+) -> (
+    Vec<Vec<f64>>,
+    Vec<CompositionalCellState>,
+    Vec<SurfaceObservation>,
+) {
     let spec = deck_fluid();
     let relperm = deck_relperm();
     let layout = CompositionalLayout::new(3, depletion_deck::CELLS, 2, 2).unwrap();
@@ -2299,6 +2398,7 @@ fn run_depletion_bhp_with_totals(
 
     let mut out = Vec::with_capacity(report_times_days.len());
     let mut cumulative = Vec::with_capacity(report_times_days.len());
+    let mut surface = Vec::with_capacity(report_times_days.len());
     for &target in report_times_days {
         let mut guard = 0;
         while target - run.time_days() > options.min_dt_days {
@@ -2330,8 +2430,9 @@ fn run_depletion_bhp_with_totals(
                 .cloned()
                 .unwrap_or_else(|| vec![0.0; 3]),
         );
+        surface.push(SurfaceObservation::capture(&run));
     }
-    (cumulative, out)
+    (cumulative, out, surface)
 }
 
 /// **The BHP depletion trajectory, at the reference's own temporal resolution.**
@@ -2355,7 +2456,7 @@ fn comp_depletion_bhp_trajectory_matches_opm_at_matched_timestep() {
     let times = reference.summary.get("TIME").expect("TIME").clone();
 
     // One step per report interval, which is what the reference takes.
-    let ours = run_depletion_bhp(&times, MATCHED_SUB_STEP_DAYS);
+    let (ours, _) = run_depletion_bhp(&times, MATCHED_SUB_STEP_DAYS);
 
     let spec = deck_fluid();
     let mut worst_pressure = (0.0f64, String::new());
@@ -2452,8 +2553,8 @@ fn comp_depletion_bhp_refining_ressim_moves_it_away_from_an_unconverged_referenc
     let reference = depletion_bhp_reference();
     let times = reference.summary.get("TIME").expect("TIME").clone();
 
-    let matched = run_depletion_bhp(&times, MATCHED_SUB_STEP_DAYS);
-    let converged = run_depletion_bhp(&times, 0.05);
+    let (matched, _) = run_depletion_bhp(&times, MATCHED_SUB_STEP_DAYS);
+    let (converged, _) = run_depletion_bhp(&times, 0.05);
     let theirs = reference.report_steps[0].pressure[0];
 
     eprintln!(
@@ -2489,7 +2590,7 @@ fn comp_depletion_bhp_refining_ressim_moves_it_away_from_an_unconverged_referenc
 fn comp_depletion_bhp_composition_drifts_with_the_reference() {
     let reference = depletion_bhp_reference();
     let times = reference.summary.get("TIME").expect("TIME").clone();
-    let ours = run_depletion_bhp(&times, MATCHED_SUB_STEP_DAYS);
+    let (ours, _) = run_depletion_bhp(&times, MATCHED_SUB_STEP_DAYS);
 
     // The reference must actually move, or matching it would be trivial.
     let first = reference.report_steps.first().unwrap().z(0);
@@ -2807,7 +2908,7 @@ fn comp_matched_1d_trajectory_agrees_with_opm() {
         let times = reference.summary.get("TIME").expect("TIME").clone();
         let fgit = reference.summary.get("FGIT").expect("FGIT").clone();
 
-        let (moles, ours) = run_deck_case_full(deck::CELLS, MATCHED_SUB_STEP_DAYS, skin, &times);
+        let (moles, ours, _) = run_deck_case_full(deck::CELLS, MATCHED_SUB_STEP_DAYS, skin, &times);
 
         let mut worst = (0.0f64, String::new());
         for (index, step) in reference.report_steps.iter().enumerate() {
@@ -3050,7 +3151,7 @@ fn comp_oracle_skin_final_state_gap_is_within_the_references_own_uncertainty() {
 fn comp_depletion_bhp_cumulative_production_matches_opm() {
     let reference = depletion_bhp_reference();
     let times = reference.summary.get("TIME").expect("TIME").clone();
-    let (ours_cumulative, _) = run_depletion_bhp_with_totals(&times, MATCHED_SUB_STEP_DAYS);
+    let (ours_cumulative, _, _) = run_depletion_bhp_with_totals(&times, MATCHED_SUB_STEP_DAYS);
 
     let spec = deck_fluid();
     let pore_volumes = vec![depletion_deck::PORE_VOLUME_M3];
@@ -3767,6 +3868,75 @@ struct CompRunReport {
     sg: Vec<f64>,
     /// Component-major, like the API's snapshot.
     z: Vec<Vec<f64>>,
+    /// The engine's per-well surface ledger at this report. Absent when the fluid pins no surface
+    /// conditions, or in the initial state of a restored run.
+    surface: SurfaceObservation,
+}
+
+/// What a report can say about **production** at the surface.
+///
+/// Per-well rates are signed, so an injector's stream would cancel a producer's if they were
+/// summed directly. The record's headline observables are production, so only the negative
+/// (producing) side of each phase is integrated.
+#[derive(Clone, Copy, Debug)]
+struct ProducedSurface {
+    liquid_rate_m3_per_day: f64,
+    vapour_rate_m3_per_day: f64,
+    water_rate_m3_per_day: Option<f64>,
+    cumulative_liquid_m3: f64,
+    cumulative_vapour_m3: f64,
+    cumulative_water_m3: Option<f64>,
+}
+
+impl ProducedSurface {
+    fn from_observation(observation: &SurfaceObservation) -> Option<Self> {
+        let rates = observation.rates.as_ref()?;
+        let cumulative = observation.cumulative.as_ref()?;
+        let produced = |value: f64| (-value).max(0.0);
+        let water_present = rates.iter().any(|rate| rate.water_m3_per_day.is_some())
+            || cumulative.iter().any(|volume| volume.water_m3.is_some());
+        Some(Self {
+            liquid_rate_m3_per_day: rates
+                .iter()
+                .map(|rate| produced(rate.liquid_m3_per_day))
+                .sum(),
+            vapour_rate_m3_per_day: rates
+                .iter()
+                .map(|rate| produced(rate.vapour_m3_per_day))
+                .sum(),
+            water_rate_m3_per_day: water_present.then(|| {
+                rates
+                    .iter()
+                    .map(|rate| produced(rate.water_m3_per_day.unwrap_or(0.0)))
+                    .sum()
+            }),
+            cumulative_liquid_m3: cumulative
+                .iter()
+                .map(|volume| produced(volume.liquid_m3))
+                .sum(),
+            cumulative_vapour_m3: cumulative
+                .iter()
+                .map(|volume| produced(volume.vapour_m3))
+                .sum(),
+            cumulative_water_m3: water_present.then(|| {
+                cumulative
+                    .iter()
+                    .map(|volume| produced(volume.water_m3.unwrap_or(0.0)))
+                    .sum()
+            }),
+        })
+    }
+
+    fn gas_liquid_ratio(self) -> Option<f64> {
+        (self.liquid_rate_m3_per_day > 0.0)
+            .then_some(self.vapour_rate_m3_per_day / self.liquid_rate_m3_per_day)
+    }
+
+    fn water_cut(self) -> Option<f64> {
+        let water = self.water_rate_m3_per_day?;
+        let total = self.liquid_rate_m3_per_day + water;
+        (total > 0.0).then_some(water / total)
+    }
 }
 
 /// A record report from accepted cell states. Gas saturation comes from the same flash the
@@ -3775,6 +3945,7 @@ fn comp_report_from_cells(
     spec: &FluidSpecification,
     t: f64,
     cells: &[CompositionalCellState],
+    surface: SurfaceObservation,
 ) -> CompRunReport {
     let mut p = Vec::with_capacity(cells.len());
     let mut sw = Vec::with_capacity(cells.len());
@@ -3797,7 +3968,14 @@ fn comp_report_from_cells(
             z[component].push(value);
         }
     }
-    CompRunReport { t, p, sw, sg, z }
+    CompRunReport {
+        t,
+        p,
+        sw,
+        sg,
+        z,
+        surface,
+    }
 }
 
 /// The same report from the public payload's snapshot, used by the 2-D case.
@@ -3813,6 +3991,10 @@ fn comp_report_from_snapshot(snapshot: &super::api::Snapshot) -> CompRunReport {
             .unwrap_or_else(|| vec![0.0; cells]),
         sg: snapshot.vapour_saturation.clone(),
         z: snapshot.composition.clone(),
+        surface: SurfaceObservation {
+            rates: snapshot.well_surface_rates.clone(),
+            cumulative: snapshot.cumulative_well_surface_volumes.clone(),
+        },
     }
 }
 
@@ -3829,7 +4011,8 @@ fn write_comp_record(
     let reports: Vec<serde_json::Value> = reports
         .iter()
         .map(|report| {
-            serde_json::json!({
+            let average_pressure_bar = report.p.iter().sum::<f64>() / report.p.len().max(1) as f64;
+            let mut value = serde_json::json!({
                 "t": report.t,
                 // The compositional driver has no Flow-convention Newton counter yet; null is
                 // honest and the comparator omits absent work metrics rather than inventing them.
@@ -3841,7 +4024,24 @@ fn write_comp_record(
                 "sw": report.sw,
                 "sg": report.sg,
                 "z": report.z,
-            })
+                // The #52 bands need the run's own mean pressure, not a cell the reader picks.
+                "average_pressure_bar": average_pressure_bar,
+            });
+            if let Some(surface) = ProducedSurface::from_observation(&report.surface) {
+                value["surface"] = serde_json::json!({
+                    "liquid_rate_m3_per_day": surface.liquid_rate_m3_per_day,
+                    "vapour_rate_m3_per_day": surface.vapour_rate_m3_per_day,
+                    "water_rate_m3_per_day": surface.water_rate_m3_per_day,
+                    "cumulative_liquid_m3": surface.cumulative_liquid_m3,
+                    "cumulative_vapour_m3": surface.cumulative_vapour_m3,
+                    "cumulative_water_m3": surface.cumulative_water_m3,
+                    // Deliberately a gas/liquid ratio, not a black-oil GOR: this is the ratio of
+                    // the engine's separator products.
+                    "gas_liquid_ratio": surface.gas_liquid_ratio(),
+                    "water_cut": surface.water_cut(),
+                });
+            }
+            value
         })
         .collect();
     let document = serde_json::json!({
@@ -3882,7 +4082,7 @@ fn report_count(document: &serde_json::Value) -> usize {
 fn run_injection_trajectory(
     report_times_days: &[f64],
     max_sub_step_days: f64,
-) -> Vec<CompositionalCellState> {
+) -> (Vec<CompositionalCellState>, Vec<SurfaceObservation>) {
     let spec = deck_fluid();
     let relperm = deck_relperm();
     let layout = CompositionalLayout::new(3, 1, 2, 2).unwrap();
@@ -3933,6 +4133,7 @@ fn run_injection_trajectory(
     let options = TimestepOptions::default();
 
     let mut out = Vec::with_capacity(report_times_days.len());
+    let mut surface = Vec::with_capacity(report_times_days.len());
     for &target in report_times_days {
         let mut guard = 0;
         while target - run.time_days() > options.min_dt_days {
@@ -3958,8 +4159,9 @@ fn run_injection_trajectory(
             );
         }
         out.push(run.state().cell(0).clone());
+        surface.push(SurfaceObservation::capture(&run));
     }
-    out
+    (out, surface)
 }
 
 /// Write every compositional trajectory fixture's ResSim counterpart in the shared record shape.
@@ -3976,11 +4178,12 @@ fn comp_reference_run_records() {
     let plain = reference();
     let times = plain.summary.get("TIME").expect("TIME").clone();
     let started = std::time::Instant::now();
-    let (_, cells) = run_deck_case_with_totals(&times);
+    let (_, cells, surface) = run_deck_case_with_totals(&times);
     let reports: Vec<CompRunReport> = times
         .iter()
         .zip(cells.iter())
-        .map(|(&t, cell)| comp_report_from_cells(&spec, t, cell))
+        .zip(surface.iter())
+        .map(|((&t, cell), surface)| comp_report_from_cells(&spec, t, cell, surface.clone()))
         .collect();
     write_comp_record(
         &out,
@@ -3993,11 +4196,13 @@ fn comp_reference_run_records() {
     let skin = skin_reference();
     let times = skin.summary.get("TIME").expect("TIME").clone();
     let started = std::time::Instant::now();
-    let (_, cells) = run_deck_case_full(deck::CELLS, MATCHED_SUB_STEP_DAYS, deck::SKIN, &times);
+    let (_, cells, surface) =
+        run_deck_case_full(deck::CELLS, MATCHED_SUB_STEP_DAYS, deck::SKIN, &times);
     let reports: Vec<CompRunReport> = times
         .iter()
         .zip(cells.iter())
-        .map(|(&t, cell)| comp_report_from_cells(&spec, t, cell))
+        .zip(surface.iter())
+        .map(|((&t, cell), surface)| comp_report_from_cells(&spec, t, cell, surface.clone()))
         .collect();
     write_comp_record(
         &out,
@@ -4010,11 +4215,14 @@ fn comp_reference_run_records() {
     let depletion = depletion_reference();
     let times = depletion.summary.get("TIME").expect("TIME").clone();
     let started = std::time::Instant::now();
-    let cells = run_depletion(&times, 0.05);
+    let (cells, surface) = run_depletion(&times, 0.05);
     let reports: Vec<CompRunReport> = times
         .iter()
         .zip(cells.iter())
-        .map(|(&t, cell)| comp_report_from_cells(&spec, t, std::slice::from_ref(cell)))
+        .zip(surface.iter())
+        .map(|((&t, cell), surface)| {
+            comp_report_from_cells(&spec, t, std::slice::from_ref(cell), surface.clone())
+        })
         .collect();
     write_comp_record(
         &out,
@@ -4027,11 +4235,14 @@ fn comp_reference_run_records() {
     let depletion_bhp = depletion_bhp_reference();
     let times = depletion_bhp.summary.get("TIME").expect("TIME").clone();
     let started = std::time::Instant::now();
-    let cells = run_depletion_bhp(&times, MATCHED_SUB_STEP_DAYS);
+    let (cells, surface) = run_depletion_bhp(&times, MATCHED_SUB_STEP_DAYS);
     let reports: Vec<CompRunReport> = times
         .iter()
         .zip(cells.iter())
-        .map(|(&t, cell)| comp_report_from_cells(&spec, t, std::slice::from_ref(cell)))
+        .zip(surface.iter())
+        .map(|((&t, cell), surface)| {
+            comp_report_from_cells(&spec, t, std::slice::from_ref(cell), surface.clone())
+        })
         .collect();
     write_comp_record(
         &out,
@@ -4044,11 +4255,14 @@ fn comp_reference_run_records() {
     let injection = injection_reference();
     let times = injection.summary.get("TIME").expect("TIME").clone();
     let started = std::time::Instant::now();
-    let cells = run_injection_trajectory(&times, MATCHED_SUB_STEP_DAYS);
+    let (cells, surface) = run_injection_trajectory(&times, MATCHED_SUB_STEP_DAYS);
     let reports: Vec<CompRunReport> = times
         .iter()
         .zip(cells.iter())
-        .map(|(&t, cell)| comp_report_from_cells(&spec, t, std::slice::from_ref(cell)))
+        .zip(surface.iter())
+        .map(|((&t, cell), surface)| {
+            comp_report_from_cells(&spec, t, std::slice::from_ref(cell), surface.clone())
+        })
         .collect();
     write_comp_record(
         &out,

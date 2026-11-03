@@ -69,9 +69,16 @@ The deliberate differences from the OPM deck implementation are:
 ### Recorded deviation: shut-in criteria
 
 The paper specifies stopping at **GOR 10 Mscf/STB** or **WOR 5 STB/STB**. The payload always
-requests the full 240 reports. The compositional run loop has no surface-rate history (#95) and does
-not evaluate termination policies (#98), so neither criterion is enforced yet. This must be fixed
-before a published-trajectory comparison or an explicit stopping rule is claimed.
+requests the full 240 reports. The run now reports per-well separator rates and cumulative surface
+volumes, and the run series derives produced liquid/vapour rates, separator gas/liquid ratio and
+surface water cut (#95). The run loop still does not evaluate termination policies (#98), so
+neither criterion is enforced yet. This must be fixed before a published-trajectory comparison or
+an explicit stopping rule is claimed.
+
+The reported "oil" and "gas" are the separator **liquid** and **vapour** volumes, not black-oil
+`FOPT`/`FGPT` metered through a PVT table. At 1 bar the flash's single-phase label is pressure-blind,
+so a CO2-rich surface stream can be labelled liquid; the chart and record keep the separator names
+visible rather than relabelling it.
 
 ### Late-life stall (#93): fixed
 

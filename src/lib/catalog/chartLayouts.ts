@@ -644,13 +644,38 @@ export const CHART_LAYOUTS: Record<string, ChartLayoutConfig> = {
             allowLogScale: true,
             logScale: false,
             panelOrder: [
-                'comp_inventory', 'comp_vapour_saturation', 'comp_two_phase', 'comp_pressure',
-                'comp_net_injected', 'comp_conservation',
+                'comp_inventory', 'comp_surface_rates', 'comp_surface_cumulative',
+                'comp_separator_glr', 'comp_surface_water_cut', 'comp_vapour_saturation',
+                'comp_two_phase', 'comp_pressure', 'comp_net_injected', 'comp_conservation',
             ],
             panels: {
                 // What the flood has done to the reservoir's contents: CO₂ stored, the resident
                 // components displaced. The headline exhibit, so it opens expanded.
                 comp_inventory: { scalePreset: 'moles', expanded: true },
+                // The engine's own separator products. "Liquid" and "vapour" are deliberate:
+                // the compositional flash is not a black-oil Bo/Bg table, and its single-phase
+                // label is pressure-blind.
+                comp_surface_rates: {
+                    title: 'Surface Rates (separator)',
+                    scalePreset: 'rates',
+                    allowLogToggle: true,
+                    expanded: true,
+                },
+                comp_surface_cumulative: {
+                    title: 'Cumulative Surface Volumes',
+                    scalePreset: 'cumulative_volumes',
+                    expanded: false,
+                },
+                comp_separator_glr: {
+                    title: 'Separator Gas/Liquid Ratio',
+                    scalePreset: 'separator_glr',
+                    expanded: false,
+                },
+                comp_surface_water_cut: {
+                    title: 'Surface Water Cut',
+                    scalePreset: 'fraction',
+                    expanded: false,
+                },
                 comp_vapour_saturation: {
                     title: 'Average Vapour Saturation',
                     scalePreset: 'fraction',

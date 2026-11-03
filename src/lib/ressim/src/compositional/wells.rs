@@ -52,6 +52,7 @@ use crate::fluid::flash::{FlashError, FlashState, PhaseState, flash};
 use crate::fluid::specification::FluidSpecification;
 use crate::fluid::transport::{TransportError, lbc_viscosity, surface_separation};
 use crate::fluid::units::{PA_S_PER_CP, bar_to_pa, dpa_to_dbar};
+use serde::{Deserialize, Serialize};
 
 use super::flux::hydrocarbon_kr_with_water;
 use super::relperm::RelativePermeabilityModel;
@@ -113,6 +114,81 @@ pub enum SurfacePhase {
     Total,
     /// Surface water, `moles * M_H2O / rho_w,surface`. Only with water.
     Water,
+}
+
+/// A well's surface volumetric rates at the accepted state [m³/day].
+///
+/// The phases are the engine's own separator products, not black-oil `Bo`/`Bg`/`Rs` quantities:
+/// `liquid` is the stock-tank liquid and `vapour` is the separator gas. Signs follow the component
+/// stream: positive injects, negative produces. `water` is present exactly when the case has a
+/// water phase.
+///
+/// # The label is the engine's convention
+///
+/// The flash labels a single-phase surface stream by its own phase rule, which is pressure-blind
+/// below a component's critical temperature. A pure CO2 injector can therefore report its stream
+/// as separator **liquid**. Reporting keeps that convention rather than inventing a second one;
+/// the names say "separator liquid/vapour" for exactly this reason.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WellSurfaceRates {
+    pub liquid_m3_per_day: f64,
+    pub vapour_m3_per_day: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub water_m3_per_day: Option<f64>,
+}
+
+impl WellSurfaceRates {
+    /// A zero rate, retaining whether the case has water.
+    pub fn zero(has_water: bool) -> Self {
+        Self {
+            liquid_m3_per_day: 0.0,
+            vapour_m3_per_day: 0.0,
+            water_m3_per_day: has_water.then_some(0.0),
+        }
+    }
+}
+
+/// A well's cumulative surface volume over accepted steps [m³], signed like
+/// [`WellSurfaceRates`].
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WellSurfaceVolumes {
+    pub liquid_m3: f64,
+    pub vapour_m3: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub water_m3: Option<f64>,
+}
+
+impl WellSurfaceVolumes {
+    /// Zero volume, retaining whether the case has water.
+    pub fn zero(has_water: bool) -> Self {
+        Self {
+            liquid_m3: 0.0,
+            vapour_m3: 0.0,
+            water_m3: has_water.then_some(0.0),
+        }
+    }
+
+    /// The volume a rate contributes over `dt_days`.
+    pub fn over_step(rate: &WellSurfaceRates, dt_days: f64) -> Self {
+        Self {
+            liquid_m3: rate.liquid_m3_per_day * dt_days,
+            vapour_m3: rate.vapour_m3_per_day * dt_days,
+            water_m3: rate.water_m3_per_day.map(|value| value * dt_days),
+        }
+    }
+
+    /// Accumulate one accepted step.
+    pub fn add(&mut self, rate: &WellSurfaceRates, dt_days: f64) {
+        self.liquid_m3 += rate.liquid_m3_per_day * dt_days;
+        self.vapour_m3 += rate.vapour_m3_per_day * dt_days;
+        self.water_m3 = match (self.water_m3, rate.water_m3_per_day) {
+            (Some(total), Some(value)) => Some(total + value * dt_days),
+            (None, None) => None,
+            // A case's water phase does not appear or disappear mid-run, so a mismatch is a
+            // caller error rather than a value to paper over.
+            _ => None,
+        };
+    }
 }
 
 /// What an injector injects.
@@ -1369,21 +1445,53 @@ fn surface_rate(
 ) -> Result<f64, WellError> {
     let n = spec.component_count();
     let water = relperm.water();
-    let mut components = result.total_component_moles_per_day(n + usize::from(water.is_some()));
+    let components = result.total_component_moles_per_day(n + usize::from(water.is_some()));
     if phase == SurfacePhase::Water {
         let w = water.ok_or_else(|| WellError::NoWaterPhase {
             well: well_id.to_string(),
         })?;
         return Ok(w.properties.surface_volume_m3(components[n]));
     }
+    let rates = surface_rates_from_components(spec, relperm, &components)?;
+    Ok(match phase {
+        SurfacePhase::Liquid => rates.liquid_m3_per_day,
+        SurfacePhase::Vapour => rates.vapour_m3_per_day,
+        SurfacePhase::Total => rates.liquid_m3_per_day + rates.vapour_m3_per_day,
+        SurfacePhase::Water => 0.0,
+    })
+}
+
+/// Surface volumetric rates of one well's component stream [m³/day].
+///
+/// This is the single conversion the rate controls and reporting share. `components` is the sum
+/// over completions, signed: positive injects, negative produces. The separator works on a
+/// non-negative stream, so a producer's is negated and the sign reapplied afterwards; water is
+/// metered separately and never enters the hydrocarbon flash.
+pub(crate) fn surface_rates_from_components(
+    spec: &FluidSpecification,
+    relperm: &RelativePermeabilityModel,
+    components: &[f64],
+) -> Result<WellSurfaceRates, WellError> {
+    let n = spec.component_count();
+    let water = relperm.water();
+    let width = n + usize::from(water.is_some());
+    if components.len() != width {
+        return Err(WellError::SurfaceConditionsNotPinned);
+    }
+    let water_rate = water.map(|w| w.properties.surface_volume_m3(components[n]));
     if spec.surface().is_none() {
         return Err(WellError::SurfaceConditionsNotPinned);
     }
+
     // The hydrocarbon stream only: water does not enter the separator flash.
-    components.truncate(n);
-    let total: f64 = components.iter().sum();
+    let hydrocarbons = &components[..n];
+    let total: f64 = hydrocarbons.iter().sum();
     if total == 0.0 {
-        return Ok(0.0);
+        return Ok(WellSurfaceRates {
+            liquid_m3_per_day: 0.0,
+            vapour_m3_per_day: 0.0,
+            water_m3_per_day: water_rate,
+        });
     }
     // The separation works on a non-negative stream, so a producer's is negated and the sign
     // reapplied afterwards. Flashing a negative composition would be flashing nothing.
@@ -1392,15 +1500,13 @@ fn surface_rate(
     // far as surface reporting is concerned. That much mixing is just addition; what V1 does not
     // model is a mixture flowing back *into* the formation, which is why crossflow is rejected.
     let sign = if total < 0.0 { -1.0 } else { 1.0 };
-    let stream: Vec<f64> = components.iter().map(|m| sign * m).collect();
+    let stream: Vec<f64> = hydrocarbons.iter().map(|m| sign * m).collect();
     let separated = surface_separation(spec, &stream).map_err(WellError::Transport)?;
-    let volume = match phase {
-        SurfacePhase::Liquid => separated.liquid_volume,
-        SurfacePhase::Vapour => separated.vapour_volume,
-        SurfacePhase::Total => separated.liquid_volume + separated.vapour_volume,
-        SurfacePhase::Water => 0.0,
-    };
-    Ok(sign * volume)
+    Ok(WellSurfaceRates {
+        liquid_m3_per_day: sign * separated.liquid_volume,
+        vapour_m3_per_day: sign * separated.vapour_volume,
+        water_m3_per_day: water_rate,
+    })
 }
 
 /// Solve for the BHP that achieves `target` under `measure`, applying the BHP limit.

@@ -784,10 +784,10 @@ const SOURCE_SCENARIOS: Scenario[] = [
  */
 const WITHHELD_SCENARIOS: Scenario[] = [
     // #52: the payloads are authored and tested. SPE5's full horizon runs since the near-critical
-    // flash fixes (#93, #99, #102; docs/SPE5_VALIDATION.md), but it has no surface rates or GOR
-    // to grade (#95), its GOR/WOR shut-in is not enforced (#98), and neither case has its
-    // independent 3-D JutulDarcy reservoir reference committed. Shipping either now would offer
-    // a benchmark whose comparison does not exist yet.
+    // flash fixes (#93, #99, #102; docs/SPE5_VALIDATION.md) and its snapshots now carry surface
+    // rates and cumulative volumes (#95), but its GOR/WOR shut-in is not enforced (#98), and
+    // neither case has its independent 3-D JutulDarcy reservoir reference committed. Shipping
+    // either now would offer a benchmark whose comparison does not exist yet.
     comp_spe5_wag,
     comp_spe3_gas_cycling,
 ];

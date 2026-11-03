@@ -74,6 +74,57 @@ export function compositionalRunQuantities(
       property: 'diagnostic',
       source: (s) => s.conservationResidual,
     },
+    {
+      id: `${COMPOSITIONAL_QUANTITY_PREFIX}surface-liquid-rate`,
+      label: 'Surface Liquid Rate',
+      unit: 'm³/day',
+      property: 'surface-rate',
+      source: (s) => s.surfaceLiquidRate,
+    },
+    {
+      id: `${COMPOSITIONAL_QUANTITY_PREFIX}surface-vapour-rate`,
+      label: 'Surface Vapour Rate',
+      unit: 'm³/day',
+      property: 'surface-rate',
+      source: (s) => s.surfaceVapourRate,
+    },
+    {
+      id: `${COMPOSITIONAL_QUANTITY_PREFIX}separator-gas-liquid-ratio`,
+      // Not "GOR": this is the ratio of the engine's separator products, and a black-oil GOR is a
+      // property of a different fluid model with a different separator convention.
+      label: 'Separator Gas/Liquid Ratio',
+      unit: 'm³/m³',
+      property: 'separator-gas-liquid-ratio',
+      source: (s) => s.separatorGasLiquidRatio,
+    },
+    {
+      id: `${COMPOSITIONAL_QUANTITY_PREFIX}surface-water-cut`,
+      label: 'Surface Water Cut',
+      unit: '',
+      property: 'surface-water-cut',
+      source: (s) => s.surfaceWaterCut,
+    },
+    {
+      id: `${COMPOSITIONAL_QUANTITY_PREFIX}cumulative-surface-liquid`,
+      label: 'Cumulative Surface Liquid',
+      unit: 'm³',
+      property: 'surface-cumulative',
+      source: (s) => s.cumulativeSurfaceLiquid,
+    },
+    {
+      id: `${COMPOSITIONAL_QUANTITY_PREFIX}cumulative-surface-vapour`,
+      label: 'Cumulative Surface Vapour',
+      unit: 'm³',
+      property: 'surface-cumulative',
+      source: (s) => s.cumulativeSurfaceVapour,
+    },
+    {
+      id: `${COMPOSITIONAL_QUANTITY_PREFIX}cumulative-surface-water`,
+      label: 'Cumulative Surface Water',
+      unit: 'm³',
+      property: 'surface-cumulative',
+      source: (s) => s.cumulativeSurfaceWater,
+    },
   ];
 
   series.componentIds.forEach((component, index) => {

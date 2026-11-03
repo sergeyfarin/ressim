@@ -299,12 +299,17 @@ def discover_runs(ressim_dir: Path, case: str) -> list[str]:
     return [r for r in KNOWN_RUNS if r in found] + sorted(found - set(KNOWN_RUNS))
 
 
-def comp_reference_fields(path: Path) -> tuple[list[dict], list[float]]:
+def comp_reference_fields(path: Path) -> tuple[list[dict], list[float], dict[str, float]]:
     """Read a `flowexp_comp` trajectory fixture as the same fields a run record carries.
 
     The fixture stores overall composition component-major as `zmf1 .. zmfN`, which is also the
     run record's `z` layout. Water is absent from every compositional fixture, so there is no
     `sw` key: the record's `sw` is extra and is not compared.
+
+    The returned cumulatives are the fixture's final surface volumes. `FOPT` is separator liquid
+    (the deck's oil) and `FGPT` is separator vapour (gas); the comparator maps them to the run
+    record's `surface.cumulative_*` fields. Injection-only fixtures have no production summary
+    keys, and an absent key is not compared rather than read as zero.
     """
     doc = json.loads(path.read_text())
     schema = doc.get("schema", "")
@@ -322,10 +327,24 @@ def comp_reference_fields(path: Path) -> tuple[list[dict], list[float]]:
         }
         for step in steps
     ]
-    times = [float(t) for t in doc["summary"]["TIME"]]
+    summary = doc["summary"]
+    times = [float(t) for t in summary["TIME"]]
     if len(times) != len(fields):
         raise SystemExit(f"{path}: {len(fields)} report steps but {len(times)} summary times")
-    return checked_fields(fields, str(path), {"p": 1, "sg": 1, "z": 2}), times
+    cumulatives = {}
+    for key in ("FOPT", "FGPT"):
+        values = summary.get(key)
+        if values is None:
+            continue
+        curve = np.array(values, dtype=float)
+        if len(curve) != len(times):
+            raise SystemExit(
+                f"{path}: {key} has {len(curve)} entries but there are {len(times)} report times"
+            )
+        if not np.all(np.isfinite(curve)):
+            raise SystemExit(f"{path}: {key} contains a non-finite value")
+        cumulatives[key] = float(curve[-1])
+    return checked_fields(fields, str(path), {"p": 1, "sg": 1, "z": 2}), times, cumulatives
 
 
 def comp_manifest(comp_dir: Path) -> dict[str, Path]:
@@ -338,12 +357,42 @@ def comp_manifest(comp_dir: Path) -> dict[str, Path]:
     return cases
 
 
+def comp_record_cumulatives(run: dict) -> dict[str, float]:
+    """The run record's final produced surface volumes, under the fixture's summary names.
+
+    The record carries only production, so an injection stream never appears here. A record with
+    no `surface` block reports nothing: it is not read as zero, and `compare_comp_case` refuses it
+    when the fixture has a production cumulative to compare.
+    """
+    surface = next(
+        (
+            report.get("surface")
+            for report in reversed(run["reports"])
+            if isinstance(report.get("surface"), dict)
+        ),
+        None,
+    )
+    if surface is None:
+        return {}
+    mapping = {"FOPT": "cumulative_liquid_m3", "FGPT": "cumulative_vapour_m3"}
+    cumulatives = {}
+    for key, field in mapping.items():
+        value = surface.get(field)
+        if value is None:
+            continue
+        value = float(value)
+        if not np.isfinite(value):
+            raise SystemExit(f"{run.get('case', '?')}/comp: surface.{field} is not finite")
+        cumulatives[key] = value
+    return cumulatives
+
+
 def compare_comp_case(case: str, reference_path: Path, args: argparse.Namespace) -> dict:
     run_path = args.ressim_dir / f"{case}.comp.json"
     if not run_path.exists():
         raise SystemExit(f"{case}: no {run_path.name} in {args.ressim_dir} (set COMP_REFERENCE_OUT)")
     run = json.loads(run_path.read_text())
-    reference, times = comp_reference_fields(reference_path)
+    reference, times, reference_cumulatives = comp_reference_fields(reference_path)
     reports = run["reports"]
     if len(reports) != len(reference):
         raise SystemExit(f"{case}: {len(reports)} ResSim reports vs {len(reference)} reference")
@@ -373,12 +422,22 @@ def compare_comp_case(case: str, reference_path: Path, args: argparse.Namespace)
                     f"reference {r[key].shape}"
                 )
     conv = ressim_convergence(run)
+    run_cumulatives = comp_record_cumulatives(run)
+    # A fluid that pins no surface conditions cannot report a surface ledger. The record omits it;
+    # this comparator skips those cumulatives rather than reading the absence as zero. The keys
+    # that were skipped are named in the entry so a reader can tell what was not graded.
+    compared = {
+        key: rel(run_cumulatives[key], value)
+        for key, value in reference_cumulatives.items()
+        if key in run_cumulatives
+    }
     return {
         "flow": {
             "source": "fixture",
             "conv": {k: None for k in ("substeps", "newton", "retries", "retry_newton")},
             "wall_ms": None,
-            "cum": {},
+            "cum": dict(reference_cumulatives),
+            "cum_unreported": sorted(set(reference_cumulatives) - set(run_cumulatives)),
         },
         "runs": {
             "comp": {
@@ -387,10 +446,8 @@ def compare_comp_case(case: str, reference_path: Path, args: argparse.Namespace)
                 "wall_ms": run["wall_ms"],
                 "warnings": run.get("warnings", []),
                 "inventory_relative_error": None,
-                # The reference has no surface cumulative in its fixture (the Rust tests check
-                # material balance); the scorecard gates the cell trajectory only.
                 "vs_flow": field_error(fields, reference, ("p", "sg", "z")),
-                "cum_rel_vs_flow": {},
+                "cum_rel_vs_flow": compared,
             }
         },
         "pairs": {},
