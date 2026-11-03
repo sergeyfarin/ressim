@@ -777,6 +777,12 @@ SCENARIO_SECTIONS = {
     "gas_drive": ["three_phase", "cross_solver", "jutul"],
     "gas_injection": ["three_phase", "cross_solver", "jutul"],
     "dep_pvt": ["cross_solver", "jutul"],
+    "sweep_areal": ["cross_solver", "jutul"],
+    "sweep_vertical": ["cross_solver", "jutul"],
+    "sweep_crossflow": ["cross_solver", "jutul"],
+    "sweep_combined": ["cross_solver", "jutul"],
+    "wf_capillary": ["cross_solver", "jutul"],
+    "wf_gravity_stability": ["cross_solver", "jutul"],
     "comp_co2_1d": ["compositional"],
 }
 # The records, by (section, case pattern), that grade a scenario against a second simulator.
@@ -784,8 +790,172 @@ SCENARIO_SECOND_SIMULATOR = {
     "gas_drive": [("three_phase", "gas_drive"), ("jutul", "gas-drive-20")],
     "gas_injection": [("jutul", "go-1d-50")],
     "dep_pvt": [("jutul", "dep-pvt-*")],
+    "sweep_areal": [("jutul", "sweep-areal")],
+    "sweep_vertical": [("jutul", "sweep-vertical")],
+    "sweep_crossflow": [("jutul", "sweep-crossflow")],
+    "sweep_combined": [("jutul", "sweep-combined")],
+    "wf_capillary": [("jutul", "wf-capillary")],
+    "wf_gravity_stability": [("jutul", "wf-gravity-stability")],
 }
 REFINEMENT_DIMENSION = re.compile(r"grid|refine|resolution|timestep|time_truncation")
+# A scenario's own test counts only when the file names the scenario in executable code and
+# declares an active test. `.skip` and `.todo` declare tests that never run, an enclosing
+# `describe.skip`/`describe.todo` suite does the same, and a correctly named file that tests
+# something else is not coverage either.
+TEST_DECLARATION = re.compile(
+    r"(?<![\w$.])(?P<callee>(?:it|test)(?:\.(?!skip\b|todo\b)\w+)*)\s*\(",
+)
+SUITE_DECLARATION = re.compile(r"(?<![\w$.])(?P<callee>describe(?:\.\w+)*)\s*\(")
+INACTIVE_TEST_MODIFIER = re.compile(r"\.(?:skip|todo)\b")
+COMMENTS = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
+
+
+def mask_literals(code: str) -> str:
+    """Blank comments and string/template contents, preserving offsets and newlines."""
+    out = list(code)
+    i, size = 0, len(code)
+    while i < size:
+        char = code[i]
+        if char == "/" and i + 1 < size and code[i + 1] == "/":
+            while i < size and code[i] != "\n":
+                out[i] = " "
+                i += 1
+        elif char == "/" and i + 1 < size and code[i + 1] == "*":
+            out[i] = out[i + 1] = " "
+            i += 2
+            while i < size:
+                if code[i] == "*" and i + 1 < size and code[i + 1] == "/":
+                    out[i] = out[i + 1] = " "
+                    i += 2
+                    break
+                if code[i] != "\n":
+                    out[i] = " "
+                i += 1
+        elif char in ("'", '"', "`"):
+            quote = char
+            out[i] = " "
+            i += 1
+            while i < size:
+                if code[i] == "\\":
+                    out[i] = " "
+                    if i + 1 < size:
+                        out[i + 1] = " "
+                    i += 2
+                elif code[i] == quote:
+                    out[i] = " "
+                    i += 1
+                    break
+                else:
+                    if code[i] != "\n":
+                        out[i] = " "
+                    i += 1
+        else:
+            i += 1
+    return "".join(out)
+
+
+def matching_delimiter(code: str, opening: int, opener: str, closer: str) -> int | None:
+    """The index of the delimiter closing `opening`, or None when the code is unbalanced."""
+    depth = 0
+    for index in range(opening, len(code)):
+        if code[index] == opener:
+            depth += 1
+        elif code[index] == closer:
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
+def data_driven(callee: str) -> bool:
+    """Whether the first argument list is test data (`each`/`for`) rather than the test body."""
+    return bool({"each", "for"} & set(callee.split(".")))
+
+
+def scan_chain(code: str, close: int) -> tuple[bool, int]:
+    """Walk modifiers after a data call, returning (inactive, last call's opening paren)."""
+    cursor = close + 1
+    last_open = close
+    while cursor < len(code):
+        while cursor < len(code) and code[cursor].isspace():
+            cursor += 1
+        if cursor >= len(code):
+            return False, last_open
+        if code[cursor] == ".":
+            modifier = re.match(r"\.(\w+)", code[cursor:])
+            if not modifier:
+                return False, last_open
+            cursor += modifier.end()
+            while cursor < len(code) and code[cursor].isspace():
+                cursor += 1
+            if cursor < len(code) and code[cursor] == "(":
+                last_open = cursor
+                end = matching_delimiter(code, cursor, "(", ")")
+                if end is None:
+                    return modifier.group(1) in ("skip", "todo"), last_open
+                cursor = end + 1
+            if modifier.group(1) in ("skip", "todo"):
+                return True, last_open
+        elif code[cursor] == "(":
+            return False, cursor
+        else:
+            return False, last_open
+    return False, last_open
+
+
+def skipped_suite_regions(code: str) -> list[tuple[int, int]]:
+    """Brace ranges of `describe.skip`/`describe.todo` suites, including data-driven forms."""
+    regions = []
+    for match in SUITE_DECLARATION.finditer(code):
+        callee = match.group("callee")
+        first_open = match.end() - 1
+        invocation_open = first_open
+        inactive = bool(INACTIVE_TEST_MODIFIER.search(callee))
+        if data_driven(callee):
+            close = matching_delimiter(code, first_open, "(", ")")
+            if close is None:
+                continue
+            chain_inactive, invocation_open = scan_chain(code, close)
+            inactive = inactive or chain_inactive
+        if not inactive:
+            continue
+        limit = matching_delimiter(code, invocation_open, "(", ")")
+        brace = code.find("{", invocation_open)
+        if brace < 0 or (limit is not None and brace > limit):
+            continue
+        end = matching_delimiter(code, brace, "{", "}")
+        if end is not None:
+            regions.append((brace, end))
+    return regions
+
+
+def has_active_test(code: str) -> bool:
+    """Whether `code` declares at least one `it`/`test` that Vitest will execute."""
+    structural = mask_literals(code)
+    skipped = skipped_suite_regions(structural)
+    for match in TEST_DECLARATION.finditer(structural):
+        if data_driven(match.group("callee")):
+            close = matching_delimiter(structural, match.end() - 1, "(", ")")
+            if close is not None and scan_chain(structural, close)[0]:
+                continue
+        if any(start < match.start() < end for start, end in skipped):
+            continue
+        return True
+    return False
+
+
+def scenario_test(path: Path, key: str) -> str | None:
+    """The scenario's own test file, when it exercises the scenario rather than another one."""
+    test_path = SCENARIOS / f"{path.stem}.test.ts"
+    if not test_path.exists():
+        return None
+    raw = test_path.read_text()
+    if not has_active_test(raw):
+        return None
+    code = COMMENTS.sub("", raw)
+    if not re.search(rf"['\"]{re.escape(key)}['\"]", code):
+        return None
+    return test_path.name
 
 
 def scenario_catalog() -> list[dict]:
@@ -804,6 +974,7 @@ def scenario_catalog() -> list[dict]:
         key_ = key_match.group(1)
         methods = sorted(set(re.findall(r"analyticalMethod: '([^']+)'", text)) - {"none"})
         dims = re.findall(r"^\s{12}key: '([^']+)'", text, re.M)
+        test_file = scenario_test(path, key_)
         out.append({
             "key": key_,
             "withheld": path.stem in withheld,
@@ -811,7 +982,8 @@ def scenario_catalog() -> list[dict]:
             "flow": key_ in flow,
             "refinement": [d for d in dims if REFINEMENT_DIMENSION.search(d)],
             "sections": SCENARIO_SECTIONS.get(key_, []),
-            "tested": (SCENARIOS / f"{path.stem}.test.ts").exists(),
+            "test": test_file,
+            "tested": test_file is not None,
         })
     return out
 
@@ -849,8 +1021,8 @@ def render_coverage(doc: dict) -> str:
         f"benchmark), only an analytical one or none: {', '.join(f'`{k}`' for k in gaps) or 'none'}. "
         f"{sum(1 for c in scenario_catalog() if second_simulator(doc, c['key']) != '—')} scenario(s) "
         "are graded against a second independent simulator. "
-        f"{len(untested)} scenario(s) have no test file of their own, only the catalog-wide contract "
-        f"tests: {', '.join(f'`{k}`' for k in untested) or 'none'}.",
+        f"{len(untested)} scenario(s) have no active test of their own that names and exercises the scenario, "
+        f"only the catalog-wide contract tests: {', '.join(f'`{k}`' for k in untested) or 'none'}.",
     ])
 
 
