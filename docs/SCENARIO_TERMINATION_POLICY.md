@@ -216,10 +216,13 @@ terminationPolicy: {
 
 ## Runtime Behavior
 
-- The black-oil worker evaluates the policy after each accepted simulator step.
-- The compositional session evaluates it after each **report** step, from the accepted snapshot's
+- Black-oil carries the policy on the **create** payload and the worker evaluates it after each
+  accepted simulator step.
+- Compositional carries it on each **run request** (so a restored case gets its scenario policy
+  again) and the session evaluates it after each **report** step, from the accepted snapshot's
   surface rates. Eclipse evaluates `WECON` every timestep, so a compositional stop can arrive up to
-  one report late.
+  one report late. Do not move one into the other's home; they are read at different lifecycle
+  points.
 - If a condition matches, the matching report is emitted even when the snapshot interval would
   have skipped it, so the stopping report is in the run's history.
 - The run then finishes through the normal completion path rather than the manual-stop or failure

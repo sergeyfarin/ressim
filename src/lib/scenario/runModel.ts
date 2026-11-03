@@ -242,6 +242,11 @@ export function buildCreatePayloadForRun(spec: RunSpec): SimulatorCreatePayload 
     if (resolved?.showSweepPanel && resolved.sweepGeometry) {
         payload.sweepConfig = buildSweepConfig(payload, resolved.sweepGeometry);
     }
+    // A compositional policy is evaluated per run request, not stored on the case. Keeping it
+    // here would be a second copy that the worker no longer reads.
+    if (payload.fluidModel === 'compositional') {
+        delete payload.terminationPolicy;
+    }
     return payload;
 }
 

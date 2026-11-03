@@ -846,7 +846,13 @@ class RuntimeStoreImpl {
         });
     }
 
-    /** Advance a compositional case. `snapshotEvery` throttles how often a state is posted. */
+    /**
+     * Advance a compositional case. `snapshotEvery` throttles how often a state is posted.
+     *
+     * `terminationPolicy` is optional and belongs to the **caller** (the run queue passes the
+     * scenario's policy): without it the batch runs to `steps`. A restored case evaluates it the
+     * same way because it travels with the run request, not with the case.
+     */
     runCompositional(options: {
         steps: number;
         dtDays: number;
