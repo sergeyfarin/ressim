@@ -376,6 +376,7 @@ class RuntimeStoreImpl {
                     steps: nextSpec.steps,
                     dtDays: nextSpec.deltaTDays,
                     snapshotEvery: nextSpec.historyInterval,
+                    terminationPolicy: nextSpec.terminationPolicy ?? undefined,
                 },
             });
             return true;
@@ -846,7 +847,13 @@ class RuntimeStoreImpl {
     }
 
     /** Advance a compositional case. `snapshotEvery` throttles how often a state is posted. */
-    runCompositional(options: { steps: number; dtDays: number; snapshotEvery?: number }): void {
+    runCompositional(options: {
+        steps: number;
+        dtDays: number;
+        snapshotEvery?: number;
+        /** Carried with the run, so a restored case still evaluates its scenario policy. */
+        terminationPolicy?: RunSpec['terminationPolicy'];
+    }): void {
         this.compositional.markRunning();
         this.#post({ type: 'compositionalRun', payload: options });
     }

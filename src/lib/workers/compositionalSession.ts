@@ -190,7 +190,11 @@ export class CompositionalSession {
         onSnapshot(snapshot, step);
       }
       if (termination) {
-        return { reason: 'completed', completedSteps: step + 1, termination };
+        // A match on the requested final step is not an early stop: the run reached its horizon,
+        // so reporting it as a termination would tell the user it was cut short.
+        return isLast
+          ? { reason: 'completed', completedSteps: step + 1 }
+          : { reason: 'completed', completedSteps: step + 1, termination };
       }
       await yieldControl?.();
     }

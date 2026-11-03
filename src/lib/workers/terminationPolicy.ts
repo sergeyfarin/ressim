@@ -1,6 +1,6 @@
 import type { ScenarioTerminationCondition, ScenarioTerminationPolicy } from '../catalog/scenarios';
 import type { RateHistoryPoint, SimulatorCreatePayload } from '../simulator-types';
-import { producedSurfaceRates } from '../compositional/runSeries';
+import { producedSurfaceRates } from '../compositional/surfaceLedger';
 import type { CompositionalSnapshot } from '../compositional/types';
 
 export type TerminationMatch = {
@@ -41,6 +41,8 @@ function toFiniteNumber(value: unknown, fallback = 0): number {
 }
 
 function formatValue(value: number): string {
+  if (value === Number.POSITIVE_INFINITY) return 'Infinity';
+  if (value === Number.NEGATIVE_INFINITY) return '-Infinity';
   if (!Number.isFinite(value)) return 'NaN';
   if (Math.abs(value) >= 1000 || Math.abs(value) < 0.01) {
     return value.toExponential(3);
@@ -200,6 +202,9 @@ function blackOilRates(
     // An absent GOR reads as zero, which preserves the black-oil runtime's existing behaviour.
     gor: Math.max(0, toFiniteNumber(point.producing_gor, 0)),
     injection: {
+      // Oil injection remains unreported once injection starts; the zero-injection branch is
+      // still a real zero, so an oil `lte 0` injector condition keeps its old behaviour.
+      oil: injectorPhaseRate(payload, point, 'oil') ?? undefined,
       water: injectorPhaseRate(payload, point, 'water') ?? undefined,
       gas: injectorPhaseRate(payload, point, 'gas') ?? undefined,
     },
@@ -251,12 +256,24 @@ export function evaluateCompositionalTerminationPolicy(
     waterRate: water,
     gasRate: produced.vapour,
     liquidRate: produced.liquid + water,
-    gor: produced.liquid > 0 ? produced.vapour / produced.liquid : null,
+    gor: produced.liquid > 0
+      ? produced.vapour / produced.liquid
+      : produced.vapour > 0
+        // Vapour with no liquid is an unbounded ratio, not an undefined one. It must trip a GOR
+        // cap (`gte`) while still failing an `lte` condition.
+        ? Number.POSITIVE_INFINITY
+        : null,
     injection,
   });
 }
 
-/** Sum the injection side of each well's signed surface ledger. */
+/**
+ * Sum the injection side of each well's signed surface ledger.
+ *
+ * The compositional engine labels separator products, not black-oil phases, so an injected
+ * stream's separator **liquid** is reported here in the `oil` slot. That keeps the condition
+ * vocabulary usable, but a CO2-rich stream the flash labels liquid will count as oil injection.
+ */
 function injectedSurfaceRates(
   snapshot: CompositionalSnapshot,
 ): NonNullable<TerminationRates['injection']> {
@@ -272,5 +289,7 @@ function injectedSurfaceRates(
       water += Math.max(0, toFiniteNumber(well.water_m3_per_day, 0));
     }
   }
-  return { oil, water: hasWater ? water : 0, gas };
+  // An absent water phase is not a zero rate: `phase-rate-threshold` must leave it unevaluated,
+  // exactly as the producer side does.
+  return { oil, gas, ...(hasWater ? { water } : {}) };
 }

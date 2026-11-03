@@ -109,6 +109,27 @@ describe('evaluateTerminationPolicy', () => {
 
     expect(result).not.toBeNull();
   });
+
+  it('keeps a zero-rate oil injector condition matching as before', () => {
+    const point: RateHistoryPoint = {
+      time: 10,
+      total_injection: 0,
+      total_production_oil: 10,
+    };
+
+    const result = evaluateTerminationPolicy({
+      mode: 'any',
+      conditions: [{
+        kind: 'phase-rate-threshold',
+        phase: 'oil',
+        relation: 'lte',
+        value: 0,
+        scope: 'injector',
+      }],
+    }, point, makePayload());
+
+    expect(result).not.toBeNull();
+  });
 });
 
 function compositionalSnapshot(
@@ -186,5 +207,57 @@ describe('evaluateCompositionalTerminationPolicy', () => {
       conditions: [{ kind: 'gor-threshold' as const, relation: 'lte' as const, value: 0, scope: 'producer' as const }],
     };
     expect(evaluateCompositionalTerminationPolicy(policy, compositionalSnapshot(undefined))).toBeNull();
+  });
+
+  it('treats vapour with no liquid as an unbounded GOR', () => {
+    const snapshot = compositionalSnapshot([
+      { liquid_m3_per_day: 0, vapour_m3_per_day: -100 },
+    ]);
+    const gte = evaluateCompositionalTerminationPolicy({
+      mode: 'any',
+      conditions: [{ kind: 'gor-threshold', relation: 'gte', value: 1000, scope: 'producer' }],
+    }, snapshot);
+    expect(gte?.actualValue).toBe(Number.POSITIVE_INFINITY);
+    expect(gte?.summary).toContain('Infinity');
+
+    const lte = evaluateCompositionalTerminationPolicy({
+      mode: 'any',
+      conditions: [{ kind: 'gor-threshold', relation: 'lte', value: 1000, scope: 'producer' }],
+    }, snapshot);
+    expect(lte).toBeNull();
+  });
+
+  it('does not evaluate an injection phase the case does not report', () => {
+    const result = evaluateCompositionalTerminationPolicy({
+      mode: 'any',
+      conditions: [{
+        kind: 'phase-rate-threshold',
+        phase: 'water',
+        relation: 'gte',
+        value: 0,
+        scope: 'injector',
+      }],
+    }, compositionalSnapshot([
+      { liquid_m3_per_day: 0, vapour_m3_per_day: 100 },
+    ]));
+
+    expect(result).toBeNull();
+  });
+
+  it('requires every condition in all mode', () => {
+    const policy = {
+      mode: 'all' as const,
+      conditions: [
+        { kind: 'gor-threshold' as const, relation: 'gte' as const, value: 100, scope: 'producer' as const },
+        { kind: 'phase-rate-threshold' as const, phase: 'gas' as const, relation: 'gte' as const, value: 200, scope: 'producer' as const },
+      ],
+    };
+    // GOR 200 passes, but the producer gas rate is only 100.
+    const belowGas = compositionalSnapshot([{ liquid_m3_per_day: -0.5, vapour_m3_per_day: -100 }]);
+    expect(evaluateCompositionalTerminationPolicy(policy, belowGas)).toBeNull();
+
+    const both = compositionalSnapshot([{ liquid_m3_per_day: -100, vapour_m3_per_day: -25_000 }]);
+    expect(evaluateCompositionalTerminationPolicy(policy, both)?.summary)
+      .toContain('GOR threshold reached');
   });
 });

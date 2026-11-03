@@ -14,7 +14,6 @@ import {
   type CompositionalEngineFactory,
 } from './compositionalSession';
 import { cloneTerminationPolicy, evaluateTerminationPolicy } from './terminationPolicy';
-import type { ScenarioTerminationPolicy } from '../catalog/scenarios';
 import { configureReservoirSimulator } from './configureSimulator';
 
 let wasmReady = false;
@@ -35,8 +34,6 @@ let activeCreatePayload: SimulatorCreatePayload | null = null;
  * exist — `create` disposes whichever was there.
  */
 let compositional: CompositionalSession | null = null;
-/** The policy the created compositional case runs under; evaluated by `CompositionalSession`. */
-let compositionalTerminationPolicy: ScenarioTerminationPolicy | undefined;
 /** True while a compositional batch is stepping, so `stop` knows which run to ask. */
 let compositionalRunning = false;
 
@@ -51,7 +48,6 @@ const compositionalFactory: CompositionalEngineFactory = {
 function disposeRuns(): void {
   compositional?.dispose();
   compositional = null;
-  compositionalTerminationPolicy = undefined;
   simulator = null;
 }
 
@@ -199,10 +195,8 @@ self.onmessage = async (event) => {
         disposeRuns();
         try {
           compositional = CompositionalSession.create(compositionalFactory, payload.compositional);
-          compositionalTerminationPolicy = cloneTerminationPolicy(payload.terminationPolicy);
         } catch (error) {
           compositional = null;
-          compositionalTerminationPolicy = undefined;
           throw error;
         }
         post('compositionalState', {
@@ -227,7 +221,7 @@ self.onmessage = async (event) => {
       if (!compositional) {
         throw new Error('No compositional case has been created');
       }
-      const { steps = 1, dtDays = 1, snapshotEvery } = payload ?? {};
+      const { steps = 1, dtDays = 1, snapshotEvery, terminationPolicy } = payload ?? {};
       const batchStart = performance.now();
       let snapshotsSent = 0;
       // Yield on a time budget rather than every report step: a zero-delay timeout costs a few
@@ -245,7 +239,7 @@ self.onmessage = async (event) => {
           steps,
           dtDays,
           snapshotEvery,
-          terminationPolicy: compositionalTerminationPolicy,
+          terminationPolicy: cloneTerminationPolicy(terminationPolicy),
         }, (data, stepIndex) => {
           snapshotsSent += 1;
           post('compositionalState', { data, stepIndex });
@@ -282,10 +276,8 @@ self.onmessage = async (event) => {
       disposeRuns();
       try {
         compositional = CompositionalSession.restore(compositionalFactory, payload?.checkpoint);
-        compositionalTerminationPolicy = cloneTerminationPolicy(payload?.terminationPolicy);
       } catch (error) {
         compositional = null;
-        compositionalTerminationPolicy = undefined;
         throw error;
       }
       post('compositionalState', {

@@ -257,6 +257,48 @@ describe('CompositionalSession', () => {
     expect(seen).toEqual([2, 4]);
   });
 
+  it('does not call a match on the final requested step an early stop', async () => {
+    const engine = fakeEngine({
+      // Only the third and final step crosses the threshold.
+      surfaceRates: (step) => [{
+        liquid_m3_per_day: -100,
+        vapour_m3_per_day: step >= 3 ? -15_000 : -1_000,
+      }],
+    });
+    const session = CompositionalSession.create(factory(engine), config());
+    const stop = await session.run({
+      steps: 3,
+      dtDays: 1,
+      terminationPolicy: {
+        mode: 'any',
+        conditions: [{ kind: 'gor-threshold', relation: 'gte', value: 100, scope: 'producer' }],
+      },
+    }, () => {});
+
+    expect(stop).toEqual({ reason: 'completed', completedSteps: 3 });
+  });
+
+  it('applies a policy to a restored session', async () => {
+    const engine = fakeEngine({
+      surfaceRates: () => [{ liquid_m3_per_day: -100, vapour_m3_per_day: -15_000 }],
+    });
+    const session = CompositionalSession.restore(factory(engine), engine.checkpoint());
+    const stop = await session.run({
+      steps: 5,
+      dtDays: 1,
+      terminationPolicy: {
+        mode: 'any',
+        conditions: [{ kind: 'gor-threshold', relation: 'gte', value: 100, scope: 'producer' }],
+      },
+    }, () => {});
+
+    expect(stop.reason).toBe('completed');
+    expect(stop.completedSteps).toBe(1);
+    if (stop.reason === 'completed') {
+      expect(stop.termination?.summary).toContain('GOR threshold reached');
+    }
+  });
+
   it('reports an early termination without solver vocabulary', () => {
     expect(describeCompositionalStop({
       reason: 'completed',

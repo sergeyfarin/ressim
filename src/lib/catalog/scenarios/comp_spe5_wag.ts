@@ -36,8 +36,9 @@ import type {
  *
  * **Shut-in criteria.** The paper stops the producer at GOR 10 Mscf/STB or WOR 5 STB/STB. Both are
  * declared in `terminationPolicy` (#98): the separator gas/liquid ratio is evaluated in the
- * engine's m³/m³ units, and WOR 5 is the equivalent surface water cut 5/6. A run therefore stops at
- * the first report that meets either condition instead of always running the full 240 reports.
+ * engine's m³/m³ units, and WOR 5 is the equivalent surface water cut 5/6. The session stops at the
+ * first report that meets either condition. The current from-scratch replay has not reached either
+ * threshold; it fails earlier at month 215 (#112).
  */
 
 /** 500 ft in metres. */

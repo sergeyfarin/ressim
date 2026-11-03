@@ -151,12 +151,15 @@ surface ledger, so a compositional scenario can declare a policy exactly like a 
 - `waterRate` is produced separator water when the case has a water phase, otherwise zero;
 - `liquidRate` is separator liquid + water, so `watercut-threshold` keeps its fractional meaning;
 - `gor-threshold` is the separator vapour/liquid ratio [m³/m³]. It is not a black-oil `GOR` and is
-  never fed into a black-oil analytical overlay;
+  never fed into a black-oil analytical overlay. Vapour with no liquid is treated as an unbounded
+  ratio: it matches `gte` and fails `lte`;
 - `phase-rate-threshold` with `scope: 'injector'` uses the positive side of each well's surface
-  rates, including water and hydrocarbon injection.
+  rates, including water and hydrocarbon injection. An injected stream's separator **liquid** is
+  mapped to the `oil` slot, so a CO2-rich stream the flash labels liquid counts as oil injection;
+- a water phase the case does not report leaves water-injection conditions unevaluated.
 
 A snapshot that does not carry `well_surface_rates` is **not evaluated**, rather than being treated
-as zero production. This is why `comp_spe5_wag` can express the paper's shut-in criteria directly:
+as zero production. This is how `comp_spe5_wag` declares the paper's shut-in criteria:
 
 ```ts
 terminationPolicy: {
@@ -169,6 +172,10 @@ terminationPolicy: {
   ],
 }
 ```
+
+The policy is declared and evaluated, but the real from-scratch SPE5 replay has not reached either
+threshold: it currently fails at month 215, before the stop
+([#112](https://github.com/sergeyfarin/ressim/issues/112)).
 
 ## Example Policies
 
@@ -210,13 +217,15 @@ terminationPolicy: {
 ## Runtime Behavior
 
 - The black-oil worker evaluates the policy after each accepted simulator step.
-- The compositional session evaluates it after each report step, from the accepted snapshot's
-  surface rates.
+- The compositional session evaluates it after each **report** step, from the accepted snapshot's
+  surface rates. Eclipse evaluates `WECON` every timestep, so a compositional stop can arrive up to
+  one report late.
 - If a condition matches, the matching report is emitted even when the snapshot interval would
   have skipped it, so the stopping report is in the run's history.
 - The run then finishes through the normal completion path rather than the manual-stop or failure
   path. The stop message names the condition, and the compositional record keeps the completed
-  step count and termination summary.
+  step count and termination summary. A match on the final requested step is a normal completion,
+  not an early stop.
 - The frontend therefore receives all history and rate data normally, just with fewer steps than originally requested.
 
 ## Current Limits
@@ -226,4 +235,10 @@ terminationPolicy: {
 - `scope` values are forward-looking in part; today the runtime mostly evaluates aggregate producer-side metrics.
 - A compositional condition is not evaluated until the snapshot reports surface rates (the first
   report after the case is created, not the t = 0 state).
+- A compositional match ends the **whole batch**, not just the producer. With one producer the
+  producer curves are the same, but injection and pressure history stop there too. Shutting in a
+  single well while the rest of the case continues needs a schedule event, not this policy.
+- The policy is scenario metadata carried by the run request, not part of `CompositionalCaseConfig`.
+  Native replays and the planned JutulDarcy reference therefore run without it; a comparison must
+  apply the same stop or truncate both sides at the stopping report.
 - If finer per-well stopping is needed later, extend runtime reporting first rather than changing scenario syntax.
