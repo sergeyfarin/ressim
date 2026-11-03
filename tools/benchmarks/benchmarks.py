@@ -799,26 +799,147 @@ SCENARIO_SECOND_SIMULATOR = {
 }
 REFINEMENT_DIMENSION = re.compile(r"grid|refine|resolution|timestep|time_truncation")
 # A scenario's own test counts only when the file names the scenario in executable code and
-# declares an active test. `.skip` and `.todo` declare tests that never run, and a correctly
-# named file that tests something else is not coverage either.
+# declares an active test. `.skip` and `.todo` declare tests that never run, an enclosing
+# `describe.skip`/`describe.todo` suite does the same, and a correctly named file that tests
+# something else is not coverage either.
 TEST_DECLARATION = re.compile(
     r"^[ \t]*(?P<callee>(?:it|test)(?:\.(?!skip\b|todo\b)\w+)*)\s*\(",
     re.M,
 )
+SUITE_DECLARATION = re.compile(r"^[ \t]*(?P<callee>describe(?:\.\w+)*)\s*\(", re.M)
 INACTIVE_TEST_MODIFIER = re.compile(r"\.(?:skip|todo)\b")
-SKIPPED_CALL = re.compile(r"\)\s*\.(?:skip|todo)\s*\(")
 COMMENTS = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
+
+
+def mask_literals(code: str) -> str:
+    """Blank comments and string/template contents, preserving offsets and newlines."""
+    out = list(code)
+    i, size = 0, len(code)
+    while i < size:
+        char = code[i]
+        if char == "/" and i + 1 < size and code[i + 1] == "/":
+            while i < size and code[i] != "\n":
+                out[i] = " "
+                i += 1
+        elif char == "/" and i + 1 < size and code[i + 1] == "*":
+            out[i] = out[i + 1] = " "
+            i += 2
+            while i < size:
+                if code[i] == "*" and i + 1 < size and code[i + 1] == "/":
+                    out[i] = out[i + 1] = " "
+                    i += 2
+                    break
+                if code[i] != "\n":
+                    out[i] = " "
+                i += 1
+        elif char in ("'", '"', "`"):
+            quote = char
+            out[i] = " "
+            i += 1
+            while i < size:
+                if code[i] == "\\":
+                    out[i] = " "
+                    if i + 1 < size:
+                        out[i + 1] = " "
+                    i += 2
+                elif code[i] == quote:
+                    out[i] = " "
+                    i += 1
+                    break
+                else:
+                    if code[i] != "\n":
+                        out[i] = " "
+                    i += 1
+        else:
+            i += 1
+    return "".join(out)
+
+
+def matching_delimiter(code: str, opening: int, opener: str, closer: str) -> int | None:
+    """The index of the delimiter closing `opening`, or None when the code is unbalanced."""
+    depth = 0
+    for index in range(opening, len(code)):
+        if code[index] == opener:
+            depth += 1
+        elif code[index] == closer:
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
+def data_driven(callee: str) -> bool:
+    """Whether the first argument list is test data (`each`/`for`) rather than the test body."""
+    return bool({"each", "for"} & set(callee.split(".")))
+
+
+def scan_chain(code: str, close: int) -> tuple[bool, int]:
+    """Walk modifiers after a data call, returning (inactive, last call's opening paren)."""
+    cursor = close + 1
+    last_open = close
+    while cursor < len(code):
+        while cursor < len(code) and code[cursor].isspace():
+            cursor += 1
+        if cursor >= len(code):
+            return False, last_open
+        if code[cursor] == ".":
+            modifier = re.match(r"\.(\w+)", code[cursor:])
+            if not modifier:
+                return False, last_open
+            cursor += modifier.end()
+            while cursor < len(code) and code[cursor].isspace():
+                cursor += 1
+            if cursor < len(code) and code[cursor] == "(":
+                last_open = cursor
+                end = matching_delimiter(code, cursor, "(", ")")
+                if end is None:
+                    return modifier.group(1) in ("skip", "todo"), last_open
+                cursor = end + 1
+            if modifier.group(1) in ("skip", "todo"):
+                return True, last_open
+        elif code[cursor] == "(":
+            return False, cursor
+        else:
+            return False, last_open
+    return False, last_open
+
+
+def skipped_suite_regions(code: str) -> list[tuple[int, int]]:
+    """Brace ranges of `describe.skip`/`describe.todo` suites, including data-driven forms."""
+    regions = []
+    for match in SUITE_DECLARATION.finditer(code):
+        callee = match.group("callee")
+        first_open = match.end() - 1
+        invocation_open = first_open
+        inactive = bool(INACTIVE_TEST_MODIFIER.search(callee))
+        if data_driven(callee):
+            close = matching_delimiter(code, first_open, "(", ")")
+            if close is None:
+                continue
+            chain_inactive, invocation_open = scan_chain(code, close)
+            inactive = inactive or chain_inactive
+        if not inactive:
+            continue
+        limit = matching_delimiter(code, invocation_open, "(", ")")
+        brace = code.find("{", invocation_open)
+        if brace < 0 or (limit is not None and brace > limit):
+            continue
+        end = matching_delimiter(code, brace, "{", "}")
+        if end is not None:
+            regions.append((brace, end))
+    return regions
 
 
 def has_active_test(code: str) -> bool:
     """Whether `code` declares at least one `it`/`test` that Vitest will execute."""
-    for match in TEST_DECLARATION.finditer(code):
-        if INACTIVE_TEST_MODIFIER.search(match.group("callee")):
-            continue
-        line_end = code.find("\n", match.start())
-        line = code[match.start():line_end if line_end >= 0 else len(code)]
-        # `.skip`/`.todo` can also follow the argument list, e.g. `it.each(cases).skip(...)`.
-        if SKIPPED_CALL.search(line):
+    structural = mask_literals(COMMENTS.sub("", code))
+    skipped = skipped_suite_regions(structural)
+    for match in TEST_DECLARATION.finditer(structural):
+        if data_driven(match.group("callee")):
+            close = matching_delimiter(structural, match.end() - 1, "(", ")")
+            if close is not None and scan_chain(structural, close)[0]:
+                continue
+        if any(start < match.start() < end for start, end in skipped):
             continue
         return True
     return False

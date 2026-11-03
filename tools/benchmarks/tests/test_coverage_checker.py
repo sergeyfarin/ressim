@@ -37,6 +37,24 @@ class ScenarioTestCoverageTests(unittest.TestCase):
     def test_todo_test_does_not_count(self) -> None:
         self.assertIsNone(self.check("todo"))
 
+    def test_test_inside_skipped_suite_does_not_count(self) -> None:
+        self.assertIsNone(self.check("describe_skip"))
+
+    def test_test_inside_todo_suite_does_not_count(self) -> None:
+        self.assertIsNone(self.check("describe_todo"))
+
+    def test_test_inside_data_driven_skipped_suite_does_not_count(self) -> None:
+        self.assertIsNone(self.check("describe_each_skip"))
+
+    def test_skip_on_next_line_does_not_count(self) -> None:
+        self.assertIsNone(self.check("each_skip_multiline"))
+
+    def test_active_suite_beside_skipped_suite_counts(self) -> None:
+        self.assertEqual(self.check("mixed_suite"), "mixed_suite.test.ts")
+
+    def test_skipped_suite_without_a_body_does_not_hide_later_tests(self) -> None:
+        self.assertEqual(self.check("skip_without_body"), "skip_without_body.test.ts")
+
     def test_nested_skip_modifier_does_not_count(self) -> None:
         self.assertIsNone(self.check("concurrent_skip"))
 

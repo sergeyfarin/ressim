@@ -559,7 +559,8 @@ page that grades the scenario's physics; a scenario is mapped to one in `SCENARI
 (`tools/benchmarks/benchmarks.py`). A refinement dimension is a sensitivity that varies grid or
 time step, which is where discretization error shows. The last column counts a scenario test only
 when the file names the scenario in executable code and declares at least one active test; a
-correctly named file that is skipped, a `.todo`, or exercises something else does not count.
+correctly named file whose tests are skipped or `.todo`, or that exercises something else, does
+not count.
 
 <!-- GENERATED:coverage -->
 | Scenario | Analytical | OPM Flow artifact | Engine benchmark | Refinement dimension | Second simulator | Own `<key>.test.ts` |
