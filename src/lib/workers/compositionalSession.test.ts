@@ -9,6 +9,7 @@ import type {
 } from '../compositional/types';
 import {
   CompositionalSession,
+  compositionalStopMessage,
   describeCompositionalStop,
   type CompositionalEngine,
   type CompositionalEngineFactory,
@@ -351,5 +352,37 @@ describe('describeCompositionalStop', () => {
   it('reports a completed and a user-stopped batch plainly', () => {
     expect(describeCompositionalStop({ reason: 'completed', completedSteps: 7 })).toContain('7');
     expect(describeCompositionalStop({ reason: 'user', completedSteps: 2 })).toMatch(/stopped/i);
+  });
+});
+
+describe('compositionalStopMessage', () => {
+  it('carries the early-stop summary on the worker payload', () => {
+    expect(compositionalStopMessage({
+      reason: 'completed',
+      completedSteps: 2,
+      termination: {
+        summary: 'GOR threshold reached.',
+        condition: { kind: 'gor-threshold', relation: 'gte', value: 100, scope: 'producer' },
+        actualValue: 150,
+      },
+    })).toEqual({
+      reason: 'completed',
+      completedSteps: 2,
+      message: 'Finished 2 steps early: GOR threshold reached.',
+      terminationSummary: 'GOR threshold reached.',
+    });
+  });
+
+  it('omits the summary for a normal completion and keeps a failure payload', () => {
+    expect(compositionalStopMessage({ reason: 'completed', completedSteps: 240 }))
+      .not.toHaveProperty('terminationSummary');
+
+    const failed = compositionalStopMessage({
+      reason: 'failed',
+      completedSteps: 3,
+      failure: { kind: 'Flash', message: 'raw', timeDays: 1.5 },
+    });
+    expect(failed.failure).toEqual({ kind: 'Flash', message: 'raw', timeDays: 1.5 });
+    expect(failed).not.toHaveProperty('terminationSummary');
   });
 });

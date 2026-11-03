@@ -80,7 +80,9 @@ The compositional session evaluates the policy after every report step from the 
 surface ledger. A matching report is always emitted, even when it falls between the requested
 snapshot interval, and the batch ends through the normal `completed` path with the matched condition
 in its summary rather than as a solver failure. The run record keeps the completed step count and
-the termination summary, so the stopping report is part of the result, not only a UI warning.
+the termination summary, so the stopping report is part of the result, not only a UI warning. The
+stop ends the whole batch rather than shutting in only the producer; SPE5 has one producer, so its
+producer curves are unchanged, but injection and pressure history stop at that report.
 
 **The stop has not yet been reached on the real case.** A provisional from-scratch probe (temporary
 native test, current tree, not committed) reached peak GOR **5.19 Mscf/STB** at month 207 and peak

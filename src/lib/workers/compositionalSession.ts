@@ -180,6 +180,8 @@ export class CompositionalSession {
       const isReportStep = isLast || (step + 1) % snapshotEvery === 0;
       // A termination check needs the surface rates, which only the snapshot carries. Fetch it
       // once and reuse it, so a matching step is reported even when `snapshotEvery` would skip it.
+      // The engine exposes no cheaper well-surface accessor today; a large case with a policy pays
+      // one snapshot marshalling per report step.
       const snapshot = isReportStep || options.terminationPolicy
         ? this.#engine.getSnapshot()
         : null;
@@ -201,6 +203,30 @@ export class CompositionalSession {
 
     return { reason: 'completed', completedSteps: options.steps };
   }
+}
+
+/**
+ * The stop fields the worker posts, without the profile that only the worker can measure.
+ *
+ * Kept here rather than inline in `sim.worker.ts` so the payload — especially the early-stop
+ * summary — can be tested without a browser.
+ */
+export function compositionalStopMessage(stop: CompositionalRunStop): {
+  reason: CompositionalRunStop['reason'];
+  completedSteps: number;
+  message: string;
+  terminationSummary?: string;
+  failure?: CompositionalStepFailureDetail;
+} {
+  return {
+    reason: stop.reason,
+    completedSteps: stop.completedSteps,
+    message: describeCompositionalStop(stop),
+    ...(stop.reason === 'completed' && stop.termination
+      ? { terminationSummary: stop.termination.summary }
+      : {}),
+    ...(stop.reason === 'failed' ? { failure: stop.failure } : {}),
+  };
 }
 
 /**

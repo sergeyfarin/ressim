@@ -9,7 +9,7 @@ import {
 import { isCompositionalCreate } from '../compositional/createPayload';
 import {
   CompositionalSession,
-  describeCompositionalStop,
+  compositionalStopMessage,
   type CompositionalEngine,
   type CompositionalEngineFactory,
 } from './compositionalSession';
@@ -248,11 +248,7 @@ self.onmessage = async (event) => {
         compositionalRunning = false;
       }
       post('compositionalStopped', {
-        reason: stop.reason,
-        completedSteps: stop.completedSteps,
-        message: describeCompositionalStop(stop),
-        terminationSummary: stop.reason === 'completed' ? stop.termination?.summary : undefined,
-        failure: stop.reason === 'failed' ? stop.failure : undefined,
+        ...compositionalStopMessage(stop),
         profile: buildRunProfile(batchStart, 0, stop.completedSteps, snapshotsSent),
       });
       return;
