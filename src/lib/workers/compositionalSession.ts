@@ -7,9 +7,10 @@
  * converts), and for the same reason: a run loop that can only be exercised through a worker is a
  * run loop that does not get exercised.
  *
- * It does **not** reuse the black-oil `run` loop. That loop owns rate history, the termination
- * policy and `loadState`, none of which mean the same thing here, and C13's exit criterion is that
- * existing black-oil scenarios are unchanged.
+ * It does **not** reuse the black-oil `run` loop. That loop owns rate history and `loadState`,
+ * which do not mean the same thing here, and C13's exit criterion is that existing black-oil
+ * scenarios are unchanged. Termination policy *is* shared, through the neutral rate adapter in
+ * `terminationPolicy.ts`, so the two models evaluate the same condition vocabulary.
  */
 
 import type {
@@ -18,6 +19,11 @@ import type {
   CompositionalSnapshot,
   CompositionalStepOutcome,
 } from '../compositional/types';
+import type { ScenarioTerminationPolicy } from '../catalog/scenarios';
+import {
+  evaluateCompositionalTerminationPolicy,
+  type TerminationMatch,
+} from './terminationPolicy';
 
 /** What the session needs from a simulator. `CompositionalSimulator` satisfies this. */
 export interface CompositionalEngine {
@@ -36,7 +42,12 @@ export interface CompositionalEngineFactory {
 
 /** Why a batch stopped. */
 export type CompositionalRunStop =
-  | { reason: 'completed'; completedSteps: number }
+  | {
+      reason: 'completed';
+      completedSteps: number;
+      /** Present when a termination policy stopped the batch before its requested horizon. */
+      termination?: TerminationMatch;
+    }
   | { reason: 'user'; completedSteps: number }
   | { reason: 'failed'; completedSteps: number; failure: CompositionalStepFailureDetail };
 
@@ -56,6 +67,11 @@ export interface CompositionalRunOptions {
    * is small but it is not free.
    */
   snapshotEvery?: number;
+  /**
+   * Evaluate this policy after every report step and end the batch at the first match. The stop
+   * is a normal `completed` result carrying the matched condition, not a solver failure.
+   */
+  terminationPolicy?: ScenarioTerminationPolicy | null;
 }
 
 /** A configured compositional run. */
@@ -161,8 +177,20 @@ export class CompositionalSession {
       }
 
       const isLast = step === options.steps - 1;
-      if (isLast || (step + 1) % snapshotEvery === 0) {
-        onSnapshot(this.#engine.getSnapshot(), step);
+      const isReportStep = isLast || (step + 1) % snapshotEvery === 0;
+      // A termination check needs the surface rates, which only the snapshot carries. Fetch it
+      // once and reuse it, so a matching step is reported even when `snapshotEvery` would skip it.
+      const snapshot = isReportStep || options.terminationPolicy
+        ? this.#engine.getSnapshot()
+        : null;
+      const termination = snapshot
+        ? evaluateCompositionalTerminationPolicy(options.terminationPolicy, snapshot)
+        : null;
+      if (snapshot && (isReportStep || termination)) {
+        onSnapshot(snapshot, step);
+      }
+      if (termination) {
+        return { reason: 'completed', completedSteps: step + 1, termination };
       }
       await yieldControl?.();
     }
@@ -179,7 +207,9 @@ export class CompositionalSession {
  */
 export function describeCompositionalStop(stop: CompositionalRunStop): string {
   if (stop.reason === 'completed') {
-    return `Finished ${stop.completedSteps} steps.`;
+    return stop.termination
+      ? `Finished ${stop.completedSteps} steps early: ${stop.termination.summary}`
+      : `Finished ${stop.completedSteps} steps.`;
   }
   if (stop.reason === 'user') {
     return `Stopped after ${stop.completedSteps} steps.`;

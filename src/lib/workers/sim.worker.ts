@@ -13,7 +13,8 @@ import {
   type CompositionalEngine,
   type CompositionalEngineFactory,
 } from './compositionalSession';
-import { evaluateTerminationPolicy } from './terminationPolicy';
+import { cloneTerminationPolicy, evaluateTerminationPolicy } from './terminationPolicy';
+import type { ScenarioTerminationPolicy } from '../catalog/scenarios';
 import { configureReservoirSimulator } from './configureSimulator';
 
 let wasmReady = false;
@@ -28,11 +29,14 @@ let activeCreatePayload: SimulatorCreatePayload | null = null;
  * The compositional run, when there is one.
  *
  * Deliberately a separate handle from `simulator`, not a union: the black-oil `run` loop owns rate
- * history, the termination policy and `loadState`, none of which mean the same thing for a
- * compositional case, and C13's exit criterion is that black-oil scenarios are unchanged. The two
- * never both exist — `create` disposes whichever was there.
+ * history and `loadState`, which do not mean the same thing for a compositional case, and C13's
+ * exit criterion is that black-oil scenarios are unchanged. Termination policy is the shared
+ * exception, evaluated by the session through `terminationPolicy.ts`. The two runs never both
+ * exist — `create` disposes whichever was there.
  */
 let compositional: CompositionalSession | null = null;
+/** The policy the created compositional case runs under; evaluated by `CompositionalSession`. */
+let compositionalTerminationPolicy: ScenarioTerminationPolicy | undefined;
 /** True while a compositional batch is stepping, so `stop` knows which run to ask. */
 let compositionalRunning = false;
 
@@ -47,6 +51,7 @@ const compositionalFactory: CompositionalEngineFactory = {
 function disposeRuns(): void {
   compositional?.dispose();
   compositional = null;
+  compositionalTerminationPolicy = undefined;
   simulator = null;
 }
 
@@ -194,8 +199,10 @@ self.onmessage = async (event) => {
         disposeRuns();
         try {
           compositional = CompositionalSession.create(compositionalFactory, payload.compositional);
+          compositionalTerminationPolicy = cloneTerminationPolicy(payload.terminationPolicy);
         } catch (error) {
           compositional = null;
+          compositionalTerminationPolicy = undefined;
           throw error;
         }
         post('compositionalState', {
@@ -234,7 +241,12 @@ self.onmessage = async (event) => {
       compositionalRunning = true;
       let stop;
       try {
-        stop = await compositional.run({ steps, dtDays, snapshotEvery }, (data, stepIndex) => {
+        stop = await compositional.run({
+          steps,
+          dtDays,
+          snapshotEvery,
+          terminationPolicy: compositionalTerminationPolicy,
+        }, (data, stepIndex) => {
           snapshotsSent += 1;
           post('compositionalState', { data, stepIndex });
         }, yieldControl);
@@ -245,6 +257,7 @@ self.onmessage = async (event) => {
         reason: stop.reason,
         completedSteps: stop.completedSteps,
         message: describeCompositionalStop(stop),
+        terminationSummary: stop.reason === 'completed' ? stop.termination?.summary : undefined,
         failure: stop.reason === 'failed' ? stop.failure : undefined,
         profile: buildRunProfile(batchStart, 0, stop.completedSteps, snapshotsSent),
       });
@@ -269,8 +282,10 @@ self.onmessage = async (event) => {
       disposeRuns();
       try {
         compositional = CompositionalSession.restore(compositionalFactory, payload?.checkpoint);
+        compositionalTerminationPolicy = cloneTerminationPolicy(payload?.terminationPolicy);
       } catch (error) {
         compositional = null;
+        compositionalTerminationPolicy = undefined;
         throw error;
       }
       post('compositionalState', {

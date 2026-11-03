@@ -27,6 +27,10 @@ export interface CompositionalRunRecord {
     reason: CompositionalRunStopReason;
     /** Ready to show: `describeCompositionalStop`'s output, with no solver vocabulary. */
     message: string;
+    /** Report steps completed before the stop, when the producer of the record supplies it. */
+    completedSteps?: number;
+    /** Which termination condition ended the run early, when one did. */
+    terminationSummary?: string;
   };
 }
 

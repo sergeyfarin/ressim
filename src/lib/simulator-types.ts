@@ -389,6 +389,8 @@ export interface WorkerCompositionalStoppedMessage {
   completedSteps: number;
   /** Ready to show: no solver vocabulary. See `describeCompositionalStop`. */
   message: string;
+  /** Present when a termination policy ended the batch before its requested horizon. */
+  terminationSummary?: string;
   failure?: { kind: string; message: string; timeDays: number };
   profile: RunProfile;
 }

@@ -95,6 +95,20 @@ describe('scenario-first run model', () => {
         }
     });
 
+    it('carries the compositional SPE5 shut-in policy into the worker create payload', () => {
+        const specs = buildScenarioRunSpecs({
+            scenarioKey: 'comp_spe5_wag',
+            dimensionKey: null,
+            variantKeys: [],
+        });
+        expect(specs).toHaveLength(1);
+        const payload = buildCreatePayloadForRun(specs[0]);
+        expect(payload.fluidModel).toBe('compositional');
+        expect(payload.terminationPolicy).toEqual(specs[0].terminationPolicy);
+        expect(payload.terminationPolicy?.conditions.map((condition) => condition.kind))
+            .toEqual(['gor-threshold', 'watercut-threshold']);
+    });
+
     it('builds one base run for a sensitivity-free benchmark', () => {
         const specs = buildScenarioRunSpecs({
             scenarioKey: 'spe1_gas_injection',

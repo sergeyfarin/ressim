@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateTerminationPolicy } from './terminationPolicy';
+import {
+  evaluateCompositionalTerminationPolicy,
+  evaluateTerminationPolicy,
+} from './terminationPolicy';
+import type { CompositionalSnapshot } from '../compositional/types';
 import type { RateHistoryPoint, SimulatorCreatePayload } from '../simulator-types';
 
 function makePayload(overrides: Partial<SimulatorCreatePayload> = {}): SimulatorCreatePayload {
@@ -104,5 +108,83 @@ describe('evaluateTerminationPolicy', () => {
     }, point, makePayload());
 
     expect(result).not.toBeNull();
+  });
+});
+
+function compositionalSnapshot(
+  rates: CompositionalSnapshot['well_surface_rates'],
+): CompositionalSnapshot {
+  return {
+    time_days: 10,
+    component_ids: ['CO2', 'C1', 'C10'],
+    pressure: [100],
+    composition: [[0.3], [0.3], [0.4]],
+    phase_state: ['two-phase'],
+    vapour_saturation: [0.3],
+    inventory: [1, 3, 6],
+    cumulative_well_moles: [[0, 0, 0]],
+    ...(rates === undefined ? {} : { well_surface_rates: rates }),
+  };
+}
+
+describe('evaluateCompositionalTerminationPolicy', () => {
+  it('matches the SPE5 GOR shut-in from separator vapour and liquid rates', () => {
+    // 2500 m³/m³ is above 10 Mscf/STB (1781.076 m³/m³).
+    const result = evaluateCompositionalTerminationPolicy({
+      mode: 'any',
+      conditions: [{ kind: 'gor-threshold', relation: 'gte', value: 1781.0760667903526, scope: 'producer' }],
+    }, compositionalSnapshot([
+      { liquid_m3_per_day: -100, vapour_m3_per_day: -250_000 },
+    ]));
+
+    expect(result?.summary).toContain('GOR threshold reached');
+    expect(result?.actualValue).toBeCloseTo(2500, 9);
+  });
+
+  it('does not match before the GOR threshold is reached', () => {
+    const result = evaluateCompositionalTerminationPolicy({
+      mode: 'any',
+      conditions: [{ kind: 'gor-threshold', relation: 'gte', value: 1781.0760667903526, scope: 'producer' }],
+    }, compositionalSnapshot([
+      { liquid_m3_per_day: -100, vapour_m3_per_day: -100_000 },
+    ]));
+
+    expect(result).toBeNull();
+  });
+
+  it('matches the SPE5 WOR shut-in as the equivalent surface water cut', () => {
+    // WOR 5 is water cut 5/6; 600 water against 100 liquid is WOR 6.
+    const result = evaluateCompositionalTerminationPolicy({
+      mode: 'any',
+      conditions: [{ kind: 'watercut-threshold', value: 5 / 6, scope: 'producer' }],
+    }, compositionalSnapshot([
+      {
+        liquid_m3_per_day: -100,
+        vapour_m3_per_day: 0,
+        water_m3_per_day: -600,
+      },
+    ]));
+
+    expect(result?.summary).toContain('Watercut threshold reached');
+    expect(result?.actualValue).toBeCloseTo(600 / 700, 12);
+  });
+
+  it('evaluates a producer phase-rate condition', () => {
+    const result = evaluateCompositionalTerminationPolicy({
+      mode: 'any',
+      conditions: [{ kind: 'phase-rate-threshold', phase: 'gas', relation: 'gte', value: 200, scope: 'producer' }],
+    }, compositionalSnapshot([
+      { liquid_m3_per_day: -10, vapour_m3_per_day: -250 },
+    ]));
+
+    expect(result).not.toBeNull();
+  });
+
+  it('treats unreported surface rates as not evaluated, not as zero', () => {
+    const policy = {
+      mode: 'any' as const,
+      conditions: [{ kind: 'gor-threshold' as const, relation: 'lte' as const, value: 0, scope: 'producer' as const }],
+    };
+    expect(evaluateCompositionalTerminationPolicy(policy, compositionalSnapshot(undefined))).toBeNull();
   });
 });

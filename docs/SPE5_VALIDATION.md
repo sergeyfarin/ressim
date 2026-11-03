@@ -66,14 +66,32 @@ The deliberate differences from the OPM deck implementation are:
 - **The producer is oil-rate controlled, not liquid-rate.** `SurfacePhase::Liquid` in the
   compositional engine is the stock-tank hydrocarbon liquid, which is the deck’s `ORAT`.
 
-### Recorded deviation: shut-in criteria
+### Shut-in criteria: enforced (#98)
 
-The paper specifies stopping at **GOR 10 Mscf/STB** or **WOR 5 STB/STB**. The payload always
-requests the full 240 reports. The run now reports per-well separator rates and cumulative surface
-volumes, and the run series derives produced liquid/vapour rates, separator gas/liquid ratio and
-surface water cut (#95). The run loop still does not evaluate termination policies (#98), so
-neither criterion is enforced yet. This must be fixed before a published-trajectory comparison or
-an explicit stopping rule is claimed.
+The paper specifies stopping at **GOR 10 Mscf/STB** or **WOR 5 STB/STB**. The scenario now declares
+both in `terminationPolicy`:
+
+- `gor-threshold` with `relation: 'gte'` at **1781.0760667903526 m³/m³**, the conversion of
+  10 Mscf/STB through `1000 × 0.028316846592 / 0.158987294928`;
+- `watercut-threshold` at **5/6**, because WOR 5 STB/STB is the same surface condition as water cut
+  `5 / (5 + 1)`.
+
+The compositional session evaluates the policy after every report step from the snapshot's per-well
+surface ledger. A matching report is always emitted, even when it falls between the requested
+snapshot interval, and the batch ends through the normal `completed` path with the matched condition
+in its summary rather than as a solver failure. The run record keeps the completed step count and
+the termination summary, so the stopping report is part of the result, not only a UI warning.
+
+Regression coverage:
+
+- `src/lib/catalog/scenarios/comp_spe5_wag.test.ts` pins both authored thresholds;
+- `src/lib/workers/terminationPolicy.test.ts` covers a matching and a non-matching GOR, the WOR/water-cut
+  equivalence, a producer rate condition and unreported surface rates;
+- `src/lib/workers/compositionalSession.test.ts` covers a policy that stops mid-batch and one that
+  does not, including the report that carries the stop.
+
+The full published-trajectory comparison is still the remaining work in the reference plan below;
+this change establishes the stopping rule, not a new trajectory measurement.
 
 The reported "oil" and "gas" are the separator **liquid** and **vapour** volumes, not black-oil
 `FOPT`/`FGPT` metered through a PVT table. At 1 bar the flash's single-phase label is pressure-blind,

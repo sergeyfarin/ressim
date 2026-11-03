@@ -34,9 +34,10 @@ import type {
  *   The deck's stock-tank rates are converted through that stage, not through the black-oil PVT
  *   table. The rate targets are the deck's.
  *
- * **Recorded deviation.** The paper's GOR 10 Mscf/STB and WOR 5 STB/STB shut-in criteria are not
- * enforced: the compositional run loop now reports surface rates and cumulatives (#95) but does not
- * evaluate termination policies (#98). The payload always requests the full 240 reports.
+ * **Shut-in criteria.** The paper stops the producer at GOR 10 Mscf/STB or WOR 5 STB/STB. Both are
+ * declared in `terminationPolicy` (#98): the separator gas/liquid ratio is evaluated in the
+ * engine's m³/m³ units, and WOR 5 is the equivalent surface water cut 5/6. A run therefore stops at
+ * the first report that meets either condition instead of always running the full 240 reports.
  */
 
 /** 500 ft in metres. */
@@ -70,6 +71,16 @@ const OIL_RATE_M3_PER_DAY = 12000 * 0.158987294928;
 const GAS_RATE_M3_PER_DAY = 12000 * 1000 * 0.028316846592;
 const PRODUCER_BHP_LIMIT_BAR = 1000 * 0.0689476;
 const INJECTOR_BHP_LIMIT_BAR = 10000 * 0.0689476;
+
+/**
+ * The paper's shut-in criteria.
+ *
+ * `gor-threshold` is compared against the separator gas/liquid ratio in m³/m³, so 10 Mscf/STB is
+ * `10 * 1000 scf * 0.028316846592 m³/scf / 0.158987294928 m³/STB`. `watercut-threshold` is the
+ * surface water fraction, and WOR 5 is `5 / (5 + 1)`.
+ */
+const GOR_SHUT_IN_M3_PER_M3 = (10 * 1000 * 0.028316846592) / 0.158987294928;
+const WATER_CUT_AT_WOR_5 = 5 / 6;
 
 const WELL_RADIUS_M = 0.25 * 0.3048;
 /** `COMPDAT` item 9 is a diameter; these are the deck's 0.5 ft. */
@@ -308,6 +319,22 @@ export const comp_spe5_wag: Scenario = {
         hasInjector: true,
         default3DScalar: 'saturation_gas',
         requiresThreePhaseMode: true,
+    },
+    terminationPolicy: {
+        mode: 'any',
+        conditions: [
+            {
+                kind: 'gor-threshold',
+                relation: 'gte',
+                value: GOR_SHUT_IN_M3_PER_M3,
+                scope: 'producer',
+            },
+            {
+                kind: 'watercut-threshold',
+                value: WATER_CUT_AT_WOR_5,
+                scope: 'producer',
+            },
+        ],
     },
     solverPolicy: {
         defaultSolver: 'fim',

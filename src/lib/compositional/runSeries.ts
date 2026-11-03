@@ -128,15 +128,15 @@ export function buildCompositionalRunSeries(
     componentNetWellMoles: Array.from({ length: n }, (_, i) =>
       usable.map((s) => netWellMoles(s, i)),
     ),
-    surfaceLiquidRate: usable.map((s) => producedSurface(s)?.liquid ?? null),
-    surfaceVapourRate: usable.map((s) => producedSurface(s)?.vapour ?? null),
+    surfaceLiquidRate: usable.map((s) => producedSurfaceRates(s)?.liquid ?? null),
+    surfaceVapourRate: usable.map((s) => producedSurfaceRates(s)?.vapour ?? null),
     separatorGasLiquidRatio: usable.map((s) => {
-      const produced = producedSurface(s);
+      const produced = producedSurfaceRates(s);
       if (!produced || !(produced.liquid > 0)) return null;
       return produced.vapour / produced.liquid;
     }),
     surfaceWaterCut: usable.map((s) => {
-      const produced = producedSurface(s);
+      const produced = producedSurfaceRates(s);
       if (!produced || produced.water === null) return null;
       const total = produced.liquid + produced.water;
       return total > 0 ? produced.water / total : null;
@@ -170,7 +170,7 @@ export function buildCompositionalRunSeries(
   return series;
 }
 
-type ProducedSurface = {
+export type ProducedSurfaceRates = {
   liquid: number;
   vapour: number;
   /** `null` when the case has no water phase. */
@@ -193,7 +193,9 @@ function nonnegative(value: number | undefined): number {
  * side, made positive. A snapshot without the field returns `null` rather than a zero that would
  * claim the run produced nothing.
  */
-function producedSurface(snapshot: CompositionalSnapshot): ProducedSurface | null {
+export function producedSurfaceRates(
+  snapshot: CompositionalSnapshot,
+): ProducedSurfaceRates | null {
   const wells = snapshot.well_surface_rates;
   if (wells === undefined) return null;
   let liquid = 0;
@@ -211,7 +213,7 @@ function producedSurface(snapshot: CompositionalSnapshot): ProducedSurface | nul
   return { liquid, vapour, water: hasWater ? water : null };
 }
 
-function producedSurfaceCumulative(snapshot: CompositionalSnapshot): ProducedSurface | null {
+function producedSurfaceCumulative(snapshot: CompositionalSnapshot): ProducedSurfaceRates | null {
   // Gross production, not the signed net balance. A well can reverse direction, so clipping the
   // net would let a later injection reduce a cumulative that already happened.
   const wells = snapshot.cumulative_well_surface_production_volumes;

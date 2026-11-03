@@ -117,4 +117,23 @@ describe('buildCompositionalRunRecord', () => {
         expect(record.series.componentIds).toEqual(['CO2', 'C1', 'C10']);
         expect(record.stop).toEqual({ reason: 'failed', message: 'The solver could not converge.' });
     });
+
+    it('records which report and condition ended a run early', () => {
+        const record = buildCompositionalRunRecord({
+            config,
+            snapshots: [snapshot],
+            stop: {
+                reason: 'completed',
+                message: 'Finished 2 steps early: GOR threshold reached.',
+                completedSteps: 2,
+                terminationSummary: 'GOR threshold reached.',
+            },
+        });
+        expect(record.stop).toEqual({
+            reason: 'completed',
+            message: 'Finished 2 steps early: GOR threshold reached.',
+            completedSteps: 2,
+            terminationSummary: 'GOR threshold reached.',
+        });
+    });
 });
