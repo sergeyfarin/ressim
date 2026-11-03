@@ -803,10 +803,9 @@ REFINEMENT_DIMENSION = re.compile(r"grid|refine|resolution|timestep|time_truncat
 # `describe.skip`/`describe.todo` suite does the same, and a correctly named file that tests
 # something else is not coverage either.
 TEST_DECLARATION = re.compile(
-    r"^[ \t]*(?P<callee>(?:it|test)(?:\.(?!skip\b|todo\b)\w+)*)\s*\(",
-    re.M,
+    r"(?<![\w$.])(?P<callee>(?:it|test)(?:\.(?!skip\b|todo\b)\w+)*)\s*\(",
 )
-SUITE_DECLARATION = re.compile(r"^[ \t]*(?P<callee>describe(?:\.\w+)*)\s*\(", re.M)
+SUITE_DECLARATION = re.compile(r"(?<![\w$.])(?P<callee>describe(?:\.\w+)*)\s*\(")
 INACTIVE_TEST_MODIFIER = re.compile(r"\.(?:skip|todo)\b")
 COMMENTS = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
 
