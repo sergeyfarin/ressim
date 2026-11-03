@@ -125,6 +125,23 @@ export const SCALE_GOR = {
 };
 
 /**
+ * The compositional separator's gas/liquid ratio. Deliberately named apart from `SCALE_GOR`: a
+ * black-oil GOR is a different fluid model's quantity and the axis title must not imply one.
+ */
+export const SCALE_SEPARATOR_GLR = {
+    y: {
+        type: 'linear',
+        display: true,
+        position: 'left',
+        min: 0,
+        alignToPixels: true,
+        title: { display: true, text: 'Separator Gas/Liquid Ratio (m³/m³)' },
+        ticks: { count: 6 },
+        _auto: true,
+    },
+};
+
+/**
  * Component amounts. Not anchored at zero: net injected moles are signed — positive for what the
  * wells put in, negative for what they took out.
  */
@@ -258,6 +275,7 @@ export function getScalePresetConfig(scalePreset: ChartScalePreset): Record<stri
     if (scalePreset === 'shape_factor') return SCALE_SHAPE_FACTOR;
     if (scalePreset === 'ratio') return SCALE_RATIO;
     if (scalePreset === 'gor') return SCALE_GOR;
+    if (scalePreset === 'separator_glr') return SCALE_SEPARATOR_GLR;
     if (scalePreset === 'diagnostics') return DIAGNOSTICS_SCALES;
     if (scalePreset === 'fraction') return SCALE_FRACTION;
     if (scalePreset === 'moles') return SCALE_MOLES;

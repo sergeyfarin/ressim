@@ -36,7 +36,10 @@ use super::relperm::{CoreyParameters, RelativePermeabilityModel, RelativePermeab
 use super::state::{CompositionalCellState, CompositionalState, RockView};
 use super::timestep::{CompositionalRun, TimestepOptions};
 use super::water::{StoneTwoRelPerm, WaterModel, WaterProperties};
-use super::wells::{Completion, CompositionalWell, InjectedFluid, SurfacePhase, WellControl};
+use super::wells::{
+    Completion, CompositionalWell, InjectedFluid, SurfacePhase, WellControl, WellSurfaceRates,
+    WellSurfaceVolumes,
+};
 use crate::fluid::flash::{PhaseState, flash};
 use crate::fluid::pinned;
 use crate::fluid::specification::FluidSpecification;
@@ -1136,6 +1139,8 @@ impl CompositionalCase {
             schedule_boundary_pending: false,
             config,
         };
+        case.run
+            .seed_surface_reporting(&case.spec, &case.relperm, case.wells.len());
         // A t = 0 event is the initial condition, not a step-1 surprise.
         case.apply_schedule_through(0.0);
         Ok(case)
@@ -1348,6 +1353,15 @@ impl CompositionalCase {
             vapour_saturation,
             inventory,
             cumulative_well_moles: self.run.cumulative_well_moles().to_vec(),
+            well_surface_rates: self.run.well_surface_rates().map(|rates| rates.to_vec()),
+            cumulative_well_surface_volumes: self
+                .run
+                .cumulative_well_surface_volumes()
+                .map(|volumes| volumes.to_vec()),
+            cumulative_well_surface_production_volumes: self
+                .run
+                .cumulative_well_surface_production_volumes()
+                .map(|volumes| volumes.to_vec()),
             well_bhp_bar: self.run.well_bhp_bar().to_vec(),
             water,
         }
@@ -1641,6 +1655,25 @@ pub struct Snapshot {
     /// Per well, cumulative component moles. Positive into the reservoir. With water, each row
     /// has one more entry, water last.
     pub cumulative_well_moles: Vec<Vec<f64>>,
+    /// Per well, surface volumetric rates at the accepted state [m³/day], from the engine's own
+    /// surface separation. Positive injects, negative produces.
+    ///
+    /// Absent when the fluid pins no surface conditions, so a consumer must treat a missing field
+    /// as **not reported**, never as zero. Present at t = 0 as zeros for a fresh case. A snapshot
+    /// written before this field existed also lacks it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub well_surface_rates: Option<Vec<WellSurfaceRates>>,
+    /// Per well, cumulative surface volume over accepted steps [m³], signed like the rates.
+    /// Absent under the same condition as [`Self::well_surface_rates`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cumulative_well_surface_volumes: Option<Vec<WellSurfaceVolumes>>,
+    /// Per well, **gross production** of each separator phase over accepted steps [m³], never
+    /// reduced by later injection. A well that produces 10 m³ and later injects 4 m³ reports 10
+    /// here and −6 in [`Self::cumulative_well_surface_volumes`].
+    ///
+    /// Absent under the same condition as [`Self::well_surface_rates`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cumulative_well_surface_production_volumes: Option<Vec<WellSurfaceVolumes>>,
     /// Per well, the BHP the accepted solve ran at [bar], or zero while the well is shut in (and
     /// for a well just reopened by an event, until its first accepted step). Empty before the
     /// first accepted step and in snapshots from before C14's reporting.

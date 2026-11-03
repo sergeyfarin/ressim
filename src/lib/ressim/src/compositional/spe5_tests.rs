@@ -110,7 +110,24 @@ fn comp_spe5_case_payload_is_admissible() {
     assert_eq!(config.initial_composition.len(), 6);
     assert_eq!(config.schedule.len(), 36);
     assert_eq!(config.water.as_ref().unwrap().initial_saturation, 0.2);
-    assert!(CompositionalCase::new(config).is_ok());
+    let well_count = config.wells.len();
+    let case = CompositionalCase::new(config).expect("the SPE5 payload is admissible");
+    // #95: the pinned SPE5 fluid carries surface conditions, so the case starts with a surface
+    // ledger at exactly zero for every well, water included.
+    let snapshot = case.snapshot();
+    let rates = snapshot
+        .well_surface_rates
+        .expect("SPE5 must report surface rates");
+    let volumes = snapshot
+        .cumulative_well_surface_volumes
+        .expect("SPE5 must report surface volumes");
+    assert_eq!(rates.len(), well_count);
+    assert_eq!(volumes.len(), well_count);
+    for rate in &rates {
+        assert_eq!(rate.liquid_m3_per_day, 0.0);
+        assert_eq!(rate.vapour_m3_per_day, 0.0);
+        assert_eq!(rate.water_m3_per_day, Some(0.0));
+    }
 }
 
 /// A smoke run of the first WAG cycle. Release only: the monthly replay is minutes of debug work.
@@ -147,11 +164,33 @@ fn comp_spe5_case_accepts_its_first_water_and_gas_slugs() {
         snapshot.water.as_ref().unwrap().saturation[0] > 0.2,
         "water injection did not raise the injector cell's saturation"
     );
+    // #95: the producer's separator ledger is live at the end of the first cycle.
+    let rates = snapshot
+        .well_surface_rates
+        .as_ref()
+        .expect("SPE5 reports surface rates");
+    let volumes = snapshot
+        .cumulative_well_surface_volumes
+        .as_ref()
+        .expect("SPE5 reports surface volumes");
+    let producer = rates
+        .iter()
+        .zip(volumes)
+        .find(|(rate, _)| rate.liquid_m3_per_day < 0.0)
+        .expect("the producer must have a negative separator-liquid rate");
+    assert!(
+        producer.1.liquid_m3 < 0.0,
+        "the producer's cumulative separator liquid must be negative, got {}",
+        producer.1.liquid_m3
+    );
+    assert!(producer.0.liquid_m3_per_day.is_finite());
+    assert!(producer.0.vapour_m3_per_day.is_finite());
     println!(
-        "SPE5 first cycle: t={:.1} d, p[0]={:.3} bar, Sw[0]={:.4}",
+        "SPE5 first cycle: t={:.1} d, p[0]={:.3} bar, Sw[0]={:.4}, q_liq={:.1} m³/day",
         snapshot.time_days,
         snapshot.pressure[0],
-        snapshot.water.as_ref().unwrap().saturation[0]
+        snapshot.water.as_ref().unwrap().saturation[0],
+        -producer.0.liquid_m3_per_day
     );
 }
 

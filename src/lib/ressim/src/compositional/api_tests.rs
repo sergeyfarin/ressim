@@ -128,6 +128,192 @@ fn comp_api_snapshot_reports_flowing_bhp_per_well() {
     );
 }
 
+/// The SPE5 fluid pins surface conditions, so it is the smallest API case that can report surface
+/// volumes. The producer is surface-liquid rate controlled, which is the control #95 names.
+fn surface_rate_config() -> CaseConfig {
+    let mut config = valid_config();
+    config.fluid = FluidChoice::PinnedSpe5;
+    config.grid.cells = 2;
+    config.initial_composition = vec![0.5, 0.03, 0.07, 0.2, 0.15, 0.05];
+    config.wells[0].injection_composition = Some(vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+    config.wells[0].control = WellControlConfig::Bhp { target_bar: 250.0 };
+    config.wells[1].completions[0].cell = 1;
+    config.wells[1].control = WellControlConfig::SurfaceRate {
+        target_m3_per_day: -10.0,
+        phase: SurfacePhaseConfig::Liquid,
+        bhp_limit_bar: 50.0,
+    };
+    config
+}
+
+/// **#95's snapshot contract.** A surface-pinned fluid reports per-well separator rates and
+/// cumulative volumes at the accepted state, and those volumes close against the component-mole
+/// ledger through the same separation the rate controls use.
+#[test]
+fn comp_api_snapshot_reports_surface_rates_and_cumulative_volumes() {
+    // A fluid that pins no surface conditions cannot report them. Absent, not zero.
+    let unpinned = CompositionalCase::new(valid_config()).unwrap().snapshot();
+    assert!(unpinned.well_surface_rates.is_none());
+    assert!(unpinned.cumulative_well_surface_volumes.is_none());
+    assert!(
+        unpinned
+            .cumulative_well_surface_production_volumes
+            .is_none()
+    );
+    let json = serde_json::to_value(&unpinned).unwrap();
+    assert!(json.get("well_surface_rates").is_none());
+    assert!(json.get("cumulative_well_surface_volumes").is_none());
+    assert!(
+        json.get("cumulative_well_surface_production_volumes")
+            .is_none()
+    );
+
+    let mut case = CompositionalCase::new(surface_rate_config()).unwrap();
+    // A fresh case knows its wells, so its surface ledger starts at exactly zero.
+    let initial = case.snapshot();
+    let initial_rates = initial
+        .well_surface_rates
+        .expect("a surface-pinned case reports at t = 0");
+    assert!(initial.cumulative_well_surface_production_volumes.is_some());
+    assert_eq!(initial_rates.len(), 2);
+    assert_eq!(initial_rates[0].liquid_m3_per_day, 0.0);
+    assert_eq!(initial_rates[0].vapour_m3_per_day, 0.0);
+    assert_eq!(initial_rates[0].water_m3_per_day, None);
+
+    assert!(case.step(0.02).succeeded());
+    let snapshot = case.snapshot();
+    let rates = snapshot.well_surface_rates.expect("reported after a step");
+    let volumes = snapshot
+        .cumulative_well_surface_volumes
+        .expect("reported after a step");
+    let production = snapshot
+        .cumulative_well_surface_production_volumes
+        .expect("reported after a step");
+    assert_eq!(rates.len(), 2);
+    assert_eq!(volumes.len(), 2);
+    assert_eq!(production.len(), 2);
+    assert!(
+        (rates[1].liquid_m3_per_day + 10.0).abs() < 1e-6,
+        "the surface-liquid-controlled producer ran at {} m³/day, not its -10 target",
+        rates[1].liquid_m3_per_day
+    );
+    assert!(rates[1].vapour_m3_per_day < 0.0);
+
+    // The cumulative volume is the same separation applied once to the accumulated component
+    // stream: separation is homogeneous, so integrating per step and separating the total agree.
+    let spec = pinned::spe5().unwrap();
+    let relperm = super::relperm::RelativePermeabilityModel::Linear;
+    for well in 0..rates.len() {
+        let separated = super::wells::surface_rates_from_components(
+            &spec,
+            &relperm,
+            &snapshot.cumulative_well_moles[well],
+        )
+        .unwrap();
+        assert!((volumes[well].liquid_m3 - separated.liquid_m3_per_day).abs() < 1e-9);
+        assert!((volumes[well].vapour_m3 - separated.vapour_m3_per_day).abs() < 1e-9);
+        assert_eq!(volumes[well].water_m3, None);
+        // One accepted step, so the cumulative is the accepted rate times the step and the
+        // accepted component rate is the cumulative divided by it.
+        let component_rate = snapshot.cumulative_well_moles[well]
+            .iter()
+            .map(|moles| moles / 0.02)
+            .collect::<Vec<_>>();
+        let from_moles =
+            super::wells::surface_rates_from_components(&spec, &relperm, &component_rate).unwrap();
+        assert!((rates[well].liquid_m3_per_day - from_moles.liquid_m3_per_day).abs() < 1e-9);
+        assert!((rates[well].vapour_m3_per_day - from_moles.vapour_m3_per_day).abs() < 1e-9);
+        assert!((volumes[well].liquid_m3 - rates[well].liquid_m3_per_day * 0.02).abs() < 1e-9);
+        assert!((volumes[well].vapour_m3 - rates[well].vapour_m3_per_day * 0.02).abs() < 1e-9);
+    }
+    assert!(
+        (volumes[1].liquid_m3 + 0.2).abs() < 1e-7,
+        "the producer's cumulative liquid is {} m³, not the 0.2 m³ its target implies",
+        volumes[1].liquid_m3
+    );
+    assert!((production[1].liquid_m3 - 0.2).abs() < 1e-7);
+    assert!(production[0].liquid_m3 == 0.0);
+}
+
+/// **Production is a gross integral, not a clipped net balance.** A well that produces and then
+/// reverses into injection must keep the production it already made. The signed net volume falls;
+/// the production volume does not.
+#[test]
+fn comp_api_surface_production_does_not_shrink_when_the_same_well_injects() {
+    let mut config = surface_rate_config();
+    config.schema = SCHEDULE_CASE_SCHEMA.to_string();
+    config.schedule = vec![WellEventConfig {
+        time_days: 0.02,
+        well: "PROD".to_string(),
+        change: WellChangeConfig {
+            control: Some(WellControlConfig::SurfaceRate {
+                target_m3_per_day: 4.0,
+                phase: SurfacePhaseConfig::Liquid,
+                bhp_limit_bar: 400.0,
+            }),
+            // Heavy enough to have a separator-liquid volume at surface conditions, so a
+            // positive liquid-rate target is reachable.
+            injection: Some(WellInjectionConfig::Hydrocarbon {
+                composition: vec![0.1, 0.0, 0.0, 0.3, 0.3, 0.3],
+            }),
+        },
+    }];
+    let mut case = CompositionalCase::new(config).unwrap();
+    assert!(case.step(0.02).succeeded());
+    let produced = case
+        .snapshot()
+        .cumulative_well_surface_production_volumes
+        .expect("surface production must be reported");
+    let net = case
+        .snapshot()
+        .cumulative_well_surface_volumes
+        .expect("net surface volume must be reported");
+    assert!((produced[1].liquid_m3 - 0.2).abs() < 1e-7);
+    assert!(net[1].liquid_m3 < 0.0);
+
+    // The schedule event has now turned the producer into a liquid injector.
+    assert!(case.step(0.02).succeeded());
+    let snapshot = case.snapshot();
+    let rates = snapshot.well_surface_rates.as_ref().unwrap();
+    assert!(
+        rates[1].liquid_m3_per_day > 0.0,
+        "the reversed well should inject, got {}",
+        rates[1].liquid_m3_per_day
+    );
+    let produced = snapshot
+        .cumulative_well_surface_production_volumes
+        .as_ref()
+        .unwrap();
+    let net = snapshot.cumulative_well_surface_volumes.as_ref().unwrap();
+    assert!(
+        (produced[1].liquid_m3 - 0.2).abs() < 1e-7,
+        "gross production moved to {} m³ after injection",
+        produced[1].liquid_m3
+    );
+    assert!(
+        net[1].liquid_m3 > -0.2 + 1e-7,
+        "the net balance should have risen with injection, got {}",
+        net[1].liquid_m3
+    );
+}
+
+/// A snapshot written before #95 lacks the surface fields entirely. Deserializing it must leave
+/// them absent, not fill in zeros that a chart would read as a measured rate.
+#[test]
+fn comp_api_a_legacy_snapshot_without_surface_fields_deserializes_as_unreported() {
+    let mut case = CompositionalCase::new(surface_rate_config()).unwrap();
+    assert!(case.step(0.02).succeeded());
+    let mut value = serde_json::to_value(case.snapshot()).unwrap();
+    let object = value.as_object_mut().unwrap();
+    object.remove("well_surface_rates");
+    object.remove("cumulative_well_surface_volumes");
+    object.remove("cumulative_well_surface_production_volumes");
+    let legacy: Snapshot = serde_json::from_value(value).unwrap();
+    assert!(legacy.well_surface_rates.is_none());
+    assert!(legacy.cumulative_well_surface_volumes.is_none());
+    assert!(legacy.cumulative_well_surface_production_volumes.is_none());
+}
+
 /// **#85's restart contract.** The flowing BHP survives the checkpoint and the restored run
 /// continues identically. An old checkpoint without the optional field still restores, because a
 /// missing flowing pressure cannot change a solve that never reads it back.

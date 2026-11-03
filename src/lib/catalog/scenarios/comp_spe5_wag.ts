@@ -35,8 +35,8 @@ import type {
  *   table. The rate targets are the deck's.
  *
  * **Recorded deviation.** The paper's GOR 10 Mscf/STB and WOR 5 STB/STB shut-in criteria are not
- * enforced: the compositional run loop has no surface-rate history (#95) or termination evaluation
- * (#98). The payload always requests the full 240 reports.
+ * enforced: the compositional run loop now reports surface rates and cumulatives (#95) but does not
+ * evaluate termination policies (#98). The payload always requests the full 240 reports.
  */
 
 /** 500 ft in metres. */

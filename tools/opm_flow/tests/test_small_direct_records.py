@@ -13,6 +13,7 @@ try:
     from compare_small_direct import (
         case_family,
         compare_comp_case,
+        comp_record_cumulatives,
         coverage_error,
         merge_scorecard,
         scorecard_metrics,
@@ -20,6 +21,7 @@ try:
 except ModuleNotFoundError:
     case_family = None
     compare_comp_case = None
+    comp_record_cumulatives = None
     coverage_error = None
     merge_scorecard = None
     scorecard_metrics = None
@@ -112,6 +114,61 @@ class CompositionalRecordTests(unittest.TestCase):
         self.record["reports"][0]["p"] = [None]
         with self.assertRaisesRegex(SystemExit, r"non-finite"):
             self.compare()
+
+    def test_final_surface_cumulatives_are_compared(self):
+        reference = json.loads(self.reference.read_text())
+        reference["summary"]["FOPT"] = [10.0]
+        reference["summary"]["FGPT"] = [40.0]
+        self.reference.write_text(json.dumps(reference))
+        self.record["reports"][0]["surface"] = {
+            "cumulative_liquid_m3": 10.5,
+            "cumulative_vapour_m3": 41.0,
+        }
+        report = self.compare()
+        cum = report["runs"]["comp"]["cum_rel_vs_flow"]
+        self.assertAlmostEqual(cum["FOPT"], 0.05)
+        self.assertAlmostEqual(cum["FGPT"], 0.025)
+        self.assertEqual(report["flow"]["cum"], {"FOPT": 10.0, "FGPT": 40.0})
+
+    def test_missing_surface_ledger_is_not_read_as_zero(self):
+        reference = json.loads(self.reference.read_text())
+        reference["summary"]["FOPT"] = [10.0]
+        self.reference.write_text(json.dumps(reference))
+        report = self.compare()
+        self.assertEqual(report["runs"]["comp"]["cum_rel_vs_flow"], {})
+        self.assertEqual(report["flow"]["cum_unreported"], ["FOPT"])
+
+    def test_nonfinite_surface_cumulative_is_rejected(self):
+        self.record["reports"][0]["surface"] = {
+            "cumulative_liquid_m3": float("nan"),
+            "cumulative_vapour_m3": 0.0,
+        }
+        with self.assertRaisesRegex(SystemExit, r"not finite"):
+            self.compare()
+
+
+@unittest.skipIf(comp_record_cumulatives is None, "requires Flow's numpy environment")
+class CumulativeReportTests(unittest.TestCase):
+    def test_only_the_final_report_is_read(self):
+        run = {
+            "reports": [
+                {"surface": {"cumulative_liquid_m3": 9.0, "cumulative_vapour_m3": 99.0}},
+                {"p": [100.0]},
+            ]
+        }
+        self.assertEqual(comp_record_cumulatives(run), {})
+
+    def test_final_report_carries_the_cumulatives(self):
+        run = {
+            "reports": [
+                {"surface": {"cumulative_liquid_m3": 9.0, "cumulative_vapour_m3": 99.0}},
+                {"surface": {"cumulative_liquid_m3": 10.0, "cumulative_vapour_m3": 100.0}},
+            ]
+        }
+        self.assertEqual(
+            comp_record_cumulatives(run),
+            {"FOPT": 10.0, "FGPT": 100.0},
+        )
 
 
 @unittest.skipIf(merge_scorecard is None, "requires Flow's numpy environment")

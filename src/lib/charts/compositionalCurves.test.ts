@@ -117,6 +117,31 @@ describe('compositionalCurvesForRun', () => {
         expect(compositionalCurvesForRun(record, 'pvi')).toEqual([]);
         expect(compositionalCurvesForRun(record, 'cumLiquid')).toEqual([]);
     });
+
+    it('places the separator surface quantities in their own panels', () => {
+        const byKey = new Map(
+            compositionalCurvesForRun(record, 'time').map((curve) => [curve.curveKey, curve]),
+        );
+        expect(byKey.get('comp-surface-liquid-rate-sim')?.panel).toBe(
+            'comp_surface_liquid_rate',
+        );
+        expect(byKey.get('comp-surface-vapour-rate-sim')?.panel).toBe(
+            'comp_surface_vapour_rate',
+        );
+        expect(byKey.get('comp-separator-gas-liquid-ratio-sim')?.panel).toBe('comp_separator_glr');
+        expect(byKey.get('comp-surface-water-cut-sim')?.panel).toBe('comp_surface_water_cut');
+        expect(byKey.get('comp-cumulative-surface-liquid-sim')?.panel).toBe(
+            'comp_cumulative_surface_liquid',
+        );
+        expect(byKey.get('comp-cumulative-surface-vapour-sim')?.panel).toBe(
+            'comp_cumulative_surface_vapour',
+        );
+        expect(byKey.get('comp-cumulative-surface-water-sim')?.panel).toBe(
+            'comp_cumulative_surface_water',
+        );
+        // The ratio is named apart from a black-oil GOR on purpose.
+        expect(byKey.get('comp-separator-gas-liquid-ratio-sim')?.label).not.toMatch(/\bGOR\b/);
+    });
 });
 
 describe('buildReferenceComparisonModel with compositional runs', () => {
