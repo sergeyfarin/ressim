@@ -90,7 +90,13 @@ describe('spe1_gas_injection against its OPM Flow twin', () => {
             for (const flowPoint of series!.data) {
                 const runPoint = history.find((point) => Math.abs(Number(point.time) - flowPoint.x) < 1e-6);
                 if (!runPoint) continue;
-                const error = Math.abs(runValue(runPoint, mnemonic) - flowPoint.y) / Math.abs(flowPoint.y);
+                const run = runValue(runPoint, mnemonic);
+                const flow = flowPoint.y;
+                const where = `${mnemonic} at t=${flowPoint.x} d`;
+                expect(Number.isFinite(run), `finite run value, ${where}`).toBe(true);
+                expect(Number.isFinite(flow), `finite Flow value, ${where}`).toBe(true);
+                const error = Math.abs(run - flow) / Math.abs(flow);
+                expect(Number.isFinite(error), `finite relative error, ${where}`).toBe(true);
                 if (error > worst) {
                     worst = error;
                     worstAt = flowPoint.x;

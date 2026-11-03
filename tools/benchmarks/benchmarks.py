@@ -799,9 +799,29 @@ SCENARIO_SECOND_SIMULATOR = {
 }
 REFINEMENT_DIMENSION = re.compile(r"grid|refine|resolution|timestep|time_truncation")
 # A scenario's own test counts only when the file names the scenario in executable code and
-# declares at least one test. A correctly named file that tests something else is not coverage.
-TEST_DECLARATION = re.compile(r"^\s*(?:it|test)(?:\.\w+)?\s*\(", re.M)
+# declares an active test. `.skip` and `.todo` declare tests that never run, and a correctly
+# named file that tests something else is not coverage either.
+TEST_DECLARATION = re.compile(
+    r"^[ \t]*(?P<callee>(?:it|test)(?:\.(?!skip\b|todo\b)\w+)*)\s*\(",
+    re.M,
+)
+INACTIVE_TEST_MODIFIER = re.compile(r"\.(?:skip|todo)\b")
+SKIPPED_CALL = re.compile(r"\)\s*\.(?:skip|todo)\s*\(")
 COMMENTS = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
+
+
+def has_active_test(code: str) -> bool:
+    """Whether `code` declares at least one `it`/`test` that Vitest will execute."""
+    for match in TEST_DECLARATION.finditer(code):
+        if INACTIVE_TEST_MODIFIER.search(match.group("callee")):
+            continue
+        line_end = code.find("\n", match.start())
+        line = code[match.start():line_end if line_end >= 0 else len(code)]
+        # `.skip`/`.todo` can also follow the argument list, e.g. `it.each(cases).skip(...)`.
+        if SKIPPED_CALL.search(line):
+            continue
+        return True
+    return False
 
 
 def scenario_test(path: Path, key: str) -> str | None:
@@ -810,7 +830,7 @@ def scenario_test(path: Path, key: str) -> str | None:
     if not test_path.exists():
         return None
     code = COMMENTS.sub("", test_path.read_text())
-    if not TEST_DECLARATION.search(code):
+    if not has_active_test(code):
         return None
     if not re.search(rf"['\"]{re.escape(key)}['\"]", code):
         return None
@@ -880,7 +900,7 @@ def render_coverage(doc: dict) -> str:
         f"benchmark), only an analytical one or none: {', '.join(f'`{k}`' for k in gaps) or 'none'}. "
         f"{sum(1 for c in scenario_catalog() if second_simulator(doc, c['key']) != '—')} scenario(s) "
         "are graded against a second independent simulator. "
-        f"{len(untested)} scenario(s) have no test of their own that names and exercises the scenario, "
+        f"{len(untested)} scenario(s) have no active test of their own that names and exercises the scenario, "
         f"only the catalog-wide contract tests: {', '.join(f'`{k}`' for k in untested) or 'none'}.",
     ])
 

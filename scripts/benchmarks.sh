@@ -44,6 +44,10 @@ while [ $# -gt 0 ]; do
 done
 case "$tier" in fast|full) ;; *) echo "--tier is fast or full" >&2; exit 2 ;; esac
 
+# Keep the Coverage grid's scenario-test checker honest before it generates the page. These
+# fixtures cover active, skipped, todo, comment-only and wrongly-keyed test files.
+python3 -m unittest discover -s "$repo_root/tools/benchmarks/tests" -p 'test_*.py'
+
 case "$command" in
     render) exec python3 "$tool" render $render_check ;;
     run|check|update) ;;

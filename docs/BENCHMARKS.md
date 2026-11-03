@@ -558,8 +558,8 @@ Flow artifacts in `src/lib/catalog/opm-flow-results/` (one per case in
 page that grades the scenario's physics; a scenario is mapped to one in `SCENARIO_SECTIONS`
 (`tools/benchmarks/benchmarks.py`). A refinement dimension is a sensitivity that varies grid or
 time step, which is where discretization error shows. The last column counts a scenario test only
-when the file names the scenario in executable code and declares at least one test; a correctly
-named file that exercises something else does not count.
+when the file names the scenario in executable code and declares at least one active test; a
+correctly named file that is skipped, a `.todo`, or exercises something else does not count.
 
 <!-- GENERATED:coverage -->
 | Scenario | Analytical | OPM Flow artifact | Engine benchmark | Refinement dimension | Second simulator | Own `<key>.test.ts` |
@@ -586,7 +586,7 @@ named file that exercises something else does not count.
 | `wf_gravity_stability` | buckley-leverett | yes | §5, §9 | resolution | JutulDarcy | yes |
 | `wf_numerics` | buckley-leverett | yes | — | grid_refinement, time_truncation | — | yes |
 
-**6 scenario(s) have no numerical reference** (neither a Flow artifact nor an engine benchmark), only an analytical one or none: `comp_spe3_gas_cycling`, `comp_spe5_wag`, `dep_arps`, `dep_decline`, `dep_pss`, `dep_welltest`. 9 scenario(s) are graded against a second independent simulator. 0 scenario(s) have no test of their own that names and exercises the scenario, only the catalog-wide contract tests: none.
+**6 scenario(s) have no numerical reference** (neither a Flow artifact nor an engine benchmark), only an analytical one or none: `comp_spe3_gas_cycling`, `comp_spe5_wag`, `dep_arps`, `dep_decline`, `dep_pss`, `dep_welltest`. 9 scenario(s) are graded against a second independent simulator. 0 scenario(s) have no active test of their own that names and exercises the scenario, only the catalog-wide contract tests: none.
 <!-- /GENERATED:coverage -->
 
 ## Not benchmarked

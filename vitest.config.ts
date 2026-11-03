@@ -7,7 +7,9 @@ export default defineConfig({
     // Agent worktrees under .claude/worktrees/ are full checkouts of this repo, so without
     // this the whole suite runs twice — doubling CPU load and timing out the heavier
     // scenario tests (observed: wf_tornado hitting the 30 s limit during `validate:product`).
-    exclude: [...configDefaults.exclude, '.claude/worktrees/**', 'tmp/**', 'tests/deployed/**'],
+    // The benchmark coverage checker's negative fixtures use `.test.ts` names deliberately;
+    // they are Python test data, not Vitest tests.
+    exclude: [...configDefaults.exclude, '.claude/worktrees/**', 'tmp/**', 'tools/benchmarks/tests/fixtures/**', 'tests/deployed/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'html'],
