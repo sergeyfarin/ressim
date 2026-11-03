@@ -14,6 +14,7 @@ function snapshot(options: {
   ids?: string[];
   surfaceRates?: CompositionalSnapshot['well_surface_rates'];
   surfaceVolumes?: CompositionalSnapshot['cumulative_well_surface_volumes'];
+  surfaceProduction?: CompositionalSnapshot['cumulative_well_surface_production_volumes'];
 }): CompositionalSnapshot {
   const ids = options.ids ?? ['CO2', 'C1', 'C10'];
   return {
@@ -29,6 +30,9 @@ function snapshot(options: {
     ...(options.surfaceVolumes === undefined
       ? {}
       : { cumulative_well_surface_volumes: options.surfaceVolumes }),
+    ...(options.surfaceProduction === undefined
+      ? {}
+      : { cumulative_well_surface_production_volumes: options.surfaceProduction }),
   };
 }
 
@@ -94,6 +98,10 @@ describe('buildCompositionalRunSeries', () => {
           { liquid_m3: 50, vapour_m3: 4 },
           { liquid_m3: -10, vapour_m3: -25 },
         ],
+        surfaceProduction: [
+          { liquid_m3: 0, vapour_m3: 0 },
+          { liquid_m3: 10, vapour_m3: 25 },
+        ],
       }),
       snapshot({
         time: 1,
@@ -101,9 +109,15 @@ describe('buildCompositionalRunSeries', () => {
           { liquid_m3_per_day: 0, vapour_m3_per_day: 0, water_m3_per_day: 300 }, // water injection
           { liquid_m3_per_day: -80, vapour_m3_per_day: -200, water_m3_per_day: -20 },
         ],
+        // The same producer has now also injected 4 m³ of liquid and 5 m³ of vapour, so its
+        // signed net is smaller than what it produced. The gross production total must not move.
         surfaceVolumes: [
           { liquid_m3: 50, vapour_m3: 4, water_m3: 30 },
-          { liquid_m3: -18, vapour_m3: -45, water_m3: -5 },
+          { liquid_m3: -6, vapour_m3: -20, water_m3: -5 },
+        ],
+        surfaceProduction: [
+          { liquid_m3: 0, vapour_m3: 0, water_m3: 0 },
+          { liquid_m3: 10, vapour_m3: 25, water_m3: 5 },
         ],
       }),
     ]);
@@ -112,8 +126,8 @@ describe('buildCompositionalRunSeries', () => {
     expect(series.separatorGasLiquidRatio).toEqual([2.5, 2.5]);
     expect(series.surfaceWaterCut[0]).toBeNull();
     expect(series.surfaceWaterCut[1]).toBeCloseTo(20 / 100, 12);
-    expect(series.cumulativeSurfaceLiquid).toEqual([10, 18]);
-    expect(series.cumulativeSurfaceVapour).toEqual([25, 45]);
+    expect(series.cumulativeSurfaceLiquid).toEqual([10, 10]);
+    expect(series.cumulativeSurfaceVapour).toEqual([25, 25]);
     expect(series.cumulativeSurfaceWater).toEqual([null, 5]);
   });
 
@@ -126,6 +140,20 @@ describe('buildCompositionalRunSeries', () => {
     expect(series.cumulativeSurfaceLiquid).toEqual([null]);
     expect(series.cumulativeSurfaceVapour).toEqual([null]);
     expect(series.cumulativeSurfaceWater).toEqual([null]);
+  });
+
+  it('never reconstructs production by clipping the signed net balance', () => {
+    const series = buildCompositionalRunSeries([
+      snapshot({
+        time: 0,
+        surfaceVolumes: [{ liquid_m3: -10, vapour_m3: -20 }],
+      }),
+    ]);
+    // There is a net production balance, but no gross production integral to read. An older
+    // snapshot must read as unreported rather than as a cumulative that a later injection can
+    // shrink.
+    expect(series.cumulativeSurfaceLiquid).toEqual([null]);
+    expect(series.cumulativeSurfaceVapour).toEqual([null]);
   });
 
   it('reports a conservation residual near zero for a run that conserves', () => {

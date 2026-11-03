@@ -68,7 +68,9 @@ fixture carries water. `sw` is extra in the record, not compared. This mode need
 
 Each report also carries `average_pressure_bar` and, when the fluid pins surface conditions, a
 `surface` block with the **produced** separator liquid, vapour and water rates, their cumulative
-volumes, the separator gas/liquid ratio and the surface water cut. These are the engine's own
+volumes, the separator gas/liquid ratio and the surface water cut. The cumulative values are gross
+production integrals; they are not clipped net well balances, so a well that later injects does
+not reduce production it already made. These are the engine's own
 `surface_separation` products, not black-oil `Bo`/`Bg`/`Rs` quantities; the ratio is deliberately
 not called GOR. The comparator maps the final cumulative liquid/vapour volumes to the fixture's
 `FOPT`/`FGPT`. A fluid that pins no surface conditions omits the block, and the comparator reports

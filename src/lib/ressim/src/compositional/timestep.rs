@@ -143,6 +143,10 @@ pub struct CompositionalRun {
     /// Cumulative surface volumes per well over accepted steps [m³], signed like the rates.
     /// `None` under the same condition as [`Self::well_surface_rates`].
     cumulative_well_surface_volumes: Option<Vec<WellSurfaceVolumes>>,
+    /// Gross surface production per well over accepted steps [m³], never reduced by later
+    /// injection. This is the integral the charts and records need; the signed net total above is
+    /// a separate observable.
+    cumulative_well_surface_production_volumes: Option<Vec<WellSurfaceVolumes>>,
     /// Flowing BHP per well at the last accepted state. Empty until a step with wells is accepted.
     ///
     /// Carried for reporting and restart evidence, not as a Newton initial guess: the solve starts
@@ -162,6 +166,7 @@ impl CompositionalRun {
             cumulative_well_moles: Vec::new(),
             well_surface_rates: None,
             cumulative_well_surface_volumes: None,
+            cumulative_well_surface_production_volumes: None,
             well_bhp_bar: Vec::new(),
         }
     }
@@ -206,6 +211,12 @@ impl CompositionalRun {
         self.cumulative_well_surface_volumes.as_deref()
     }
 
+    /// Gross surface production per well over accepted steps [m³], when the fluid pins surface
+    /// conditions. Never reduced by later injection.
+    pub fn cumulative_well_surface_production_volumes(&self) -> Option<&[WellSurfaceVolumes]> {
+        self.cumulative_well_surface_production_volumes.as_deref()
+    }
+
     /// Seed the surface ledger at t = 0, before the first accepted step.
     ///
     /// A fresh case knows its wells and whether it has water, so its initial surface totals are
@@ -224,6 +235,8 @@ impl CompositionalRun {
         let has_water = relperm.water().is_some();
         self.well_surface_rates = Some(vec![WellSurfaceRates::zero(has_water); well_count]);
         self.cumulative_well_surface_volumes =
+            Some(vec![WellSurfaceVolumes::zero(has_water); well_count]);
+        self.cumulative_well_surface_production_volumes =
             Some(vec![WellSurfaceVolumes::zero(has_water); well_count]);
     }
 
@@ -391,11 +404,34 @@ impl CompositionalRun {
                                     );
                                 }
                             }
+                            match self.cumulative_well_surface_production_volumes.as_mut() {
+                                Some(production) => {
+                                    if production.len() < rates.len() {
+                                        production.resize(
+                                            rates.len(),
+                                            WellSurfaceVolumes::zero(has_water),
+                                        );
+                                    }
+                                    for (total, rate) in production.iter_mut().zip(&rates) {
+                                        total.add_production(rate, dt);
+                                    }
+                                }
+                                None => {
+                                    let mut production =
+                                        vec![WellSurfaceVolumes::zero(has_water); rates.len()];
+                                    for (total, rate) in production.iter_mut().zip(&rates) {
+                                        total.add_production(rate, dt);
+                                    }
+                                    self.cumulative_well_surface_production_volumes =
+                                        Some(production);
+                                }
+                            }
                             self.well_surface_rates = Some(rates);
                         }
                         Err(_) => {
                             self.well_surface_rates = None;
                             self.cumulative_well_surface_volumes = None;
+                            self.cumulative_well_surface_production_volumes = None;
                         }
                     }
                     // Keyed on the state version, so the old entries are already unreachable;

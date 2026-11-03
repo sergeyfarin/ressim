@@ -295,6 +295,9 @@ rates: oil-rate-sim
 recovery: recovery-factor-gas,recovery-factor-primary
 ── comp_co2_1d
 comp_conservation: comp-conservation-residual-sim
+comp_cumulative_surface_liquid: comp-cumulative-surface-liquid-sim
+comp_cumulative_surface_vapour: comp-cumulative-surface-vapour-sim
+comp_cumulative_surface_water: comp-cumulative-surface-water-sim
 comp_inventory_C10: comp-inventory-C10-sim
 comp_inventory_C1: comp-inventory-C1-sim
 comp_inventory_CO2: comp-inventory-CO2-sim
@@ -303,8 +306,8 @@ comp_net_injected_C1: comp-net-well-moles-C1-sim
 comp_net_injected_CO2: comp-net-well-moles-CO2-sim
 comp_pressure: comp-average-pressure-sim
 comp_separator_glr: comp-separator-gas-liquid-ratio-sim
-comp_surface_cumulative: comp-cumulative-surface-liquid-sim,comp-cumulative-surface-vapour-sim,comp-cumulative-surface-water-sim
-comp_surface_rates: comp-surface-liquid-rate-sim,comp-surface-vapour-rate-sim
+comp_surface_liquid_rate: comp-surface-liquid-rate-sim
+comp_surface_vapour_rate: comp-surface-vapour-rate-sim
 comp_surface_water_cut: comp-surface-water-cut-sim
 comp_two_phase: comp-two-phase-cell-fraction-sim
 comp_vapour_saturation: comp-average-vapour-saturation-sim"

@@ -32,10 +32,13 @@ export const COMPOSITIONAL_PANEL_PLACEMENT: Readonly<Record<string, Compositiona
     'component-inventory': { kind: 'group', group: 'comp_inventory' },
     'component-well-moles': { kind: 'group', group: 'comp_net_injected' },
     diagnostic: { kind: 'panel', panel: 'comp_conservation' },
-    'surface-rate': { kind: 'panel', panel: 'comp_surface_rates' },
+    'surface-liquid-rate': { kind: 'panel', panel: 'comp_surface_liquid_rate' },
+    'surface-vapour-rate': { kind: 'panel', panel: 'comp_surface_vapour_rate' },
     'separator-gas-liquid-ratio': { kind: 'panel', panel: 'comp_separator_glr' },
     'surface-water-cut': { kind: 'panel', panel: 'comp_surface_water_cut' },
-    'surface-cumulative': { kind: 'panel', panel: 'comp_surface_cumulative' },
+    'surface-liquid-cumulative': { kind: 'panel', panel: 'comp_cumulative_surface_liquid' },
+    'surface-vapour-cumulative': { kind: 'panel', panel: 'comp_cumulative_surface_vapour' },
+    'surface-water-cumulative': { kind: 'panel', panel: 'comp_cumulative_surface_water' },
 };
 
 /** The x axes a compositional run can be drawn against: its report times. */

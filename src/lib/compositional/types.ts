@@ -272,7 +272,12 @@ export interface CompositionalWellSurfaceRates {
   water_m3_per_day?: number;
 }
 
-/** One well's cumulative surface volume over accepted steps [m³], signed like the rates. */
+/**
+ * One well's cumulative surface volume over accepted steps [m³].
+ *
+ * The net field is signed like the rates; the production field carries nonnegative gross
+ * production, so it is never reduced by a later injection through the same well.
+ */
 export interface CompositionalWellSurfaceVolumes {
   liquid_m3: number;
   vapour_m3: number;
@@ -310,6 +315,12 @@ export interface CompositionalSnapshot {
   well_surface_rates?: CompositionalWellSurfaceRates[];
   /** Per well, cumulative surface volume over accepted steps [m³], signed like the rates. */
   cumulative_well_surface_volumes?: CompositionalWellSurfaceVolumes[];
+  /**
+   * Per well, **gross production** of each separator phase over accepted steps [m³], never
+   * reduced by later injection. A well that produces 10 m³ and later injects 4 m³ reports 10
+   * here and −6 in `cumulative_well_surface_volumes`.
+   */
+  cumulative_well_surface_production_volumes?: CompositionalWellSurfaceVolumes[];
   /**
    * Per well, the BHP the accepted solve ran at [bar], or zero while the well is shut in (and for
    * a well just reopened by an event, until its first accepted step). Absent before the first

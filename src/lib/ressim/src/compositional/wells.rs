@@ -177,7 +177,7 @@ impl WellSurfaceVolumes {
         }
     }
 
-    /// Accumulate one accepted step.
+    /// Accumulate one accepted step of the signed net stream.
     pub fn add(&mut self, rate: &WellSurfaceRates, dt_days: f64) {
         self.liquid_m3 += rate.liquid_m3_per_day * dt_days;
         self.vapour_m3 += rate.vapour_m3_per_day * dt_days;
@@ -186,6 +186,21 @@ impl WellSurfaceVolumes {
             (None, None) => None,
             // A case's water phase does not appear or disappear mid-run, so a mismatch is a
             // caller error rather than a value to paper over.
+            _ => None,
+        };
+    }
+
+    /// Accumulate one accepted step of **gross production**, never reduced by injection.
+    ///
+    /// A well can reverse direction (a WAG well, or a schedule event), so the signed net total
+    /// cannot be clipped back into a production total: producing 10 m³ and later injecting 4 m³
+    /// must still report 10 m³ produced.
+    pub fn add_production(&mut self, rate: &WellSurfaceRates, dt_days: f64) {
+        self.liquid_m3 += (-rate.liquid_m3_per_day).max(0.0) * dt_days;
+        self.vapour_m3 += (-rate.vapour_m3_per_day).max(0.0) * dt_days;
+        self.water_m3 = match (self.water_m3, rate.water_m3_per_day) {
+            (Some(total), Some(value)) => Some(total + (-value).max(0.0) * dt_days),
+            (None, None) => None,
             _ => None,
         };
     }

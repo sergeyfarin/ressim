@@ -360,19 +360,15 @@ def comp_manifest(comp_dir: Path) -> dict[str, Path]:
 def comp_record_cumulatives(run: dict) -> dict[str, float]:
     """The run record's final produced surface volumes, under the fixture's summary names.
 
-    The record carries only production, so an injection stream never appears here. A record with
-    no `surface` block reports nothing: it is not read as zero, and `compare_comp_case` refuses it
-    when the fixture has a production cumulative to compare.
+    The record carries only production, so an injection stream never appears here. Only the final
+    report is read: an earlier block is not a substitute for a final one, because that would hide
+    reporting lost at the end of the run. A missing field is unreported, not zero.
     """
-    surface = next(
-        (
-            report.get("surface")
-            for report in reversed(run["reports"])
-            if isinstance(report.get("surface"), dict)
-        ),
-        None,
-    )
-    if surface is None:
+    reports = run.get("reports", [])
+    if not reports:
+        return {}
+    surface = reports[-1].get("surface")
+    if not isinstance(surface, dict):
         return {}
     mapping = {"FOPT": "cumulative_liquid_m3", "FGPT": "cumulative_vapour_m3"}
     cumulatives = {}

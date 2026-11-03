@@ -13,6 +13,7 @@ try:
     from compare_small_direct import (
         case_family,
         compare_comp_case,
+        comp_record_cumulatives,
         coverage_error,
         merge_scorecard,
         scorecard_metrics,
@@ -20,6 +21,7 @@ try:
 except ModuleNotFoundError:
     case_family = None
     compare_comp_case = None
+    comp_record_cumulatives = None
     coverage_error = None
     merge_scorecard = None
     scorecard_metrics = None
@@ -143,6 +145,30 @@ class CompositionalRecordTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(SystemExit, r"not finite"):
             self.compare()
+
+
+@unittest.skipIf(comp_record_cumulatives is None, "requires Flow's numpy environment")
+class CumulativeReportTests(unittest.TestCase):
+    def test_only_the_final_report_is_read(self):
+        run = {
+            "reports": [
+                {"surface": {"cumulative_liquid_m3": 9.0, "cumulative_vapour_m3": 99.0}},
+                {"p": [100.0]},
+            ]
+        }
+        self.assertEqual(comp_record_cumulatives(run), {})
+
+    def test_final_report_carries_the_cumulatives(self):
+        run = {
+            "reports": [
+                {"surface": {"cumulative_liquid_m3": 9.0, "cumulative_vapour_m3": 99.0}},
+                {"surface": {"cumulative_liquid_m3": 10.0, "cumulative_vapour_m3": 100.0}},
+            ]
+        }
+        self.assertEqual(
+            comp_record_cumulatives(run),
+            {"FOPT": 10.0, "FGPT": 100.0},
+        )
 
 
 @unittest.skipIf(merge_scorecard is None, "requires Flow's numpy environment")

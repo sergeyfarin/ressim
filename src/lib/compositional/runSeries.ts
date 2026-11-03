@@ -181,6 +181,10 @@ function produced(value: number | undefined): number {
   return Number.isFinite(value) ? Math.max(0, -(value as number)) : 0;
 }
 
+function nonnegative(value: number | undefined): number {
+  return Number.isFinite(value) ? Math.max(0, value as number) : 0;
+}
+
 /**
  * Sum the **producing** side of each well's surface ledger.
  *
@@ -208,18 +212,20 @@ function producedSurface(snapshot: CompositionalSnapshot): ProducedSurface | nul
 }
 
 function producedSurfaceCumulative(snapshot: CompositionalSnapshot): ProducedSurface | null {
-  const wells = snapshot.cumulative_well_surface_volumes;
+  // Gross production, not the signed net balance. A well can reverse direction, so clipping the
+  // net would let a later injection reduce a cumulative that already happened.
+  const wells = snapshot.cumulative_well_surface_production_volumes;
   if (wells === undefined) return null;
   let liquid = 0;
   let vapour = 0;
   let water = 0;
   let hasWater = false;
   for (const well of wells) {
-    liquid += produced(well.liquid_m3);
-    vapour += produced(well.vapour_m3);
+    liquid += nonnegative(well.liquid_m3);
+    vapour += nonnegative(well.vapour_m3);
     if (well.water_m3 !== undefined) {
       hasWater = true;
-      water += produced(well.water_m3);
+      water += nonnegative(well.water_m3);
     }
   }
   return { liquid, vapour, water: hasWater ? water : null };

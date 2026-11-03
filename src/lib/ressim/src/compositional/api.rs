@@ -1358,6 +1358,10 @@ impl CompositionalCase {
                 .run
                 .cumulative_well_surface_volumes()
                 .map(|volumes| volumes.to_vec()),
+            cumulative_well_surface_production_volumes: self
+                .run
+                .cumulative_well_surface_production_volumes()
+                .map(|volumes| volumes.to_vec()),
             well_bhp_bar: self.run.well_bhp_bar().to_vec(),
             water,
         }
@@ -1663,6 +1667,13 @@ pub struct Snapshot {
     /// Absent under the same condition as [`Self::well_surface_rates`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cumulative_well_surface_volumes: Option<Vec<WellSurfaceVolumes>>,
+    /// Per well, **gross production** of each separator phase over accepted steps [m³], never
+    /// reduced by later injection. A well that produces 10 m³ and later injects 4 m³ reports 10
+    /// here and −6 in [`Self::cumulative_well_surface_volumes`].
+    ///
+    /// Absent under the same condition as [`Self::well_surface_rates`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cumulative_well_surface_production_volumes: Option<Vec<WellSurfaceVolumes>>,
     /// Per well, the BHP the accepted solve ran at [bar], or zero while the well is shut in (and
     /// for a well just reopened by an event, until its first accepted step). Empty before the
     /// first accepted step and in snapshots from before C14's reporting.

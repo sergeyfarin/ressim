@@ -479,6 +479,7 @@ use super::wells::{
 struct SurfaceObservation {
     rates: Option<Vec<WellSurfaceRates>>,
     cumulative: Option<Vec<WellSurfaceVolumes>>,
+    production: Option<Vec<WellSurfaceVolumes>>,
 }
 
 impl SurfaceObservation {
@@ -487,6 +488,9 @@ impl SurfaceObservation {
             rates: run.well_surface_rates().map(|rates| rates.to_vec()),
             cumulative: run
                 .cumulative_well_surface_volumes()
+                .map(|volumes| volumes.to_vec()),
+            production: run
+                .cumulative_well_surface_production_volumes()
                 .map(|volumes| volumes.to_vec()),
         }
     }
@@ -3891,10 +3895,11 @@ struct ProducedSurface {
 impl ProducedSurface {
     fn from_observation(observation: &SurfaceObservation) -> Option<Self> {
         let rates = observation.rates.as_ref()?;
-        let cumulative = observation.cumulative.as_ref()?;
+        let production = observation.production.as_ref()?;
         let produced = |value: f64| (-value).max(0.0);
+        let nonnegative = |value: f64| value.max(0.0);
         let water_present = rates.iter().any(|rate| rate.water_m3_per_day.is_some())
-            || cumulative.iter().any(|volume| volume.water_m3.is_some());
+            || production.iter().any(|volume| volume.water_m3.is_some());
         Some(Self {
             liquid_rate_m3_per_day: rates
                 .iter()
@@ -3910,18 +3915,20 @@ impl ProducedSurface {
                     .map(|rate| produced(rate.water_m3_per_day.unwrap_or(0.0)))
                     .sum()
             }),
-            cumulative_liquid_m3: cumulative
+            // Gross production, not the signed net balance: a well that reverses direction must
+            // not lose production it already made.
+            cumulative_liquid_m3: production
                 .iter()
-                .map(|volume| produced(volume.liquid_m3))
+                .map(|volume| nonnegative(volume.liquid_m3))
                 .sum(),
-            cumulative_vapour_m3: cumulative
+            cumulative_vapour_m3: production
                 .iter()
-                .map(|volume| produced(volume.vapour_m3))
+                .map(|volume| nonnegative(volume.vapour_m3))
                 .sum(),
             cumulative_water_m3: water_present.then(|| {
-                cumulative
+                production
                     .iter()
-                    .map(|volume| produced(volume.water_m3.unwrap_or(0.0)))
+                    .map(|volume| nonnegative(volume.water_m3.unwrap_or(0.0)))
                     .sum()
             }),
         })
@@ -3994,6 +4001,7 @@ fn comp_report_from_snapshot(snapshot: &super::api::Snapshot) -> CompRunReport {
         surface: SurfaceObservation {
             rates: snapshot.well_surface_rates.clone(),
             cumulative: snapshot.cumulative_well_surface_volumes.clone(),
+            production: snapshot.cumulative_well_surface_production_volumes.clone(),
         },
     }
 }
