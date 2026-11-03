@@ -931,7 +931,7 @@ def skipped_suite_regions(code: str) -> list[tuple[int, int]]:
 
 def has_active_test(code: str) -> bool:
     """Whether `code` declares at least one `it`/`test` that Vitest will execute."""
-    structural = mask_literals(COMMENTS.sub("", code))
+    structural = mask_literals(code)
     skipped = skipped_suite_regions(structural)
     for match in TEST_DECLARATION.finditer(structural):
         if data_driven(match.group("callee")):
@@ -949,9 +949,10 @@ def scenario_test(path: Path, key: str) -> str | None:
     test_path = SCENARIOS / f"{path.stem}.test.ts"
     if not test_path.exists():
         return None
-    code = COMMENTS.sub("", test_path.read_text())
-    if not has_active_test(code):
+    raw = test_path.read_text()
+    if not has_active_test(raw):
         return None
+    code = COMMENTS.sub("", raw)
     if not re.search(rf"['\"]{re.escape(key)}['\"]", code):
         return None
     return test_path.name
