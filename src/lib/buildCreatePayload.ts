@@ -423,6 +423,8 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     scalTables: cloneScalTables(state.scalTables),
     gasRedissolutionEnabled: state.gasRedissolutionEnabled !== false,
     initialRs: typeof state.initialRs === 'number' ? state.initialRs : undefined,
-    terminationPolicy: cloneTerminationPolicy(state.terminationPolicy),
+    ...(state.terminationPolicy
+      ? { terminationPolicy: cloneTerminationPolicy(state.terminationPolicy) }
+      : {}),
   }
 }
