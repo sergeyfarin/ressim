@@ -98,8 +98,8 @@ impl Default for TimestepOptions {
     fn default() -> Self {
         Self {
             cut_factor: 0.5,
-            // Ten attempts (nine halvings) is what the SPE5 late-life report needs to reach its
-            // feasible 0.238 d step. The ladder stays bounded; this does not relax acceptance.
+            // The SPE5 late-life report needs eight attempts to reach its feasible 0.238 d step;
+            // ten leaves a bounded margin. This does not relax acceptance.
             max_attempts: 10,
             min_dt_days: 1e-6,
             newton: NewtonOptions::default(),

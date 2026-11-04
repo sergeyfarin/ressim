@@ -116,24 +116,29 @@ visible rather than relabelling it.
 
 ### Month-215 flash trial (#112): fixed
 
-The from-scratch replay used to fail at **6528.84375 d** when the VapourLike stability trial at
-cell 32 approached the trivial solution: `K → 1`, the trial sum settled at `1 − 2e-9`, and
-`sum (R_i − 1)^2` wandered just above the `1e-15` fixed-point tolerance. It ran to the
-100,000-iteration cap and returned `TrialNotConverged`, so the flash failed even though the trial
-sum had long since decided the state was stable.
+The from-scratch replay used to fail at **6528.84375 d** in the VapourLike stability trial at cell
+32. That trial was sliding slowly toward the trivial solution rather than sitting at a fixed point:
+`k_norm` fell from `1.6e-2` to `5.5e-3`, the trial sum drifted from `1 − 2.18e-9` to `1 − 2.01e-9`
+while the stopped flag was true, and `sum (R_i − 1)^2` hovered between about `5e-14` and `2.2e-13`
+without reaching the `1e-15` fixed-point tolerance. It hit the 100,000-iteration cap and returned
+`TrialNotConverged`, even though the sum had long since decided the state was stable.
 
-A **practical residual floor** now ends that path when the trial sum has stopped moving and sits
-more than `TRIAL_SUM_TOLERANCE` from one. The verdict is the trial sum; a stable branch needs no
-flash seed, and an unstable one only needs `K` as a starting estimate. A trial whose sum is still
-inside the decision margin keeps iterating as before. The default retry budget is also 10 attempts
-rather than 6, because the same report needed an eighth attempt to reach its feasible 0.238 d step;
-this is a bounded ladder, not an acceptance relaxation.
+A **stable-side residual floor** now ends that path: once the sum has stopped more than
+`TRIAL_SUM_TOLERANCE` below one, a squared residual below `1e-12` is enough for the verdict. Such a
+trial needs no flash seed. Unstable-side trials keep the `1e-15` fixed-point tolerance because
+their `K` seeds the flash, and any trial still inside the decision margin keeps iterating unchanged.
+For the cell-32 feed the floor fires at iteration 15,511 with residual `9.999e-13`.
+
+The default retry budget is also 10 attempts rather than 6: the same report needs an eighth attempt
+to reach its feasible `0.238 d` step, and ten leaves a bounded margin. This is a ladder increase,
+not an acceptance relaxation. The underlying inefficiency is that every `step()` call starts again
+from the requested `dt`; remembering the last accepted timestep is a worthwhile follow-up.
 
 The regression is `comp_stability_finishes_a_near_trivial_stable_trial` (the cell-32 feed returns
 `Stable` instead of hitting the cap). The ignored native replay
-`comp_spe5_from_scratch_clears_the_month_215_flash_stall` reaches month 217 in **462.8 s** on the
-current tree, proving the 215 region is behind it. The next stall is in month 218 and remains
-open under [#112](https://github.com/sergeyfarin/ressim/issues/112).
+`comp_spe5_from_scratch_clears_the_month_215_flash_stall` reaches month 217, proving the 215 region
+is behind it. The next stall is in month 218 and remains open under
+[#112](https://github.com/sergeyfarin/ressim/issues/112).
 
 ### Late-life stall (#93): fixed
 
