@@ -376,6 +376,7 @@ class RuntimeStoreImpl {
                     steps: nextSpec.steps,
                     dtDays: nextSpec.deltaTDays,
                     snapshotEvery: nextSpec.historyInterval,
+                    terminationPolicy: nextSpec.terminationPolicy ?? undefined,
                 },
             });
             return true;
@@ -783,7 +784,14 @@ class RuntimeStoreImpl {
             config: $state.snapshot(config) as typeof config,
             // Detached from the reactive state, which the next case's create resets.
             snapshots: $state.snapshot(this.compositional.snapshots) as typeof this.compositional.snapshots,
-            stop: { reason: message.reason === 'failed' ? 'failed' : 'completed', message: message.message },
+            stop: {
+                reason: message.reason === 'failed' ? 'failed' : 'completed',
+                message: message.message,
+                completedSteps: message.completedSteps,
+                ...(message.terminationSummary
+                    ? { terminationSummary: message.terminationSummary }
+                    : {}),
+            },
         });
         // The 3D view and the spatial profile read the black-oil per-cell vocabulary; the record's
         // own snapshots stay the source for everything compositional. Per-snapshot wells carry the
@@ -793,8 +801,9 @@ class RuntimeStoreImpl {
         );
         this.currentIndex = this.history.length - 1;
         this.simTime = record.snapshots.at(-1)?.time_days ?? 0;
-        if (message.reason === 'failed') {
-            // The partial run is kept: where it got to is the useful part of a failure.
+        if (message.reason === 'failed' || message.terminationSummary) {
+            // The partial run is kept: where it got to is the useful part of a failure or an
+            // early stop, and a queued set needs one line per case rather than only the last.
             this.compositionalStopMessages = [
                 ...this.compositionalStopMessages,
                 `${spec.label}: ${message.message}`,
@@ -837,8 +846,20 @@ class RuntimeStoreImpl {
         });
     }
 
-    /** Advance a compositional case. `snapshotEvery` throttles how often a state is posted. */
-    runCompositional(options: { steps: number; dtDays: number; snapshotEvery?: number }): void {
+    /**
+     * Advance a compositional case. `snapshotEvery` throttles how often a state is posted.
+     *
+     * `terminationPolicy` is optional and belongs to the **caller** (the run queue passes the
+     * scenario's policy): without it the batch runs to `steps`. A restored case evaluates it the
+     * same way because it travels with the run request, not with the case.
+     */
+    runCompositional(options: {
+        steps: number;
+        dtDays: number;
+        snapshotEvery?: number;
+        /** Carried with the run, so a restored case still evaluates its scenario policy. */
+        terminationPolicy?: RunSpec['terminationPolicy'];
+    }): void {
         this.compositional.markRunning();
         this.#post({ type: 'compositionalRun', payload: options });
     }

@@ -127,6 +127,25 @@ describe('comp_spe5_wag', () => {
         expect(Number(comp_spe5_wag.params.delta_t_days) * 240).toBeCloseTo(20 * 365.25, 4);
     });
 
+    it('enforces the paper GOR 10 Mscf/STB and WOR 5 shut-in criteria', () => {
+        expect(comp_spe5_wag.terminationPolicy).toEqual({
+            mode: 'any',
+            conditions: [
+                {
+                    kind: 'gor-threshold',
+                    relation: 'gte',
+                    value: (10 * 1000 * 0.028316846592) / 0.158987294928,
+                    scope: 'producer',
+                },
+                {
+                    kind: 'watercut-threshold',
+                    value: 5 / 6,
+                    scope: 'producer',
+                },
+            ],
+        });
+    });
+
     it('declares no analytical overlay and cites the case and its validation', () => {
         expect(comp_spe5_wag.capabilities.analyticalMethod).toBe('none');
         expect(comp_spe5_wag.analyticalDef).toBeUndefined();

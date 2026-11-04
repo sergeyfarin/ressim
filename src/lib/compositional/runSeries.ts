@@ -16,6 +16,7 @@
  */
 
 import type { CompositionalSnapshot } from './types';
+import { producedSurfaceCumulative, producedSurfaceRates } from './surfaceLedger';
 
 /** One run's worth of compositional series, in report-step order. */
 export interface CompositionalRunSeries {
@@ -128,15 +129,15 @@ export function buildCompositionalRunSeries(
     componentNetWellMoles: Array.from({ length: n }, (_, i) =>
       usable.map((s) => netWellMoles(s, i)),
     ),
-    surfaceLiquidRate: usable.map((s) => producedSurface(s)?.liquid ?? null),
-    surfaceVapourRate: usable.map((s) => producedSurface(s)?.vapour ?? null),
+    surfaceLiquidRate: usable.map((s) => producedSurfaceRates(s)?.liquid ?? null),
+    surfaceVapourRate: usable.map((s) => producedSurfaceRates(s)?.vapour ?? null),
     separatorGasLiquidRatio: usable.map((s) => {
-      const produced = producedSurface(s);
+      const produced = producedSurfaceRates(s);
       if (!produced || !(produced.liquid > 0)) return null;
       return produced.vapour / produced.liquid;
     }),
     surfaceWaterCut: usable.map((s) => {
-      const produced = producedSurface(s);
+      const produced = producedSurfaceRates(s);
       if (!produced || produced.water === null) return null;
       const total = produced.liquid + produced.water;
       return total > 0 ? produced.water / total : null;
@@ -168,67 +169,6 @@ export function buildCompositionalRunSeries(
   });
 
   return series;
-}
-
-type ProducedSurface = {
-  liquid: number;
-  vapour: number;
-  /** `null` when the case has no water phase. */
-  water: number | null;
-};
-
-function produced(value: number | undefined): number {
-  return Number.isFinite(value) ? Math.max(0, -(value as number)) : 0;
-}
-
-function nonnegative(value: number | undefined): number {
-  return Number.isFinite(value) ? Math.max(0, value as number) : 0;
-}
-
-/**
- * Sum the **producing** side of each well's surface ledger.
- *
- * Per-well rates are signed, so summing them directly would let a gas injector cancel a gas
- * producer. The charted quantities are production, so each well contributes only its negative
- * side, made positive. A snapshot without the field returns `null` rather than a zero that would
- * claim the run produced nothing.
- */
-function producedSurface(snapshot: CompositionalSnapshot): ProducedSurface | null {
-  const wells = snapshot.well_surface_rates;
-  if (wells === undefined) return null;
-  let liquid = 0;
-  let vapour = 0;
-  let water = 0;
-  let hasWater = false;
-  for (const well of wells) {
-    liquid += produced(well.liquid_m3_per_day);
-    vapour += produced(well.vapour_m3_per_day);
-    if (well.water_m3_per_day !== undefined) {
-      hasWater = true;
-      water += produced(well.water_m3_per_day);
-    }
-  }
-  return { liquid, vapour, water: hasWater ? water : null };
-}
-
-function producedSurfaceCumulative(snapshot: CompositionalSnapshot): ProducedSurface | null {
-  // Gross production, not the signed net balance. A well can reverse direction, so clipping the
-  // net would let a later injection reduce a cumulative that already happened.
-  const wells = snapshot.cumulative_well_surface_production_volumes;
-  if (wells === undefined) return null;
-  let liquid = 0;
-  let vapour = 0;
-  let water = 0;
-  let hasWater = false;
-  for (const well of wells) {
-    liquid += nonnegative(well.liquid_m3);
-    vapour += nonnegative(well.vapour_m3);
-    if (well.water_m3 !== undefined) {
-      hasWater = true;
-      water += nonnegative(well.water_m3);
-    }
-  }
-  return { liquid, vapour, water: hasWater ? water : null };
 }
 
 function netWellMoles(snapshot: CompositionalSnapshot, component: number): number | null {

@@ -9,11 +9,11 @@ import {
 import { isCompositionalCreate } from '../compositional/createPayload';
 import {
   CompositionalSession,
-  describeCompositionalStop,
+  compositionalStopMessage,
   type CompositionalEngine,
   type CompositionalEngineFactory,
 } from './compositionalSession';
-import { evaluateTerminationPolicy } from './terminationPolicy';
+import { cloneTerminationPolicy, evaluateTerminationPolicy } from './terminationPolicy';
 import { configureReservoirSimulator } from './configureSimulator';
 
 let wasmReady = false;
@@ -28,9 +28,10 @@ let activeCreatePayload: SimulatorCreatePayload | null = null;
  * The compositional run, when there is one.
  *
  * Deliberately a separate handle from `simulator`, not a union: the black-oil `run` loop owns rate
- * history, the termination policy and `loadState`, none of which mean the same thing for a
- * compositional case, and C13's exit criterion is that black-oil scenarios are unchanged. The two
- * never both exist — `create` disposes whichever was there.
+ * history and `loadState`, which do not mean the same thing for a compositional case, and C13's
+ * exit criterion is that black-oil scenarios are unchanged. Termination policy is the shared
+ * exception, evaluated by the session through `terminationPolicy.ts`. The two runs never both
+ * exist — `create` disposes whichever was there.
  */
 let compositional: CompositionalSession | null = null;
 /** True while a compositional batch is stepping, so `stop` knows which run to ask. */
@@ -220,7 +221,7 @@ self.onmessage = async (event) => {
       if (!compositional) {
         throw new Error('No compositional case has been created');
       }
-      const { steps = 1, dtDays = 1, snapshotEvery } = payload ?? {};
+      const { steps = 1, dtDays = 1, snapshotEvery, terminationPolicy } = payload ?? {};
       const batchStart = performance.now();
       let snapshotsSent = 0;
       // Yield on a time budget rather than every report step: a zero-delay timeout costs a few
@@ -234,7 +235,12 @@ self.onmessage = async (event) => {
       compositionalRunning = true;
       let stop;
       try {
-        stop = await compositional.run({ steps, dtDays, snapshotEvery }, (data, stepIndex) => {
+        stop = await compositional.run({
+          steps,
+          dtDays,
+          snapshotEvery,
+          terminationPolicy: cloneTerminationPolicy(terminationPolicy),
+        }, (data, stepIndex) => {
           snapshotsSent += 1;
           post('compositionalState', { data, stepIndex });
         }, yieldControl);
@@ -242,10 +248,7 @@ self.onmessage = async (event) => {
         compositionalRunning = false;
       }
       post('compositionalStopped', {
-        reason: stop.reason,
-        completedSteps: stop.completedSteps,
-        message: describeCompositionalStop(stop),
-        failure: stop.reason === 'failed' ? stop.failure : undefined,
+        ...compositionalStopMessage(stop),
         profile: buildRunProfile(batchStart, 0, stop.completedSteps, snapshotsSent),
       });
       return;

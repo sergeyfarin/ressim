@@ -66,14 +66,47 @@ The deliberate differences from the OPM deck implementation are:
 - **The producer is oil-rate controlled, not liquid-rate.** `SurfacePhase::Liquid` in the
   compositional engine is the stock-tank hydrocarbon liquid, which is the deck’s `ORAT`.
 
-### Recorded deviation: shut-in criteria
+### Shut-in criteria: declared and evaluated (#98)
 
-The paper specifies stopping at **GOR 10 Mscf/STB** or **WOR 5 STB/STB**. The payload always
-requests the full 240 reports. The run now reports per-well separator rates and cumulative surface
-volumes, and the run series derives produced liquid/vapour rates, separator gas/liquid ratio and
-surface water cut (#95). The run loop still does not evaluate termination policies (#98), so
-neither criterion is enforced yet. This must be fixed before a published-trajectory comparison or
-an explicit stopping rule is claimed.
+The paper specifies stopping at **GOR 10 Mscf/STB** or **WOR 5 STB/STB**. The scenario declares both
+in `terminationPolicy`:
+
+- `gor-threshold` with `relation: 'gte'` at **1781.0760667903526 m³/m³**, the conversion of
+  10 Mscf/STB through `1000 × 0.028316846592 / 0.158987294928`;
+- `watercut-threshold` at **5/6**, because WOR 5 STB/STB is the same surface condition as water cut
+  `5 / (5 + 1)`.
+
+The compositional session evaluates the policy after every report step from the snapshot's per-well
+surface ledger. A matching report is always emitted, even when it falls between the requested
+snapshot interval, and the batch ends through the normal `completed` path with the matched condition
+in its summary rather than as a solver failure. The run record keeps the completed step count and
+the termination summary, so the stopping report is part of the result, not only a UI warning. The
+stop ends the whole batch rather than shutting in only the producer; SPE5 has one producer, so its
+producer curves are unchanged, but injection and pressure history stop at that report.
+
+**The stop has not yet been reached on the real case.** A provisional from-scratch probe (temporary
+native test, current tree, not committed) reached peak GOR **5.19 Mscf/STB** at month 207 and peak
+WOR **4.92** at month 208, then failed at month 215 (**6528.84 d**) with `Budget`: "Newton did not
+converge in 20 iterations (scaled residual 1.48e-3)". That stall predates the termination policy
+and is tracked in [#112](https://github.com/sergeyfarin/ressim/issues/112). Until it is fixed, the
+policy is covered by synthetic-rate tests but is not demonstrated on SPE5 itself, and the
+GOR/WOR values above are provisional rather than a recorded benchmark.
+
+The stop is scenario metadata, not part of `case.json`, so the native replays and the planned
+JutulDarcy reference run without it. A comparison must either apply the same stop or truncate both
+sides at the report where it fires.
+
+Regression coverage:
+
+- `src/lib/catalog/scenarios/comp_spe5_wag.test.ts` pins both authored thresholds;
+- `src/lib/workers/terminationPolicy.test.ts` covers a matching and a non-matching GOR, the WOR/water-cut
+  equivalence, a producer rate condition, zero-liquid vapour production, unreported surface rates
+  and `mode: 'all'`;
+- `src/lib/workers/compositionalSession.test.ts` covers a policy that stops mid-batch and one that
+  does not, a match on the final requested step, and a restored session carrying the policy.
+
+The full published-trajectory comparison is still the remaining work in the reference plan below;
+this change establishes the stopping rule, not a new trajectory measurement.
 
 The reported "oil" and "gas" are the separator **liquid** and **vapour** volumes, not black-oil
 `FOPT`/`FGPT` metered through a PVT table. At 1 bar the flash's single-phase label is pressure-blind,
@@ -151,6 +184,11 @@ The 6375 d segment now advances without a timestep collapse: the month-192 → 6
 **108 calls, no retried step below 2.5 d (event-capped single-attempt steps are unaffected),
 at most 10 Newton iterations, 193 s**. The full month-192 → month-240 replay completes in
 **302 calls, worst 11 Newton iterations, 970 s**.
+
+Both results start from the committed month-192 checkpoint, which was written in `849f03ad`,
+before the #93/#99/#102 flash fixes. A current from-scratch run fails at month 215 before it can
+reach that state ([#112](https://github.com/sergeyfarin/ressim/issues/112)); the "completes"
+result therefore covers the resume path, not the full from-scratch horizon.
 
 Evidence:
 

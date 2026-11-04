@@ -9,6 +9,7 @@ import type {
 } from '../compositional/types';
 import {
   CompositionalSession,
+  compositionalStopMessage,
   describeCompositionalStop,
   type CompositionalEngine,
   type CompositionalEngineFactory,
@@ -41,7 +42,12 @@ function config(): CompositionalCaseConfig {
  * `maxDtDays` of any step it is asked for — which is what the real engine does after a cut.
  */
 function fakeEngine(
-  options: { failAtStep?: number; failKind?: string; maxDtDays?: number } = {},
+  options: {
+    failAtStep?: number;
+    failKind?: string;
+    maxDtDays?: number;
+    surfaceRates?: (step: number) => CompositionalSnapshot['well_surface_rates'];
+  } = {},
 ): CompositionalEngine {
   let time = 0;
   let step = 0;
@@ -58,6 +64,7 @@ function fakeEngine(
     vapour_saturation: [0.3, 0.3, 0.3],
     inventory: [1, 3, 6],
     cumulative_well_moles: [],
+    ...(options.surfaceRates ? { well_surface_rates: options.surfaceRates(step) } : {}),
   });
   return {
     step(dtDays: number): CompositionalStepOutcome {
@@ -197,6 +204,114 @@ describe('CompositionalSession', () => {
     expect(stop).toEqual({ reason: 'user', completedSteps: 3 });
   });
 
+  it('stops at the first report that matches a termination policy', async () => {
+    const engine = fakeEngine({
+      surfaceRates: (step) => [
+        {
+          liquid_m3_per_day: -100,
+          // GOR 50 on step 1, then 150: the policy crosses between the two reports.
+          vapour_m3_per_day: step >= 2 ? -15_000 : -5_000,
+        },
+      ],
+    });
+    const session = CompositionalSession.create(factory(engine), config());
+    const seen: number[] = [];
+    const stop = await session.run({
+      steps: 10,
+      dtDays: 1,
+      snapshotEvery: 5,
+      terminationPolicy: {
+        mode: 'any',
+        conditions: [{ kind: 'gor-threshold', relation: 'gte', value: 100, scope: 'producer' }],
+      },
+    }, (snapshot) => seen.push(snapshot.time_days));
+
+    expect(stop.reason).toBe('completed');
+    expect(stop.completedSteps).toBe(2);
+    if (stop.reason === 'completed') {
+      expect(stop.termination?.summary).toContain('GOR threshold reached');
+      expect(stop.termination?.actualValue).toBeCloseTo(150, 9);
+    }
+    // The matching step is reported even though snapshotEvery would have skipped it, so the
+    // stopping report is in the run's history and not only in the stop message.
+    expect(seen).toEqual([2]);
+    expect(session.timeDays).toBe(2);
+  });
+
+  it('runs to the requested horizon when no termination condition matches', async () => {
+    const engine = fakeEngine({
+      surfaceRates: () => [{ liquid_m3_per_day: -100, vapour_m3_per_day: -5_000 }],
+    });
+    const session = CompositionalSession.create(factory(engine), config());
+    const seen: number[] = [];
+    const stop = await session.run({
+      steps: 4,
+      dtDays: 1,
+      snapshotEvery: 2,
+      terminationPolicy: {
+        mode: 'any',
+        conditions: [{ kind: 'gor-threshold', relation: 'gte', value: 100, scope: 'producer' }],
+      },
+    }, (snapshot) => seen.push(snapshot.time_days));
+
+    expect(stop).toEqual({ reason: 'completed', completedSteps: 4 });
+    expect(seen).toEqual([2, 4]);
+  });
+
+  it('does not call a match on the final requested step an early stop', async () => {
+    const engine = fakeEngine({
+      // Only the third and final step crosses the threshold.
+      surfaceRates: (step) => [{
+        liquid_m3_per_day: -100,
+        vapour_m3_per_day: step >= 3 ? -15_000 : -1_000,
+      }],
+    });
+    const session = CompositionalSession.create(factory(engine), config());
+    const stop = await session.run({
+      steps: 3,
+      dtDays: 1,
+      terminationPolicy: {
+        mode: 'any',
+        conditions: [{ kind: 'gor-threshold', relation: 'gte', value: 100, scope: 'producer' }],
+      },
+    }, () => {});
+
+    expect(stop).toEqual({ reason: 'completed', completedSteps: 3 });
+  });
+
+  it('applies a policy to a restored session', async () => {
+    const engine = fakeEngine({
+      surfaceRates: () => [{ liquid_m3_per_day: -100, vapour_m3_per_day: -15_000 }],
+    });
+    const session = CompositionalSession.restore(factory(engine), engine.checkpoint());
+    const stop = await session.run({
+      steps: 5,
+      dtDays: 1,
+      terminationPolicy: {
+        mode: 'any',
+        conditions: [{ kind: 'gor-threshold', relation: 'gte', value: 100, scope: 'producer' }],
+      },
+    }, () => {});
+
+    expect(stop.reason).toBe('completed');
+    expect(stop.completedSteps).toBe(1);
+    if (stop.reason === 'completed') {
+      expect(stop.termination?.summary).toContain('GOR threshold reached');
+    }
+  });
+
+  it('reports an early termination without solver vocabulary', () => {
+    expect(describeCompositionalStop({
+      reason: 'completed',
+      completedSteps: 2,
+      termination: {
+        summary: 'GOR threshold reached (150.000 >= 100.000).',
+        condition: { kind: 'gor-threshold', relation: 'gte', value: 100, scope: 'producer' },
+        actualValue: 150,
+      },
+    })).toBe('Finished 2 steps early: GOR threshold reached (150.000 >= 100.000).');
+  });
+
   it('restores from a checkpoint and keeps its config', () => {
     const engine = fakeEngine();
     const checkpoint = engine.checkpoint();
@@ -237,5 +352,37 @@ describe('describeCompositionalStop', () => {
   it('reports a completed and a user-stopped batch plainly', () => {
     expect(describeCompositionalStop({ reason: 'completed', completedSteps: 7 })).toContain('7');
     expect(describeCompositionalStop({ reason: 'user', completedSteps: 2 })).toMatch(/stopped/i);
+  });
+});
+
+describe('compositionalStopMessage', () => {
+  it('carries the early-stop summary on the worker payload', () => {
+    expect(compositionalStopMessage({
+      reason: 'completed',
+      completedSteps: 2,
+      termination: {
+        summary: 'GOR threshold reached.',
+        condition: { kind: 'gor-threshold', relation: 'gte', value: 100, scope: 'producer' },
+        actualValue: 150,
+      },
+    })).toEqual({
+      reason: 'completed',
+      completedSteps: 2,
+      message: 'Finished 2 steps early: GOR threshold reached.',
+      terminationSummary: 'GOR threshold reached.',
+    });
+  });
+
+  it('omits the summary for a normal completion and keeps a failure payload', () => {
+    expect(compositionalStopMessage({ reason: 'completed', completedSteps: 240 }))
+      .not.toHaveProperty('terminationSummary');
+
+    const failed = compositionalStopMessage({
+      reason: 'failed',
+      completedSteps: 3,
+      failure: { kind: 'Flash', message: 'raw', timeDays: 1.5 },
+    });
+    expect(failed.failure).toEqual({ kind: 'Flash', message: 'raw', timeDays: 1.5 });
+    expect(failed).not.toHaveProperty('terminationSummary');
   });
 });

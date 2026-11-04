@@ -228,9 +228,14 @@ export function coerceRunSpec(spec: RunSpec | Record<string, any>): RunSpec {
 }
 
 export function buildCreatePayloadForRun(spec: RunSpec): SimulatorCreatePayload {
+    // A compositional policy is evaluated per run request, not stored on the case. Do not pass
+    // it into the create payload at all; black oil still reads its policy from there.
+    const terminationPolicy = spec.params.fluidModel === 'compositional'
+        ? undefined
+        : spec.terminationPolicy ?? undefined;
     const payload = buildBenchmarkCreatePayload({
         ...spec.params,
-        terminationPolicy: spec.terminationPolicy ?? undefined,
+        terminationPolicy,
     });
 
     // Sweep diagnostics are opt-in per run: without this the engine reports no

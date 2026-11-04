@@ -95,6 +95,32 @@ describe('scenario-first run model', () => {
         }
     });
 
+    it('keeps the compositional SPE5 policy on the run spec, out of the create payload', () => {
+        const specs = buildScenarioRunSpecs({
+            scenarioKey: 'comp_spe5_wag',
+            dimensionKey: null,
+            variantKeys: [],
+        });
+        expect(specs).toHaveLength(1);
+        expect(specs[0].terminationPolicy?.conditions.map((condition) => condition.kind))
+            .toEqual(['gor-threshold', 'watercut-threshold']);
+
+        const payload = buildCreatePayloadForRun(specs[0]);
+        expect(payload.fluidModel).toBe('compositional');
+        expect(payload).not.toHaveProperty('terminationPolicy');
+    });
+
+    it('keeps the black-oil policy on the create payload', () => {
+        const { dimension, variant } = firstDimensionAndVariant('sweep_areal');
+        const [spec] = buildScenarioRunSpecs({
+            scenarioKey: 'sweep_areal',
+            dimensionKey: dimension!.key,
+            variantKeys: [variant!.key],
+        });
+        expect(spec.terminationPolicy).not.toBeNull();
+        expect(buildCreatePayloadForRun(spec).terminationPolicy).toEqual(spec.terminationPolicy);
+    });
+
     it('builds one base run for a sensitivity-free benchmark', () => {
         const specs = buildScenarioRunSpecs({
             scenarioKey: 'spe1_gas_injection',
