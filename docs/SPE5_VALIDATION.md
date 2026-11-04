@@ -137,7 +137,15 @@ from the requested `dt`; remembering the last accepted timestep is a worthwhile 
 The regression is `comp_stability_finishes_a_near_trivial_stable_trial` (the cell-32 feed returns
 `Stable` instead of hitting the cap). The ignored native replay
 `comp_spe5_from_scratch_clears_the_month_215_flash_stall` reaches month 217, proving the 215 region
-is behind it. The next stall is in month 218 and remains open under
+is behind it:
+
+```bash
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+  comp_spe5_from_scratch_clears_the_month_215_flash_stall -- --ignored --nocapture
+# commit a380a22d: SPE5 from scratch reached month 217 at t=6604.938 d in 489.7 s
+```
+
+The next stall is in month 218 and remains open under
 [#112](https://github.com/sergeyfarin/ressim/issues/112).
 
 ### Late-life stall (#93): fixed
