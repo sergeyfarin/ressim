@@ -174,8 +174,8 @@ terminationPolicy: {
 ```
 
 The policy is declared and evaluated, but the real from-scratch SPE5 replay has not reached either
-threshold: it currently fails at month 215, before the stop
-([#112](https://github.com/sergeyfarin/ressim/issues/112)).
+threshold: the month-215 flash trial is fixed, and the replay now fails later, in month 218, before
+the stop ([#112](https://github.com/sergeyfarin/ressim/issues/112)).
 
 ## Example Policies
 

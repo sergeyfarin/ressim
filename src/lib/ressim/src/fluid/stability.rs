@@ -112,6 +112,17 @@ pub(super) const TRIVIAL_SOLUTION_TOLERANCE: f64 = 1e-5;
 /// `sum (R_i - 1)^2` below this means the trial phase converged.
 const TRIAL_RESIDUAL_TOLERANCE: f64 = 1e-15;
 
+/// Practical residual floor for a trial whose phase decision has already been made.
+///
+/// As a trial approaches the trivial solution, `K → 1`, the trial sum settles a few parts in `1e9`
+/// below one while its last digits and `sum (R_i - 1)^2` wander above `1e-15`. The verdict is the
+/// trial sum, not the exact fixed point — a stable branch needs no flash seed, and an unstable
+/// one only needs `K` as a starting estimate. Once the sum has stopped moving and sits more than
+/// [`TRIAL_SUM_TOLERANCE`] from one, spending the rest of the 100,000-iteration budget chasing the
+/// squared residual adds no phase information. This floor stops that path without touching a
+/// trial whose sum is still within the decision margin.
+const TRIAL_RESIDUAL_FLOOR: f64 = 1e-12;
+
 /// The largest relative change in the trial sum between the last two substitution steps.
 ///
 /// The squared update residual does not bound the trial sum directly: the sum is stationary at
@@ -640,7 +651,11 @@ fn run_trial(
 
         let trivial = k_norm < TRIVIAL_SOLUTION_TOLERANCE;
         let sum_stopped = (next_sum - sum).abs() < TRIAL_SUM_STEP_TOLERANCE * (1.0 + sum.abs());
-        if trivial || (residual_norm < TRIAL_RESIDUAL_TOLERANCE && sum_stopped) {
+        let phase_decided =
+            next_sum < 1.0 - TRIAL_SUM_TOLERANCE || next_sum > 1.0 + TRIAL_SUM_TOLERANCE;
+        let residual_converged = residual_norm < TRIAL_RESIDUAL_TOLERANCE
+            || (phase_decided && residual_norm < TRIAL_RESIDUAL_FLOOR);
+        if trivial || (sum_stopped && residual_converged) {
             return Ok(TrialOutcome {
                 sum: next_sum,
                 trivial,
