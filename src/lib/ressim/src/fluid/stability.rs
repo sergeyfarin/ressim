@@ -120,11 +120,12 @@ const TRIAL_RESIDUAL_TOLERANCE: f64 = 1e-15;
 /// Practical residual floor for a **stable-side** trial whose phase decision has been made.
 ///
 /// The SPE5 month-215 trial slides slowly toward the trivial solution: `k_norm` fell from
-/// `1.6e-2` to `5.5e-3`, the sum stayed stopped near `1 - 2e-9`, and `sum (R_i - 1)^2` hovered
-/// between `5e-14` and `2.2e-13` without reaching `1e-15`. A stable branch needs the verdict, not
-/// a flash seed, so once the sum has stopped more than [`TRIAL_SUM_TOLERANCE`] below one, the
-/// exact fixed point adds no phase information. Unstable-side trials keep `1e-15` because their
-/// `K` seeds the flash; this floor never applies to them.
+/// `1.6e-2` to `5.5e-3`, the sum drifted from `1 - 2.18e-9` to `1 - 2.01e-9` while the stopped
+/// flag was true, and `sum (R_i - 1)^2` hovered between `5e-14` and `2.2e-13` without reaching
+/// `1e-15`. A stable branch needs the verdict, not a flash seed, so once the sum has stopped more
+/// than [`TRIAL_SUM_TOLERANCE`] below one, the exact fixed point adds no phase information.
+/// Unstable-side trials keep `1e-15` because their `K` seeds the flash; this floor never applies
+/// to them.
 const TRIAL_RESIDUAL_FLOOR: f64 = 1e-12;
 
 /// The largest relative change in the trial sum between the last two substitution steps.
