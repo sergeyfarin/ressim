@@ -98,7 +98,9 @@ impl Default for TimestepOptions {
     fn default() -> Self {
         Self {
             cut_factor: 0.5,
-            max_attempts: 6,
+            // The SPE5 late-life report needs eight attempts to reach its feasible 0.238 d step;
+            // ten leaves a bounded margin. This does not relax acceptance.
+            max_attempts: 10,
             min_dt_days: 1e-6,
             newton: NewtonOptions::default(),
         }

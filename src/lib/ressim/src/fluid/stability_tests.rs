@@ -119,6 +119,34 @@ fn comp_stability_detects_a_near_critical_tangent_plane() {
     assert!(matches!(verdict, StabilityVerdict::Stable));
 }
 
+/// A stable trial that approaches the trivial solution can have a squared update residual above
+/// `1e-15` while its trial sum has already stopped a few parts in `1e9` below one (#112).
+///
+/// Before the practical floor, this SPE5 late-life feed ran the VapourLike trial to the
+/// 100,000-iteration cap and returned `TrialNotConverged`, failing the flash at 6528.84 d. The
+/// verdict is the trial sum, and it is stable; the exact fixed point is not needed for that branch.
+#[test]
+fn comp_stability_finishes_a_near_trivial_stable_trial() {
+    let spec = pinned::spe5().expect("SPE5 specification");
+    let z = [
+        0.693_696_652_474_794_3,
+        0.216_880_486_556_282_56,
+        0.051_409_919_872_390_87,
+        0.015_779_425_242_380_574,
+        0.016_264_690_465_060_79,
+        0.005_968_825_389_091_048,
+    ];
+    let verdict = test_stability(
+        &spec,
+        228.184_051e5,
+        spec.reservoir_temperature_k(),
+        &z,
+        None,
+    )
+    .expect("the near-trivial trial must resolve its stable verdict");
+    assert!(matches!(verdict, StabilityVerdict::Stable));
+}
+
 /// The converged verdict must not depend on the starting guess. If it did, a cell's phase state
 /// would be a function of iteration history rather than of the fluid — and warm-starting from the
 /// previous timestep, which C10 will do everywhere, would change physics.

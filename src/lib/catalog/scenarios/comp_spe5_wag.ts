@@ -38,7 +38,7 @@ import type {
  * declared in `terminationPolicy` (#98): the separator gas/liquid ratio is evaluated in the
  * engine's m³/m³ units, and WOR 5 is the equivalent surface water cut 5/6. The session stops at the
  * first report that meets either condition. The current from-scratch replay has not reached either
- * threshold; it fails earlier at month 215 (#112).
+ * threshold; the month-215 trial is fixed and it now fails later, in month 218 (#112).
  */
 
 /** 500 ft in metres. */

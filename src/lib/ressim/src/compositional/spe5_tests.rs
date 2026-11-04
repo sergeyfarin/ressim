@@ -256,6 +256,41 @@ fn comp_spe5_case_reaches_the_late_life_checkpoint() {
     );
 }
 
+/// #112 regression: the from-scratch replay must clear the month-215 flash trial.
+///
+/// The near-trivial VapourLike trial at cell 32 used to run to the 100,000-iteration cap at
+/// 6528.84375 d and fail the step. The practical residual floor resolves it as the stable trial it
+/// is. The current replay reaches month 218 before the next, separate nonlinear plateau, so this
+/// test stops at month 217 and asserts the 215 region is behind it.
+#[test]
+#[ignore = "SPE5 from-scratch replay through month 217; run with --release"]
+fn comp_spe5_from_scratch_clears_the_month_215_flash_stall() {
+    let mut case = CompositionalCase::new(case_config()).expect("admissible");
+    let dt = 30.4375;
+    let started = std::time::Instant::now();
+    for month in 0..217 {
+        let mut remaining = dt;
+        while remaining > 1e-9 {
+            let outcome = case.step(remaining);
+            assert!(
+                outcome.succeeded(),
+                "month {} failed at {:.3} d: {:?}",
+                month + 1,
+                outcome.time_days,
+                outcome.failure
+            );
+            remaining -= outcome.accepted_dt_days.expect("accepted");
+        }
+    }
+    let snapshot = case.snapshot();
+    assert!((snapshot.time_days - 217.0 * dt).abs() < 1e-6);
+    println!(
+        "SPE5 from scratch reached month 217 at t={:.3} d in {:?}",
+        snapshot.time_days,
+        started.elapsed()
+    );
+}
+
 /// Fast #93 regression: the exact failing call must converge cleanly.
 ///
 /// `stall_call_058.json` is the accepted state at 6114.808 d, immediately before the call that

@@ -27,6 +27,11 @@
 //! must be measured before the verdict is used (see [`TRIAL_SUM_STEP_TOLERANCE`]). See
 //! [`TRIAL_SUM_TOLERANCE`] and the SPE5 late-life stall (#93).
 //!
+//! A narrower exception applies only to a trial already on the **stable** side of the margin. Such
+//! a trial needs the verdict, not a flash seed, so a squared residual below [`TRIAL_RESIDUAL_FLOOR`]
+//! is accepted once the sum has stopped. Unstable-side trials keep the `1e-15` fixed-point
+//! tolerance because their `K` seeds the flash.
+//!
 //! The failure contract is the other departure from the source: OPM throws after 20000
 //! iterations, and here a non-converged trial is a typed [`StabilityError`] carrying the iteration
 //! count and the norms it stalled at. A stability test that cannot decide must say so — silently
@@ -111,6 +116,17 @@ pub(super) const TRIVIAL_SOLUTION_TOLERANCE: f64 = 1e-5;
 
 /// `sum (R_i - 1)^2` below this means the trial phase converged.
 const TRIAL_RESIDUAL_TOLERANCE: f64 = 1e-15;
+
+/// Practical residual floor for a **stable-side** trial whose phase decision has been made.
+///
+/// The SPE5 month-215 trial slides slowly toward the trivial solution: `k_norm` fell from
+/// `1.6e-2` to `5.5e-3`, the sum drifted from `1 - 2.18e-9` to `1 - 2.01e-9` while the stopped
+/// flag was true, and `sum (R_i - 1)^2` hovered between `5e-14` and `2.2e-13` without reaching
+/// `1e-15`. A stable branch needs the verdict, not a flash seed, so once the sum has stopped more
+/// than [`TRIAL_SUM_TOLERANCE`] below one, the exact fixed point adds no phase information.
+/// Unstable-side trials keep `1e-15` because their `K` seeds the flash; this floor never applies
+/// to them.
+const TRIAL_RESIDUAL_FLOOR: f64 = 1e-12;
 
 /// The largest relative change in the trial sum between the last two substitution steps.
 ///
@@ -640,7 +656,10 @@ fn run_trial(
 
         let trivial = k_norm < TRIVIAL_SOLUTION_TOLERANCE;
         let sum_stopped = (next_sum - sum).abs() < TRIAL_SUM_STEP_TOLERANCE * (1.0 + sum.abs());
-        if trivial || (residual_norm < TRIAL_RESIDUAL_TOLERANCE && sum_stopped) {
+        let stable_side = next_sum < 1.0 - TRIAL_SUM_TOLERANCE;
+        let residual_converged = residual_norm < TRIAL_RESIDUAL_TOLERANCE
+            || (stable_side && residual_norm < TRIAL_RESIDUAL_FLOOR);
+        if trivial || (sum_stopped && residual_converged) {
             return Ok(TrialOutcome {
                 sum: next_sum,
                 trivial,

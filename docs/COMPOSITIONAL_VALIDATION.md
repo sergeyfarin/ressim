@@ -378,8 +378,10 @@ inherited OPM cap of 20,000. That is the same linear near-critical stall one lev
 trial now takes its own damped Newton step on the tangent-plane stationarity equations when a
 substitution step retains at least 95% of its residual after ten iterations. The fallback set is
 the same as the flash's — singular Jacobian, EOS-domain failure, failed line search or iteration
-cap — and an accelerated trial must still meet the existing 1e-15 residual and trial-sum-stopped
-criteria, so the verdict rules are unchanged. The 6366.59 d `LiquidLike` trial converges in **60
+cap — and an accelerated trial must still meet the trial-sum-stopped criterion and, on the
+unstable side, the existing 1e-15 residual, so the verdict rules are unchanged. (A stable-side
+trial may use the practical 1e-12 residual floor added for #112; it needs no flash seed.) The
+6366.59 d `LiquidLike` trial converges in **60
 substitutions** and `VapourLike` in 65, down from 28,946, and the later **6646.0625 d** cell-33
 trial that sat just above the trivial-solution threshold and needed more than 100,000 substitutions
 no longer stalls. The
