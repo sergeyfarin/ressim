@@ -3,3 +3,10 @@ packages:
 
 # Drop minimumReleaseAgeExclude entries the lockfile no longer resolves.
 minimumReleaseAgeExcludePrune: true
+
+# GHSA-g3hv-75wg-m249 (minimatch < 11.0.1, ReDoS-style globparts amplification). eslint,
+# @eslint/config-array and @typescript-eslint/typescript-estree still declare ^10, which has no
+# patched release. They only use `new Minimatch()`, `.match()`, `.pattern` and `minimatch()`, all
+# unchanged in 11; drop this once they move to ^11.
+overrides:
+  minimatch@<11.0.1: ^11.0.4

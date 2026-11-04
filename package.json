@@ -37,20 +37,20 @@
   "devDependencies": {
     "@playwright/test": "1.64.1",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
-    "@tailwindcss/postcss": "4.3.3",
-    "@types/node": "26.6.5",
+    "@tailwindcss/postcss": "4.3.4",
+    "@types/node": "26.6.6",
     "@types/three": "0.186.0",
-    "@typescript-eslint/eslint-plugin": "8.72.0",
-    "@typescript-eslint/parser": "8.72.0",
-    "@vitest/coverage-v8": "5.0.5",
-    "autoprefixer": "10.6.1",
-    "eslint": "10.13.0",
+    "@typescript-eslint/eslint-plugin": "8.72.1",
+    "@typescript-eslint/parser": "8.72.1",
+    "@vitest/coverage-v8": "5.1.0",
+    "autoprefixer": "10.6.2",
+    "eslint": "10.14.0",
     "eslint-plugin-svelte": "3.23.1",
-    "svelte": "5.57.2",
-    "tailwindcss": "4.3.3",
+    "svelte": "5.57.3",
+    "tailwindcss": "4.3.4",
     "typescript": "6.0.3",
     "vite": "8.3.5",
-    "vitest": "5.0.5"
+    "vitest": "5.1.0"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "5.3.0",
@@ -63,5 +63,5 @@
     "chart.js": "4.6.1",
     "three": "0.186.1"
   },
-  "packageManager": "pnpm@12.15.0+sha512.b3951d6d6ff4a9f13dc7cf56cd28d2b8eb37dbcc9c68e52e1e1191873ea9f82a017287ab50baadc5ccc494f036c67c0e47eb13608c2fa36f47711b61ea128e61"
+  "packageManager": "pnpm@12.16.1+sha512.091d1dee7927575661b25dab3c2ae31cafc1c54d6b71ed6a6600cf0c1cb10434a447eae14015f1b23e2e6bedeed79df94a932e2164d2832280dce3fb32f656d1"
 }
