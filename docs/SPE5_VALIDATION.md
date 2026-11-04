@@ -84,13 +84,14 @@ the termination summary, so the stopping report is part of the result, not only 
 stop ends the whole batch rather than shutting in only the producer; SPE5 has one producer, so its
 producer curves are unchanged, but injection and pressure history stop at that report.
 
-**The stop has not yet been reached on the real case.** A provisional from-scratch probe (temporary
-native test, current tree, not committed) reached peak GOR **5.19 Mscf/STB** at month 207 and peak
-WOR **4.92** at month 208, then failed at month 215 (**6528.84 d**) with `Budget`: "Newton did not
-converge in 20 iterations (scaled residual 1.48e-3)". That stall predates the termination policy
-and is tracked in [#112](https://github.com/sergeyfarin/ressim/issues/112). Until it is fixed, the
-policy is covered by synthetic-rate tests but is not demonstrated on SPE5 itself, and the
-GOR/WOR values above are provisional rather than a recorded benchmark.
+**The stop has not yet been reached on the real case.** A provisional from-scratch probe reached
+peak GOR **5.19 Mscf/STB** at month 207 and peak WOR **4.92** at month 208. It then failed at month
+215 (**6528.84 d**) with `Budget`; that flash trial is fixed below (#112). The replay now reaches
+month 218 (**6612.70 d**), where a separate near-tolerance nonlinear plateau remains. That stall
+predates the termination policy and is still tracked in
+[#112](https://github.com/sergeyfarin/ressim/issues/112). The policy is covered by synthetic-rate
+tests but is not demonstrated on SPE5 itself, and the GOR/WOR values above are provisional rather
+than a recorded benchmark.
 
 The stop is scenario metadata, not part of `case.json`, so the native replays and the planned
 JutulDarcy reference run without it. A comparison must either apply the same stop or truncate both
@@ -112,6 +113,40 @@ The reported "oil" and "gas" are the separator **liquid** and **vapour** volumes
 `FOPT`/`FGPT` metered through a PVT table. At 1 bar the flash's single-phase label is pressure-blind,
 so a CO2-rich surface stream can be labelled liquid; the chart and record keep the separator names
 visible rather than relabelling it.
+
+### Month-215 flash trial (#112): fixed
+
+The from-scratch replay used to fail at **6528.84375 d** in the VapourLike stability trial at cell
+32. That trial was sliding slowly toward the trivial solution rather than sitting at a fixed point:
+`k_norm` fell from `1.6e-2` to `5.5e-3`, the trial sum drifted from `1 − 2.18e-9` to `1 − 2.01e-9`
+while the stopped flag was true, and `sum (R_i − 1)^2` hovered between about `5e-14` and `2.2e-13`
+without reaching the `1e-15` fixed-point tolerance. It hit the 100,000-iteration cap and returned
+`TrialNotConverged`, even though the sum had long since decided the state was stable.
+
+A **stable-side residual floor** now ends that path: once the sum has stopped more than
+`TRIAL_SUM_TOLERANCE` below one, a squared residual below `1e-12` is enough for the verdict. Such a
+trial needs no flash seed. Unstable-side trials keep the `1e-15` fixed-point tolerance because
+their `K` seeds the flash, and any trial still inside the decision margin keeps iterating unchanged.
+For the cell-32 feed the floor fires at iteration 15,511 with residual `9.999e-13`.
+
+The default retry budget is also 10 attempts rather than 6: the same report needs an eighth attempt
+to reach its feasible `0.238 d` step, and ten leaves a bounded margin. This is a ladder increase,
+not an acceptance relaxation. The underlying inefficiency is that every `step()` call starts again
+from the requested `dt`; remembering the last accepted timestep is a worthwhile follow-up.
+
+The regression is `comp_stability_finishes_a_near_trivial_stable_trial` (the cell-32 feed returns
+`Stable` instead of hitting the cap). The ignored native replay
+`comp_spe5_from_scratch_clears_the_month_215_flash_stall` reaches month 217, proving the 215 region
+is behind it:
+
+```bash
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+  comp_spe5_from_scratch_clears_the_month_215_flash_stall -- --ignored --nocapture
+# commit a380a22d: SPE5 from scratch reached month 217 at t=6604.938 d in 489.7 s
+```
+
+The next stall is in month 218 and remains open under
+[#112](https://github.com/sergeyfarin/ressim/issues/112).
 
 ### Late-life stall (#93): fixed
 
@@ -186,9 +221,11 @@ at most 10 Newton iterations, 193 s**. The full month-192 → month-240 replay c
 **302 calls, worst 11 Newton iterations, 970 s**.
 
 Both results start from the committed month-192 checkpoint, which was written in `849f03ad`,
-before the #93/#99/#102 flash fixes. A current from-scratch run fails at month 215 before it can
-reach that state ([#112](https://github.com/sergeyfarin/ressim/issues/112)); the "completes"
-result therefore covers the resume path, not the full from-scratch horizon.
+before the #93/#99/#102 flash fixes. That file is intentionally frozen as the reproduction seed for
+those regressions; it is not a checkpoint the current engine produces. A current from-scratch run
+passes month 192 but diverges from this state and fails in month 218
+([#112](https://github.com/sergeyfarin/ressim/issues/112)). The "completes" result therefore covers
+the resume path from the frozen seed, not the full from-scratch horizon.
 
 Evidence:
 

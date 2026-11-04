@@ -502,6 +502,15 @@ pub fn solve_newton(
     )
 }
 
+#[cfg(test)]
+pub(crate) fn assemble_for_test(
+    problem: &NewtonProblem<'_>,
+    state: &CompositionalState,
+    well_bhp: &[f64],
+) -> Result<AssemblyResult, AssemblyError> {
+    assemble_at(problem, state, well_bhp)
+}
+
 fn assemble_at(
     problem: &NewtonProblem<'_>,
     state: &CompositionalState,
