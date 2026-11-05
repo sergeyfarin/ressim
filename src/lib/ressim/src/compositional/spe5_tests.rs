@@ -509,3 +509,50 @@ fn comp_spe5_resume_192_completes_the_20_year_replay() {
         started.elapsed()
     );
 }
+
+/// #116 regression: the month-218 seed's accepted state must reproduce its own accumulation.
+///
+/// `stall_218.json` is the frozen month-218 state at 6612.820363 d, where the from-scratch
+/// replay's Newton iteration starts alternating a cell between single-liquid and two-phase.
+/// The checkpoint is a seed for that solver investigation, not a current-engine state.
+#[test]
+fn comp_spe5_month218_seed_state_is_consistent() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../opm/compositional/spe5/stall_218.json");
+    let text = std::fs::read_to_string(path).expect("read stall_218.json");
+    let checkpoint: Checkpoint = serde_json::from_str(&text).expect("parse checkpoint");
+    let case = CompositionalCase::restore(&checkpoint).expect("restore");
+    // A tiny step isolates the accumulation term: a consistent accepted state must reproduce it
+    // without the flux contribution. Newton starts from freshly guessed well BHPs, not the
+    // checkpointed ones, so its first residual is larger and is reported separately.
+    let (accepted_norm, _, newton_norm, _) = case.diagnostic_residuals(1e-9);
+    println!("accepted-state residual {accepted_norm:e}; Newton starting residual {newton_norm:e}");
+    assert!(
+        accepted_norm < 1e-8,
+        "accepted-state scaled residual is {accepted_norm:e}"
+    );
+}
+
+/// #116 regression target: cell 33's near-critical crossing is a model jump, not a tolerance
+/// artefact. The two-phase branch ends where the phases merge, at `beta` around 0.48.
+#[test]
+fn comp_spe5_month218_cell33_crosses_at_the_near_critical_pressure() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../opm/compositional/spe5/stall_218.json");
+    let text = std::fs::read_to_string(path).expect("read stall_218.json");
+    let checkpoint: Checkpoint = serde_json::from_str(&text).expect("parse checkpoint");
+    let case = CompositionalCase::restore(&checkpoint).expect("restore");
+    let snapshot = case.snapshot();
+    let z: Vec<f64> = snapshot.composition.iter().map(|c| c[33]).collect();
+    let spec = pinned::spe5().expect("SPE5 specification");
+    let t = spec.reservoir_temperature_k();
+    let below = flash(&spec, 228.1242e5, t, &z, None).expect("below the crossing");
+    let above = flash(&spec, 228.1244e5, t, &z, None).expect("above the crossing");
+    assert_eq!(below.phase_state, PhaseState::TwoPhase);
+    assert!(
+        below.beta > 0.4,
+        "beta below the crossing is {}",
+        below.beta
+    );
+    assert_eq!(above.phase_state, PhaseState::SingleLiquid);
+}

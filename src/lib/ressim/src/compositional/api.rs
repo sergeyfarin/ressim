@@ -1289,6 +1289,58 @@ impl CompositionalCase {
         }
     }
 
+    /// Diagnostic only: the accepted-state residual and the first Newton residual for a trial
+    /// timestep.
+    ///
+    /// The accepted-state value uses the checkpointed flowing BHPs, so a tiny `dt` isolates the
+    /// accumulation term. Newton does **not** start there: it replaces those BHPs with
+    /// [`super::wells::initial_bhp_guesses`], which changes the well rates and constraint rows.
+    /// Both numbers are returned separately; do not use the accepted-state value as Newton's
+    /// starting residual.
+    ///
+    /// The returned tuples are `(accepted_norm, accepted_cells, newton_norm, newton_cells)`, with
+    /// each cell list containing the cells whose scaled residual exceeds the Newton tolerance.
+    #[cfg(test)]
+    pub(crate) fn diagnostic_residuals(
+        &self,
+        dt_days: f64,
+    ) -> (f64, Vec<(usize, f64)>, f64, Vec<(usize, f64)>) {
+        let water = self.relperm.water().map(|w| &w.properties);
+        let previous_moles = self
+            .run
+            .accepted_inventory_with_water(&self.spec, &self.rock(), water)
+            .expect("previous inventory");
+        let problem = super::newton::NewtonProblem {
+            spec: &self.spec,
+            layout: &self.layout,
+            rock: self.rock(),
+            relperm: &self.relperm,
+            faces: &self.faces,
+            wells: &self.wells,
+            previous_moles: &previous_moles,
+            sources: &self.sources,
+            dt_days,
+        };
+        let measure = |bhp: &[f64]| {
+            let assembled = super::newton::assemble_for_test(&problem, self.run.state(), bhp)
+                .expect("assembly at the accepted state");
+            let norm = assembled.scaled_residual_norm(&self.layout);
+            let n = self.layout.cell_block_size();
+            let cells = (0..self.layout.cell_count())
+                .filter_map(|cell| {
+                    let scaled = assembled.scaling[cell]
+                        .scaled_residual_norm(&assembled.residual[cell * n..(cell + 1) * n]);
+                    (scaled > 1e-8).then_some((cell, scaled))
+                })
+                .collect();
+            (norm, cells)
+        };
+        let (accepted_norm, accepted_cells) = measure(self.run.well_bhp_bar());
+        let guesses = super::wells::initial_bhp_guesses(&self.wells, self.run.state().cells());
+        let (newton_norm, newton_cells) = measure(&guesses);
+        (accepted_norm, accepted_cells, newton_norm, newton_cells)
+    }
+
     /// The accepted state, as the UI needs it.
     ///
     /// Per cell: pressure, the full overall composition, the phase state and the phase
