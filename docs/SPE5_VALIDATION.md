@@ -94,6 +94,15 @@ in [#119](https://github.com/sergeyfarin/ressim/issues/119) below. The policy is
 synthetic-rate tests but is not demonstrated on SPE5 itself, and the GOR/WOR values above are
 provisional rather than a recorded benchmark.
 
+After #119 (PR #121) the from-scratch replay reaches month 217 at **6604.938 d** and fails month
+218 at **6612.703 d** (`scaled residual 1.36e-7`). The last peaks before the stall are month-207
+GOR **924.0 m³/m³** (5.19 Mscf/STB) and month-208 water cut **0.830951** (WOR 4.91), both below
+the thresholds. The frozen month-192 checkpoint with the scenario's monthly steps follows the same
+path and fails at month 218 (`1.86e-8`). The existing 5-day-step workaround crosses the water cut
+at **6304.25 d** (0.866442, WOR 6.49), but that is not a report step: the monthly reports around it
+are 0.827546 at 6300.5625 d and 0.830951 at 6331 d, both below `5/6`. The policy is therefore not
+demonstrated on a real monthly SPE5 path, and #98 remains open under #116.
+
 The stop is scenario metadata, not part of `case.json`, so the native replays and the planned
 JutulDarcy reference run without it. A comparison must either apply the same stop or truncate both
 sides at the report where it fires.
@@ -291,7 +300,13 @@ than 100 substitutions for both trial phases.
 
 1. Generate the JutulDarcy compositional reference from the same `case.json` (grid, EOS, BIC,
   Stone II curves, rate targets, WAG schedule) and commit it under
-  `opm/compositional/spe5/reference.json` with a manifest, as the SPE3 reference does.
+  `opm/compositional/spe5/reference.json` with a manifest, as the SPE3 reference does. A first run
+  (`tools/jutul/spe5_reference.jl`, JutulDarcy 0.3.7) completed 156 reports and stopped on GOR at
+  4626.5 d, but its producer was BHP-controlled from 730.5 d and the oil rate had collapsed to
+  2.9 m³/day; the stop is an oil-rate artifact, not the ResSim front. Its water cut at 4017.75 d
+  is 0.49 against ResSim's 0.0002, so the trajectory is not comparable and the run is not committed
+  as the reference. A comparable run with per-step Newton diagnostics at the front is still required
+  before Jutul can decide #116.
 2. Put the run through `compare_small_direct.py --comp-reference-dir` and the shared scorecard,
   including water saturation (the existing compositional comparator compares `p`, `sg` and `z`; it
   needs the `sw` column the SPE5 fixture carries).
