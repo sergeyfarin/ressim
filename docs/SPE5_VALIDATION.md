@@ -89,9 +89,19 @@ peak GOR **5.19 Mscf/STB** at month 207 and peak WOR **4.92** at month 208. It t
 215 (**6528.84 d**) with `Budget`; that flash trial is fixed below (#112). The replay now reaches
 month 218 (**6612.70 d**), where a separate near-tolerance nonlinear plateau remains. That stall
 predates the termination policy and is still tracked in
-[#112](https://github.com/sergeyfarin/ressim/issues/112). The policy is covered by synthetic-rate
-tests but is not demonstrated on SPE5 itself, and the GOR/WOR values above are provisional rather
-than a recorded benchmark.
+[#116](https://github.com/sergeyfarin/ressim/issues/116); the month-215 cold flash itself is fixed
+in [#119](https://github.com/sergeyfarin/ressim/issues/119) below. The policy is covered by
+synthetic-rate tests but is not demonstrated on SPE5 itself, and the GOR/WOR values above are
+provisional rather than a recorded benchmark.
+
+After #119 (PR #121) the from-scratch replay reaches month 217 at **6604.938 d** and fails month
+218 at **6612.703 d** (`scaled residual 1.36e-7`). The last peaks before the stall are month-207
+GOR **924.0 m³/m³** (5.19 Mscf/STB) and month-208 water cut **0.830951** (WOR 4.91), both below
+the thresholds. The frozen month-192 checkpoint with the scenario's monthly steps follows the same
+path and fails at month 218 (`1.86e-8`). The existing 5-day-step workaround crosses the water cut
+at **6304.25 d** (0.866442, WOR 6.49), but that is not a report step: the monthly reports around it
+are 0.827546 at 6300.5625 d and 0.830951 at 6331 d, both below `5/6`. The policy is therefore not
+demonstrated on a real monthly SPE5 path, and #98 remains open under #116.
 
 The stop is scenario metadata, not part of `case.json`, so the native replays and the planned
 JutulDarcy reference run without it. A comparison must either apply the same stop or truncate both
@@ -143,10 +153,41 @@ is behind it:
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
   comp_spe5_from_scratch_clears_the_month_215_flash_stall -- --ignored --nocapture
 # commit a380a22d: SPE5 from scratch reached month 217 at t=6604.938 d in 489.7 s
+# commit e1e07ed5 (#119): month 217 at t=6604.938 d in 527.6 s
+# The 869.9 s figure recorded earlier was measured while the JutulDarcy reference and a second
+# replay were running; it is dropped as a contaminated baseline.
 ```
 
 The next stall is in month 218 and remains open under
-[#112](https://github.com/sergeyfarin/ressim/issues/112).
+[#116](https://github.com/sergeyfarin/ressim/issues/116). After #119 the same from-scratch
+replay fails at **6612.703 d** with `Nonlinear: Newton did not converge in 20 iterations
+(scaled residual 1.36e-7)`, so the fix moved the month-215 flash but not the near-critical
+phase-labelling plateau.
+
+### Month-215 cold flash (#119): fixed
+
+The #112 fix removed the stability-trial cap, but the next cold flash at cell 32 still exhausted
+the 5,000-substitution budget. The trace showed it was not still converging: the equilibrium
+residual fell from `3.11e-9` at substitution 250 to `2.42e-9` at 1,000, then rose to `1.10e-8` at
+5,000, while `sum (ln K)^2` moved only from `4.6029e-3` to `4.5984e-3`. Raising the cap would have
+made it worse.
+
+The Newton acceleration was not at fault. Its Jacobian matched central finite differences to a
+worst relative error of `1.9e-6`, and the full step from `beta = 0.0013` moved to `0.156` — the
+right direction, toward the true `beta = 0.1333` — but the full-system residual rose from `3.3e-9`
+to `6.3e-7`. The monotone line search accepted only `alpha ~ 1/128`, reducing the residual by about
+1% per 50-step attempt.
+
+`NEWTON_NONMONOTONE_CEILING` now admits that one full step when the candidate `beta` is physical
+and its residual is below `1e-5`. The following Newton steps converge quadratically; the final
+admission target is unchanged at `1e-11`, and a failed attempt still falls back to substitution.
+The cell-32 feed converges in 15 iterations to `TwoPhase`, `beta = 0.1333429`, residual `8.2e-14`;
+the warm-started continuation from 228.52 bar reaches the same root. The committed seed now accepts
+the `2.0409934222698212e-6 d` step at `6540.217532701092 d` in one attempt and 6 Newton iterations.
+
+Regressions: `comp_flash_near_critical_full_step_converges` (the exact cold feed, under 100
+iterations, in the thermodynamic gate) and `comp_spe5_month215_flash_seed_steps_through` (the
+step, flipped from expecting the cap to expecting success; release-only).
 
 ### Late-life stall (#93): fixed
 
@@ -224,7 +265,7 @@ Both results start from the committed month-192 checkpoint, which was written in
 before the #93/#99/#102 flash fixes. That file is intentionally frozen as the reproduction seed for
 those regressions; it is not a checkpoint the current engine produces. A current from-scratch run
 passes month 192 but diverges from this state and fails in month 218
-([#112](https://github.com/sergeyfarin/ressim/issues/112)). The "completes" result therefore covers
+([#116](https://github.com/sergeyfarin/ressim/issues/116)). The "completes" result therefore covers
 the resume path from the frozen seed, not the full from-scratch horizon.
 
 Evidence:
@@ -261,7 +302,13 @@ than 100 substitutions for both trial phases.
 
 1. Generate the JutulDarcy compositional reference from the same `case.json` (grid, EOS, BIC,
   Stone II curves, rate targets, WAG schedule) and commit it under
-  `opm/compositional/spe5/reference.json` with a manifest, as the SPE3 reference does.
+  `opm/compositional/spe5/reference.json` with a manifest, as the SPE3 reference does. A first run
+  (`tools/jutul/spe5_reference.jl`, JutulDarcy 0.3.7) completed 156 reports and stopped on GOR at
+  4626.5 d, but its producer was BHP-controlled from 730.5 d and the oil rate had collapsed to
+  2.9 m³/day; the stop is an oil-rate artifact, not the ResSim front. Its water cut at 4017.75 d
+  is 0.49 against ResSim's 0.0002, so the trajectory is not comparable and the run is not committed
+  as the reference. A comparable run with per-step Newton diagnostics at the front is still required
+  before Jutul can decide #116.
 2. Put the run through `compare_small_direct.py --comp-reference-dir` and the shared scorecard,
   including water saturation (the existing compositional comparator compares `p`, `sg` and `z`; it
   needs the `sw` column the SPE5 fixture carries).

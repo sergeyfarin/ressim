@@ -1049,3 +1049,49 @@ fn comp_flash_warm_start_with_an_absent_component_stays_two_phase() {
         1.0 - cold.beta
     );
 }
+
+/// #119: a near-critical SPE5 feed whose full Newton step temporarily raises the residual.
+///
+/// This is cell 32's feed from `stall_215_memory.json` (228.5238044 bar, 344.261 K) with the
+/// stability test's own K estimate. Before the bounded non-monotone step, the monotone line
+/// search rejected the full step (beta 0.0013 -> 0.156, residual 3.3e-9 -> 6.3e-7), substitution
+/// crawled along the critical valley, and the flash exhausted 5,000 substitutions at residual
+/// 1.1e-8. The full step is in the right direction; the next Newton step converges quadratically.
+#[test]
+fn comp_flash_near_critical_full_step_converges() {
+    let spec = pinned::spe5().expect("SPE5 specification");
+    let t = spec.reservoir_temperature_k();
+    let z = [
+        0.695_201_721_258_106_9,
+        0.216_484_578_024_801_95,
+        0.050_924_318_608_656_52,
+        0.015_456_903_835_536_25,
+        0.016_010_702_749_176_382,
+        0.005_921_775_523_722_084,
+    ];
+    let state = flash(&spec, 228.523_804_4e5, t, &z, None).expect("near-critical flash");
+    assert_eq!(state.phase_state, PhaseState::TwoPhase);
+    assert!(state.equilibrium_residual < 1e-11);
+    assert!(
+        (state.beta - 0.133_342_892_070_058_12).abs() < 1e-4,
+        "beta {}",
+        state.beta
+    );
+    assert!(
+        state.iterations < 100,
+        "the non-monotone full step did not accelerate: {} iterations",
+        state.iterations
+    );
+    // The independently converged roots (warm-started by continuation from 228.52 bar).
+    let expected_k = [
+        1.004_114_741_197_384,
+        0.995_528_838_770_405_2,
+        0.986_334_972_354_778_1,
+        0.976_155_277_043_747_9,
+        0.965_547_874_212_619_9,
+        0.954_772_944_936_051_1,
+    ];
+    for (actual, expected) in state.k.iter().zip(expected_k) {
+        assert!((actual - expected).abs() < 1e-6, "K {actual} vs {expected}");
+    }
+}

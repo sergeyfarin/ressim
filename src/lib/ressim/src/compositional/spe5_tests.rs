@@ -562,15 +562,20 @@ fn comp_spe5_month218_cell33_crosses_at_the_near_critical_pressure() {
     assert_eq!(above.phase_state, PhaseState::SingleLiquid);
 }
 
-/// #119 regression seed: cell 32's near-critical flash exhausts the iteration cap.
+/// #119 regression seed: cell 32's near-critical flash now steps through.
 ///
-/// The accepted state is at 6540.217531 d; the memory-capped next step is 2.0409934222698212e-6 d.
-/// The flash is still converging (equilibrium residual 1.10e-8 against 1e-11) when the 17,500-
-/// iteration cap rejects it. This test pins that reproduction; when the acceleration is fixed it
-/// should be changed to expect success.
+/// The accepted state is at 6540.217531 d; the next step is 2.0409934222698212e-6 d. Before the
+/// fix, cell 32's cold-start flash exhausted 5,000 substitutions plus 12,500 Newton iterations at
+/// equilibrium residual 1.10e-8 against 1e-11. The trace showed why raising the cap would not
+/// help: the substitution residual first fell (3.11e-9 at iteration 250, 2.42e-9 at 1000) and then
+/// rose to 1.10e-8 at 5000, while `sum(ln K)^2` drifted from 4.6029e-3 to 4.5984e-3. The full
+/// Newton step moved beta from 0.0013 to 0.156 and the residual from 3.3e-9 to 6.3e-7 — the right
+/// direction across a narrow critical valley — but the monotone line search accepted only
+/// alpha ~ 1/128; the non-monotone full step converges in 15 iterations to beta 0.13334 at
+/// residual 8.2e-14.
 #[test]
-#[ignore = "SPE5 month-215 flash-cap seed; run with --release"]
-fn comp_spe5_month215_flash_seed_reproduces_the_cap() {
+#[ignore = "SPE5 month-215 flash seed; run with --release"]
+fn comp_spe5_month215_flash_seed_steps_through() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../../opm/compositional/spe5/stall_215_memory.json");
     let text = std::fs::read_to_string(path).expect("read stall_215_memory.json");
@@ -578,12 +583,7 @@ fn comp_spe5_month215_flash_seed_reproduces_the_cap() {
     let mut case = CompositionalCase::restore(&checkpoint).expect("restore");
     let outcome = case.step(2.0409934222698212e-6);
     println!("month-215 flash seed outcome: {outcome:?}");
-    assert!(!outcome.succeeded(), "the seed stopped reproducing the cap");
-    let failure = outcome.failure.expect("a failure");
-    assert_eq!(failure.kind, "Flash");
-    assert!(
-        failure.message.contains("cell 32"),
-        "failure moved away from cell 32: {}",
-        failure.message
-    );
+    assert!(outcome.succeeded(), "failure: {:?}", outcome.failure);
+    assert_eq!(outcome.accepted_dt_days, Some(2.0409934222698212e-6));
+    assert_eq!(outcome.time_days, 6540.217532701092);
 }
