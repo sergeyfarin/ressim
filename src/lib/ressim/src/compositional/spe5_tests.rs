@@ -561,3 +561,29 @@ fn comp_spe5_month218_cell33_crosses_at_the_near_critical_pressure() {
     );
     assert_eq!(above.phase_state, PhaseState::SingleLiquid);
 }
+
+/// #119 regression seed: cell 32's near-critical flash exhausts the iteration cap.
+///
+/// The accepted state is at 6540.217531 d; the memory-capped next step is 2.0409934222698212e-6 d.
+/// The flash is still converging (equilibrium residual 1.10e-8 against 1e-11) when the 17,500-
+/// iteration cap rejects it. This test pins that reproduction; when the acceleration is fixed it
+/// should be changed to expect success.
+#[test]
+#[ignore = "SPE5 month-215 flash-cap seed; run with --release"]
+fn comp_spe5_month215_flash_seed_reproduces_the_cap() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../opm/compositional/spe5/stall_215_memory.json");
+    let text = std::fs::read_to_string(path).expect("read stall_215_memory.json");
+    let checkpoint: Checkpoint = serde_json::from_str(&text).expect("parse checkpoint");
+    let mut case = CompositionalCase::restore(&checkpoint).expect("restore");
+    let outcome = case.step(2.0409934222698212e-6);
+    println!("month-215 flash seed outcome: {outcome:?}");
+    assert!(!outcome.succeeded(), "the seed stopped reproducing the cap");
+    let failure = outcome.failure.expect("a failure");
+    assert_eq!(failure.kind, "Flash");
+    assert!(
+        failure.message.contains("cell 32"),
+        "failure moved away from cell 32: {}",
+        failure.message
+    );
+}
