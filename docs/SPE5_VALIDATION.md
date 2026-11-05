@@ -89,9 +89,10 @@ peak GOR **5.19 Mscf/STB** at month 207 and peak WOR **4.92** at month 208. It t
 215 (**6528.84 d**) with `Budget`; that flash trial is fixed below (#112). The replay now reaches
 month 218 (**6612.70 d**), where a separate near-tolerance nonlinear plateau remains. That stall
 predates the termination policy and is still tracked in
-[#112](https://github.com/sergeyfarin/ressim/issues/112). The policy is covered by synthetic-rate
-tests but is not demonstrated on SPE5 itself, and the GOR/WOR values above are provisional rather
-than a recorded benchmark.
+[#116](https://github.com/sergeyfarin/ressim/issues/116); the month-215 cold flash itself is fixed
+in [#119](https://github.com/sergeyfarin/ressim/issues/119) below. The policy is covered by
+synthetic-rate tests but is not demonstrated on SPE5 itself, and the GOR/WOR values above are
+provisional rather than a recorded benchmark.
 
 The stop is scenario metadata, not part of `case.json`, so the native replays and the planned
 JutulDarcy reference run without it. A comparison must either apply the same stop or truncate both
@@ -143,10 +144,39 @@ is behind it:
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
   comp_spe5_from_scratch_clears_the_month_215_flash_stall -- --ignored --nocapture
 # commit a380a22d: SPE5 from scratch reached month 217 at t=6604.938 d in 489.7 s
+# after #119 (this tree): month 217 at t=6604.938 d in 869.9 s
 ```
 
 The next stall is in month 218 and remains open under
-[#112](https://github.com/sergeyfarin/ressim/issues/112).
+[#116](https://github.com/sergeyfarin/ressim/issues/116). After #119 the same from-scratch
+replay fails at **6612.703 d** with `Nonlinear: Newton did not converge in 20 iterations
+(scaled residual 1.36e-7)`, so the fix moved the month-215 flash but not the near-critical
+phase-labelling plateau.
+
+### Month-215 cold flash (#119): fixed
+
+The #112 fix removed the stability-trial cap, but the next cold flash at cell 32 still exhausted
+the 5,000-substitution budget. The trace showed it was not still converging: the equilibrium
+residual fell from `3.11e-9` at substitution 250 to `2.42e-9` at 1,000, then rose to `1.10e-8` at
+5,000, while `sum (ln K)^2` moved only from `4.6029e-3` to `4.5984e-3`. Raising the cap would have
+made it worse.
+
+The Newton acceleration was not at fault. Its Jacobian matched central finite differences to a
+worst relative error of `1.9e-6`, and the full step from `beta = 0.0013` moved to `0.156` — the
+right direction, toward the true `beta = 0.1333` — but the full-system residual rose from `3.3e-9`
+to `6.3e-7`. The monotone line search accepted only `alpha ~ 1/128`, reducing the residual by about
+1% per 50-step attempt.
+
+`NEWTON_NONMONOTONE_CEILING` now admits that one full step when the candidate `beta` is physical
+and its residual is below `1e-5`. The following Newton steps converge quadratically; the final
+admission target is unchanged at `1e-11`, and a failed attempt still falls back to substitution.
+The cell-32 feed converges in 15 iterations to `TwoPhase`, `beta = 0.1333429`, residual `8.2e-14`;
+the warm-started continuation from 228.52 bar reaches the same root. The committed seed now accepts
+the `2.0409934222698212e-6 d` step at `6540.217532701092 d` in one attempt and 6 Newton iterations.
+
+Regressions: `comp_flash_near_critical_full_step_converges` (the exact cold feed, under 100
+iterations, in the thermodynamic gate) and `comp_spe5_month215_flash_seed_steps_through` (the
+step, flipped from expecting the cap to expecting success; release-only).
 
 ### Late-life stall (#93): fixed
 

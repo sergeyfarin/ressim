@@ -33,6 +33,13 @@
 //! acceleration can only shorten a slow path to the same fixed point, never turn a convergent
 //! flash into a failure.
 //!
+//! The line search is monotone except for one bounded case. At a critical point the two-phase
+//! solution sits in a narrow curved valley: the full Newton step is the right direction, but the
+//! residual rises before it falls, so a monotone search takes only a tiny fraction of the step and
+//! crawls. [`NEWTON_NONMONOTONE_CEILING`] admits that full step when the candidate is physical and
+//! its residual is still below `1e-5`; the following Newton iterations converge from there. This
+//! relaxes the path, not the final [`EQUILIBRIUM_TOLERANCE`] ([#119]).
+//!
 //! The Newton system is the one [`super::derivatives`] already uses for implicit differentiation:
 //! fugacity equality for every active component plus the Rachford–Rice equation. Keeping one
 //! definition of the equations is what makes the accelerated answer and the derivatives describe
@@ -43,6 +50,7 @@
 //! check of the converged answer rather than a replay of OPM's own `ssi+newton` route.
 //!
 //! [#99]: https://github.com/sergeyfarin/ressim/issues/99
+//! [#119]: https://github.com/sergeyfarin/ressim/issues/119
 //!
 //! Near a dew point the vapour fraction approaches one, and the Rachford–Rice root is carried in
 //! the liquid fraction `L` instead (see `PhaseSplit`). Before that, states a step from the dew
@@ -115,6 +123,17 @@ const MAX_NEWTON_ITERATIONS: usize = 50;
 
 /// Maximum number of step halvings in one Newton line search.
 const MAX_NEWTON_HALVINGS: usize = 30;
+
+/// Largest full-system residual a **non-monotone** full Newton step may leave behind.
+///
+/// The monotone line search is the default: a step must reduce the residual. That fails in the
+/// narrow curved valley next to a critical point, where the Newton direction is right but the
+/// intermediate residual rises before it falls. A full step below this ceiling is still an
+/// equilibrium state good to a log-fugacity error of `1e-5` (0.001%), and the following Newton
+/// iterations converge quadratically from it; a failed attempt returns `None` and substitution
+/// resumes from the original iterate. This relaxes the *path*, never the final
+/// [`EQUILIBRIUM_TOLERANCE`].
+const NEWTON_NONMONOTONE_CEILING: f64 = 1e-5;
 
 /// Which phases are present.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -604,8 +623,9 @@ fn newton_acceleration_generic<const N: usize, const M: usize>(
             return None;
         }
 
-        // Damped step: accept only a decrease in the full-system residual. A full Newton step is
-        // tried first because that is what makes the final convergence quadratic.
+        // Damped step: accept a decrease in the full-system residual, or the bounded non-monotone
+        // full step described above. A full Newton step is tried first because that is what makes
+        // the final convergence quadratic.
         let mut accepted = None;
         let mut alpha = 1.0;
         for _ in 0..MAX_NEWTON_HALVINGS {
@@ -625,8 +645,19 @@ fn newton_acceleration_generic<const N: usize, const M: usize>(
                     candidate_beta,
                 ) {
                     let candidate_norm = equilibrium_norm(&candidate.residual);
+                    // Near a critical point the two-phase solution sits in a narrow, curved
+                    // valley: the full Newton step moves beta towards the answer but the
+                    // intermediate residual is larger. A monotone line search rejects that step
+                    // and crawls along the valley instead. Allow the full step when the candidate
+                    // is physical and still close to equilibrium; the next Newton iterations
+                    // converge from there, and a failed attempt falls back to substitution.
+                    let near_critical_full_step = alpha == 1.0
+                        && candidate_beta > 0.0
+                        && candidate_beta < 1.0
+                        && candidate_norm < NEWTON_NONMONOTONE_CEILING;
                     if candidate_norm <= (1.0 - 1e-4 * alpha) * norm
                         || candidate_norm < EQUILIBRIUM_TOLERANCE
+                        || near_critical_full_step
                     {
                         accepted =
                             Some((candidate_ln_k, candidate_beta, candidate, candidate_norm));
