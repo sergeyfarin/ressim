@@ -263,7 +263,7 @@ Both results start from the committed month-192 checkpoint, which was written in
 before the #93/#99/#102 flash fixes. That file is intentionally frozen as the reproduction seed for
 those regressions; it is not a checkpoint the current engine produces. A current from-scratch run
 passes month 192 but diverges from this state and fails in month 218
-([#112](https://github.com/sergeyfarin/ressim/issues/112)). The "completes" result therefore covers
+([#116](https://github.com/sergeyfarin/ressim/issues/116)). The "completes" result therefore covers
 the resume path from the frozen seed, not the full from-scratch horizon.
 
 Evidence:
