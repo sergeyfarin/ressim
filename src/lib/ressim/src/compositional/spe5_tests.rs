@@ -533,8 +533,13 @@ fn comp_spe5_month218_seed_state_is_consistent() {
     );
 }
 
-/// #116 regression target: cell 33's near-critical crossing is a model jump, not a tolerance
-/// artefact. The two-phase branch ends where the phases merge, at `beta` around 0.48.
+/// #116 regression target: the current near-critical switch at cell 33.
+///
+/// The two-phase branch is still slightly lower in Gibbs energy here, but the switch is set by
+/// `TRIAL_SUM_TOLERANCE = 1e-12`: that margin calls the feed stable about `5e-4 bar` before the
+/// phases actually merge (around `228.1249 bar`, `beta ~= 0.43`). This test pins the current
+/// switch so a later change to that margin is visible as a deliberate change, not silently
+/// mistaken for a physics regression.
 #[test]
 fn comp_spe5_month218_cell33_crosses_at_the_near_critical_pressure() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
