@@ -153,7 +153,9 @@ is behind it:
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
   comp_spe5_from_scratch_clears_the_month_215_flash_stall -- --ignored --nocapture
 # commit a380a22d: SPE5 from scratch reached month 217 at t=6604.938 d in 489.7 s
-# after #119 (this tree): month 217 at t=6604.938 d in 869.9 s
+# commit e1e07ed5 (#119): month 217 at t=6604.938 d in 527.6 s
+# The 869.9 s figure recorded earlier was measured while the JutulDarcy reference and a second
+# replay were running; it is dropped as a contaminated baseline.
 ```
 
 The next stall is in month 218 and remains open under
