@@ -6,9 +6,10 @@ control and WAG schedule are the enablers recorded in `COMPOSITIONAL_VALIDATION.
 differs from the OPM deck implementation, and what still blocks offering it.
 
 **Status: authored, not shipped.** `src/lib/catalog/scenarios/comp_spe5_wag.ts` builds the complete
-payload and is withheld from the picker. The independent JutulDarcy compositional reference is not
-committed yet, so no UI overlay or scorecard row exists for this case; no result from it should be
-quoted until that reference lands.
+payload and is withheld from the picker. The independent JutulDarcy 0.3.7 compositional reference
+for the same payload is committed at `opm/compositional/spe5/reference.json` (240 monthly reports,
+7305 d) and recorded below. No UI overlay or scorecard row uses it yet; the scenario stays withheld
+until the comparator and published-curve work in the reference plan lands.
 
 [#93](https://github.com/sergeyfarin/ressim/issues/93) — the **6114.808 d** stall — was a
 near-critical stability-tolerance defect in the flash, fixed below.
@@ -84,26 +85,25 @@ the termination summary, so the stopping report is part of the result, not only 
 stop ends the whole batch rather than shutting in only the producer; SPE5 has one producer, so its
 producer curves are unchanged, but injection and pressure history stop at that report.
 
-**The stop has not yet been reached on the real case.** A provisional from-scratch probe reached
-peak GOR **5.19 Mscf/STB** at month 207 and peak WOR **4.92** at month 208. It then failed at month
-215 (**6528.84 d**) with `Budget`; that flash trial is fixed below (#112). The replay now reaches
-month 218 (**6612.70 d**), where a separate near-tolerance nonlinear plateau remains. That stall
-predates the termination policy and is still tracked in
-[#116](https://github.com/sergeyfarin/ressim/issues/116); the month-215 cold flash itself is fixed
-in [#119](https://github.com/sergeyfarin/ressim/issues/119) below. The policy is covered by
-synthetic-rate tests but is not demonstrated on SPE5 itself, and the GOR/WOR values above are
-provisional rather than a recorded benchmark.
-
-After #119 (PR #121) the from-scratch replay reaches month 217 at **6604.938 d** and fails month
-218 at **6612.703 d** (`scaled residual 1.36e-7`). The last peaks before the stall are month-207
+**ResSim has not reached the stop on a monthly report; the independent reference has.** The
+from-scratch ResSim replay reaches month 217 at **6604.938 d** and fails month 218 at
+**6612.703 d** (`scaled residual 1.36e-7`, #116). The last peaks before the stall are month-207
 GOR **924.0 m³/m³** (5.19 Mscf/STB) and month-208 water cut **0.830951** (WOR 4.91), both below
 the thresholds. The frozen month-192 checkpoint with the scenario's monthly steps follows the same
 path and fails at month 218 (`1.86e-8`). The existing 5-day-step workaround crosses the water cut
 at **6304.25 d** (0.866442, WOR 6.49), but that is not a report step: the monthly reports around it
-are 0.827546 at 6300.5625 d and 0.830951 at 6331 d, both below `5/6`. The policy is therefore not
-demonstrated on a real monthly SPE5 path, and #98 remains open under #116.
+are 0.827546 at 6300.5625 d and 0.830951 at 6331 d, both below `5/6`.
 
-The stop is scenario metadata, not part of `case.json`, so the native replays and the planned
+The JutulDarcy reference crosses the same stop at month 207 (**6300.5625 d**) by water cut:
+**0.854462** (WOR 5.13), GOR **1060.2 m³/m³**; its month-208 report is **0.872972**. ResSim
+reports 0.827546 and 0.830951 at those two reports. The two simulators are therefore on opposite sides of
+`5/6` at the same report, separated by 0.027 and 0.042 water cut — inside the late-window spread
+recorded below (worst 0.0616). #98's threshold is physically reachable on this case; whether a
+given monthly ResSim path fires it is a late-time trajectory question, not a case-definition
+defect. The policy is still not demonstrated end-to-end on a ResSim monthly run, so #98 remains
+open under #116.
+
+The stop is scenario metadata, not part of `case.json`, so the native replays and the committed
 JutulDarcy reference run without it. A comparison must either apply the same stop or truncate both
 sides at the report where it fires.
 
@@ -116,8 +116,9 @@ Regression coverage:
 - `src/lib/workers/compositionalSession.test.ts` covers a policy that stops mid-batch and one that
   does not, a match on the final requested step, and a restored session carrying the policy.
 
-The full published-trajectory comparison is still the remaining work in the reference plan below;
-this change establishes the stopping rule, not a new trajectory measurement.
+The full published-trajectory comparison — the published compositional participants' curves and
+the shared scorecard — remains the work in the reference plan below; the JutulDarcy comparison
+above is a cross-simulator trajectory measurement, not the published benchmark.
 
 The reported "oil" and "gas" are the separator **liquid** and **vapour** volumes, not black-oil
 `FOPT`/`FGPT` metered through a PVT table. At 1 bar the flash's single-phase label is pressure-blind,
@@ -298,17 +299,130 @@ no-jump molar volume across the old switch,
 iterations, and `comp_stability_accelerates_a_near_critical_trial` pins the #102 state at fewer
 than 100 substitutions for both trial phases.
 
+## Independent JutulDarcy reference
+
+`opm/compositional/spe5/reference.json` is a JutulDarcy 0.3.7 / Julia 1.12.7 compositional run of
+the same `case.json` payload: the 7×7×3 grid, rock compressibility, six-component PRCORR EOS, OPM
+Stone II relative permeability, rate targets and WAG schedule. It has **240 monthly reports**
+(30.4375 d) through **7305 d**, with `completed: true`. The fixture carries the per-report producer
+rates, cell-33 pressure and saturations, producer control/BHP, and Jutul's `ministeps`,
+`newton_iterations`, `failed_ministeps` and final reservoir CNV/MB. `manifest.json` records the
+generator, verify command and SHA-256 hashes; `worktree_clean_at_generation` is false because the
+fixture was produced before the generator and this documentation were committed, from base commit
+`e10bddc6`. Regenerate or verify with:
+
+```bash
+bash tools/opm_compositional/run-spe5.sh           # regenerate, about 80 min
+bash tools/opm_compositional/run-spe5.sh --check   # replay and compare parsed numbers
+```
+
+Four changes were needed before the run was comparable to ResSim:
+
+- **OPM Stone II.** JutulDarcy 0.3.7's `StoneIIMethod` evaluates the water-oil and gas-oil oil
+  curves at the three-phase oil saturation. OPM's `EclStone2Material`, and ResSim's
+  `k_ro_stone2_generic`, use `krow(Sw)` and `krog(1 - Swc - Sg)`. `OPMStoneII` in the generator
+  implements the OPM dispatch; the upper clamp follows ResSim's `StoneTwoRelPerm`.
+- **Rock compressibility.** The first run omitted the case's `5e-6 psi⁻¹` rock compressibility.
+  `JutulDarcy.set_rock_compressibility!` has to be applied to the `MultiModel` and the parameter
+  container rebuilt with `setup_parameters`, because Jutul moves the static pore volume into a
+  secondary `FluidVolume`.
+- **Producer surface rates.** JutulDarcy 0.3.7 reports `wrat`/`wcut` from the aqueous reservoir
+  volume fraction; gas expansion inflates the water volume by up to ~80× at the SPE5 producer. The
+  fixture rebuilds the surface rates from the conserved component mass rates: water from
+  `Water_mass_rate / rhoWS`, hydrocarbons from the remaining mass split by the
+  `SurfaceWellConditions` flash. `raw_jutul_*` keeps the uncorrected values for audit.
+- **Declared stop.** The run records the first report that fires the scenario's GOR/water-cut
+  policy but continues to 7305 d, because #116 needs both sides of month 218. Only the first firing
+  report is stored in `stopped`; a comparison truncates there.
+
+Jutul's convergence tolerances are its defaults (CNV `1e-3`, MB `1e-7`), not ResSim's per-cell
+mole-balance target; the fixture records them as such.
+
+### Comparison with ResSim
+
+The from-scratch ResSim probe has 217 monthly reports before the month-218 stall, so the comparison
+covers months 1–217. At **730.5 d** (month 24) the two runs agree on pressure and the rate split:
+
+| Quantity | ResSim | JutulDarcy |
+|---|---:|---:|
+| Mean pressure, bar | 112.68 | 112.58 |
+| Cell-33 pressure, bar | 109.84 | 109.75 |
+| Cell-33 Sw | 0.2032 | 0.2032 |
+| Cell-33 Sg | 0.4091 | 0.4102 |
+| Producer oil, m³/d | 959.2 | 954.3 |
+| Producer gas, m³/d | 212,697 | 212,390 |
+| Producer water, m³/d | 0.13698 | 0.13679 |
+| GOR, m³/m³ | 221.7 | 222.6 |
+| Water cut | 1.428e-4 | 1.433e-4 |
+
+Both producers switch from oil-rate to BHP control at month 16 (**487.0 d**), the same report.
+Across all 217 months the pressure agreement stays tight: the worst mean-pressure difference is
+**1.76 bar** (month 175) and the worst cell-33 difference is **2.16 bar** (month 177). The rate and
+saturation spread is wider in the late water/gas years: worst producer-oil difference **28.4%**
+(month 208), worst GOR difference **22.6%** (month 164) and worst water-cut difference **0.0616**
+absolute (month 169). Those are late-time trajectory spreads, not a normalization or unit error —
+the early and mid-life rates agree within a few percent.
+
+| month | day | mean p R / J (bar) | cell 33 p R / J (bar) | Sw 33 R / J | Sg 33 R / J | oil R / J (m³/d) | GOR R / J (m³/m³) | WC R / J | Jutul ministeps / Newton |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 12 | 365.25 | 139.04 / 138.94 | 136.23 / 136.11 | 0.2030 / 0.2030 | 0.1093 / 0.1101 | 1907.8 / 1916.8 | 87.5 / 87.5 | 0.00006 / 0.00006 | 1 / 5 |
+| 16 | 487.00 | 129.07 / 128.94 | 125.37 / 125.23 | 0.2032 / 0.2032 | 0.2069 / 0.2083 | 1864.1 / 1854.8 | 112.2 / 112.3 | 0.00009 / 0.00009 | 1 / 5 |
+| 24 | 730.50 | 112.68 / 112.58 | 109.84 / 109.75 | 0.2032 / 0.2032 | 0.4091 / 0.4102 | 959.2 / 954.3 | 221.7 / 222.6 | 0.00014 / 0.00014 | 1 / 4 |
+| 48 | 1461.00 | 110.05 / 110.25 | 106.32 / 106.66 | 0.2025 / 0.2025 | 0.4706 / 0.4788 | 847.2 / 882.3 | 252.4 / 240.1 | 0.00016 / 0.00016 | 300 / 3279 |
+| 96 | 2922.00 | 112.58 / 112.64 | 106.36 / 106.82 | 0.2015 / 0.2015 | 0.5094 / 0.5244 | 872.8 / 887.3 | 276.8 / 279.3 | 0.00016 / 0.00016 | 299 / 3263 |
+| 144 | 4383.00 | 119.55 / 119.96 | 109.10 / 110.29 | 0.3836 / 0.3819 | 0.3007 / 0.3037 | 860.1 / 894.5 | 291.8 / 286.4 | 0.00016 / 0.00015 | 280 / 3050 |
+| 192 | 5844.00 | 189.75 / 190.26 | 181.17 / 181.69 | 0.5353 / 0.5601 | 0.0732 / 0.0244 | 348.8 / 333.2 | 283.4 / 287.6 | 0.58980 / 0.60889 | 190 / 2065 |
+| 204 | 6209.25 | 231.81 / 232.06 | 215.99 / 216.31 | 0.4869 / 0.4835 | 0.1680 / 0.1740 | 290.7 / 287.2 | 649.4 / 649.1 | 0.68825 / 0.69197 | 1 / 6 |
+| 205 | 6239.69 | 229.93 / 229.46 | 215.43 / 215.25 | 0.5032 / 0.4970 | 0.1686 / 0.1845 | 235.4 / 241.3 | 745.1 / 774.4 | 0.73048 / 0.72410 | 136 / 1427 |
+| 206 | 6270.12 | 229.62 / 228.78 | 215.46 / 214.31 | 0.5205 / 0.5174 | 0.1557 / 0.1725 | 178.7 / 155.8 | 847.6 / 1008.1 | 0.78231 / 0.79946 | 151 / 1618 |
+| 207 | 6300.56 | 229.99 / 229.19 | 216.49 / 215.55 | 0.5346 / 0.5315 | 0.1336 / 0.1447 | 136.8 / 110.8 | 924.0 / 1060.2 | 0.82755 / 0.85446 | 158 / 1699 |
+| 208 | 6331.00 | 230.58 / 230.38 | 218.70 / 217.67 | 0.5350 / 0.5424 | 0.1185 / 0.1135 | 138.4 / 99.0 | 854.3 / 1015.2 | 0.83095 / 0.87297 | 160 / 1721 |
+| 209 | 6361.44 | 231.23 / 231.37 | 220.42 / 220.35 | 0.5389 / 0.5437 | 0.1064 / 0.0938 | 142.4 / 134.5 | 829.3 / 797.7 | 0.83061 / 0.84179 | 162 / 1754 |
+| 210 | 6391.88 | 231.77 / 232.38 | 222.02 / 221.94 | 0.5461 / 0.5589 | 0.0861 / 0.0766 | 149.6 / 131.6 | 809.7 / 816.3 | 0.82640 / 0.84582 | 166 / 1801 |
+| 211 | 6422.31 | 232.02 / 233.08 | 223.06 / 223.62 | 0.5542 / 0.5823 | 0.0668 / 0.0350 | 159.9 / 157.1 | 801.7 / 720.4 | 0.81816 / 0.82629 | 167 / 1815 |
+| 212 | 6452.75 | 232.06 / 233.37 | 223.79 / 224.93 | 0.5570 / 0.6012 | 0.0563 / 0.0000 | 166.9 / 169.2 | 818.9 / 738.2 | 0.81176 / 0.81591 | 160 / 1735 |
+| 213 | 6483.19 | 231.98 / 233.52 | 224.40 / 225.98 | 0.5481 / 0.5968 | 0.0665 / 0.0000 | 167.1 / 166.1 | 861.9 / 785.3 | 0.81118 / 0.81820 | 167 / 1814 |
+| 214 | 6513.62 | 231.81 / 233.43 | 224.99 / 226.55 | 0.5259 / 0.5839 | 0.1036 / 0.0000 | 164.2 / 170.8 | 913.2 / 827.9 | 0.81323 / 0.81277 | 168 / 1830 |
+| 215 | 6544.06 | 231.61 / 233.09 | 225.23 / 226.69 | 0.5003 / 0.5686 | 0.1664 / 0.0000 | 158.7 / 174.9 | 984.5 / 889.4 | 0.81709 / 0.80716 | 167 / 1815 |
+| 216 | 6574.50 | 231.30 / 232.57 | 225.16 / 226.51 | 0.4785 / 0.5485 | 0.2168 / 0.0696 | 152.0 / 161.7 | 1070.6 / 1024.1 | 0.82167 / 0.81540 | 204 / 2228 |
+| 217 | 6604.94 | 233.87 / 234.98 | 227.43 / 228.08 | 0.4513 / 0.5234 | 0.2515 / 0.0721 | 183.8 / 212.9 | 1013.4 / 917.9 | 0.79315 / 0.77195 | 276 / 2899 |
+| 218 | 6635.38 | — | 229.75 | — | 0.0000 | — | 984.4 | — | 369 / 4006 |
+| 219 | 6665.81 | — | 230.56 | — | 0.4334 | — | 1135.3 | — | 975 / 10827 |
+
+### What it says about #116
+
+The cell-33 phase-appearance window is the discriminator. Jutul shows no free gas at months
+212–215, then Sg **0.0696** and **0.0721** at months 216–217, back to zero at month 218, and
+**0.4334** at month 219. Crossing it is expensive but possible: month 217 costs 276 ministeps /
+2,899 Newton iterations, month 218 costs 369 / 4,006, and month 219 costs 975 / 10,827 with 610
+failed ministeps. The schedule then returns to two ministeps / ten Newton iterations at month 220
+and one / five at month 221, before the next gas cycle builds again. Jutul's gas periods are
+intrinsically slow as well — month 48 is 300 ministeps / 3,279 Newton iterations and month 96 is
+299 / 3,263 — so the month-218 storm is an amplification of the gas-cycle cost, not a one-off
+numerical failure.
+
+That supports the #116 reading: the ResSim plateau is a solver-robustness problem at a crossing the
+same discrete case can traverse, not an uncrossable physical discontinuity. It does not supply a
+ResSim target trajectory. Jutul's late saturation state differs materially from ResSim's: at month
+217 Jutul has cell-33 Sw/Sg 0.5234/0.0721 where ResSim has 0.4513/0.2515, and Jutul returns to
+single liquid at month 218 while ResSim's stalled state keeps free gas. The two runs agree on
+pressure and the broad water-cut ramp, not on the exact phase split in the last window.
+
+Two caveats for later use of the fixture. The run emitted 234 `Flash did not converge in 25000
+iterations` warnings from MultiComponentFlash; the worst final ε was **5.54e-8** against the
+`1e-8` tolerance, and the accepted reservoir CNV stayed below Jutul's `1e-3` (maximum **2.33e-4**,
+at month 217). The reference is therefore a default-tolerance JutulDarcy result, not a
+thermodynamic oracle; the per-report CNV/MB in the fixture lets a tighter comparison reject the
+affected reports instead of treating every number as exact.
+
 ## Reference plan
 
-1. Generate the JutulDarcy compositional reference from the same `case.json` (grid, EOS, BIC,
-  Stone II curves, rate targets, WAG schedule) and commit it under
-  `opm/compositional/spe5/reference.json` with a manifest, as the SPE3 reference does. A first run
-  (`tools/jutul/spe5_reference.jl`, JutulDarcy 0.3.7) completed 156 reports and stopped on GOR at
-  4626.5 d, but its producer was BHP-controlled from 730.5 d and the oil rate had collapsed to
-  2.9 m³/day; the stop is an oil-rate artifact, not the ResSim front. Its water cut at 4017.75 d
-  is 0.49 against ResSim's 0.0002, so the trajectory is not comparable and the run is not committed
-  as the reference. A comparable run with per-step Newton diagnostics at the front is still required
-  before Jutul can decide #116.
+1. **Done.** The JutulDarcy reference is committed at `opm/compositional/spe5/reference.json` with
+  `manifest.json` and `run-spe5.sh`; see “Independent JutulDarcy reference” above. The earlier
+  156-report run is superseded: it ran before the OPM Stone II, rock-compressibility and
+  surface-rate corrections, its producer was BHP-controlled from 730.5 d at an oil rate of
+  2.9 m³/day, and its water cut at 4017.75 d was 0.49 against ResSim's 0.0002. The committed run
+  completes 240 reports through 7305 d and records per-report Newton/timestep diagnostics.
 2. Put the run through `compare_small_direct.py --comp-reference-dir` and the shared scorecard,
   including water saturation (the existing compositional comparator compares `p`, `sg` and `z`; it
   needs the `sw` column the SPE5 fixture carries).
