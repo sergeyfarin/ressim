@@ -190,6 +190,20 @@ Regressions: `comp_flash_near_critical_full_step_converges` (the exact cold feed
 iterations, in the thermodynamic gate) and `comp_spe5_month215_flash_seed_steps_through` (the
 step, flipped from expecting the cap to expecting success; release-only).
 
+### Non-monotone Newton answers (#122): guarded
+
+The #119 full step relaxes the path, not the physics: its first candidate at `beta = 0.157` is
+`+4.8e-10` above the single-phase feed in dimensionless Gibbs energy `g/(R T)`, even though the
+following Newton iterations reach the lower answer. A converged non-monotone Newton replacement is
+now admitted only when its two-phase Gibbs energy does not exceed the feed's; otherwise the attempt
+returns to substitution. The feed is the lower of the liquid and vapour single-phase branches, and
+a `1e-10` roundoff margin separates equality from a real metastable split. The check applies only
+to the Newton replacement — the substitution fixed point is still admitted by its residual alone.
+
+Regression: `comp_flash_gibbs_guard_rejects_the_near_critical_nonmonotone_split` pins the #119
+candidate as uphill and the converged answer as downhill. The #119 seed and the C0 flash fixture
+are unchanged.
+
 ### Late-life stall (#93): fixed
 
 The replay used to stop at **6114.808 d** with `Budget` over `Nonlinear: Newton did not converge in

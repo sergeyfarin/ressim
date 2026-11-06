@@ -1095,3 +1095,55 @@ fn comp_flash_near_critical_full_step_converges() {
         assert!((actual - expected).abs() < 1e-6, "K {actual} vs {expected}");
     }
 }
+
+/// #122: the Gibbs guard rejects the uphill non-monotone candidate from the #119 flash.
+///
+/// The bounded full step first lands on `beta = 0.156996...`, a two-phase split whose dimensionless
+/// Gibbs energy is `+4.8e-10` above the single-phase feed. That split is the near-critical geometry
+/// the guard has to reject if it ever becomes the converged replacement. The second half checks
+/// that the actual converged answer from the same flash is downhill, so the guard does not undo
+/// #119.
+#[test]
+fn comp_flash_gibbs_guard_rejects_the_near_critical_nonmonotone_split() {
+    use super::flash::newton_answer_from_k_raises_gibbs_for_test;
+
+    let spec = pinned::spe5().expect("SPE5 specification");
+    let t = spec.reservoir_temperature_k();
+    let z = [
+        0.695_201_721_258_106_9,
+        0.216_484_578_024_801_95,
+        0.050_924_318_608_656_52,
+        0.015_456_903_835_536_25,
+        0.016_010_702_749_176_382,
+        0.005_921_775_523_722_084,
+    ];
+    let p = 228.523_804_4e5;
+    let candidate_k = [
+        1.004_340_845_002_562,
+        0.995_284_543_837_729_9,
+        0.985_591_785_548_637_5,
+        0.974_865_548_358_712_1,
+        0.963_695_195_208_715_5,
+        0.952_355_301_359_826_5,
+    ];
+    assert!(
+        newton_answer_from_k_raises_gibbs_for_test(
+            &spec,
+            p,
+            t,
+            &z,
+            &candidate_k,
+            0.156_996_143_205_785_9,
+        )
+        .expect("candidate state"),
+        "the guard did not reject the uphill non-monotone split"
+    );
+
+    // The converged replacement is lower than the feed, so the guard must let it through.
+    let answer = flash(&spec, p, t, &z, None).expect("near-critical flash");
+    assert!(
+        !newton_answer_from_k_raises_gibbs_for_test(&spec, p, t, &z, &answer.k, answer.beta)
+            .expect("answer state"),
+        "the guard rejected the converged near-critical answer"
+    );
+}

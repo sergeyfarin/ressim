@@ -137,6 +137,14 @@ const MAX_NEWTON_HALVINGS: usize = 30;
 /// [`EQUILIBRIUM_TOLERANCE`].
 const NEWTON_NONMONOTONE_CEILING: f64 = 1e-5;
 
+/// Roundoff margin on the dimensionless Gibbs-energy comparison `g / (R T)`.
+///
+/// A two-phase state at the phase boundary has the same Gibbs energy as the feed, and the candidate
+/// is converged only to [`EQUILIBRIUM_TOLERANCE`], so the two evaluations differ by a few parts in
+/// `1e-11` even when the answer is physical. The margin keeps that noise from rejecting a valid
+/// Newton replacement while remaining far below any real metastable split's energy gap.
+const GIBBS_ENERGY_TOLERANCE: f64 = 1e-10;
+
 /// Which phases are present.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PhaseState {
@@ -535,6 +543,77 @@ fn newton_system<const N: usize, const M: usize>(
     })
 }
 
+/// Dimensionless molar Gibbs energy `g / (R T)` of one phase, relative to the ideal-gas mixture at
+/// the same `(p, T)`:
+///
+/// ```text
+/// g / (R T) = sum_i x_i [ln x_i + ln phi_i]
+/// ```
+///
+/// The common pure-component and pressure terms cancel when two phases at the same `(p, T)` are
+/// compared, so they are omitted. Absent components contribute nothing: `x ln x -> 0` as `x -> 0`.
+fn phase_gibbs(x: &[f64], ln_phi: &[f64]) -> f64 {
+    let mut g = 0.0;
+    for i in 0..x.len() {
+        if x[i] <= 0.0 {
+            continue;
+        }
+        g += x[i] * (math::ln(x[i]) + ln_phi[i]);
+    }
+    g
+}
+
+/// Lower dimensionless Gibbs energy of the feed as a single phase at `(p, T)`.
+///
+/// A cubic EOS can have three admissible roots. The stable single-phase state is the one with the
+/// lower Gibbs energy, so both branches are evaluated and the lower finite value is used. A branch
+/// that does not exist for this feed is not an error here: the other branch still describes the
+/// single-phase state. `None` means neither branch could be evaluated, and the caller then lets the
+/// Newton answer through rather than rejecting it on a comparison it could not make.
+fn single_phase_gibbs(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+) -> Option<f64> {
+    let mut best: Option<f64> = None;
+    for branch in [PhaseBranch::Liquid, PhaseBranch::Vapour] {
+        if let Ok(props) = evaluate(spec, pressure_pa, temperature_k, z, branch) {
+            let g = phase_gibbs(z, &props.ln_phi);
+            if g.is_finite() && best.is_none_or(|value| g < value) {
+                best = Some(g);
+            }
+        }
+    }
+    best
+}
+
+/// True when a converged Newton answer has a **higher** two-phase Gibbs energy than the feed.
+///
+/// The bounded non-monotone step can cross a narrow critical valley, and the physical/trivial-split
+/// guards do not prove the answer is thermodynamically downhill. A two-phase state is admissible
+/// only when it lowers the Gibbs energy relative to the single-phase feed at the same `(p, T)`.
+/// The comparison is made only for the Newton replacement: the substitution fixed point is the
+/// flash's own answer and is admitted by its residual, not by this guard (#122).
+fn newton_answer_raises_gibbs(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    state: &FlashState,
+) -> bool {
+    let (Some(liquid), Some(vapour)) = (state.liquid.as_ref(), state.vapour.as_ref()) else {
+        return false;
+    };
+    let two_phase = (1.0 - state.beta) * phase_gibbs(&state.x, &liquid.ln_phi)
+        + state.beta * phase_gibbs(&state.y, &vapour.ln_phi);
+    if !two_phase.is_finite() {
+        return false;
+    }
+    let feed = single_phase_gibbs(spec, pressure_pa, temperature_k, z);
+    feed.is_some_and(|feed| two_phase > feed + GIBBS_ENERGY_TOLERANCE)
+}
+
 /// Build the two-phase result for a converged `(K, beta)`, recomputing its physical residual.
 fn two_phase_from_iterate(
     spec: &FluidSpecification,
@@ -723,12 +802,39 @@ fn newton_acceleration_generic<const N: usize, const M: usize>(
             // The full-system norm and the reported physical residual differ by the raw phase-sum
             // imbalance; both have to meet the admission target before this replaces SSI.
             if state.equilibrium_residual < EQUILIBRIUM_TOLERANCE {
+                // The non-monotone path can leave the starting region, so a converged answer is
+                // not by itself proof that the split is downhill. Compare against the single-phase
+                // feed and return to substitution when it is not (#122).
+                if newton_answer_raises_gibbs(spec, pressure_pa, temperature_k, z, &state) {
+                    return None;
+                }
                 return Some(state);
             }
             return None;
         }
     }
     None
+}
+
+/// Test-only entry point for the #122 Gibbs guard: build the two-phase state for a `(K, beta)`
+/// iterate and report whether the guard rejects it.
+#[cfg(test)]
+pub(super) fn newton_answer_from_k_raises_gibbs_for_test(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    k: &[f64],
+    beta: f64,
+) -> Option<bool> {
+    let state = two_phase_from_iterate(spec, pressure_pa, temperature_k, z, k, beta, 0).ok()?;
+    Some(newton_answer_raises_gibbs(
+        spec,
+        pressure_pa,
+        temperature_k,
+        z,
+        &state,
+    ))
 }
 
 /// Dispatch the Newton attempt to the compiled AD instantiation for this component count.
