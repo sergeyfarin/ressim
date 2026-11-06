@@ -308,7 +308,7 @@ Stone II relative permeability, rate targets and WAG schedule. It has **240 mont
 rates, cell-33 pressure and saturations, producer control/BHP, and Jutul's `ministeps`,
 `newton_iterations`, `failed_ministeps` and final reservoir CNV/MB. `manifest.json` records the
 generator, verify command and SHA-256 hashes; `worktree_clean_at_generation` is false because the
-surface-condition fix was still uncommitted when the fixture was regenerated, from base commit
+surface-condition fix was still uncommitted when the fixture was regenerated from base commit
 `b14f0976`. Regenerate or verify with:
 
 ```bash
