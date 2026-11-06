@@ -311,7 +311,7 @@ export const comp_spe5_wag: Scenario = {
     description:
         'SPE5 Case 1: two years of production, then eighteen years of one-year water/gas slugs in a layered 7×7×3 reservoir. Six hydrocarbon components exchange between oil and gas, so the miscible front is not a black-oil saturation shock.',
     analyticalMethodSummary:
-        'Simulation-only — no closed-form solution. The independent compositional JutulDarcy reference for the same grid, rock, fluid, relative permeability and WAG schedule is not committed yet; docs/SPE5_VALIDATION.md records the case and the remaining validation work.',
+        'Simulation-only — no closed-form solution. The independent compositional JutulDarcy reference for the same grid, rock, fluid, relative permeability and WAG schedule is committed at opm/compositional/spe5/reference.json; the scenario stays withheld until its comparator, scorecard row and published compositional curves land. docs/SPE5_VALIDATION.md records the comparison through month 217 and the month-218 phase-appearance evidence.',
     analyticalMethodReference:
         'Killough, J.E. & Kossack, C.A. (1987) “Fifth Comparative Solution Project: Evaluation of Miscible Flood Simulators”, SPE 16000, Ninth SPE Symposium on Reservoir Simulation. Case deck: OPM/opm-tests spe5/SPE5CASE1.DATA, Open Database License. Fluid: OPM Spe5FluidSystem.hpp. Validation: docs/SPE5_VALIDATION.md.',
     chartLayoutKey: 'compositional',
