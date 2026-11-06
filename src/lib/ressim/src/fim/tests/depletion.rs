@@ -25,7 +25,7 @@ const DEP_PSS_C_ROCK_BAR_INV: f64 = 1e-6;
 const DEP_PSS_WELL_SKIN: f64 = 0.0;
 const DIETZ_CA_SQUARE_CENTER: f64 = 30.8828;
 const DIETZ_CA_SQUARE_CORNER: f64 = 0.5598;
-const EULER_GAMMA: f64 = 0.577_215_664_9;
+const EULER_GAMMA: f64 = std::f64::consts::EULER_GAMMA;
 const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
 #[derive(Clone, Debug)]
