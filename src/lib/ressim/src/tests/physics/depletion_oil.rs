@@ -2,7 +2,7 @@ const DEP_PSS_SWC: f64 = 0.1;
 const DEP_PSS_SOR: f64 = 0.1;
 const DEP_PSS_NO: f64 = 2.0;
 const DIETZ_CA_SQUARE_CENTER: f64 = 30.8828;
-const EULER_GAMMA: f64 = 0.577_215_664_9;
+const EULER_GAMMA: f64 = std::f64::consts::EULER_GAMMA;
 const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
 fn kro_at_initial_sw() -> f64 {

@@ -35,7 +35,7 @@
     "opm:artifacts": "uv run --directory tools/opm_flow python -m opm_flow_tool.cli build-artifacts"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.1",
+    "@playwright/test": "1.65.0",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@tailwindcss/postcss": "4.3.4",
     "@types/node": "26.6.6",
@@ -45,11 +45,11 @@
     "@vitest/coverage-v8": "5.1.0",
     "autoprefixer": "10.6.2",
     "eslint": "10.14.0",
-    "eslint-plugin-svelte": "3.23.1",
+    "eslint-plugin-svelte": "3.24.0",
     "svelte": "5.57.3",
     "tailwindcss": "4.3.4",
     "typescript": "6.0.3",
-    "vite": "8.3.5",
+    "vite": "8.3.6",
     "vitest": "5.1.0"
   },
   "dependencies": {
