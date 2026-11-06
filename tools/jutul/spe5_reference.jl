@@ -18,6 +18,10 @@ const CASE = JSON.parsefile(CASE_PATH)
 const R_OPM = 8.314472
 const R_GAS = MCF.IDEAL_GAS_CONSTANT
 const T_RES = (160.0 + 459.67) * 5 / 9
+# ResSim pins the SPE5 surface at 101325 Pa / 288.71 K. JutulDarcy's default is 288.15 K, so every
+# well must carry the ResSim condition explicitly: it drives the producer surface flash, the
+# oil-rate control and the injection densities.
+const SURFACE_CONDITIONS = (p = 101325.0, T = 288.71)
 const Z0 = Float64.(CASE["initial_composition"])
 
 # OPM Spe5FluidSystem: C1, C3, C6, C10, C15, C20.
@@ -130,11 +134,11 @@ function build_model(; well_volume_m3 = 1e-4)
     wi = CASE["wells"][1]["completions"][1]["well_index"] / (86400.0 * 1e8)
     volume = isnothing(well_volume_m3) ? missing : [well_volume_m3]
     producer = setup_well(domain, CELLS, name = :PROD, WI = [wi], simple_well = true,
-        volumes = volume)
+        volumes = volume, surface_conditions = SURFACE_CONDITIONS)
     water_injector = setup_well(domain, 1, name = :INJW, WI = [wi], simple_well = true,
-        volumes = volume)
+        volumes = volume, surface_conditions = SURFACE_CONDITIONS)
     gas_injector = setup_well(domain, 1, name = :INJG, WI = [wi], simple_well = true,
-        volumes = volume)
+        volumes = volume, surface_conditions = SURFACE_CONDITIONS)
     system = MultiPhaseCompositionalSystemLV(EOS,
         (AqueousPhase(), LiquidPhase(), VaporPhase()),
         reference_densities = (RHO_W, 1.0, 1.0))
@@ -184,9 +188,9 @@ const M_GAS = sum(Z_GAS .* MW)
 # ResSim pins the SPE5 surface conditions at 101325 Pa, 288.71 K (pinned::spe5). The injection
 # mass rate is surface volume x density, and this density is the EOS density, not ideal gas.
 const RHO_GAS = let
-    cond = (p = 101325.0, T = 288.71, z = Z_GAS)
+    cond = (p = SURFACE_CONDITIONS.p, T = SURFACE_CONDITIONS.T, z = Z_GAS)
     Z = MCF.mixture_compressibility_factor(EOS, cond)
-    M_GAS / (Z * R_GAS * 288.71 / 101325.0)
+    M_GAS / (Z * R_GAS * SURFACE_CONDITIONS.T / SURFACE_CONDITIONS.p)
 end
 const MASS_GAS = let w = Z_GAS .* MW; vcat(w ./ sum(w), 0.0) end
 const MASS_WATER = vcat(zeros(6), 1.0)
@@ -354,7 +358,7 @@ function main(out_path)
         println("period $(year0)-$(year1) $(kind), $(steps) steps")
         result = try
             simulate_reservoir(state, model, fill(dt, steps), parameters = parameters,
-                forces = forces, info_level = -1)
+                forces = forces, info_level = -1, error_on_incomplete = true)
         catch err
             completed = false
             failed_at = Dict("year0" => year0, "year1" => year1, "period" => string(kind),
@@ -393,6 +397,11 @@ function main(out_path)
         "watercut_limit" => WATERCUT_LIMIT,
         "tolerances" => Dict("tol_cnv" => 1e-3, "tol_mb" => 1e-7,
             "note" => "JutulDarcy defaults; not the ResSim 1e-8 per-cell mole balance"),
+        "surface_conditions" => Dict(
+            "pressure_pa" => SURFACE_CONDITIONS.p,
+            "temperature_k" => SURFACE_CONDITIONS.T,
+            "note" => "Explicit on every well. JutulDarcy's default is 288.15 K; ResSim uses " *
+                "288.71 K for the producer flash, oil-rate control and injection densities."),
         "rate_correction" => "producer surface rates are rebuilt from component mass rates: " *
             "water = Water_mass_rate/rhoWS, hydrocarbons = remaining mass split by the " *
             "SurfaceWellConditions flash. JutulDarcy 0.3.7 reports wrat from the aqueous reservoir " *

@@ -95,10 +95,10 @@ at **6304.25 d** (0.866442, WOR 6.49), but that is not a report step: the monthl
 are 0.827546 at 6300.5625 d and 0.830951 at 6331 d, both below `5/6`.
 
 The JutulDarcy reference crosses the same stop at month 207 (**6300.5625 d**) by water cut:
-**0.854462** (WOR 5.13), GOR **1060.2 m³/m³**; its month-208 report is **0.872972**. ResSim
+**0.854810** (WOR 5.89), GOR **1066.1 m³/m³**; its month-208 report is **0.873085**. ResSim
 reports 0.827546 and 0.830951 at those two reports. The two simulators are therefore on opposite sides of
 `5/6` at the same report, separated by 0.027 and 0.042 water cut — inside the late-window spread
-recorded below (worst 0.0616). #98's threshold is physically reachable on this case; whether a
+recorded below (worst 0.0615). #98's threshold is physically reachable on this case; whether a
 given monthly ResSim path fires it is a late-time trajectory question, not a case-definition
 defect. The policy is still not demonstrated end-to-end on a ResSim monthly run, so #98 remains
 open under #116.
@@ -308,16 +308,20 @@ Stone II relative permeability, rate targets and WAG schedule. It has **240 mont
 rates, cell-33 pressure and saturations, producer control/BHP, and Jutul's `ministeps`,
 `newton_iterations`, `failed_ministeps` and final reservoir CNV/MB. `manifest.json` records the
 generator, verify command and SHA-256 hashes; `worktree_clean_at_generation` is false because the
-fixture was produced before the generator and this documentation were committed, from base commit
-`e10bddc6`. Regenerate or verify with:
+surface-condition fix was still uncommitted when the fixture was regenerated, from base commit
+`b14f0976`. Regenerate or verify with:
 
 ```bash
 bash tools/opm_compositional/run-spe5.sh           # regenerate, about 80 min
 bash tools/opm_compositional/run-spe5.sh --check   # replay and compare parsed numbers
 ```
 
-Four changes were needed before the run was comparable to ResSim:
+Five changes were needed before the run was comparable to ResSim:
 
+- **Surface conditions.** JutulDarcy's default surface temperature is 288.15 K; ResSim pins
+  101325 Pa / 288.71 K. Every well now carries that condition explicitly, so the producer surface
+  flash, the oil-rate control and the injection densities use the same convention. The fixture
+  records it as `surface_conditions`.
 - **OPM Stone II.** JutulDarcy 0.3.7's `StoneIIMethod` evaluates the water-oil and gas-oil oil
   curves at the three-phase oil saturation. OPM's `EclStone2Material`, and ResSim's
   `k_ro_stone2_generic`, use `krow(Sw)` and `krog(1 - Swc - Sg)`. `OPMStoneII` in the generator
@@ -336,7 +340,9 @@ Four changes were needed before the run was comparable to ResSim:
   report is stored in `stopped`; a comparison truncates there.
 
 Jutul's convergence tolerances are its defaults (CNV `1e-3`, MB `1e-7`), not ResSim's per-cell
-mole-balance target; the fixture records them as such.
+mole-balance target; the fixture records them as such. The generator runs with
+`error_on_incomplete = true`, and the wrapper validates `completed`, the 240 reports and the
+7305 d horizon before it replaces either `reference.json` or `manifest.json`.
 
 ### Comparison with ResSim
 
@@ -349,68 +355,67 @@ covers months 1–217. At **730.5 d** (month 24) the two runs agree on pressure 
 | Cell-33 pressure, bar | 109.84 | 109.75 |
 | Cell-33 Sw | 0.2032 | 0.2032 |
 | Cell-33 Sg | 0.4091 | 0.4102 |
-| Producer oil, m³/d | 959.2 | 954.3 |
-| Producer gas, m³/d | 212,697 | 212,390 |
-| Producer water, m³/d | 0.13698 | 0.13679 |
-| GOR, m³/m³ | 221.7 | 222.6 |
+| Producer oil, m³/d | 959.2 | 954.2 |
+| Producer gas, m³/d | 212,697 | 212,883 |
+| Producer water, m³/d | 0.13698 | 0.13678 |
+| GOR, m³/m³ | 221.7 | 223.1 |
 | Water cut | 1.428e-4 | 1.433e-4 |
 
 Both producers switch from oil-rate to BHP control at month 16 (**487.0 d**), the same report.
 Across all 217 months the pressure agreement stays tight: the worst mean-pressure difference is
-**1.76 bar** (month 175) and the worst cell-33 difference is **2.16 bar** (month 177). The rate and
-saturation spread is wider in the late water/gas years: worst producer-oil difference **28.4%**
-(month 208), worst GOR difference **22.6%** (month 164) and worst water-cut difference **0.0616**
+**1.75 bar** (month 175) and the worst cell-33 difference is **2.15 bar** (month 177). The rate and
+saturation spread is wider in the late water/gas years: worst producer-oil difference **28.5%**
+(month 208), worst GOR difference **22.3%** (month 164) and worst water-cut difference **0.0615**
 absolute (month 169). Those are late-time trajectory spreads, not a normalization or unit error —
 the early and mid-life rates agree within a few percent.
 
 | month | day | mean p R / J (bar) | cell 33 p R / J (bar) | Sw 33 R / J | Sg 33 R / J | oil R / J (m³/d) | GOR R / J (m³/m³) | WC R / J | Jutul ministeps / Newton |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 12 | 365.25 | 139.04 / 138.94 | 136.23 / 136.11 | 0.2030 / 0.2030 | 0.1093 / 0.1101 | 1907.8 / 1916.8 | 87.5 / 87.5 | 0.00006 / 0.00006 | 1 / 5 |
-| 16 | 487.00 | 129.07 / 128.94 | 125.37 / 125.23 | 0.2032 / 0.2032 | 0.2069 / 0.2083 | 1864.1 / 1854.8 | 112.2 / 112.3 | 0.00009 / 0.00009 | 1 / 5 |
-| 24 | 730.50 | 112.68 / 112.58 | 109.84 / 109.75 | 0.2032 / 0.2032 | 0.4091 / 0.4102 | 959.2 / 954.3 | 221.7 / 222.6 | 0.00014 / 0.00014 | 1 / 4 |
-| 48 | 1461.00 | 110.05 / 110.25 | 106.32 / 106.66 | 0.2025 / 0.2025 | 0.4706 / 0.4788 | 847.2 / 882.3 | 252.4 / 240.1 | 0.00016 / 0.00016 | 300 / 3279 |
-| 96 | 2922.00 | 112.58 / 112.64 | 106.36 / 106.82 | 0.2015 / 0.2015 | 0.5094 / 0.5244 | 872.8 / 887.3 | 276.8 / 279.3 | 0.00016 / 0.00016 | 299 / 3263 |
-| 144 | 4383.00 | 119.55 / 119.96 | 109.10 / 110.29 | 0.3836 / 0.3819 | 0.3007 / 0.3037 | 860.1 / 894.5 | 291.8 / 286.4 | 0.00016 / 0.00015 | 280 / 3050 |
-| 192 | 5844.00 | 189.75 / 190.26 | 181.17 / 181.69 | 0.5353 / 0.5601 | 0.0732 / 0.0244 | 348.8 / 333.2 | 283.4 / 287.6 | 0.58980 / 0.60889 | 190 / 2065 |
-| 204 | 6209.25 | 231.81 / 232.06 | 215.99 / 216.31 | 0.4869 / 0.4835 | 0.1680 / 0.1740 | 290.7 / 287.2 | 649.4 / 649.1 | 0.68825 / 0.69197 | 1 / 6 |
-| 205 | 6239.69 | 229.93 / 229.46 | 215.43 / 215.25 | 0.5032 / 0.4970 | 0.1686 / 0.1845 | 235.4 / 241.3 | 745.1 / 774.4 | 0.73048 / 0.72410 | 136 / 1427 |
-| 206 | 6270.12 | 229.62 / 228.78 | 215.46 / 214.31 | 0.5205 / 0.5174 | 0.1557 / 0.1725 | 178.7 / 155.8 | 847.6 / 1008.1 | 0.78231 / 0.79946 | 151 / 1618 |
-| 207 | 6300.56 | 229.99 / 229.19 | 216.49 / 215.55 | 0.5346 / 0.5315 | 0.1336 / 0.1447 | 136.8 / 110.8 | 924.0 / 1060.2 | 0.82755 / 0.85446 | 158 / 1699 |
-| 208 | 6331.00 | 230.58 / 230.38 | 218.70 / 217.67 | 0.5350 / 0.5424 | 0.1185 / 0.1135 | 138.4 / 99.0 | 854.3 / 1015.2 | 0.83095 / 0.87297 | 160 / 1721 |
-| 209 | 6361.44 | 231.23 / 231.37 | 220.42 / 220.35 | 0.5389 / 0.5437 | 0.1064 / 0.0938 | 142.4 / 134.5 | 829.3 / 797.7 | 0.83061 / 0.84179 | 162 / 1754 |
-| 210 | 6391.88 | 231.77 / 232.38 | 222.02 / 221.94 | 0.5461 / 0.5589 | 0.0861 / 0.0766 | 149.6 / 131.6 | 809.7 / 816.3 | 0.82640 / 0.84582 | 166 / 1801 |
-| 211 | 6422.31 | 232.02 / 233.08 | 223.06 / 223.62 | 0.5542 / 0.5823 | 0.0668 / 0.0350 | 159.9 / 157.1 | 801.7 / 720.4 | 0.81816 / 0.82629 | 167 / 1815 |
-| 212 | 6452.75 | 232.06 / 233.37 | 223.79 / 224.93 | 0.5570 / 0.6012 | 0.0563 / 0.0000 | 166.9 / 169.2 | 818.9 / 738.2 | 0.81176 / 0.81591 | 160 / 1735 |
-| 213 | 6483.19 | 231.98 / 233.52 | 224.40 / 225.98 | 0.5481 / 0.5968 | 0.0665 / 0.0000 | 167.1 / 166.1 | 861.9 / 785.3 | 0.81118 / 0.81820 | 167 / 1814 |
-| 214 | 6513.62 | 231.81 / 233.43 | 224.99 / 226.55 | 0.5259 / 0.5839 | 0.1036 / 0.0000 | 164.2 / 170.8 | 913.2 / 827.9 | 0.81323 / 0.81277 | 168 / 1830 |
-| 215 | 6544.06 | 231.61 / 233.09 | 225.23 / 226.69 | 0.5003 / 0.5686 | 0.1664 / 0.0000 | 158.7 / 174.9 | 984.5 / 889.4 | 0.81709 / 0.80716 | 167 / 1815 |
-| 216 | 6574.50 | 231.30 / 232.57 | 225.16 / 226.51 | 0.4785 / 0.5485 | 0.2168 / 0.0696 | 152.0 / 161.7 | 1070.6 / 1024.1 | 0.82167 / 0.81540 | 204 / 2228 |
-| 217 | 6604.94 | 233.87 / 234.98 | 227.43 / 228.08 | 0.4513 / 0.5234 | 0.2515 / 0.0721 | 183.8 / 212.9 | 1013.4 / 917.9 | 0.79315 / 0.77195 | 276 / 2899 |
-| 218 | 6635.38 | — | 229.75 | — | 0.0000 | — | 984.4 | — | 369 / 4006 |
-| 219 | 6665.81 | — | 230.56 | — | 0.4334 | — | 1135.3 | — | 975 / 10827 |
+| 12 | 365.25 | 139.04 / 138.94 | 136.23 / 136.12 | 0.2030 / 0.2030 | 0.1093 / 0.1101 | 1907.8 / 1916.9 | 87.5 / 87.7 | 0.00006 / 0.00006 | 1 / 5 |
+| 16 | 487.00 | 129.07 / 128.94 | 125.37 / 125.23 | 0.2032 / 0.2032 | 0.2069 / 0.2083 | 1864.1 / 1854.9 | 112.2 / 112.5 | 0.00009 / 0.00009 | 1 / 5 |
+| 24 | 730.50 | 112.68 / 112.58 | 109.84 / 109.75 | 0.2032 / 0.2032 | 0.4091 / 0.4102 | 959.2 / 954.2 | 221.7 / 223.1 | 0.00014 / 0.00014 | 1 / 4 |
+| 48 | 1461.00 | 110.05 / 110.25 | 106.32 / 106.66 | 0.2025 / 0.2025 | 0.4706 / 0.4788 | 847.2 / 882.1 | 252.4 / 240.7 | 0.00016 / 0.00016 | 300 / 3279 |
+| 96 | 2922.00 | 112.58 / 112.64 | 106.36 / 106.82 | 0.2015 / 0.2015 | 0.5094 / 0.5244 | 872.8 / 887.0 | 276.8 / 280.0 | 0.00016 / 0.00016 | 298 / 3247 |
+| 144 | 4383.00 | 119.55 / 119.96 | 109.10 / 110.30 | 0.3836 / 0.3819 | 0.3007 / 0.3037 | 860.1 / 894.3 | 291.8 / 287.2 | 0.00016 / 0.00015 | 284 / 3102 |
+| 192 | 5844.00 | 189.75 / 190.26 | 181.17 / 181.69 | 0.5353 / 0.5601 | 0.0732 / 0.0244 | 348.8 / 332.9 | 283.4 / 288.7 | 0.58980 / 0.60911 | 190 / 2065 |
+| 204 | 6209.25 | 231.81 / 232.06 | 215.99 / 216.31 | 0.4869 / 0.4834 | 0.1680 / 0.1740 | 290.7 / 286.7 | 649.4 / 652.3 | 0.68825 / 0.69239 | 1 / 6 |
+| 205 | 6239.69 | 229.93 / 229.45 | 215.43 / 215.25 | 0.5032 / 0.4970 | 0.1686 / 0.1846 | 235.4 / 240.7 | 745.1 / 778.3 | 0.73048 / 0.72454 | 133 / 1392 |
+| 206 | 6270.12 | 229.62 / 228.78 | 215.46 / 214.31 | 0.5205 / 0.5174 | 0.1557 / 0.1725 | 178.7 / 155.5 | 847.6 / 1013.3 | 0.78231 / 0.79985 | 153 / 1638 |
+| 207 | 6300.56 | 229.99 / 229.18 | 216.49 / 215.55 | 0.5346 / 0.5315 | 0.1336 / 0.1447 | 136.8 / 110.4 | 924.0 / 1066.1 | 0.82755 / 0.85481 | 160 / 1728 |
+| 208 | 6331.00 | 230.58 / 230.38 | 218.70 / 217.68 | 0.5350 / 0.5424 | 0.1185 / 0.1134 | 138.4 / 99.0 | 854.3 / 1018.8 | 0.83095 / 0.87309 | 162 / 1745 |
+| 209 | 6361.44 | 231.23 / 231.37 | 220.42 / 220.35 | 0.5389 / 0.5437 | 0.1064 / 0.0939 | 142.4 / 134.3 | 829.3 / 802.1 | 0.83061 / 0.84201 | 167 / 1810 |
+| 210 | 6391.88 | 231.77 / 232.37 | 222.02 / 221.95 | 0.5461 / 0.5591 | 0.0861 / 0.0763 | 149.6 / 131.6 | 809.7 / 819.1 | 0.82640 / 0.84578 | 162 / 1757 |
+| 211 | 6422.31 | 232.02 / 233.07 | 223.06 / 223.62 | 0.5542 / 0.5824 | 0.0668 / 0.0347 | 159.9 / 156.9 | 801.7 / 724.4 | 0.81816 / 0.82649 | 168 / 1831 |
+| 212 | 6452.75 | 232.06 / 233.35 | 223.79 / 224.92 | 0.5570 / 0.6011 | 0.0563 / 0.0000 | 166.9 / 168.8 | 818.9 / 742.6 | 0.81176 / 0.81621 | 162 / 1753 |
+| 213 | 6483.19 | 231.98 / 233.50 | 224.40 / 225.97 | 0.5481 / 0.5965 | 0.0665 / 0.0000 | 167.1 / 165.8 | 861.9 / 789.8 | 0.81118 / 0.81839 | 167 / 1814 |
+| 214 | 6513.62 | 231.81 / 233.41 | 224.99 / 226.53 | 0.5259 / 0.5837 | 0.1036 / 0.0000 | 164.2 / 170.4 | 913.2 / 833.1 | 0.81323 / 0.81305 | 167 / 1814 |
+| 215 | 6544.06 | 231.61 / 233.07 | 225.23 / 226.67 | 0.5003 / 0.5683 | 0.1664 / 0.0000 | 158.7 / 174.5 | 984.5 / 894.9 | 0.81709 / 0.80746 | 168 / 1831 |
+| 216 | 6574.50 | 231.30 / 232.55 | 225.16 / 226.50 | 0.4785 / 0.5478 | 0.2168 / 0.0712 | 152.0 / 160.8 | 1070.6 / 1033.3 | 0.82167 / 0.81612 | 193 / 2093 |
+| 217 | 6604.94 | 233.87 / 234.97 | 227.43 / 228.08 | 0.4513 / 0.5220 | 0.2515 / 0.0741 | 183.8 / 211.5 | 1013.4 / 924.6 | 0.79315 / 0.77310 | 272 / 2859 |
+| 218 | 6635.38 | — / 236.52 | — / 229.49 | — / 0.5028 | — / 0.2094 | — / 240.4 | — / 992.8 | — / 0.74653 | 415 / 4510 |
+| 219 | 6665.81 | — / 237.42 | — / 230.54 | — / 0.4576 | — / 0.4264 | — / 221.5 | — / 1144.0 | — / 0.75606 | 1477 / 16449 |
 
 ### What it says about #116
 
 The cell-33 phase-appearance window is the discriminator. Jutul shows no free gas at months
-212–215, then Sg **0.0696** and **0.0721** at months 216–217, back to zero at month 218, and
-**0.4334** at month 219. Crossing it is expensive but possible: month 217 costs 276 ministeps /
-2,899 Newton iterations, month 218 costs 369 / 4,006, and month 219 costs 975 / 10,827 with 610
-failed ministeps. The schedule then returns to two ministeps / ten Newton iterations at month 220
-and one / five at month 221, before the next gas cycle builds again. Jutul's gas periods are
-intrinsically slow as well — month 48 is 300 ministeps / 3,279 Newton iterations and month 96 is
-299 / 3,263 — so the month-218 storm is an amplification of the gas-cycle cost, not a one-off
-numerical failure.
+212–215, then Sg **0.0712** and **0.0741** at months 216–217, **0.2094** at month 218, and
+**0.4264** at month 219. Crossing it is expensive but possible: month 217 costs 272 ministeps /
+2,859 Newton iterations, month 218 costs 415 / 4,510, and month 219 costs 1,477 / 16,449 with 932
+failed ministeps. The schedule then drops to 4 / 18 at month 220 and 2 / 10 at month 221, before
+the next gas cycle builds again. Jutul's gas periods are intrinsically slow as well — month 48 is
+300 ministeps / 3,279 Newton iterations and month 96 is 298 / 3,247 — so the month-218 storm is an
+amplification of the gas-cycle cost, not a one-off numerical failure.
 
 That supports the #116 reading: the ResSim plateau is a solver-robustness problem at a crossing the
 same discrete case can traverse, not an uncrossable physical discontinuity. It does not supply a
-ResSim target trajectory. Jutul's late saturation state differs materially from ResSim's: at month
-217 Jutul has cell-33 Sw/Sg 0.5234/0.0721 where ResSim has 0.4513/0.2515, and Jutul returns to
-single liquid at month 218 while ResSim's stalled state keeps free gas. The two runs agree on
-pressure and the broad water-cut ramp, not on the exact phase split in the last window.
+ResSim target trajectory. Jutul's late saturation state still differs materially from ResSim's: at
+month 217 Jutul has cell-33 Sw/Sg 0.5220/0.0741 where ResSim has 0.4513/0.2515, and Jutul continues
+through month 218 with Sg 0.2094 and month 219 with 0.4264. The two runs agree on pressure and the
+broad water-cut ramp, not on the exact phase split in the last window.
 
-Two caveats for later use of the fixture. The run emitted 234 `Flash did not converge in 25000
-iterations` warnings from MultiComponentFlash; the worst final ε was **5.54e-8** against the
-`1e-8` tolerance, and the accepted reservoir CNV stayed below Jutul's `1e-3` (maximum **2.33e-4**,
+Two caveats for later use of the fixture. The run emitted 329 `Flash did not converge in 25000
+iterations` warnings from MultiComponentFlash; the worst final ε was **6.72e-8** against the
+`1e-8` tolerance, and the accepted reservoir CNV stayed below Jutul's `1e-3` (maximum **3.44e-4**,
 at month 217). The reference is therefore a default-tolerance JutulDarcy result, not a
 thermodynamic oracle; the per-report CNV/MB in the fixture lets a tighter comparison reject the
 affected reports instead of treating every number as exact.
@@ -419,8 +424,8 @@ affected reports instead of treating every number as exact.
 
 1. **Done.** The JutulDarcy reference is committed at `opm/compositional/spe5/reference.json` with
   `manifest.json` and `run-spe5.sh`; see “Independent JutulDarcy reference” above. The earlier
-  156-report run is superseded: it ran before the OPM Stone II, rock-compressibility and
-  surface-rate corrections, its producer was BHP-controlled from 730.5 d at an oil rate of
+  156-report run is superseded: it ran before the OPM Stone II, rock-compressibility, surface-rate
+  and surface-condition corrections, its producer was BHP-controlled from 730.5 d at an oil rate of
   2.9 m³/day, and its water cut at 4017.75 d was 0.49 against ResSim's 0.0002. The committed run
   completes 240 reports through 7305 d and records per-report Newton/timestep diagnostics.
 2. Put the run through `compare_small_direct.py --comp-reference-dir` and the shared scorecard,
