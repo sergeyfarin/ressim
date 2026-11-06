@@ -197,12 +197,16 @@ The #119 full step relaxes the path, not the physics: its first candidate at `be
 following Newton iterations reach the lower answer. A converged non-monotone Newton replacement is
 now admitted only when its two-phase Gibbs energy does not exceed the feed's; otherwise the attempt
 returns to substitution. The feed is the lower of the liquid and vapour single-phase branches, and
-a `1e-10` roundoff margin separates equality from a real metastable split. The check applies only
-to the Newton replacement — the substitution fixed point is still admitted by its residual alone.
+a `1e-10` roundoff margin separates equality from a real metastable split. Both sides are evaluated
+on normalized compositions: the EOS accepts a feed sum within `1e-9`, and using its raw entries
+would move the comparison by more than the margin. The check applies only to the Newton
+replacement — the substitution fixed point is still admitted by its residual alone.
 
-Regression: `comp_flash_gibbs_guard_rejects_the_near_critical_nonmonotone_split` pins the #119
-candidate as uphill and the converged answer as downhill. The #119 seed and the C0 flash fixture
-are unchanged.
+Regressions: `comp_flash_gibbs_guard_rejects_the_near_critical_nonmonotone_split` pins the #119
+candidate as uphill and the converged answer as downhill;
+`comp_flash_gibbs_guard_normalizes_a_slightly_non_unit_feed` scales that feed by `1 + 9e-10` and
+requires the same convergent two-phase answer. The #119 seed and the C0 flash fixture are
+unchanged.
 
 ### Late-life stall (#93): fixed
 

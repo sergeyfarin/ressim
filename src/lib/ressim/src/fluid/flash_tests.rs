@@ -1147,3 +1147,40 @@ fn comp_flash_gibbs_guard_rejects_the_near_critical_nonmonotone_split() {
         "the guard rejected the converged near-critical answer"
     );
 }
+
+/// #122 review: normalizing the feed keeps an accepted, slightly non-unit composition convergent.
+///
+/// The two-phase compositions are normalized before the EOS is evaluated, so the feed side of the
+/// Gibbs comparison has to be normalized too. With raw `z` scaled by `1 + 9e-10`, the unnormalized
+/// `sum_i z_i (ln z_i + ln phi_i)` shifts the feed energy by more than the guard's `1e-10` margin.
+/// The guard then rejects the converged Newton answer, substitution resumes, and the flash runs out
+/// of iterations even though the EOS accepts the feed.
+#[test]
+fn comp_flash_gibbs_guard_normalizes_a_slightly_non_unit_feed() {
+    let spec = pinned::spe5().expect("SPE5 specification");
+    let t = spec.reservoir_temperature_k();
+    let z = [
+        0.695_201_721_258_106_9,
+        0.216_484_578_024_801_95,
+        0.050_924_318_608_656_52,
+        0.015_456_903_835_536_25,
+        0.016_010_702_749_176_382,
+        0.005_921_775_523_722_084,
+    ];
+    let scale = 1.0 + 9.0e-10;
+    let feed: Vec<f64> = z.iter().map(|value| value * scale).collect();
+    let state = flash(&spec, 228.523_804_4e5, t, &feed, None)
+        .expect("the guard must not turn an accepted feed into a failure");
+    assert_eq!(state.phase_state, PhaseState::TwoPhase);
+    assert!(state.equilibrium_residual < 1e-11);
+    assert!(
+        (state.beta - 0.133_342_892_070_058_12).abs() < 1e-4,
+        "beta {}",
+        state.beta
+    );
+    assert!(
+        state.iterations < 100,
+        "the guard forced substitution: {} iterations",
+        state.iterations
+    );
+}

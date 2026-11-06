@@ -570,16 +570,26 @@ fn phase_gibbs(x: &[f64], ln_phi: &[f64]) -> f64 {
 /// that does not exist for this feed is not an error here: the other branch still describes the
 /// single-phase state. `None` means neither branch could be evaluated, and the caller then lets the
 /// Newton answer through rather than rejecting it on a comparison it could not make.
+///
+/// The feed is normalized before both the EOS evaluation and [`phase_gibbs`], because the two-phase
+/// compositions are normalized the same way. The EOS accepts a composition whose sum is within
+/// `1e-9` of one, and feeding the raw entries into `sum_i z_i (ln z_i + ln phi_i)` would move the
+/// comparison by more than its own tolerance.
 fn single_phase_gibbs(
     spec: &FluidSpecification,
     pressure_pa: f64,
     temperature_k: f64,
     z: &[f64],
 ) -> Option<f64> {
+    let total: f64 = z.iter().sum();
+    if !(total > 0.0) || !total.is_finite() {
+        return None;
+    }
+    let feed: Vec<f64> = z.iter().map(|value| value / total).collect();
     let mut best: Option<f64> = None;
     for branch in [PhaseBranch::Liquid, PhaseBranch::Vapour] {
-        if let Ok(props) = evaluate(spec, pressure_pa, temperature_k, z, branch) {
-            let g = phase_gibbs(z, &props.ln_phi);
+        if let Ok(props) = evaluate(spec, pressure_pa, temperature_k, &feed, branch) {
+            let g = phase_gibbs(&feed, &props.ln_phi);
             if g.is_finite() && best.is_none_or(|value| g < value) {
                 best = Some(g);
             }
