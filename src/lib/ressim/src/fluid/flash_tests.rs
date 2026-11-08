@@ -1184,3 +1184,118 @@ fn comp_flash_gibbs_guard_normalizes_a_slightly_non_unit_feed() {
         state.iterations
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// Difference-form refinement (#116, experimental, off by default)
+// ---------------------------------------------------------------------------------------------
+
+/// The difference-form residual is the standard equilibrium system evaluated another way, so the
+/// two must agree to round-off wherever both are defined: at every converged fixture split, and
+/// at points moved off it by 1e-3 in `ln K` and `beta`, where the residual is not small.
+#[test]
+fn comp_flash_difference_residual_matches_the_standard_one() {
+    let f = fixture::load();
+    let mut checked = 0;
+    let mut worst = 0.0f64;
+    for system in &f.systems {
+        let spec = spec_for(system);
+        let n = spec.component_count();
+        for state in &system.states {
+            let r = flash(
+                &spec,
+                state.pressure_pa,
+                state.temperature_k,
+                &state.z,
+                None,
+            )
+            .unwrap();
+            if r.phase_state != PhaseState::TwoPhase {
+                continue;
+            }
+            let (l, v) = (r.liquid.as_ref().unwrap(), r.vapour.as_ref().unwrap());
+            let ln_k: Vec<f64> = l.ln_phi.iter().zip(&v.ln_phi).map(|(a, b)| a - b).collect();
+            for offset in [0.0, 1e-3, -1e-3] {
+                let lk: Vec<f64> = ln_k
+                    .iter()
+                    .enumerate()
+                    .map(|(i, k)| k + offset * (1.0 + i as f64 / n as f64))
+                    .collect();
+                let beta = r.beta + offset;
+                let standard = super::derivatives::equilibrium_residual::<f64>(
+                    &spec,
+                    state.pressure_pa,
+                    state.temperature_k,
+                    &lk,
+                    &state.z,
+                    beta,
+                );
+                let difference = super::flash::difference_residual(
+                    &spec,
+                    state.pressure_pa,
+                    state.temperature_k,
+                    &state.z,
+                    &lk,
+                    beta,
+                );
+                let (Ok(standard), Some(difference)) = (standard, difference) else {
+                    continue;
+                };
+                for (a, b) in standard.iter().zip(&difference) {
+                    worst = worst.max((a - b).abs());
+                }
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 50, "only {checked} points were comparable");
+    assert!(
+        worst <= 1e-12,
+        "difference and standard residuals differ by {worst:e}"
+    );
+}
+
+/// With the refinement on, every two-phase fixture state keeps its split to within the standard
+/// form's own round-off, stays two-phase, and meets the same equilibrium and material-balance
+/// invariants. Away from a critical point the refinement must change nothing that matters.
+#[test]
+fn comp_flash_refinement_leaves_ordinary_states_unchanged() {
+    let f = fixture::load();
+    let mut worst_beta = 0.0f64;
+    let mut worst_x = 0.0f64;
+    let mut worst_recon = 0.0f64;
+    let mut refined_count = 0;
+    for system in &f.systems {
+        let spec = spec_for(system);
+        for state in &system.states {
+            let p = state.pressure_pa;
+            let t = state.temperature_k;
+            let off = flash(&spec, p, t, &state.z, None).unwrap();
+            let on = super::flash::with_difference_refinement_for_test(true, || {
+                flash(&spec, p, t, &state.z, None).unwrap()
+            });
+            assert_eq!(off.phase_state, on.phase_state, "{}", state.id);
+            if on.phase_state != PhaseState::TwoPhase {
+                assert_eq!(
+                    off, on,
+                    "{}: a single-phase state must not change",
+                    state.id
+                );
+                continue;
+            }
+            refined_count += 1;
+            assert!(on.equilibrium_residual <= super::flash::EQUILIBRIUM_TOLERANCE);
+            worst_beta = worst_beta.max((on.beta - off.beta).abs());
+            for (a, b) in on.x.iter().zip(&off.x).chain(on.y.iter().zip(&off.y)) {
+                worst_x = worst_x.max((a - b).abs());
+            }
+            for i in 0..spec.component_count() {
+                let recon = (1.0 - on.beta) * on.x[i] + on.beta * on.y[i];
+                worst_recon = worst_recon.max((recon - state.z[i]).abs());
+            }
+        }
+    }
+    assert!(refined_count > 10);
+    assert!(worst_beta <= 1e-8, "beta moved by {worst_beta:e}");
+    assert!(worst_x <= 1e-9, "a composition moved by {worst_x:e}");
+    assert!(worst_recon <= 1e-10, "z reconstruction {worst_recon:e}");
+}

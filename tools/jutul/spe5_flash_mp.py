@@ -3,7 +3,9 @@
     uv run --no-project --with mpmath python -I tools/jutul/spe5_flash_mp.py CONDITIONING.json OUT.json [STRIDE]
 
 CONDITIONING.json is written by the ignored ResSim test `comp_spe5_failure_b_flash_conditioning`
-(`SPE5_TRACE_OUT=DIR`, file `failure_b_flash_conditioning.json`). It carries the fluid exactly as
+(`SPE5_TRACE_OUT=DIR`, file `failure_b_flash_conditioning.json`) or by
+`comp_spe5_flash_refinement_states` (`flash_refinement_states.json`; there each sweep is one entry
+of `cells`, with its `kind`, and a point may carry its own `z`). It carries the fluid exactly as
 ResSim holds it (critical properties, acentric factors, interactions, the PR/PRCORR constants) and,
 for cells 33, 39 and 40, the exact (p, z) and ResSim's split at 64 consecutive pressure ulps.
 
@@ -132,6 +134,11 @@ def main(in_path, out_path, stride=4):
         for k, pt in enumerate(cell["ulp_sweep"]["points"]):
             if k % stride:
                 continue
+            if "z" in pt:
+                # A per-point composition (the refinement sweep's composition perturbations).
+                z = [mp.mpf(v) for v in pt["z"]]
+                total = sum(z)
+                z = [v / total for v in z]
             p = mp.mpf(pt["p_pa"])
             K0 = [mp.mpf(yv) / mp.mpf(xv) for xv, yv in zip(pt["x"], pt["y"])]
             u0 = [mp.log(v) for v in K0] + [mp.mpf(pt["beta"])]
@@ -158,7 +165,7 @@ def main(in_path, out_path, stride=4):
         betas = [mp.mpf(q["beta"]) for q in points]
         rb = [q["ressim_beta"] for q in points]
         summary = {
-            "cell": cell["cell"], "points": len(points),
+            "cell": cell["cell"], "kind": cell.get("kind", "pressure_ulps"), "points": len(points),
             "mp_beta_spread": mp.nstr(max(betas) - min(betas), 5),
             "ressim_beta_spread": max(rb) - min(rb),
             "max_abs_ressim_minus_mp_beta": max(abs(q["ressim_minus_mp_beta"]) for q in points),

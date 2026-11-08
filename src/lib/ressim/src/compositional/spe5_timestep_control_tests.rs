@@ -14,11 +14,13 @@
 //! | Variable | Meaning | Default |
 //! |---|---|---|
 //! | `SPE5_REPLAY_OUT` | output JSON, rewritten after every month | required |
-//! | `SPE5_REPLAY_SEED` | `scratch`, or a checkpoint file in `opm/compositional/spe5/` | `scratch` |
+//! | `SPE5_REPLAY_SEED` | `scratch`, a checkpoint file in `opm/compositional/spe5/`, or an absolute path | `scratch` |
 //! | `SPE5_MAX_DT_DAYS` | cap on each call's `dt` | none (the month's remainder) |
 //! | `SPE5_MAX_ATTEMPTS` | the halving budget | 10 |
 //! | `SPE5_LAST_MONTH` | last report month | 240 |
 //! | `SPE5_WALL_BUDGET_S` | stop, recording why, once this much wall time is spent | none |
+//! | `SPE5_FLASH_REFINE` | `1`: the experimental difference-form flash refinement on (`fluid::flash`) | off |
+//! | `SPE5_REPLAY_CHECKPOINT_OUT` | on a failed step, write the failing call's starting checkpoint here (a seed for `SPE5_REPLAY_SEED`) | none |
 //!
 //! Per month it records the snapshot (the format `tools/jutul/spe5_compare.py` reads), the calls,
 //! accepted steps, failed attempts, Newton iterations of accepted attempts, the smallest accepted
@@ -32,6 +34,7 @@
 //! in the last bits from a loop that subtracts accepted steps, and at failure B's near-critical
 //! state an attempt's outcome changes with that difference (#116).
 use super::api::{Checkpoint, CompositionalCase};
+use crate::fluid::flash::with_difference_refinement_for_test;
 use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::time::Instant;
@@ -69,12 +72,20 @@ fn well_cumulative(case: &CompositionalCase) -> Vec<f64> {
 #[test]
 #[ignore = "#116 timestep-control replay; minutes to hours; configure through SPE5_* (module docs)"]
 fn comp_spe5_replay_with_timestep_options() {
+    let refine = std::env::var("SPE5_FLASH_REFINE").is_ok_and(|v| v == "1");
+    with_difference_refinement_for_test(refine, || replay(refine));
+}
+
+fn replay(refine: bool) {
     let out = PathBuf::from(std::env::var("SPE5_REPLAY_OUT").expect("set SPE5_REPLAY_OUT"));
     let seed = std::env::var("SPE5_REPLAY_SEED").unwrap_or_else(|_| "scratch".to_string());
     let cap: Option<f64> = env_or("SPE5_MAX_DT_DAYS");
     let max_attempts: usize = env_or("SPE5_MAX_ATTEMPTS").unwrap_or(10);
     let last_month: usize = env_or("SPE5_LAST_MONTH").unwrap_or(240);
     let wall_budget: Option<f64> = env_or("SPE5_WALL_BUDGET_S");
+    let checkpoint_out: Option<PathBuf> = std::env::var("SPE5_REPLAY_CHECKPOINT_OUT")
+        .ok()
+        .map(PathBuf::from);
 
     let mut case = if seed == "scratch" {
         let text = std::fs::read_to_string(spe5_dir().join("case.json")).expect("read case.json");
@@ -96,7 +107,7 @@ fn comp_spe5_replay_with_timestep_options() {
     let settings = json!({
         "seed": seed, "start_day": start_time, "max_dt_days": cap,
         "max_attempts": max_attempts, "last_month": last_month, "wall_budget_s": wall_budget,
-        "tolerance": 1e-8,
+        "tolerance": 1e-8, "flash_refinement": refine, "request": "end - now from the snapshot time, or the cap",
     });
     let write = |months: &[Value], stopped: &Option<Value>| {
         let body = json!({"schema": "ressim-spe5-replay/1", "settings": settings,
@@ -125,12 +136,17 @@ fn comp_spe5_replay_with_timestep_options() {
                 break 'months;
             }
             let request = cap.map_or(remaining, |c| c.min(remaining));
+            let before = checkpoint_out.as_ref().map(|_| case.checkpoint());
             let outcome = case.step(request);
             calls += 1;
             failed_attempts += outcome
                 .attempts
                 .saturating_sub(usize::from(outcome.succeeded()));
             if !outcome.succeeded() {
+                if let (Some(path), Some(before)) = (&checkpoint_out, &before) {
+                    let text = serde_json::to_string(before).expect("serialize the checkpoint");
+                    std::fs::write(path, text).expect("write the checkpoint");
+                }
                 stopped = Some(json!({"reason": "step failed", "month": month, "day": now,
                     "attempts": outcome.attempts, "failure": format!("{:?}", outcome.failure),
                     "month_so_far": {"calls": calls, "accepted_steps": steps,

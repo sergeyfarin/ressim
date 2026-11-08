@@ -27,13 +27,13 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 
 /// The failing call's remainder and its tenth (last) halving.
-const REMAINING_DAYS: f64 = 22.671554013151308;
+pub(super) const REMAINING_DAYS: f64 = 22.671554013151308;
 
-fn last_attempt_dt() -> f64 {
+pub(super) fn last_attempt_dt() -> f64 {
     REMAINING_DAYS * 0.5f64.powi(9)
 }
 
-fn seed() -> CompositionalCase {
+pub(super) fn seed() -> CompositionalCase {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../../opm/compositional/spe5/stall_218_from_scratch.json");
     let text = std::fs::read_to_string(path).expect("read the seed");
@@ -42,13 +42,17 @@ fn seed() -> CompositionalCase {
 }
 
 /// One attempt: its residual history, every linear report, and each iterate's state and BHPs.
-struct Attempt {
-    residual_history: Vec<f64>,
-    linear: Vec<Value>,
-    iterates: Vec<(CompositionalState, Vec<f64>)>,
+pub(super) struct Attempt {
+    pub(super) residual_history: Vec<f64>,
+    pub(super) linear: Vec<Value>,
+    pub(super) iterates: Vec<(CompositionalState, Vec<f64>)>,
 }
 
-fn run(problem: &NewtonProblem<'_>, start: &CompositionalState, options: NewtonOptions) -> Attempt {
+pub(super) fn run(
+    problem: &NewtonProblem<'_>,
+    start: &CompositionalState,
+    options: NewtonOptions,
+) -> Attempt {
     let mut iterates = Vec::new();
     let (_, report) = solve_newton_observed(
         problem,
@@ -78,7 +82,7 @@ fn run(problem: &NewtonProblem<'_>, start: &CompositionalState, options: NewtonO
     }
 }
 
-fn floor_summary(history: &[f64]) -> Value {
+pub(super) fn floor_summary(history: &[f64]) -> Value {
     let best = history.iter().copied().fold(f64::INFINITY, f64::min);
     let late: Vec<f64> = history.iter().skip(3).copied().collect();
     let late_max = late.iter().copied().fold(0.0f64, f64::max);
@@ -124,7 +128,7 @@ fn scaled_max(at: &AssemblyResult, n: usize, v: &[f64]) -> f64 {
 }
 
 /// The Taylor test at iterate `k` along `x_{k+1} - x_k`, BHPs fixed at iterate `k`'s.
-fn taylor(problem: &NewtonProblem<'_>, attempt: &Attempt, k: usize) -> Value {
+pub(super) fn taylor(problem: &NewtonProblem<'_>, attempt: &Attempt, k: usize) -> Value {
     let layout = problem.layout;
     let n = layout.cell_block_size();
     let (x, bhp) = &attempt.iterates[k];
@@ -296,7 +300,7 @@ fn taylor(problem: &NewtonProblem<'_>, attempt: &Attempt, k: usize) -> Value {
     })
 }
 
-fn print_history(label: &str, attempt: &Attempt) {
+pub(super) fn print_history(label: &str, attempt: &Attempt) {
     let s = floor_summary(&attempt.residual_history);
     println!(
         "{label:<28} best {:.3e}  it>=4 [{:.3e}, {:.3e}]  converged {}  ({} it)",

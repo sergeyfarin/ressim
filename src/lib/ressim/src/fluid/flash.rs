@@ -120,6 +120,35 @@ pub(crate) fn with_equilibrium_tolerance_for_test<T>(tolerance: f64, f: impl FnO
     out
 }
 
+/// Whether a converged two-phase flash is polished with the cancellation-free residual
+/// ([`refine_two_phase`]). Off in every non-test build; a `cfg(test)` experiment turns it on for
+/// the calling thread with [`with_difference_refinement_for_test`] (#116).
+#[cfg(not(test))]
+#[inline]
+fn difference_refinement_enabled() -> bool {
+    false
+}
+
+#[cfg(test)]
+thread_local! {
+    static DIFFERENCE_REFINEMENT: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+fn difference_refinement_enabled() -> bool {
+    DIFFERENCE_REFINEMENT.with(|c| c.get())
+}
+
+/// Test-only (#116): run `f` with the difference-form refinement switched `on` or off on this
+/// thread, and restore the previous setting afterwards.
+#[cfg(test)]
+pub(crate) fn with_difference_refinement_for_test<T>(on: bool, f: impl FnOnce() -> T) -> T {
+    let previous = DIFFERENCE_REFINEMENT.with(|c| c.replace(on));
+    let out = f();
+    DIFFERENCE_REFINEMENT.with(|c| c.set(previous));
+    out
+}
+
 /// Bracketing tolerance for the Rachford–Rice solve.
 const RACHFORD_RICE_TOLERANCE: f64 = 1e-14;
 
@@ -1017,6 +1046,18 @@ pub fn flash(
     z: &[f64],
     k_seed: Option<&[f64]>,
 ) -> Result<FlashState, FlashError> {
+    let state = flash_unrefined(spec, pressure_pa, temperature_k, z, k_seed)?;
+    Ok(refine_two_phase(spec, pressure_pa, temperature_k, z, state))
+}
+
+/// [`flash`] without the optional final refinement.
+fn flash_unrefined(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    k_seed: Option<&[f64]>,
+) -> Result<FlashState, FlashError> {
     let n = spec.component_count();
     if z.len() != n {
         return Err(FlashError::InvalidFeed {
@@ -1253,4 +1294,241 @@ fn single_phase(
         equilibrium_residual: 0.0,
         iterations: 0,
     })
+}
+
+// ---------------------------------------------------------------------------------------------
+// Difference-form refinement (#116, experimental, off by default)
+// ---------------------------------------------------------------------------------------------
+//
+// Near a critical point the equilibrium Jacobian has one tiny singular value, and its direction
+// is almost pure `beta`. In SPE5's near-critical cells it is 5.7e-11, so an error of 1e-15 in the
+// residual moves `beta` by ~2e-5. The standard residual subtracts `ln phi^V - ln phi^L` after
+// evaluating each (terms up to ~11), which costs ~1e-15 and leaves `beta` scattered over that band
+// as the inputs move by ulps. The flux terms see the scatter as a non-smooth residual.
+//
+// The refinement evaluates the same equations, with the same normalization, but forms every
+// vapour-minus-liquid difference directly: `y - x` from `expm1(ln K)`, then the differences of the
+// mixture sums, of the compressibility factor (from the two cubics, through their divided
+// difference), and of each logarithm (through `ln_1p` of a small ratio). The residual's error
+// becomes proportional to the phases' difference instead of to the size of `ln phi`. Newton
+// steps with the existing AD Jacobian, from the converged state, stop when that residual stops
+// decreasing. It is a polish: a move larger than `REFINEMENT_MAX_MOVE` or an answer outside the
+// existing equilibrium tolerance is discarded and the unrefined state returned.
+
+/// Largest Newton iteration count of one refinement.
+const MAX_REFINEMENT_ITERATIONS: usize = 8;
+
+/// Largest change of `beta` or of any `ln K_i` a refinement may make.
+const REFINEMENT_MAX_MOVE: f64 = 1e-3;
+
+/// The AD equilibrium system for this component count.
+fn newton_system_for(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    ln_k: &[f64],
+    beta: f64,
+) -> Option<NewtonSystem> {
+    macro_rules! at {
+        ($n:literal, $m:literal) => {
+            newton_system::<$n, $m>(spec, pressure_pa, temperature_k, z, ln_k, beta)
+        };
+    }
+    match spec.component_count() {
+        2 => at!(2, 3),
+        3 => at!(3, 4),
+        4 => at!(4, 5),
+        5 => at!(5, 6),
+        6 => at!(6, 7),
+        7 => at!(7, 8),
+        8 => at!(8, 9),
+        9 => at!(9, 10),
+        10 => at!(10, 11),
+        _ => None,
+    }
+}
+
+/// [`super::derivatives::equilibrium_residual`] at `[ln K, beta]`, evaluated with every
+/// vapour-minus-liquid difference formed directly. `None` outside the EOS domain or when the
+/// vapour root is not the one continued from the liquid's.
+pub(crate) fn difference_residual(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    ln_k: &[f64],
+    beta: f64,
+) -> Option<Vec<f64>> {
+    use super::eos::{mixture_params, pr_m1_m2, select_root, z_roots};
+    let n = spec.component_count();
+    let (m1, m2) = pr_m1_m2();
+
+    // Raw compositions as `equilibrium_residual` forms them, and d_raw = v_raw - x_raw exactly.
+    let mut x_raw = vec![0.0; n];
+    let mut d_raw = vec![0.0; n];
+    for i in 0..n {
+        let em = math::exp_m1(ln_k[i]);
+        x_raw[i] = z[i] / (1.0 + beta * em);
+        d_raw[i] = em * x_raw[i];
+    }
+    let sum_x: f64 = x_raw.iter().sum();
+    let sum_d: f64 = d_raw.iter().sum();
+    let sum_v = sum_x + sum_d;
+    if !(sum_x > 0.0) || !(sum_v > 0.0) {
+        return None;
+    }
+    // Normalized x, and v - x = (d sum_x - x sum_d) / (sum_x sum_v) without forming v first.
+    let x: Vec<f64> = x_raw.iter().map(|v| v / sum_x).collect();
+    let d: Vec<f64> = (0..n)
+        .map(|i| (d_raw[i] * sum_x - x_raw[i] * sum_d) / (sum_x * sum_v))
+        .collect();
+    let v: Vec<f64> = (0..n).map(|i| x[i] + d[i]).collect();
+
+    let pl = mixture_params(spec, pressure_pa, temperature_k, &x).ok()?;
+    let pv = mixture_params(spec, pressure_pa, temperature_k, &v).ok()?;
+    let zl = select_root(&z_roots(&pl).ok()?, pl.b, PhaseBranch::Liquid).ok()?;
+    let zv_direct = select_root(&z_roots(&pv).ok()?, pv.b, PhaseBranch::Vapour).ok()?;
+
+    // Mixture sums and their differences.
+    let s_l: Vec<f64> = (0..n)
+        .map(|i| (0..n).map(|j| pl.a_ij[i][j] * x[j]).sum())
+        .collect();
+    let ds: Vec<f64> = (0..n)
+        .map(|i| (0..n).map(|j| pl.a_ij[i][j] * d[j]).sum())
+        .collect();
+    let da: f64 = (0..n).map(|i| d[i] * (2.0 * s_l[i] + ds[i])).sum();
+    let db: f64 = (0..n).map(|i| pl.b_i[i] * d[i]).sum();
+    let (a_l, b_l) = (pl.a, pl.b);
+    let (a_v, b_v) = (a_l + da, b_l + db);
+
+    // Z_V - Z_L. With P the PR cubic, P_V(Z_L + dZ) = 0 and P_L(Z_L) = 0 give
+    // (P_V - P_L)(Z_L) + dZ q(Z_L, Z_L + dZ) = 0, q the divided difference of P_V. The
+    // coefficient differences are formed from dA and dB, so nothing here cancels.
+    let db2 = db * (b_v + b_l);
+    let db3 = db * (b_v * b_v + b_v * b_l + b_l * b_l);
+    let dab = da * b_v + a_l * db;
+    let dp_at_zl = db * zl * zl + (da - 3.0 * db2 - 2.0 * db) * zl - (dab - db2 - db3);
+    let c2 = b_v - 1.0;
+    let c1 = a_v - 3.0 * b_v * b_v - 2.0 * b_v;
+    let mut dz = zv_direct - zl;
+    for _ in 0..4 {
+        let zv = zl + dz;
+        let q = zv * zv + zv * zl + zl * zl + c2 * (zv + zl) + c1;
+        let g = dp_at_zl + dz * q;
+        let dg = q + dz * (2.0 * zv + zl + c2);
+        if !(dg.abs() > 0.0) {
+            return None;
+        }
+        dz -= g / dg;
+    }
+    // The continued root must be the vapour root the standard evaluation selects.
+    if !((zl + dz - zv_direct).abs() <= 1e-8) {
+        return None;
+    }
+
+    let z_minus_b = zl - b_l;
+    let upper = zl + m2 * b_l;
+    let lower = zl + m1 * b_l;
+    if !(z_minus_b > 0.0) || !(upper > 0.0) || !(lower > 0.0) {
+        return None;
+    }
+    let d_ln_z_minus_b = math::ln_1p((dz - db) / z_minus_b);
+    let ln_ratio_l = math::ln(upper / lower);
+    let d_ln_ratio = math::ln_1p((dz + m2 * db) / upper) - math::ln_1p((dz + m1 * db) / lower);
+    let ln_ratio_v = ln_ratio_l + d_ln_ratio;
+    if !d_ln_z_minus_b.is_finite() || !ln_ratio_v.is_finite() {
+        return None;
+    }
+
+    // ln phi_i = -ln(Z - B) + (B_i / B)(Z - 1) + ln_ratio c_i / (m1 - m2),
+    // c_i = 2 S_i / B - A B_i / B^2.
+    let d_z_minus_1_over_b = dz / b_v - (zl - 1.0) * db / (b_l * b_v);
+    let d_a_over_b2 = da / (b_v * b_v) - a_l * db * (b_v + b_l) / (b_l * b_l * b_v * b_v);
+    let mut f = Vec::with_capacity(n + 1);
+    for i in 0..n {
+        let bi = pl.b_i[i];
+        let c_v = 2.0 * (s_l[i] + ds[i]) / b_v - a_v * bi / (b_v * b_v);
+        let d_s_over_b = ds[i] / b_v - s_l[i] * db / (b_l * b_v);
+        let dc = 2.0 * d_s_over_b - bi * d_a_over_b2;
+        let d_attraction = (d_ln_ratio * c_v + ln_ratio_l * dc) / (m1 - m2);
+        let d_ln_phi = -d_ln_z_minus_b + bi * d_z_minus_1_over_b + d_attraction;
+        f.push(ln_k[i] + d_ln_phi);
+    }
+    f.push(sum_d);
+    if f.iter().all(|v| v.is_finite()) {
+        Some(f)
+    } else {
+        None
+    }
+}
+
+/// Polish a converged two-phase state with [`difference_residual`] when the experiment is on.
+/// Any other state, or a refinement that fails a guard, is returned unchanged.
+fn refine_two_phase(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    state: FlashState,
+) -> FlashState {
+    if !difference_refinement_enabled() || state.phase_state != PhaseState::TwoPhase {
+        return state;
+    }
+    let n = spec.component_count();
+    let mut u: Vec<f64> = state.k.iter().map(|&k| math::ln(k)).collect();
+    u.push(state.beta);
+    let start = u.clone();
+    let Some(system) = newton_system_for(spec, pressure_pa, temperature_k, z, &u[..n], u[n]) else {
+        return state;
+    };
+    let mut best = u.clone();
+    let mut best_norm = f64::INFINITY;
+    let mut iterations = 0;
+    for _ in 0..MAX_REFINEMENT_ITERATIONS {
+        let Some(f) = difference_residual(spec, pressure_pa, temperature_k, z, &u[..n], u[n])
+        else {
+            break;
+        };
+        let norm = equilibrium_norm(&f);
+        if !(norm < best_norm) {
+            break;
+        }
+        best_norm = norm;
+        best.clone_from(&u);
+        iterations += 1;
+        let mut matrix = system.jacobian.clone();
+        let mut rhs: Vec<Vec<f64>> = f.iter().map(|v| vec![-v]).collect();
+        if solve_in_place(&mut matrix, &mut rhs) < MIN_PIVOT {
+            break;
+        }
+        for (ui, step) in u.iter_mut().zip(&rhs) {
+            *ui += step[0];
+        }
+    }
+    if best
+        .iter()
+        .zip(&start)
+        .any(|(a, b)| !((a - b).abs() <= REFINEMENT_MAX_MOVE))
+    {
+        return state;
+    }
+    let k: Vec<f64> = best[..n].iter().map(|&v| math::exp(v)).collect();
+    match two_phase_from_iterate(
+        spec,
+        pressure_pa,
+        temperature_k,
+        z,
+        &k,
+        best[n],
+        state.iterations + iterations,
+    ) {
+        Ok(refined)
+            if refined.phase_state == PhaseState::TwoPhase
+                && refined.equilibrium_residual <= equilibrium_tolerance() =>
+        {
+            refined
+        }
+        _ => state,
+    }
 }
