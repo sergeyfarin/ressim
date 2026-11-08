@@ -1391,6 +1391,24 @@ impl CompositionalCase {
         f(&problem, self.run.state(), self.options.newton)
     }
 
+    /// Test-only (#116): the accepted state's total moles per component (water last when the case
+    /// has water), for a global conservation check against the wells' cumulative moles.
+    #[cfg(test)]
+    pub(crate) fn component_inventory_for_test(&self) -> Vec<f64> {
+        let water = self.relperm.water().map(|w| &w.properties);
+        let cells = self
+            .run
+            .accepted_inventory_with_water(&self.spec, &self.rock(), water)
+            .expect("inventory");
+        let mut total = vec![0.0; cells.first().map_or(0, Vec::len)];
+        for cell in &cells {
+            for (t, v) in total.iter_mut().zip(cell) {
+                *t += v;
+            }
+        }
+        total
+    }
+
     /// Test-only (#116): change the case's timestep and Newton options, for a diagnostic that runs
     /// the same case with an experimental setting.
     #[cfg(test)]

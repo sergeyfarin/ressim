@@ -4,10 +4,20 @@
     python3 -I tools/jutul/spe5_compare.py --ministeps JUTUL_MINISTEPS
     python3 -I tools/jutul/spe5_compare.py --references LABEL=REFERENCE LABEL=REFERENCE ...
     python3 -I tools/jutul/spe5_compare.py --validate-run REFERENCE VOLUME MAX_DT [NOT_BEFORE]
+    python3 -I tools/jutul/spe5_compare.py --timestep-convergence R_REPORT R_5 R_05 J_REPORT J_5 J_05 [LAST]
 
 The third form is the JutulDarcy well-volume/timestep sensitivity (tools/jutul/run-spe5-sensitivity.sh):
 each reference's work, and its worst differences from the first one over months 1-217 and over all
 240 months. A `REFERENCE.config.json` beside a reference, when present, supplies its configuration.
+
+`--timestep-convergence` compares ResSim with itself and with JutulDarcy at matched timestep caps
+(#116). R_* are outputs of the ignored ResSim test `comp_spe5_replay_with_timestep_options`
+(schema `ressim-spe5-replay/1`) with no cap, a 5 d cap and a 0.5 d cap; J_* are JutulDarcy
+references with the same caps (tools/jutul/run-spe5-sensitivity.sh: `default`, `default-dt5`,
+`default-dt0.5`). It prints each ResSim run's work, conservation and stop, then the worst
+differences of every pair over months 1..LAST (default: the last month all three ResSim runs
+reached). "Σ oil" compares the sum of monthly producer oil rates, the same rule on both sides;
+the ResSim-only rows also compare true cumulative surface oil and gas at LAST.
 
 `--validate-run` exits non-zero unless REFERENCE is a complete 240-report, 7305 d run whose
 `REFERENCE.config.json` records the requested SPE5_WELL_VOLUME_M3 and SPE5_MAX_DT_DAYS settings
@@ -42,8 +52,12 @@ MONTHS = (12, 16, 24, 48, 96, 144, 192, 204, 205, 206, 207, 208, 209, 210, 211, 
 
 
 def ressim_reports(path):
+    return reports_from_states(json.load(open(path))["states"])
+
+
+def reports_from_states(states):
     out = {}
-    for state in json.load(open(path))["states"]:
+    for state in states:
         s = state["snapshot"]
         p = s["pressure"]
         prod = s["well_surface_rates"][0]
@@ -292,11 +306,100 @@ def validate_run(path, volume, max_dt, not_before=None):
     print(f"{path}: valid (volume {volume}, max dt {max_dt}, 240 reports through 7305 d)")
 
 
+def replay_reports(path):
+    data = json.load(open(path))
+    if data.get("schema") != "ressim-spe5-replay/1":
+        sys.exit(f"{path}: schema {data.get('schema')!r}, expected ressim-spe5-replay/1")
+    reports = reports_from_states(data["months"])
+    for m in data["months"]:
+        reports[m["month"]]["cumulative"] = \
+            m["snapshot"]["cumulative_well_surface_production_volumes"][0]
+    return reports, data
+
+
+def timestep_convergence(paths, last=None):
+    labels = ("ResSim report", "ResSim 5 d", "ResSim 0.5 d",
+              "Jutul report", "Jutul 5 d", "Jutul 0.5 d")
+    runs, replays = {}, {}
+    for label, path in zip(labels[:3], paths[:3]):
+        runs[label], replays[label] = replay_reports(path)
+    for label, path in zip(labels[3:], paths[3:6]):
+        runs[label] = reference_reports(path)[0]
+    if last is None:
+        last = min(max(runs[k]) for k in labels[:3])
+
+    print("| ResSim run | Max dt (d) | Months completed | Accepted steps / failed attempts "
+          "| Newton (accepted) | Wall (s) | Max \\|signed balance\\| | Stopped |")
+    print("|---|---|---|---|---|---|---|---|")
+    for label in labels[:3]:
+        d = replays[label]
+        ms, st = d["months"], d["settings"]
+        balance = max(abs(v) for m in ms for v in m["balance_rel"])
+        stop = d["stopped"]
+        stop = (f"month {stop['month']}, day {stop['day']:.3f}: {stop['reason']}, "
+                f"{stop['failure'].split('scaled residual ')[-1].rstrip(')}\" ')}"
+                if stop else "no")
+        cap = st["max_dt_days"]
+        print(f"| {label} | {'report' if cap is None else f'{cap:g}'} "
+              f"| {ms[0]['month']}–{ms[-1]['month']} "
+              f"| {sum(m['accepted_steps'] for m in ms):,} / {sum(m['failed_attempts'] for m in ms):,} "
+              f"| {sum(m['accepted_newton'] for m in ms):,} | {sum(m['wall_s'] for m in ms):,.0f} "
+              f"| {balance:.1e} | {stop} |")
+
+    quantities = (
+        ("mean p (bar)", lambda r: r["mean_p_bar"], False),
+        ("cell-33 p (bar)", lambda r: r["cell33_p_bar"], False),
+        ("producer oil (rel.)", lambda r: r["producer_oil_m3_day"], True),
+        ("GOR (rel.)", lambda r: r["producer_gor_m3_m3"] or 0.0, True),
+        ("water cut (abs.)", lambda r: r["producer_watercut"] or 0.0, False),
+        ("cell-33 Sg (abs.)", lambda r: r["cell33_sg"], False),
+    )
+    pairs = ((0, 2), (1, 2), (3, 5), (4, 5), (0, 3), (1, 4), (2, 5))
+    print(f"\nWorst difference over months 1–{last} (month):\n")
+    print("| Pair | " + " | ".join(q[0] for q in quantities) + " | Σ oil |")
+    print("|---|" + "---|" * (len(quantities) + 1))
+    for a, b in pairs:
+        A, B = runs[labels[a]], runs[labels[b]]
+        months = [m for m in range(1, last + 1) if m in A and m in B]
+        if len(months) != last:
+            sys.exit(f"{labels[a]} / {labels[b]}: months 1–{last} not all present")
+        cells = []
+        for _, get, relative in quantities:
+            worst, at = max(((rel(get(A[m]), get(B[m])) if relative
+                              else abs(get(A[m]) - get(B[m])), m) for m in months))
+            cells.append(f"{100 * worst:.1f}% ({at})" if relative else f"{worst:.3g} ({at})")
+        oil = rel(sum(A[m]["producer_oil_m3_day"] for m in months),
+                  sum(B[m]["producer_oil_m3_day"] for m in months))
+        print(f"| {labels[a]} vs {labels[b]} | " + " | ".join(cells) + f" | {100 * oil:.2f}% |")
+
+    switch = {}
+    for label in labels:
+        r = runs[label]
+        bhp = (lambda x: x["bhp_controlled"]) if label.startswith("ResSim") else \
+            (lambda x: x["producer_control"] != "orat")
+        switch[label] = next((m for m in sorted(r) if bhp(r[m])), None)
+    print("\nProducer rate-to-BHP switch month: "
+          + ", ".join(f"{k} {v}" for k, v in switch.items()))
+    base = runs[labels[2]][last]["cumulative"]
+    for label in labels[:2]:
+        c = runs[label][last]["cumulative"]
+        print(f"{label} vs {labels[2]}, cumulative surface production at month {last}: "
+              f"oil {100 * rel(c['liquid_m3'], base['liquid_m3']):.3f}%, "
+              f"gas {100 * rel(c['vapour_m3'], base['vapour_m3']):.3f}%")
+    print("\nCell-33 Sg by month, " + " / ".join(labels) + ":\n")
+    print("| Month | " + " | ".join(labels) + " |\n|---:|" + "---:|" * len(labels))
+    for m in range(max(1, last - 6), last + 7):
+        print(f"| {m} | " + " | ".join(f"{runs[k][m]['cell33_sg']:.4f}" if m in runs[k] else "—"
+                                       for k in labels) + " |")
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "--validate-run":
         validate_run(*sys.argv[2:6])
     elif sys.argv[1] == "--references":
         references(sys.argv[2:])
+    elif sys.argv[1] == "--timestep-convergence":
+        timestep_convergence(sys.argv[2:8], int(sys.argv[8]) if len(sys.argv) > 8 else None)
     elif sys.argv[1] == "--ministeps":
         ministeps(sys.argv[2])
     else:

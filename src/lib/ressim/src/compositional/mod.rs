@@ -78,6 +78,8 @@ mod spe5_plateau_tests;
 #[cfg(test)]
 mod spe5_tests;
 #[cfg(test)]
+mod spe5_timestep_control_tests;
+#[cfg(test)]
 mod spe5_warm_start_tests;
 #[cfg(test)]
 mod state_tests;

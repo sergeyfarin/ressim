@@ -441,10 +441,36 @@ fn comp_spe5_failure_b_flash_conditioning() {
                 tolerances.push(rec);
             }
             let mut betas = Vec::new();
+            let mut points = Vec::new();
             let mut q = p;
             for _ in 0..64 {
                 if let Ok(f) = crate::fluid::flash::flash(problem.spec, q, t, &z, None) {
                     betas.push(f.beta);
+                    // The whole split, for comparison with an independent flash at the same
+                    // inputs: compositions, phase volumes and the vapour volume fraction.
+                    let (vl, vv) = (
+                        f.liquid.as_ref().map(|l| l.molar_volume),
+                        f.vapour.as_ref().map(|v| v.molar_volume),
+                    );
+                    let vapour_volume_fraction = match (vl, vv) {
+                        (Some(vl), Some(vv)) => {
+                            Some(f.beta * vv / (f.beta * vv + (1.0 - f.beta) * vl))
+                        }
+                        _ => None,
+                    };
+                    points.push(json!({
+                        "p_pa": q,
+                        "beta": f.beta,
+                        "x": f.x,
+                        "y": f.y,
+                        "liquid_molar_volume": vl,
+                        "vapour_molar_volume": vv,
+                        "liquid_mass_density": f.liquid.as_ref().map(|l| l.mass_density),
+                        "vapour_mass_density": f.vapour.as_ref().map(|v| v.mass_density),
+                        "vapour_volume_fraction": vapour_volume_fraction,
+                        "equilibrium_residual": f.equilibrium_residual,
+                        "iterations": f.iterations,
+                    }));
                 }
                 q = f64::from_bits(q.to_bits() + 1);
             }
@@ -456,10 +482,29 @@ fn comp_spe5_failure_b_flash_conditioning() {
                 hi - lo
             );
             cells.push(json!({"cell": cell, "pressure_bar": c.pressure_bar,
+                "temperature_k": t, "z": z,
                 "tolerances": tolerances, "ulp_sweep": {"ulps": 64, "dp_bar": dp_bar,
-                "beta_min": lo, "beta_max": hi, "betas": betas}}));
+                "beta_min": lo, "beta_max": hi, "betas": betas, "points": points}}));
         }
-        json!({"best_iterate": best + 1, "cells": cells})
+        // The fluid exactly as ResSim holds it, so an independent flash solves the same problem.
+        let spec = problem.spec;
+        let n = spec.component_count();
+        let fluid = json!({
+            "eos": format!("{:?}", spec.eos()),
+            "components": spec.components().iter().map(|c| json!({
+                "id": c.id, "molar_mass_kg_per_mol": c.molar_mass_kg_per_mol,
+                "critical_temperature_k": c.critical_temperature_k,
+                "critical_pressure_pa": c.critical_pressure_pa,
+                "acentric_factor": c.acentric_factor})).collect::<Vec<_>>(),
+            "interaction": (0..n).map(|i| (0..n).map(|j| spec.interaction(i, j))
+                .collect::<Vec<_>>()).collect::<Vec<_>>(),
+            "volume_shifts": spec.volume_shifts(),
+            "omega_a": 0.457_235_529,
+            "omega_b": 0.077_796_074,
+            "corrected_above_acentric": 0.49,
+            "gas_constant_j_per_mol_k": 8.314_462_618_153_24,
+        });
+        json!({"best_iterate": best + 1, "fluid": fluid, "cells": cells})
     });
     if let Ok(dir) = std::env::var("SPE5_TRACE_OUT") {
         let path = PathBuf::from(dir).join("failure_b_flash_conditioning.json");
