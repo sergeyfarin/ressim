@@ -407,9 +407,12 @@ The 1e-4 m³ reference had shown roughly twice these spreads: 1.75 bar, 28.5%, 2
 So the late-life ResSim/Jutul gap depends on JutulDarcy's well-node volume. Closer agreement does
 not show that the default volume is the more accurate model: ResSim has no wellbore storage, and
 the 1e-4 m³ nodes were chosen elsewhere precisely to approximate that (see "Well-node volume").
-The sensitivity later showed the gap depends even more on the timestep. ResSim is 33% in oil from
-the 0.5 d-capped Jutul runs. The agreement above is between two simulators taking report-sized
-steps, not a measure of either one's accuracy.
+The sensitivity later showed the gap depends even more on the timestep: coarse-step ResSim
+differs by 33% in oil from the 0.5 d-capped Jutul runs. ResSim run at the same caps (see
+"ResSim's timestep convergence") agrees with Jutul to 1.0% in oil at 5 d and at 0.5 d, and its own
+report-step run is 33% from its 0.5 d run, as Jutul's is 24% from its own. So that 33% is
+time-discretization error both simulators share, not a ResSim-specific error. The agreement above
+is between two simulators taking report-sized steps, not a measure of either one's accuracy.
 
 | month | day | mean p R / J (bar) | cell 33 p R / J (bar) | Sw 33 R / J | Sg 33 R / J | oil R / J (m³/d) | GOR R / J (m³/m³) | WC R / J | Jutul ministeps / Newton |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -507,6 +510,9 @@ normalizations, with a signed and an absolute conservation account per iterate.
 | Jutul ministep diagnostics, months 205–220: dt, success, per-Newton reservoir CNV/MB per component, every well and facility criterion, and the resolved configuration | `tools/jutul/spe5_ministep_diagnostics.jl` | `julia +1.12 --project=tools/jutul tools/jutul/spe5_ministep_diagnostics.jl OUT.json 205 220` (~30 min with the default well volume); table: `python3 -I tools/jutul/spe5_compare.py --ministeps OUT.json` |
 | Cross-flash fixture, months 205–216, cells 32/33/39/40 | `opm/compositional/spe5/cross_flash_205_216.json` | `bash tools/jutul/run-spe5-cross-flash.sh [--check] [WORKDIR]` (~30 min). The merge refuses to write unless all 192 points have valid results from both flashes; `spe5_cross_flash_fixture.py check FIXTURE` re-validates a written one. `comp_spe5_cross_flash_fixture_reproduces_the_ressim_column` (in the thermo gate) fails if the ResSim flash moves it |
 | JutulDarcy well-volume/timestep sensitivity | `tools/jutul/run-spe5-sensitivity.sh` | `bash tools/jutul/run-spe5-sensitivity.sh OUTDIR [JOBS]` (~80 min at 4 jobs) |
+| Near-critical flash states of failure B's best iterate (cells 33/39/40, 64 pressure ulps, full splits and the fluid) | `comp_spe5_failure_b_flash_conditioning` | `SPE5_TRACE_OUT=DIR cargo test --release --lib comp_spe5_failure_b_flash_conditioning -- --ignored` (seconds) |
+| The same states solved in 50 digits, and by MultiComponentFlash | `tools/jutul/spe5_flash_mp.py`, `tools/jutul/spe5_flash_precision.jl` | `uv run --no-project --with mpmath python -I tools/jutul/spe5_flash_mp.py COND.json MP.json [STRIDE]`; `julia +1.12 --project=tools/jutul tools/jutul/spe5_flash_precision.jl COND.json OUT.json MP.json` |
+| Replays with a halving budget or a dt cap, per-month work and balance | `comp_spe5_replay_with_timestep_options` | `SPE5_REPLAY_OUT=OUT.json [SPE5_REPLAY_SEED=stall_218_from_scratch.json] [SPE5_MAX_ATTEMPTS=N] [SPE5_MAX_DT_DAYS=D] cargo test --release --lib comp_spe5_replay_with_timestep_options -- --ignored --nocapture` (11 min to 2.5 h); table: `spe5_compare.py --timestep-convergence` |
 
 Signed global imbalance is `Σ_cells R_c` per component (dt-integrated, moles) relative to that
 component's inventory; absolute local defect is `Σ_cells |R_c|`. They are recorded separately so
@@ -545,7 +551,8 @@ The single disagreement is month 215, cell 32, ResSim's state at 228.673 bar: Re
 (beta 0.158, Σ ln² K 1.6e-3), and Jutul's stability test calls it stable. Jutul's own forced split
 from three starts converges to the same beta (fugacity residual ≤ 1.3e-14) with
 `g_split − g_feed = −8.37e-12 RT`. That is inside ResSim's `1e-10` Gibbs margin and below what
-either stability test resolves, so the label is **undetermined at double precision**. The earlier
+either stability test resolves, so the label is **not resolved by either flash's stability test**
+(a Gibbs difference that small is not shown to be beyond double precision in general). The earlier
 description of this point as a Jutul stability miss is withdrawn.
 
 The fixture was regenerated against the default-volume reference. That changes the Jutul states but
@@ -650,7 +657,7 @@ row, about equally) and their neighbours 40, 82 and 88. They are entirely in the
 terms**: each cell's own inventory change explains at most 5e-12 of a 2e-8 to 1.2e-7 change. No
 phase label changes.
 
-**Why: the near-critical split is undetermined.** Cells 33 and 39 sit at Σ ln² K ≈ 6e-4. Re-flashing
+**Why: ResSim's near-critical split is ill-determined.** Cells 33 and 39 sit at Σ ln² K ≈ 6e-4. Re-flashing
 them at the two states of a 5e-13 to 8e-11 bar perturbation (composition unchanged to 2e-16)
 moves β by 9e-7 to 3e-5 and x, y by 9e-10 to 3e-8. Both flashes are converged (equilibrium residual about 1.5e-12). At the
 best iterate:
@@ -659,12 +666,59 @@ best iterate:
 - Over 64 consecutive pressure ulps (2.4e-12 bar), β spans 4.2e-5 in cell 33 and 5.6e-5 in cell 39.
 - In cell 40, further from the critical point, the spread is 3e-12.
 
-So in double precision, these two cells' phase split is undetermined at the 1e-5 level, even at
+So **in ResSim's current flash**, these two cells' phase split moves at the 1e-5 level, even at
 round-off-level fugacity residuals. The overall inventory barely depends on it, but the phase
 saturations, compositions and mobilities in the fluxes do. That is the residual's jump.
 
-**It scales with dt.** The jump enters the scaled residual as flux × dt / inventory, so it should
-fall in proportion to dt:
+This is not shown to be a limit of double precision. The independent check below separates the
+possibilities.
+
+**Independent check of the near-critical states.** The exact inputs of cells 33, 39 and 40 (cell 40
+is the control) at failure B's best iterate, 64 consecutive pressure ulps each, were written by the
+conditioning test. They were solved two more ways:
+- `tools/jutul/spe5_flash_mp.py`: an independent PR/PRCORR flash written from the textbook
+  equations with ResSim's own parameters. It solves ln K and β by Newton to `|F| < 1e-40` in
+  50-digit arithmetic, on every 4th point.
+- `tools/jutul/spe5_flash_precision.jl`: MultiComponentFlash in Float64, JutulDarcy's flash, which
+  shares no code with ResSim. It cannot run in BigFloat because its work storage is allocated as
+  Float64.
+
+| Cell 33 (39 alike) | β minus the 50-digit β | Float64 fugacity residual |
+|---|---|---|
+| 50-digit split, evaluated by MultiComponentFlash in Float64 | 0 | 2.7e-15 to 1.3e-14 |
+| ResSim, default tolerance 1e-11 | −9.7e-6 to +1.2e-5 | 1.3e-12 to 1.8e-12 |
+| ResSim at the best iterate, tolerance 1e-12 / 1e-14 | −1.9e-5 / +9.6e-6 | 1.4e-14 / 8.9e-15 |
+| MultiComponentFlash, forced from Wilson's K, V0 = 0.3 or 0.5 | −1.9e-5 to +2.6e-5 | not converged at 1e-13 in 200,000 iterations |
+| 50-digit β, spread over the sampled ulps | 1.9e-11 | — |
+
+Cell 40 converges in 13–27 MultiComponentFlash iterations, within 1e-12 of the exact β, as ResSim
+does.
+
+What this establishes:
+- **The split is well determined mathematically.** The exact β moves smoothly with pressure,
+  about 1e-11 over the sweep.
+- **In Float64, fugacity equality cannot discriminate within a band of about ±2e-5 in β at these
+  states.** Splits that far apart reach the same 1e-14 residual as the exact one. A tighter
+  tolerance only selects another point in the band.
+- **An independent Float64 implementation has the same difficulty.** MultiComponentFlash does not
+  converge there from its own start, and its stalled answers scatter over the same band.
+- ResSim's split satisfies material balance to 5e-16 with its own β. The error is in x and y
+  (1.2e-8, against |y − x| ≈ 1e-3), and β inherits it as `(z − x)/(y − x)`. An earlier estimate
+  here (β pinned to ~1e-10 by Rachford–Rice) was wrong: it assumed K pinned, and K is what is not.
+
+So the floor is a property of solving fugacity equality in Float64 at this near-critical state. It
+is neither a ResSim-only defect nor a demonstrated limit of double precision in general. A
+better-conditioned formulation, or extended-precision evaluation of the fugacity difference, might
+pin the split down. A tighter tolerance cannot.
+
+There is also a cheaper lever. Newton needs a **smooth** split, not an exact one. The jump comes
+from the flash's variable path: where it stops and how many iterations it takes changes with tiny
+input changes. A deterministic seed and a fixed final polish would make the split a smooth function
+of (p, z), even 1e-5 off the exact one. That is a candidate, not tried.
+
+**It scales with dt, but the outcome at a given dt is not robust.** The jump enters the scaled
+residual as flux × dt / inventory, so it should fall in proportion to dt. Halving below the
+ladder's last attempt, from the committed seed:
 
 | dt (d) | Best scaled residual | Converged at `1e-8` |
 |---|---|---|
@@ -675,17 +729,106 @@ fall in proportion to dt:
 | 0.0028 | 5.9e-10 | yes (4) |
 | 0.0014 | 1.7e-9 | yes (4) |
 
-**Failure B is therefore the step's halving budget (`max_attempts = 10`) stopping one halving short
-of a dt where this floor drops below `1e-8`.** "Noise floor" is now a measured mechanism: a
-near-critical phase split that double precision does not determine, reaching the residual through
-the face fluxes. Two consequences:
+This table was first read as "failure B is the halving budget stopping one halving short". The
+retry-budget runs below refute that reading. The month's remainder computed as `end − now` is
+22.671554013151763 d. The from-scratch loop's accumulated remainder is 22.671554013151308 d, a
+relative difference of 2e-14. That alone changes the failing call's last residual from 1.36e-7
+to 6.39e-8, and makes the 11th halving (0.0221 d) fail at 4.93e-8 instead of converging. At this
+state, whether an attempt converges is decided by round-off in its dt. The trend with dt holds
+across the ladder; any single attempt's outcome does not. The "noise floor" has a measured path:
+a near-critical phase split that Float64 fugacity equality does not pin down reaches the residual
+through the face fluxes.
+
+#### Retry budget and ResSim's timestep convergence (`1e-8` unchanged)
+
+Both use the ignored test `comp_spe5_replay_with_timestep_options`
+(`compositional/spe5_timestep_control_tests.rs`, configured through `SPE5_*` variables, see its
+module docs). It records per month the steps, failed attempts, Newton work, wall time and the
+signed global component balance, and stops at the first failed step. The numbers are provisional:
+a release build of `7295a93c` plus the uncommitted test-only driver. Wall times are from a
+single-core box running several of these at once, so they are only indicative.
+
+**A larger retry budget does not carry B through.** From `stall_218_from_scratch.json`:
+- `max_attempts = 11` fails at the 11th halving, residual 4.93e-8, after 67 s.
+- `max_attempts = 14` advances 0.110 d (6612.703 → 6612.814 d) of the month's 22.67 d in 948 s,
+  then fails after 14 attempts, residual 4.39e-8.
+
+Every call restarts from the whole remainder and pays the full ladder before a step small enough
+to converge, and some of those small steps still fail. A larger budget alone is not a fix. Bounded
+timestep memory (start the next call from the last accepted dt, grow it gradually) is the
+next timestep-control candidate. It is not tried here.
+
+**ResSim converges in time like JutulDarcy does.** ResSim from scratch, with no cap, a 5 d cap
+and a 0.5 d cap on each call, monthly reports and WAG event times kept, against the JutulDarcy
+runs (default well volume) with the same caps. Printed by
+`python3 -I tools/jutul/spe5_compare.py --timestep-convergence R_REPORT R_5 R_05 J_REPORT J_5 J_05`:
+
+| ResSim run | Max dt (d) | Months completed | Accepted steps / failed attempts | Newton (accepted) | Wall (s) | Max \|signed balance\| | Stopped |
+|---|---|---|---|---|---|---|---|
+| ResSim report | report | 1–217 | 242 / 42 | 1,567 | 669 | 1.1e-09 | month 218, day 6612.703: step failed, 6.393474812685191e-8 |
+| ResSim 5 d | 5 | 1–215 | 1,507 / 10 | 7,640 | 1,567 | 5.2e-09 | month 216, day 6555.996: step failed, 1.1115518820738136e-4 |
+| ResSim 0.5 d | 0.5 | 1–211 | 12,877 / 6 | 63,281 | 8,941 | 6.1e-09 | month 212, day 6432.697: step failed, 1.5043531698317281e-6 |
+
+Worst difference over months 1–211 (month):
+
+| Pair | mean p (bar) | cell-33 p (bar) | producer oil (rel.) | GOR (rel.) | water cut (abs.) | cell-33 Sg (abs.) | Σ oil |
+|---|---|---|---|---|---|---|---|
+| ResSim report vs ResSim 0.5 d | 2.04 (176) | 3.14 (178) | 32.6% (208) | 28.0% (184) | 0.0555 (170) | 0.0782 (180) | 0.61% |
+| ResSim 5 d vs ResSim 0.5 d | 0.454 (176) | 0.666 (179) | 8.2% (207) | 7.5% (164) | 0.0148 (169) | 0.0168 (180) | 0.10% |
+| Jutul report vs Jutul 0.5 d | 1.48 (176) | 2.53 (178) | 24.1% (208) | 27.2% (184) | 0.0449 (170) | 0.0766 (180) | 0.61% |
+| Jutul 5 d vs Jutul 0.5 d | 0.365 (176) | 0.577 (179) | 8.2% (207) | 6.8% (184) | 0.0122 (169) | 0.0165 (180) | 0.09% |
+| ResSim report vs Jutul report | 0.673 (211) | 0.744 (181) | 11.7% (208) | 6.4% (139) | 0.0177 (208) | 0.0194 (211) | 0.01% |
+| ResSim 5 d vs Jutul 5 d | 0.161 (4) | 0.168 (15) | 0.9% (207) | 1.0% (38) | 0.0011 (207) | 0.0017 (33) | 0.00% |
+| ResSim 0.5 d vs Jutul 0.5 d | 0.172 (4) | 0.176 (4) | 1.0% (185) | 1.0% (207) | 0.00265 (185) | 0.00403 (211) | 0.01% |
+
+Producer rate-to-BHP switch month: ResSim report 16, ResSim 5 d 16, ResSim 0.5 d 16, Jutul report 16, Jutul 5 d 16, Jutul 0.5 d 16
+ResSim report vs ResSim 0.5 d, cumulative surface production at month 211: oil 0.101%, gas 0.222%
+ResSim 5 d vs ResSim 0.5 d, cumulative surface production at month 211: oil 0.020%, gas 0.052%
+
+Cell-33 Sg by month, ResSim report / ResSim 5 d / ResSim 0.5 d / Jutul report / Jutul 5 d / Jutul 0.5 d:
+
+| Month | ResSim report | ResSim 5 d | ResSim 0.5 d | Jutul report | Jutul 5 d | Jutul 0.5 d |
+|---:|---:|---:|---:|---:|---:|---:|
+| 205 | 0.1686 | 0.1815 | 0.1841 | 0.1739 | 0.1820 | 0.1852 |
+| 206 | 0.1557 | 0.1658 | 0.1667 | 0.1620 | 0.1660 | 0.1677 |
+| 207 | 0.1336 | 0.1363 | 0.1345 | 0.1375 | 0.1361 | 0.1355 |
+| 208 | 0.1185 | 0.1076 | 0.1066 | 0.1128 | 0.1073 | 0.1070 |
+| 209 | 0.1064 | 0.0878 | 0.0834 | 0.1010 | 0.0875 | 0.0837 |
+| 210 | 0.0861 | 0.0681 | 0.0660 | 0.0775 | 0.0677 | 0.0652 |
+| 211 | 0.0668 | 0.0191 | 0.0168 | 0.0474 | 0.0178 | 0.0128 |
+| 212 | 0.0563 | 0.0000 | — | 0.0194 | 0.0000 | 0.0000 |
+| 213 | 0.0665 | 0.0000 | — | 0.0117 | 0.0000 | 0.0000 |
+| 214 | 0.1036 | 0.0000 | — | 0.0456 | 0.0000 | 0.0000 |
+| 215 | 0.1664 | 0.0000 | — | 0.1022 | 0.0000 | 0.0000 |
+| 216 | 0.2168 | — | — | 0.1711 | 0.0657 | 0.0238 |
+| 217 | 0.2515 | — | — | 0.1554 | 0.0000 | 0.0000 |
+
+What it shows:
+- **At matched caps, ResSim and JutulDarcy agree** through month 211: within 1.0% in oil, 0.18 bar
+  and 0.004 in cell-33 Sg, at both 5 d and 0.5 d. At report steps they differ by 11.7% in oil.
+- **Their time errors are alike.** Report step to 0.5 d moves ResSim 33% in oil and Jutul 24%;
+  5 d to 0.5 d moves both 8.2%. The coarse-step differences are time-discretization error both
+  simulators share. Neither 0.5 d run is shown to be converged: no finer cap was run.
+- **Cumulatives are much less sensitive than rates.** ResSim's cumulative surface oil at month
+  211 differs by 0.10% between report steps and 0.5 d; the rate peaks differ by 33%.
+- **Smaller steps fail earlier, at the same physical event.** With the caps, cell 33's vapour
+  disappears at month 211–212 in both simulators. The report-step runs keep free gas there. The
+  0.5 d ResSim run fails at that disappearance (day 6432.7, residual 1.5e-6), the 5 d run at the
+  reappearance (day 6556.0, residual 1.1e-4). Jutul's capped runs take 48–153 failed ministeps in
+  the reappearance months. Every ResSim run that has reached a cell-33 phase transition in this
+  window has failed within 10 attempts at `1e-8`. Failure B is one instance, not a month-218
+  peculiarity.
+- **Conservation holds.** The worst signed component balance relative to the initial inventory is
+  6.1e-9 after 12,877 accepted 0.5 d-capped steps.
+
+Consequences:
 - **Acceptance.** A residual-based acceptance below the floor is unreachable at large dt there. An
   acceptance that knew the residual's evaluation precision would be a different, principled
   candidate. It is not proposed here.
-- **Cost.** The month-218 call would have succeeded with one more halving, measured for this call
-  only. Every later call that starts from the full remainder pays ten failed attempts first. A
-  larger budget or a timestep memory is a timestep-control question, measured separately before
-  any change.
+- **Timestep control** cannot be measured on the month-218 window alone: the capped runs fail at
+  other transitions. A candidate has to carry all three runs through months 211–240.
+- **Flash.** A split that is a smooth function of (p, z) (deterministic seed, fixed final polish)
+  would remove the jump at its source. That would address every transition at once.
 
 #### BHP warm start (separate experiment, `1e-8` unchanged)
 
@@ -854,9 +997,10 @@ What this shows:
   8.2% in oil away from the 0.5 d run, and the report-step run 1.5 bar and 24%. Whether 0.5 d is
   itself converged was not tested.
 - **ResSim's agreement with the committed reference is matched-step agreement.** ResSim also takes
-  report-sized steps, and it agrees best with the report-step Jutul runs. It is 33% in oil from
-  either 0.5 d run. That says nothing yet about ResSim's own time error. ResSim at a matching small
-  step against the 0.5 d runs is the comparison that would (not run).
+  report-sized steps, and it agrees best with the report-step Jutul runs. It differs by 33% in oil
+  from either 0.5 d run. That difference is **not a ResSim-specific error**: ResSim at the same
+  caps agrees with Jutul to 1.0% in oil, and its own report-step error is like Jutul's (see
+  "Retry budget and ResSim's timestep convergence").
 
 The default-volume reference stays **provisional**. These results do not justify promoting it.
 Neither report-step run is a time-converged reference, and a canonical SPE5 reference should come
@@ -896,12 +1040,13 @@ compositional solver option (no case or scenario names in the engine):
 
 Order of work, as agreed in the #116 review:
 1. **Investigate B first, without changing acceptance.** Done (provisional), see "Failure B: what
-   sets the floor". The cause is the near-critical split's indeterminacy reaching the fluxes. It
-   is not the linear solve or the flash tolerance, and it scales with dt.
+   sets the floor". The cause is the near-critical split's indeterminacy in Float64 reaching the
+   fluxes. It is not the linear solve or the flash tolerance, and it scales with dt.
 2. **BHP warm start (3) as a separate experiment**, with `1e-8` unchanged. Done: not promoted.
 3. Only after that evidence, evaluate hysteresis (1) or bounded acceptance (2). Candidate 2's
-   premise has changed: B's floor is a measured evaluation-precision limit, and B converges at
-   `1e-8` one halving further. So a timestep-control change is now a candidate alongside them.
+   premise has changed: B's floor is the Float64 indeterminacy of the near-critical split, at
+   every cell-33 transition reached so far. A larger retry budget does not carry B through. A
+   smooth flash split and bounded timestep memory are now candidates alongside them.
 
 All thresholds above are **experimental candidates**, not validated values. They come from two
 traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of
