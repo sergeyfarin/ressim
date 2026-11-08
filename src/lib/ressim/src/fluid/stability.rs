@@ -774,6 +774,43 @@ fn run_trial_pair(
 
 /// A trial pair indicates instability when either sum exceeds one and did not collapse onto the
 /// feed. `PTFlash.hpp::phaseStabilityTest_` writes the same condition in the negative.
+/// Test-only (#116 M0): for each seed (the given one, if any, then Wilson and its cube root), the
+/// vapour-like and liquid-like trials' converged `sum W` and whether each collapsed onto the feed:
+/// `(seed, vapour_sum, vapour_trivial, liquid_sum, liquid_trivial)`, or the trial's error. The
+/// verdict compares each sum with `1 + TRIAL_SUM_TOLERANCE`.
+#[cfg(test)]
+pub(crate) fn trial_sums_for_test(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    k_seed: Option<&[f64]>,
+) -> Vec<(&'static str, Result<(f64, bool, f64, bool), String>)> {
+    let wilson = wilson_k(spec, pressure_pa, temperature_k);
+    let mut seeds: Vec<(&'static str, Vec<f64>)> = Vec::new();
+    if let Some(k) = k_seed {
+        seeds.push(("given", k.to_vec()));
+    }
+    seeds.push(("wilson", wilson.clone()));
+    seeds.push((
+        "wilson_cbrt",
+        wilson.iter().map(|&k| math::cbrt(k)).collect(),
+    ));
+    seeds
+        .into_iter()
+        .map(|(name, seed)| {
+            let out = run_trial_pair(spec, pressure_pa, temperature_k, z, &seed, true)
+                .map(|(v, l)| (v.sum, v.trivial, l.sum, l.trivial))
+                .map_err(|e| format!("{e:?}"));
+            (name, out)
+        })
+        .collect()
+}
+
+/// Test-only (#116 M0): [`TRIAL_SUM_TOLERANCE`].
+#[cfg(test)]
+pub(crate) const TRIAL_SUM_TOLERANCE_FOR_TEST: f64 = TRIAL_SUM_TOLERANCE;
+
 fn pair_indicates_instability(vapour: &TrialOutcome, liquid: &TrialOutcome) -> bool {
     let vapour_indicates = vapour.sum >= 1.0 + TRIAL_SUM_TOLERANCE && !vapour.trivial;
     let liquid_indicates = liquid.sum >= 1.0 + TRIAL_SUM_TOLERANCE && !liquid.trivial;
