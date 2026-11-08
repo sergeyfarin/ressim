@@ -512,7 +512,10 @@ normalizations, with a signed and an absolute conservation account per iterate.
 | JutulDarcy well-volume/timestep sensitivity | `tools/jutul/run-spe5-sensitivity.sh` | `bash tools/jutul/run-spe5-sensitivity.sh OUTDIR [JOBS]` (~80 min at 4 jobs) |
 | Near-critical flash states of failure B's best iterate (cells 33/39/40, 64 pressure ulps, full splits and the fluid) | `comp_spe5_failure_b_flash_conditioning` | `SPE5_TRACE_OUT=DIR cargo test --release --lib comp_spe5_failure_b_flash_conditioning -- --ignored` (seconds) |
 | The same states solved in 50 digits, and by MultiComponentFlash | `tools/jutul/spe5_flash_mp.py`, `tools/jutul/spe5_flash_precision.jl` | `uv run --no-project --with mpmath python -I tools/jutul/spe5_flash_mp.py COND.json MP.json [STRIDE]`; `julia +1.12 --project=tools/jutul tools/jutul/spe5_flash_precision.jl COND.json OUT.json MP.json` |
-| Replays with a halving budget or a dt cap, per-month work and balance | `comp_spe5_replay_with_timestep_options` | `SPE5_REPLAY_OUT=OUT.json [SPE5_REPLAY_SEED=stall_218_from_scratch.json] [SPE5_MAX_ATTEMPTS=N] [SPE5_MAX_DT_DAYS=D] cargo test --release --lib comp_spe5_replay_with_timestep_options -- --ignored --nocapture` (11 min to 2.5 h); table: `spe5_compare.py --timestep-convergence` |
+| Flash refinement on the captured states (cells 33/39/40; pressure-ulp, 0.01 Pa and composition sweeps; both modes) | `comp_spe5_flash_refinement_states` | `SPE5_TRACE_OUT=DIR cargo test --release --lib comp_spe5_flash_refinement_states -- --ignored` (seconds); 50 digits: `spe5_flash_mp.py STATES.json MP.json 1` (~2.5 min); table: `spe5_flash_refinement_compare.py STATES.json MP.json` |
+| Failure B with the refinement: last attempt, Taylor test, dt ladder, the failing call | `comp_spe5_failure_b_with_refinement` | `SPE5_TRACE_OUT=DIR cargo test --release --lib comp_spe5_failure_b_with_refinement -- --ignored --nocapture` (~3 min) |
+| Replays with a halving budget, a dt cap, timestep memory or the flash refinement, per-month work and balance; optionally the failing call's starting state | `comp_spe5_replay_with_timestep_options` | `SPE5_REPLAY_OUT=OUT.json [SPE5_REPLAY_SEED=stall_218_from_scratch.json] [SPE5_MAX_ATTEMPTS=N] [SPE5_MAX_DT_DAYS=D] [SPE5_DT_MEMORY_GROWTH=G] [SPE5_FLASH_REFINE=1] [SPE5_REPLAY_CHECKPOINT_OUT=SEED.json] cargo test --release --lib comp_spe5_replay_with_timestep_options -- --ignored --nocapture` (11 min to 2.5 h); table: `spe5_compare.py --timestep-convergence` |
+| One Newton solve per halving from any captured state, with per-iterate flips and residuals | `comp_spe5_trace_seed_ladder` | `SPE5_TRACE_OUT=DIR SPE5_TRACE_SEED=SEED.json [SPE5_TRACE_DT_DAYS=D] [SPE5_TRACE_HALVINGS=N] [SPE5_FLASH_REFINE=1] cargo test --release --lib comp_spe5_trace_seed_ladder -- --ignored --nocapture` (0.5–1.5 min) |
 
 Signed global imbalance is `Σ_cells R_c` per component (dt-integrated, moles) relative to that
 component's inventory; absolute local defect is `Σ_cells |R_c|`. They are recorded separately so
@@ -807,17 +810,22 @@ What it shows:
 - **At matched caps, ResSim and JutulDarcy agree** through month 211: within 1.0% in oil, 0.18 bar
   and 0.004 in cell-33 Sg, at both 5 d and 0.5 d. At report steps they differ by 11.7% in oil.
 - **Their time errors are alike.** Report step to 0.5 d moves ResSim 33% in oil and Jutul 24%;
-  5 d to 0.5 d moves both 8.2%. The coarse-step differences are time-discretization error both
-  simulators share. Neither 0.5 d run is shown to be converged: no finer cap was run.
+  5 d to 0.5 d moves both 8.2%. These are timestep-dependent differences of the same size in
+  both simulators, not errors against a converged solution: neither 0.5 d run is shown to be
+  converged, since no finer cap was run.
 - **Cumulatives are much less sensitive than rates.** ResSim's cumulative surface oil at month
   211 differs by 0.10% between report steps and 0.5 d; the rate peaks differ by 33%.
-- **Smaller steps fail earlier, at the same physical event.** With the caps, cell 33's vapour
+- **Smaller steps fail earlier, at the same physical event.** This exposes a robustness failure
+  earlier; it says nothing against the smaller steps' accuracy. With the caps, cell 33's vapour
   disappears at month 211–212 in both simulators. The report-step runs keep free gas there. The
-  0.5 d ResSim run fails at that disappearance (day 6432.7, residual 1.5e-6), the 5 d run at the
-  reappearance (day 6556.0, residual 1.1e-4). Jutul's capped runs take 48–153 failed ministeps in
-  the reappearance months. Every ResSim run that has reached a cell-33 phase transition in this
-  window has failed within 10 attempts at `1e-8`. Failure B is one instance, not a month-218
-  peculiarity.
+  0.5 d ResSim run fails in that window (day 6432.7, residual 1.5e-6), the 5 d run in the
+  reappearance window (day 6556.0, residual 1.1e-4). Jutul's capped runs take 48–153 failed
+  ministeps in the reappearance months. Every ResSim run that has reached this window has failed
+  within 10 attempts at `1e-8`. **Correction (traces below):** the capped failures are not at
+  cell 33. Their failing attempts are phase-label two-cycles on cell 16 (0.5 d) and cells 25/31
+  (5 d). Both converge one halving past the ladder, and with a larger budget fail again a step or
+  two later; see "The crossings with the refinement
+  and with timestep memory".
 - **Conservation holds.** The worst signed component balance relative to the initial inventory is
   6.1e-9 after 12,877 accepted 0.5 d-capped steps.
 
@@ -826,9 +834,147 @@ Consequences:
   acceptance that knew the residual's evaluation precision would be a different, principled
   candidate. It is not proposed here.
 - **Timestep control** cannot be measured on the month-218 window alone: the capped runs fail at
-  other transitions. A candidate has to carry all three runs through months 211–240.
-- **Flash.** A split that is a smooth function of (p, z) (deterministic seed, fixed final polish)
-  would remove the jump at its source. That would address every transition at once.
+  other transitions. A candidate has to carry all three runs through months 211–240. A cap is not
+  timestep memory (after a small accepted step the next call asks for the cap again), so the
+  capped failures do not test memory; they make it a lower priority than the floor's cause.
+- **Flash.** A deterministic seed or a fixed polish would not help: the flash is already
+  deterministic at identical inputs, and the scatter is the residual's evaluation error amplified
+  by the near-singular system. What helps is evaluating that residual more accurately (next
+  section).
+
+#### Difference-form flash refinement (experimental, off by default)
+
+**Why the split scatters.** At the exact cell-33 split, the 50-digit Jacobian of the equilibrium
+system `[ln K, beta]` has singular values from 4.0 down to 3.9e-6 and then **5.7e-11**, with a
+right singular vector that is almost pure `beta` (cell 39 alike; cell 40, the control, 7e-4). An
+error `e` in the residual moves `beta` by `e / 5.7e-11`: 1e-15 gives 1.8e-5. The standard Float64
+residual forms `ln phi^V - ln phi^L` from terms up to 11 in size, so its error is ~1e-15, which
+is the observed ±2e-5 band. The exact `beta` moves −8.5 per bar here, while Z_L − Z_V = 1.2e-4.
+
+**The candidate.** `fluid::flash` can polish a converged two-phase split with the same equations,
+with the same normalization, but every vapour-minus-liquid difference formed directly:
+- `y − x` from `expm1(ln K)`;
+- the differences of the mixture sums;
+- Z_V − Z_L from the two cubics through their divided difference;
+- each logarithm's difference through `ln_1p` of a small ratio.
+
+The residual's error then scales with the phases' difference (|ln K| ≈ 0.017) instead of with
+`ln phi`. Newton steps use the existing AD Jacobian and stop when that residual stops
+decreasing (at most 8). A move larger than 1e-3 in `beta` or `ln K`, or a result outside the
+existing equilibrium tolerance, is discarded and the unrefined state returned. The returned split
+is what the derivative pass differentiates (it seeds `ln K` from the returned phases' `ln phi`
+and takes `beta` as returned), so the implicit Jacobian describes the refined split.
+
+It is **off in every non-test build**. A test switches it on for its thread
+(`with_difference_refinement_for_test`); the replay driver does it with `SPE5_FLASH_REFINE=1`.
+Two thermo-gate tests pin the contract:
+- `comp_flash_difference_residual_matches_the_standard_one`: on every two-phase fixture state,
+  and 1e-3 away from it, the two residuals agree to 1e-12;
+- `comp_flash_refinement_leaves_ordinary_states_unchanged`: with it on, no fixture state changes
+  label, and `beta`, x and y move by at most 1e-8 / 1e-9.
+
+**Accuracy on the captured states.** Cells 33, 39 and 40 of failure B's best iterate, under 64
+pressure ulps, 32 steps of 0.01 Pa, and 32 composition steps of 4e-16 (C1 up, the heaviest down),
+each flashed both ways and solved in 50 digits. Printed by
+`python3 -I tools/jutul/spe5_flash_refinement_compare.py STATES.json MP.json`:
+
+| Cell | Sweep | Mode | max \|Δβ\| | mean Δβ | max \|Δx\|, \|Δy\| | max rel. Δv_L, Δv_V | max \|ΔS_V\| | mobility noise L / V (rel.) | difference residual | standard residual |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 33 | composition | unrefined | 2.68e-05 | -1.0e-06 | 2.9e-08 | 4.5e-09 | 2.7e-05 | 8.2e-04 / 2.0e-04 | 5.9e-14 | 1.8e-12 |
+| 33 | composition | refined | 6.50e-08 | +7.5e-09 | 7.1e-11 | 1.1e-11 | 6.5e-08 | 1.9e-06 / 4.7e-07 | 9.6e-15 | 1.2e-14 |
+| 33 | pressure_0.01pa | unrefined | 2.99e-05 | -2.3e-06 | 3.2e-08 | 5.0e-09 | 3.0e-05 | 4.7e-04 / 1.2e-04 | 6.3e-14 | 1.9e-12 |
+| 33 | pressure_0.01pa | refined | 8.66e-08 | +4.8e-09 | 9.4e-11 | 1.4e-11 | 8.7e-08 | 1.5e-06 / 3.6e-07 | 9.7e-15 | 1.4e-14 |
+| 33 | pressure_ulps | unrefined | 2.14e-05 | -2.7e-06 | 2.3e-08 | 3.6e-09 | 2.1e-05 | 7.2e-04 / 1.7e-04 | 6.0e-14 | 1.9e-12 |
+| 33 | pressure_ulps | refined | 7.06e-08 | -7.8e-10 | 7.7e-11 | 1.2e-11 | 7.1e-08 | 2.2e-06 / 5.4e-07 | 1.1e-14 | 1.4e-14 |
+| 39 | composition | unrefined | 3.79e-05 | -2.5e-06 | 4.2e-08 | 6.3e-09 | 3.8e-05 | 1.1e-03 / 2.7e-04 | 6.6e-14 | 1.9e-12 |
+| 39 | composition | refined | 8.55e-08 | +1.4e-08 | 9.3e-11 | 1.4e-11 | 8.6e-08 | 2.3e-06 / 5.7e-07 | 8.8e-15 | 1.4e-14 |
+| 39 | pressure_0.01pa | unrefined | 1.76e-05 | -9.5e-07 | 1.9e-08 | 2.9e-09 | 1.8e-05 | 3.1e-04 / 7.5e-05 | 5.4e-14 | 1.8e-12 |
+| 39 | pressure_0.01pa | refined | 9.33e-08 | +8.9e-10 | 1.0e-10 | 1.5e-11 | 9.3e-08 | 1.6e-06 / 3.9e-07 | 1.2e-14 | 1.4e-14 |
+| 39 | pressure_ulps | unrefined | 3.06e-05 | -6.1e-07 | 3.4e-08 | 5.1e-09 | 3.1e-05 | 9.6e-04 / 2.3e-04 | 6.1e-14 | 1.8e-12 |
+| 39 | pressure_ulps | refined | 1.06e-07 | +4.2e-09 | 1.2e-10 | 1.8e-11 | 1.1e-07 | 3.6e-06 / 8.9e-07 | 1.0e-14 | 1.8e-14 |
+| 40 | composition | unrefined | 2.08e-12 | +3.2e-13 | 1.4e-13 | 7.5e-14 | 2.0e-12 | 4.2e-11 / 1.9e-11 | 1.3e-14 | 1.4e-14 |
+| 40 | composition | refined | 1.34e-12 | +1.4e-13 | 9.0e-14 | 4.8e-14 | 1.3e-12 | 3.0e-11 / 1.4e-11 | 9.8e-15 | 1.4e-14 |
+| 40 | pressure_0.01pa | unrefined | 2.40e-12 | -1.3e-13 | 1.6e-13 | 8.5e-14 | 2.4e-12 | 2.6e-11 / 1.2e-11 | 1.2e-14 | 2.1e-14 |
+| 40 | pressure_0.01pa | refined | 1.52e-12 | -6.0e-14 | 1.0e-13 | 5.3e-14 | 1.5e-12 | 1.7e-11 / 7.9e-12 | 1.2e-14 | 1.4e-14 |
+| 40 | pressure_ulps | unrefined | 1.79e-12 | -4.3e-14 | 1.2e-13 | 6.3e-14 | 1.8e-12 | 3.7e-11 / 1.7e-11 | 1.5e-14 | 2.5e-14 |
+| 40 | pressure_ulps | refined | 9.43e-13 | +1.3e-14 | 6.2e-14 | 3.2e-14 | 9.3e-13 | 1.6e-11 / 7.6e-12 | 1.0e-14 | 2.0e-14 |
+
+- **It improves accuracy, not just repeatability.** At cells 33/39 the `beta` error falls from
+  2–4e-5 to ≤ 1.1e-7, with a mean offset ≤ 1.4e-8, so no bias is introduced. Compositions improve
+  from 3e-8 to 1e-10, molar volumes from 5e-9 to 1.5e-11 (relative), and the vapour volume
+  fraction from 3e-5 to 1e-7. Mobility scatter falls from 1e-3 to 2–4e-6 (relative).
+- **Both residual measures fall.** Even the standard equilibrium residual falls (1.9e-12 to
+  1.4e-14).
+- **The control cell does not move.** Cell 40 is unchanged or slightly better.
+- **The 0.01 Pa sweep is real physics.** The 3.1e-6 bar sweep moves the exact `beta` by 2.6e-5,
+  which the refined flash follows.
+
+**Failure B with the refinement**
+(`cargo test --release --lib comp_spe5_failure_b_with_refinement -- --ignored --nocapture`, ~3 min):
+
+| | Unrefined | Refined |
+|---|---|---|
+| Last attempt (0.0443 d) | best 3.6e-8, not converged in 20 | **converged in 4**, 4.1e-10 |
+| Taylor error, iterate 2, h = 1 / 0.1 / ≤ 0.01 | 2e-8 to 3e-7 at every h | 1.4e-7 / 1.2e-9 / 2–8e-10 |
+| One attempt at 0.0886 d … 22.67 d | best 4.9e-3 … 0.60 | identical |
+| The failing call (whole remainder, 10 attempts) | fails | **succeeds at the 10th attempt** (0.0443 d) |
+
+- **Taylor test.** It now falls about 100× per decade of h, as a consistent Jacobian should,
+  down to a floor about 100× lower than before.
+- **Larger steps.** Steps of 0.089 d and more still fail, identically with or without the
+  refinement. Their residuals stay at 5e-3 to 0.6: genuine nonconvergence at large dt, not
+  noise. So the crossing still needs steps of about 0.04 d, and each call that restarts from the
+  whole remainder pays the halving ladder. That cost is a timestep-control question again.
+
+#### The crossings with the refinement and with timestep memory (`1e-8` unchanged)
+
+Provisional: release builds of `1fb3dcdb` plus the then-uncommitted test drivers
+(`SPE5_DT_MEMORY_GROWTH`, `comp_spe5_trace_seed_ladder`). Every failing call's starting state was
+written with `SPE5_REPLAY_CHECKPOINT_OUT` and traced with `comp_spe5_trace_seed_ladder`.
+
+**Replays.** From scratch with the refinement on, at the same three settings as the unrefined
+runs, and from the failure-B seed with bounded timestep memory (growth 2: after an accepted step
+`dt`, the next request is at most `2 dt`):
+
+| Run | Unrefined | Refined |
+|---|---|---|
+| From scratch, 0.5 d cap | fails day 6432.697, 1.50e-6 | fails day 6432.697, 1.48e-6 |
+| From scratch, 5 d cap | fails day 6555.996, 1.11e-4 | fails day 6555.996, 1.11e-4 |
+| From scratch, report steps | fails day 6612.703 (B), 6.4e-8 | 2 steps to day 6612.792, then fails (5.06e-3) |
+| B seed, memory growth 2 | fails on the first call (10 attempts) | 10 steps to day 6612.821 (0.117 d, 249 s), then the request falls below the 1e-6 d minimum after 3 attempts (1.1e-6) |
+
+**Traces of each failing call.** One Newton solve per `dt`, 20 iterations; "flips" are the
+cells whose phase label changes on every iteration of the last ones:
+
+| Starting state | Failing attempts | Mechanism | First converging `dt` |
+|---|---|---|---|
+| 0.5 d cap, day 6432.697 | 3.9e-3 … 9.8e-4 d (1.5e-6 at the ladder's last), refined also 4.9e-4 d | two-cycle on cell 16; residual halves with `dt` | 4.9e-4 d unrefined, 2.4e-4 d refined; 6 iterations, no flips, at every smaller `dt` |
+| 5 d cap, day 6555.996 | 3.9e-2 … 9.8e-3 d (1.1e-4 at the ladder's last), both modes identical | two-cycle on cells 25/31; residual halves with `dt` | 4.9e-3 d in both modes; 6 iterations, no flips, at every smaller `dt` |
+| Report steps, refined, day 6612.792 | 0.044 d (3.3e-3 ↔ 5.1e-3) | two-cycle on cells 33/39 | 0.022 d, then every `dt` to 6.7e-7 d in 4 iterations |
+| Memory run, refined, day 6612.821 | every `dt` from 0.02 d to 4.9e-6 d, both modes | two-cycle on cells 33/39 (39 alone for iterations 2–11 at 4.9e-6 d); residual 8.9e-7 at 4.9e-6 d, no longer halving | none in the traced range |
+
+What it shows:
+- **The refinement is refuted as the fix for the crossings.** It removes B's precision floor (the
+  previous section) and changes nothing else: the capped failures are bit for bit or nearly the
+  same, and the report-step and memory runs reach the next failure a few hours later.
+- **Every failure traced here is signature A**, a phase-label two-cycle in a near-critical cell,
+  not B's floor. Only failure B's last attempt was a precision floor, and the refinement removes it.
+- **The capped failures are not a budget problem.** At the first `dt` past the 10-attempt ladder
+  they converge in 6 iterations with no flips, and at every smaller `dt` traced. But with 12
+  attempts (`SPE5_MAX_ATTEMPTS=12`, from the captured states) each run takes one or two such steps
+  and the next call fails all 12: the 5 d run at day 6556.001 (2.7e-5), the 0.5 d run at day
+  6432.698 (3.7e-7). Traced, the same cells flip, and the largest converging `dt` has shrunk
+  eightfold, 4.9e-3 → 6.1e-4 d and 4.9e-4 → 6.1e-5 d. As the cell approaches its transition, only
+  steps that keep it on one side converge, and those shrink with the distance left. No step
+  crosses the transition, so no budget or remembered step can carry the run over it.
+- **Timestep memory is inconclusive.** With the refinement it carried the run 0.117 d past B,
+  and its steps then shrank to a few 1e-6 d. The state where it stopped is a two-cycle on cells
+  33/39 that does not converge down to 4.9e-6 d, like the month-218 seed of signature A, which
+  converged only at 2.44e-6 d. A remembered step cannot help where no step converges.
+- **What is indicated next** is candidate 1 of the revised proposal: keep a cell's phase label
+  during one Newton solve unless the competing label is clearly preferred, so that a step can
+  converge on one label and cross the transition. It acts on the mechanism of every failure
+  traced here and does not touch acceptance.
 
 #### BHP warm start (separate experiment, `1e-8` unchanged)
 
@@ -1047,6 +1193,10 @@ Order of work, as agreed in the #116 review:
    premise has changed: B's floor is the Float64 indeterminacy of the near-critical split, at
    every cell-33 transition reached so far. A larger retry budget does not carry B through. A
    smooth flash split and bounded timestep memory are now candidates alongside them.
+4. **Flash refinement and timestep memory, tried (provisional).** The difference-form refinement
+   removes B's floor but carries no run through a crossing; memory is inconclusive. Every failure
+   traced since is signature A, so **label hysteresis (1) is next**, and floor acceptance (2) has
+   lost its premise: no failure traced after the refinement is a floor.
 
 All thresholds above are **experimental candidates**, not validated values. They come from two
 traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of
