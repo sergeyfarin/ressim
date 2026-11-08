@@ -325,13 +325,25 @@ Stone II relative permeability, rate targets and WAG schedule. It has **240 mont
 (30.4375 d) through **7305 d**, with `completed: true`. The fixture carries the per-report producer
 rates, cell-33 pressure and saturations, producer control/BHP, and Jutul's `ministeps`,
 `newton_iterations`, `failed_ministeps` and final reservoir CNV/MB. `manifest.json` records the
-generator, verify command and SHA-256 hashes; `worktree_clean_at_generation` is false because the
-surface-condition fix was still uncommitted when the fixture was regenerated from base commit
-`b14f0976`. Regenerate or verify with:
+generator, verify command and SHA-256 hashes. The current fixture was regenerated on 2026-11-08 with
+JutulDarcy's default well-node volume (#116 step 0, "Well-node volume" below). It was generated
+from base commit `2ef5027a` with that generator change still uncommitted, so
+`worktree_clean_at_generation` is false. The well-node volume is a model choice, not only a
+performance setting (see "Well-node volume" under step 0): ResSim's wells have no wellbore storage,
+and JutulDarcy's default nodes add 0.192 m³ per injector and 0.479 m³ for the producer. The
+default-volume fixture is therefore **provisional**. It is not the canonical reference until a
+bounded volume/timestep sensitivity says how much the compared quantities depend on that choice.
+The earlier fixture (`b14f0976`, 1e-4 m³ well nodes) is kept only in that comparison.
+
+`manifest.json` records the resolved model configuration (`configuration`: per-well node volumes,
+timestep cap, versions, tolerances). `--check` fails if the configuration differs from it. On a run
+that starts and ends on the same clean commit, `--check` also records that commit and the source
+hashes in `verification`. On a dirty tree it verifies but records nothing. Regenerate or verify
+with:
 
 ```bash
-bash tools/opm_compositional/run-spe5.sh           # regenerate, about 80 min
-bash tools/opm_compositional/run-spe5.sh --check   # replay and compare parsed numbers
+bash tools/opm_compositional/run-spe5.sh           # regenerate, about 30 min
+bash tools/opm_compositional/run-spe5.sh --check   # replay; compare numbers and configuration
 ```
 
 Five changes were needed before the run was comparable to ResSim:
@@ -365,7 +377,10 @@ mole-balance target; the fixture records them as such. The generator runs with
 ### Comparison with ResSim
 
 The from-scratch ResSim probe has 217 monthly reports before the month-218 stall, so the comparison
-covers months 1–217. At **730.5 d** (month 24) the two runs agree on pressure and the rate split:
+covers months 1–217. Every number in this section is printed by
+`python3 -I tools/jutul/spe5_compare.py RESSIM_MONTHS` (its docstring has the command that dumps
+the ResSim months); none is typed by hand. At **730.5 d** (month 24) the two runs agree on
+pressure and the rate split:
 
 | Quantity | ResSim | JutulDarcy |
 |---|---:|---:|
@@ -374,69 +389,374 @@ covers months 1–217. At **730.5 d** (month 24) the two runs agree on pressure 
 | Cell-33 Sw | 0.2032 | 0.2032 |
 | Cell-33 Sg | 0.4091 | 0.4102 |
 | Producer oil, m³/d | 959.2 | 954.2 |
-| Producer gas, m³/d | 212,697 | 212,883 |
-| Producer water, m³/d | 0.13698 | 0.13678 |
+| Producer gas, m³/d | 212,697 | 212,885 |
+| Producer water, m³/d | 0.13698 | 0.13679 |
 | GOR, m³/m³ | 221.7 | 223.1 |
-| Water cut | 1.428e-4 | 1.433e-4 |
+| Water cut | 1.428e-04 | 1.433e-04 |
 
 Both producers switch from oil-rate to BHP control at month 16 (**487.0 d**), the same report.
-Across all 217 months the pressure agreement stays tight: the worst mean-pressure difference is
-**1.75 bar** (month 175) and the worst cell-33 difference is **2.15 bar** (month 177). The rate and
-saturation spread is wider in the late water/gas years: worst producer-oil difference **28.5%**
-(month 208), worst GOR difference **22.3%** (month 164) and worst water-cut difference **0.0615**
-absolute (month 169). Those are late-time trajectory spreads, not a normalization or unit error —
-the early and mid-life rates agree within a few percent.
+Across all 217 months the worst mean-pressure difference is **0.86 bar** and the worst cell-33
+difference **0.76 bar**, both at the edge of the crossing (months 217 and 216). The worst
+producer-oil difference is **11.7%** (month 208), the worst GOR difference **10.5%** (month 217) and
+the worst water-cut difference **0.0177** absolute (month 208), all relative to the larger of the
+two. The worst cell-33 Sg difference is **0.096** (month 217).
+
+The 1e-4 m³ reference had shown roughly twice these spreads: 1.75 bar, 28.5%, 22.3% and 0.0615.
+So the late-life ResSim/Jutul gap depends on JutulDarcy's well-node volume. Closer agreement does
+not show that the default volume is the more accurate model: ResSim has no wellbore storage, and
+the 1e-4 m³ nodes were chosen elsewhere precisely to approximate that (see "Well-node volume").
 
 | month | day | mean p R / J (bar) | cell 33 p R / J (bar) | Sw 33 R / J | Sg 33 R / J | oil R / J (m³/d) | GOR R / J (m³/m³) | WC R / J | Jutul ministeps / Newton |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 12 | 365.25 | 139.04 / 138.94 | 136.23 / 136.12 | 0.2030 / 0.2030 | 0.1093 / 0.1101 | 1907.8 / 1916.9 | 87.5 / 87.7 | 0.00006 / 0.00006 | 1 / 5 |
-| 16 | 487.00 | 129.07 / 128.94 | 125.37 / 125.23 | 0.2032 / 0.2032 | 0.2069 / 0.2083 | 1864.1 / 1854.9 | 112.2 / 112.5 | 0.00009 / 0.00009 | 1 / 5 |
+| 12 | 365.25 | 139.04 / 138.94 | 136.23 / 136.12 | 0.2030 / 0.2030 | 0.1093 / 0.1101 | 1907.8 / 1916.9 | 87.5 / 87.7 | 0.00006 / 0.00006 | 1 / 4 |
+| 16 | 487.00 | 129.07 / 128.94 | 125.37 / 125.23 | 0.2032 / 0.2032 | 0.2069 / 0.2083 | 1864.1 / 1854.9 | 112.2 / 112.5 | 0.00009 / 0.00009 | 1 / 4 |
 | 24 | 730.50 | 112.68 / 112.58 | 109.84 / 109.75 | 0.2032 / 0.2032 | 0.4091 / 0.4102 | 959.2 / 954.2 | 221.7 / 223.1 | 0.00014 / 0.00014 | 1 / 4 |
-| 48 | 1461.00 | 110.05 / 110.25 | 106.32 / 106.66 | 0.2025 / 0.2025 | 0.4706 / 0.4788 | 847.2 / 882.1 | 252.4 / 240.7 | 0.00016 / 0.00016 | 300 / 3279 |
-| 96 | 2922.00 | 112.58 / 112.64 | 106.36 / 106.82 | 0.2015 / 0.2015 | 0.5094 / 0.5244 | 872.8 / 887.0 | 276.8 / 280.0 | 0.00016 / 0.00016 | 298 / 3247 |
-| 144 | 4383.00 | 119.55 / 119.96 | 109.10 / 110.30 | 0.3836 / 0.3819 | 0.3007 / 0.3037 | 860.1 / 894.3 | 291.8 / 287.2 | 0.00016 / 0.00015 | 284 / 3102 |
-| 192 | 5844.00 | 189.75 / 190.26 | 181.17 / 181.69 | 0.5353 / 0.5601 | 0.0732 / 0.0244 | 348.8 / 332.9 | 283.4 / 288.7 | 0.58980 / 0.60911 | 190 / 2065 |
-| 204 | 6209.25 | 231.81 / 232.06 | 215.99 / 216.31 | 0.4869 / 0.4834 | 0.1680 / 0.1740 | 290.7 / 286.7 | 649.4 / 652.3 | 0.68825 / 0.69239 | 1 / 6 |
-| 205 | 6239.69 | 229.93 / 229.45 | 215.43 / 215.25 | 0.5032 / 0.4970 | 0.1686 / 0.1846 | 235.4 / 240.7 | 745.1 / 778.3 | 0.73048 / 0.72454 | 133 / 1392 |
-| 206 | 6270.12 | 229.62 / 228.78 | 215.46 / 214.31 | 0.5205 / 0.5174 | 0.1557 / 0.1725 | 178.7 / 155.5 | 847.6 / 1013.3 | 0.78231 / 0.79985 | 153 / 1638 |
-| 207 | 6300.56 | 229.99 / 229.18 | 216.49 / 215.55 | 0.5346 / 0.5315 | 0.1336 / 0.1447 | 136.8 / 110.4 | 924.0 / 1066.1 | 0.82755 / 0.85481 | 160 / 1728 |
-| 208 | 6331.00 | 230.58 / 230.38 | 218.70 / 217.68 | 0.5350 / 0.5424 | 0.1185 / 0.1134 | 138.4 / 99.0 | 854.3 / 1018.8 | 0.83095 / 0.87309 | 162 / 1745 |
-| 209 | 6361.44 | 231.23 / 231.37 | 220.42 / 220.35 | 0.5389 / 0.5437 | 0.1064 / 0.0939 | 142.4 / 134.3 | 829.3 / 802.1 | 0.83061 / 0.84201 | 167 / 1810 |
-| 210 | 6391.88 | 231.77 / 232.37 | 222.02 / 221.95 | 0.5461 / 0.5591 | 0.0861 / 0.0763 | 149.6 / 131.6 | 809.7 / 819.1 | 0.82640 / 0.84578 | 162 / 1757 |
-| 211 | 6422.31 | 232.02 / 233.07 | 223.06 / 223.62 | 0.5542 / 0.5824 | 0.0668 / 0.0347 | 159.9 / 156.9 | 801.7 / 724.4 | 0.81816 / 0.82649 | 168 / 1831 |
-| 212 | 6452.75 | 232.06 / 233.35 | 223.79 / 224.92 | 0.5570 / 0.6011 | 0.0563 / 0.0000 | 166.9 / 168.8 | 818.9 / 742.6 | 0.81176 / 0.81621 | 162 / 1753 |
-| 213 | 6483.19 | 231.98 / 233.50 | 224.40 / 225.97 | 0.5481 / 0.5965 | 0.0665 / 0.0000 | 167.1 / 165.8 | 861.9 / 789.8 | 0.81118 / 0.81839 | 167 / 1814 |
-| 214 | 6513.62 | 231.81 / 233.41 | 224.99 / 226.53 | 0.5259 / 0.5837 | 0.1036 / 0.0000 | 164.2 / 170.4 | 913.2 / 833.1 | 0.81323 / 0.81305 | 167 / 1814 |
-| 215 | 6544.06 | 231.61 / 233.07 | 225.23 / 226.67 | 0.5003 / 0.5683 | 0.1664 / 0.0000 | 158.7 / 174.5 | 984.5 / 894.9 | 0.81709 / 0.80746 | 168 / 1831 |
-| 216 | 6574.50 | 231.30 / 232.55 | 225.16 / 226.50 | 0.4785 / 0.5478 | 0.2168 / 0.0712 | 152.0 / 160.8 | 1070.6 / 1033.3 | 0.82167 / 0.81612 | 193 / 2093 |
-| 217 | 6604.94 | 233.87 / 234.97 | 227.43 / 228.08 | 0.4513 / 0.5220 | 0.2515 / 0.0741 | 183.8 / 211.5 | 1013.4 / 924.6 | 0.79315 / 0.77310 | 272 / 2859 |
-| 218 | 6635.38 | — / 236.52 | — / 229.49 | — / 0.5028 | — / 0.2094 | — / 240.4 | — / 992.8 | — / 0.74653 | 415 / 4510 |
-| 219 | 6665.81 | — / 237.42 | — / 230.54 | — / 0.4576 | — / 0.4264 | — / 221.5 | — / 1144.0 | — / 0.75606 | 1477 / 16449 |
+| 48 | 1461.00 | 110.05 / 110.01 | 106.32 / 106.30 | 0.2025 / 0.2025 | 0.4706 / 0.4702 | 847.2 / 849.2 | 252.4 / 250.6 | 0.00016 / 0.00016 | 1 / 4 |
+| 96 | 2922.00 | 112.58 / 112.59 | 106.36 / 106.46 | 0.2015 / 0.2015 | 0.5094 / 0.5107 | 872.8 / 882.0 | 276.8 / 273.0 | 0.00016 / 0.00016 | 1 / 4 |
+| 144 | 4383.00 | 119.55 / 119.65 | 109.10 / 109.43 | 0.3836 / 0.3841 | 0.3007 / 0.3011 | 860.1 / 873.6 | 291.8 / 287.5 | 0.00016 / 0.00015 | 1 / 4 |
+| 192 | 5844.00 | 189.75 / 189.90 | 181.17 / 181.20 | 0.5353 / 0.5450 | 0.0732 / 0.0580 | 348.8 / 344.8 | 283.4 / 283.6 | 0.58980 / 0.59440 | 1 / 5 |
+| 204 | 6209.25 | 231.81 / 232.03 | 215.99 / 216.27 | 0.4869 / 0.4869 | 0.1680 / 0.1665 | 290.7 / 293.3 | 649.4 / 637.9 | 0.68825 / 0.68751 | 1 / 5 |
+| 205 | 6239.69 | 229.93 / 229.64 | 215.43 / 215.46 | 0.5032 / 0.5018 | 0.1686 / 0.1739 | 235.4 / 240.2 | 745.1 / 751.1 | 0.73048 / 0.72604 | 6 / 29 |
+| 206 | 6270.12 | 229.62 / 229.23 | 215.46 / 215.06 | 0.5205 / 0.5200 | 0.1557 / 0.1620 | 178.7 / 169.9 | 847.6 / 896.5 | 0.78231 / 0.78902 | 2 / 9 |
+| 207 | 6300.56 | 229.99 / 229.71 | 216.49 / 216.10 | 0.5346 / 0.5349 | 0.1336 / 0.1375 | 136.8 / 125.5 | 924.0 / 973.1 | 0.82755 / 0.83903 | 17 / 171 |
+| 208 | 6331.00 | 230.58 / 230.65 | 218.70 / 218.49 | 0.5350 / 0.5399 | 0.1185 / 0.1128 | 138.4 / 122.1 | 854.3 / 890.6 | 0.83095 / 0.84867 | 5 / 31 |
+| 209 | 6361.44 | 231.23 / 231.45 | 220.42 / 220.49 | 0.5389 / 0.5421 | 0.1064 / 0.1010 | 142.4 / 138.1 | 829.3 / 815.2 | 0.83061 / 0.83665 | 14 / 130 |
+| 210 | 6391.88 | 231.77 / 232.30 | 222.02 / 222.28 | 0.5461 / 0.5542 | 0.0861 / 0.0775 | 149.6 / 142.9 | 809.7 / 792.5 | 0.82640 / 0.83483 | 30 / 301 |
+| 211 | 6422.31 | 232.02 / 232.69 | 223.06 / 223.53 | 0.5542 / 0.5715 | 0.0668 / 0.0474 | 159.9 / 160.9 | 801.7 / 755.4 | 0.81816 / 0.82048 | 2 / 8 |
+| 212 | 6452.75 | 232.06 / 232.74 | 223.79 / 224.30 | 0.5570 / 0.5800 | 0.0563 / 0.0194 | 166.9 / 168.9 | 818.9 / 778.9 | 0.81176 / 0.81298 | 1 / 4 |
+| 213 | 6483.19 | 231.98 / 232.59 | 224.40 / 224.90 | 0.5481 / 0.5780 | 0.0665 / 0.0117 | 167.1 / 172.2 | 861.9 / 820.7 | 0.81118 / 0.80875 | 1 / 4 |
+| 214 | 6513.62 | 231.81 / 232.37 | 224.99 / 225.43 | 0.5259 / 0.5600 | 0.1036 / 0.0456 | 164.2 / 168.5 | 913.2 / 883.5 | 0.81323 / 0.81091 | 1 / 4 |
+| 215 | 6544.06 | 231.61 / 232.14 | 225.23 / 225.93 | 0.5003 / 0.5299 | 0.1664 / 0.1022 | 158.7 / 162.0 | 984.5 / 953.3 | 0.81709 / 0.81562 | 9 / 81 |
+| 216 | 6574.50 | 231.30 / 231.95 | 225.16 / 225.92 | 0.4785 / 0.5004 | 0.2168 / 0.1711 | 152.0 / 143.3 | 1070.6 / 1088.3 | 0.82167 / 0.83102 | 123 / 1353 |
+| 217 | 6604.94 | 233.87 / 234.73 | 227.43 / 228.01 | 0.4513 / 0.4731 | 0.2515 / 0.1554 | 183.8 / 198.5 | 1013.4 / 906.6 | 0.79315 / 0.78439 | 388 / 4245 |
+| 218 | 6635.38 | — / 236.13 | — / 229.41 | — / 0.4280 | — / 0.0000 | — / 200.1 | — / 1050.6 | — / 0.77838 | 1899 / 20828 |
+| 219 | 6665.81 | — / 237.37 | — / 229.97 | — / 0.3869 | — / 0.4827 | — / 232.5 | — / 1049.4 | — / 0.75180 | 1010 / 11038 |
 
 ### What it says about #116
 
-The cell-33 phase-appearance window is the discriminator. Jutul shows no free gas at months
-212–215, then Sg **0.0712** and **0.0741** at months 216–217, **0.2094** at month 218, and
-**0.4264** at month 219. Crossing it is expensive but possible: month 217 costs 272 ministeps /
-2,859 Newton iterations, month 218 costs 415 / 4,510, and month 219 costs 1,477 / 16,449 with 932
-failed ministeps. The schedule then drops to 4 / 18 at month 220 and 2 / 10 at month 221, before
-the next gas cycle builds again. Jutul's gas periods are intrinsically slow as well — month 48 is
-300 ministeps / 3,279 Newton iterations and month 96 is 298 / 3,247 — so the month-218 storm is an
-amplification of the gas-cycle cost, not a one-off numerical failure.
+The cell-33 phase-appearance window is where the two runs separate. With JutulDarcy's default well
+node,
+Jutul keeps free gas in cell 33 through months 212–215, but less of it than ResSim: Sg is
+0.019 / 0.012 / 0.046 / 0.102 against ResSim's 0.056 / 0.067 / 0.104 / 0.166. Then it has 0.171 and
+0.155 at months 216–217, **0.000** at month 218, and 0.483 at month 219.
+
+The 1e-4 m³ reference had shown no free gas at all in months 212–215. The earlier reading that
+"Jutul shows no free gas at months 212–215" depended on that well-node volume, and it is withdrawn
+as a discriminator.
+
+Jutul's cell-33 label at the month-218 report is single-phase, between two-phase reports on either
+side (Sg is zero again at month 222). That alone does not show a numerically unstable label:
+pressure and composition change between reports (cell-33 pressure rises 1.4 bar from month 217 to
+218 and Sw falls by 0.045), so a single-phase state at one report can be a physical state. It shows
+only that the reference's monthly label in this window is not monotone.
+
+Crossing the window is expensive but possible:
+
+| Month | Ministeps | Newton iterations | Failed ministeps |
+|---|---|---|---|
+| 216 | 123 | 1,353 | 76 |
+| 217 | 388 | 4,245 | 237 |
+| 218 | 1,899 | 20,828 | 1,164 |
+| 219 | 1,010 | 11,038 | 616 |
+
+Quiet months take 1–2 ministeps (month 220: 2 / 8), and the gas years are cheap (month 48: 1 / 4).
+The month-218 storm is specific to the crossing. The 1e-4 m³ reference's slow gas periods came
+from the gas injector's well-node convergence with that node volume, not from the reservoir.
 
 That supports the #116 reading: the ResSim plateau is a solver-robustness problem at a crossing the
-same discrete case can traverse, not an uncrossable physical discontinuity. It does not supply a
-ResSim target trajectory. Jutul's late saturation state still differs materially from ResSim's: at
-month 217 Jutul has cell-33 Sw/Sg 0.5220/0.0741 where ResSim has 0.4513/0.2515, and Jutul continues
-through month 218 with Sg 0.2094 and month 219 with 0.4264. The two runs agree on pressure and the
-broad water-cut ramp, not on the exact phase split in the last window.
+same discrete case can traverse at JutulDarcy's default tolerances, not an uncrossable physical
+discontinuity. It does not supply a
+ResSim target trajectory. The two runs agree on pressure and the water-cut ramp, not on the exact
+phase split in this window, and the reference's split in this window moved with a well-node
+setting.
 
-Two caveats for later use of the fixture. The run emitted 329 `Flash did not converge in 25000
-iterations` warnings from MultiComponentFlash; the worst final ε was **6.72e-8** against the
-`1e-8` tolerance, and the accepted reservoir CNV stayed below Jutul's `1e-3` (maximum **3.44e-4**,
-at month 217). The reference is therefore a default-tolerance JutulDarcy result, not a
-thermodynamic oracle; the per-report CNV/MB in the fixture lets a tighter comparison reject the
-affected reports instead of treating every number as exact.
+Two caveats for later use of the fixture:
+- The run emitted 189 `Flash did not converge in 25000 iterations` warnings from
+  MultiComponentFlash. The worst final ε was **6.19e-8** against the `1e-8` tolerance.
+- The accepted final reservoir CNV stayed below Jutul's `1e-3`, but only just: the maximum is
+  **9.34e-4**, at month 215.
+
+The reference is therefore a default-tolerance JutulDarcy result, not a thermodynamic oracle. The
+per-report CNV/MB in the fixture lets a tighter comparison reject the affected reports instead of
+treating every number as exact.
+
+### Step 0: measurements before any acceptance change (#116)
+
+**Provisional.** Every number in this section was measured on a dirty tree on top of `2ef5027a`
+(the instruments below, uncommitted at the time). No solver behaviour changed: the Newton observer
+hook is behaviour-neutral and every new test entry point is `#[cfg(test)]`. The numbers become a
+baseline only after a rerun on the committed tree.
+
+The proposed acceptance rule (registry `COMP-ACCEPT-001`) is **not** approved and not implemented.
+Step 0 measured the actual iterates it would act on, in both ResSim's and JutulDarcy's
+normalizations, with a signed and an absolute conservation account per iterate.
+
+#### Instruments and commands
+
+| What | Where | Command |
+|---|---|---|
+| Per-Newton-iterate record (residual per row, Jutul CNV/MB, signed global imbalance, absolute local defect, well rows, flipped cells, flash detail of every flipped or above-tolerance cell) | `compositional/spe5_plateau_tests.rs` via `solve_newton_observed` | see below |
+| Seed plateau trace (`stall_218.json`, dt 0.02 d then 1.95e-5 → 2.44e-6 d) | `comp_spe5_month218_plateau_trace` | `SPE5_TRACE_OUT=DIR cargo test --release --lib comp_spe5_month218_plateau_trace -- --ignored` (seconds) |
+| From-scratch replay to the month-218 failure, then every halving attempt traced; writes the failing call's starting state | `comp_spe5_from_scratch_month218_failure_trace` | `SPE5_TRACE_OUT=DIR cargo test --release --lib comp_spe5_from_scratch_month218_failure_trace -- --ignored` (~16 min) |
+| Failure B from its committed seed (`stall_218_from_scratch.json`): the failing call and its last attempt traced, signature asserted | `comp_spe5_from_scratch_218_seed_reproduces_signature_b` | `SPE5_TRACE_OUT=DIR cargo test --release --lib comp_spe5_from_scratch_218_seed_reproduces_signature_b -- --ignored --nocapture` (~1 min) |
+| Jutul ministep diagnostics, months 205–220: dt, success, per-Newton reservoir CNV/MB per component, every well and facility criterion, and the resolved configuration | `tools/jutul/spe5_ministep_diagnostics.jl` | `julia +1.12 --project=tools/jutul tools/jutul/spe5_ministep_diagnostics.jl OUT.json 205 220` (~30 min with the default well volume); table: `python3 -I tools/jutul/spe5_compare.py --ministeps OUT.json` |
+| Cross-flash fixture, months 205–216, cells 32/33/39/40 | `opm/compositional/spe5/cross_flash_205_216.json` | `bash tools/jutul/run-spe5-cross-flash.sh [--check] [WORKDIR]` (~30 min). The merge refuses to write unless all 192 points have valid results from both flashes; `spe5_cross_flash_fixture.py check FIXTURE` re-validates a written one. `comp_spe5_cross_flash_fixture_reproduces_the_ressim_column` (in the thermo gate) fails if the ResSim flash moves it |
+| JutulDarcy well-volume/timestep sensitivity | `tools/jutul/run-spe5-sensitivity.sh` | `bash tools/jutul/run-spe5-sensitivity.sh OUTDIR [JOBS]` (~80 min at 4 jobs) |
+
+Signed global imbalance is `Σ_cells R_c` per component (dt-integrated, moles) relative to that
+component's inventory; absolute local defect is `Σ_cells |R_c|`. They are recorded separately so
+cancellation between cells cannot hide a local error, and neither is mixed with well injection or
+production.
+
+Jutul CNV/MB are recomputed from ResSim's dt-integrated residual `R` (moles) following JutulDarcy
+0.3.7's `compositional_criterion`:
+- **Hydrocarbon CNV:** `CNV_c = |R_c| M_c (1 − Sw)² / m_hc,cell`. Jutul scales a component's
+  residual by `dt (1 − Sw) / (V ρ)`, where `ρ` is the hydrocarbon density at the saturations
+  renormalized by `1 − Sw`, so `V ρ = m_hc,cell / (1 − Sw)`. That gives the square. (Jutul's
+  `1e-10` saturation guard is omitted.)
+- **Hydrocarbon MB:** `MB_c = |Σ_cells R_c M_c| / m_domain`, the same as Jutul's MB, with
+  `m_domain` the domain's total mass, water included.
+- **Water CNV:** recorded as `|R_w| M_w / (V ρ_w)`, which is Jutul's water CNV except for the
+  sign. Jutul compares the signed value, so a negative water residual never raises its water CNV.
+  ResSim's column is an upper bound on Jutul's.
+- **Water MB:** recorded as `|Σ_cells R_w M_w| / m_domain`, a water conservation metric. It is
+  **not** Jutul's water criterion: Jutul sums the per-cell, volume-scaled values `dt r_w / (ρ_w V)`
+  and multiplies by `dt` again before dividing by the domain mass. That quantity is not a mass
+  balance.
+
+Every Jutul CNV and MB maximum quoted below comes from a hydrocarbon row, so none depends on the
+water definitions. The checks in the "0.0886 d" paragraph are against Jutul's
+reservoir criteria only.
+
+#### Cross-flash: 191/192, one point undetermined
+
+The four flashes (ResSim and MultiComponentFlash, each at both simulators' monthly `(p, z)` and at
+the swapped pairs) agree on **191 of 192** points, every one of them a valid result (no flash error
+or warning, a stability report present and consistent with the label): 95/96 originals and 96/96 swaps. The earlier
+"95/96" counted the originals only. MultiComponentFlash's tight solve logged no warnings on any
+point.
+
+The single disagreement is month 215, cell 32, ResSim's state at 228.673 bar: ResSim splits it
+(beta 0.158, Σ ln² K 1.6e-3), and Jutul's stability test calls it stable. Jutul's own forced split
+from three starts converges to the same beta (fugacity residual ≤ 1.3e-14) with
+`g_split − g_feed = −8.37e-12 RT`. That is inside ResSim's `1e-10` Gibbs margin and below what
+either stability test resolves, so the label is **undetermined at double precision**. The earlier
+description of this point as a Jutul stability miss is withdrawn.
+
+The fixture was regenerated against the default-volume reference. That changes the Jutul states but
+not the counts: still 191/192, with the same single point. At every month from 205 to 216, both runs
+now have cell 33 two-phase, and both flashes say so at both states. Against the 1e-4 m³ reference,
+Jutul's cell 33 had been single-liquid in months 212–215, about 1.5 bar above ResSim, and the swaps
+had tied that label difference to pressure. No ResSim flash defect was found at either set of
+states. The fixture's provenance records the generating commit and the dirty-tree flag.
+
+The cross-flash covers monthly report states only. The plateau iterates themselves were checked
+separately: at the seed plateau's two-phase iterate (228.12342 bar, beta 0.487, Σ ln² K 5.8e-4)
+ResSim gives `ΔG = −4.0e-12 RT`, and Jutul's forced split stalls with ΔG straddling ±2e-12. At the
+single-liquid iterate (0.001 bar higher) Jutul's forced split converges (fugacity residual ≤ 2e-13)
+to V 0.4765 with `ΔG = −4.6e-13 RT`. Both stability tests call both iterates stable. The phase label
+at the crossing is not determined by either flash.
+
+#### Two failure signatures, not one
+
+**A — seed plateau (`stall_218.json`): a label flip with a fixed conservation jump.**
+
+| dt (d) | Converged | Last iterate: ResSim scaled | Jutul CNV | Jutul MB | max signed / inventory | Flip set |
+|---|---|---|---|---|---|---|
+| 0.02 | no (20) | 1.62e-3 | 1.60e-4 | 1.18e-8 | 5.4e-7 | {33, 39} |
+| 1.95e-5 | no (20) | 1.79e-6 | 1.93e-7 | 1.92e-10 | 8.8e-9 | {33} |
+| 9.77e-6 | no (20) | 1.19e-6 | 1.28e-7 | 1.93e-10 | 8.8e-9 | {33} |
+| 4.88e-6 | no (20) | 8.91e-7 | 9.60e-8 | 1.93e-10 | 8.8e-9 | {33} |
+| 2.44e-6 | **yes (17)** | 5.18e-10 | 5.6e-11 | 3.1e-15 | 1.4e-13 | — |
+
+Below 0.02 d the iteration is an exact two-cycle on cell 33 alone. Every row above `1e-8` is cell
+33 or a face neighbour (34, 40, 82), and the well rows are at ~1e-16. The cell-33 residual is
+uniform across components (a total-moles defect). The signed imbalance of the two-phase side is
+**+106 mol C1, 8.8e-9 of inventory, constant as dt shrinks**: switching the label changes the
+cell's inventory (molar volume) by a fixed amount. It is the same from 1.95e-5 d to 4.88e-6 d, so
+shrinking dt over that range does not reduce it. Accepting the
+plateau would book that amount as numerical mass on every such step.
+
+At 2.44e-6 d the second iterate already had every cell at 3.3e-9. The water injector's row was
+still at 2.6e-2 because Newton starts from a BHP guess (initial residual 3.38). Its update pushed
+cell 33 across the switch, and the step converged only at iteration 17. Starting from the last
+accepted BHP is a candidate lever; it has not been tried.
+
+**B — the actual from-scratch failure: a residual floor with no flip.** The replay fails at month 218
+(start 6612.703 d). Ten attempts halve from 22.67 d:
+
+| dt (d) | Last iterate: ResSim scaled | Jutul CNV | Jutul MB | max signed / inventory | Flip set |
+|---|---|---|---|---|---|
+| 22.67 | 2.07e+1 | 8.40e-1 | 1.91e-5 | 5.3e-4 | {32, 33, 39} |
+| 2.83 | 1.22 | 5.33e-2 | 6.14e-7 | 1.1e-5 | {33, 39} |
+| 0.354 | 9.46e-2 | 4.80e-3 | 1.32e-7 | 6.1e-6 | {33, 39} |
+| 0.0886 | 1.40e-2 | **9.08e-4** | **4.85e-8** | 2.2e-6 | {33, 39} |
+| 0.0443 | 1.36e-7 (best 3.64e-8) | 1.45e-8 | 2.2e-15 | 1.0e-13 | **none** |
+
+The last attempt has **no phase flips**. Cells 33 and 39 stay two-phase at 228.121 bar (0.003 bar
+below the switch, Σ ln² K 5.9e-4, beta 0.477, Sg 0.2655), and the residual wanders between 3.6e-8
+and 1.4e-7 over cells {33, 34, 39, 40, 46, 82, 88}. Its best iterate is clean by every conservation
+measure: signed imbalance 4e-14 of inventory and absolute local defect 20.5 mol C1 (1.7e-9 of inventory). The proposed
+rule (a) requires flips in step with the alternation, so it **would not fire on the actual
+failure**. It would fire only on the seed (A), where accepting would book a fixed imbalance.
+
+Calling B's floor "noise" is a **hypothesis**, not a finding. Nothing yet measures what sets it:
+the flash tolerance, the linear-solve accuracy, or the Jacobian's consistency near the switch. The
+state before the failing call is committed as `opm/compositional/spe5/stall_218_from_scratch.json`.
+`comp_spe5_from_scratch_218_seed_reproduces_signature_b` replays the call from it in about a
+minute: it asserts the ten failed halvings and, for the last attempt, no flips, a best iterate
+between `1e-8` and `1e-6`, and signed imbalance below `1e-12` from iteration 4 on. It reproduces
+the from-scratch numbers above bit for bit.
+
+At 0.0886 d the 20th iterate meets **both** of Jutul's reservoir tolerances (CNV 9.1e-4 < 1e-3, MB 4.9e-8 <
+1e-7) while it carries a signed imbalance of 2.2e-6 of inventory and flips two cells. Jutul's
+criteria are not a safe acceptance test to import into ResSim.
+
+#### What JutulDarcy accepts in the same window
+
+Per-ministep reservoir criteria of Jutul's ministeps, from `spe5_ministep_diagnostics.jl` run on
+the reference model with JutulDarcy's default well volume (see "Well-node volume" below). The table
+is printed by `python3 -I tools/jutul/spe5_compare.py --ministeps OUT.json`. MB and CNV are the
+final Newton iterate of each accepted ministep, over hydrocarbon components only. Jutul's water
+"MB" is not a mass balance, so it gets its own column (see the definitions above).
+
+| Month | Accepted / failed ministeps | Median accepted dt (d) | Accepted with MB > 1e-8 / > 5e-8 | Accepted with CNV > 1e-4 | Σ accepted MB, worst hydrocarbon | Σ accepted Jutul water "MB" |
+|---|---|---|---|---|---|---|
+| 205–215 | 52 / 36 | 2.48 | 21 / 13 | 24 | 1.4e-06 (C1) | 5.5e-08 |
+| 216 | 47 / 76 | 0.319 | 44 / 28 | 45 | 2.7e-06 (C1) | 1.7e-08 |
+| 217 | 151 / 237 | 0.185 | 151 / 132 | 151 | 1.1e-05 (C1) | 2.8e-08 |
+| 218 | 735 / 1,164 | 0.0287 | 735 / 725 | 710 | 6.3e-05 (C1) | 1.4e-08 |
+| 219 | 394 / 616 | 0.0526 | 386 / 297 | 392 | 2.6e-05 (C1) | 1.7e-08 |
+| 220 | 2 / 0 | 15.2 | 0 / 0 | 0 | 1.4e-09 (C6) | 7e-10 |
+
+All 36 failed ministeps in months 205–215, and every failed ministep from month 216 on, have the
+reservoir unconverged. Through the crossing, Jutul routinely accepts ministeps whose domain mass
+balance is within a factor of two of its `1e-7` limit (725 of 735 in month 218). The sum of
+accepted MB over months 205–220 is at most **1.0e-4** of domain mass, for C1. The sign is not
+recorded, so this is an upper bound on Jutul's own cumulative imbalance, not a measured one. In
+the same normalization, ResSim's signature-A plateau carries 1.9e-10 per step and its signature-B
+floor 2e-15.
+
+So Jutul's accepted ministeps in the window sit close to its MB limit. That shows the window can be
+crossed at JutulDarcy's default tolerances. It does not show that a tighter tolerance would fail to
+cross, which was not tried. It also does not give ResSim a threshold, and the budgets below are
+deliberately orders tighter than the reference.
+
+#### Well-node volume: a model choice that also sets the convergence cost
+
+The first reference (`b14f0976`) built every well with a 1e-4 m³ node volume. The SPE5 generator
+did not say why, but the reason is recorded for the water-injection fixture
+(`docs/COMPOSITIONAL_VALIDATION.md`, "Wellbore storage was the first mismatch"). ResSim's wells
+have no wellbore storage. A JutulDarcy simple-well node stores fluid and injects it: at its default
+volume it gave a 1.3e-2 bar, Δt-independent mismatch there, which a 1e-4 m³ node removed. So the
+node volume changes the model (well storage), the well-node convergence scaling and the timestep
+path, not only the run time.
+
+For SPE5, recording every equation group per Newton step showed what the small node cost:
+- **1,139 failed ministeps in months 205–215** (the gas year) had the reservoir converged to CNV
+  ~3e-11 and failed only on the gas injector's well-node CNV (tolerance 1e-2).
+- That residual stayed fixed across all 16 Newton iterations and grew exactly linearly with dt, at
+  0.01556 per day, because the node-mass normalization divides by the tiny node's mass. Every
+  ministep over 0.64 d failed after 16 iterations and was cut.
+- 89% of the run's Newton work in months 205–220 went to failed ministeps. JutulDarcy's own
+  `setup_well` documentation warns that small well volumes slow convergence.
+
+The regenerated reference uses JutulDarcy's default volume, radius 0.1 m times the cell length
+along the well: **0.479 m³ for the producer and 0.192 m³ per injector**, about 4.5e-6 of the perforated cell's
+pore volume (`tools/jutul/spe5_reference.jl`; `SPE5_WELL_VOLUME_M3` overrides every well's volume, and
+`manifest.json` records the resolved volumes). That makes the reference cheaper. It does not make it
+more accurate as a model of ResSim's storage-free wells, and closer agreement with ResSim does not
+show that it is.
+
+Printed by `python3 -I tools/jutul/spe5_compare.py --references default=… 1e-4=…`, the 1e-4 m³
+run being the superseded `b14f0976` reference:
+
+| Run | Well volumes (m³) PROD / INJW / INJG | Max dt (d) | Completed | Ministeps / Newton / failed | Month 216 / 217 / 218 / 219 ministeps | First declared stop |
+|---|---|---|---|---|---|---|
+| default | not recorded | not recorded | True (240 reports) | 3,843 / 39,716 / 2,130 | 123 / 388 / 1,899 / 1,010 | 6300.5625 d, watercut |
+| 1e-4 | not recorded | not recorded | True (240 reports) | 27,353 / 296,291 / 16,386 | 193 / 272 / 415 / 1,477 | 6300.5625 d, watercut |
+
+Worst difference from `default`, months 1–217 / all shared months (month):
+
+| Run | mean p (bar) | cell-33 p (bar) | producer oil (rel.) | GOR (rel.) | water cut (abs.) | cell-33 Sg (abs.) |
+|---|---|---|---|---|---|---|
+| 1e-4 | 1.28 (175) / 2.41 (234) | 1.6 (177) / 2.25 (233) | 19.0% (208) / 35.1% (234) | 19.3% (164) / 29.4% (233) | 0.05 (169) / 0.05 (169) | 0.102 (215) / 0.565 (222) |
+
+(Neither of these two runs recorded its configuration; the default run's volumes are the ones
+quoted above.) The crossing stays hard with either volume, and month 218 is worse with the default
+one. The declared stop fires on the same day. Otherwise the answer **does** move with the node
+volume, and not only in the crossing window. Over months 1–217 the two Jutul runs differ by up to
+1.3 bar in mean pressure, 19% in producer oil and GOR, and 0.05 in water cut. That is the same size
+as the ResSim/Jutul differences above (0.86 bar, 11.7%, 10.5%, 0.018). So the reference's
+uncertainty from this one setting is as large as the gap it is used to judge. In the crossing
+window cell 33's split moves too, by up to 0.565 in Sg at month 222. Jutul's cell-level state there
+is not a target trajectory for ResSim.
+
+This comparison mixes two effects: the well storage and the timestep path the node volume
+induces. The bounded sensitivity below separates them.
+
+#### Volume/timestep sensitivity (pending)
+
+`bash tools/jutul/run-spe5-sensitivity.sh OUTDIR` runs the generator at node volumes of 1e-4, 1e-3,
+1e-2 m³ and the default, with the timestep capped by the report (JutulDarcy's default), 5 d or
+0.5 d (default and 1e-4 m³ only). It prints the comparison against the default run with
+`spe5_compare.py --references`. If the volume effect vanishes as the timestep cap falls, it is a
+timestep-path effect. If it persists at 0.5 d, it is the well storage itself, and a storage-free
+reference needs the small node at a small timestep. Until then the default-volume reference stays
+provisional.
+
+#### Revised proposal (experimental, not approved)
+
+The original rule is withdrawn as written. It targeted signature A, where acceptance would book a
+fixed imbalance, and it misses signature B, the actual failure. Three separate candidates
+replace it, each **disabled by default** and enabled only for the SPE5 experiment through a generic
+compositional solver option (no case or scenario names in the engine):
+
+1. **Label hysteresis within the Gibbs margin (root cause of A).** During one Newton solve, keep a
+   cell's previous phase label while the competing labelling is within the existing `1e-10 RT`
+   Gibbs margin. This removes the inventory jump instead of accepting it. It is a labelling change,
+   not an acceptance change, but it can move answers and goes through the same evaluation.
+2. **Floor acceptance (B), only if B's floor proves to be noise.** Accept a Newton solve that has
+   not met `1e-8` only when all of
+   these hold on the accepted iterate:
+   - no cell changed phase label in the last `k` iterations (candidate `k = 4`);
+   - ResSim scaled residual ≤ `τ_floor` (candidate `1e-7`) and has not decreased over those
+     iterations;
+   - every well row meets `1e-8`;
+   - per step and per component, signed global imbalance ≤ `1e-12` of inventory and absolute
+     local defect ≤ `1e-8` of inventory. Over B's last 17 iterates, signed was ≤ 1.5e-13 and
+     absolute 1.5e-9 to 6.6e-9 (18–79 mol C1). A's plateau has absolute 1.8e-8 to 4.5e-8, so the
+     absolute budget is what separates the two, and only by a factor of about 1.5;
+   - the run's **cumulative** ledgers stay within budget: Σ signed ≤ `1e-10` and Σ absolute ≤
+     `1e-7` of initial inventory per component. An acceptance that would exceed either budget is
+     refused, and the step falls back to the normal halving or failure.
+
+   Every such acceptance is reported, with its ledger entry, in the step report. The ledgers are
+   kept apart from well injection and production cumulatives and are never added to them.
+3. **Well warm start (A, small dt).** Start Newton from the last accepted BHP instead of the
+   control's guess, so a well update cannot push a near-critical cell across the switch on an
+   otherwise converged step.
+
+Order of work, as agreed in the #116 review:
+1. **Investigate B first, without changing acceptance.** Measure whether the floor follows the
+   flash tolerance, and record the full linear-solve diagnostics (true residual of each solve,
+   Jacobian/residual consistency at the floor) from `stall_218_from_scratch.json`.
+2. **BHP warm start (3) as a separate experiment**, with the existing `1e-8` convergence
+   requirement unchanged.
+3. Only after that evidence, evaluate hysteresis (1) or bounded acceptance (2).
+
+All thresholds above are **experimental candidates**, not validated values. They come from two
+traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of
+each report.
+
+Before any of these is proposed for approval, the evaluation must include:
+- the from-scratch run to month 240;
+- the cumulative ledgers at the end of that run;
+- sensitivity of the outcome to `τ_floor` (3e-8, 1e-7, 3e-7), to the timestep ladder, and to the
+  flash tolerance (does B's floor track it?);
+- unchanged controls, i.e. the compositional bucket and the SPE3 replays bit-identical with the
+  option off;
+- the #98 shut-in probe.
 
 ## Reference plan
 
