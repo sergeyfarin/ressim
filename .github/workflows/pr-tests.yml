@@ -112,6 +112,11 @@ jobs:
           "$RUNNER_TEMP/opm-venv/bin/pip" install --quiet pytest
           "$RUNNER_TEMP/opm-venv/bin/python" -m pytest -q
 
+      # The SPE5 #116 tools' regression contracts: the cross-flash fixture's exact point matrix and
+      # the timestep-convergence comparison on stopped or empty replays. Stdlib only.
+      - name: Run SPE5 tool tests
+        run: python3 -I -m unittest discover -s tools/jutul/tests
+
       - name: Run unit tests (Vitest) and upload coverage
         run: pnpm run test:coverage
 

@@ -469,6 +469,7 @@ fn comp_linear_newton_converges_on_every_route() {
         previous_moles: &grid.previous,
         sources: &grid.sources,
         dt_days: 1.0,
+        accepted_well_bhp: None,
     };
     let run = |r: LinearRoute| {
         let options = NewtonOptions {
@@ -529,6 +530,7 @@ fn comp_linear_failure_surfaces_as_a_linear_newton_error() {
         previous_moles: &grid.previous,
         sources: &grid.sources,
         dt_days: 1.0,
+        accepted_well_bhp: None,
     };
     let options = NewtonOptions {
         linear: LinearOptions {

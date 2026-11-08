@@ -155,6 +155,23 @@ pub struct NewtonOptions {
     pub max_iterations: usize,
     /// Which linear solve each iteration uses, and its settings.
     pub linear: LinearOptions,
+    /// Where a rate-controlled well's BHP unknown starts. Off by default (#116).
+    pub well_bhp_start: WellBhpStart,
+}
+
+/// The first BHP a Newton solve gives a rate-controlled well.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WellBhpStart {
+    /// The control's own guess ([`super::wells::initial_bhp_guesses`]), independent of history,
+    /// so a retry starts where a fresh step does. The default.
+    #[default]
+    ControlGuess,
+    /// The BHP the well was last accepted at ([`NewtonProblem::accepted_well_bhp`]), when one is
+    /// known and finite; the control's guess otherwise. A BHP-controlled or shut-in well always
+    /// starts at its control's value. Experimental (#116): it lets a step whose cells are already
+    /// converged start without the well correction that can push a near-critical cell across its
+    /// phase switch.
+    LastAccepted,
 }
 
 impl Default for NewtonOptions {
@@ -166,6 +183,7 @@ impl Default for NewtonOptions {
             tolerance: 1e-8,
             max_iterations: 20,
             linear: LinearOptions::default(),
+            well_bhp_start: WellBhpStart::ControlGuess,
         }
     }
 }
@@ -185,6 +203,34 @@ pub struct NewtonProblem<'a> {
     /// Sources in mol/day, positive for injection.
     pub sources: &'a [Vec<f64>],
     pub dt_days: f64,
+    /// Each well's last accepted BHP, in the well order, when the caller has one. Read only under
+    /// [`WellBhpStart::LastAccepted`].
+    pub accepted_well_bhp: Option<&'a [f64]>,
+}
+
+/// The BHPs a Newton solve starts from, per [`NewtonOptions::well_bhp_start`].
+fn starting_well_bhp(
+    problem: &NewtonProblem<'_>,
+    state: &CompositionalState,
+    start: WellBhpStart,
+) -> Vec<f64> {
+    let mut guesses = initial_bhp_guesses(problem.wells, state.cells());
+    if start == WellBhpStart::LastAccepted
+        && let Some(accepted) = problem.accepted_well_bhp
+        && accepted.len() == guesses.len()
+    {
+        for ((guess, well), last) in guesses.iter_mut().zip(problem.wells).zip(accepted) {
+            let rate_controlled = matches!(
+                well.control,
+                super::wells::WellControl::MolarRate { .. }
+                    | super::wells::WellControl::SurfaceRate { .. }
+            );
+            if rate_controlled && last.is_finite() && *last > 0.0 {
+                *guess = *last;
+            }
+        }
+    }
+    guesses
 }
 
 /// The largest `tau` in `(0, 1]` for which the whole step stays strictly inside the domain.
@@ -377,6 +423,29 @@ pub fn solve_newton(
     state: &CompositionalState,
     options: NewtonOptions,
 ) -> (Result<CompositionalState, NewtonError>, NewtonReport) {
+    solve_newton_observed(problem, state, options, None)
+}
+
+/// One Newton iterate as [`solve_newton_observed`] hands it to an observer: the iterate and its
+/// assembly, before the convergence test and the update.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) struct NewtonIterate<'a> {
+    /// One-based, as in [`NewtonReport::iterations`].
+    pub iteration: usize,
+    pub state: &'a CompositionalState,
+    pub assembled: &'a AssemblyResult,
+}
+
+/// [`solve_newton`], calling `observer` with every assembled iterate.
+///
+/// Diagnostic only (#116): the observer reads, it cannot change the iteration, so a run with an
+/// observer is bit-identical to one without.
+pub(crate) fn solve_newton_observed(
+    problem: &NewtonProblem<'_>,
+    state: &CompositionalState,
+    options: NewtonOptions,
+    mut observer: Option<&mut dyn FnMut(&NewtonIterate<'_>)>,
+) -> (Result<CompositionalState, NewtonError>, NewtonReport) {
     let mut report = NewtonReport {
         iterations: 0,
         residual_history: Vec::new(),
@@ -387,7 +456,7 @@ pub fn solve_newton(
         accepted_well_bhp: Vec::new(),
     };
     let mut current = state.clone();
-    let mut current_bhp = initial_bhp_guesses(problem.wells, current.cells());
+    let mut current_bhp = starting_well_bhp(problem, &current, options.well_bhp_start);
 
     for iteration in 1..=options.max_iterations {
         report.iterations = iteration;
@@ -398,6 +467,13 @@ pub fn solve_newton(
         };
         let norm = assembled.scaled_residual_norm(problem.layout);
         report.residual_history.push(norm);
+        if let Some(observe) = observer.as_mut() {
+            observe(&NewtonIterate {
+                iteration,
+                state: &current,
+                assembled: &assembled,
+            });
+        }
 
         if norm <= options.tolerance {
             report.accepted_well_rates = assembled.well_rates;

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # #52/#116: regenerate or verify the SPE5 Case 1 JutulDarcy compositional reference.
-# The full 20-year schedule takes hours; --check replays it and compares parsed numbers.
+# The full 20-year schedule takes about 30 minutes; --check replays it and compares parsed numbers
+# and the resolved model configuration (well volumes, timestep cap) with manifest.json. On a clean
+# tree, --check records the verifying commit and source hashes in manifest.json's `verification`;
+# on a dirty tree it verifies but records nothing.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
@@ -39,6 +42,8 @@ assert math.isclose(float(result.get("reached_day")), 7305.0, rel_tol=0.0, abs_t
 PY
 }
 
+start_commit="$(git rev-parse HEAD)"
+start_clean=$([ -z "$(git status --porcelain)" ] && echo true || echo false)
 julia +1.12 --project=tools/jutul tools/jutul/spe5_reference.jl "$work/reference.json"
 validate_reference "$work/reference.json"
 if "$check"; then
@@ -61,14 +66,48 @@ def compare(a, b, path="root"):
         assert a == b, (path, a, b)
 compare(*(json.load(open(p)) for p in sys.argv[1:]))
 PY
+    # The configuration must match what the manifest says generated the reference, and the
+    # verification is recorded only for a run that started and ended on the same clean commit.
+    uv run --no-project --offline python - "$out" "$work/reference.json.config.json" \
+        "$start_commit" "$start_clean" <<'PY'
+import datetime, hashlib, json, pathlib, subprocess, sys
+out, config_path, start_commit, start_clean = sys.argv[1:5]
+out = pathlib.Path(out)
+manifest_path = out/"manifest.json"
+manifest = json.loads(manifest_path.read_text())
+config = json.loads(pathlib.Path(config_path).read_text())
+recorded = manifest.get("configuration")
+if recorded is not None and recorded != config:
+    sys.exit(f"configuration differs from manifest.json:\n{json.dumps(recorded)}\n{json.dumps(config)}")
+commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+clean = not subprocess.check_output(["git", "status", "--porcelain"], text=True).strip()
+if not (start_clean == "true" and clean and commit == start_commit):
+    print("verified on a dirty or moving tree; manifest.json not updated")
+    sys.exit(0)
+paths = [out/"reference.json", out/"case.json", pathlib.Path("tools/jutul/spe5_reference.jl"),
+         pathlib.Path("tools/jutul/Project.toml"), pathlib.Path("tools/jutul/Manifest.toml")]
+manifest["configuration"] = config
+manifest["verification"] = {
+    "command": "bash tools/opm_compositional/run-spe5.sh --check",
+    "commit": commit,
+    "worktree_clean": True,
+    "date": datetime.date.today().isoformat(),
+    "result": "reference values and configuration reproduced",
+    "sha256": {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths},
+}
+manifest_path.write_text(json.dumps(manifest, indent=2)+"\n")
+print(f"verification recorded in {manifest_path} for {commit}")
+PY
 else
     # Build the manifest from the validated temporary reference, then publish both artifacts.
     # A dirty generation is explicitly provisional, never represented as a committed baseline.
-    uv run --no-project --offline python - "$out" "$work/reference.json" "$work/manifest.json" <<'PY'
+    uv run --no-project --offline python - "$out" "$work/reference.json" "$work/manifest.json" \
+        "$work/reference.json.config.json" <<'PY'
 import hashlib, json, pathlib, subprocess, sys
 out = pathlib.Path(sys.argv[1])
 reference = pathlib.Path(sys.argv[2])
 manifest_out = pathlib.Path(sys.argv[3])
+config = json.loads(pathlib.Path(sys.argv[4]).read_text())
 paths = {
     str(out/"reference.json"): reference,
     str(out/"case.json"): out/"case.json",
@@ -81,6 +120,7 @@ manifest = {
     "verify": "bash tools/opm_compositional/run-spe5.sh --check",
     "generated_from_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
     "worktree_clean_at_generation": not subprocess.check_output(["git", "status", "--porcelain"], text=True).strip(),
+    "configuration": config,
     "sha256": {name: hashlib.sha256(path.read_bytes()).hexdigest()
                for name, path in paths.items() if path.exists()},
 }

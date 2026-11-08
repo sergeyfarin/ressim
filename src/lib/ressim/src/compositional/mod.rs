@@ -70,7 +70,19 @@ mod spe3_case_tests;
 #[cfg(test)]
 mod spe3_tests;
 #[cfg(test)]
+mod spe5_cross_flash_tests;
+#[cfg(test)]
+mod spe5_failure_b_tests;
+#[cfg(test)]
+mod spe5_flash_refinement_tests;
+#[cfg(test)]
+mod spe5_plateau_tests;
+#[cfg(test)]
 mod spe5_tests;
+#[cfg(test)]
+mod spe5_timestep_control_tests;
+#[cfg(test)]
+mod spe5_warm_start_tests;
 #[cfg(test)]
 mod state_tests;
 #[cfg(test)]

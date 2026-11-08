@@ -694,6 +694,7 @@ fn comp_water_newton_converges_on_every_linear_route() {
         previous_moles: &previous,
         sources: &sources,
         dt_days: 1.0,
+        accepted_well_bhp: None,
     };
     let run = |route: LinearRoute| {
         let options = NewtonOptions {

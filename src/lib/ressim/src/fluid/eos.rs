@@ -246,7 +246,7 @@ pub(crate) fn volume_translation<S: Scalar>(spec: &FluidSpecification, x: &[S]) 
 }
 
 /// `m1 = 1 + sqrt(2)`, `m2 = 1 - sqrt(2)`. `eos/PRParams.hpp::calcm1`, `calcm2`.
-fn pr_m1_m2() -> (f64, f64) {
+pub(super) fn pr_m1_m2() -> (f64, f64) {
     let s = core::f64::consts::SQRT_2;
     (1.0 + s, 1.0 - s)
 }

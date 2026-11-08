@@ -126,7 +126,59 @@ function relperms()
         three_phase_method = OPMStoneII(og, sw_raw[1]))
 end
 
-function build_model(; well_volume_m3 = 1e-4)
+# Well-node volume in m³: a model choice, not only a performance setting. ResSim's wells have no
+# wellbore storage; a JutulDarcy simple well's node stores fluid, so its volume moves well storage,
+# the well-node convergence scaling and the timestep path. The water-injection fixture runs 1e-4 m³
+# nodes for exactly that reason (docs/COMPOSITIONAL_VALIDATION.md, "Wellbore storage was the first
+# mismatch"). For SPE5 a 1e-4 m³ node held the gas injector's well-node CNV (tolerance 1e-2) at
+# 0.0156 per day of dt, so every ministep over 0.64 d failed after 16 Newton iterations and the
+# run spent 89% of its Newton work on failed ministeps (JutulDarcy warns that small well volumes
+# slow convergence). The reference therefore uses JutulDarcy's own volume (radius 0.1 m x the
+# cell's length along the well: 0.479 m³ for the producer, 0.192 m³ per injector), provisionally,
+# until the volume/timestep sensitivity in docs/SPE5_VALIDATION.md (#116 step 0) says how much the
+# answer depends on it. `SPE5_WELL_VOLUME_M3` overrides it for every well: a number, or `default`.
+function default_well_volume()
+    v = get(ENV, "SPE5_WELL_VOLUME_M3", "default")
+    v == "default" ? nothing : parse(Float64, v)
+end
+
+# Largest internal timestep in days. Unset, JutulDarcy's default (one year) applies, so the monthly
+# report step is the cap. `SPE5_MAX_DT_DAYS` lowers it for the timestep sensitivity.
+function max_timestep_days()
+    v = get(ENV, "SPE5_MAX_DT_DAYS", "default")
+    v == "default" ? nothing : parse(Float64, v)
+end
+
+# Keyword arguments every SPE5 script passes to `simulate_reservoir`.
+function simulate_kwargs()
+    dt = max_timestep_days()
+    isnothing(dt) ? (;) : (max_timestep = dt * 86400.0,)
+end
+
+# The resolved model configuration, so a reference's provenance says what was run, not only which
+# settings were requested.
+function model_configuration(model, parameters)
+    Dict(
+        "julia" => string(VERSION),
+        "jutuldarcy" => string(pkgversion(JutulDarcy)),
+        "well_volume_setting" => something(default_well_volume(), "jutuldarcy-default"),
+        "well_volumes_m3" => Dict(string(w) => collect(parameters[w][:FluidVolume])
+                                  for w in (:PROD, :INJW, :INJG)),
+        "simple_well" => true,
+        "max_timestep_days" => something(max_timestep_days(), "jutuldarcy-default (1 year)"),
+        "report_step_days" => 30.4375,
+        "tolerances" => Dict("tol_cnv" => 1e-3, "tol_mb" => 1e-7),
+    )
+end
+
+function write_configuration(path, model, parameters)
+    open(path, "w") do io
+        JSON.print(io, model_configuration(model, parameters), 2)
+        println(io)
+    end
+end
+
+function build_model(; well_volume_m3 = default_well_volume())
     mesh = CartesianMesh((NX, NY, NZ), (NX * DX, NY * DY, DZ),
         origin = [0.0, 0.0, TOP])
     domain = reservoir_domain(mesh; porosity = PORO, permeability = permeability_matrix(),
@@ -340,6 +392,10 @@ end
 
 function main(out_path)
     model, parameters, mesh = build_model()
+    # Written beside the reference rather than into it, so `run-spe5.sh --check` keeps the
+    # reference's key set; run-spe5.sh puts it in manifest.json.
+    write_configuration(out_path * ".config.json", model, parameters)
+    println("configuration: ", JSON.json(model_configuration(model, parameters)))
     state = initial_state(model, mesh)
     lim = limits()
     dt = 30.4375 * 86400.0
@@ -357,8 +413,8 @@ function main(out_path)
         forces = setup_reservoir_forces(model; control = controls(kind), limits = lim)
         println("period $(year0)-$(year1) $(kind), $(steps) steps")
         result = try
-            simulate_reservoir(state, model, fill(dt, steps), parameters = parameters,
-                forces = forces, info_level = -1, error_on_incomplete = true)
+            simulate_reservoir(state, model, fill(dt, steps); parameters = parameters,
+                forces = forces, info_level = -1, error_on_incomplete = true, simulate_kwargs()...)
         catch err
             completed = false
             failed_at = Dict("year0" => year0, "year1" => year1, "period" => string(kind),

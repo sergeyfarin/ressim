@@ -1320,6 +1320,7 @@ impl CompositionalCase {
             previous_moles: &previous_moles,
             sources: &self.sources,
             dt_days,
+            accepted_well_bhp: None,
         };
         let measure = |bhp: &[f64]| {
             let assembled = super::newton::assemble_for_test(&problem, self.run.state(), bhp)
@@ -1339,6 +1340,86 @@ impl CompositionalCase {
         let guesses = super::wells::initial_bhp_guesses(&self.wells, self.run.state().cells());
         let (newton_norm, newton_cells) = measure(&guesses);
         (accepted_norm, accepted_cells, newton_norm, newton_cells)
+    }
+
+    /// Diagnostic only (#116): one Newton attempt at `dt_days` from the accepted state, with
+    /// `observer` called on every assembled iterate. Uses the case's own Newton options and the
+    /// same problem a step builds; nothing is accepted and the case is not changed.
+    #[cfg(test)]
+    pub(crate) fn diagnostic_newton_trace(
+        &self,
+        dt_days: f64,
+        observer: &mut dyn FnMut(&super::newton::NewtonIterate<'_>),
+    ) -> super::newton::NewtonReport {
+        self.with_diagnostic_problem(dt_days, |problem, state, options| {
+            let (_, report) =
+                super::newton::solve_newton_observed(problem, state, options, Some(observer));
+            report
+        })
+    }
+
+    /// Diagnostic only (#116): call `f` with the Newton problem a step at `dt_days` would build
+    /// from the accepted state, that state, and the case's Newton options, so a diagnostic can run
+    /// the solve with other options or evaluate the assembly at states of its own.
+    #[cfg(test)]
+    pub(crate) fn with_diagnostic_problem<T>(
+        &self,
+        dt_days: f64,
+        f: impl FnOnce(
+            &super::newton::NewtonProblem<'_>,
+            &super::state::CompositionalState,
+            super::newton::NewtonOptions,
+        ) -> T,
+    ) -> T {
+        let water = self.relperm.water().map(|w| &w.properties);
+        let previous_moles = self
+            .run
+            .accepted_inventory_with_water(&self.spec, &self.rock(), water)
+            .expect("previous inventory");
+        let problem = super::newton::NewtonProblem {
+            spec: &self.spec,
+            layout: &self.layout,
+            rock: self.rock(),
+            relperm: &self.relperm,
+            faces: &self.faces,
+            wells: &self.wells,
+            previous_moles: &previous_moles,
+            sources: &self.sources,
+            dt_days,
+            accepted_well_bhp: Some(self.run.well_bhp_bar()),
+        };
+        f(&problem, self.run.state(), self.options.newton)
+    }
+
+    /// Test-only (#116): the accepted state's total moles per component (water last when the case
+    /// has water), for a global conservation check against the wells' cumulative moles.
+    #[cfg(test)]
+    pub(crate) fn component_inventory_for_test(&self) -> Vec<f64> {
+        let water = self.relperm.water().map(|w| &w.properties);
+        let cells = self
+            .run
+            .accepted_inventory_with_water(&self.spec, &self.rock(), water)
+            .expect("inventory");
+        let mut total = vec![0.0; cells.first().map_or(0, Vec::len)];
+        for cell in &cells {
+            for (t, v) in total.iter_mut().zip(cell) {
+                *t += v;
+            }
+        }
+        total
+    }
+
+    /// Test-only (#116): change the case's timestep and Newton options, for a diagnostic that runs
+    /// the same case with an experimental setting.
+    #[cfg(test)]
+    pub(crate) fn timestep_options_mut_for_test(&mut self) -> &mut TimestepOptions {
+        &mut self.options
+    }
+
+    /// The fluid specification, for diagnostics that need to re-flash a cell.
+    #[cfg(test)]
+    pub(crate) fn spec_for_test(&self) -> &FluidSpecification {
+        &self.spec
     }
 
     /// The accepted state, as the UI needs it.

@@ -91,3 +91,15 @@ pub(crate) fn asinh(x: f64) -> f64 {
 pub(crate) fn acosh(x: f64) -> f64 {
     libm::acosh(x)
 }
+
+/// `ln(1 + x)`, accurate when `x` is small.
+#[inline]
+pub(crate) fn ln_1p(x: f64) -> f64 {
+    libm::log1p(x)
+}
+
+/// `e^x - 1`, accurate when `x` is small.
+#[inline]
+pub(crate) fn exp_m1(x: f64) -> f64 {
+    libm::expm1(x)
+}
