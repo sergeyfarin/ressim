@@ -3,10 +3,15 @@
     python3 -I tools/jutul/spe5_compare.py RESSIM_STATES [REFERENCE]
     python3 -I tools/jutul/spe5_compare.py --ministeps JUTUL_MINISTEPS
     python3 -I tools/jutul/spe5_compare.py --references LABEL=REFERENCE LABEL=REFERENCE ...
+    python3 -I tools/jutul/spe5_compare.py --validate-run REFERENCE VOLUME MAX_DT [NOT_BEFORE]
 
 The third form is the JutulDarcy well-volume/timestep sensitivity (tools/jutul/run-spe5-sensitivity.sh):
 each reference's work, and its worst differences from the first one over months 1-217 and over all
 240 months. A `REFERENCE.config.json` beside a reference, when present, supplies its configuration.
+
+`--validate-run` exits non-zero unless REFERENCE is a complete 240-report, 7305 d run whose
+`REFERENCE.config.json` records the requested SPE5_WELL_VOLUME_M3 and SPE5_MAX_DT_DAYS settings
+(`default` or a number) and, with NOT_BEFORE (a file), unless both files are newer than it.
 
 The second form prints the "What JutulDarcy accepts" table of docs/SPE5_VALIDATION.md from the
 output of tools/jutul/spe5_ministep_diagnostics.jl. Jutul's MB is summed over hydrocarbon
@@ -238,8 +243,59 @@ def references(args):
         print(f"| {label} | " + " | ".join(cells) + " |")
 
 
+def validate_run(path, volume, max_dt, not_before=None):
+    import math
+    import os
+    problems = []
+    config_path = path + ".config.json"
+    try:
+        ref = json.load(open(path))
+        config = json.load(open(config_path))
+    except (OSError, ValueError) as err:
+        sys.exit(f"{path}: unreadable output or configuration: {err}")
+    if ref.get("schema") != "ressim-spe5-reference/1":
+        problems.append(f"schema {ref.get('schema')!r}")
+    if ref.get("completed") is not True or ref.get("failed_at") is not None:
+        problems.append(f"completed={ref.get('completed')!r} failed_at={ref.get('failed_at')!r}")
+    reports = ref.get("reports") or []
+    if len(reports) != 240:
+        problems.append(f"{len(reports)} reports, expected 240")
+    elif any(not math.isclose(r["day"], 30.4375 * (i + 1), abs_tol=1e-9)
+             for i, r in enumerate(reports)):
+        problems.append("report days are not the 30.4375 d schedule")
+    if not math.isclose(float(ref.get("reached_day") or 0.0), 7305.0, abs_tol=1e-9):
+        problems.append(f"reached_day={ref.get('reached_day')!r}")
+
+    def expected(setting, default_label):
+        return default_label if setting == "default" else float(setting)
+    want_volume = expected(volume, "jutuldarcy-default")
+    want_dt = expected(max_dt, "jutuldarcy-default (1 year)")
+    if config.get("well_volume_setting") != want_volume:
+        problems.append(f"well_volume_setting {config.get('well_volume_setting')!r}, "
+                        f"requested {want_volume!r}")
+    if config.get("max_timestep_days") != want_dt:
+        problems.append(f"max_timestep_days {config.get('max_timestep_days')!r}, "
+                        f"requested {want_dt!r}")
+    if want_volume != "jutuldarcy-default":
+        vols = [v for w in config.get("well_volumes_m3", {}).values() for v in w]
+        if len(vols) != 3 or any(v != want_volume for v in vols):
+            problems.append(f"resolved well volumes {vols}, requested {want_volume}")
+    if config.get("jutuldarcy") != ref.get("jutuldarcy"):
+        problems.append("configuration and reference name different JutulDarcy versions")
+    if not_before is not None:
+        start = os.path.getmtime(not_before)
+        for f in (path, config_path):
+            if os.path.getmtime(f) < start:
+                problems.append(f"{f} is older than {not_before} (stale)")
+    if problems:
+        sys.exit(f"{path}: " + "; ".join(problems))
+    print(f"{path}: valid (volume {volume}, max dt {max_dt}, 240 reports through 7305 d)")
+
+
 if __name__ == "__main__":
-    if sys.argv[1] == "--references":
+    if sys.argv[1] == "--validate-run":
+        validate_run(*sys.argv[2:6])
+    elif sys.argv[1] == "--references":
         references(sys.argv[2:])
     elif sys.argv[1] == "--ministeps":
         ministeps(sys.argv[2])
