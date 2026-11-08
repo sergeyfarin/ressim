@@ -1320,6 +1320,7 @@ impl CompositionalCase {
             previous_moles: &previous_moles,
             sources: &self.sources,
             dt_days,
+            accepted_well_bhp: None,
         };
         let measure = |bhp: &[f64]| {
             let assembled = super::newton::assemble_for_test(&problem, self.run.state(), bhp)
@@ -1350,6 +1351,26 @@ impl CompositionalCase {
         dt_days: f64,
         observer: &mut dyn FnMut(&super::newton::NewtonIterate<'_>),
     ) -> super::newton::NewtonReport {
+        self.with_diagnostic_problem(dt_days, |problem, state, options| {
+            let (_, report) =
+                super::newton::solve_newton_observed(problem, state, options, Some(observer));
+            report
+        })
+    }
+
+    /// Diagnostic only (#116): call `f` with the Newton problem a step at `dt_days` would build
+    /// from the accepted state, that state, and the case's Newton options, so a diagnostic can run
+    /// the solve with other options or evaluate the assembly at states of its own.
+    #[cfg(test)]
+    pub(crate) fn with_diagnostic_problem<T>(
+        &self,
+        dt_days: f64,
+        f: impl FnOnce(
+            &super::newton::NewtonProblem<'_>,
+            &super::state::CompositionalState,
+            super::newton::NewtonOptions,
+        ) -> T,
+    ) -> T {
         let water = self.relperm.water().map(|w| &w.properties);
         let previous_moles = self
             .run
@@ -1365,14 +1386,16 @@ impl CompositionalCase {
             previous_moles: &previous_moles,
             sources: &self.sources,
             dt_days,
+            accepted_well_bhp: Some(self.run.well_bhp_bar()),
         };
-        let (_, report) = super::newton::solve_newton_observed(
-            &problem,
-            self.run.state(),
-            self.options.newton,
-            Some(observer),
-        );
-        report
+        f(&problem, self.run.state(), self.options.newton)
+    }
+
+    /// Test-only (#116): change the case's timestep and Newton options, for a diagnostic that runs
+    /// the same case with an experimental setting.
+    #[cfg(test)]
+    pub(crate) fn timestep_options_mut_for_test(&mut self) -> &mut TimestepOptions {
+        &mut self.options
     }
 
     /// The fluid specification, for diagnostics that need to re-flash a cell.

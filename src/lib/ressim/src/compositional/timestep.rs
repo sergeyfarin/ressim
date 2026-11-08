@@ -335,6 +335,7 @@ impl CompositionalRun {
                 previous_moles: &previous_moles,
                 sources,
                 dt_days: dt,
+                accepted_well_bhp: Some(&self.well_bhp_bar),
             };
             let (outcome, newton) = solve_newton(&problem, &self.state, options.newton);
 

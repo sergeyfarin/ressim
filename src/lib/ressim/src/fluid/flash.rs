@@ -88,6 +88,38 @@ pub const MAX_SUBSTITUTION_ITERATIONS: usize = 5_000;
 /// so the converged state, not the stopping rule, is what the comparison measures.
 pub const EQUILIBRIUM_TOLERANCE: f64 = 1e-11;
 
+/// The equilibrium tolerance every convergence test below uses: [`EQUILIBRIUM_TOLERANCE`] in every
+/// build except `cfg(test)`, where [`with_equilibrium_tolerance_for_test`] can replace it on the
+/// calling thread for a tolerance-sensitivity diagnostic (#116).
+#[cfg(not(test))]
+#[inline]
+fn equilibrium_tolerance() -> f64 {
+    EQUILIBRIUM_TOLERANCE
+}
+
+#[cfg(test)]
+thread_local! {
+    static EQUILIBRIUM_TOLERANCE_OVERRIDE: core::cell::Cell<Option<f64>> =
+        const { core::cell::Cell::new(None) };
+}
+
+#[cfg(test)]
+fn equilibrium_tolerance() -> f64 {
+    EQUILIBRIUM_TOLERANCE_OVERRIDE
+        .with(|c| c.get())
+        .unwrap_or(EQUILIBRIUM_TOLERANCE)
+}
+
+/// Test-only (#116): run `f` with the flash's equilibrium tolerance replaced on this thread, and
+/// restore it afterwards.
+#[cfg(test)]
+pub(crate) fn with_equilibrium_tolerance_for_test<T>(tolerance: f64, f: impl FnOnce() -> T) -> T {
+    let previous = EQUILIBRIUM_TOLERANCE_OVERRIDE.with(|c| c.replace(Some(tolerance)));
+    let out = f();
+    EQUILIBRIUM_TOLERANCE_OVERRIDE.with(|c| c.set(previous));
+    out
+}
+
 /// Bracketing tolerance for the Rachford–Rice solve.
 const RACHFORD_RICE_TOLERANCE: f64 = 1e-14;
 
@@ -741,7 +773,7 @@ fn newton_acceleration_generic<const N: usize, const M: usize>(
                 ) {
                     let candidate_norm = equilibrium_norm(&candidate.residual);
                     let decreased = candidate_norm <= (1.0 - 1e-4 * alpha) * norm
-                        || candidate_norm < EQUILIBRIUM_TOLERANCE;
+                        || candidate_norm < equilibrium_tolerance();
                     // Near a critical point the two-phase solution sits in a narrow, curved
                     // valley: the full Newton step moves beta towards the answer but the
                     // intermediate residual is larger. A monotone line search rejects that step
@@ -772,7 +804,7 @@ fn newton_acceleration_generic<const N: usize, const M: usize>(
         system = next_system;
         norm = next_norm;
 
-        if norm < EQUILIBRIUM_TOLERANCE {
+        if norm < equilibrium_tolerance() {
             let split = PhaseSplit::from_beta(beta);
             let k: Vec<f64> = ln_k.iter().map(|value| math::exp(*value)).collect();
             let k_norm: f64 = k
@@ -811,7 +843,7 @@ fn newton_acceleration_generic<const N: usize, const M: usize>(
             }
             // The full-system norm and the reported physical residual differ by the raw phase-sum
             // imbalance; both have to meet the admission target before this replaces SSI.
-            if state.equilibrium_residual < EQUILIBRIUM_TOLERANCE {
+            if state.equilibrium_residual < equilibrium_tolerance() {
                 // The non-monotone path can leave the starting region, so a converged answer is
                 // not by itself proof that the split is downhill. Compare against the single-phase
                 // feed and return to substitution when it is not (#122).
@@ -1045,7 +1077,7 @@ pub fn flash(
             residual = residual.max(ln_ratio.abs());
         }
 
-        if residual < EQUILIBRIUM_TOLERANCE {
+        if residual < equilibrium_tolerance() {
             // Take the final substitution update before reporting the state, as the loop always
             // has: the converged answer is the fixed point, and one more assignment of
             // `K_i <- phi_i^L / phi_i^V` is the update whose residual just passed the test.

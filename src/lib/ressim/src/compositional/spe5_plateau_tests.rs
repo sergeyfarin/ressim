@@ -173,7 +173,10 @@ fn record_iterate(
                 detail["beta"] = json!(f.beta);
                 detail["equilibrium_residual"] = json!(f.equilibrium_residual);
                 detail["flash_iterations"] = json!(f.iterations);
-                let lnk2: f64 = f.k.iter().map(|k| k.ln() * k.ln()).sum();
+                let lnk2: f64 =
+                    f.k.iter()
+                        .map(|k| crate::math::ln(*k) * crate::math::ln(*k))
+                        .sum();
                 detail["sum_ln_k_sq"] = json!(lnk2);
                 if f.phase_state == PhaseState::TwoPhase {
                     detail["gibbs_split_minus_feed_rt"] =

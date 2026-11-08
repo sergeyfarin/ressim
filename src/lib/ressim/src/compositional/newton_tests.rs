@@ -93,6 +93,7 @@ fn comp_newton_converges_immediately_on_a_stationary_state() {
             previous_moles: &previous,
             sources: &sources,
             dt_days: 1.0,
+            accepted_well_bhp: None,
         };
 
         let (outcome, report) = solve_newton(&problem, &case.state, NewtonOptions::default());
@@ -136,6 +137,7 @@ fn comp_newton_one_cell_depletion_conserves_and_depletes() {
         previous_moles: &previous,
         sources: &sources,
         dt_days: dt,
+        accepted_well_bhp: None,
     };
     let (outcome, report) = solve_newton(&problem, &case.state, NewtonOptions::default());
     let accepted = outcome.unwrap_or_else(|e| panic!("depletion failed: {e} ({report:?})"));
@@ -188,6 +190,7 @@ fn comp_newton_1d_displacement_moves_the_injected_component_downstream() {
         previous_moles: &previous,
         sources: &sources,
         dt_days: 1.0,
+        accepted_well_bhp: None,
     };
     let (outcome, report) = solve_newton(&problem, &case.state, NewtonOptions::default());
     let accepted = outcome.unwrap_or_else(|e| panic!("displacement failed: {e} ({report:?})"));
@@ -239,6 +242,7 @@ fn comp_newton_step_bound_protects_the_dependent_composition() {
         previous_moles: &previous,
         sources: &sources,
         dt_days: 1.0,
+        accepted_well_bhp: None,
     };
     let (outcome, report) = solve_newton(&problem, &case.state, NewtonOptions::default());
 
@@ -280,6 +284,7 @@ fn comp_newton_an_absent_component_can_be_injected_into_existence() {
         previous_moles: &previous,
         sources: &sources,
         dt_days: 1.0,
+        accepted_well_bhp: None,
     };
     let (outcome, report) = solve_newton(&problem, &case.state, NewtonOptions::default());
     let accepted =
@@ -317,6 +322,7 @@ fn comp_newton_reports_a_negative_direction_on_an_absent_component() {
         previous_moles: &previous,
         sources: &sources,
         dt_days: 1.0,
+        accepted_well_bhp: None,
     };
     let (outcome, _) = solve_newton(&problem, &case.state, NewtonOptions::default());
     match outcome {
@@ -348,6 +354,7 @@ fn comp_newton_reports_a_budget_exhaustion_with_its_history() {
         previous_moles: &previous,
         sources: &sources,
         dt_days: 1.0,
+        accepted_well_bhp: None,
     };
     let options = NewtonOptions {
         tolerance: 1e-8,
@@ -385,6 +392,7 @@ fn comp_newton_a_failed_solve_does_not_touch_the_input_state() {
         previous_moles: &previous,
         sources: &sources,
         dt_days: 1.0,
+        accepted_well_bhp: None,
     };
     let options = NewtonOptions {
         tolerance: 1e-10,
@@ -418,6 +426,7 @@ fn comp_newton_converges_quadratically_near_the_solution() {
         previous_moles: &previous,
         sources: &sources,
         dt_days: 1.0,
+        accepted_well_bhp: None,
     };
     let options = NewtonOptions {
         tolerance: 1e-12,
@@ -470,6 +479,7 @@ fn comp_newton_uses_one_step_scale_for_the_whole_system() {
         previous_moles: &previous,
         sources: &sources,
         dt_days: 1.0,
+        accepted_well_bhp: None,
     };
     let (_, report) = solve_newton(&problem, &case.state, NewtonOptions::default());
     for tau in &report.step_scale_history {
@@ -525,6 +535,7 @@ fn comp_newton_one_cell_near_critical_depletion_crosses_the_switch() {
         previous_moles: &previous,
         sources: &sources,
         dt_days: 1.0,
+        accepted_well_bhp: None,
     };
     let (outcome, report) = solve_newton(&problem, &case.state, NewtonOptions::default());
     let accepted =

@@ -42,7 +42,7 @@ fn flash_point(spec: &FluidSpecification, p_bar: f64, z: &[f64]) -> Value {
             "beta": f.beta,
             "equilibrium_residual": f.equilibrium_residual,
             "iterations": f.iterations,
-            "sum_ln_k_sq": f.k.iter().map(|k| k.ln() * k.ln()).sum::<f64>(),
+            "sum_ln_k_sq": f.k.iter().map(|k| crate::math::ln(*k) * crate::math::ln(*k)).sum::<f64>(),
             "gibbs_split_minus_feed_rt": two_phase_gibbs_minus_feed_for_test(spec, p, t, &z, &f),
             "stability": stability,
         }),
