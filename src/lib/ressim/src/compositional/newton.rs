@@ -377,6 +377,29 @@ pub fn solve_newton(
     state: &CompositionalState,
     options: NewtonOptions,
 ) -> (Result<CompositionalState, NewtonError>, NewtonReport) {
+    solve_newton_observed(problem, state, options, None)
+}
+
+/// One Newton iterate as [`solve_newton_observed`] hands it to an observer: the iterate and its
+/// assembly, before the convergence test and the update.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) struct NewtonIterate<'a> {
+    /// One-based, as in [`NewtonReport::iterations`].
+    pub iteration: usize,
+    pub state: &'a CompositionalState,
+    pub assembled: &'a AssemblyResult,
+}
+
+/// [`solve_newton`], calling `observer` with every assembled iterate.
+///
+/// Diagnostic only (#116): the observer reads, it cannot change the iteration, so a run with an
+/// observer is bit-identical to one without.
+pub(crate) fn solve_newton_observed(
+    problem: &NewtonProblem<'_>,
+    state: &CompositionalState,
+    options: NewtonOptions,
+    mut observer: Option<&mut dyn FnMut(&NewtonIterate<'_>)>,
+) -> (Result<CompositionalState, NewtonError>, NewtonReport) {
     let mut report = NewtonReport {
         iterations: 0,
         residual_history: Vec::new(),
@@ -398,6 +421,13 @@ pub fn solve_newton(
         };
         let norm = assembled.scaled_residual_norm(problem.layout);
         report.residual_history.push(norm);
+        if let Some(observe) = observer.as_mut() {
+            observe(&NewtonIterate {
+                iteration,
+                state: &current,
+                assembled: &assembled,
+            });
+        }
 
         if norm <= options.tolerance {
             report.accepted_well_rates = assembled.well_rates;

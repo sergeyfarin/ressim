@@ -826,6 +826,27 @@ fn newton_acceleration_generic<const N: usize, const M: usize>(
     None
 }
 
+/// Test-only (#116): `g_split - g_feed` in units of `R T` for a two-phase state, the quantity the
+/// #122 guard compares against [`GIBBS_ENERGY_TOLERANCE`]. `None` for a single-phase state or when
+/// the feed's Gibbs energy cannot be evaluated.
+#[cfg(test)]
+pub(crate) fn two_phase_gibbs_minus_feed_for_test(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    state: &FlashState,
+) -> Option<f64> {
+    let (liquid, vapour) = (state.liquid.as_ref()?, state.vapour.as_ref()?);
+    let two_phase = (1.0 - state.beta) * phase_gibbs(&state.x, &liquid.ln_phi)
+        + state.beta * phase_gibbs(&state.y, &vapour.ln_phi);
+    Some(two_phase - single_phase_gibbs(spec, pressure_pa, temperature_k, z)?)
+}
+
+/// The Gibbs comparison margin, for diagnostics that report against it.
+#[cfg(test)]
+pub(crate) const GIBBS_ENERGY_TOLERANCE_FOR_TEST: f64 = GIBBS_ENERGY_TOLERANCE;
+
 /// Test-only entry point for the #122 Gibbs guard: build the two-phase state for a `(K, beta)`
 /// iterate and report whether the guard rejects it.
 #[cfg(test)]

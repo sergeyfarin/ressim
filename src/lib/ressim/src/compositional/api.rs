@@ -1341,6 +1341,46 @@ impl CompositionalCase {
         (accepted_norm, accepted_cells, newton_norm, newton_cells)
     }
 
+    /// Diagnostic only (#116): one Newton attempt at `dt_days` from the accepted state, with
+    /// `observer` called on every assembled iterate. Uses the case's own Newton options and the
+    /// same problem a step builds; nothing is accepted and the case is not changed.
+    #[cfg(test)]
+    pub(crate) fn diagnostic_newton_trace(
+        &self,
+        dt_days: f64,
+        observer: &mut dyn FnMut(&super::newton::NewtonIterate<'_>),
+    ) -> super::newton::NewtonReport {
+        let water = self.relperm.water().map(|w| &w.properties);
+        let previous_moles = self
+            .run
+            .accepted_inventory_with_water(&self.spec, &self.rock(), water)
+            .expect("previous inventory");
+        let problem = super::newton::NewtonProblem {
+            spec: &self.spec,
+            layout: &self.layout,
+            rock: self.rock(),
+            relperm: &self.relperm,
+            faces: &self.faces,
+            wells: &self.wells,
+            previous_moles: &previous_moles,
+            sources: &self.sources,
+            dt_days,
+        };
+        let (_, report) = super::newton::solve_newton_observed(
+            &problem,
+            self.run.state(),
+            self.options.newton,
+            Some(observer),
+        );
+        report
+    }
+
+    /// The fluid specification, for diagnostics that need to re-flash a cell.
+    #[cfg(test)]
+    pub(crate) fn spec_for_test(&self) -> &FluidSpecification {
+        &self.spec
+    }
+
     /// The accepted state, as the UI needs it.
     ///
     /// Per cell: pressure, the full overall composition, the phase state and the phase
