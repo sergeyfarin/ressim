@@ -1197,6 +1197,19 @@ Order of work, as agreed in the #116 review:
    removes B's floor but carries no run through a crossing; memory is inconclusive. Every failure
    traced since is signature A, so **label hysteresis (1) is next**, and floor acceptance (2) has
    lost its premise: no failure traced after the refinement is a floor.
+5. **Before any hysteresis code (PR #128 review).** Freezing a label alone could hide an
+   inconsistency, so the experiment must first define, in writing:
+   - **branch selection:** which thermodynamic branch a held cell is on, what decides a switch
+     (stability test and Gibbs margin), and that a converged step's labels still pass the
+     unmodified stability test;
+   - **consistent properties and derivatives:** densities, viscosities, mobilities and the implicit
+     flash Jacobian all evaluated on the held branch, including a single-phase cell held
+     two-phase (a negative-flash or metastable split) and the reverse;
+   - **acceptance and restart:** `1e-8` unchanged; what happens to the held labels on a failed
+     attempt, a halving and the next call; and what is recorded per step.
+
+   At-matched-cap agreement with Jutul (about 1% through month 211) shows the two simulators
+   solve alike; it does not establish time convergence or independent accuracy.
 
 All thresholds above are **experimental candidates**, not validated values. They come from two
 traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of
