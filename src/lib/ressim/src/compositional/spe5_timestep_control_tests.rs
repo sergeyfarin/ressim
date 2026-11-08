@@ -19,6 +19,7 @@
 //! | `SPE5_MAX_ATTEMPTS` | the halving budget | 10 |
 //! | `SPE5_LAST_MONTH` | last report month | 240 |
 //! | `SPE5_WALL_BUDGET_S` | stop, recording why, once this much wall time is spent | none |
+//! | `SPE5_DT_MEMORY_GROWTH` | bounded timestep memory: after an accepted step `dt`, the next request is at most this factor times `dt` (a driver policy; the engine's own halving is unchanged) | none |
 //! | `SPE5_FLASH_REFINE` | `1`: the experimental difference-form flash refinement on (`fluid::flash`) | off |
 //! | `SPE5_REPLAY_CHECKPOINT_OUT` | on a failed step, write the failing call's starting checkpoint here (a seed for `SPE5_REPLAY_SEED`) | none |
 //!
@@ -83,6 +84,8 @@ fn replay(refine: bool) {
     let max_attempts: usize = env_or("SPE5_MAX_ATTEMPTS").unwrap_or(10);
     let last_month: usize = env_or("SPE5_LAST_MONTH").unwrap_or(240);
     let wall_budget: Option<f64> = env_or("SPE5_WALL_BUDGET_S");
+    let growth: Option<f64> = env_or("SPE5_DT_MEMORY_GROWTH");
+    let mut remembered: Option<f64> = None;
     let checkpoint_out: Option<PathBuf> = std::env::var("SPE5_REPLAY_CHECKPOINT_OUT")
         .ok()
         .map(PathBuf::from);
@@ -107,7 +110,7 @@ fn replay(refine: bool) {
     let settings = json!({
         "seed": seed, "start_day": start_time, "max_dt_days": cap,
         "max_attempts": max_attempts, "last_month": last_month, "wall_budget_s": wall_budget,
-        "tolerance": 1e-8, "flash_refinement": refine, "request": "end - now from the snapshot time, or the cap",
+        "tolerance": 1e-8, "flash_refinement": refine, "dt_memory_growth": growth, "request": "end - now from the snapshot time, or the cap",
     });
     let write = |months: &[Value], stopped: &Option<Value>| {
         let body = json!({"schema": "ressim-spe5-replay/1", "settings": settings,
@@ -135,7 +138,10 @@ fn replay(refine: bool) {
                         "wall_s": month_start.elapsed().as_secs_f64()}}));
                 break 'months;
             }
-            let request = cap.map_or(remaining, |c| c.min(remaining));
+            let mut request = cap.map_or(remaining, |c| c.min(remaining));
+            if let (Some(g), Some(last)) = (growth, remembered) {
+                request = request.min(g * last);
+            }
             let before = checkpoint_out.as_ref().map(|_| case.checkpoint());
             let outcome = case.step(request);
             calls += 1;
@@ -157,6 +163,7 @@ fn replay(refine: bool) {
             steps += 1;
             newton += outcome.newton_iterations;
             min_dt = min_dt.min(outcome.accepted_dt_days.unwrap_or(f64::NAN));
+            remembered = outcome.accepted_dt_days;
         }
         let record = json!({
             "month": month,

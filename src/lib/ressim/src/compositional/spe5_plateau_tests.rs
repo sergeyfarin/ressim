@@ -434,3 +434,47 @@ fn comp_spe5_from_scratch_218_seed_reproduces_signature_b() {
         json!({"seed": "stall_218_from_scratch.json", "attempts": [trace]}),
     );
 }
+
+/// A halving ladder traced from any captured checkpoint (#116), for failures found by the replay
+/// driver (`SPE5_REPLAY_CHECKPOINT_OUT`). Configured by environment:
+///
+/// - `SPE5_TRACE_SEED`: checkpoint path (absolute, or a file in `opm/compositional/spe5/`);
+/// - `SPE5_TRACE_DT_DAYS`: the first `dt` (default: the failing call's tenth halving of the
+///   remainder to the next monthly report);
+/// - `SPE5_TRACE_HALVINGS`: how many further halvings to trace (default 12);
+/// - `SPE5_FLASH_REFINE=1`: the experimental flash refinement on.
+///
+/// Prints each attempt's residual history with flipped and above-tolerance cells; with
+/// `SPE5_TRACE_OUT` writes `seed_ladder_trace.json`.
+#[test]
+#[ignore = "#116 trace a captured checkpoint's halving ladder; configure through SPE5_TRACE_*"]
+fn comp_spe5_trace_seed_ladder() {
+    let name = std::env::var("SPE5_TRACE_SEED").expect("set SPE5_TRACE_SEED");
+    let case = seed(&name);
+    let refine = std::env::var("SPE5_FLASH_REFINE").is_ok_and(|v| v == "1");
+    let now = case.snapshot().time_days;
+    let month_days = 30.4375;
+    let end = ((now / month_days).floor() + 1.0) * month_days;
+    let first: f64 = std::env::var("SPE5_TRACE_DT_DAYS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or((end - now) * 0.5f64.powi(9));
+    let halvings: i32 = std::env::var("SPE5_TRACE_HALVINGS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(12);
+    let traces: Vec<Value> =
+        crate::fluid::flash::with_difference_refinement_for_test(refine, || {
+            (0..=halvings)
+                .map(|k| {
+                    let t = trace_attempt(&case, first * 0.5f64.powi(k));
+                    summarize(&t);
+                    t
+                })
+                .collect()
+        });
+    write_traces(
+        "seed_ladder_trace.json",
+        json!({"seed": name, "day": now, "flash_refinement": refine, "attempts": traces}),
+    );
+}
