@@ -13,7 +13,47 @@
    33,
    39,
    40
-  ]
+  ],
+  "verification": {
+   "command": "bash tools/jutul/run-spe5-cross-flash.sh --check",
+   "commit": "8904b364c01c7ab2794e4fdf14bd2aa7b89340fe",
+   "worktree_clean": true,
+   "date": "2026-11-08",
+   "result": "fixture regenerated and matched, provenance excluded",
+   "jutul_configuration": {
+    "julia": "1.12.7",
+    "jutuldarcy": "0.3.7",
+    "max_timestep_days": "jutuldarcy-default (1 year)",
+    "report_step_days": 30.4375,
+    "simple_well": true,
+    "tolerances": {
+     "tol_cnv": 0.001,
+     "tol_mb": 1e-07
+    },
+    "well_volume_setting": "jutuldarcy-default",
+    "well_volumes_m3": {
+     "INJG": [
+      0.1915114881628338
+     ],
+     "INJW": [
+      0.1915114881628338
+     ],
+     "PROD": [
+      0.4787787204070845
+     ]
+    }
+   },
+   "sha256": {
+    "tools/jutul/run-spe5-cross-flash.sh": "0876ae5485a8f68ad54d2ea0a01a21d9927bf7799f7286be54d33ebfaebc518a",
+    "tools/jutul/spe5_cross_flash_fixture.py": "fc133f4deff99ae1f46f6c4ba5770ec462bc3fed296d7df0fe956cdf00872921",
+    "tools/jutul/spe5_cross_flash.jl": "e32c500fe1713e78e859c89cc8e5f78085d030d60b7970421d03f86d5df1d27b",
+    "tools/jutul/spe5_state_dump.jl": "b14c8130f6490a45dcb15b3c279c4eaec10d750b62236c08e758d1ee29aaed64",
+    "tools/jutul/spe5_reference.jl": "62e3d749d1c9b8a1f6b82004e763f73fee541bf91d71b3875591f7f6c9ff4f85",
+    "tools/jutul/Manifest.toml": "b9314ca17ea48264ae08322809adfe80a89b52baa73736266b0cf180ade955a6",
+    "opm/compositional/spe5/case.json": "0ba75d88905ec2803969e73d1111afc89279e6c5a8d4ae06e948c3e103bf2efe",
+    "src/lib/ressim/src/compositional/spe5_cross_flash_tests.rs": "cfa587be5c509c2bc418f3878ba5ba0553105420f03a436bb64acc5dddadd3b9"
+   }
+  }
  },
  "summary": {
   "original": {

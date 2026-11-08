@@ -9,5 +9,42 @@
     "tools/jutul/spe5_reference.jl": "69aa3712d2a25480ad467e2a97c1704a9b80783ef45990ad06e7c53d7c90b7ab",
     "tools/jutul/Project.toml": "3e4b448dc50a9baf5c9c5d93ad222f585ca7aa0f7bc24636450f6215df99da04",
     "tools/jutul/Manifest.toml": "b9314ca17ea48264ae08322809adfe80a89b52baa73736266b0cf180ade955a6"
+  },
+  "configuration": {
+    "julia": "1.12.7",
+    "jutuldarcy": "0.3.7",
+    "max_timestep_days": "jutuldarcy-default (1 year)",
+    "report_step_days": 30.4375,
+    "simple_well": true,
+    "tolerances": {
+      "tol_cnv": 0.001,
+      "tol_mb": 1e-07
+    },
+    "well_volume_setting": "jutuldarcy-default",
+    "well_volumes_m3": {
+      "INJG": [
+        0.1915114881628338
+      ],
+      "INJW": [
+        0.1915114881628338
+      ],
+      "PROD": [
+        0.4787787204070845
+      ]
+    }
+  },
+  "verification": {
+    "command": "bash tools/opm_compositional/run-spe5.sh --check",
+    "commit": "8904b364c01c7ab2794e4fdf14bd2aa7b89340fe",
+    "worktree_clean": true,
+    "date": "2026-11-08",
+    "result": "reference values and configuration reproduced",
+    "sha256": {
+      "opm/compositional/spe5/reference.json": "65f35166549b160642a93130379e5b06c6c825d375c1bedfc6d84344f92a6450",
+      "opm/compositional/spe5/case.json": "0ba75d88905ec2803969e73d1111afc89279e6c5a8d4ae06e948c3e103bf2efe",
+      "tools/jutul/spe5_reference.jl": "62e3d749d1c9b8a1f6b82004e763f73fee541bf91d71b3875591f7f6c9ff4f85",
+      "tools/jutul/Project.toml": "3e4b448dc50a9baf5c9c5d93ad222f585ca7aa0f7bc24636450f6215df99da04",
+      "tools/jutul/Manifest.toml": "b9314ca17ea48264ae08322809adfe80a89b52baa73736266b0cf180ade955a6"
+    }
   }
 }
