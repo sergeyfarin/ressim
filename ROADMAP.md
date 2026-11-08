@@ -127,7 +127,8 @@ and C13's product integration is complete (#29). Next:
 
 A local stdio MCP server, TypeScript on the wasm engine, outside the app bundle
 (`docs/MCP_SERVER_DESIGN_2026-11-08.md`). It adds no physics or reference, so it waits behind the
-validation track. M0 (a headless black-oil session extracted from the worker) is useful on its own.
+validation track. P0 (packaging spike) and M0 (a headless black-oil session extracted from the
+worker, gated by golden transcripts) are useful on their own.
 
 ## 5. FIM research frontier
 
