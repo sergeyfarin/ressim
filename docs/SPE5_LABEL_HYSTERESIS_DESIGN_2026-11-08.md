@@ -1,11 +1,129 @@
 # Phase-label hysteresis for the SPE5 crossings (#116): design note
 
-**Status: pre-implementation, not approved.** Written for review before any code, as the PR #128
-review asked. Acceptance stays at `1e-8`. Everything described here would be **off by default**,
-behind a generic compositional solver option, and evaluated as an experiment. All measurements
-quoted are **provisional** (release builds of `1fb3dcdb` plus then-uncommitted test drivers; the
-traces are in `docs/SPE5_VALIDATION.md`, "The crossings with the refinement and with timestep
-memory").
+**Status: the tie-break proposed in sections 2–4 is REFUTED by its own gate (M0, section 0), and
+is not to be implemented.** The note was written for review before any code, as the PR #128 review
+asked, and the PR #129 review asked for a stronger M0 before anything else. That M0 is section 0.
+Sections 1–7 are kept as written for the record. Their measurements came from traces of different
+Newton iterates (release builds of `1fb3dcdb` plus then-uncommitted test drivers). Where section 0
+corrects them, section 0 holds.
+
+## 0. M0: identical-input measurement (2026-11-08)
+
+**Provenance.** Commit `93b97f79`, clean tree, release build. The inputs are the five committed
+crossing seeds (`opm/compositional/spe5/stall_*.json`; provenance in that folder's README), each at
+the last failing `dt` of its trace, with the default flash (no refinement).
+
+```bash
+SPE5_TRACE_OUT=DIR cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+    comp_spe5_m0_branch_comparison -- --ignored --nocapture          # ~2 min
+SPE5_TRACE_OUT=DIR SPE5_M0_POINTS=DIR/m0_gibbs_points.json cargo test --release \
+    --manifest-path src/lib/ressim/Cargo.toml --lib comp_spe5_m0_trial_sums -- --ignored --nocapture
+uv run --no-project --with mpmath python -I tools/jutul/spe5_m0_gibbs_mp.py \
+    DIR/m0_gibbs_points.json DIR/m0_gibbs_mp.json                     # 50 digits
+```
+
+A first run on the uncommitted tree gave byte-identical output.
+
+**What was measured.**
+- **Branch comparison.** At fixed primaries in every cell, fixed well BHPs and a fixed previous
+  inventory, the residual is assembled with the standard flash and again with the flipping cells
+  forced onto the competing branch (a test-only hook, so accumulation, both sides of every face and
+  the wells all see the same state).
+- **Decomposition.** The difference is split into inventory and face outflow. The identity
+  `ΔR = Δn + dt·Δoutflow` closes to ≤ 1.8e-12 mol in every case, and the well rates do not change
+  (no flipping cell has a well connection).
+- **Switch sweep.** Along the straight path between the cycle's two iterates (all primaries and
+  BHPs), the label switch is bracketed by bisection to adjacent floats. The standard residual is
+  then compared at distances 1e-1 … 1e-15 either side.
+- **Gibbs energy and stability.** At every evaluated flipping-cell state: g_split − g_feed in Float64
+  and in 50 digits, on the cubic root actually used, and the stability test's trial sums.
+
+**1. A finite jump, at identical inputs.** Across the switch, the standard residual's jump stays
+constant from about 1e-4 of the path down to adjacent floats. Cells not touching the flipping cells
+change by less than 1e-12 at every distance, and by 0 at the smallest. At ε = 1e-15:
+
+| Seed (`dt`, d) | Switching cell | Scaled jump | Δn per component (rel.) | dt·Δoutflow, C1 (mol) | Δn, C1 (mol) |
+|---|---|---|---|---|---|
+| `stall_6556_cap5` (9.77e-3) | 25 | 8.41e-5 | 3.4e-7 | 1.27e4 | 51.7 |
+| `stall_6556_cap5_att12` (1.22e-3) | 25 | 1.08e-5 | 3.4e-7 | 1.59e3 | 52.0 |
+| `stall_6432_cap05` (9.77e-4) | 16 | 1.52e-6 | 2.9e-11 | 282 | 5.4e-3 |
+| `stall_6432_cap05_att12` (1.22e-4) | 16 | 1.90e-7 | 2.9e-11 | 35.3 | 5.4e-3 |
+| `stall_6612_memory` (4.88e-6) | 39 | 8.91e-7 | 5.9e-7 | 53.6 | 106 |
+
+- **The flux part scales exactly with `dt`.** 8× smaller `dt` gives 8× less (1.27e4 → 1.59e3; 282 →
+  35.3).
+- **The inventory part does not scale with `dt`.** It is 3.4e-7 to 5.9e-7 of each component's
+  inventory at the near-critical cells, and 2.9e-11 at cell 16.
+- **At the memory seed the inventory part dominates**, which is why that trace's residual stopped
+  halving with `dt`.
+- **The faces.** Upwind choices do not change on any face that carries flow; only vertical faces
+  with zero vapour rate change their vapour upstream. On the flipping cell's outflow faces, the
+  component flux changes by 60% (cells 25/31), 10% (cell 16) and 80–90% (cells 33/39).
+- **Mobility, kr/μ in 1/cP, at the cycle's iterate:**
+
+  | Cell | Single phase | Two-phase |
+  |---|---|---|
+  | 25 | 2.58 (liquid) | 0.90 (vapour only; the liquid is immobile) |
+  | 33 | 5.92 (liquid) | 0.50 liquid + 0.67 vapour |
+  | 16 | 5.97 (liquid) | 5.34 (vapour) |
+
+**2. The near-critical switch is the stability test's margin, not a phase boundary.**
+
+| Cells | Standard label either side | 50-digit split on both sides | g_split − g_feed, 50 digits | Float64 | Deciding trial sum − 1 |
+|---|---|---|---|---|---|
+| 25/31 | TwoPhase / SingleLiquid | β 0.729–0.731, Σ ln²K 1.45e-4 | −1.62e-13 to −1.64e-13 RT | −1.59e-13 to −1.65e-13 | liquid trial 0.998e-12 to 1.001e-12 |
+| 33/39 | TwoPhase / SingleLiquid | β 0.4766, Σ ln²K 2.0e-4 | −4.71e-13 RT | −4.69e-13 to −4.72e-13 | vapour trial 0.999e-12 to 1.002e-12 |
+| 16 | TwoPhase / SingleLiquid | β = 1 − 2.8e-9, Σ ln²K 0.791 | −1.4e-21 RT | ±1e-15 (noise; sign varies) | liquid trial 0.998e-12 to 1.001e-12 |
+
+Every point has one real cubic root, so the root choice is not involved.
+
+- **At the near-critical cells (25/31 and 33/39), the "single-phase" side is not single-phase.** A
+  converged, physical, non-trivial split exists there, with β of 0.48–0.73, and its Gibbs energy is
+  **lower** than the feed's.
+- **Float64 resolves that difference.** It agrees with 50 digits to about 3e-15 RT, against a gap of
+  1.6e-13 to 4.7e-13 RT.
+- **The switch is the threshold crossing.** The label changes exactly where the deciding trial sum
+  crosses `1 + TRIAL_SUM_TOLERANCE` (1e-12, `fluid/stability.rs`), a margin chosen for #93 so that
+  ordinary bubble-point switches happen at β ≈ 1e-8. A split with β ≈ 0.5 between nearly identical
+  phases has a tangent-plane signal of the same order as that margin. So the margin cuts a real
+  split at finite β, and S_g, mobility and inventory jump there.
+- **The label chatters inside a band.** Within the bracket, the standard label is not monotone along
+  the path: the trial sum sits within ±1e-15 of the threshold.
+- **This corrects section 1.** There, the near-critical labels were called thermodynamically hard to
+  tell apart. At these states they are not: the split is the lower state, and Float64 shows it.
+
+**3. Cell 16 is a genuine dew point with a mislabelled single phase.** The switch is at
+β = 1 − 2.8e-9, the Gibbs difference is zero to 1e-21 RT, and the inventory is continuous
+(2.9e-11). The jump is flux only. On the single side, Li's rule labels the vapour-like feed liquid,
+so the cell switches from vapour to liquid relative permeability and viscosity. This is the identity
+question of section 6, now measured. It is separate from the near-critical mechanism.
+
+**Verdict on this design (Gate 0): REFUTED.**
+- **The acceptance contract cannot be met.** Inventory equivalence fails by five orders of magnitude
+  (3.4e-7 to 5.9e-7, against the proposed 1e-12).
+- **Its premise is false.** The two labels are not Float64-indistinguishable. Holding the
+  single-phase label would hold the wrong state, and holding the two-phase label is what a correct
+  phase decision would return anyway.
+- **The P1 review finding stands for any variant.** A contract that preserves the original
+  equations cannot accept a held-label flux.
+
+The mechanism is now measured rather than inferred, and it points away from the solver.
+
+**What the measurement points to instead (each not approved, and each needs its own design and
+evaluation, because it changes the standard flash and so answers everywhere):**
+- **N1, the near-critical phase decision.** Inside the stability test's margin band, decide by the
+  split itself: return a converged, physical, non-trivial split with g_split < g_feed (seeded from
+  the trial K) instead of "stable".
+  - That moves the label switch towards where the split actually collapses.
+  - Not yet measured: where that collapse is for these cells. If it is at the critical point
+    (K → 1 at finite β), the trivial-solution tolerance (Σ ln²K < 1e-5) cuts the split again at
+    finite β, and the immiscible curves still jump there (section 5). Measuring that, as M1, comes
+    before N1.
+- **N2, single-phase identity at the dew point.** Identify the single phase by continuity with the
+  collapsing split (β → 1 means vapour) rather than by Li's T_pc rule there.
+- **Acceptance stays the original equations:** the standard-state residual, wells included, at
+  `1e-8`. N1 and N2 change the standard flash itself, so no held-label flux needs accepting. This is
+  option 1 of the P1 review finding.
 
 ## 1. What the traces show
 
@@ -227,3 +345,15 @@ that is this question, not a refutation of the tie-break.
    equivalence, given that the run's worst signed balance so far is 6.1e-9 of inventory?
 4. **Scope.** Should the cell-16 identity question be measured in M0 now, as proposed, or left
    until the near-critical tie-break has a verdict?
+
+**Answers after the PR #129 review and M0:**
+1. **No new equivalence band was chosen.** `GIBBS_ENERGY_TOLERANCE` stays what it is: the #122
+   guard's value. At the near-critical states, Float64 g_split − g_feed matches the 50-digit value
+   to about 3e-15 RT, and the gap (1.6e-13 to 4.7e-13 RT) is real. At cell 16 the gap (1e-21 RT) is
+   below Float64's resolution and is not a usable decision variable.
+2. **The original equations are kept.** Any candidate must converge the standard-state residual,
+   wells included, at `1e-8`. Held-label flux acceptance is withdrawn.
+3. **Inventory bound: withdrawn with the design.** The measured inventory differences between the
+   labels are 3.4e-7 to 5.9e-7 per component at the near-critical cells and 2.9e-11 at cell 16.
+4. **Cell 16 was measured in M0** and is classified separately, as an identity defect at a genuine
+   dew point (section 0, item 3).

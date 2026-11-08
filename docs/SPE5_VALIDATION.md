@@ -1212,10 +1212,18 @@ Order of work, as agreed in the #116 review:
    solve alike; it does not establish time convergence or independent accuracy.
 
    The design is in [SPE5_LABEL_HYSTERESIS_DESIGN_2026-11-08.md](SPE5_LABEL_HYSTERESIS_DESIGN_2026-11-08.md)
-   (not approved). Its first finding changes the framing: the near-critical two-cycles are a
-   discontinuous flux (the label change moves S_g by ~0.3 at nearly identical phases, and the
-   immiscible Stone II curves give the same fluid a ~3× different mobility), and cell 16's is a
-   single-phase identity question, not a near-critical one.
+   (not approved). Its M0 measurement (section 0 there; `93b97f79`, clean tree) refutes the
+   tie-break and locates the mechanism at identical inputs:
+   - At the near-critical cells (25/31, 33/39), the residual jumps where the stability test's
+     trial sum crosses its `1e-12` margin, although a converged split with **lower** Gibbs energy
+     (by 1.6e-13 to 4.7e-13 RT, resolved by Float64 and confirmed in 50 digits) exists on both
+     sides. The jump is face flux (∝ dt) plus a 3.4e-7 to 5.9e-7 inventory difference (not ∝ dt).
+   - At cell 16 the switch is a genuine dew point (β → 1, inventory continuous). The flux-only jump
+     comes from Li's rule labelling the vapour-side single phase liquid.
+
+   Next candidates (each needing its own design and evaluation): a split-based phase decision
+   inside the margin band (N1, after measuring where the split really collapses, M1), and
+   dew-side single-phase identity (N2). Acceptance stays the original equations at `1e-8`.
 
 All thresholds above are **experimental candidates**, not validated values. They come from two
 traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of
