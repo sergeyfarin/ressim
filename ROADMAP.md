@@ -121,6 +121,15 @@ and C13's product integration is complete (#29). Next:
   JutulDarcy reference. [#88 — Checkpoints keep the cumulative ledgers](https://github.com/sergeyfarin/ressim/issues/88)
   affects resumed runs only, not from-scratch scoring.
 
+## 4b. Agent interface (after §1)
+
+- [#126 — MCP server: let agents run ResSim experiments](https://github.com/sergeyfarin/ressim/issues/126)
+
+A local stdio MCP server, TypeScript on the wasm engine, outside the app bundle
+(`docs/MCP_SERVER_DESIGN_2026-11-08.md`). It adds no physics or reference, so it waits behind the
+validation track. P0 (packaging spike) and M0 (a headless black-oil session extracted from the
+worker, gated by golden transcripts) are useful on their own.
+
 ## 5. FIM research frontier
 
 - [#23 — Parked OPM-parity research backlog](https://github.com/sergeyfarin/ressim/issues/23)
