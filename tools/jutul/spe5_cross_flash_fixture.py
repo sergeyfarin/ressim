@@ -22,8 +22,9 @@ Phase labels are compared as L / V / 2P. MultiComponentFlash returns a vapour fr
 A null V is also what a failed MultiComponentFlash solve returns, so `merge` validates every record
 before it counts anything and refuses to write a fixture otherwise:
 
-- exactly the expected 192 points (4 cells x 12 reports x 4 kinds, 96 originals and 96 swaps), with
-  unique labels, each present exactly once in both flash outputs;
+- exactly the expected 192 points: every (report, cell, kind, side) of 4 cells x 12 reports x 4
+  variants once, each label matching its metadata, each swap built from the two originals' p and z,
+  96 originals and 96 swaps, with unique labels, each present exactly once in both flash outputs;
 - Jutul `tight`: no error and no warning, a stability report present; a 2P result converged with
   `stability.stable` false; a single-phase result with `stability.stable` true and Li's label 0 or 1;
 - ResSim: no error, a phase of L, V or 2P, and beta in [0, 1] (strictly inside for 2P).
@@ -117,11 +118,50 @@ def by_label(records, what):
     return out
 
 
+VARIANTS = (("original", "ressim", "ressim"), ("original", "jutul", "jutul"),
+            ("swap", "ressim_z_at_jutul_p", "ressim-z@jutul-p"),
+            ("swap", "jutul_z_at_ressim_p", "jutul-z@ressim-p"))
+
+
+def matrix_problems(points):
+    """The exact point matrix: every (month, cell, kind, side) once, labels matching their
+    metadata, and each swap built from the two originals' p and z."""
+    expected = {(m, c, k, s) for m in REPORTS for c in CELLS for k, s, _ in VARIANTS}
+    suffix = {(k, s): x for k, s, x in VARIANTS}
+    problems, seen = [], {}
+    for pt in points:
+        key = (pt.get("month"), pt.get("cell"), pt.get("kind"), pt.get("side"))
+        if key in seen:
+            problems.append(f"{pt.get('label')!r}: duplicates {seen[key]!r} as {key}")
+            continue
+        seen[key] = pt.get("label")
+        if key not in expected:
+            problems.append(f"{pt.get('label')!r}: unexpected point {key}")
+        elif pt.get("label") != f"m{key[0]} c{key[1]} {suffix[key[2:]]}":
+            problems.append(f"{pt.get('label')!r}: label does not match its metadata {key}")
+    missing = sorted(expected - set(seen))
+    if missing:
+        problems.append(f"{len(missing)} required points missing: {missing[:5]}")
+    by_key = {(pt.get("month"), pt.get("cell"), pt.get("kind"), pt.get("side")): pt
+              for pt in points}
+    for m in REPORTS:
+        for c in CELLS:
+            r, j = by_key.get((m, c, "original", "ressim")), by_key.get((m, c, "original", "jutul"))
+            for side, p_from, z_from in (("ressim_z_at_jutul_p", j, r),
+                                         ("jutul_z_at_ressim_p", r, j)):
+                sw = by_key.get((m, c, "swap", side))
+                if sw is None or p_from is None or z_from is None:
+                    continue
+                if sw.get("p_bar") != p_from.get("p_bar") or sw.get("z") != z_from.get("z"):
+                    problems.append(f"{sw.get('label')!r}: p or z differs from the originals")
+    return problems
+
+
 def validate(points, ressim, jutul):
     """Every reason the inputs cannot support an agreement count; empty when they can."""
     labels = by_label(points, "points")
     kinds = [pt["kind"] for pt in points]
-    problems = []
+    problems = matrix_problems(points)
     if len(points) != EXPECTED_POINTS or kinds.count("original") != kinds.count("swap"):
         problems.append(f"{len(points)} points ({kinds.count('original')} originals, "
                         f"{kinds.count('swap')} swaps); expected {EXPECTED_POINTS}, half each")

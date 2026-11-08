@@ -15,8 +15,10 @@ each reference's work, and its worst differences from the first one over months 
 (schema `ressim-spe5-replay/1`) with no cap, a 5 d cap and a 0.5 d cap; J_* are JutulDarcy
 references with the same caps (tools/jutul/run-spe5-sensitivity.sh: `default`, `default-dt5`,
 `default-dt0.5`). It prints each ResSim run's work, conservation and stop, then the worst
-differences of every pair over months 1..LAST (default: the last month all three ResSim runs
-reached). "Σ oil" compares the sum of monthly producer oil rates, the same rule on both sides;
+differences of every pair over the report months all three ResSim runs completed, up to LAST
+when given. A stop without a failure (a wall budget) is printed as it is recorded; when the runs
+share no completed reports (a seeded run that stopped in its first month), the work table is
+followed by an inconclusive note instead of the comparison. "Σ oil" compares the sum of monthly producer oil rates, the same rule on both sides;
 the ResSim-only rows also compare true cumulative surface oil and gas at LAST.
 
 `--validate-run` exits non-zero unless REFERENCE is a complete 240-report, 7305 d run whose
@@ -153,7 +155,8 @@ def main(ressim_path, reference_path="opm/compositional/spe5/reference.json"):
 
 
 def ministeps(path):
-    data = json.load(open(path))
+    with open(path) as f:
+        data = json.load(f)
     config = data.get("configuration") or {"well_volume_m3": data.get("well_volume_m3")}
     print(f"configuration: {json.dumps(config)}\n")
     groups = {}
@@ -307,7 +310,8 @@ def validate_run(path, volume, max_dt, not_before=None):
 
 
 def replay_reports(path):
-    data = json.load(open(path))
+    with open(path) as f:
+        data = json.load(f)
     if data.get("schema") != "ressim-spe5-replay/1":
         sys.exit(f"{path}: schema {data.get('schema')!r}, expected ressim-spe5-replay/1")
     reports = reports_from_states(data["months"])
@@ -315,6 +319,37 @@ def replay_reports(path):
         reports[m["month"]]["cumulative"] = \
             m["snapshot"]["cumulative_well_surface_production_volumes"][0]
     return reports, data
+
+
+def format_stop(stop):
+    """A replay's `stopped` record in one cell; a wall-budget stop has no `failure` field."""
+    if not stop:
+        return "no"
+    text = f"month {stop.get('month', '?')}"
+    if isinstance(stop.get("day"), (int, float)):
+        text += f", day {stop['day']:.3f}"
+    text += f": {stop.get('reason', 'stopped')}"
+    failure = stop.get("failure")
+    if failure:
+        if "scaled residual " in failure:
+            text += f", {failure.split('scaled residual ')[-1].rstrip(')}\" ')}"
+        else:
+            text += f", {failure}"
+    return text
+
+
+def comparison_horizon(runs, labels, last=None):
+    """Report months every ResSim run completed, as (first, last); None when there are none."""
+    completed = [set(runs[k]) for k in labels]
+    if not all(completed):
+        return None
+    first = max(min(c) for c in completed)
+    end = min(max(c) for c in completed)
+    if last is not None:
+        end = min(end, last)
+    if first > end or any(m not in c for c in completed for m in range(first, end + 1)):
+        return None
+    return first, end
 
 
 def timestep_convergence(paths, last=None):
@@ -325,8 +360,7 @@ def timestep_convergence(paths, last=None):
         runs[label], replays[label] = replay_reports(path)
     for label, path in zip(labels[3:], paths[3:6]):
         runs[label] = reference_reports(path)[0]
-    if last is None:
-        last = min(max(runs[k]) for k in labels[:3])
+    horizon = comparison_horizon(runs, labels[:3], last)
 
     print("| ResSim run | Max dt (d) | Months completed | Accepted steps / failed attempts "
           "| Newton (accepted) | Wall (s) | Max \\|signed balance\\| | Stopped |")
@@ -334,17 +368,19 @@ def timestep_convergence(paths, last=None):
     for label in labels[:3]:
         d = replays[label]
         ms, st = d["months"], d["settings"]
-        balance = max(abs(v) for m in ms for v in m["balance_rel"])
-        stop = d["stopped"]
-        stop = (f"month {stop['month']}, day {stop['day']:.3f}: {stop['reason']}, "
-                f"{stop['failure'].split('scaled residual ')[-1].rstrip(')}\" ')}"
-                if stop else "no")
+        balance = max((abs(v) for m in ms for v in m["balance_rel"]), default=None)
         cap = st["max_dt_days"]
-        print(f"| {label} | {'report' if cap is None else f'{cap:g}'} "
-              f"| {ms[0]['month']}–{ms[-1]['month']} "
+        span = f"{ms[0]['month']}–{ms[-1]['month']}" if ms else "none"
+        print(f"| {label} | {'report' if cap is None else f'{cap:g}'} | {span} "
               f"| {sum(m['accepted_steps'] for m in ms):,} / {sum(m['failed_attempts'] for m in ms):,} "
               f"| {sum(m['accepted_newton'] for m in ms):,} | {sum(m['wall_s'] for m in ms):,.0f} "
-              f"| {balance:.1e} | {stop} |")
+              f"| {'—' if balance is None else f'{balance:.1e}'} | {format_stop(d['stopped'])} |")
+
+    if horizon is None:
+        print("\nNo comparison: the ResSim runs share no contiguous range of completed reports "
+              "(see Stopped). Inconclusive, not a difference.")
+        return
+    first, last = horizon
 
     quantities = (
         ("mean p (bar)", lambda r: r["mean_p_bar"], False),
@@ -355,14 +391,14 @@ def timestep_convergence(paths, last=None):
         ("cell-33 Sg (abs.)", lambda r: r["cell33_sg"], False),
     )
     pairs = ((0, 2), (1, 2), (3, 5), (4, 5), (0, 3), (1, 4), (2, 5))
-    print(f"\nWorst difference over months 1–{last} (month):\n")
+    print(f"\nWorst difference over months {first}–{last} (month):\n")
     print("| Pair | " + " | ".join(q[0] for q in quantities) + " | Σ oil |")
     print("|---|" + "---|" * (len(quantities) + 1))
     for a, b in pairs:
         A, B = runs[labels[a]], runs[labels[b]]
-        months = [m for m in range(1, last + 1) if m in A and m in B]
-        if len(months) != last:
-            sys.exit(f"{labels[a]} / {labels[b]}: months 1–{last} not all present")
+        months = [m for m in range(first, last + 1) if m in A and m in B]
+        if len(months) != last - first + 1:
+            sys.exit(f"{labels[a]} / {labels[b]}: months {first}–{last} not all present")
         cells = []
         for _, get, relative in quantities:
             worst, at = max(((rel(get(A[m]), get(B[m])) if relative
