@@ -331,9 +331,11 @@ from base commit `2ef5027a` with that generator change still uncommitted, so
 `worktree_clean_at_generation` is false. The well-node volume is a model choice, not only a
 performance setting (see "Well-node volume" under step 0): ResSim's wells have no wellbore storage,
 and JutulDarcy's default nodes add 0.192 m³ per injector and 0.479 m³ for the producer. The
-default-volume fixture is therefore **provisional**. It is not the canonical reference until a
-bounded volume/timestep sensitivity says how much the compared quantities depend on that choice.
-The earlier fixture (`b14f0976`, 1e-4 m³ well nodes) is kept only in that comparison.
+default-volume fixture is therefore **provisional**. The bounded volume/timestep sensitivity
+("Volume/timestep sensitivity" under step 0) does not justify promoting it. At a 0.5 d timestep cap
+the two node volumes agree through month 217 to 0.07 bar and 0.9% in oil. But the report-step
+reference is not converged in time: it is 1.5 bar and 24% in oil from the 0.5 d run. The earlier
+fixture (`b14f0976`, 1e-4 m³ well nodes) is kept only in that comparison.
 
 `manifest.json` records the resolved model configuration (`configuration`: per-well node volumes,
 timestep cap, versions, tolerances). `--check` fails if the configuration differs from it. On a run
@@ -405,6 +407,9 @@ The 1e-4 m³ reference had shown roughly twice these spreads: 1.75 bar, 28.5%, 2
 So the late-life ResSim/Jutul gap depends on JutulDarcy's well-node volume. Closer agreement does
 not show that the default volume is the more accurate model: ResSim has no wellbore storage, and
 the 1e-4 m³ nodes were chosen elsewhere precisely to approximate that (see "Well-node volume").
+The sensitivity later showed the gap depends even more on the timestep. ResSim is 33% in oil from
+the 0.5 d-capped Jutul runs. The agreement above is between two simulators taking report-sized
+steps, not a measure of either one's accuracy.
 
 | month | day | mean p R / J (bar) | cell 33 p R / J (bar) | Sw 33 R / J | Sg 33 R / J | oil R / J (m³/d) | GOR R / J (m³/m³) | WC R / J | Jutul ministeps / Newton |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -612,6 +617,97 @@ At 0.0886 d the 20th iterate meets **both** of Jutul's reservoir tolerances (CNV
 1e-7) while it carries a signed imbalance of 2.2e-6 of inventory and flips two cells. Jutul's
 criteria are not a safe acceptance test to import into ResSim.
 
+#### Failure B: what sets the floor
+
+Measured from the committed seed `stall_218_from_scratch.json` on the last attempt (0.0443 d), on
+a dirty tree on `8904b364` (provisional). The commands are in `compositional/spe5_failure_b_tests.rs`:
+
+```bash
+SPE5_TRACE_OUT=DIR cargo test --release --lib comp_spe5_failure_b_floor_probe -- --ignored --nocapture        # ~70 s
+SPE5_TRACE_OUT=DIR cargo test --release --lib comp_spe5_failure_b_flash_conditioning -- --ignored --nocapture  # ~7 s
+SPE5_TRACE_OUT=DIR cargo test --release --lib comp_spe5_failure_b_floor_scales_with_dt -- --ignored --nocapture # ~25 s
+```
+
+**Not the linear solve.** SPE5's 1,029-row system takes the FGMRES-CPR route by default. Each
+iteration's report (route, Krylov iterations, true residual on the full row-scaled system) is
+recorded. The same attempt on sparse LU and dense LU stalls the same way: from iteration 4 on, its
+residual stays between 1.2e-8 and 1.5e-7 (sparse LU) or 2.3e-8 and 1.4e-7 (dense LU), against 3.6e-8
+to 1.4e-7 on FGMRES-CPR. None reaches `1e-8`.
+
+**Not the flash tolerance.** The same attempt with the flash's equilibrium tolerance replaced
+(test-only override) by 1e-9, 1e-10, 1e-12 and 1e-13 gives best iterates 1.7e-8, 1.7e-8, 1.2e-8 and
+1.2e-8, and peaks of 1.2e-7 to 1.7e-7. The floor does not follow the tolerance.
+
+**The residual is not smooth there.** A Taylor test at iterates 2, 4, 6 and 8 runs along the step
+Newton took, with the BHPs held. A repeated evaluation is bit-identical, so the residual is
+deterministic. But `R(x + h d) − R(x) − h J d` stays between 2e-8 and 3e-7 for every h from 1 down
+to 1e-7. It vanishes only once `h d` falls below a pressure ulp. A smooth residual would give `h²`. So
+any representable change of the state moves the scaled residual by about the floor's size, and
+Newton cannot get below it.
+
+**Where the jump is.** At h = 1e-6 the largest changes are in cells 33 and 39 (every hydrocarbon
+row, about equally) and their neighbours 40, 82 and 88. They are entirely in the **face and well
+terms**: each cell's own inventory change explains at most 5e-12 of a 2e-8 to 1.2e-7 change. No
+phase label changes.
+
+**Why: the near-critical split is undetermined.** Cells 33 and 39 sit at Σ ln² K ≈ 6e-4. Re-flashing
+them at the two states of a 5e-13 to 8e-11 bar perturbation (composition unchanged to 2e-16)
+moves β by 9e-7 to 3e-5 and x, y by 9e-10 to 3e-8. Both flashes are converged (equilibrium residual about 1.5e-12). At the
+best iterate:
+- Tightening the tolerance moves cell 33's β by 2.8e-5 (residual 1.6e-12 → 1.4e-14), and a further
+  tightening moves it back by 2.9e-5 (residual 8.9e-15).
+- Over 64 consecutive pressure ulps (2.4e-12 bar), β spans 4.2e-5 in cell 33 and 5.6e-5 in cell 39.
+- In cell 40, further from the critical point, the spread is 3e-12.
+
+So in double precision, these two cells' phase split is undetermined at the 1e-5 level, even at
+round-off-level fugacity residuals. The overall inventory barely depends on it, but the phase
+saturations, compositions and mobilities in the fluxes do. That is the residual's jump.
+
+**It scales with dt.** The jump enters the scaled residual as flux × dt / inventory, so it should
+fall in proportion to dt:
+
+| dt (d) | Best scaled residual | Converged at `1e-8` |
+|---|---|---|
+| 0.0443 (the ladder's 10th attempt) | 3.6e-8 | no (20 iterations) |
+| 0.0221 | 5.2e-9 | yes (13 iterations) |
+| 0.0111 | 3.0e-9 | yes (4) |
+| 0.0055 | 4.3e-9 | yes (4) |
+| 0.0028 | 5.9e-10 | yes (4) |
+| 0.0014 | 1.7e-9 | yes (4) |
+
+**Failure B is therefore the step's halving budget (`max_attempts = 10`) stopping one halving short
+of a dt where this floor drops below `1e-8`.** "Noise floor" is now a measured mechanism: a
+near-critical phase split that double precision does not determine, reaching the residual through
+the face fluxes. Two consequences:
+- **Acceptance.** A residual-based acceptance below the floor is unreachable at large dt there. An
+  acceptance that knew the residual's evaluation precision would be a different, principled
+  candidate. It is not proposed here.
+- **Cost.** The month-218 call would have succeeded with one more halving, measured for this call
+  only. Every later call that starts from the full remainder pays ten failed attempts first. A
+  larger budget or a timestep memory is a timestep-control question, measured separately before
+  any change.
+
+#### BHP warm start (separate experiment, `1e-8` unchanged)
+
+`NewtonOptions::well_bhp_start = WellBhpStart::LastAccepted`, **off by default**, starts each
+rate-controlled well's BHP at its last accepted value instead of the control's guess. The default
+path is unchanged. Run with `cargo test --release --lib comp_spe5_bhp_warm_start_experiment --
+--ignored --nocapture` (~3 min).
+
+| | Control guess (default) | Last accepted BHP |
+|---|---|---|
+| A, dt 0.02 d | no (best 1.35e-3) | no (9.8e-4) |
+| A, dt 1.95e-5 / 9.77e-6 / 4.88e-6 d | no (best 1.8e-6 / 1.2e-6 / 8.9e-7) | no (best 9.6e-7 / 4.8e-7 / 2.4e-7) |
+| A, dt 2.44e-6 d | yes, 17 iterations (first residual 3.38) | yes, **2 iterations** (first residual 1.2e-7) |
+| B, the failing call (10 halvings) | fails, last 1.3648759701094485e-7 | fails identically |
+| B, last attempt (0.0443 d) | best 3.6e-8 | best 3.6e-8 (first residual 3.38 → 2.2e-3) |
+
+The warm start removes the BHP-driven crossing on A's smallest step (17 iterations → 2). It does
+not resolve A's plateau. With the warm start, the first iterate of each failing rung is already
+its best, and that floor halves with dt (9.6e-7, 4.8e-7, 2.4e-7), like B's. It has no effect on B:
+the first residual drops, but the best and last residuals are identical. B's floor does not come
+from the wells. Verdict: **not promoted**. It leaves both failures failing at `1e-8`.
+
 #### What JutulDarcy accepts in the same window
 
 Per-ministep reservoir criteria of Jutul's ministeps, from `spe5_ministep_diagnostics.jl` run on
@@ -692,18 +788,79 @@ uncertainty from this one setting is as large as the gap it is used to judge. In
 window cell 33's split moves too, by up to 0.565 in Sg at month 222. Jutul's cell-level state there
 is not a target trajectory for ResSim.
 
-This comparison mixes two effects: the well storage and the timestep path the node volume
-induces. The bounded sensitivity below separates them.
+The node volume changes at least three things at once: the well storage, the well rows'
+convergence scaling, and the accepted timestep sequence. This comparison does not separate them,
+and the bounded sensitivity below narrows the question without settling it.
 
-#### Volume/timestep sensitivity (pending)
+#### Volume/timestep sensitivity
 
-`bash tools/jutul/run-spe5-sensitivity.sh OUTDIR` runs the generator at node volumes of 1e-4, 1e-3,
-1e-2 m³ and the default, with the timestep capped by the report (JutulDarcy's default), 5 d or
-0.5 d (default and 1e-4 m³ only). It prints the comparison against the default run with
-`spe5_compare.py --references`. If the volume effect vanishes as the timestep cap falls, it is a
-timestep-path effect. If it persists at 0.5 d, it is the well storage itself, and a storage-free
-reference needs the small node at a small timestep. Until then the default-volume reference stays
-provisional.
+`bash tools/jutul/run-spe5-sensitivity.sh OUTDIR` ran on a clean worktree at `8904b364`, with the
+driver of that commit. All seven runs were then validated, and the tables printed, by
+`run-spe5-sensitivity.sh --validate-only` from `38ff6c0a`. Every run is complete through 7305 d and
+records the requested configuration. The `default` run reproduces the committed reference
+exactly, and `vol-1e-4` reproduces the superseded `b14f0976` reference's work counts and
+differences.
+
+| Run | Well volumes (m³) PROD / INJW / INJG | Max dt (d) | Completed | Ministeps / Newton / failed | Month 216 / 217 / 218 / 219 ministeps | First declared stop |
+|---|---|---|---|---|---|---|
+| default | 0.479 / 0.192 / 0.192 | report | True (240 reports) | 3,843 / 39,716 / 2,130 | 123 / 388 / 1,899 / 1,010 | 6300.5625 d, watercut |
+| vol-1e-4 | 0.0001 / 0.0001 / 0.0001 | report | True (240 reports) | 27,353 / 296,291 / 16,386 | 193 / 272 / 415 / 1,477 | 6300.5625 d, watercut |
+| vol-1e-3 | 0.001 / 0.001 / 0.001 | report | True (240 reports) | 3,974 / 40,360 / 2,125 | 85 / 360 / 751 / 673 | 6300.5625 d, watercut |
+| vol-1e-2 | 0.01 / 0.01 / 0.01 | report | True (240 reports) | 3,502 / 36,414 / 1,959 | 97 / 404 / 1,580 / 1,006 | 6300.5625 d, watercut |
+| default-dt5 | 0.479 / 0.192 / 0.192 | 5 | True (240 reports) | 3,618 / 27,021 / 1,235 | 235 / 143 / 140 / 1,303 | 6300.5625 d, watercut |
+| default-dt0.5 | 0.479 / 0.192 / 0.192 | 0.5 | True (240 reports) | 15,537 / 43,035 / 613 | 207 / 132 / 61 / 740 | 6300.5625 d, watercut |
+| vol-1e-4-dt0.5 | 0.0001 / 0.0001 / 0.0001 | 0.5 | True (240 reports) | 28,421 / 205,090 / 9,144 | 381 / 147 / 155 / 726 | 6300.5625 d, watercut |
+
+Worst difference from `default`, months 1–217 / all shared months (month):
+
+| Run | mean p (bar) | cell-33 p (bar) | producer oil (rel.) | GOR (rel.) | water cut (abs.) | cell-33 Sg (abs.) |
+|---|---|---|---|---|---|---|
+| vol-1e-4 | 1.28 (175) / 2.41 (234) | 1.6 (177) / 2.25 (233) | 19.0% (208) / 35.1% (234) | 19.3% (164) / 29.4% (233) | 0.05 (169) / 0.05 (169) | 0.102 (215) / 0.565 (222) |
+| vol-1e-3 | 1.06 (175) / 1.58 (234) | 1.34 (177) / 1.43 (233) | 10.9% (208) / 21.4% (234) | 15.5% (164) / 19.2% (233) | 0.0406 (169) / 0.0406 (169) | 0.0866 (215) / 0.0866 (215) |
+| vol-1e-2 | 0.187 (169) / 0.351 (228) | 0.233 (166) / 0.345 (239) | 1.5% (159) / 7.0% (237) | 1.9% (31) / 5.8% (237) | 0.00314 (169) / 0.0104 (218) | 0.00649 (217) / 0.0144 (221) |
+| default-dt5 | 1.18 (159) / 4.13 (232) | 1.95 (178) / 4.07 (232) | 18.1% (208) / 36.1% (233) | 21.9% (184) / 28.4% (233) | 0.0345 (170) / 0.0345 (170) | 0.155 (217) / 0.563 (223) |
+| default-dt0.5 | 1.48 (176) / 5.16 (232) | 2.53 (178) / 5.07 (232) | 24.1% (208) / 38.6% (233) | 27.2% (184) / 30.9% (239) | 0.0449 (170) / 0.0449 (170) | 0.155 (217) / 0.563 (223) |
+| vol-1e-4-dt0.5 | 1.55 (176) / 5.23 (232) | 2.58 (178) / 5.18 (232) | 23.6% (208) / 42.6% (234) | 26.7% (184) / 31.0% (239) | 0.0461 (170) / 0.0461 (170) | 0.155 (217) / 0.538 (222) |
+
+The same runs, against the 0.5 d default-volume run
+(`spe5_compare.py --references default-dt0.5=… vol-1e-4-dt0.5=… default-dt5=…`):
+
+Worst difference from `default-dt0.5`, months 1–217 / all shared months (month):
+
+| Run | mean p (bar) | cell-33 p (bar) | producer oil (rel.) | GOR (rel.) | water cut (abs.) | cell-33 Sg (abs.) |
+|---|---|---|---|---|---|---|
+| vol-1e-4-dt0.5 | 0.074 (175) / 0.113 (233) | 0.11 (182) / 0.165 (219) | 0.9% (185) / 11.0% (234) | 0.9% (164) / 10.5% (234) | 0.00246 (185) / 0.00278 (234) | 0.00319 (211) / 0.583 (223) |
+| default-dt5 | 0.412 (215) / 1.03 (232) | 0.577 (179) / 1.01 (232) | 8.2% (207) / 13.6% (236) | 6.9% (216) / 7.9% (239) | 0.0122 (169) / 0.0122 (169) | 0.0418 (216) / 0.392 (219) |
+
+ResSim's months 1–217 against the references (`spe5_compare.py RESSIM_MONTHS REFERENCE`, worst
+difference):
+
+| Reference | mean p (bar) | producer oil | GOR | water cut |
+|---|---|---|---|---|
+| default, report step (committed) | 0.86 | 11.7% | 10.5% | 0.018 |
+| default, 5 d cap | 1.6 | 27.8% | 23.5% | 0.044 |
+| default, 0.5 d cap | 1.96 | 33.1% | 28.6% | 0.055 |
+| 1e-4 m³, 0.5 d cap | 2.03 | 32.6% | 28.1% | 0.056 |
+
+What this shows:
+- **At a 0.5 d cap the two node volumes nearly agree through month 217:** 0.074 bar, 0.9% in oil
+  and GOR, 0.0025 in water cut, against 1.28 bar and 19% at the report step. Most of the
+  report-step volume dependence goes away with the smaller timestep, so the volume acts largely
+  through the accepted timestep path. The remaining 0.07 bar / 0.9% is the combined effect, at that
+  cap, of storage and the well rows' convergence scaling. The comparison does not separate the
+  two. After the crossing (months 218–240) the two still differ: 11% in oil at month 234, and up to
+  0.58 in cell-33 Sg at month 223. The volume dependence there is **unresolved**.
+- **The reference is not converged in time.** At the default volume, the 5 d run is 0.41 bar and
+  8.2% in oil away from the 0.5 d run, and the report-step run 1.5 bar and 24%. Whether 0.5 d is
+  itself converged was not tested.
+- **ResSim's agreement with the committed reference is matched-step agreement.** ResSim also takes
+  report-sized steps, and it agrees best with the report-step Jutul runs. It is 33% in oil from
+  either 0.5 d run. That says nothing yet about ResSim's own time error. ResSim at a matching small
+  step against the 0.5 d runs is the comparison that would (not run).
+
+The default-volume reference stays **provisional**. These results do not justify promoting it.
+Neither report-step run is a time-converged reference, and a canonical SPE5 reference should come
+from a timestep-refinement ladder, at a cap where the volume no longer matters through month 217.
 
 #### Revised proposal (experimental, not approved)
 
@@ -738,12 +895,13 @@ compositional solver option (no case or scenario names in the engine):
    otherwise converged step.
 
 Order of work, as agreed in the #116 review:
-1. **Investigate B first, without changing acceptance.** Measure whether the floor follows the
-   flash tolerance, and record the full linear-solve diagnostics (true residual of each solve,
-   Jacobian/residual consistency at the floor) from `stall_218_from_scratch.json`.
-2. **BHP warm start (3) as a separate experiment**, with the existing `1e-8` convergence
-   requirement unchanged.
-3. Only after that evidence, evaluate hysteresis (1) or bounded acceptance (2).
+1. **Investigate B first, without changing acceptance.** Done (provisional), see "Failure B: what
+   sets the floor". The cause is the near-critical split's indeterminacy reaching the fluxes. It
+   is not the linear solve or the flash tolerance, and it scales with dt.
+2. **BHP warm start (3) as a separate experiment**, with `1e-8` unchanged. Done: not promoted.
+3. Only after that evidence, evaluate hysteresis (1) or bounded acceptance (2). Candidate 2's
+   premise has changed: B's floor is a measured evaluation-precision limit, and B converges at
+   `1e-8` one halving further. So a timestep-control change is now a candidate alongside them.
 
 All thresholds above are **experimental candidates**, not validated values. They come from two
 traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of
