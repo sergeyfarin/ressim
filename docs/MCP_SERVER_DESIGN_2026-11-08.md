@@ -29,6 +29,14 @@ It also makes the transcript comparison deterministic, keeps browser-versus-head
 tests, corrects the compositional termination status, and names `validate:product` as the M0
 gate. §7 records each change.
 
+**Revision 4 (same day).** A third review (of `0c622ec`) accepted the design subject to three
+local corrections, all made here:
+- the run fingerprint includes the resolved termination policy;
+- the dirty-tree identity is a manifest hash that includes untracked inputs;
+- resume in the M0 fixture driver waits for the stopped handler to settle.
+
+Remaining feasibility questions belong to P0.
+
 **Priority.** This work comes after the scientific-validation track (`ROADMAP.md` §1, #52/#56). It
 adds no physics and no reference, so it can wait until they are done.
 
@@ -157,7 +165,11 @@ extraction preserved behaviour. That evidence has to come from the old worker. S
 - **Stop at a fixed step.** The worker observes `stop` after a `setTimeout(0)` yield, so a stop sent
   on a timer would land at a variable step. The driver instead delivers `stop` synchronously from
   inside its `post` callback when it receives the *k*-th state message. The flag is then set
-  before the worker yields, so the stop step is fixed. Resume uses the same rule.
+  before the worker yields, so the stop step is fixed.
+- **Resume waits for the stop to settle.** Resume is *not* sent from inside the callback. The
+  worker posts `stopped` before it clears `isRunning`, so a resume sent synchronously from that
+  callback would hit "Simulator is already running". The driver waits for the stopped run's
+  handler promise to settle, then sends resume.
 
 **Integration tests too.** Browser-versus-headless tests on the same runs are kept as well. They
 cannot show the shared loop is right, but they do catch adapter, serialization and lifecycle
@@ -229,16 +241,20 @@ M2 has two prerequisites, both TypeScript, both shared with the app:
    or JutulDarcy curve is applicable only to the unmodified declared run it was generated for:
    same scenario, same dimension and variant, no overrides. Each artifact gets an identity record:
    - the declared run (scenario, dimension, variant keys);
-   - an **input fingerprint**: a hash of the run's resolved engine input. That means grid size,
-     porosity, the ordered setter calls `configureReservoirSimulator` makes, and the full report
-     schedule (step count and step length);
+   - an **input fingerprint**: a hash of the run's resolved experiment input. That means grid
+     size, porosity, the ordered setter calls `configureReservoirSimulator` makes, the full report
+     schedule (step count and step length), and the resolved termination policy. The policy
+     lives in the run spec, not in the setter calls, yet changing one of its thresholds changes
+     when the declared run ends, so it has to be in the identity;
    - the artifact file hash and the source deck hash.
 
    The fingerprint reuses the recorder and argument encoding `catalogCases.ts` already has. They
    move into a shared module under `src/lib/` that both the parity gate and the server import.
    Two checks use the record:
    - A unit test recomputes every recorded fingerprint from the current catalog. Any input change
-     fails CI at once, however small, and re-recording it is a reviewed act.
+     fails CI at once, however small, and re-recording it is a reviewed act. A second test checks
+     the fingerprint's coverage: changing only a termination threshold, or only one setter
+     argument, must change it.
    - The server checks the fingerprint of the run being scored before scoring it, and refuses on a
      mismatch.
 
@@ -397,8 +413,16 @@ The server makes three separate claims, and claims them separately.
      not a proof that these sources produced these bytes. It closes the timestamp gap, not the
      trust gap.
    - **Tree state.** Every result carries the source revision and a dirty flag. A dirty tree's
-     changes are not preserved, so its runs are labelled `experimental`. The result also carries a
-     hash of `git diff HEAD`, so two runs on the same dirty state can be recognised as such.
+     changes are not preserved, so its runs are labelled `experimental`.
+   - **Dirty-tree hash.** Each dirty run also carries a hash of a defined working-tree manifest.
+     The manifest takes every modified, added or untracked (not ignored) file under the source
+     roots: `src/`, `crates/`, `contracts/`, `scripts/`, `tools/ressim-mcp/`, the root `Cargo.*`,
+     `package.json` and `pnpm-lock.yaml`. It sorts them by path and hashes each path, its status
+     and the full content of each file, binary or not. Two runs on the same dirty state can then
+     be recognised as such.
+   - **Why not `git diff HEAD`.** Hashing that output would miss untracked files, and a binary
+     diff does not encode full contents, so different trees could share a hash. Ignored files,
+     including the generated `pkg/`, are outside the manifest; the wasm hash covers `pkg/`.
 3. **Reproducibility is not claimed.** Rebuilding the same bytes would need recoverable inputs
    (no uncommitted changes) and a specified build environment. Host paths embedded in the release
    wasm (see the comment in `build-wasm.sh`) also prevent a byte-identical rebuild elsewhere. The
@@ -407,7 +431,7 @@ The server makes three separate claims, and claims them separately.
 Every run result carries:
 - the resolved run spec (scenario, dimension, variant, overrides) and its input fingerprint (M2);
 - the wasm hash and the build record's input hash and freshness verdict;
-- source revision, dirty flag, diff hash, and `experimental` when dirty;
+- source revision, dirty flag, the dirty-tree manifest hash, and `experimental` when dirty;
 - backend (`wasm32`) and solver (IMPES / FIM / compositional);
 - server version and wall time.
 
@@ -465,6 +489,16 @@ analytical method id.
 
 ## 7. Review record
 
+### Third review (rev. 3 at `0c622ec`)
+
+Design accepted subject to three corrections, all made in revision 4.
+
+| Review point | Disposition |
+|---|---|
+| 1. Termination policy is outside the run fingerprint | Accepted. The resolved termination policy is part of the input fingerprint, and a test checks that changing only a threshold changes it. |
+| 2. A `git diff HEAD` hash is not a complete dirty-tree identity | Accepted. Replaced by a hash of a defined working-tree manifest that includes untracked files and full contents. |
+| 3. Resume cannot be sent synchronously from the `stopped` callback | Accepted. Stop stays synchronous; resume waits for the stopped handler to settle. Confirmed in `sim.worker.ts`: `postStopped` runs before `isRunning = false`. |
+
 ### Second review (rev. 2 at `7d4a13b`)
 
 | Review point | Disposition |
@@ -472,7 +506,7 @@ analytical method id.
 | 1. Twin tests do not establish exact setup identity | Accepted. Each artifact gets an identity record (declared run, input fingerprint, artifact and deck hashes), checked in CI and before scoring. Twin tests remain the numerical regression check. The "cannot be wrong in a subtle way" claim is withdrawn. |
 | 2. Reproducibility overclaimed | Accepted. Three separate claims: byte identity, build provenance (now with a content-hash build record instead of timestamps), and reproducibility, which is not claimed. Dirty runs are `experimental`. The "machine-local hash" wording is corrected. |
 | 3. Cancelled requests cannot return partial results | Accepted. `start_run` returns a handle at once; `get_run` (bounded wait) and `cancel_run` are separate; tests use the real SDK client. |
-| Deterministic transcript comparison | Accepted. Timing fields are checked and removed; stop and resume are delivered synchronously at the *k*-th state message. |
+| Deterministic transcript comparison | Accepted. Timing fields are checked and removed; stop is delivered synchronously at the *k*-th state message (resume scheduling corrected in revision 4). |
 | Keep browser-versus-headless integration tests | Accepted. They catch adapter and lifecycle differences, while the transcripts check behaviour preservation. |
 | Compositional termination status | Corrected. `CompositionalSession.run()` evaluates policies; #98 waits only on the real SPE5 stopping report. |
 | M0 gate | Corrected to `pnpm run validate:product`. |
