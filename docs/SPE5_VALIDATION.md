@@ -1211,6 +1211,12 @@ Order of work, as agreed in the #116 review:
    At-matched-cap agreement with Jutul (about 1% through month 211) shows the two simulators
    solve alike; it does not establish time convergence or independent accuracy.
 
+   The design is in [SPE5_LABEL_HYSTERESIS_DESIGN_2026-11-08.md](SPE5_LABEL_HYSTERESIS_DESIGN_2026-11-08.md)
+   (not approved). Its first finding changes the framing: the near-critical two-cycles are a
+   discontinuous flux (the label change moves S_g by ~0.3 at nearly identical phases, and the
+   immiscible Stone II curves give the same fluid a ~3× different mobility), and cell 16's is a
+   single-phase identity question, not a near-critical one.
+
 All thresholds above are **experimental candidates**, not validated values. They come from two
 traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of
 each report.
