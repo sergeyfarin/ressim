@@ -108,6 +108,59 @@ fn cell_block(assembly: &AssemblyResult, cell: usize) -> Vec<f64> {
     assembly.residual[cell * block..(cell + 1) * block].to_vec()
 }
 
+/// Reject a truncated continuation or a record whose named collapse is not an endpoint.
+///
+/// The producer writes `reached_endpoint`; a consumer that ignored it could accept an interior
+/// point as the stated collapse. The beta check is independent of that flag.
+fn validate_endpoint(
+    name: &str,
+    reached_endpoint: bool,
+    collapse: Option<&Value>,
+    has_cutoff: bool,
+) -> Result<(), String> {
+    if !reached_endpoint {
+        return Err(format!(
+            "{name}: continuation did not reach an endpoint (reached_endpoint is not true)"
+        ));
+    }
+    let collapse = collapse.ok_or_else(|| format!("{name}: no collapse point"))?;
+    let beta = collapse["beta"]
+        .as_f64()
+        .ok_or_else(|| format!("{name}: collapse has no beta"))?;
+    if !(beta <= 1e-9 || beta >= 1.0 - 1e-9) {
+        return Err(format!(
+            "{name}: collapse beta {beta} is interior, not a phase-vanish endpoint"
+        ));
+    }
+    if has_cutoff != (name == "memory") {
+        return Err(format!("{name}: trivial-cutoff contract violated"));
+    }
+    Ok(())
+}
+
+fn validate_input_case(case: &Value) -> Result<(), String> {
+    let name = case["case"].as_str().ok_or("missing case name")?;
+    validate_endpoint(
+        name,
+        case["reached_endpoint"] == Value::Bool(true),
+        case.get("collapse"),
+        case["trivial_cutoff"].is_object(),
+    )
+}
+
+fn validate_output_case(case: &Value) -> Result<(), String> {
+    let name = case["case"].as_str().ok_or("missing case name")?;
+    let points = case["points"]
+        .as_array()
+        .ok_or_else(|| format!("{name}: missing points"))?;
+    validate_endpoint(
+        name,
+        case["reached_endpoint"] == Value::Bool(true),
+        points.iter().find(|point| point["kind"] == "collapse"),
+        points.iter().any(|point| point["kind"] == "trivial_cutoff"),
+    )
+}
+
 fn describe(viscosity_state: &FlashState) -> Value {
     let (vl, vv) = (
         viscosity_state
@@ -139,8 +192,14 @@ fn comp_spe5_m1_cutoff_jump() {
     let input: Value =
         serde_json::from_str(&std::fs::read_to_string(path).expect("read")).expect("parse");
     let summary = input["cases"].as_array().expect("cases");
+    assert_eq!(
+        input["complete"],
+        Value::Bool(true),
+        "the continuation file is incomplete"
+    );
     let mut out = Vec::new();
     for summary_case in summary {
+        validate_input_case(summary_case).unwrap_or_else(|error| panic!("{error}"));
         let name = summary_case["case"].as_str().expect("case");
         let cell = summary_case["cell"].as_u64().expect("cell") as usize;
         let z: Vec<f64> = summary_case["z"]
@@ -282,6 +341,7 @@ fn comp_spe5_m1_cutoff_jump() {
                 }));
             }
             json!({"case": name, "cell": cell, "seed": seed, "dt_days": dt,
+                "reached_endpoint": summary_case["reached_endpoint"],
                 "points": points})
         });
         out.push(record);
@@ -290,16 +350,40 @@ fn comp_spe5_m1_cutoff_jump() {
     assert_eq!(out.len(), summary.len());
     assert_eq!(out.len(), 8);
     for case in &out {
+        validate_output_case(case).unwrap_or_else(|error| panic!("{error}"));
         let points = case["points"].as_array().expect("points");
-        let name = case["case"].as_str().expect("case");
-        let has_cutoff = points.iter().any(|point| point["kind"] == "trivial_cutoff");
-        let has_collapse = points.iter().any(|point| point["kind"] == "collapse");
-        assert!(has_collapse, "{name} has no collapse point");
-        assert_eq!(has_cutoff, name == "memory", "{name} cutoff contract");
         for point in points {
             for value in point["inventory_relative"].as_array().expect("inventory") {
                 assert!(value.as_f64().is_some_and(f64::is_finite));
             }
         }
     }
+}
+
+#[test]
+fn comp_spe5_m1_endpoint_guard_rejects_a_truncated_continuation() {
+    let endpoint = json!({"beta": 1.0});
+    validate_endpoint("cap5", true, Some(&endpoint), false).expect("a real endpoint is accepted");
+
+    // The review's false pass: an interior point named `collapse`, with the producer's
+    // incomplete flag. The beta check alone also catches a wrong flag.
+    let interior = json!({"beta": 0.7409030797391286});
+    assert!(validate_endpoint("cap5", false, Some(&interior), false).is_err());
+    assert!(validate_endpoint("cap5", true, Some(&interior), false).is_err());
+    assert!(validate_endpoint("cap5", true, None, false).is_err());
+
+    let incomplete = json!({
+        "case": "cap5",
+        "reached_endpoint": false,
+        "collapse": {"beta": 0.7409030797391286},
+        "trivial_cutoff": null,
+    });
+    assert!(validate_input_case(&incomplete).is_err());
+    let lying = json!({
+        "case": "cap5",
+        "reached_endpoint": true,
+        "collapse": {"beta": 0.7409030797391286},
+        "trivial_cutoff": null,
+    });
+    assert!(validate_input_case(&lying).is_err());
 }

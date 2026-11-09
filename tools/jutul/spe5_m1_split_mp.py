@@ -19,9 +19,15 @@ per m3 of pore volume. Two events are located:
 - the production trivial-solution cutoff, `sum ln^2 K = 1e-5`, by bisection in beta;
 - the actual collapse, i.e. the endpoint where beta reaches 0 or 1 (the phase amount vanishes).
 
+Each case records the actual composition change between the two captured Newton iterates and the
+fixed-beta pressure offset from re-solving with each endpoint's composition. The output carries a
+top-level `complete` flag: an unclosed case is listed in `incomplete_cases`, and the script exits
+non-zero after writing it, so a truncated continuation cannot be consumed as a finished M1 result.
+
 The engine-side consequences (inventory and face-flux changes against the standard single-phase
-flash) are measured by `comp_spe5_m1_cutoff_jump`, which consumes this file. Nothing here changes
-production code; the script is a measurement.
+flash) are measured by `comp_spe5_m1_cutoff_jump`, which validates `complete`, `reached_endpoint`
+and the endpoint beta before accepting the file. Nothing here changes production code; the script
+is a measurement.
 
 The 50-digit EOS and flash routines are the independent implementation in `spe5_flash_mp.py`,
 written from the textbook Peng-Robinson equations rather than from ResSim's code.
@@ -213,6 +219,35 @@ def point_with_suffix(points, prefix, suffix):
     return None
 
 
+def normalized_z(point):
+    if point is None:
+        return None
+    z = [mp.mpf(value) for value in point["z"]]
+    total = sum(z)
+    return [value / total for value in z]
+
+
+def composition_sensitivity(eos, z_switch, ln_k, switch_p, beta, z_two, z_single):
+    """Actual composition change on the Newton cycle and its fixed-beta pressure effect."""
+    if z_two is None or z_single is None:
+        return None
+    max_change = max(abs(a - b) for a, b in zip(z_two, z_single))
+    offsets = {}
+    for name, z in (("two_phase", z_two), ("single", z_single)):
+        solved = solve_fixed_beta(eos, z, ln_k, switch_p, beta)
+        offsets[name] = None if solved is None else float(solved[1] - switch_p)
+    return {
+        "max_component_change_two_to_single": float(max_change),
+        "max_component_change_switch_to_two": float(
+            max(abs(a - b) for a, b in zip(z_switch, z_two))
+        ),
+        "max_component_change_switch_to_single": float(
+            max(abs(a - b) for a, b in zip(z_switch, z_single))
+        ),
+        "fixed_beta_p_offset_pa": offsets,
+    }
+
+
 def main(in_path, out_path):
     data = json.load(open(in_path))
     fluid = data["fluid"]
@@ -259,6 +294,15 @@ def main(in_path, out_path):
         two_phase = point_with_suffix(data["points"], prefix, "iterate 19 (two-phase side)")
         if two_phase is None:
             two_phase = point_with_suffix(data["points"], prefix, "iterate 20 (two-phase side)")
+        sensitivity = composition_sensitivity(
+            eos,
+            z,
+            ln_k,
+            switch_p,
+            beta,
+            normalized_z(two_phase),
+            normalized_z(single),
+        )
         last = rows[-1] if rows else None
         record = {
             "case": prefix,
@@ -272,6 +316,7 @@ def main(in_path, out_path):
             "two_phase_p_pa": two_phase["p_pa"] if two_phase else None,
             "single_p_pa": single["p_pa"] if single else None,
             "single_standard_label": single["standard_label"] if single else None,
+            "composition_sensitivity": sensitivity,
             "direction": int(direction),
             "start": branch_state(eos, z, molar_mass, ln_k, switch_p, beta),
             "rows": rows,
@@ -292,6 +337,13 @@ def main(in_path, out_path):
             f"cutoff {cutoff_text}; collapse {endpoint}"
         )
 
+    incomplete = [
+        f"{record['case']} cell {record['cell']}"
+        for record in cases
+        if not record.get("reached_endpoint", False)
+    ]
+    complete = not incomplete and len(cases) == 8
+
     def plain(value):
         if isinstance(value, mp.mpf):
             return float(value)
@@ -307,13 +359,19 @@ def main(in_path, out_path):
                 "schema": "ressim-spe5-m1-split-mp/1",
                 "source": os.path.basename(in_path),
                 "digits": mp.mp.dps,
+                "complete": complete,
+                "incomplete_cases": incomplete,
                 "fluid": fluid,
                 "cases": plain(cases),
             },
             handle,
             indent=1,
         )
+    if not complete:
+        print(f"incomplete continuation: {', '.join(incomplete) or 'not all 8 cases'}")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    sys.exit(main(sys.argv[1], sys.argv[2]))
