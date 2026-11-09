@@ -38,9 +38,25 @@ A first run on the uncommitted tree gave byte-identical output.
 - **Gibbs energy and stability.** At every evaluated flipping-cell state: g_split − g_feed in Float64
   and in 50 digits, on the cubic root actually used, and the stability test's trial sums.
 
-**1. A finite jump, at identical inputs.** Across the switch, the standard residual's jump stays
-constant from about 1e-4 of the path down to adjacent floats. Cells not touching the flipping cells
-change by less than 1e-12 at every distance, and by 0 at the smallest. At ε = 1e-15:
+**1. A finite jump between differently labelled inputs.** Two measurements, kept separate:
+- **Fixed inputs (branch comparison).** At the same primaries, BHPs and previous inventory, forcing
+  only the flipping cells' branch changes the residual by the amounts in the last three columns
+  below.
+- **Varying inputs (switch sweep).** Bisection ends on adjacent floating-point inputs whose
+  standard labels differ, and the scaled gap there is the "Scaled jump" column. Away from the
+  bracket the label decision chatters, so the sweep's other pairs do not show a constant gap:
+  - Pairs whose two ends carry different labels show a gap of the same size per switching cell.
+  - Pairs whose two ends carry the same label show a much smaller one, for example 3.8e-8 at
+    ε = 1e-10 in `cap5` (both TwoPhase) and 2.6e-10 at ε = 1e-4 in `memory`.
+  - So the measured claim is a finite gap between differently labelled adjacent inputs, with
+    same-label samples in between. It is not a gap constant over the interval, nor a one-sided
+    limit.
+
+  Cells not touching the flipping cells change by less than 1e-12 at every distance, and by 0 at
+  the smallest.
+
+At the bracket (ε = 1e-15, adjacent inputs, different labels), with the fixed-input comparison at
+its two-phase end:
 
 | Seed (`dt`, d) | Switching cell | Scaled jump | Δn per component (rel.) | dt·Δoutflow, C1 (mol) | Δn, C1 (mol) |
 |---|---|---|---|---|---|
@@ -119,8 +135,16 @@ evaluation, because it changes the standard flash and so answers everywhere):**
     (K → 1 at finite β), the trivial-solution tolerance (Σ ln²K < 1e-5) cuts the split again at
     finite β, and the immiscible curves still jump there (section 5). Measuring that, as M1, comes
     before N1.
-- **N2, single-phase identity at the dew point.** Identify the single phase by continuity with the
-  collapsing split (β → 1 means vapour) rather than by Li's T_pc rule there.
+- **N2, single-phase identity at the dew point.** Identify the single phase consistently with the
+  collapsing split (β → 1 means vapour) rather than by Li's T_pc rule there. The rule must be
+  deterministic and reproducible from cold inputs and checkpoints, so it cannot depend on the
+  previous iterate. A single cubic root by itself does not identify liquid versus vapour (every M0
+  point has one real root).
+- **M1 comes first (PR #129 review).** Continue the physical split along the relevant input paths
+  in higher precision through its actual collapse and through the trivial-solution cutoff,
+  tracking β, Σ ln²K, g_split − g_feed, density and inventory, and component flux. That
+  establishes whether N1 removes the jump or only moves it. Lowering a threshold alone is not a
+  demonstrated crossing fix, and neither N1 nor N2 is approved by M0.
 - **Acceptance stays the original equations:** the standard-state residual, wells included, at
   `1e-8`. N1 and N2 change the standard flash itself, so no held-label flux needs accepting. This is
   option 1 of the P1 review finding.
