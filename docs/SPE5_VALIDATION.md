@@ -1222,8 +1222,18 @@ Order of work, as agreed in the #116 review:
      comes from Li's rule labelling the vapour-side single phase liquid.
 
    Next candidates (each needing its own design and evaluation): a split-based phase decision
-   inside the margin band (N1, after measuring where the split really collapses, M1), and
-   dew-side single-phase identity (N2). Acceptance stays the original equations at `1e-8`.
+   inside the margin band (N1), and dew-side single-phase identity (N2). Acceptance stays the
+   original equations at `1e-8`.
+
+   **M1 result (diagnostic).** The split was followed in 50 digits to its collapse and through the
+   trivial cutoff; see [SPE5_SPLIT_COLLAPSE_M1_2026-11-09.md](SPE5_SPLIT_COLLAPSE_M1_2026-11-09.md).
+   Cells 25/31 and 16 collapse at the dew point (`beta -> 1`); 25/31 keep a finite contrast
+   (`sum ln^2 K = 3.1e-5`), so the cutoff is not reached, and 16 keeps 0.791. Cells 33/39 collapse
+   at the bubble side, but the trivial cutoff fires first at `beta = 0.3929`, 46.8 Pa past the
+   switch, while the split is still a real two-phase state (`S_v = 0.393`). N1 alone lowers the
+   scaled residual jump about 3-10x but leaves `1e-6` to `1e-5` and 6.5-77% component-flux changes.
+   The dew-side remainder is N2's identity question; the memory cells need a separate cutoff
+   decision. N1 as scoped is not a crossing fix and is not approved.
 
 All thresholds above are **experimental candidates**, not validated values. They come from two
 traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of
