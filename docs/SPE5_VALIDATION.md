@@ -1256,6 +1256,18 @@ Order of work, as agreed in the #116 review:
    the phase-label discontinuity. Details in
    [SPE5_SPLIT_PHASE_DECISION_N1_2026-11-09.md](SPE5_SPLIT_PHASE_DECISION_N1_2026-11-09.md).
 
+   **Next-blocker diagnosis.** The captured failing call alternates between a genuine two-phase
+   state at `227.5516 bar` (`beta 0.5176`, `sum ln^2 K 0.236`) and a single-liquid state at
+   `228.1566 bar`, above M1's `228.1248 bar` bubble collapse. Both branches are locally correct;
+   the Taylor test is quadratic within the branch and breaks only at the full `0.615 bar` step. The
+   L state has no physical split (the opposite-branch seed returns only a trivial `3.8e-13` split),
+   and the cutoff is not involved (`0.236`/`5.8e-5` > `1e-5`). The first call converges at half dt
+   (`0.022011 d`), the second only at `6.87e-4 d`; fixed damping 0.5 stalls at `6.50e-6`, and budget
+   16 advances seven steps before another boundary call. The next change should be a
+   phase-boundary-aware timestep cutback/two-cycle detector, not N2, seed recovery or cutoff
+   lowering for this call. Details in
+   [SPE5_N1_NEXT_BLOCKER_DIAGNOSIS_2026-11-09.md](SPE5_N1_NEXT_BLOCKER_DIAGNOSIS_2026-11-09.md).
+
 All thresholds above are **experimental candidates**, not validated values. They come from two
 traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of
 each report.

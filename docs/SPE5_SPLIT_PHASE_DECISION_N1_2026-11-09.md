@@ -142,9 +142,15 @@ cross-flash fixture; the N1 tests are ignored diagnostics.
 
 ## Next
 
-1. **N2:** deterministic single-phase identity at the dew point.
-2. **A validated equilibrium/thermodynamic cutoff rule** for the memory cells, not a lowered
+The captured next failing call is diagnosed separately in
+[SPE5_N1_NEXT_BLOCKER_DIAGNOSIS_2026-11-09.md](SPE5_N1_NEXT_BLOCKER_DIAGNOSIS_2026-11-09.md):
+its two iterates sit on opposite sides of a genuine bubble boundary, both branches are locally
+correct, the L state has no physical split, and the cutoff is not involved. The next change should
+be a phase-boundary-aware timestep cutback/two-cycle detector.
+
+1. **Phase-boundary-aware timestep control:** detect a persistent phase-label two-cycle and take an
+   extra dt cutback instead of exhausting the retry ladder.
+2. **N2:** deterministic single-phase identity at the dew point, for the other crossing cells.
+3. **A validated equilibrium/thermodynamic cutoff rule** for the memory cells, not a lowered
    `1e-5`.
-3. **A warm-start/continuation design** for the stateless-flash seed loss, if N1 is to act beyond
-   the first label switch.
 4. Re-run the from-scratch month-240 replay and the #98 probe only after a combination is approved.
