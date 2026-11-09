@@ -48,7 +48,7 @@
 
 use crate::ad::Ad;
 use crate::fluid::derivatives::{DerivativeError, FlashDerivatives, flash_derivatives};
-use crate::fluid::flash::{FlashError, FlashState, PhaseState, flash};
+use crate::fluid::flash::{FlashError, FlashState, PhaseState, flash, flash_for_cell};
 use crate::fluid::specification::FluidSpecification;
 use crate::fluid::transport::{TransportError, lbc_viscosity, surface_separation};
 use crate::fluid::units::{PA_S_PER_CP, bar_to_pa, dpa_to_dbar};
@@ -637,8 +637,15 @@ fn source_ad<const N: usize, const M: usize>(
                 })?;
 
         let z_cell = cell.overall_composition();
-        let cell_state = flash(spec, bar_to_pa(cell.pressure_bar), t, &z_cell, None)
-            .map_err(WellError::CellFlash)?;
+        let cell_state = flash_for_cell(
+            completion.cell,
+            spec,
+            bar_to_pa(cell.pressure_bar),
+            t,
+            &z_cell,
+            None,
+        )
+        .map_err(WellError::CellFlash)?;
         let cell_derivatives =
             flash_derivatives(spec, bar_to_pa(cell.pressure_bar), t, &z_cell, &cell_state)
                 .map_err(WellError::CellDerivative)?;
@@ -685,8 +692,15 @@ fn source_ad<const N: usize, const M: usize>(
     } else if dp.value() > 0.0 {
         // --- Producer: the cell's own fluid.
         let z = cell.overall_composition();
-        let state =
-            flash(spec, bar_to_pa(cell.pressure_bar), t, &z, None).map_err(WellError::CellFlash)?;
+        let state = flash_for_cell(
+            completion.cell,
+            spec,
+            bar_to_pa(cell.pressure_bar),
+            t,
+            &z,
+            None,
+        )
+        .map_err(WellError::CellFlash)?;
         let derivatives = flash_derivatives(spec, bar_to_pa(cell.pressure_bar), t, &z, &state)
             .map_err(WellError::CellDerivative)?;
 

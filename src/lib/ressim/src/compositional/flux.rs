@@ -71,7 +71,7 @@
 
 use crate::ad::{Ad, Scalar};
 use crate::fluid::derivatives::{DerivativeError, FlashDerivatives, flash_derivatives};
-use crate::fluid::flash::{FlashError, FlashState, PhaseState, flash};
+use crate::fluid::flash::{FlashError, FlashState, PhaseState, flash_for_cell};
 use crate::fluid::specification::FluidSpecification;
 use crate::fluid::transport::{TransportError, lbc_viscosity};
 use crate::fluid::units::{bar_to_pa, dpa_to_dbar};
@@ -215,10 +215,11 @@ fn evaluate_cell(
     let z = cell.overall_composition();
     let p_pa = bar_to_pa(cell.pressure_bar);
     let t = spec.reservoir_temperature_k();
-    let state = flash(spec, p_pa, t, &z, None).map_err(|source| FluxError::Flash {
-        cell: cell_index,
-        source,
-    })?;
+    let state =
+        flash_for_cell(cell_index, spec, p_pa, t, &z, None).map_err(|source| FluxError::Flash {
+            cell: cell_index,
+            source,
+        })?;
     let derivatives =
         flash_derivatives(spec, p_pa, t, &z, &state).map_err(|source| FluxError::Derivative {
             cell: cell_index,

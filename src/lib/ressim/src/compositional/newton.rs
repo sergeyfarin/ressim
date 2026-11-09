@@ -482,6 +482,8 @@ pub(crate) fn solve_newton_observed(
         accepted_well_rates: Vec::new(),
         accepted_well_bhp: Vec::new(),
     };
+    #[cfg(test)]
+    crate::fluid::flash::reset_carried_k_for_test();
     let mut current = state.clone();
     let mut current_bhp = starting_well_bhp(problem, &current, options.well_bhp_start);
 

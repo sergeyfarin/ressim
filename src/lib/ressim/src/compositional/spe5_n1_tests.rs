@@ -778,3 +778,125 @@ fn comp_spe5_n1_next_call_switch_probe() {
     }
     println!("{}", serde_json::to_string_pretty(&out).expect("serialize"));
 }
+
+#[test]
+#[ignore = "#116 carried-K seed recovery on the captured failing call; seconds"]
+fn comp_spe5_seed_recovery_resolves_the_switch() {
+    use super::spe5_failure_b_tests::run;
+    use crate::fluid::flash::{
+        with_difference_refinement_for_test, with_seed_recovery_for_test,
+        with_split_phase_decision_for_test,
+    };
+    let case = restore("stall_n1_6612_836.json");
+    let dt = 0.04402126141911289;
+    let (control, recovery) = case.with_diagnostic_problem(dt, |problem, start, options| {
+        let control = with_difference_refinement_for_test(true, || {
+            with_split_phase_decision_for_test(true, || {
+                with_seed_recovery_for_test(false, || run(problem, start, options))
+            })
+        });
+        let recovery = with_difference_refinement_for_test(true, || {
+            with_split_phase_decision_for_test(true, || {
+                with_seed_recovery_for_test(true, || run(problem, start, options))
+            })
+        });
+        (control.residual_history, recovery.residual_history)
+    });
+    for (label, history) in [("N1 + refinement", &control), ("with carried K", &recovery)] {
+        let best = history.iter().copied().fold(f64::INFINITY, f64::min);
+        println!(
+            "{label}: {} iterations, best {best:.6e}, last {:.6e}",
+            history.len(),
+            history.last().copied().unwrap_or(f64::NAN)
+        );
+        assert_eq!(history.len(), 20, "{label} must exhaust the Newton cap");
+        assert!(best > 1e-8, "{label} must still stall, got {best:e}");
+    }
+    // The full step jumps from ~227.55 to ~228.16 bar; the switch at ~228.126 is never evaluated,
+    // so carrying K from the previous iterate alone cannot recover it. Both runs stall.
+    assert!(recovery.last().copied().unwrap_or(f64::NAN) > 1e-8);
+}
+
+#[test]
+#[ignore = "#116 carried-K recovery at the switch inputs; seconds"]
+fn comp_spe5_seed_recovery_carries_the_switch() {
+    use crate::fluid::flash::{
+        flash_for_cell, with_difference_refinement_for_test, with_seed_recovery_for_test,
+        with_split_phase_decision_for_test,
+    };
+    use crate::fluid::units::bar_to_pa;
+    let case = restore("stall_n1_6612_836.json");
+    let spec = case.spec_for_test();
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../opm/compositional/spe5/n1_switch_6612_cell33.json"),
+        )
+        .expect("read switch fixture"),
+    )
+    .expect("parse switch fixture");
+    let point = &fixture["points"][0];
+    let z: Vec<f64> = point["z"]
+        .as_array()
+        .expect("z")
+        .iter()
+        .filter_map(Value::as_f64)
+        .collect();
+    let upper_pa = point["p_pa"].as_f64().expect("p");
+    let lower_pa = f64::from_bits(upper_pa.to_bits() - 1);
+    let temperature = point["temperature_k"].as_f64().expect("T");
+    let run = |recovery: bool| {
+        with_difference_refinement_for_test(true, || {
+            with_split_phase_decision_for_test(true, || {
+                with_seed_recovery_for_test(recovery, || {
+                    let lower = flash_for_cell(0, spec, lower_pa, temperature, &z, None)
+                        .expect("lower flash");
+                    let upper = flash_for_cell(0, spec, upper_pa, temperature, &z, None)
+                        .expect("upper flash");
+                    (lower, upper)
+                })
+            })
+        })
+    };
+    let (control_lower, control_upper) = run(false);
+    let (recovery_lower, recovery_upper) = run(true);
+    println!(
+        "control: lower {:?} beta {:.6}, upper {:?} beta {:.6}",
+        control_lower.phase_state,
+        control_lower.beta,
+        control_upper.phase_state,
+        control_upper.beta
+    );
+    println!(
+        "recovery: lower {:?} beta {:.6}, upper {:?} beta {:.6}",
+        recovery_lower.phase_state,
+        recovery_lower.beta,
+        recovery_upper.phase_state,
+        recovery_upper.beta
+    );
+    assert_eq!(
+        recovery_lower.phase_state,
+        crate::fluid::flash::PhaseState::TwoPhase
+    );
+    assert_eq!(
+        recovery_upper.phase_state,
+        crate::fluid::flash::PhaseState::TwoPhase
+    );
+    assert_eq!(
+        control_upper.phase_state,
+        crate::fluid::flash::PhaseState::SingleLiquid
+    );
+    let sum: f64 = recovery_upper
+        .k
+        .iter()
+        .map(|value| {
+            let ln = crate::math::ln(*value);
+            ln * ln
+        })
+        .sum();
+    assert!(
+        sum > 1e-5,
+        "carried split must pass the trivial cutoff, got {sum:e}"
+    );
+    let _ = bar_to_pa(0.0);
+}

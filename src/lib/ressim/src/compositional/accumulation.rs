@@ -49,7 +49,7 @@
 
 use crate::ad::Ad;
 use crate::fluid::derivatives::{DerivativeError, FlashDerivatives, flash_derivatives};
-use crate::fluid::flash::{FlashError, FlashState, PhaseState, flash};
+use crate::fluid::flash::{FlashError, FlashState, PhaseState, flash_for_cell};
 use crate::fluid::specification::FluidSpecification;
 use crate::fluid::units::{bar_to_pa, dpa_to_dbar};
 
@@ -131,7 +131,8 @@ pub fn cell_inventory_with_water(
     cell: &CompositionalCellState,
 ) -> Result<(CellInventory, FlashState), AccumulationError> {
     let z = cell.overall_composition();
-    let state = flash(
+    let state = flash_for_cell(
+        cell_index,
         spec,
         bar_to_pa(cell.pressure_bar),
         spec.reservoir_temperature_k(),

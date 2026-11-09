@@ -191,6 +191,86 @@ pub(crate) fn reset_split_phase_decision_acceptances_for_test() {
     SPLIT_PHASE_DECISION_ACCEPTANCES.with(|c| c.set(0));
 }
 
+/// Whether a cell's previous flash `K` may be carried into the next flash at the current inputs as
+/// a direct two-phase seed (test-only seed-recovery experiment, #116). Off in every non-test build.
+#[cfg(not(test))]
+#[inline]
+fn seed_recovery_enabled() -> bool {
+    false
+}
+
+#[cfg(test)]
+thread_local! {
+    static SEED_RECOVERY: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+    static CARRIED_K: core::cell::RefCell<Vec<Option<Vec<f64>>>> =
+        const { core::cell::RefCell::new(Vec::new()) };
+}
+
+#[cfg(test)]
+fn seed_recovery_enabled() -> bool {
+    SEED_RECOVERY.with(|cell| cell.get())
+}
+
+/// Test-only (#116): run `f` with the carried-`K` seed recovery switched `on` or off on this
+/// thread.
+#[cfg(test)]
+pub(crate) fn with_seed_recovery_for_test<T>(on: bool, f: impl FnOnce() -> T) -> T {
+    let previous = SEED_RECOVERY.with(|cell| cell.replace(on));
+    let out = f();
+    SEED_RECOVERY.with(|cell| cell.set(previous));
+    out
+}
+
+/// Test-only (#116): forget every carried `K`. Called at the start of a Newton solve, so a rejected
+/// attempt and a restart begin with the standard cold path rather than a stale hint.
+#[cfg(test)]
+pub(crate) fn reset_carried_k_for_test() {
+    CARRIED_K.with(|cache| cache.borrow_mut().clear());
+}
+
+#[cfg(test)]
+fn carried_k(cell: usize) -> Option<Vec<f64>> {
+    CARRIED_K.with(|cache| cache.borrow().get(cell).cloned().flatten())
+}
+
+#[cfg(test)]
+fn remember_k(cell: usize, state: &FlashState) {
+    CARRIED_K.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.len() <= cell {
+            cache.resize(cell + 1, None);
+        }
+        cache[cell] = Some(state.k.clone());
+    });
+}
+
+/// Flash a cell and, in the test-only seed-recovery experiment, carry its previous `K` as a direct
+/// split seed. The hint is re-solved at the current `(p, T, z)` and still passes the ordinary
+/// physicality, equilibrium and Gibbs checks; it is not passed through the stability trial gate.
+pub(crate) fn flash_for_cell(
+    cell: usize,
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    k_seed: Option<&[f64]>,
+) -> Result<FlashState, FlashError> {
+    #[cfg(test)]
+    if seed_recovery_enabled() {
+        let hint = carried_k(cell);
+        let state = flash(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            hint.as_deref().or(k_seed),
+        )?;
+        remember_k(cell, &state);
+        return Ok(state);
+    }
+    flash(spec, pressure_pa, temperature_k, z, k_seed)
+}
+
 /// Bracketing tolerance for the Rachford–Rice solve.
 const RACHFORD_RICE_TOLERANCE: f64 = 1e-14;
 
@@ -1348,7 +1428,10 @@ fn flash_unrefined(
                 pressure_pa,
                 temperature_k,
                 z,
-                stability.margin_seed.as_deref(),
+                stability
+                    .margin_seed
+                    .as_deref()
+                    .or(seed_recovery_enabled().then_some(k_seed).flatten()),
             ) {
                 return Ok(state);
             }
