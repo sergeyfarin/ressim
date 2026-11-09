@@ -1,0 +1,135 @@
+{
+ "schema": "ressim-spe5-m0-points/1",
+ "fluid": {
+  "components": [
+   {
+    "acentric_factor": 0.013,
+    "critical_pressure_pa": 4604318.92494,
+    "critical_temperature_k": 190.55555555555554,
+    "id": "C1",
+    "molar_mass_kg_per_mol": 0.01604
+   },
+   {
+    "acentric_factor": 0.1524,
+    "critical_pressure_pa": 4249238.92399,
+    "critical_temperature_k": 369.8333333333333,
+    "id": "C3",
+    "molar_mass_kg_per_mol": 0.0441
+   },
+   {
+    "acentric_factor": 0.3007,
+    "critical_pressure_pa": 3012319.4643699997,
+    "critical_temperature_k": 507.44444444444446,
+    "id": "C6",
+    "molar_mass_kg_per_mol": 0.08618
+   },
+   {
+    "acentric_factor": 0.4885,
+    "critical_pressure_pa": 2096006.2192000002,
+    "critical_temperature_k": 617.6666666666666,
+    "id": "C10",
+    "molar_mass_kg_per_mol": 0.14229
+   },
+   {
+    "acentric_factor": 0.65,
+    "critical_pressure_pa": 1378951.46,
+    "critical_temperature_k": 705.5555555555555,
+    "id": "C15",
+    "molar_mass_kg_per_mol": 0.206
+   },
+   {
+    "acentric_factor": 0.85,
+    "critical_pressure_pa": 1116950.6826,
+    "critical_temperature_k": 766.6666666666666,
+    "id": "C20",
+    "molar_mass_kg_per_mol": 0.282
+   }
+  ],
+  "corrected_above_acentric": 0.49,
+  "eos": "PengRobinsonCorrected",
+  "gas_constant_j_per_mol_k": 8.31446261815324,
+  "interaction": [
+   [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.05,
+    0.05
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.005,
+    0.005
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.05,
+    0.005,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.05,
+    0.005,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  ],
+  "omega_a": 0.457235529,
+  "omega_b": 0.077796074,
+  "volume_shifts": []
+ },
+ "points": [
+  {
+   "cell": 33,
+   "tag": "n1 switch c33 upper",
+   "p_pa": 22812668.313699212,
+   "temperature_k": 344.2611111111112,
+   "z": [
+    0.6969393506806794,
+    0.21517841605695182,
+    0.050697027822156855,
+    0.015952493444535858,
+    0.015622969993362998,
+    0.005609742002313012
+   ],
+   "standard_label": "SingleLiquid",
+   "li_liquid": true,
+   "g_split_minus_li_feed": null,
+   "split_seed": {
+    "beta": 0.4601674866408881,
+    "ln_k": [
+     0.0002605260902914126,
+     -0.00028517780833328704,
+     -0.0008752742625663362,
+     -0.0015354380052736182,
+     -0.0022298057986694223,
+     -0.002943700496871777
+    ]
+   }
+  }
+ ]
+}

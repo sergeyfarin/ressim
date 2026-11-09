@@ -351,12 +351,14 @@ fn comp_spe5_n1_next_call_phase_diagnostics() {
 
     let case = restore("stall_n1_6612_836.json");
     let dt = 0.04402126141911289;
-    let out = case.with_diagnostic_problem(dt, |problem, start, options| {
-        let attempt = with_difference_refinement_for_test(true, || {
-            with_split_phase_decision_for_test(true, || run(problem, start, options))
-        });
-        let iterates = &attempt.iterates;
-        let step = taylor(problem, &attempt, iterates.len() - 2);
+    let out = with_difference_refinement_for_test(true, || {
+        with_split_phase_decision_for_test(true, || {
+            case.with_diagnostic_problem(dt, |problem, start, options| {
+                // The previous inventory is built under the same flags because the whole
+                // diagnostic, including this closure, runs inside them.
+                let attempt = run(problem, start, options);
+                let iterates = &attempt.iterates;
+                let step = taylor(problem, &attempt, iterates.len() - 2);
         println!(
             "step from iterate {} to {}: {}",
             iterates.len() - 1,
@@ -479,6 +481,8 @@ fn comp_spe5_n1_next_call_phase_diagnostics() {
         }
         serde_json::json!({"dt_days": dt, "trial_sum_tolerance": TRIAL_SUM_TOLERANCE_FOR_TEST,
             "attempt_iterations": attempt.residual_history, "points": records})
+            })
+        })
     });
     if let Ok(dir) = std::env::var("SPE5_TRACE_OUT") {
         let path = PathBuf::from(dir).join("n1_next_call_diagnostics.json");
@@ -501,29 +505,25 @@ fn comp_spe5_n1_next_call_step_damping_probe() {
     };
     let case = restore("stall_n1_6612_836.json");
     let dt = 0.04402126141911289;
-    let histories = case.with_diagnostic_problem(dt, |problem, start, options| {
-        let mut out = Vec::new();
-        for factor in [1.0, 0.5, 0.25, 0.1, 0.05, 0.01] {
-            let history = with_step_damping_for_test(factor, || {
-                with_difference_refinement_for_test(true, || {
-                    with_split_phase_decision_for_test(true, || {
+    let histories = with_difference_refinement_for_test(true, || {
+        with_split_phase_decision_for_test(true, || {
+            case.with_diagnostic_problem(dt, |problem, start, options| {
+                let mut out = Vec::new();
+                for factor in [1.0, 0.5, 0.25, 0.1, 0.05, 0.01] {
+                    let history = with_step_damping_for_test(factor, || {
                         run(problem, start, options).residual_history
-                    })
-                })
-            });
-            out.push((format!("{factor}"), history));
-        }
-        let mut longer = options;
-        longer.max_iterations = 40;
-        let history = with_step_damping_for_test(0.5, || {
-            with_difference_refinement_for_test(true, || {
-                with_split_phase_decision_for_test(true, || {
+                    });
+                    out.push((format!("{factor}"), history));
+                }
+                let mut longer = options;
+                longer.max_iterations = 40;
+                let history = with_step_damping_for_test(0.5, || {
                     run(problem, start, longer).residual_history
-                })
+                });
+                out.push(("0.5 with max_iterations 40".to_string(), history));
+                out
             })
-        });
-        out.push(("0.5 with max_iterations 40".to_string(), history));
-        out
+        })
     });
     for (label, history) in histories {
         let best = history.iter().copied().fold(f64::INFINITY, f64::min);
@@ -533,4 +533,248 @@ fn comp_spe5_n1_next_call_step_damping_probe() {
             history.len()
         );
     }
+}
+
+#[test]
+#[ignore = "#116 next failing call: actual-path switch probe; seconds"]
+fn comp_spe5_n1_next_call_switch_probe() {
+    use super::assembly::AssemblyResult;
+    use super::newton::assemble_for_test;
+    use super::spe5_failure_b_tests::run;
+    use super::state::CompositionalState;
+    use crate::fluid::flash::{
+        PhaseState, feed_gibbs_on_branches_for_test, flash, seeded_two_phase_for_test,
+        solve_rachford_rice_extended, two_phase_gibbs_minus_feed_for_test,
+        with_difference_refinement_for_test, with_forced_states_for_test,
+        with_split_phase_decision_for_test,
+    };
+    use crate::fluid::stability::test_stability_with_margin_seed;
+    use crate::fluid::units::bar_to_pa;
+
+    fn along(a: &CompositionalState, b: &CompositionalState, s: f64) -> CompositionalState {
+        if s >= 1.0 {
+            return b.clone();
+        }
+        let mut trial = a.begin_trial();
+        for c in 0..a.cells().len() {
+            let (x, y) = (a.cell(c), b.cell(c));
+            let target = trial.cell_mut(c);
+            target.pressure_bar = x.pressure_bar + s * (y.pressure_bar - x.pressure_bar);
+            target.water_saturation =
+                x.water_saturation + s * (y.water_saturation - x.water_saturation);
+            let z: Vec<f64> = x
+                .independent_z()
+                .iter()
+                .zip(y.independent_z())
+                .map(|(u, v)| u + s * (v - u))
+                .collect();
+            target.independent_z_mut().copy_from_slice(&z);
+        }
+        trial.commit().expect("interpolated state")
+    }
+
+    fn label(
+        state: &CompositionalState,
+        cell: usize,
+        spec: &crate::fluid::specification::FluidSpecification,
+    ) -> PhaseState {
+        let c = state.cell(cell);
+        flash(
+            spec,
+            bar_to_pa(c.pressure_bar),
+            spec.reservoir_temperature_k(),
+            &c.overall_composition(),
+            None,
+        )
+        .expect("flash")
+        .phase_state
+    }
+
+    fn scaled_cell_jump(a: &AssemblyResult, b: &AssemblyResult, cell: usize) -> f64 {
+        let block = a.residual.len() / a.inventories.len();
+        let d: Vec<f64> = (0..block)
+            .map(|row| a.residual[cell * block + row] - b.residual[cell * block + row])
+            .collect();
+        a.scaling[cell]
+            .scale_residual(&d)
+            .iter()
+            .fold(0.0f64, |m, value| m.max(value.abs()))
+    }
+
+    let case = restore("stall_n1_6612_836.json");
+    let dt = 0.04402126141911289;
+    let out = with_difference_refinement_for_test(true, || {
+        with_split_phase_decision_for_test(true, || {
+            case.with_diagnostic_problem(dt, |problem, start, options| {
+                // The previous inventory is constructed under the same flags because the whole
+                // closure runs inside them.
+                let attempt = run(problem, start, options);
+                let iterates = &attempt.iterates;
+                let (a, bhp_a) = (&iterates[iterates.len() - 2].0, &iterates[iterates.len() - 2].1);
+                let (b, bhp_b) = (&iterates[iterates.len() - 1].0, &iterates[iterates.len() - 1].1);
+                let mut records = Vec::new();
+                for cell in [33usize, 39] {
+                    let la = label(a, cell, problem.spec);
+                    let lb = label(b, cell, problem.spec);
+                    assert_ne!(la, lb, "cell {cell} does not switch in the last step");
+                    let (mut lo, mut hi) = (0.0f64, 1.0f64);
+                    for _ in 0..200 {
+                        let mid = 0.5 * (lo + hi);
+                        if mid <= lo || mid >= hi {
+                            break;
+                        }
+                        if label(&along(a, b, mid), cell, problem.spec) == la {
+                            lo = mid;
+                        } else {
+                            hi = mid;
+                        }
+                    }
+                    let x0 = along(a, b, lo);
+                    let x1 = along(a, b, hi);
+                    let bhp = if lo >= 1.0 { bhp_b } else { bhp_a };
+                    let mut points = Vec::new();
+                    let mut split_x0 = None;
+                    for (side, state) in [("lower", &x0), ("upper", &x1)] {
+                        let c = state.cell(cell);
+                        let p_pa = bar_to_pa(c.pressure_bar);
+                        let z = c.overall_composition();
+                        let standard = with_split_phase_decision_for_test(false, || {
+                            flash(problem.spec, p_pa, problem.spec.reservoir_temperature_k(), &z, None)
+                                .expect("standard flash")
+                        });
+                        let n1 = flash(problem.spec, p_pa, problem.spec.reservoir_temperature_k(), &z, None)
+                            .expect("N1 flash");
+                        if side == "lower" && n1.phase_state == PhaseState::TwoPhase {
+                            split_x0 = Some(n1.clone());
+                        }
+                        let stability = test_stability_with_margin_seed(
+                            problem.spec,
+                            p_pa,
+                            problem.spec.reservoir_temperature_k(),
+                            &z,
+                            None,
+                        )
+                        .expect("stability");
+                        let trials = crate::fluid::stability::trial_sums_for_test(
+                            problem.spec,
+                            p_pa,
+                            problem.spec.reservoir_temperature_k(),
+                            &z,
+                            None,
+                        );
+                        let trial_records: Vec<Value> = trials
+                            .into_iter()
+                            .map(|(seed, result)| match result {
+                                Ok((vapour, vapour_trivial, liquid, liquid_trivial)) => {
+                                    serde_json::json!({"seed": seed,
+                                        "vapour_minus_one": vapour - 1.0,
+                                        "vapour_trivial": vapour_trivial,
+                                        "liquid_minus_one": liquid - 1.0,
+                                        "liquid_trivial": liquid_trivial})
+                                }
+                                Err(error) => serde_json::json!({"seed": seed, "error": error}),
+                            })
+                            .collect();
+                        points.push(serde_json::json!({"side": side, "s": if side == "lower" { lo } else { hi },
+                            "p_bar": c.pressure_bar, "z": z,
+                            "standard_phase": format!("{:?}", standard.phase_state),
+                            "n1_phase": format!("{:?}", n1.phase_state),
+                            "n1_beta": n1.beta,
+                            "margin_seed": stability.margin_seed.is_some(),
+                            "trials": trial_records}));
+                    }
+                    let x1_cell = x1.cell(cell);
+                    let z1 = x1_cell.overall_composition();
+                    let p1 = bar_to_pa(x1_cell.pressure_bar);
+                    let (candidate, candidate_beta, candidate_sum, candidate_dg) =
+                        if let Some(split) = split_x0.as_ref() {
+                            let ln_k: Vec<f64> = split.k.iter().map(|value| crate::math::ln(*value)).collect();
+                            let beta = solve_rachford_rice_extended(&split.k, &z1).ok();
+                            beta.map_or((false, f64::NAN, f64::NAN, None), |beta| {
+                                let seeded = seeded_two_phase_for_test(
+                                    problem.spec,
+                                    p1,
+                                    problem.spec.reservoir_temperature_k(),
+                                    &z1,
+                                    &ln_k,
+                                    beta,
+                                );
+                                let dg = seeded.state.as_ref().and_then(|state| {
+                                    two_phase_gibbs_minus_feed_for_test(
+                                        problem.spec,
+                                        p1,
+                                        problem.spec.reservoir_temperature_k(),
+                                        &z1,
+                                        state,
+                                    )
+                                });
+                                (
+                                    seeded.state.is_some() && seeded.residual_norm < 1e-12,
+                                    seeded.beta,
+                                    seeded.sum_ln_k_sq,
+                                    dg,
+                                )
+                            })
+                        } else {
+                            (false, f64::NAN, f64::NAN, None)
+                        };
+                    let standard = assemble_for_test(problem, &x1, bhp).expect("standard assembly");
+                    let forced = split_x0.clone().map(|split| {
+                        vec![(
+                            p1,
+                            problem.spec.reservoir_temperature_k(),
+                            z1.clone(),
+                            split,
+                        )]
+                    });
+                    let jump = forced.as_ref().map(|forced| {
+                        let alt = with_forced_states_for_test(forced, || {
+                            assemble_for_test(problem, &x1, bhp).expect("forced assembly")
+                        });
+                        scaled_cell_jump(&alt, &standard, cell)
+                    });
+                    let g_feed = feed_gibbs_on_branches_for_test(
+                        problem.spec,
+                        p1,
+                        problem.spec.reservoir_temperature_k(),
+                        &z1,
+                    );
+                    records.push(serde_json::json!({"cell": cell, "bracket": [lo, hi],
+                        "points": points, "carried_seed": candidate,
+                        "carried_beta": candidate_beta, "carried_sum_ln_k_sq": candidate_sum,
+                        "carried_gibbs_minus_feed": candidate_dg, "feed_gibbs": g_feed,
+                        "scaled_residual_jump": jump}));
+                }
+                serde_json::json!({"dt_days": dt, "residual_history": attempt.residual_history,
+                    "switches": records})
+            })
+        })
+    });
+    if let Ok(dir) = std::env::var("SPE5_TRACE_OUT") {
+        let path = PathBuf::from(dir).join("n1_next_call_switch.json");
+        std::fs::write(
+            &path,
+            serde_json::to_string_pretty(&out).expect("serialize"),
+        )
+        .expect("write");
+        println!("written {}", path.display());
+    }
+    let switches = out["switches"].as_array().expect("switches");
+    assert_eq!(switches.len(), 2);
+    for switch in switches {
+        let points = switch["points"].as_array().expect("points");
+        let lower = &points[0];
+        let upper = &points[1];
+        assert_eq!(lower["margin_seed"], Value::Bool(true));
+        assert_eq!(upper["margin_seed"], Value::Bool(false));
+        assert_eq!(upper["n1_phase"], "SingleLiquid");
+        assert_eq!(switch["carried_seed"], Value::Bool(true));
+        let sum = switch["carried_sum_ln_k_sq"].as_f64().expect("sum");
+        assert!((1.6e-5..1.7e-5).contains(&sum), "carried split sum {sum:e}");
+        let jump = switch["scaled_residual_jump"].as_f64().expect("jump");
+        assert!(jump > 3e-3, "branch jump {jump:e}");
+        let bracket = switch["bracket"].as_array().expect("bracket");
+        assert!(bracket[1].as_f64().unwrap() > bracket[0].as_f64().unwrap());
+    }
+    println!("{}", serde_json::to_string_pretty(&out).expect("serialize"));
 }
