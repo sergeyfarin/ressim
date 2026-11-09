@@ -21,6 +21,7 @@
 //! | `SPE5_WALL_BUDGET_S` | stop, recording why, once this much wall time is spent | none |
 //! | `SPE5_DT_MEMORY_GROWTH` | bounded timestep memory: after an accepted step `dt`, the next request is at most this factor times `dt` (a driver policy; the engine's own halving is unchanged) | none |
 //! | `SPE5_FLASH_REFINE` | `1`: the experimental difference-form flash refinement on (`fluid::flash`) | off |
+//! | `SPE5_N1` | `1`: the experimental split-based phase decision (N1) on (`fluid::flash`) | off |
 //! | `SPE5_REPLAY_CHECKPOINT_OUT` | on a failed step, write the failing call's starting checkpoint here (a seed for `SPE5_REPLAY_SEED`) | none |
 //!
 //! Per month it records the snapshot (the format `tools/jutul/spe5_compare.py` reads), the calls,
@@ -35,7 +36,10 @@
 //! in the last bits from a loop that subtracts accepted steps, and at failure B's near-critical
 //! state an attempt's outcome changes with that difference (#116).
 use super::api::{Checkpoint, CompositionalCase};
-use crate::fluid::flash::with_difference_refinement_for_test;
+use crate::fluid::flash::{
+    reset_split_phase_decision_acceptances_for_test, split_phase_decision_acceptances_for_test,
+    with_difference_refinement_for_test, with_split_phase_decision_for_test,
+};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::time::Instant;
@@ -74,10 +78,14 @@ fn well_cumulative(case: &CompositionalCase) -> Vec<f64> {
 #[ignore = "#116 timestep-control replay; minutes to hours; configure through SPE5_* (module docs)"]
 fn comp_spe5_replay_with_timestep_options() {
     let refine = std::env::var("SPE5_FLASH_REFINE").is_ok_and(|v| v == "1");
-    with_difference_refinement_for_test(refine, || replay(refine));
+    let n1 = std::env::var("SPE5_N1").is_ok_and(|v| v == "1");
+    reset_split_phase_decision_acceptances_for_test();
+    with_difference_refinement_for_test(refine, || {
+        with_split_phase_decision_for_test(n1, || replay(refine, n1))
+    });
 }
 
-fn replay(refine: bool) {
+fn replay(refine: bool, n1: bool) {
     let out = PathBuf::from(std::env::var("SPE5_REPLAY_OUT").expect("set SPE5_REPLAY_OUT"));
     let seed = std::env::var("SPE5_REPLAY_SEED").unwrap_or_else(|_| "scratch".to_string());
     let cap: Option<f64> = env_or("SPE5_MAX_DT_DAYS");
@@ -110,7 +118,8 @@ fn replay(refine: bool) {
     let settings = json!({
         "seed": seed, "start_day": start_time, "max_dt_days": cap,
         "max_attempts": max_attempts, "last_month": last_month, "wall_budget_s": wall_budget,
-        "tolerance": 1e-8, "flash_refinement": refine, "dt_memory_growth": growth, "request": "end - now from the snapshot time, or the cap",
+        "tolerance": 1e-8, "flash_refinement": refine, "n1": n1, "dt_memory_growth": growth,
+        "request": "end - now from the snapshot time, or the cap",
     });
     let write = |months: &[Value], stopped: &Option<Value>| {
         let body = json!({"schema": "ressim-spe5-replay/1", "settings": settings,
@@ -187,7 +196,8 @@ fn replay(refine: bool) {
     }
     write(&months, &stopped);
     println!(
-        "stopped: {stopped:?}; total wall {:.0} s",
-        clock.elapsed().as_secs_f64()
+        "stopped: {stopped:?}; total wall {:.0} s; N1 acceptances {}",
+        clock.elapsed().as_secs_f64(),
+        split_phase_decision_acceptances_for_test()
     );
 }
