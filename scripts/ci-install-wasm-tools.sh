@@ -15,9 +15,11 @@
 set -euo pipefail
 
 WASM_PACK_VERSION=0.13.1
-# The binaryen release wasm-pack 0.13.1 itself downloads (`version_117`).
-BINARYEN_VERSION=117
-# The crates.io fallback for wasm-opt: the newest `wasm-opt` crate, which bundles binaryen 116.
+# One wasm-opt version on both paths: binaryen 116 is the newest release that the crates.io
+# fallback (the `wasm-opt` crate, which bundles binaryen's source) also provides, so a fallback
+# install optimizes exactly as a normal one does. (wasm-pack 0.13.1 would itself fetch 117; with
+# wasm-opt on PATH it never does.)
+BINARYEN_VERSION=116
 WASM_OPT_CRATE_VERSION=0.116.1
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -34,8 +36,13 @@ mkdir -p "$BIN"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# Every attempt is bounded, not only its connection: `--max-time` caps one attempt, and a
+# transfer slower than 10 kB/s for 30 s is abandoned, so a response that stalls after its headers
+# cannot hold the job until the workflow times out. `--retry-max-time` caps the whole retry
+# sequence, after which the caller falls back to crates.io.
 fetch() {
-  curl -sSfL --retry 6 --retry-all-errors --retry-delay 15 --connect-timeout 20 \
+  curl -sSfL --connect-timeout 20 --max-time 300 --speed-limit 10000 --speed-time 30 \
+    --retry 6 --retry-all-errors --retry-delay 15 --retry-max-time 900 \
     -A ressim-ci -o "$2" "$1"
 }
 
@@ -80,7 +87,7 @@ else
   fi
 fi
 
-if reports wasm-opt "version $BINARYEN_VERSION" || reports wasm-opt "version 116"; then
+if reports wasm-opt "version $BINARYEN_VERSION"; then
   echo "[wasm-tools] wasm-opt cached ($("$BIN/wasm-opt" --version))"
 else
   name="binaryen-version_$BINARYEN_VERSION"
