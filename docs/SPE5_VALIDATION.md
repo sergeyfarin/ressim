@@ -1238,6 +1238,15 @@ Order of work, as agreed in the #116 review:
    decision, not a lowered threshold. N1 remains a useful local-correction candidate; neither N1
    nor N2 is approved.
 
+   **N1 result (experimental, test-only; not promoted).** N1 attempts the trial-pair split when a
+   stable verdict is within `1e-9` of the margin and one trial is non-trivial, accepting only a
+   physical, non-trivial, lower-Gibbs answer. It changes 21/80 M0 phase decisions and 10/18 M1
+   start/cutoff/collapse states (the memory cutoff/collapse have only trivial trial seeds and do
+   not change). The from-scratch replay records 12 local N1 acceptances, but every monthly snapshot,
+   step, Newton count, balance and the month-218 failure are identical to N1 off (`6612.703445986848
+   d`, residual `6.393474812685191e-8`). N1 is a local correction, not a replay fix; details in
+   [SPE5_SPLIT_PHASE_DECISION_N1_2026-11-09.md](SPE5_SPLIT_PHASE_DECISION_N1_2026-11-09.md).
+
 All thresholds above are **experimental candidates**, not validated values. They come from two
 traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of
 each report.

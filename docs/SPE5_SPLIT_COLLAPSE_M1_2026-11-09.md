@@ -169,8 +169,9 @@ Li's liquid label. At the memory cutoff the split is still a genuine two-phase s
    from a trivial solution using validated equilibrium/thermodynamic evidence, rather than simply
    lowering `1e-5`. Decide whether the flash should follow the split until the phase amount is
    negligible and how that interacts with the trivial-solution guard. N1 does not cover this.
-3. **N1 remains a local-correction candidate.** Do not judge it as a crossing fix from this
-   fixed-input discontinuity alone; evaluate it with N2/cutoff in place, then measure its effect on
-   a from-scratch replay.
+3. **N1 was implemented and measured:** see
+   [SPE5_SPLIT_PHASE_DECISION_N1_2026-11-09.md](SPE5_SPLIT_PHASE_DECISION_N1_2026-11-09.md). It
+   changes 21/80 M0 and 10/18 M1 states, but the from-scratch replay is unchanged (12 local
+   acceptances, same month-218 failure). It remains a local correction, not a promoted crossing fix.
 4. Re-run the from-scratch month-240 replay and the #98 probe only after a candidate is approved;
    acceptance remains the original equations at `1e-8`.
