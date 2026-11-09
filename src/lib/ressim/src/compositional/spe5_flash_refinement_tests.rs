@@ -26,7 +26,7 @@ use crate::fluid::transport::flash_viscosities;
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
-fn write(name: &str, value: &Value) {
+pub(super) fn write(name: &str, value: &Value) {
     if let Ok(dir) = std::env::var("SPE5_TRACE_OUT") {
         let path = PathBuf::from(dir).join(name);
         std::fs::write(
@@ -41,7 +41,7 @@ fn write(name: &str, value: &Value) {
 /// Everything about one flash result that reaches the flux: split, volumes, densities, vapour
 /// volume fraction and both hydrocarbon phases' mobilities (kr / viscosity, 1/cP) at the cell's
 /// water saturation.
-fn describe(problem: &NewtonProblem<'_>, sw: f64, f: &FlashState) -> Value {
+pub(super) fn describe(problem: &NewtonProblem<'_>, sw: f64, f: &FlashState) -> Value {
     let t = problem.spec.reservoir_temperature_k();
     let (vl, vv) = (
         f.liquid.as_ref().map(|l| l.molar_volume),
@@ -178,7 +178,7 @@ fn comp_spe5_flash_refinement_states() {
 }
 
 /// The fluid exactly as ResSim holds it, for an independent solver.
-fn fluid_json(problem: &NewtonProblem<'_>) -> Value {
+pub(super) fn fluid_json(problem: &NewtonProblem<'_>) -> Value {
     let spec = problem.spec;
     let n = spec.component_count();
     json!({

@@ -1035,6 +1035,207 @@ fn newton_acceleration(
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Branch measurement (#116 M0, test-only)
+//
+// The M0 measurement compares the assembled residual of the same primaries under two phase
+// branches of one cell. It needs three things the production flash does not offer: a way to make
+// every caller of [`flash`] (accumulation, both sides of each face, well connections) see a chosen
+// state for one cell's exact inputs, a two-phase solve from a seed with no stability test and no
+// Gibbs guard, and each single-phase cubic root with its Gibbs energy. None of it exists outside
+// `cfg(test)`.
+
+#[cfg(test)]
+type ForcedKey = (u64, u64, Vec<u64>);
+
+#[cfg(test)]
+thread_local! {
+    static FORCED_STATES: core::cell::RefCell<Vec<(ForcedKey, FlashState)>> =
+        const { core::cell::RefCell::new(Vec::new()) };
+}
+
+#[cfg(test)]
+fn forced_key(pressure_pa: f64, temperature_k: f64, z: &[f64]) -> ForcedKey {
+    (
+        pressure_pa.to_bits(),
+        temperature_k.to_bits(),
+        z.iter().map(|v| v.to_bits()).collect(),
+    )
+}
+
+/// Test-only (#116 M0): run `f` with [`flash`] returning `forced` states for their **exact**
+/// inputs `(p, T, z)` (bit patterns), on this thread. Every other input flashes as usual.
+#[cfg(test)]
+pub(crate) fn with_forced_states_for_test<T>(
+    forced: &[(f64, f64, Vec<f64>, FlashState)],
+    f: impl FnOnce() -> T,
+) -> T {
+    let entries: Vec<(ForcedKey, FlashState)> = forced
+        .iter()
+        .map(|(p, t, z, s)| (forced_key(*p, *t, z), s.clone()))
+        .collect();
+    let previous = FORCED_STATES.with(|c| c.replace(entries));
+    let out = f();
+    FORCED_STATES.with(|c| *c.borrow_mut() = previous);
+    out
+}
+
+#[cfg(test)]
+fn forced_state(pressure_pa: f64, temperature_k: f64, z: &[f64]) -> Option<FlashState> {
+    FORCED_STATES.with(|c| {
+        let entries = c.borrow();
+        if entries.is_empty() {
+            return None;
+        }
+        let key = forced_key(pressure_pa, temperature_k, z);
+        entries
+            .iter()
+            .find(|(k, _)| *k == key)
+            .map(|(_, s)| s.clone())
+    })
+}
+
+/// Test-only (#116 M0): the single-phase state on one cubic root, whatever Li's rule says.
+#[cfg(test)]
+pub(crate) fn single_phase_on_branch_for_test(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    liquid: bool,
+) -> Result<FlashState, FlashError> {
+    let branch = if liquid {
+        PhaseBranch::Liquid
+    } else {
+        PhaseBranch::Vapour
+    };
+    let props = evaluate(spec, pressure_pa, temperature_k, z, branch).map_err(FlashError::Eos)?;
+    Ok(FlashState {
+        phase_state: if liquid {
+            PhaseState::SingleLiquid
+        } else {
+            PhaseState::SingleVapour
+        },
+        beta: if liquid { 0.0 } else { 1.0 },
+        x: z.to_vec(),
+        y: z.to_vec(),
+        k: stability::wilson_k(spec, pressure_pa, temperature_k),
+        liquid: if liquid { Some(props.clone()) } else { None },
+        vapour: if liquid { None } else { Some(props) },
+        equilibrium_residual: 0.0,
+        iterations: 0,
+    })
+}
+
+/// Test-only (#116 M0): the label Li's rule gives this feed as a single phase (`true` = liquid).
+#[cfg(test)]
+pub(crate) fn li_labels_liquid_for_test(
+    spec: &FluidSpecification,
+    temperature_k: f64,
+    z: &[f64],
+) -> bool {
+    temperature_k < li_pseudo_critical_temperature(spec, z)
+}
+
+/// Test-only (#116 M0): the feed's dimensionless Gibbs energy `g / (R T)` on each cubic root,
+/// `[liquid, vapour]`; `None` where the root cannot be evaluated.
+#[cfg(test)]
+pub(crate) fn feed_gibbs_on_branches_for_test(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+) -> [Option<f64>; 2] {
+    let total: f64 = z.iter().sum();
+    let feed: Vec<f64> = z.iter().map(|v| v / total).collect();
+    [PhaseBranch::Liquid, PhaseBranch::Vapour].map(|branch| {
+        evaluate(spec, pressure_pa, temperature_k, &feed, branch)
+            .ok()
+            .map(|props| phase_gibbs(&feed, &props.ln_phi))
+    })
+}
+
+/// Test-only (#116 M0): `g_split / (R T)` of a two-phase state.
+#[cfg(test)]
+pub(crate) fn split_gibbs_for_test(state: &FlashState) -> Option<f64> {
+    let (Some(liquid), Some(vapour)) = (state.liquid.as_ref(), state.vapour.as_ref()) else {
+        return None;
+    };
+    Some(
+        (1.0 - state.beta) * phase_gibbs(&state.x, &liquid.ln_phi)
+            + state.beta * phase_gibbs(&state.y, &vapour.ln_phi),
+    )
+}
+
+/// What a seeded two-phase solve found.
+#[cfg(test)]
+#[derive(Clone, Debug)]
+pub(crate) struct SeededSplit {
+    /// Newton iterations taken.
+    pub iterations: usize,
+    /// Final max-norm of the equilibrium residual (difference form when available).
+    pub residual_norm: f64,
+    /// The two-phase state, when the final iterate is physical and two-phase.
+    pub state: Option<FlashState>,
+    /// `beta` of the final iterate, physical or not.
+    pub beta: f64,
+    /// `sum ln^2 K` of the final iterate.
+    pub sum_ln_k_sq: f64,
+}
+
+/// Test-only (#116 M0): Newton on the equilibrium equations from `(ln K, beta)`, with the
+/// Jacobian re-evaluated every iteration, **no stability test and no Gibbs guard**: it finds a
+/// two-phase solution of the same equations near the seed, or reports how far it got. A seed that
+/// does not converge is an inconclusive result, not proof that no split exists.
+#[cfg(test)]
+pub(crate) fn seeded_two_phase_for_test(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    ln_k: &[f64],
+    beta: f64,
+) -> SeededSplit {
+    let n = spec.component_count();
+    let mut u: Vec<f64> = ln_k.to_vec();
+    u.push(beta);
+    let mut iterations = 0;
+    let mut norm = f64::INFINITY;
+    for _ in 0..60 {
+        let Some(system) = newton_system_for(spec, pressure_pa, temperature_k, z, &u[..n], u[n])
+        else {
+            break;
+        };
+        let f = difference_residual(spec, pressure_pa, temperature_k, z, &u[..n], u[n])
+            .unwrap_or(system.residual.clone());
+        norm = equilibrium_norm(&f);
+        if norm < 1e-14 {
+            break;
+        }
+        let mut matrix = system.jacobian.clone();
+        let mut rhs: Vec<Vec<f64>> = f.iter().map(|v| vec![-v]).collect();
+        if solve_in_place(&mut matrix, &mut rhs) < MIN_PIVOT {
+            break;
+        }
+        for (ui, step) in u.iter_mut().zip(&rhs) {
+            *ui += step[0];
+        }
+        iterations += 1;
+    }
+    let sum_ln_k_sq = u[..n].iter().map(|v| v * v).sum();
+    let k: Vec<f64> = u[..n].iter().map(|&v| math::exp(v)).collect();
+    let state = two_phase_from_iterate(spec, pressure_pa, temperature_k, z, &k, u[n], iterations)
+        .ok()
+        .filter(|s| s.phase_state == PhaseState::TwoPhase);
+    SeededSplit {
+        iterations,
+        residual_norm: norm,
+        state,
+        beta: u[n],
+        sum_ln_k_sq,
+    }
+}
+
 /// Flash at `(p, T, z)`.
 ///
 /// `k_seed` warm-starts both the stability test and the substitution loop. It is a hint: the
@@ -1046,6 +1247,10 @@ pub fn flash(
     z: &[f64],
     k_seed: Option<&[f64]>,
 ) -> Result<FlashState, FlashError> {
+    #[cfg(test)]
+    if let Some(state) = forced_state(pressure_pa, temperature_k, z) {
+        return Ok(state);
+    }
     let state = flash_unrefined(spec, pressure_pa, temperature_k, z, k_seed)?;
     Ok(refine_two_phase(spec, pressure_pa, temperature_k, z, state))
 }
