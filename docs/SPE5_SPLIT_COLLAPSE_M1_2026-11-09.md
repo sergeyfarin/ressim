@@ -25,10 +25,10 @@ which side of the phase envelope the split collapses:
 
 ## Provenance and method
 
-The measurement was run on `a45c68d6` (branch `docs/116-m1-split-collapse`), release build, with
+The measurement was run on `b5f01643` (branch `docs/116-m1-split-collapse`), release build, with
 the five committed M0 crossing seeds. The M0 inputs and the 50-digit continuation were regenerated
-on the same branch; the engine test's later inventory and endpoint-guard changes do not move the
-continuation. The M0 branch-comparison test was rerun first, then:
+on the same branch; the engine test's inventory and endpoint-guard changes do not move the
+continuation, and the per-cell composition table uses a lookup keyed by both case tag and cell. The M0 branch-comparison test was rerun first, then:
 
 ```bash
 SPE5_TRACE_OUT=DIR cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
@@ -61,14 +61,16 @@ records the change and re-solves the fixed-beta split with each endpoint's compo
 resulting pressure offsets are below `0.11 Pa`, against `29-49 Pa` to the dew/memory events (cell
 16 is a separate case: `0.003 Pa`). These are the reproducible per-case values:
 
-| Seed | Cells | Max component change, two-phase -> single iterate | Fixed-beta p offset, two-phase / single composition [Pa] | Distance to collapse/cutoff [Pa] |
+| Seed | Cell | Max component change, two-phase -> single iterate | Fixed-beta p offset, two-phase / single composition [Pa] | Distance to collapse/cutoff [Pa] |
 |---|---|---:|---:|---:|
-| `cap5` | 25, 31 | 2.54e-8 | +0.0060 / -0.0989 | 29.3 |
-| `cap5_att12` | 25, 31 | 1.24e-9 | +0.000070 / -0.0046 | 29.4 |
-| `cap05` | 16 | 1.92e-10 | +0.00061 / -0.000013 | 0.003 |
-| `cap05_att12` | 16 | 7.25e-12 | +0.00086 / -0.000046 | 0.003 |
-| `memory` | 33 | 1.62e-12 | +0.000013 / -0.000000043 | 46.8 to cutoff |
-| `memory` | 39 | 1.62e-12 | +0.00029 / +0.00028 | 46.8 to cutoff |
+| `cap5` | 25 | 2.541e-8 | +0.00598 / -0.09888 | 29.3 |
+| `cap5` | 31 | 2.542e-8 | +0.00598 / -0.09893 | 29.3 |
+| `cap5_att12` | 25 | 1.235e-9 | +0.000070 / -0.004627 | 29.4 |
+| `cap5_att12` | 31 | 1.231e-9 | +0.000070 / -0.004600 | 29.3 |
+| `cap05` | 16 | 1.920e-10 | +0.000606 / -0.0000127 | 0.003 |
+| `cap05_att12` | 16 | 7.251e-12 | +0.000860 / -0.0000461 | 0.003 |
+| `memory` | 33 | 1.615e-12 | +0.0000134 / -0.0000000434 | 46.8 to cutoff |
+| `memory` | 39 | 1.612e-12 | +0.0000133 / -0.0000000435 | 46.8 to cutoff |
 
 For cell 16 the composition term is within a factor of about five of its `0.003 Pa` collapse
 distance, so the pressure-only path is a weaker approximation there; the endpoint itself is a dew
