@@ -49,9 +49,8 @@ every band from `1e-12` to `1e-2` (the usable seeds are set by the trials, not t
   attempted 240 months, but every monthly snapshot, step count, Newton count, balance and the
   failure are identical to the N1-off baseline (only wall-clock fields differ). The run still stops
   at month 218, day `6612.703445986848`, scaled residual `6.393474812685191e-8`.
-  N1 is therefore a **local correction that did not advance this replay**. The run is a single
-  pair of release builds, not a timing benchmark; the observed wall times were 788 s (N1) and
-  800 s (off).
+  N1 is therefore a **local correction that did not advance this replay**. The comparison is a
+  single pair of release builds, not a timing benchmark.
 
 ## Verdict
 
