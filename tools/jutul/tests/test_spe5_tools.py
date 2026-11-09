@@ -16,6 +16,7 @@ sys.path.insert(0, TOOLS)
 
 import spe5_compare  # noqa: E402
 import spe5_cross_flash_fixture as fixture_tool  # noqa: E402
+import spe5_m1_points  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(TOOLS, "..", ".."))
 FIXTURE = os.path.join(ROOT, "opm", "compositional", "spe5", "cross_flash_205_216.json")
@@ -109,6 +110,33 @@ WALL_BUDGET = {"reason": "wall budget", "month": 3, "day": 70.0,
 FAILED = {"reason": "step failed", "month": 218, "day": 6612.703, "attempts": 10,
           "failure": 'Some(StepFailure { kind: "Budget", message: "last failure was Nonlinear: '
                      'Newton did not converge in 20 iterations (scaled residual 6.39e-8)" })'}
+
+
+class M1PointLookupTests(unittest.TestCase):
+    def test_cell_is_part_of_the_point_key(self):
+        points = [
+            {"tag": "cap5 switch -1e-15", "cell": 25, "z": [25]},
+            {"tag": "cap5 switch -1e-15", "cell": 31, "z": [31]},
+            {"tag": "cap5 iterate 20 (single side)", "cell": 25, "z": [250]},
+            {"tag": "cap5 iterate 20 (single side)", "cell": 31, "z": [310]},
+        ]
+        self.assertEqual(
+            spe5_m1_points.point_for(points, "cap5", 31, "switch -1e-15")["z"], [31]
+        )
+        self.assertEqual(
+            spe5_m1_points.point_for(points, "cap5", 31, "iterate 20 (single side)")["z"],
+            [310],
+        )
+        self.assertEqual(
+            spe5_m1_points.point_for(points, "cap5", 25, "iterate 20 (single side)")["z"],
+            [250],
+        )
+        self.assertIsNone(spe5_m1_points.point_for(points, "cap5", 39, "switch -1e-15"))
+
+    def test_missing_tag_or_cell_is_none(self):
+        points = [{"tag": "cap5 switch -1e-15", "cell": 25}]
+        self.assertIsNone(spe5_m1_points.point_for(points, "memory", 25, "switch -1e-15"))
+        self.assertIsNone(spe5_m1_points.point_for(points, "cap5", 31, "switch -1e-15"))
 
 
 class TimestepConvergenceTests(unittest.TestCase):

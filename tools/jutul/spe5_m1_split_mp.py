@@ -41,6 +41,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mpmath as mp  # noqa: E402
 
 from spe5_flash_mp import cubic_roots, ln_phi, residual, setup  # noqa: E402
+from spe5_m1_points import point_for  # noqa: E402
 
 mp.mp.dps = 60
 
@@ -212,13 +213,6 @@ def bisect_cutoff(eos, z, molar_mass, low, high):
     return high_state
 
 
-def point_with_suffix(points, prefix, suffix):
-    for point in points:
-        if point["tag"] == f"{prefix} {suffix}":
-            return point
-    return None
-
-
 def normalized_z(point):
     if point is None:
         return None
@@ -288,12 +282,12 @@ def main(in_path, out_path):
             if (low["sum_ln_k_sq"] - CUTOFF) * (high["sum_ln_k_sq"] - CUTOFF) <= 0:
                 cutoff = bisect_cutoff(eos, z, molar_mass, low, high)
                 break
-        single = point_with_suffix(data["points"], prefix, "iterate 20 (single side)")
+        single = point_for(data["points"], prefix, cell, "iterate 20 (single side)")
         if single is None:
-            single = point_with_suffix(data["points"], prefix, "iterate 19 (single side)")
-        two_phase = point_with_suffix(data["points"], prefix, "iterate 19 (two-phase side)")
+            single = point_for(data["points"], prefix, cell, "iterate 19 (single side)")
+        two_phase = point_for(data["points"], prefix, cell, "iterate 19 (two-phase side)")
         if two_phase is None:
-            two_phase = point_with_suffix(data["points"], prefix, "iterate 20 (two-phase side)")
+            two_phase = point_for(data["points"], prefix, cell, "iterate 20 (two-phase side)")
         sensitivity = composition_sensitivity(
             eos,
             z,
