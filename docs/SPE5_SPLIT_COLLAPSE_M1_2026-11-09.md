@@ -21,8 +21,10 @@ which side of the phase envelope the split collapses:
 
 ## Provenance and method
 
-The measurement was run on `08f90e34` (branch `docs/116-m1-split-collapse`), release build, with
-the five committed M0 crossing seeds. The M0 branch-comparison test was rerun first, then:
+The measurement was run on `10a6d475` (branch `docs/116-m1-split-collapse`), release build, with
+the five committed M0 crossing seeds. The M0 inputs were generated on the same branch; the only
+later code change is the phase-sum inventory form in the M1 engine test, which moves the recorded
+inventory differences by round-off only. The M0 branch-comparison test was rerun first, then:
 
 ```bash
 SPE5_TRACE_OUT=DIR cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
