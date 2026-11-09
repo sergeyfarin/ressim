@@ -1270,6 +1270,17 @@ Order of work, as agreed in the #116 review:
    probe now uses the same N1+refinement settings as the attempt. Details in
    [SPE5_N1_NEXT_BLOCKER_DIAGNOSIS_2026-11-09.md](SPE5_N1_NEXT_BLOCKER_DIAGNOSIS_2026-11-09.md).
 
+   **Carried-K seed recovery (experimental, test-only).** A per-cell previous-flash `K` is
+   re-solved at the current inputs as a direct split seed when the stability verdict is stable,
+   retaining physicality, equilibrium, non-triviality and Gibbs checks. At the adjacent switch
+   inputs it recovers `TwoPhase` (`beta 0.439250` same-z test; actual carried seed `beta 0.458176`,
+   `sum ln^2 K 1.64531e-5`), while the far liquid endpoint remains `SingleLiquid` (its candidate is
+   trivial, `4.3e-13`). The full failing call is unchanged because its step jumps from `227.551` to
+   `228.156 bar` and never evaluates the switch; recovery plus fixed damping 0.5 fails with zero
+   accepted steps. The next change should pair carried `K` with a line search or short continuation
+   that evaluates intermediate inputs. Details in
+   [SPE5_SEED_RECOVERY_EXPERIMENT_2026-11-09.md](SPE5_SEED_RECOVERY_EXPERIMENT_2026-11-09.md).
+
 All thresholds above are **experimental candidates**, not validated values. They come from two
 traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of
 each report.
