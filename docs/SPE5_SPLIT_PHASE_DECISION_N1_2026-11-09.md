@@ -144,13 +144,14 @@ cross-flash fixture; the N1 tests are ignored diagnostics.
 
 The captured next failing call is diagnosed separately in
 [SPE5_N1_NEXT_BLOCKER_DIAGNOSIS_2026-11-09.md](SPE5_N1_NEXT_BLOCKER_DIAGNOSIS_2026-11-09.md):
-its two iterates sit on opposite sides of a genuine bubble boundary, both branches are locally
-correct, the L state has no physical split, and the cutoff is not involved. The next change should
-be a phase-boundary-aware timestep cutback/two-cycle detector.
+the far endpoints are individually reasonable, but the N1 two-phase→liquid switch at
+`228.126683` is premature. The upper input still has a physical split (`beta 0.458178`,
+`sum ln^2 K 1.645e-5`) while both stability trials have become trivial, so N1 loses its seed. A
+carried seed from the lower side converges to a physical split above the `1e-5` acceptance cutoff.
 
-1. **Phase-boundary-aware timestep control:** detect a persistent phase-label two-cycle and take an
-   extra dt cutback instead of exhausting the retry ladder.
-2. **N2:** deterministic single-phase identity at the dew point, for the other crossing cells.
-3. **A validated equilibrium/thermodynamic cutoff rule** for the memory cells, not a lowered
-   `1e-5`.
+1. **Seed continuation/eligibility through the switch:** carry the adjacent iterate's/previous
+   flash's `K` or a validated fallback, with the committed carried-seed regression.
+2. **Evaluate an early two-cycle detector/cutback separately** for cost and sustained advancement,
+   not as the primary fix.
+3. **N2:** deterministic single-phase identity at the dew point, for the other crossing cells.
 4. Re-run the from-scratch month-240 replay and the #98 probe only after a combination is approved.
