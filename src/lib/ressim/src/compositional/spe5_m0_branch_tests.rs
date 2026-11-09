@@ -43,7 +43,7 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 
 /// `(name, seed file, failing dt [d], flipping cells)`: the last failing rung of each trace.
-const CASES: [(&str, &str, f64, &[usize]); 5] = [
+pub(super) const CASES: [(&str, &str, f64, &[usize]); 5] = [
     ("cap5", "stall_6556_cap5.json", 9.765625e-3, &[25, 31]),
     (
         "cap5_att12",
@@ -61,7 +61,7 @@ const CASES: [(&str, &str, f64, &[usize]); 5] = [
     ("memory", "stall_6612_memory.json", 4.8828125e-6, &[33, 39]),
 ];
 
-fn restore(name: &str) -> CompositionalCase {
+pub(super) fn restore(name: &str) -> CompositionalCase {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../../opm/compositional/spe5")
         .join(name);

@@ -1183,6 +1183,24 @@ pub(crate) struct SeededSplit {
     pub sum_ln_k_sq: f64,
 }
 
+/// Test-only (#116 M1): build the two-phase state for an exact `(ln K, beta)` from the 50-digit
+/// continuation, so the engine's own inventory and face flux can be evaluated at a state the
+/// standard flash would not return. `None` unless the result is a physical two-phase state.
+#[cfg(test)]
+pub(crate) fn two_phase_state_from_ln_k_for_test(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    ln_k: &[f64],
+    beta: f64,
+) -> Option<FlashState> {
+    let k: Vec<f64> = ln_k.iter().map(|&value| math::exp(value)).collect();
+    two_phase_from_iterate(spec, pressure_pa, temperature_k, z, &k, beta, 0)
+        .ok()
+        .filter(|state| state.phase_state == PhaseState::TwoPhase)
+}
+
 /// Test-only (#116 M0): Newton on the equilibrium equations from `(ln K, beta)`, with the
 /// Jacobian re-evaluated every iteration, **no stability test and no Gibbs guard**: it finds a
 /// two-phase solution of the same equations near the seed, or reports how far it got. A seed that
