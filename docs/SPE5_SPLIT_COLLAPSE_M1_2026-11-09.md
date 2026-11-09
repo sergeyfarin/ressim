@@ -78,8 +78,8 @@ flux is the largest relative component change on any incident face.
 
 | Seed | Cell | Scaled residual at switch | Scaled residual at event | Inventory at event | Face flux at event |
 |---|---|---:|---:|---:|---:|
-| `cap5` | 25 | 8.4e-5 | 9.0e-6 | 6e-16 | 6.5% |
-| `cap5_att12` | 25/31 | 1.1e-5 | 1.1e-6 | <= 2e-16 | 6.5% |
+| `cap5` | 25 | 8.4e-5 | 9.0e-6 | 7e-16 | 6.5% |
+| `cap5_att12` | 25/31 | 1.1e-5 | 1.1e-6 | <= 1e-15 | 6.5% |
 | `cap05` | 16 | 1.5e-6 | 1.5e-6 | 1e-13 | 10.4% |
 | `cap05_att12` | 16 | 1.9e-7 | 1.9e-7 | 1e-13 | 10.4% |
 | `memory` | 33/39 | 8.9e-7 | 2.9e-7 | 2.8e-8 | 77% |

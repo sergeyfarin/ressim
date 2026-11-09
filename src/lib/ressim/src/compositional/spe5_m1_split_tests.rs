@@ -25,7 +25,7 @@ use super::newton::assemble_for_test;
 use super::spe5_m0_branch_tests::{CASES, restore};
 use super::state::CompositionalState;
 use crate::fluid::flash::{
-    FlashState, flash, two_phase_state_from_ln_k_for_test, with_forced_states_for_test,
+    FlashState, PhaseState, flash, two_phase_state_from_ln_k_for_test, with_forced_states_for_test,
 };
 use crate::fluid::units::bar_to_pa;
 use serde_json::{Value, json};
@@ -67,9 +67,33 @@ fn state_at(
     trial.commit().expect("the M1 state is admissible")
 }
 
-fn inventory_per_component(state: &FlashState, z: &[f64]) -> Vec<f64> {
-    let inverse_molar_volume = 1.0 / state.mixture_molar_volume();
-    z.iter().map(|value| value * inverse_molar_volume).collect()
+fn inventory_per_component(state: &FlashState) -> Vec<f64> {
+    // The same phase-sum form as the accumulation residual, not the equilibrium shortcut
+    // `z_i / v_mix`: a state that is not exactly material-balanced must show it here.
+    match state.phase_state {
+        PhaseState::SingleLiquid => {
+            let density = state.liquid.as_ref().expect("liquid").molar_density;
+            state.x.iter().map(|x| density * x).collect()
+        }
+        PhaseState::SingleVapour => {
+            let density = state.vapour.as_ref().expect("vapour").molar_density;
+            state.y.iter().map(|y| density * y).collect()
+        }
+        PhaseState::TwoPhase => {
+            let liquid_density = state.liquid.as_ref().expect("liquid").molar_density;
+            let vapour_density = state.vapour.as_ref().expect("vapour").molar_density;
+            let vapour_saturation = state.vapour_saturation();
+            let liquid_saturation = 1.0 - vapour_saturation;
+            state
+                .x
+                .iter()
+                .zip(&state.y)
+                .map(|(x, y)| {
+                    liquid_saturation * liquid_density * x + vapour_saturation * vapour_density * y
+                })
+                .collect()
+        }
+    }
 }
 
 fn scaled_max(residual: &[f64], scale: &EquationScaling) -> f64 {
@@ -176,8 +200,8 @@ fn comp_spe5_m1_cutoff_jump() {
                 let split_assembly = with_forced_states_for_test(&forced, || {
                     assemble_for_test(problem, &trial, bhp).ok()
                 });
-                let inventory_standard = inventory_per_component(&standard, &z_engine);
-                let inventory_split = inventory_per_component(&split, &z_engine);
+                let inventory_standard = inventory_per_component(&standard);
+                let inventory_split = inventory_per_component(&split);
                 let inventory_relative: Vec<f64> = inventory_split
                     .iter()
                     .zip(&inventory_standard)
