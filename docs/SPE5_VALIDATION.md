@@ -1240,11 +1240,20 @@ Order of work, as agreed in the #116 review:
 
    **N1 result (experimental, test-only; not promoted).** N1 attempts the trial-pair split when a
    stable verdict is within `1e-9` of the margin and one trial is non-trivial, accepting only a
-   physical, non-trivial, lower-Gibbs answer. It changes 21/80 M0 phase decisions and 10/18 M1
-   start/cutoff/collapse states (the memory cutoff/collapse have only trivial trial seeds and do
-   not change). The from-scratch replay records 12 local N1 acceptances, but every monthly snapshot,
-   step, Newton count, balance and the month-218 failure are identical to N1 off (`6612.703445986848
-   d`, residual `6.393474812685191e-8`). N1 is a local correction, not a replay fix; details in
+   physical, non-trivial, lower-Gibbs answer. Eligibility and ranking use only non-trivial trial
+   sums; a trivial sum of one cannot qualify an out-of-band companion. It changes 21/80 M0 phase
+   decisions and 10/18 M1 start/cutoff/collapse states (the memory cutoff/collapse have only trivial
+   trial seeds and do not change). The **unrefined** from-scratch replay records 12 N1 flash
+   overrides but is identical to N1 off (`6612.703445986848 d`, residual `6.393474812685191e-8`);
+   this is the known failure-B precision floor and does not identify the combined blocker.
+
+   With difference refinement, the captured memory-seed solve converges in 4 iterations at
+   `3.770079e-13` with N1, versus 20 iterations at `1.459579e-6` without it at matched inventory;
+   failure B's last rung converges in 4 at `4.087646e-10` in either N1 mode. A bounded continuation
+   from failure B with refinement+N1 advances two accepted steps to `6612.836114153414 d`, then
+   fails month 218 at residual `5.0410785730772645e-3` with the same cells 33/39 flipping every
+   iteration (`3.328e-3`/`5.041e-3` two-cycle). N1 is a local correction; the next blocker is still
+   the phase-label discontinuity. Details in
    [SPE5_SPLIT_PHASE_DECISION_N1_2026-11-09.md](SPE5_SPLIT_PHASE_DECISION_N1_2026-11-09.md).
 
 All thresholds above are **experimental candidates**, not validated values. They come from two
