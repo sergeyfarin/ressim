@@ -25,8 +25,8 @@ At the first seed, the last two Newton iterates for cells 33/39 are:
 
 | Iterate | Pressure [bar] | Standard flash | N1 flash | `sum ln^2 K` | Notes |
 |---|---|---:|---|---:|---|
-| 19 | 227.551557973 | TwoPhase, `beta = 0.517568` | TwoPhase | 0.2362 | far below the switch |
-| 20 | 228.156636560 | SingleLiquid | SingleLiquid | 488 (Wilson K) | far above the switch |
+| 19 | 227.551436370 | TwoPhase, `beta = 0.517570` | TwoPhase | 0.2362 | far below the switch |
+| 20 | 228.156518193 | SingleLiquid | SingleLiquid | 488 (Wilson K) | far above the switch |
 
 The residual alternates between `3.328e-3` and `5.041e-3` for iterations 3-20. Both **far**
 endpoints are individually reasonable, but they do not bracket the intervening N1 switch.
