@@ -211,3 +211,127 @@ fn comp_spe5_n1_m1_states() {
     }
     println!("N1 changed {changed} of {total} M1 states");
 }
+
+#[test]
+#[ignore = "#116 N1 margin gate; set SPE5_M0_POINTS; seconds"]
+fn comp_spe5_n1_out_of_band_companion_is_not_a_margin_seed() {
+    use crate::fluid::stability::test_stability_with_margin_seed;
+    let path = std::env::var("SPE5_M0_POINTS").expect("set SPE5_M0_POINTS");
+    let input: Value =
+        serde_json::from_str(&std::fs::read_to_string(path).expect("read")).expect("parse");
+    let point = input["points"]
+        .as_array()
+        .expect("points")
+        .iter()
+        .find(|point| point["tag"] == "cap05 iterate 20 (single side)" && point["cell"] == 16)
+        .expect("the review's cap05 cell-16 point");
+    let seed_file = case_for("cap05");
+    let case_file = restore(seed_file);
+    let spec = case_file.spec_for_test();
+    let z: Vec<f64> = point["z"]
+        .as_array()
+        .expect("z")
+        .iter()
+        .filter_map(Value::as_f64)
+        .collect();
+    let p_pa = point["p_pa"].as_f64().expect("p") + 100.0;
+    let result =
+        test_stability_with_margin_seed(spec, p_pa, spec.reservoir_temperature_k(), &z, None)
+            .expect("stability");
+    assert!(
+        result.margin_seed.is_none(),
+        "a trivial sum of one must not qualify an out-of-band non-trivial companion"
+    );
+}
+
+#[test]
+#[ignore = "#116 N1 + refinement matched-inventory memory-seed controls; seconds"]
+fn comp_spe5_n1_refinement_memory_seed_controls() {
+    use super::spe5_failure_b_tests::run;
+    use crate::fluid::flash::{
+        with_difference_refinement_for_test, with_split_phase_decision_for_test,
+    };
+    let case = restore("stall_6612_memory.json");
+    let dt = 4.8828125e-6;
+    let modes = case.with_diagnostic_problem(dt, |problem, start, options| {
+        // One problem, one previous inventory, one start state, one set of wells/sources and one
+        // dt. Only refinement and N1 change between the four solves.
+        let mut out = Vec::new();
+        for refine in [false, true] {
+            for n1 in [false, true] {
+                let history = with_difference_refinement_for_test(refine, || {
+                    with_split_phase_decision_for_test(n1, || {
+                        run(problem, start, options).residual_history
+                    })
+                });
+                let best = history.iter().copied().fold(f64::INFINITY, f64::min);
+                println!(
+                    "refine {refine} n1 {n1}: {} iterations, best {best:.10e}, last {:.10e}",
+                    history.len(),
+                    history.last().copied().unwrap_or(f64::NAN)
+                );
+                out.push((refine, n1, history.len(), best));
+            }
+        }
+        out
+    });
+    assert_eq!(modes.len(), 4);
+    for (refine, n1, iterations, best) in modes {
+        if n1 {
+            assert_eq!(iterations, 4, "N1 must converge in four iterations");
+            assert!(best <= 1e-8, "N1 must converge, got {best:e}");
+        } else {
+            assert_eq!(iterations, 20, "N1 off must exhaust the Newton cap");
+            assert!(best > 1e-8, "N1 off must stall, got {best:e}");
+            if refine {
+                assert!(
+                    (1.4e-6..1.5e-6).contains(&best),
+                    "refined N1-off floor moved: {best:e}"
+                );
+            } else {
+                assert!(
+                    (8.8e-7..9.0e-7).contains(&best),
+                    "unrefined N1-off floor moved: {best:e}"
+                );
+            }
+        }
+        if refine && n1 {
+            assert!(
+                best < 1e-12,
+                "refinement + N1 must reach the reported 3.77e-13, got {best:e}"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "#116 failure-B last rung with refinement, N1 off/on; minute"]
+fn comp_spe5_n1_refinement_failure_b_last_rung_controls() {
+    use super::spe5_failure_b_tests::{last_attempt_dt, run, seed};
+    use crate::fluid::flash::{
+        with_difference_refinement_for_test, with_split_phase_decision_for_test,
+    };
+    let case = seed();
+    let dt = last_attempt_dt();
+    let (off, on) = case.with_diagnostic_problem(dt, |problem, start, options| {
+        let off = with_difference_refinement_for_test(true, || {
+            with_split_phase_decision_for_test(false, || run(problem, start, options))
+        });
+        let on = with_difference_refinement_for_test(true, || {
+            with_split_phase_decision_for_test(true, || run(problem, start, options))
+        });
+        (off.residual_history, on.residual_history)
+    });
+    for (label, history) in [("N1 off", off), ("N1 on", on)] {
+        let best = history.iter().copied().fold(f64::INFINITY, f64::min);
+        println!(
+            "failure B last rung, refined {label}: {} iterations, best {best:.6e}, last {:.6e}",
+            history.len(),
+            history.last().copied().unwrap_or(f64::NAN)
+        );
+        assert!(
+            best <= 1e-8,
+            "failure B's last rung must converge with refinement, {label}: {best:e}"
+        );
+    }
+}

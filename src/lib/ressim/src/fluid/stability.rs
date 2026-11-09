@@ -914,6 +914,36 @@ pub(crate) struct StabilityTestResult {
     pub margin_seed: Option<Vec<f64>>,
 }
 
+/// The largest trial sum that carries phase information.
+///
+/// A trivial trial has `sum ~ 1` by construction, so including it in the margin score would let a
+/// non-trivial companion below the band qualify on the trivial trial's value. Only non-trivial
+/// trial sums are eligible; both trivial means no candidate.
+fn non_trivial_max_sum(
+    vapour_sum: f64,
+    vapour_trivial: bool,
+    liquid_sum: f64,
+    liquid_trivial: bool,
+) -> Option<f64> {
+    match (vapour_trivial, liquid_trivial) {
+        (true, true) => None,
+        (false, true) => Some(vapour_sum),
+        (true, false) => Some(liquid_sum),
+        (false, false) => Some(vapour_sum.max(liquid_sum)),
+    }
+}
+
+/// Test-only (#116 N1): the margin score rule, for the trivial-sum regression.
+#[cfg(test)]
+pub(super) fn non_trivial_max_sum_for_test(
+    vapour_sum: f64,
+    vapour_trivial: bool,
+    liquid_sum: f64,
+    liquid_trivial: bool,
+) -> Option<f64> {
+    non_trivial_max_sum(vapour_sum, vapour_trivial, liquid_sum, liquid_trivial)
+}
+
 pub(crate) fn test_stability_with_margin_seed(
     spec: &FluidSpecification,
     pressure_pa: f64,
@@ -967,11 +997,14 @@ pub(crate) fn test_stability_with_margin_seed(
         any_trial_converged = true;
 
         if !pair_indicates_instability(&vapour, &liquid) {
-            let score = vapour.sum.max(liquid.sum);
-            let one_non_trivial = !vapour.trivial || !liquid.trivial;
+            let Some(score) =
+                non_trivial_max_sum(vapour.sum, vapour.trivial, liquid.sum, liquid.trivial)
+            else {
+                continue;
+            };
             // N1 is a test-only experiment: keep the production path free of the seed work and
             // leave `margin_seed` empty there.
-            if cfg!(test) && one_non_trivial && score >= 1.0 - split_decision_band() {
+            if cfg!(test) && score >= 1.0 - split_decision_band() {
                 let candidate = pair_k_estimate(&vapour, &liquid, &wilson);
                 if k_is_usable(&candidate, z)
                     && margin_seed.as_ref().is_none_or(|(best, _)| score > *best)
