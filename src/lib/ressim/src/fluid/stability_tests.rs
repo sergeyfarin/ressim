@@ -9,7 +9,8 @@ use super::fixture::{self, FixtureSystem};
 use super::pinned;
 use super::specification::FluidSpecification;
 use super::stability::{
-    StabilityVerdict, TrialPhase, test_stability, trial_iteration_count, wilson_k,
+    StabilityVerdict, TrialPhase, non_trivial_max_sum_for_test, test_stability,
+    trial_iteration_count, wilson_k,
 };
 
 fn spec_for(system: &FixtureSystem) -> FluidSpecification {
@@ -67,6 +68,27 @@ fn comp_stability_verdict_matches_the_fixture_on_every_state() {
         "stability verdicts disagree with OPM on {} of 47 states:\n{}",
         disagreements.len(),
         disagreements.join("\n")
+    );
+}
+
+#[test]
+fn comp_stability_trivial_sum_does_not_qualify_an_out_of_band_companion() {
+    // The review's counterexample: the trivial vapour sum is ~1, while the informative liquid
+    // trial is 3.34e-8 below one and outside the 1e-9 band.
+    let score = non_trivial_max_sum_for_test(1.0000000000000004, true, 0.9999999666475153, false)
+        .expect("the non-trivial companion is a candidate");
+    assert_eq!(score, 0.9999999666475153);
+    assert!(
+        score < 1.0 - 1e-9,
+        "an out-of-band companion must not qualify"
+    );
+    assert_eq!(
+        non_trivial_max_sum_for_test(1.0000000000000004, true, 1.0000000000000002, true),
+        None
+    );
+    assert_eq!(
+        non_trivial_max_sum_for_test(1.0000000000000004, false, 1.0000000000000002, false),
+        Some(1.0000000000000004)
     );
 }
 

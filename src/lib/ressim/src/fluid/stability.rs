@@ -110,6 +110,43 @@ const MAX_TRIAL_NEWTON_HALVINGS: usize = 30;
 /// at `beta ~ 1e-8` rather than at a numerically ambiguous point. (See #93.)
 const TRIAL_SUM_TOLERANCE: f64 = 1e-12;
 
+/// Band below the stability threshold in which a stable verdict still records the trial pair's
+/// split seed for the experimental split-based phase decision (N1, #116).
+///
+/// The trial sum falls away from one as the feed moves into the single-phase region. Inside this
+/// band the trial compositions are close enough to a real split to supply a usable `K` seed; the
+/// caller must still converge the split, reject a trivial or unphysical one, and compare its Gibbs
+/// energy with the feed. Outside the band the standard single-phase verdict stands.
+pub(super) const SPLIT_DECISION_BAND: f64 = 1e-9;
+
+#[cfg(not(test))]
+#[inline]
+fn split_decision_band() -> f64 {
+    SPLIT_DECISION_BAND
+}
+
+#[cfg(test)]
+thread_local! {
+    static SPLIT_DECISION_BAND_OVERRIDE: core::cell::Cell<Option<f64>> =
+        const { core::cell::Cell::new(None) };
+}
+
+#[cfg(test)]
+fn split_decision_band() -> f64 {
+    SPLIT_DECISION_BAND_OVERRIDE
+        .with(|cell| cell.get())
+        .unwrap_or(SPLIT_DECISION_BAND)
+}
+
+/// Test-only (#116 N1): run `f` with the stability margin band replaced on this thread.
+#[cfg(test)]
+pub(crate) fn with_split_decision_band_for_test<T>(band: f64, f: impl FnOnce() -> T) -> T {
+    let previous = SPLIT_DECISION_BAND_OVERRIDE.with(|cell| cell.replace(Some(band)));
+    let out = f();
+    SPLIT_DECISION_BAND_OVERRIDE.with(|cell| cell.set(previous));
+    out
+}
+
 /// `sum (ln K_i)^2` below this means the trial collapsed onto the feed — the trivial solution,
 /// which carries no information about instability.
 pub(super) const TRIVIAL_SOLUTION_TOLERANCE: f64 = 1e-5;
@@ -866,6 +903,54 @@ pub fn test_stability(
     z: &[f64],
     k_seed: Option<&[f64]>,
 ) -> Result<StabilityVerdict, StabilityError> {
+    test_stability_with_margin_seed(spec, pressure_pa, temperature_k, z, k_seed)
+        .map(|result| result.verdict)
+}
+
+/// A stability verdict and, when the feed is stable but near the margin band, a split seed for
+/// the experimental split-based phase decision (N1, #116). The normal flash ignores the seed.
+pub(crate) struct StabilityTestResult {
+    pub verdict: StabilityVerdict,
+    pub margin_seed: Option<Vec<f64>>,
+}
+
+/// The largest trial sum that carries phase information.
+///
+/// A trivial trial has `sum ~ 1` by construction, so including it in the margin score would let a
+/// non-trivial companion below the band qualify on the trivial trial's value. Only non-trivial
+/// trial sums are eligible; both trivial means no candidate.
+fn non_trivial_max_sum(
+    vapour_sum: f64,
+    vapour_trivial: bool,
+    liquid_sum: f64,
+    liquid_trivial: bool,
+) -> Option<f64> {
+    match (vapour_trivial, liquid_trivial) {
+        (true, true) => None,
+        (false, true) => Some(vapour_sum),
+        (true, false) => Some(liquid_sum),
+        (false, false) => Some(vapour_sum.max(liquid_sum)),
+    }
+}
+
+/// Test-only (#116 N1): the margin score rule, for the trivial-sum regression.
+#[cfg(test)]
+pub(super) fn non_trivial_max_sum_for_test(
+    vapour_sum: f64,
+    vapour_trivial: bool,
+    liquid_sum: f64,
+    liquid_trivial: bool,
+) -> Option<f64> {
+    non_trivial_max_sum(vapour_sum, vapour_trivial, liquid_sum, liquid_trivial)
+}
+
+pub(crate) fn test_stability_with_margin_seed(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    k_seed: Option<&[f64]>,
+) -> Result<StabilityTestResult, StabilityError> {
     let n = spec.component_count();
     if z.len() != n {
         return Err(StabilityError::InvalidFeed {
@@ -898,6 +983,7 @@ pub fn test_stability(
     let mut first_error = None;
     let mut any_trial_converged = false;
     let mut saw_unusable_instability = false;
+    let mut margin_seed: Option<(f64, Vec<f64>)> = None;
 
     for seed in &seeds {
         let (vapour, liquid) = match run_trial_pair(spec, pressure_pa, temperature_k, z, seed, true)
@@ -911,12 +997,30 @@ pub fn test_stability(
         any_trial_converged = true;
 
         if !pair_indicates_instability(&vapour, &liquid) {
+            let Some(score) =
+                non_trivial_max_sum(vapour.sum, vapour.trivial, liquid.sum, liquid.trivial)
+            else {
+                continue;
+            };
+            // N1 is a test-only experiment: keep the production path free of the seed work and
+            // leave `margin_seed` empty there.
+            if cfg!(test) && score >= 1.0 - split_decision_band() {
+                let candidate = pair_k_estimate(&vapour, &liquid, &wilson);
+                if k_is_usable(&candidate, z)
+                    && margin_seed.as_ref().is_none_or(|(best, _)| score > *best)
+                {
+                    margin_seed = Some((score, candidate));
+                }
+            }
             continue;
         }
 
         let mut k = pair_k_estimate(&vapour, &liquid, &wilson);
         if k_is_usable(&k, z) {
-            return Ok(StabilityVerdict::Unstable { k });
+            return Ok(StabilityTestResult {
+                verdict: StabilityVerdict::Unstable { k },
+                margin_seed: None,
+            });
         }
 
         // Newton can converge both trials onto the same stationary composition while substitution
@@ -940,7 +1044,10 @@ pub fn test_stability(
         }
         k = pair_k_estimate(&vapour, &liquid, &wilson);
         if k_is_usable(&k, z) {
-            return Ok(StabilityVerdict::Unstable { k });
+            return Ok(StabilityTestResult {
+                verdict: StabilityVerdict::Unstable { k },
+                margin_seed: None,
+            });
         }
     }
 
@@ -954,7 +1061,13 @@ pub fn test_stability(
         // The trials did find a lower tangent plane, but every trial pair collapsed to a trivial
         // composition ratio. Return the Wilson estimate rather than a `K ~ 1` vector: the verdict
         // is what matters, and Wilson is at least a non-trivial seed for the flash.
-        return Ok(StabilityVerdict::Unstable { k: wilson });
+        return Ok(StabilityTestResult {
+            verdict: StabilityVerdict::Unstable { k: wilson },
+            margin_seed: None,
+        });
     }
-    Ok(StabilityVerdict::Stable)
+    Ok(StabilityTestResult {
+        verdict: StabilityVerdict::Stable,
+        margin_seed: margin_seed.map(|(_, k)| k),
+    })
 }

@@ -149,6 +149,48 @@ pub(crate) fn with_difference_refinement_for_test<T>(on: bool, f: impl FnOnce() 
     out
 }
 
+/// Whether a stable verdict may be overridden by a converged, lower-Gibbs split found inside the
+/// stability margin band (N1, #116). Off in every non-test build; a `cfg(test)` experiment turns it
+/// on for the calling thread with [`with_split_phase_decision_for_test`].
+#[cfg(not(test))]
+#[inline]
+fn split_phase_decision_enabled() -> bool {
+    false
+}
+
+#[cfg(test)]
+thread_local! {
+    static SPLIT_PHASE_DECISION: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+    static SPLIT_PHASE_DECISION_ACCEPTANCES: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn split_phase_decision_enabled() -> bool {
+    SPLIT_PHASE_DECISION.with(|c| c.get())
+}
+
+/// Test-only (#116): run `f` with the split-based phase decision (N1) switched `on` or off on this
+/// thread, and restore the previous setting afterwards.
+#[cfg(test)]
+pub(crate) fn with_split_phase_decision_for_test<T>(on: bool, f: impl FnOnce() -> T) -> T {
+    let previous = SPLIT_PHASE_DECISION.with(|c| c.replace(on));
+    let out = f();
+    SPLIT_PHASE_DECISION.with(|c| c.set(previous));
+    out
+}
+
+/// Test-only (#116 N1): how many times the split-based decision overrode a stable verdict on this
+/// thread since the counter was last reset.
+#[cfg(test)]
+pub(crate) fn split_phase_decision_acceptances_for_test() -> u64 {
+    SPLIT_PHASE_DECISION_ACCEPTANCES.with(|c| c.get())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_split_phase_decision_acceptances_for_test() {
+    SPLIT_PHASE_DECISION_ACCEPTANCES.with(|c| c.set(0));
+}
+
 /// Bracketing tolerance for the Rachford–Rice solve.
 const RACHFORD_RICE_TOLERANCE: f64 = 1e-14;
 
@@ -1293,16 +1335,43 @@ fn flash_unrefined(
         });
     }
 
-    let verdict = stability::test_stability(spec, pressure_pa, temperature_k, z, k_seed)
-        .map_err(FlashError::Stability)?;
+    let stability =
+        stability::test_stability_with_margin_seed(spec, pressure_pa, temperature_k, z, k_seed)
+            .map_err(FlashError::Stability)?;
 
-    let mut k = match verdict {
+    let k = match stability.verdict {
         StabilityVerdict::Unstable { k } => k,
         StabilityVerdict::Stable => {
+            #[cfg(test)]
+            if let Some(state) = split_phase_decision_for_test(
+                spec,
+                pressure_pa,
+                temperature_k,
+                z,
+                stability.margin_seed.as_deref(),
+            ) {
+                return Ok(state);
+            }
             return single_phase(spec, pressure_pa, temperature_k, z);
         }
     };
 
+    two_phase_flash_from_k(spec, pressure_pa, temperature_k, z, k)
+}
+
+/// The two-phase equilibrium solve from a `K` seed, without a stability test.
+///
+/// The normal flash enters this after an unstable verdict; N1 enters it from a trial-pair seed
+/// inside the stability margin band and accepts the answer only when it is a physical,
+/// non-trivial, lower-Gibbs split (see [`split_phase_decision_for_test`]).
+fn two_phase_flash_from_k(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    mut k: Vec<f64>,
+) -> Result<FlashState, FlashError> {
+    let n = spec.component_count();
     // The iteration runs on the extended window: the stability test's K is an estimate, and a
     // poor estimate can put the root outside [0, 1] on the way to a converged answer well inside
     // it. Whether the state is really two-phase is decided at convergence, not at the first step.
@@ -1431,6 +1500,41 @@ fn flash_unrefined(
         equilibrium_residual: residual,
         beta: solve_rachford_rice_extended(&k, z).unwrap_or(f64::NAN),
     })
+}
+
+/// Test-only (#116 N1): try the split based phase decision on a stable verdict.
+#[cfg(test)]
+fn split_phase_decision_for_test(
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    seed: Option<&[f64]>,
+) -> Option<FlashState> {
+    if !split_phase_decision_enabled() {
+        return None;
+    }
+    let seed = seed?;
+    let state = two_phase_flash_from_k(spec, pressure_pa, temperature_k, z, seed.to_vec()).ok()?;
+    if state.phase_state != PhaseState::TwoPhase {
+        return None;
+    }
+    let sum_ln_k_sq: f64 = state
+        .k
+        .iter()
+        .map(|value| {
+            let ln = math::ln(*value);
+            ln * ln
+        })
+        .sum();
+    if sum_ln_k_sq < stability::TRIVIAL_SOLUTION_TOLERANCE {
+        return None;
+    }
+    if newton_answer_raises_gibbs(spec, pressure_pa, temperature_k, z, &state) {
+        return None;
+    }
+    SPLIT_PHASE_DECISION_ACCEPTANCES.with(|c| c.set(c.get() + 1));
+    Some(state)
 }
 
 /// Li's pseudo-critical temperature for labelling a single-phase state.
