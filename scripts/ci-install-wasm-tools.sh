@@ -38,8 +38,9 @@ trap 'rm -rf "$WORK"' EXIT
 
 # Every attempt is bounded, not only its connection: `--max-time` caps one attempt, and a
 # transfer slower than 10 kB/s for 30 s is abandoned, so a response that stalls after its headers
-# cannot hold the job until the workflow times out. `--retry-max-time` caps the whole retry
-# sequence, after which the caller falls back to crates.io.
+# cannot hold the job until the workflow times out. `--retry-max-time` stops curl from starting a
+# new attempt after 900 s; an attempt already running keeps its own 300 s limit, so one tool's
+# downloads end within about 900 + 300 s, after which the caller falls back to crates.io.
 fetch() {
   curl -sSfL --connect-timeout 20 --max-time 300 --speed-limit 10000 --speed-time 30 \
     --retry 6 --retry-all-errors --retry-delay 15 --retry-max-time 900 \
