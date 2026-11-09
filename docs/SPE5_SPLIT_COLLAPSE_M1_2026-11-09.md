@@ -1,7 +1,10 @@
 # SPE5 split collapse at the #116 crossings: M1
 
-**Status: diagnostic result. N1 as scoped is not sufficient, and neither N1 nor N2 is approved.
-Production acceptance is unchanged at `1e-8`; no solver behavior changed.**
+**Status: diagnostic result. With the existing single-phase identity and trivial-cutoff policies,
+N1 leaves a residual discontinuity at the measured event. This does not establish that N1 cannot
+advance a replay; no N1 solve was run. Correcting a premature phase selection remains useful local
+work even if the full crossing needs the remaining mechanisms. Neither N1 nor N2 is approved, and
+production acceptance is unchanged at `1e-8`; no solver behavior changed.**
 
 M1 follows the physical two-phase split found in M0 in 50-digit arithmetic, from the label switch
 to its actual collapse and through the production trivial-solution cutoff
@@ -16,15 +19,16 @@ which side of the phase envelope the split collapses:
   question, not N1's.
 - **Cells 33/39 collapse at the bubble side** (`beta -> 0`). The trivial cutoff fires first, at
   `beta = 0.3929`, far from the collapse. N1 would therefore return a two-phase state with a
-  vapour saturation of 0.393 where the standard flash returns single liquid. The jump is smaller
-  than at the original switch, but it is **moved, not removed**; the cutoff is the limiter.
+  vapour saturation of 0.393 where the standard flash returns single liquid. The measured
+  difference is smaller than at the original switch, but it is still a discontinuity; the cutoff
+  is the limiter.
 
 ## Provenance and method
 
-The measurement was run on `10a6d475` (branch `docs/116-m1-split-collapse`), release build, with
-the five committed M0 crossing seeds. The M0 inputs were generated on the same branch; the only
-later code change is the phase-sum inventory form in the M1 engine test, which moves the recorded
-inventory differences by round-off only. The M0 branch-comparison test was rerun first, then:
+The measurement was run on `a45c68d6` (branch `docs/116-m1-split-collapse`), release build, with
+the five committed M0 crossing seeds. The M0 inputs and the 50-digit continuation were regenerated
+on the same branch; the engine test's later inventory and endpoint-guard changes do not move the
+continuation. The M0 branch-comparison test was rerun first, then:
 
 ```bash
 SPE5_TRACE_OUT=DIR cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
@@ -51,9 +55,26 @@ implied component inventory per m3 of pore volume. It locates:
 - the **trivial cutoff** `sum ln^2 K = 1e-5`, by bisection in `beta`, when the branch crosses it;
 - the **collapse**, the endpoint where `beta` reaches 0 or 1 and the phase amount vanishes.
 
-The pressure path is the relevant one: across the M0 Newton path the composition changes by
-`<= 1e-14`, and re-solving the split with the two endpoints' compositions moves the fixed-beta
-pressure by `<= 0.1 Pa`, against the 29-49 Pa distances measured below.
+The pressure path is the relevant one, but the actual composition change on the full Newton cycle
+is larger than the adjacent-float bracket: up to `2.5e-8` per component in `cap5`. The script
+records the change and re-solves the fixed-beta split with each endpoint's composition. The
+resulting pressure offsets are below `0.11 Pa`, against `29-49 Pa` to the dew/memory events (cell
+16 is a separate case: `0.003 Pa`). These are the reproducible per-case values:
+
+| Seed | Cells | Max component change, two-phase -> single iterate | Fixed-beta p offset, two-phase / single composition [Pa] | Distance to collapse/cutoff [Pa] |
+|---|---|---:|---:|---:|
+| `cap5` | 25, 31 | 2.54e-8 | +0.0060 / -0.0989 | 29.3 |
+| `cap5_att12` | 25, 31 | 1.24e-9 | +0.000070 / -0.0046 | 29.4 |
+| `cap05` | 16 | 1.92e-10 | +0.00061 / -0.000013 | 0.003 |
+| `cap05_att12` | 16 | 7.25e-12 | +0.00086 / -0.000046 | 0.003 |
+| `memory` | 33 | 1.62e-12 | +0.000013 / -0.000000043 | 46.8 to cutoff |
+| `memory` | 39 | 1.62e-12 | +0.00029 / +0.00028 | 46.8 to cutoff |
+
+For cell 16 the composition term is within a factor of about five of its `0.003 Pa` collapse
+distance, so the pressure-only path is a weaker approximation there; the endpoint itself is a dew
+point (`beta -> 1`) and does not depend on that distance. For the other cells the composition
+correction is at least two orders below the measured event distance, so it does not overturn the
+classification.
 
 **Engine-side jump (`comp_spe5_m1_cutoff_jump`).** Each 50-digit state is rebuilt through ResSim's
 own EOS (`two_phase_state_from_ln_k_for_test`, test-only), and compared with the standard flash at
@@ -61,6 +82,12 @@ the same `(p, z)`. The test reports the cell's component inventory per pore volu
 face's component molar flux with the neighbour held at the seed state, and the assembled scaled
 residual. This is the same branch-comparison instrument as M0, now evaluated at the collapse and
 cutoff states rather than at the switch.
+
+The test refuses the file unless the top-level `complete` flag is true, every case records
+`reached_endpoint: true`, and the named collapse's `beta` is independently at 0 or 1. A unit
+regression feeds it a truncated record with an interior `beta = 0.741` and asserts that it is
+rejected. The producer also lists incomplete cases and exits non-zero, so an unfinished
+continuation cannot be consumed as the stated M1 evidence.
 
 ## Result
 
@@ -95,23 +122,31 @@ Li's liquid label. At the memory cutoff the split is still a genuine two-phase s
 
 ## Verdict
 
-- **N1 alone only moves the jump.** It lowers the scaled residual at the switch by about 9x for
-  `cap5` and about 3x for `memory`, but leaves 1e-6 to 1e-5 at the event, far above `1e-8`.
+- **With the existing identity and cutoff policies, N1 leaves a residual discontinuity.** It
+  lowers the scaled residual at the switch by about 9x for `cap5` and about 3x for `memory`, but
+  leaves `1e-6` to `1e-5` at the event, far above `1e-8`.
+- **This is not a replay verdict.** The measured quantity is a branch-residual difference at fixed
+  inputs and a chosen `dt`; it is not a failed Newton solve with N1 enabled, and a gap above
+  `1e-8` does not prove the corrected discrete problem has no acceptable root. N1's correction of
+  a premature phase selection can still advance the discrete problem and remains useful local
+  work. Whether it advances a from-scratch replay is untested.
 - **Dew-side cells need N2.** For 25/31 and 16 the split collapses smoothly to all vapour; the
-  remaining 6.5-10.4% flux jump is entirely the single-phase identity. N1 without N2 cannot remove
-  it. N1 by itself also does nothing measurable at cell 16 (0.003 Pa move).
+  remaining 6.5-10.4% flux discontinuity is entirely the single-phase identity. N1 without N2
+  cannot remove it. N1 by itself also does nothing measurable at cell 16 (0.003 Pa move).
 - **The memory cells need a cutoff decision, not just a phase decision.** Their physical split
   continues past the production trivial cutoff to `beta -> 0`; the cutoff stops it at
   `beta = 0.3929`. Following the split further would make the phase amount vanish continuously, but
   that is a change to the trivial-solution termination, not N1. Lowering the threshold alone is not
-  enough: the cutoff is crossed while the split is still physically distinct.
+  enough: the cutoff is crossed while the split is still physically distinct, and a validated
+  equilibrium/thermodynamic rule is needed.
 - **Acceptance stays at `1e-8`.** No held-label flux or relaxed acceptance is involved; N1/N2 are
   changes to the standard flash's phase decision, and this measurement does not approve either.
 
 ## Limits
 
-- The path is at fixed composition, not the exact M0 Newton path; the composition sensitivity
-  above bounds that difference at 0.1 Pa.
+- The path is at fixed composition, not the exact M0 Newton path; the table above records the
+  actual cycle composition changes (up to `2.54e-8`) and their fixed-beta pressure offsets
+  (`<= 0.11 Pa`; `0.003 Pa` at cell 16).
 - The continuation follows the branch connected to the M0 split. Other split roots may exist near
   these states; the measurement does not claim the branch is unique.
 - At the `memory` collapse (`beta ~ 1e-11`) the engine's equilibrium Jacobian is singular, so the
@@ -128,8 +163,12 @@ Li's liquid label. At the memory cutoff the split is still a genuine two-phase s
 1. **N2, designed separately:** a deterministic single-phase identity at the dew point, reproducible
    from cold inputs, using the collapsing split (`beta -> 1` means vapour) rather than Li's
    `T_pc` rule.
-2. **The memory cutoff, designed separately:** decide whether the standard flash should follow a
-   physical split below `sum ln^2 K = 1e-5` until the phase amount is negligible, and how that
-   interacts with the trivial-solution guard. N1 does not cover this.
-3. Re-run the from-scratch month-240 replay and the #98 probe only after a candidate is approved;
+2. **The memory cutoff, designed separately:** a rule that distinguishes a real near-critical split
+   from a trivial solution using validated equilibrium/thermodynamic evidence, rather than simply
+   lowering `1e-5`. Decide whether the flash should follow the split until the phase amount is
+   negligible and how that interacts with the trivial-solution guard. N1 does not cover this.
+3. **N1 remains a local-correction candidate.** Do not judge it as a crossing fix from this
+   fixed-input discontinuity alone; evaluate it with N2/cutoff in place, then measure its effect on
+   a from-scratch replay.
+4. Re-run the from-scratch month-240 replay and the #98 probe only after a candidate is approved;
    acceptance remains the original equations at `1e-8`.

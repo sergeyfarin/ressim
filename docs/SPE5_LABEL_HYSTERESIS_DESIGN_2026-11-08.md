@@ -145,9 +145,10 @@ evaluation, because it changes the standard flash and so answers everywhere):**
   tracking β, Σ ln²K, g_split − g_feed, density and inventory, and component flux. That
   establishes whether N1 removes the jump or only moves it. Lowering a threshold alone is not a
   demonstrated crossing fix, and neither N1 nor N2 is approved by M0.
-  **M1 is done and points away from N1 alone:** 25/31 and 16 collapse at the dew point and leave
-  only the single-phase identity jump (N2); 33/39 are cut by the trivial cutoff at β = 0.3929,
-  still a real split, so N1 moves the jump rather than removing it. See
+  **M1 is done:** 25/31 and 16 collapse at the dew point and leave the single-phase identity jump
+  (N2); 33/39 are cut by the trivial cutoff at β = 0.3929, still a real split, so with the existing
+  identity/cutoff policies N1 leaves a discontinuity. This is a fixed-input measurement, not a
+  failed N1 replay: N1 remains a useful local-correction candidate. See
   [SPE5_SPLIT_COLLAPSE_M1_2026-11-09.md](SPE5_SPLIT_COLLAPSE_M1_2026-11-09.md).
 - **Acceptance stays the original equations:** the standard-state residual, wells included, at
   `1e-8`. N1 and N2 change the standard flash itself, so no held-label flux needs accepting. This is
