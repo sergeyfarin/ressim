@@ -78,6 +78,8 @@ mod spe5_flash_refinement_tests;
 #[cfg(test)]
 mod spe5_m0_branch_tests;
 #[cfg(test)]
+mod spe5_m1_split_tests;
+#[cfg(test)]
 mod spe5_plateau_tests;
 #[cfg(test)]
 mod spe5_tests;
