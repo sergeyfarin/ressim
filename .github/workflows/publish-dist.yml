@@ -40,8 +40,17 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      # wasm-pack, wasm-bindgen and wasm-opt at pinned versions, from a cache. Without them on PATH,
+      # wasm-pack downloads them anonymously from github.com during the build, and a GitHub
+      # incident then fails CI before anything under test runs (2026-11-09).
+      - name: Cache WASM build tools
+        uses: actions/cache@v6
+        with:
+          path: ~/.ressim-wasm-tools
+          key: wasm-tools-${{ runner.os }}-${{ hashFiles('scripts/ci-install-wasm-tools.sh', 'Cargo.lock') }}
+
+      - name: Install WASM build tools
+        run: bash scripts/ci-install-wasm-tools.sh
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
