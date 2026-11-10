@@ -821,8 +821,8 @@ fn comp_spe5_seed_recovery_resolves_the_switch() {
 #[ignore = "#116 carried-K recovery at the switch inputs; seconds"]
 fn comp_spe5_seed_recovery_carries_the_switch() {
     use crate::fluid::flash::{
-        flash_for_cell, with_difference_refinement_for_test, with_seed_recovery_for_test,
-        with_split_phase_decision_for_test,
+        flash_for_cell, remember_k_for_test, with_difference_refinement_for_test,
+        with_seed_recovery_for_test, with_split_phase_decision_for_test,
     };
     use crate::fluid::units::bar_to_pa;
     let case = restore("stall_n1_6612_836.json");
@@ -851,6 +851,7 @@ fn comp_spe5_seed_recovery_carries_the_switch() {
                 with_seed_recovery_for_test(recovery, || {
                     let lower = flash_for_cell(0, spec, lower_pa, temperature, &z, None)
                         .expect("lower flash");
+                    remember_k_for_test(0, &lower);
                     let upper = flash_for_cell(0, spec, upper_pa, temperature, &z, None)
                         .expect("upper flash");
                     (lower, upper)
@@ -899,4 +900,58 @@ fn comp_spe5_seed_recovery_carries_the_switch() {
         "carried split must pass the trivial cutoff, got {sum:e}"
     );
     let _ = bar_to_pa(0.0);
+}
+
+#[test]
+#[ignore = "#116 carried-K repeated-flash and reset isolation; seconds"]
+fn comp_spe5_seed_recovery_repeated_flash_and_reset() {
+    use crate::fluid::flash::{
+        PhaseState, flash_for_cell, remember_k_for_test, reset_carried_k_for_test,
+        with_difference_refinement_for_test, with_seed_recovery_for_test,
+        with_split_phase_decision_for_test,
+    };
+    let case = restore("stall_n1_6612_836.json");
+    let spec = case.spec_for_test();
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../opm/compositional/spe5/n1_switch_6612_cell33.json"),
+        )
+        .expect("read switch fixture"),
+    )
+    .expect("parse switch fixture");
+    let point = &fixture["points"][0];
+    let z: Vec<f64> = point["z"]
+        .as_array()
+        .expect("z")
+        .iter()
+        .filter_map(Value::as_f64)
+        .collect();
+    let upper_pa = point["p_pa"].as_f64().expect("p");
+    let lower_pa = f64::from_bits(upper_pa.to_bits() - 1);
+    let temperature = point["temperature_k"].as_f64().expect("T");
+    with_difference_refinement_for_test(true, || {
+        with_split_phase_decision_for_test(true, || {
+            with_seed_recovery_for_test(true, || {
+                reset_carried_k_for_test();
+                let lower =
+                    flash_for_cell(0, spec, lower_pa, temperature, &z, None).expect("lower flash");
+                assert_eq!(lower.phase_state, PhaseState::TwoPhase);
+                remember_k_for_test(0, &lower);
+                let first = flash_for_cell(0, spec, upper_pa, temperature, &z, None)
+                    .expect("first upper flash");
+                let repeated = flash_for_cell(0, spec, upper_pa, temperature, &z, None)
+                    .expect("repeated upper flash");
+                assert_eq!(first.phase_state, PhaseState::TwoPhase);
+                assert_eq!(repeated.phase_state, PhaseState::TwoPhase);
+                assert_eq!(first.beta, repeated.beta);
+                assert_eq!(first.k, repeated.k);
+                // A reset starts cold: without the lower-side carry the upper input is liquid.
+                reset_carried_k_for_test();
+                let cold = flash_for_cell(0, spec, upper_pa, temperature, &z, None)
+                    .expect("cold upper flash");
+                assert_eq!(cold.phase_state, PhaseState::SingleLiquid);
+            })
+        })
+    });
 }

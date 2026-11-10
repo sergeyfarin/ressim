@@ -204,6 +204,10 @@ thread_local! {
     static SEED_RECOVERY: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
     static CARRIED_K: core::cell::RefCell<Vec<Option<Vec<f64>>>> =
         const { core::cell::RefCell::new(Vec::new()) };
+    // Flash calls during one assembly write here; the cache is committed only at the assembly
+    // boundary, so repeated evaluations of the same input see one consistent hint.
+    static STAGED_K: core::cell::RefCell<Option<Vec<Option<Vec<f64>>>>> =
+        const { core::cell::RefCell::new(None) };
 }
 
 #[cfg(test)]
@@ -226,6 +230,22 @@ pub(crate) fn with_seed_recovery_for_test<T>(on: bool, f: impl FnOnce() -> T) ->
 #[cfg(test)]
 pub(crate) fn reset_carried_k_for_test() {
     CARRIED_K.with(|cache| cache.borrow_mut().clear());
+    STAGED_K.with(|staged| *staged.borrow_mut() = None);
+}
+
+/// Test-only (#116): start collecting the `K` values returned during one assembly.
+#[cfg(test)]
+pub(crate) fn begin_flash_round_for_test() {
+    STAGED_K.with(|staged| *staged.borrow_mut() = Some(Vec::new()));
+}
+
+/// Test-only (#116): publish the values collected since [`begin_flash_round_for_test`].
+#[cfg(test)]
+pub(crate) fn commit_flash_round_for_test() {
+    let staged = STAGED_K.with(|staged| staged.borrow_mut().take());
+    if let Some(staged) = staged {
+        CARRIED_K.with(|cache| *cache.borrow_mut() = staged);
+    }
 }
 
 #[cfg(test)]
@@ -234,7 +254,20 @@ fn carried_k(cell: usize) -> Option<Vec<f64>> {
 }
 
 #[cfg(test)]
-fn remember_k(cell: usize, state: &FlashState) {
+fn stage_k(cell: usize, state: &FlashState) {
+    STAGED_K.with(|staged| {
+        if let Some(staged) = staged.borrow_mut().as_mut() {
+            if staged.len() <= cell {
+                staged.resize(cell + 1, None);
+            }
+            staged[cell] = Some(state.k.clone());
+        }
+    });
+}
+
+/// Test-only (#116): seed one cell's carried `K` explicitly, for a direct flash sequence.
+#[cfg(test)]
+pub(crate) fn remember_k_for_test(cell: usize, state: &FlashState) {
     CARRIED_K.with(|cache| {
         let mut cache = cache.borrow_mut();
         if cache.len() <= cell {
@@ -265,7 +298,7 @@ pub(crate) fn flash_for_cell(
             z,
             hint.as_deref().or(k_seed),
         )?;
-        remember_k(cell, &state);
+        stage_k(cell, &state);
         return Ok(state);
     }
     flash(spec, pressure_pa, temperature_k, z, k_seed)

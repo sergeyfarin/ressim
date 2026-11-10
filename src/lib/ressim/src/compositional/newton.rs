@@ -490,10 +490,14 @@ pub(crate) fn solve_newton_observed(
     for iteration in 1..=options.max_iterations {
         report.iterations = iteration;
 
+        #[cfg(test)]
+        crate::fluid::flash::begin_flash_round_for_test();
         let assembled = match assemble_at(problem, &current, &current_bhp) {
             Ok(a) => a,
             Err(e) => return (Err(NewtonError::Assembly(e)), report),
         };
+        #[cfg(test)]
+        crate::fluid::flash::commit_flash_round_for_test();
         let norm = assembled.scaled_residual_norm(problem.layout);
         report.residual_history.push(norm);
         if let Some(observe) = observer.as_mut() {
