@@ -1275,7 +1275,8 @@ Order of work, as agreed in the #116 review:
    retaining physicality, equilibrium, non-triviality and Gibbs checks. At the adjacent switch
    inputs it recovers `TwoPhase` (`beta 0.439250` same-z test; actual carried seed `beta 0.458176`,
    `sum ln^2 K 1.64531e-5`), while the far liquid endpoint remains `SingleLiquid` (its candidate is
-   trivial, `4.3e-13`). The full failing call is unchanged because its step jumps from `227.551` to
+   trivial, `4.3e-13`). Repeated upper flashes return the same `beta`/`K`, and a cache reset starts
+   cold. The full failing call is unchanged because its step jumps from `227.551` to
    `228.156 bar` and never evaluates the switch; recovery plus fixed damping 0.5 fails with zero
    accepted steps. The next change should pair carried `K` with a line search or short continuation
    that evaluates intermediate inputs. Details in

@@ -12,8 +12,11 @@ at the current inputs, and accepts only through the ordinary checks.
 
 ## Design
 
-- **Hint.** `flash_for_cell(cell, …)` reads a per-cell `K` written by the previous flash of that
-  cell in the same Newton solve. The hint is passed as the flash's `k_seed`.
+- **Hint.** `flash_for_cell(cell, …)` reads a per-cell `K` committed at the previous assembly
+  boundary. Flash calls during one assembly stages their returned `K`; the staging map is committed
+  only after that assembly, so every caller in the iteration sees one consistent hint. Flashes
+  outside an assembly (direct diagnostics) read the committed hint and do not mutate it, so repeated
+  evaluation of the same input returns the same state. The hint is passed as the flash's `k_seed`.
 - **Complete recovery path.** When the stability verdict is stable, the carried `K` is used directly
   as the two-phase split seed, not only as a stability-trial seed. The split is re-solved at the
   current `(p, T, z)` by the same two-phase solver and must pass `TwoPhase`, `sum ln^2 K >= 1e-5`,
@@ -22,8 +25,10 @@ at the current inputs, and accepts only through the ordinary checks.
 - **Consistent properties.** The returned `FlashState` is the one used by the accumulation residual,
   both sides of every face flux, well connections and the derivative pass; no caller re-flashes.
 - **Determinism / rejection / restart.** The cache resets at the start of every Newton solve. A
-  rejected attempt and a restart therefore begin cold, not from a stale hint. Repeated flashes at
-  the same inputs use the same cached `K` and are deterministic. Nothing is stored in a checkpoint.
+  rejected attempt and a restart therefore begin cold, not from a stale hint. The regression
+  `comp_spe5_seed_recovery_repeated_flash_and_reset` checks that two consecutive upper-input flashes
+  return the same `beta` and `K`, and that a reset makes the same input cold (`SingleLiquid`).
+  Nothing is stored in a checkpoint.
 - **Production.** `flash_for_cell` delegates to `flash` in non-test builds; the cache and switch are
   `cfg(test)` only.
 
@@ -39,8 +44,10 @@ At the adjacent switch inputs (`n1_switch_6612_cell33.json`, cell 33, same `z`):
 | recovery on | TwoPhase | **TwoPhase, `beta 0.439250`**, `sum ln^2 K > 1e-5` |
 
 The committed actual-path carried seed gives `beta = 0.458176`, `sum ln^2 K = 1.64531e-5`,
-`g_split - g_feed = -3.77e-15`. The far liquid endpoint remains a negative control: a split seeded
-from the far two-phase iterate is trivial (`sum ln^2 K = 4.3e-13`) and is rejected.
+`g_split - g_feed = -3.77e-15`. Two consecutive upper flashes return the same `beta` and `K`; after
+a cache reset the same input is cold and returns `SingleLiquid`. The far liquid endpoint remains a
+negative control: a split seeded from the far two-phase iterate is trivial (`sum ln^2 K = 4.3e-13`)
+and is rejected.
 
 ### But the full Newton step skips the switch
 
@@ -74,6 +81,8 @@ The far liquid endpoint remains the negative control, and residual acceptance is
 ```bash
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
     comp_spe5_seed_recovery_carries_the_switch -- --ignored --nocapture
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+    comp_spe5_seed_recovery_repeated_flash_and_reset -- --ignored --nocapture
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
     comp_spe5_seed_recovery_resolves_the_switch -- --ignored --nocapture
 
