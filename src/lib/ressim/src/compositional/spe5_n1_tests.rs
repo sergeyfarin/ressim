@@ -1085,3 +1085,18 @@ fn comp_spe5_seed_recovery_attempt_and_restart_lifecycle() {
         })
     });
 }
+
+#[test]
+fn comp_spe5_seed_recovery_cold_acceptance_requires_cold_convergence() {
+    use super::newton::cold_acceptance_ok;
+    let tolerance = 1e-8;
+    // The review's case: warm 8e-9, cold 1.5e-8. The old max-norm difference (7e-9) passed,
+    // but cold convergence must be independent.
+    assert!(!cold_acceptance_ok(8e-9, 1.5e-8, 7e-9, tolerance));
+    // A cold-converged state with an agreeing scaled residual vector is accepted.
+    assert!(cold_acceptance_ok(8e-9, 9e-9, 7e-9, tolerance));
+    // A vector difference above tolerance is refused even when both norms agree.
+    assert!(!cold_acceptance_ok(8e-9, 8.5e-9, 1.1e-8, tolerance));
+    // Warm non-convergence is never accepted.
+    assert!(!cold_acceptance_ok(1.1e-8, 8e-9, 0.0, tolerance));
+}

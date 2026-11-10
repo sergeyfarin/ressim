@@ -463,6 +463,46 @@ pub(crate) struct NewtonIterate<'a> {
     pub assembled: &'a AssemblyResult,
 }
 
+/// Test-only (#116): the cold-recheck acceptance rule for carried-K recovery.
+///
+/// Warm convergence alone is not enough: the cold evaluation must be converged independently,
+/// and the scaled residual-vector difference must fit the same tolerance.
+#[cfg(test)]
+pub(crate) fn cold_acceptance_ok(
+    warm_norm: f64,
+    cold_norm: f64,
+    vector_difference: f64,
+    tolerance: f64,
+) -> bool {
+    warm_norm <= tolerance
+        && cold_norm <= tolerance
+        && (warm_norm - cold_norm).abs() <= tolerance
+        && vector_difference <= tolerance
+}
+
+/// Test-only (#116): maximum scaled per-cell/well residual difference between two assemblies.
+#[cfg(test)]
+fn scaled_residual_vector_difference(
+    warm: &AssemblyResult,
+    cold: &AssemblyResult,
+    layout: &CompositionalLayout,
+) -> f64 {
+    let n = layout.cell_block_size();
+    let mut worst = 0.0f64;
+    for cell in 0..layout.cell_count() {
+        let difference: Vec<f64> = (0..n)
+            .map(|row| warm.residual[cell * n + row] - cold.residual[cell * n + row])
+            .collect();
+        worst = worst.max(warm.scaling[cell].scaled_residual_norm(&difference));
+    }
+    for (warm_well, cold_well) in warm.well_eliminations.iter().zip(&cold.well_eliminations) {
+        if warm_well.scale > 0.0 {
+            worst = worst.max(((warm_well.residual - cold_well.residual) / warm_well.scale).abs());
+        }
+    }
+    worst
+}
+
 /// [`solve_newton`], calling `observer` with every assembled iterate.
 ///
 /// Diagnostic only (#116): the observer reads, it cannot change the iteration, so a run with an
@@ -537,11 +577,18 @@ pub(crate) fn solve_newton_observed(
                 match cold {
                     Ok(cold) => {
                         let cold_norm = cold.scaled_residual_norm(problem.layout);
-                        if (cold_norm - norm).abs() > options.tolerance {
+                        let vector_difference =
+                            scaled_residual_vector_difference(&assembled, &cold, problem.layout);
+                        if !cold_acceptance_ok(
+                            norm,
+                            cold_norm,
+                            vector_difference,
+                            options.tolerance,
+                        ) {
                             return (
                                 Err(NewtonError::NotConverged {
                                     iterations: iteration,
-                                    scaled_residual: cold_norm,
+                                    scaled_residual: cold_norm.max(vector_difference),
                                 }),
                                 report,
                             );
