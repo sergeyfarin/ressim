@@ -482,11 +482,11 @@ pub(crate) fn cold_acceptance_ok(
 
 /// Test-only (#116): maximum scaled per-cell/well residual difference between two assemblies.
 #[cfg(test)]
-fn scaled_residual_vector_difference(
+pub(crate) fn scaled_residual_vector_difference(
     warm: &AssemblyResult,
     cold: &AssemblyResult,
     layout: &CompositionalLayout,
-) -> f64 {
+) -> Option<f64> {
     let n = layout.cell_block_size();
     let mut worst = 0.0f64;
     for cell in 0..layout.cell_count() {
@@ -495,12 +495,23 @@ fn scaled_residual_vector_difference(
             .collect();
         worst = worst.max(warm.scaling[cell].scaled_residual_norm(&difference));
     }
-    for (warm_well, cold_well) in warm.well_eliminations.iter().zip(&cold.well_eliminations) {
-        if warm_well.scale > 0.0 {
-            worst = worst.max(((warm_well.residual - cold_well.residual) / warm_well.scale).abs());
-        }
+    if warm.well_eliminations.len() != cold.well_eliminations.len() {
+        return None;
     }
-    worst
+    for warm_well in &warm.well_eliminations {
+        let Some(cold_well) = cold
+            .well_eliminations
+            .iter()
+            .find(|cold_well| cold_well.well == warm_well.well)
+        else {
+            return None;
+        };
+        if cold_well.id != warm_well.id || warm_well.scale <= 0.0 {
+            return None;
+        }
+        worst = worst.max(((warm_well.residual - cold_well.residual) / warm_well.scale).abs());
+    }
+    Some(worst)
 }
 
 /// [`solve_newton`], calling `observer` with every assembled iterate.
@@ -577,8 +588,19 @@ pub(crate) fn solve_newton_observed(
                 match cold {
                     Ok(cold) => {
                         let cold_norm = cold.scaled_residual_norm(problem.layout);
-                        let vector_difference =
-                            scaled_residual_vector_difference(&assembled, &cold, problem.layout);
+                        let Some(vector_difference) =
+                            scaled_residual_vector_difference(&assembled, &cold, problem.layout)
+                        else {
+                            // The active well-rate equations changed between warm and cold.
+                            // Matching rows by position would silently drop or mispair them.
+                            return (
+                                Err(NewtonError::NotConverged {
+                                    iterations: iteration,
+                                    scaled_residual: f64::INFINITY,
+                                }),
+                                report,
+                            );
+                        };
                         if !cold_acceptance_ok(
                             norm,
                             cold_norm,

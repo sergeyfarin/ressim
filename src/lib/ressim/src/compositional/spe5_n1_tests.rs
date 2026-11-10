@@ -1100,3 +1100,87 @@ fn comp_spe5_seed_recovery_cold_acceptance_requires_cold_convergence() {
     // Warm non-convergence is never accepted.
     assert!(!cold_acceptance_ok(1.1e-8, 8e-9, 0.0, tolerance));
 }
+
+#[test]
+#[ignore = "#116 well-control change through the cold comparison; seconds"]
+fn comp_spe5_seed_recovery_well_control_change_is_rejected() {
+    use super::api::{CompletionConfig, CompositionalCase, WellConfig, WellControlConfig};
+    use super::newton::{assemble_for_test, scaled_residual_vector_difference};
+    use crate::fluid::flash::{
+        flash_for_cell, remember_k_for_test, with_difference_refinement_for_test,
+        with_seed_recovery_for_test, with_split_phase_decision_for_test,
+    };
+    let base = restore("stall_n1_6612_836.json");
+    let mut checkpoint = base.checkpoint();
+    checkpoint.config.wells.push(WellConfig {
+        id: "PROBE33".to_string(),
+        completions: vec![CompletionConfig {
+            cell: 33,
+            well_index: 1.0,
+            head_offset_bar: 0.0,
+        }],
+        control: WellControlConfig::MolarRate {
+            target_moles_per_day: -1_170_167.30,
+            bhp_limit_bar: 200.0,
+        },
+        injection_composition: None,
+        inject_water: false,
+    });
+    checkpoint.well_bhp_bar.push(210.0);
+    let case = CompositionalCase::restore(&checkpoint).expect("restore probe case");
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../opm/compositional/spe5/n1_switch_6612_cell33.json"),
+        )
+        .expect("read switch fixture"),
+    )
+    .expect("parse switch fixture");
+    let point = &fixture["points"][0];
+    let z: Vec<f64> = point["z"]
+        .as_array()
+        .expect("z")
+        .iter()
+        .filter_map(Value::as_f64)
+        .collect();
+    let upper_pa = point["p_pa"].as_f64().expect("p");
+    let lower_pa = f64::from_bits(upper_pa.to_bits() - 1);
+    let temperature = point["temperature_k"].as_f64().expect("T");
+    let dt = 0.04402126141911289;
+    let result = with_difference_refinement_for_test(true, || {
+        with_split_phase_decision_for_test(true, || {
+            with_seed_recovery_for_test(true, || {
+                case.with_diagnostic_problem(dt, |problem, start, _options| {
+                    let lower = flash_for_cell(33, problem.spec, lower_pa, temperature, &z, None)
+                        .expect("lower flash");
+                    remember_k_for_test(33, &lower);
+                    let mut trial = start.begin_trial();
+                    {
+                        let target = trial.cell_mut(33);
+                        target.pressure_bar = upper_pa / 1e5;
+                        let independent = target.independent_z_mut();
+                        independent.copy_from_slice(&z[..independent.len()]);
+                    }
+                    let trial = trial.commit().expect("upper state");
+                    let bhp = problem.accepted_well_bhp.expect("accepted BHP").to_vec();
+                    let warm = assemble_for_test(problem, &trial, &bhp).expect("warm assembly");
+                    let cold = with_seed_recovery_for_test(false, || {
+                        assemble_for_test(problem, &trial, &bhp).expect("cold assembly")
+                    });
+                    println!(
+                        "warm limits {:?}, cold limits {:?}; warm eliminations {}, cold {}",
+                        warm.well_on_bhp_limit,
+                        cold.well_on_bhp_limit,
+                        warm.well_eliminations.len(),
+                        cold.well_eliminations.len()
+                    );
+                    scaled_residual_vector_difference(&warm, &cold, problem.layout)
+                })
+            })
+        })
+    });
+    assert!(
+        result.is_none(),
+        "a changed active well-rate set must not be paired by position"
+    );
+}
