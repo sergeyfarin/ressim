@@ -2,7 +2,7 @@
 
 **Status: experimental, test-only, not promoted. Production flash behavior is unchanged; the
 original residual acceptance, equilibrium, physicality, non-triviality and Gibbs checks are
-retained.** Measured on `5ef8e049` (branch `exp/116-seed-recovery`), release build.
+retained.** Measured on `658cfe06` (branch `exp/116-seed-recovery`), release build.
 
 This follows the #133 finding that the N1 two-phase→liquid switch at `228.126683` is premature:
 the upper input still has a physical split, but both stability trials have become trivial and N1
@@ -65,6 +65,12 @@ and is rejected.
   sufficient: `comp_spe5_seed_recovery_cold_acceptance_requires_cold_convergence` pins the
   warm `8e-9` / cold `1.5e-8` case as a rejection and checks the vector-difference path. This is why
   a recovered state at the premature switch cannot be accepted unless it is also the cold state.
+- Well equations are matched by well index/id, not by position. If the active rate-control set
+  changes between warm and cold, the comparison is inconclusive and the attempt is rejected.
+  `comp_spe5_seed_recovery_well_control_change_is_rejected` adds a producer at cell 33 with a
+  `200 bar` limit: warm has limits `[true, false, false, true]` and one elimination, cold has
+  `[true, false, false, false]` and two, so the old positional zip would have dropped the unmatched
+  row. The comparison now refuses it.
 
 ### But the full Newton step skips the switch
 

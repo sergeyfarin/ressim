@@ -1279,7 +1279,10 @@ Order of work, as agreed in the #116 review:
    cold, three whole assemblies at identical inputs give the same residual while cold re-evaluation
    differs by `4.94e-4`, and checkpoint restart reproduces the accepted inventory. Acceptance requires the cold
    re-evaluation to be independently converged and the scaled residual-vector difference to be
-   `<= 1e-8`; the max-norm shortcut is not sufficient. The full failing call is unchanged because its step jumps from `227.551` to
+   `<= 1e-8`; the max-norm shortcut is not sufficient. Active well-rate equations are matched by
+   well, not position; a warm/cold control change rejects the comparison (committed cell-33 probe:
+   warm limit vector `[true,false,false,true]` / 1 elimination vs cold
+   `[true,false,false,false]` / 2). The full failing call is unchanged because its step jumps from `227.551` to
    `228.156 bar` and never evaluates the switch; recovery plus fixed damping 0.5 fails with zero
    accepted steps. The next change should pair carried `K` with a line search or short continuation
    that evaluates intermediate inputs. Details in
