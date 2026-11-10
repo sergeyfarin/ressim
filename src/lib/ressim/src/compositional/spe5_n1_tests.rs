@@ -955,3 +955,133 @@ fn comp_spe5_seed_recovery_repeated_flash_and_reset() {
         })
     });
 }
+
+#[test]
+#[ignore = "#116 whole-assembly residual consistency across seed commits; seconds"]
+fn comp_spe5_seed_recovery_assembly_is_stable_across_commits() {
+    use super::newton::assemble_for_test;
+    use crate::fluid::flash::{
+        flash_for_cell, remember_k_for_test, with_difference_refinement_for_test,
+        with_seed_recovery_for_test, with_split_phase_decision_for_test,
+    };
+    let case = restore("stall_n1_6612_836.json");
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../opm/compositional/spe5/n1_switch_6612_cell33.json"),
+        )
+        .expect("read switch fixture"),
+    )
+    .expect("parse switch fixture");
+    let point = &fixture["points"][0];
+    let z: Vec<f64> = point["z"]
+        .as_array()
+        .expect("z")
+        .iter()
+        .filter_map(Value::as_f64)
+        .collect();
+    let upper_pa = point["p_pa"].as_f64().expect("p");
+    let lower_pa = f64::from_bits(upper_pa.to_bits() - 1);
+    let temperature = point["temperature_k"].as_f64().expect("T");
+    let dt = 0.04402126141911289;
+    let norms = with_difference_refinement_for_test(true, || {
+        with_split_phase_decision_for_test(true, || {
+            with_seed_recovery_for_test(true, || {
+                case.with_diagnostic_problem(dt, |problem, start, _options| {
+                    let spec = problem.spec;
+                    let lower = flash_for_cell(33, spec, lower_pa, temperature, &z, None)
+                        .expect("lower flash");
+                    assert_eq!(lower.phase_state, crate::fluid::flash::PhaseState::TwoPhase);
+                    remember_k_for_test(33, &lower);
+                    let mut trial = start.begin_trial();
+                    {
+                        let target = trial.cell_mut(33);
+                        target.pressure_bar = upper_pa / 1e5;
+                        let independent = target.independent_z_mut();
+                        independent.copy_from_slice(&z[..independent.len()]);
+                    }
+                    let trial = trial.commit().expect("upper state");
+                    let bhp = problem.accepted_well_bhp.expect("accepted BHP");
+                    let mut norms = Vec::new();
+                    for _ in 0..3 {
+                        // The attempt-owned hint is fixed; assembling must not publish a new one.
+                        let assembly = assemble_for_test(problem, &trial, bhp).expect("assembly");
+                        norms.push(assembly.scaled_residual_norm(problem.layout));
+                    }
+                    let cold = with_seed_recovery_for_test(false, || {
+                        assemble_for_test(problem, &trial, bhp).expect("cold assembly")
+                    });
+                    norms.push(cold.scaled_residual_norm(problem.layout));
+                    norms
+                })
+            })
+        })
+    });
+    println!("assembly norms: {norms:?}");
+    for pair in norms[..3].windows(2) {
+        assert!(
+            (pair[0] - pair[1]).abs() <= 1e-8,
+            "repeated assembly changed the residual: {:?}",
+            pair
+        );
+    }
+    assert!(
+        (norms[2] - norms[3]).abs() > 1e-8,
+        "the cold re-evaluation should be a negative control, got {:?}",
+        &norms[2..]
+    );
+}
+
+#[test]
+#[ignore = "#116 carried-K attempt and restart lifecycle; seconds"]
+fn comp_spe5_seed_recovery_attempt_and_restart_lifecycle() {
+    use super::newton::solve_newton_observed;
+    use crate::fluid::flash::{
+        reset_carried_k_for_test, with_difference_refinement_for_test, with_seed_recovery_for_test,
+        with_split_phase_decision_for_test,
+    };
+    let case = restore("stall_n1_6612_836.json");
+    let dt = 0.04402126141911289;
+    // Two consecutive solves from the same accepted state must reproduce the same history even
+    // though the first leaves a committed hint behind.
+    let (first, second) = case.with_diagnostic_problem(dt, |problem, start, options| {
+        let first = with_difference_refinement_for_test(true, || {
+            with_split_phase_decision_for_test(true, || {
+                with_seed_recovery_for_test(true, || {
+                    solve_newton_observed(problem, start, options, None)
+                        .1
+                        .residual_history
+                })
+            })
+        });
+        let second = with_difference_refinement_for_test(true, || {
+            with_split_phase_decision_for_test(true, || {
+                with_seed_recovery_for_test(true, || {
+                    solve_newton_observed(problem, start, options, None)
+                        .1
+                        .residual_history
+                })
+            })
+        });
+        (first, second)
+    });
+    assert_eq!(
+        first, second,
+        "a retry must not inherit the previous attempt's hint"
+    );
+
+    // A checkpoint restart reproduces the accepted inventory with an empty cache.
+    with_difference_refinement_for_test(true, || {
+        with_split_phase_decision_for_test(true, || {
+            with_seed_recovery_for_test(true, || {
+                reset_carried_k_for_test();
+                let cold = case.component_inventory_for_test();
+                let restored = super::api::CompositionalCase::restore(&case.checkpoint())
+                    .expect("restore checkpoint");
+                reset_carried_k_for_test();
+                let restarted = restored.component_inventory_for_test();
+                assert_eq!(cold, restarted, "checkpoint restart changed the inventory");
+            })
+        })
+    });
+}

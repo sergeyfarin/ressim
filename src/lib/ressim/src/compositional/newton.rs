@@ -483,21 +483,37 @@ pub(crate) fn solve_newton_observed(
         accepted_well_bhp: Vec::new(),
     };
     #[cfg(test)]
-    crate::fluid::flash::reset_carried_k_for_test();
+    {
+        crate::fluid::flash::reset_carried_k_for_test();
+        if crate::fluid::flash::seed_recovery_enabled_for_test() {
+            // Attempt-owned hint: initialize once from the accepted state under this attempt, then
+            // keep it fixed for every Newton iteration. Rejected attempts and restarts recompute
+            // the same hint from the same state.
+            crate::fluid::flash::begin_flash_round_for_test();
+            for cell_index in 0..state.cells().len() {
+                let cell = state.cell(cell_index);
+                let _ = crate::fluid::flash::flash_for_cell(
+                    cell_index,
+                    problem.spec,
+                    crate::fluid::units::bar_to_pa(cell.pressure_bar),
+                    problem.spec.reservoir_temperature_k(),
+                    &cell.overall_composition(),
+                    None,
+                );
+            }
+            crate::fluid::flash::commit_flash_round_for_test();
+        }
+    }
     let mut current = state.clone();
     let mut current_bhp = starting_well_bhp(problem, &current, options.well_bhp_start);
 
     for iteration in 1..=options.max_iterations {
         report.iterations = iteration;
 
-        #[cfg(test)]
-        crate::fluid::flash::begin_flash_round_for_test();
         let assembled = match assemble_at(problem, &current, &current_bhp) {
             Ok(a) => a,
             Err(e) => return (Err(NewtonError::Assembly(e)), report),
         };
-        #[cfg(test)]
-        crate::fluid::flash::commit_flash_round_for_test();
         let norm = assembled.scaled_residual_norm(problem.layout);
         report.residual_history.push(norm);
         if let Some(observe) = observer.as_mut() {
@@ -509,6 +525,31 @@ pub(crate) fn solve_newton_observed(
         }
 
         if norm <= options.tolerance {
+            // A carried-K recovery is admissible only if a cold re-evaluation at the same
+            // primaries agrees. Otherwise the accepted state (and the inventory/reporting flash
+            // after it) would depend on the seed history and could not be reproduced from a
+            // restart. Test-only: seed recovery is off in production.
+            #[cfg(test)]
+            if crate::fluid::flash::seed_recovery_enabled_for_test() {
+                let cold = crate::fluid::flash::with_seed_recovery_for_test(false, || {
+                    assemble_at(problem, &current, &current_bhp)
+                });
+                match cold {
+                    Ok(cold) => {
+                        let cold_norm = cold.scaled_residual_norm(problem.layout);
+                        if (cold_norm - norm).abs() > options.tolerance {
+                            return (
+                                Err(NewtonError::NotConverged {
+                                    iterations: iteration,
+                                    scaled_residual: cold_norm,
+                                }),
+                                report,
+                            );
+                        }
+                    }
+                    Err(error) => return (Err(NewtonError::Assembly(error)), report),
+                }
+            }
             report.accepted_well_rates = assembled.well_rates;
             report.accepted_well_bhp = assembled.well_bhp;
             return (Ok(current), report);

@@ -215,6 +215,12 @@ fn seed_recovery_enabled() -> bool {
     SEED_RECOVERY.with(|cell| cell.get())
 }
 
+/// Test-only (#116): whether the carried-`K` experiment is active on this thread.
+#[cfg(test)]
+pub(crate) fn seed_recovery_enabled_for_test() -> bool {
+    seed_recovery_enabled()
+}
+
 /// Test-only (#116): run `f` with the carried-`K` seed recovery switched `on` or off on this
 /// thread.
 #[cfg(test)]
@@ -291,6 +297,7 @@ pub(crate) fn flash_for_cell(
     #[cfg(test)]
     if seed_recovery_enabled() {
         let hint = carried_k(cell);
+        let used_hint = hint.is_some();
         let state = flash(
             spec,
             pressure_pa,
@@ -298,7 +305,12 @@ pub(crate) fn flash_for_cell(
             z,
             hint.as_deref().or(k_seed),
         )?;
-        stage_k(cell, &state);
+        // A carried split is a re-solve of the existing hint, not a new seed. Publishing its K
+        // would make the next assembly at identical inputs use a different hint and change the
+        // residual; keep the established hint until a cold flash supplies a new one.
+        if !used_hint && state.phase_state == PhaseState::TwoPhase {
+            stage_k(cell, &state);
+        }
         return Ok(state);
     }
     flash(spec, pressure_pa, temperature_k, z, k_seed)
@@ -1448,9 +1460,21 @@ fn flash_unrefined(
         });
     }
 
-    let stability =
-        stability::test_stability_with_margin_seed(spec, pressure_pa, temperature_k, z, k_seed)
-            .map_err(FlashError::Stability)?;
+    // A carried K is a split hint, not a stability-trial seed: keep the verdict independent of
+    // the history so re-solving at identical inputs cannot change the label through this gate.
+    let stability_seed = if cfg!(test) && seed_recovery_enabled() {
+        None
+    } else {
+        k_seed
+    };
+    let stability = stability::test_stability_with_margin_seed(
+        spec,
+        pressure_pa,
+        temperature_k,
+        z,
+        stability_seed,
+    )
+    .map_err(FlashError::Stability)?;
 
     let k = match stability.verdict {
         StabilityVerdict::Unstable { k } => k,
