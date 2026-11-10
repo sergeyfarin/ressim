@@ -1256,6 +1256,20 @@ Order of work, as agreed in the #116 review:
    the phase-label discontinuity. Details in
    [SPE5_SPLIT_PHASE_DECISION_N1_2026-11-09.md](SPE5_SPLIT_PHASE_DECISION_N1_2026-11-09.md).
 
+   **Next-blocker diagnosis.** The captured failing call alternates between a genuine two-phase
+   state at `227.5516 bar` and a single-liquid state at `228.1566 bar`, but the intervening N1
+   switch is premature. Bisecting the actual 19→20 path under the same N1+refinement operator puts
+   the switch at `228.12668313699209/1 bar`; the upper input still has a physical split
+   (`beta = 0.458178303`, `sum ln^2 K = 1.645e-5`, `g_split - g_feed = -3.144e-15 RT`). At that
+   upper input both Michelsen trials are trivial, so N1 loses its eligible seed; a carried seed from
+   the lower side converges to `beta = 0.458176`, `sum ln^2 K = 1.64531e-5`, above the `1e-5`
+   acceptance cutoff. The assembled residual jump is `3.3069e-3` (cell 33) / `3.2777e-3` (cell 39).
+   The far liquid endpoint is correct but does not exonerate the premature switch. The immediate
+   next change is seed eligibility/continuation through the switch; an early two-cycle
+   detector/cutback should be evaluated separately for cost and sustained advancement. The Taylor
+   probe now uses the same N1+refinement settings as the attempt. Details in
+   [SPE5_N1_NEXT_BLOCKER_DIAGNOSIS_2026-11-09.md](SPE5_N1_NEXT_BLOCKER_DIAGNOSIS_2026-11-09.md).
+
 All thresholds above are **experimental candidates**, not validated values. They come from two
 traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of
 each report.

@@ -412,6 +412,33 @@ fn apply_step(
     trial
 }
 
+/// Test-only (#116): extra multiplier applied to Newton's fraction-to-boundary step. One in every
+/// non-test build; the failing-call diagnostic sets it to measure a damped step.
+#[cfg(not(test))]
+#[inline]
+fn step_damping_for_test() -> f64 {
+    1.0
+}
+
+#[cfg(test)]
+thread_local! {
+    static STEP_DAMPING: core::cell::Cell<f64> = const { core::cell::Cell::new(1.0) };
+}
+
+#[cfg(test)]
+fn step_damping_for_test() -> f64 {
+    STEP_DAMPING.with(|cell| cell.get())
+}
+
+/// Test-only (#116): run `f` with Newton's step multiplied by `factor`, then restore it.
+#[cfg(test)]
+pub(crate) fn with_step_damping_for_test<T>(factor: f64, f: impl FnOnce() -> T) -> T {
+    let previous = STEP_DAMPING.with(|cell| cell.replace(factor));
+    let out = f();
+    STEP_DAMPING.with(|cell| cell.set(previous));
+    out
+}
+
 /// Solve one timestep's nonlinear system from `state`.
 ///
 /// Returns the accepted state and a report, or a typed failure and the report of what happened
@@ -539,12 +566,15 @@ pub(crate) fn solve_newton_observed(
             Ok(t) => t,
             Err(e) => return (Err(e), report),
         };
-        let tau = tau.min(well_fraction_to_boundary(
-            problem.wells,
-            &assembled.well_eliminations,
-            &assembled.well_bhp,
-            &bhp_updates,
-        ));
+        let tau = tau
+            .min(well_fraction_to_boundary(
+                problem.wells,
+                &assembled.well_eliminations,
+                &assembled.well_bhp,
+                &bhp_updates,
+            ))
+            .min(1.0)
+            * step_damping_for_test();
         report.step_scale_history.push(tau);
         if tau <= 0.0 {
             return (
