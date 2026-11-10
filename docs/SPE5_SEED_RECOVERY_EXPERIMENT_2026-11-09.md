@@ -2,7 +2,7 @@
 
 **Status: experimental, test-only, not promoted. Production flash behavior is unchanged; the
 original residual acceptance, equilibrium, physicality, non-triviality and Gibbs checks are
-retained.** Measured on `67a6e6d3` (branch `exp/116-seed-recovery`), release build.
+retained.** Measured on `5ef8e049` (branch `exp/116-seed-recovery`), release build.
 
 This follows the #133 finding that the N1 two-phase→liquid switch at `228.126683` is premature:
 the upper input still has a physical split, but both stability trials have become trivial and N1
@@ -26,9 +26,11 @@ at the current inputs, and accepts only through the ordinary checks.
 - **Determinism / rejection / restart.** The hint is attempt-owned: it is rebuilt from the
   accepted state at the start of every attempt and discarded afterwards. The step resets it before
   reconstructing the accepted inventory, so a failed attempt cannot influence the next step.
-  Checkpoint restore reproduces the same accepted inventory with an empty cache. At convergence, a
-  cold re-evaluation must agree with the assembled residual within the unchanged `1e-8`; otherwise
-  the attempt is rejected. Nothing is stored in a checkpoint beyond the accepted primaries.
+  Checkpoint restore reproduces the same accepted inventory with an empty cache. At convergence,
+  the cold re-evaluation must be independently converged (`cold_norm <= 1e-8`) and its scaled
+  residual **vector** difference must also be `<= 1e-8`; a warm `8e-9` / cold `1.5e-8` pair is
+  rejected even though their max-norm difference is only `7e-9`. Otherwise the attempt is rejected.
+  Nothing is stored in a checkpoint beyond the accepted primaries.
 - **Production.** `flash_for_cell` delegates to `flash` in non-test builds; the cache and switch are
   `cfg(test)` only.
 
@@ -58,9 +60,11 @@ and is rejected.
 - `comp_spe5_seed_recovery_attempt_and_restart_lifecycle`: two consecutive solves from the same
   accepted state reproduce the same residual history despite the first leaving a hint; a
   checkpoint restart reproduces the accepted inventory with an empty cache.
-- At acceptance, the cold re-evaluation must agree with the assembled residual to `1e-8`; otherwise
-  the attempt is rejected. This is why a recovered state at the premature switch cannot be accepted
-  unless it is also the cold state.
+- At acceptance, the cold re-evaluation must be independently converged and its scaled residual
+  vector must agree to `1e-8`; otherwise the attempt is rejected. The max-norm shortcut is not
+  sufficient: `comp_spe5_seed_recovery_cold_acceptance_requires_cold_convergence` pins the
+  warm `8e-9` / cold `1.5e-8` case as a rejection and checks the vector-difference path. This is why
+  a recovered state at the premature switch cannot be accepted unless it is also the cold state.
 
 ### But the full Newton step skips the switch
 

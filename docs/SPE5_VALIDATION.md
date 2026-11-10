@@ -1277,7 +1277,9 @@ Order of work, as agreed in the #116 review:
    `sum ln^2 K 1.64531e-5`), while the far liquid endpoint remains `SingleLiquid` (its candidate is
    trivial, `4.3e-13`). Repeated upper flashes return the same `beta`/`K`, a cache reset starts
    cold, three whole assemblies at identical inputs give the same residual while cold re-evaluation
-   differs by `4.94e-4`, and checkpoint restart reproduces the accepted inventory. The full failing call is unchanged because its step jumps from `227.551` to
+   differs by `4.94e-4`, and checkpoint restart reproduces the accepted inventory. Acceptance requires the cold
+   re-evaluation to be independently converged and the scaled residual-vector difference to be
+   `<= 1e-8`; the max-norm shortcut is not sufficient. The full failing call is unchanged because its step jumps from `227.551` to
    `228.156 bar` and never evaluates the switch; recovery plus fixed damping 0.5 fails with zero
    accepted steps. The next change should pair carried `K` with a line search or short continuation
    that evaluates intermediate inputs. Details in
