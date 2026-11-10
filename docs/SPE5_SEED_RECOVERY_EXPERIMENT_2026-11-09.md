@@ -2,8 +2,7 @@
 
 **Status: experimental, test-only, not promoted. Production flash behavior is unchanged; the
 original residual acceptance, equilibrium, physicality, non-triviality and Gibbs checks are
-retained.** Measured on `3113aa85` (branch `exp/116-seed-recovery`, stacked on the #133 diagnostic
-head), release build.
+retained.** Measured on `67a6e6d3` (branch `exp/116-seed-recovery`), release build.
 
 This follows the #133 finding that the N1 two-phase→liquid switch at `228.126683` is premature:
 the upper input still has a physical split, but both stability trials have become trivial and N1
@@ -12,11 +11,11 @@ at the current inputs, and accepts only through the ordinary checks.
 
 ## Design
 
-- **Hint.** `flash_for_cell(cell, …)` reads a per-cell `K` committed at the previous assembly
-  boundary. Flash calls during one assembly stages their returned `K`; the staging map is committed
-  only after that assembly, so every caller in the iteration sees one consistent hint. Flashes
-  outside an assembly (direct diagnostics) read the committed hint and do not mutate it, so repeated
-  evaluation of the same input returns the same state. The hint is passed as the flash's `k_seed`.
+- **Hint.** `flash_for_cell(cell, …)` reads a per-cell `K` that is initialized once per Newton
+  attempt from the accepted state and then held fixed for every iteration. Assemblies do not publish
+  a new hint, so repeated assembly at identical primaries uses the same seed and cannot change the
+  residual. Direct diagnostics seed the hint explicitly. The hint is passed as the flash's
+  `k_seed`.
 - **Complete recovery path.** When the stability verdict is stable, the carried `K` is used directly
   as the two-phase split seed, not only as a stability-trial seed. The split is re-solved at the
   current `(p, T, z)` by the same two-phase solver and must pass `TwoPhase`, `sum ln^2 K >= 1e-5`,
@@ -24,11 +23,12 @@ at the current inputs, and accepts only through the ordinary checks.
   answer stands.
 - **Consistent properties.** The returned `FlashState` is the one used by the accumulation residual,
   both sides of every face flux, well connections and the derivative pass; no caller re-flashes.
-- **Determinism / rejection / restart.** The cache resets at the start of every Newton solve. A
-  rejected attempt and a restart therefore begin cold, not from a stale hint. The regression
-  `comp_spe5_seed_recovery_repeated_flash_and_reset` checks that two consecutive upper-input flashes
-  return the same `beta` and `K`, and that a reset makes the same input cold (`SingleLiquid`).
-  Nothing is stored in a checkpoint.
+- **Determinism / rejection / restart.** The hint is attempt-owned: it is rebuilt from the
+  accepted state at the start of every attempt and discarded afterwards. The step resets it before
+  reconstructing the accepted inventory, so a failed attempt cannot influence the next step.
+  Checkpoint restore reproduces the same accepted inventory with an empty cache. At convergence, a
+  cold re-evaluation must agree with the assembled residual within the unchanged `1e-8`; otherwise
+  the attempt is rejected. Nothing is stored in a checkpoint beyond the accepted primaries.
 - **Production.** `flash_for_cell` delegates to `flash` in non-test builds; the cache and switch are
   `cfg(test)` only.
 
@@ -41,13 +41,26 @@ At the adjacent switch inputs (`n1_switch_6612_cell33.json`, cell 33, same `z`):
 | Mode | Lower input | Upper input |
 |---|---|---|
 | recovery off | TwoPhase, `beta 0.460167` | **SingleLiquid** |
-| recovery on | TwoPhase | **TwoPhase, `beta 0.439250`**, `sum ln^2 K > 1e-5` |
+| recovery on | TwoPhase | **TwoPhase, `beta 0.436209`**, `sum ln^2 K > 1e-5` |
 
 The committed actual-path carried seed gives `beta = 0.458176`, `sum ln^2 K = 1.64531e-5`,
 `g_split - g_feed = -3.77e-15`. Two consecutive upper flashes return the same `beta` and `K`; after
 a cache reset the same input is cold and returns `SingleLiquid`. The far liquid endpoint remains a
 negative control: a split seeded from the far two-phase iterate is trivial (`sum ln^2 K = 4.3e-13`)
 and is rejected.
+
+### Consistency contracts (from the #134 review)
+
+- `comp_spe5_seed_recovery_assembly_is_stable_across_commits`: three whole assemblies at identical
+  primaries, BHP, previous inventory and `dt` return the **same** scaled residual
+  (`0.0021630455070`), while a cold re-evaluation is the negative control
+  (`0.0026570952600`, a `4.94e-4` difference). The fixed hint is not republished by an assembly.
+- `comp_spe5_seed_recovery_attempt_and_restart_lifecycle`: two consecutive solves from the same
+  accepted state reproduce the same residual history despite the first leaving a hint; a
+  checkpoint restart reproduces the accepted inventory with an empty cache.
+- At acceptance, the cold re-evaluation must agree with the assembled residual to `1e-8`; otherwise
+  the attempt is rejected. This is why a recovered state at the premature switch cannot be accepted
+  unless it is also the cold state.
 
 ### But the full Newton step skips the switch
 
@@ -83,6 +96,10 @@ cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
     comp_spe5_seed_recovery_carries_the_switch -- --ignored --nocapture
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
     comp_spe5_seed_recovery_repeated_flash_and_reset -- --ignored --nocapture
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+    comp_spe5_seed_recovery_assembly_is_stable_across_commits -- --ignored --nocapture
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+    comp_spe5_seed_recovery_attempt_and_restart_lifecycle -- --ignored --nocapture
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
     comp_spe5_seed_recovery_resolves_the_switch -- --ignored --nocapture
 
