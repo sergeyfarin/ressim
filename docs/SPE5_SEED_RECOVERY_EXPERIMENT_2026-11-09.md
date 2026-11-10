@@ -2,7 +2,7 @@
 
 **Status: experimental, test-only, not promoted. Production flash behavior is unchanged; the
 original residual acceptance, equilibrium, physicality, non-triviality and Gibbs checks are
-retained.** Measured on `667a322f` (branch `exp/116-seed-recovery`, stacked on the #133 diagnostic
+retained.** Measured on `3113aa85` (branch `exp/116-seed-recovery`, stacked on the #133 diagnostic
 head), release build.
 
 This follows the #133 finding that the N1 two-phase→liquid switch at `228.126683` is premature:
