@@ -99,6 +99,11 @@ a phase-boundary-aware line search or a short continuation across the switch —
 sequential progress. A plain timestep cutback is not the primary fix; fixed damping is not enough.
 The far liquid endpoint remains the negative control, and residual acceptance is unchanged.
 
+**Follow-up:** the test-only monotone line search was measured with recovery on and off at the same
+captured timestep and `1e-8`; both stop at the phase-boundary jump, with carrying `K` lowering the
+floor about 1.5x but not producing an accepted step. See
+[SPE5_LINE_SEARCH_EXPERIMENT_2026-11-11.md](SPE5_LINE_SEARCH_EXPERIMENT_2026-11-11.md).
+
 ## Reproduce
 
 ```bash
