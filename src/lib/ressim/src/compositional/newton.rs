@@ -120,6 +120,17 @@ impl core::fmt::Display for NewtonError {
     }
 }
 
+/// One trial evaluated by the test-only backtracking line search (#116).
+#[derive(Clone, Debug, PartialEq)]
+pub struct LineSearchTrial {
+    /// Step fraction of the Newton direction this trial evaluated.
+    pub tau: f64,
+    /// Scaled residual at the trial, or `None` when the trial could not be assembled.
+    pub scaled_residual: Option<f64>,
+    /// Whether this trial met the decrease test and was taken.
+    pub accepted: bool,
+}
+
 /// What a Newton solve did, whether or not it succeeded.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NewtonReport {
@@ -130,6 +141,9 @@ pub struct NewtonReport {
     /// Step scale factor applied at each iteration. Persistent values below one mean the update is
     /// being held back by the domain, not by the physics.
     pub step_scale_history: Vec<f64>,
+    /// One entry per iteration that evaluated a step: the test-only line search's trials, in
+    /// order. Empty in production builds and when the line search is off.
+    pub line_search_history: Vec<Vec<LineSearchTrial>>,
     /// Smallest linear pivot seen, across iterations. Only the dense route exposes its pivots;
     /// on the others this stays infinite.
     pub min_pivot: f64,
@@ -377,6 +391,82 @@ fn well_fraction_to_boundary(
     tau.clamp(0.0, 1.0)
 }
 
+/// The BHPs after a fraction `tau` of the Newton direction.
+fn bhp_after_step(
+    current: &[f64],
+    eliminations: &[super::assembly::WellElimination],
+    updates: &[f64],
+    tau: f64,
+) -> Vec<f64> {
+    let mut bhp = current.to_vec();
+    for (index, elimination) in eliminations.iter().enumerate() {
+        bhp[elimination.well] += tau * updates[index];
+    }
+    bhp
+}
+
+/// Test-only (#116): backtrack along the fraction-to-boundary step until the full scaled residual
+/// decreases. Every trial is assembled with the attempt's fixed carried-`K` hint, so an evaluation
+/// cannot change the operator the next trial sees.
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+fn line_search(
+    problem: &NewtonProblem<'_>,
+    current: &CompositionalState,
+    current_norm: f64,
+    direction: &[f64],
+    bhp_updates: &[f64],
+    assembled: &AssemblyResult,
+    initial_tau: f64,
+    iteration: usize,
+    trials: &mut Vec<LineSearchTrial>,
+) -> Result<(CompositionalState, Vec<f64>, f64, f64), NewtonError> {
+    let mut tau = initial_tau;
+    let mut best = f64::INFINITY;
+    for _ in 0..=MAX_LINE_SEARCH_HALVINGS {
+        let candidate = apply_step(problem.layout, current, direction, tau)
+            .commit()
+            .ok()
+            .and_then(|state| {
+                let bhp = bhp_after_step(
+                    &assembled.well_bhp,
+                    &assembled.well_eliminations,
+                    bhp_updates,
+                    tau,
+                );
+                assemble_at(problem, &state, &bhp)
+                    .ok()
+                    .map(|trial| (state, bhp, trial.scaled_residual_norm(problem.layout)))
+            });
+        match candidate {
+            Some((state, bhp, norm)) => {
+                let accepted = norm <= current_norm * (1.0 - LINE_SEARCH_DECREASE * tau);
+                trials.push(LineSearchTrial {
+                    tau,
+                    scaled_residual: Some(norm),
+                    accepted,
+                });
+                if accepted {
+                    return Ok((state, bhp, norm, tau));
+                }
+                if norm.is_finite() {
+                    best = best.min(norm);
+                }
+            }
+            None => trials.push(LineSearchTrial {
+                tau,
+                scaled_residual: None,
+                accepted: false,
+            }),
+        }
+        tau *= 0.5;
+    }
+    Err(NewtonError::NotConverged {
+        iterations: iteration,
+        scaled_residual: best,
+    })
+}
+
 /// Apply a scaled direction to produce a trial.
 fn apply_step(
     layout: &CompositionalLayout,
@@ -436,6 +526,44 @@ pub(crate) fn with_step_damping_for_test<T>(factor: f64, f: impl FnOnce() -> T) 
     let previous = STEP_DAMPING.with(|cell| cell.replace(factor));
     let out = f();
     STEP_DAMPING.with(|cell| cell.set(previous));
+    out
+}
+
+/// Maximum number of halvings in the test-only Newton line search (#116).
+#[cfg(test)]
+const MAX_LINE_SEARCH_HALVINGS: usize = 20;
+
+/// Required relative decrease at a line-search trial (#116). The flash's own line search accepts a
+/// plain decrease; this Armijo-style margin keeps a "decrease" that is only roundoff from being
+/// taken as progress.
+#[cfg(test)]
+const LINE_SEARCH_DECREASE: f64 = 1e-4;
+
+/// Test-only (#116): whether Newton backtracks along its fraction-to-boundary step until the
+/// assembled scaled residual decreases. Off in every non-test build.
+#[cfg(not(test))]
+#[inline]
+fn line_search_enabled_for_test() -> bool {
+    false
+}
+
+#[cfg(test)]
+thread_local! {
+    static LINE_SEARCH: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+fn line_search_enabled_for_test() -> bool {
+    LINE_SEARCH.with(|cell| cell.get())
+}
+
+/// Test-only (#116): run `f` with the backtracking line search switched `on` or off on this thread,
+/// and restore the previous setting afterwards.
+#[cfg(test)]
+pub(crate) fn with_line_search_for_test<T>(on: bool, f: impl FnOnce() -> T) -> T {
+    let previous = LINE_SEARCH.with(|cell| cell.replace(on));
+    let out = f();
+    LINE_SEARCH.with(|cell| cell.set(previous));
     out
 }
 
@@ -528,6 +656,7 @@ pub(crate) fn solve_newton_observed(
         iterations: 0,
         residual_history: Vec::new(),
         step_scale_history: Vec::new(),
+        line_search_history: Vec::new(),
         min_pivot: f64::INFINITY,
         linear_history: Vec::new(),
         accepted_well_rates: Vec::new(),
@@ -682,7 +811,7 @@ pub(crate) fn solve_newton_observed(
             Ok(t) => t,
             Err(e) => return (Err(e), report),
         };
-        let tau = tau
+        let tau_bound = tau
             .min(well_fraction_to_boundary(
                 problem.wells,
                 &assembled.well_eliminations,
@@ -691,8 +820,7 @@ pub(crate) fn solve_newton_observed(
             ))
             .min(1.0)
             * step_damping_for_test();
-        report.step_scale_history.push(tau);
-        if tau <= 0.0 {
+        if tau_bound <= 0.0 {
             return (
                 Err(NewtonError::Inadmissible {
                     cell: 0,
@@ -702,15 +830,52 @@ pub(crate) fn solve_newton_observed(
             );
         }
 
-        let mut next_bhp = assembled.well_bhp.clone();
-        for (index, elimination) in assembled.well_eliminations.iter().enumerate() {
-            next_bhp[elimination.well] += tau * bhp_updates[index];
-        }
-        let trial = apply_step(problem.layout, &current, &rhs, tau);
-        current = match trial.commit() {
-            Ok(s) => s,
-            Err(e) => return (Err(NewtonError::State(e)), report),
+        #[cfg_attr(not(test), allow(unused_mut))]
+        let mut line_search_trials = Vec::new();
+        #[cfg(test)]
+        let stepped = if line_search_enabled_for_test() {
+            match line_search(
+                problem,
+                &current,
+                norm,
+                &rhs,
+                &bhp_updates,
+                &assembled,
+                tau_bound,
+                iteration,
+                &mut line_search_trials,
+            ) {
+                Ok((state, bhp, _trial_norm, tau)) => Some((state, bhp, tau)),
+                Err(error) => {
+                    report.line_search_history.push(line_search_trials);
+                    return (Err(error), report);
+                }
+            }
+        } else {
+            None
         };
+        #[cfg(not(test))]
+        let stepped: Option<(CompositionalState, Vec<f64>, f64)> = None;
+
+        let (next_state, next_bhp, applied_tau) = match stepped {
+            Some(step) => step,
+            None => {
+                let next_bhp = bhp_after_step(
+                    &assembled.well_bhp,
+                    &assembled.well_eliminations,
+                    &bhp_updates,
+                    tau_bound,
+                );
+                let trial = apply_step(problem.layout, &current, &rhs, tau_bound);
+                match trial.commit() {
+                    Ok(state) => (state, next_bhp, tau_bound),
+                    Err(e) => return (Err(NewtonError::State(e)), report),
+                }
+            }
+        };
+        report.step_scale_history.push(applied_tau);
+        report.line_search_history.push(line_search_trials);
+        current = next_state;
         current_bhp = next_bhp;
     }
 

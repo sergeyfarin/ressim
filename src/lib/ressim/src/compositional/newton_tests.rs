@@ -576,3 +576,80 @@ fn comp_newton_one_cell_near_critical_depletion_crosses_the_switch() {
         report.residual_history
     );
 }
+
+/// The test-only line search must reduce the assembled residual at every step it takes, and it must
+/// actually backtrack when the full Newton step crosses the near-critical switch.
+#[test]
+fn comp_newton_line_search_backtracks_across_the_switch() {
+    use super::newton::with_line_search_for_test;
+
+    let spec = pinned::spe5().expect("SPE5 specification");
+    let z5 = [
+        0.676_257_702_181_890_7,
+        0.224_125_387_841_791_12,
+        0.056_109_871_643_677_74,
+        0.016_735_726_469_492_933,
+        0.019_747_981_370_113_514,
+    ];
+    let p0 = 225.037_968_8;
+    let case = column(spec, 1, p0, &z5);
+    let rock = case.rock();
+    let previous = case.previous();
+    // A tenth of the inventory per day forces the full step to cross the switch; the line search
+    // has to halve it once before the residual decreases.
+    let sources = vec![previous[0].iter().map(|m| -1.0e-1 * m).collect::<Vec<_>>()];
+    let problem = NewtonProblem {
+        spec: &case.spec,
+        layout: &case.layout,
+        rock,
+        relperm: &relperm(),
+        faces: &case.faces,
+        wells: &[],
+        previous_moles: &previous,
+        sources: &sources,
+        dt_days: 1.0,
+        accepted_well_bhp: None,
+    };
+    let (outcome, report) = with_line_search_for_test(true, || {
+        solve_newton(&problem, &case.state, NewtonOptions::default())
+    });
+    outcome.unwrap_or_else(|e| panic!("line-searched depletion failed: {e} ({report:?})"));
+    let last = *report.residual_history.last().expect("residual history");
+    assert!(last <= 1e-8, "final scaled residual {last:e}");
+    assert!(
+        report.line_search_history.len() == report.step_scale_history.len(),
+        "every applied step must have a line-search trace"
+    );
+    for (iteration, (trials, &tau)) in report
+        .line_search_history
+        .iter()
+        .zip(&report.step_scale_history)
+        .enumerate()
+    {
+        let accepted = trials.last().expect("a step has at least one trial");
+        assert!(
+            accepted.accepted,
+            "iteration {} did not accept",
+            iteration + 1
+        );
+        assert_eq!(accepted.tau, tau, "the trace must name the applied step");
+        let previous = report.residual_history[iteration];
+        assert!(
+            accepted
+                .scaled_residual
+                .is_some_and(|norm| norm <= previous),
+            "iteration {} raised the residual from {previous:e} to {:?}",
+            iteration + 1,
+            accepted.scaled_residual
+        );
+    }
+    assert!(
+        report.step_scale_history.iter().any(|tau| *tau < 1.0),
+        "the near-critical switch should force a backtrack: {:?}",
+        report.step_scale_history
+    );
+    println!(
+        "line-searched near-critical depletion: iterations={}, step scales={:?}",
+        report.iterations, report.step_scale_history
+    );
+}
