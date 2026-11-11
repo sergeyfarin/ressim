@@ -778,3 +778,409 @@ fn comp_spe5_n1_next_call_switch_probe() {
     }
     println!("{}", serde_json::to_string_pretty(&out).expect("serialize"));
 }
+
+#[test]
+#[ignore = "#116 carried-K seed recovery on the captured failing call; seconds"]
+fn comp_spe5_seed_recovery_resolves_the_switch() {
+    use super::spe5_failure_b_tests::run;
+    use crate::fluid::flash::{
+        with_difference_refinement_for_test, with_seed_recovery_for_test,
+        with_split_phase_decision_for_test,
+    };
+    let case = restore("stall_n1_6612_836.json");
+    let dt = 0.04402126141911289;
+    let (control, recovery) = case.with_diagnostic_problem(dt, |problem, start, options| {
+        let control = with_difference_refinement_for_test(true, || {
+            with_split_phase_decision_for_test(true, || {
+                with_seed_recovery_for_test(false, || run(problem, start, options))
+            })
+        });
+        let recovery = with_difference_refinement_for_test(true, || {
+            with_split_phase_decision_for_test(true, || {
+                with_seed_recovery_for_test(true, || run(problem, start, options))
+            })
+        });
+        (control.residual_history, recovery.residual_history)
+    });
+    for (label, history) in [("N1 + refinement", &control), ("with carried K", &recovery)] {
+        let best = history.iter().copied().fold(f64::INFINITY, f64::min);
+        println!(
+            "{label}: {} iterations, best {best:.6e}, last {:.6e}",
+            history.len(),
+            history.last().copied().unwrap_or(f64::NAN)
+        );
+        assert_eq!(history.len(), 20, "{label} must exhaust the Newton cap");
+        assert!(best > 1e-8, "{label} must still stall, got {best:e}");
+    }
+    // The full step jumps from ~227.55 to ~228.16 bar; the switch at ~228.126 is never evaluated,
+    // so carrying K from the previous iterate alone cannot recover it. Both runs stall.
+    assert!(recovery.last().copied().unwrap_or(f64::NAN) > 1e-8);
+}
+
+#[test]
+#[ignore = "#116 carried-K recovery at the switch inputs; seconds"]
+fn comp_spe5_seed_recovery_carries_the_switch() {
+    use crate::fluid::flash::{
+        flash_for_cell, remember_k_for_test, with_difference_refinement_for_test,
+        with_seed_recovery_for_test, with_split_phase_decision_for_test,
+    };
+    use crate::fluid::units::bar_to_pa;
+    let case = restore("stall_n1_6612_836.json");
+    let spec = case.spec_for_test();
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../opm/compositional/spe5/n1_switch_6612_cell33.json"),
+        )
+        .expect("read switch fixture"),
+    )
+    .expect("parse switch fixture");
+    let point = &fixture["points"][0];
+    let z: Vec<f64> = point["z"]
+        .as_array()
+        .expect("z")
+        .iter()
+        .filter_map(Value::as_f64)
+        .collect();
+    let upper_pa = point["p_pa"].as_f64().expect("p");
+    let lower_pa = f64::from_bits(upper_pa.to_bits() - 1);
+    let temperature = point["temperature_k"].as_f64().expect("T");
+    let run = |recovery: bool| {
+        with_difference_refinement_for_test(true, || {
+            with_split_phase_decision_for_test(true, || {
+                with_seed_recovery_for_test(recovery, || {
+                    let lower = flash_for_cell(0, spec, lower_pa, temperature, &z, None)
+                        .expect("lower flash");
+                    remember_k_for_test(0, &lower);
+                    let upper = flash_for_cell(0, spec, upper_pa, temperature, &z, None)
+                        .expect("upper flash");
+                    (lower, upper)
+                })
+            })
+        })
+    };
+    let (control_lower, control_upper) = run(false);
+    let (recovery_lower, recovery_upper) = run(true);
+    println!(
+        "control: lower {:?} beta {:.6}, upper {:?} beta {:.6}",
+        control_lower.phase_state,
+        control_lower.beta,
+        control_upper.phase_state,
+        control_upper.beta
+    );
+    println!(
+        "recovery: lower {:?} beta {:.6}, upper {:?} beta {:.6}",
+        recovery_lower.phase_state,
+        recovery_lower.beta,
+        recovery_upper.phase_state,
+        recovery_upper.beta
+    );
+    assert_eq!(
+        recovery_lower.phase_state,
+        crate::fluid::flash::PhaseState::TwoPhase
+    );
+    assert_eq!(
+        recovery_upper.phase_state,
+        crate::fluid::flash::PhaseState::TwoPhase
+    );
+    assert_eq!(
+        control_upper.phase_state,
+        crate::fluid::flash::PhaseState::SingleLiquid
+    );
+    let sum: f64 = recovery_upper
+        .k
+        .iter()
+        .map(|value| {
+            let ln = crate::math::ln(*value);
+            ln * ln
+        })
+        .sum();
+    assert!(
+        sum > 1e-5,
+        "carried split must pass the trivial cutoff, got {sum:e}"
+    );
+    let _ = bar_to_pa(0.0);
+}
+
+#[test]
+#[ignore = "#116 carried-K repeated-flash and reset isolation; seconds"]
+fn comp_spe5_seed_recovery_repeated_flash_and_reset() {
+    use crate::fluid::flash::{
+        PhaseState, flash_for_cell, remember_k_for_test, reset_carried_k_for_test,
+        with_difference_refinement_for_test, with_seed_recovery_for_test,
+        with_split_phase_decision_for_test,
+    };
+    let case = restore("stall_n1_6612_836.json");
+    let spec = case.spec_for_test();
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../opm/compositional/spe5/n1_switch_6612_cell33.json"),
+        )
+        .expect("read switch fixture"),
+    )
+    .expect("parse switch fixture");
+    let point = &fixture["points"][0];
+    let z: Vec<f64> = point["z"]
+        .as_array()
+        .expect("z")
+        .iter()
+        .filter_map(Value::as_f64)
+        .collect();
+    let upper_pa = point["p_pa"].as_f64().expect("p");
+    let lower_pa = f64::from_bits(upper_pa.to_bits() - 1);
+    let temperature = point["temperature_k"].as_f64().expect("T");
+    with_difference_refinement_for_test(true, || {
+        with_split_phase_decision_for_test(true, || {
+            with_seed_recovery_for_test(true, || {
+                reset_carried_k_for_test();
+                let lower =
+                    flash_for_cell(0, spec, lower_pa, temperature, &z, None).expect("lower flash");
+                assert_eq!(lower.phase_state, PhaseState::TwoPhase);
+                remember_k_for_test(0, &lower);
+                let first = flash_for_cell(0, spec, upper_pa, temperature, &z, None)
+                    .expect("first upper flash");
+                let repeated = flash_for_cell(0, spec, upper_pa, temperature, &z, None)
+                    .expect("repeated upper flash");
+                assert_eq!(first.phase_state, PhaseState::TwoPhase);
+                assert_eq!(repeated.phase_state, PhaseState::TwoPhase);
+                assert_eq!(first.beta, repeated.beta);
+                assert_eq!(first.k, repeated.k);
+                // A reset starts cold: without the lower-side carry the upper input is liquid.
+                reset_carried_k_for_test();
+                let cold = flash_for_cell(0, spec, upper_pa, temperature, &z, None)
+                    .expect("cold upper flash");
+                assert_eq!(cold.phase_state, PhaseState::SingleLiquid);
+            })
+        })
+    });
+}
+
+#[test]
+#[ignore = "#116 whole-assembly residual consistency across seed commits; seconds"]
+fn comp_spe5_seed_recovery_assembly_is_stable_across_commits() {
+    use super::newton::assemble_for_test;
+    use crate::fluid::flash::{
+        flash_for_cell, remember_k_for_test, with_difference_refinement_for_test,
+        with_seed_recovery_for_test, with_split_phase_decision_for_test,
+    };
+    let case = restore("stall_n1_6612_836.json");
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../opm/compositional/spe5/n1_switch_6612_cell33.json"),
+        )
+        .expect("read switch fixture"),
+    )
+    .expect("parse switch fixture");
+    let point = &fixture["points"][0];
+    let z: Vec<f64> = point["z"]
+        .as_array()
+        .expect("z")
+        .iter()
+        .filter_map(Value::as_f64)
+        .collect();
+    let upper_pa = point["p_pa"].as_f64().expect("p");
+    let lower_pa = f64::from_bits(upper_pa.to_bits() - 1);
+    let temperature = point["temperature_k"].as_f64().expect("T");
+    let dt = 0.04402126141911289;
+    let norms = with_difference_refinement_for_test(true, || {
+        with_split_phase_decision_for_test(true, || {
+            with_seed_recovery_for_test(true, || {
+                case.with_diagnostic_problem(dt, |problem, start, _options| {
+                    let spec = problem.spec;
+                    let lower = flash_for_cell(33, spec, lower_pa, temperature, &z, None)
+                        .expect("lower flash");
+                    assert_eq!(lower.phase_state, crate::fluid::flash::PhaseState::TwoPhase);
+                    remember_k_for_test(33, &lower);
+                    let mut trial = start.begin_trial();
+                    {
+                        let target = trial.cell_mut(33);
+                        target.pressure_bar = upper_pa / 1e5;
+                        let independent = target.independent_z_mut();
+                        independent.copy_from_slice(&z[..independent.len()]);
+                    }
+                    let trial = trial.commit().expect("upper state");
+                    let bhp = problem.accepted_well_bhp.expect("accepted BHP");
+                    let mut norms = Vec::new();
+                    for _ in 0..3 {
+                        // The attempt-owned hint is fixed; assembling must not publish a new one.
+                        let assembly = assemble_for_test(problem, &trial, bhp).expect("assembly");
+                        norms.push(assembly.scaled_residual_norm(problem.layout));
+                    }
+                    let cold = with_seed_recovery_for_test(false, || {
+                        assemble_for_test(problem, &trial, bhp).expect("cold assembly")
+                    });
+                    norms.push(cold.scaled_residual_norm(problem.layout));
+                    norms
+                })
+            })
+        })
+    });
+    println!("assembly norms: {norms:?}");
+    for pair in norms[..3].windows(2) {
+        assert!(
+            (pair[0] - pair[1]).abs() <= 1e-8,
+            "repeated assembly changed the residual: {:?}",
+            pair
+        );
+    }
+    assert!(
+        (norms[2] - norms[3]).abs() > 1e-8,
+        "the cold re-evaluation should be a negative control, got {:?}",
+        &norms[2..]
+    );
+}
+
+#[test]
+#[ignore = "#116 carried-K attempt and restart lifecycle; seconds"]
+fn comp_spe5_seed_recovery_attempt_and_restart_lifecycle() {
+    use super::newton::solve_newton_observed;
+    use crate::fluid::flash::{
+        reset_carried_k_for_test, with_difference_refinement_for_test, with_seed_recovery_for_test,
+        with_split_phase_decision_for_test,
+    };
+    let case = restore("stall_n1_6612_836.json");
+    let dt = 0.04402126141911289;
+    // Two consecutive solves from the same accepted state must reproduce the same history even
+    // though the first leaves a committed hint behind.
+    let (first, second) = case.with_diagnostic_problem(dt, |problem, start, options| {
+        let first = with_difference_refinement_for_test(true, || {
+            with_split_phase_decision_for_test(true, || {
+                with_seed_recovery_for_test(true, || {
+                    solve_newton_observed(problem, start, options, None)
+                        .1
+                        .residual_history
+                })
+            })
+        });
+        let second = with_difference_refinement_for_test(true, || {
+            with_split_phase_decision_for_test(true, || {
+                with_seed_recovery_for_test(true, || {
+                    solve_newton_observed(problem, start, options, None)
+                        .1
+                        .residual_history
+                })
+            })
+        });
+        (first, second)
+    });
+    assert_eq!(
+        first, second,
+        "a retry must not inherit the previous attempt's hint"
+    );
+
+    // A checkpoint restart reproduces the accepted inventory with an empty cache.
+    with_difference_refinement_for_test(true, || {
+        with_split_phase_decision_for_test(true, || {
+            with_seed_recovery_for_test(true, || {
+                reset_carried_k_for_test();
+                let cold = case.component_inventory_for_test();
+                let restored = super::api::CompositionalCase::restore(&case.checkpoint())
+                    .expect("restore checkpoint");
+                reset_carried_k_for_test();
+                let restarted = restored.component_inventory_for_test();
+                assert_eq!(cold, restarted, "checkpoint restart changed the inventory");
+            })
+        })
+    });
+}
+
+#[test]
+fn comp_spe5_seed_recovery_cold_acceptance_requires_cold_convergence() {
+    use super::newton::cold_acceptance_ok;
+    let tolerance = 1e-8;
+    // The review's case: warm 8e-9, cold 1.5e-8. The old max-norm difference (7e-9) passed,
+    // but cold convergence must be independent.
+    assert!(!cold_acceptance_ok(8e-9, 1.5e-8, 7e-9, tolerance));
+    // A cold-converged state with an agreeing scaled residual vector is accepted.
+    assert!(cold_acceptance_ok(8e-9, 9e-9, 7e-9, tolerance));
+    // A vector difference above tolerance is refused even when both norms agree.
+    assert!(!cold_acceptance_ok(8e-9, 8.5e-9, 1.1e-8, tolerance));
+    // Warm non-convergence is never accepted.
+    assert!(!cold_acceptance_ok(1.1e-8, 8e-9, 0.0, tolerance));
+}
+
+#[test]
+#[ignore = "#116 well-control change through the cold comparison; seconds"]
+fn comp_spe5_seed_recovery_well_control_change_is_rejected() {
+    use super::api::{CompletionConfig, CompositionalCase, WellConfig, WellControlConfig};
+    use super::newton::{assemble_for_test, scaled_residual_vector_difference};
+    use crate::fluid::flash::{
+        flash_for_cell, remember_k_for_test, with_difference_refinement_for_test,
+        with_seed_recovery_for_test, with_split_phase_decision_for_test,
+    };
+    let base = restore("stall_n1_6612_836.json");
+    let mut checkpoint = base.checkpoint();
+    checkpoint.config.wells.push(WellConfig {
+        id: "PROBE33".to_string(),
+        completions: vec![CompletionConfig {
+            cell: 33,
+            well_index: 1.0,
+            head_offset_bar: 0.0,
+        }],
+        control: WellControlConfig::MolarRate {
+            target_moles_per_day: -1_170_167.30,
+            bhp_limit_bar: 200.0,
+        },
+        injection_composition: None,
+        inject_water: false,
+    });
+    checkpoint.well_bhp_bar.push(210.0);
+    let case = CompositionalCase::restore(&checkpoint).expect("restore probe case");
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../opm/compositional/spe5/n1_switch_6612_cell33.json"),
+        )
+        .expect("read switch fixture"),
+    )
+    .expect("parse switch fixture");
+    let point = &fixture["points"][0];
+    let z: Vec<f64> = point["z"]
+        .as_array()
+        .expect("z")
+        .iter()
+        .filter_map(Value::as_f64)
+        .collect();
+    let upper_pa = point["p_pa"].as_f64().expect("p");
+    let lower_pa = f64::from_bits(upper_pa.to_bits() - 1);
+    let temperature = point["temperature_k"].as_f64().expect("T");
+    let dt = 0.04402126141911289;
+    let result = with_difference_refinement_for_test(true, || {
+        with_split_phase_decision_for_test(true, || {
+            with_seed_recovery_for_test(true, || {
+                case.with_diagnostic_problem(dt, |problem, start, _options| {
+                    let lower = flash_for_cell(33, problem.spec, lower_pa, temperature, &z, None)
+                        .expect("lower flash");
+                    remember_k_for_test(33, &lower);
+                    let mut trial = start.begin_trial();
+                    {
+                        let target = trial.cell_mut(33);
+                        target.pressure_bar = upper_pa / 1e5;
+                        let independent = target.independent_z_mut();
+                        independent.copy_from_slice(&z[..independent.len()]);
+                    }
+                    let trial = trial.commit().expect("upper state");
+                    let bhp = problem.accepted_well_bhp.expect("accepted BHP").to_vec();
+                    let warm = assemble_for_test(problem, &trial, &bhp).expect("warm assembly");
+                    let cold = with_seed_recovery_for_test(false, || {
+                        assemble_for_test(problem, &trial, &bhp).expect("cold assembly")
+                    });
+                    println!(
+                        "warm limits {:?}, cold limits {:?}; warm eliminations {}, cold {}",
+                        warm.well_on_bhp_limit,
+                        cold.well_on_bhp_limit,
+                        warm.well_eliminations.len(),
+                        cold.well_eliminations.len()
+                    );
+                    scaled_residual_vector_difference(&warm, &cold, problem.layout)
+                })
+            })
+        })
+    });
+    assert!(
+        result.is_none(),
+        "a changed active well-rate set must not be paired by position"
+    );
+}

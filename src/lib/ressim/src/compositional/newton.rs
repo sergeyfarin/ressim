@@ -463,6 +463,57 @@ pub(crate) struct NewtonIterate<'a> {
     pub assembled: &'a AssemblyResult,
 }
 
+/// Test-only (#116): the cold-recheck acceptance rule for carried-K recovery.
+///
+/// Warm convergence alone is not enough: the cold evaluation must be converged independently,
+/// and the scaled residual-vector difference must fit the same tolerance.
+#[cfg(test)]
+pub(crate) fn cold_acceptance_ok(
+    warm_norm: f64,
+    cold_norm: f64,
+    vector_difference: f64,
+    tolerance: f64,
+) -> bool {
+    warm_norm <= tolerance
+        && cold_norm <= tolerance
+        && (warm_norm - cold_norm).abs() <= tolerance
+        && vector_difference <= tolerance
+}
+
+/// Test-only (#116): maximum scaled per-cell/well residual difference between two assemblies.
+#[cfg(test)]
+pub(crate) fn scaled_residual_vector_difference(
+    warm: &AssemblyResult,
+    cold: &AssemblyResult,
+    layout: &CompositionalLayout,
+) -> Option<f64> {
+    let n = layout.cell_block_size();
+    let mut worst = 0.0f64;
+    for cell in 0..layout.cell_count() {
+        let difference: Vec<f64> = (0..n)
+            .map(|row| warm.residual[cell * n + row] - cold.residual[cell * n + row])
+            .collect();
+        worst = worst.max(warm.scaling[cell].scaled_residual_norm(&difference));
+    }
+    if warm.well_eliminations.len() != cold.well_eliminations.len() {
+        return None;
+    }
+    for warm_well in &warm.well_eliminations {
+        let Some(cold_well) = cold
+            .well_eliminations
+            .iter()
+            .find(|cold_well| cold_well.well == warm_well.well)
+        else {
+            return None;
+        };
+        if cold_well.id != warm_well.id || warm_well.scale <= 0.0 {
+            return None;
+        }
+        worst = worst.max(((warm_well.residual - cold_well.residual) / warm_well.scale).abs());
+    }
+    Some(worst)
+}
+
 /// [`solve_newton`], calling `observer` with every assembled iterate.
 ///
 /// Diagnostic only (#116): the observer reads, it cannot change the iteration, so a run with an
@@ -482,6 +533,28 @@ pub(crate) fn solve_newton_observed(
         accepted_well_rates: Vec::new(),
         accepted_well_bhp: Vec::new(),
     };
+    #[cfg(test)]
+    {
+        crate::fluid::flash::reset_carried_k_for_test();
+        if crate::fluid::flash::seed_recovery_enabled_for_test() {
+            // Attempt-owned hint: initialize once from the accepted state under this attempt, then
+            // keep it fixed for every Newton iteration. Rejected attempts and restarts recompute
+            // the same hint from the same state.
+            crate::fluid::flash::begin_flash_round_for_test();
+            for cell_index in 0..state.cells().len() {
+                let cell = state.cell(cell_index);
+                let _ = crate::fluid::flash::flash_for_cell(
+                    cell_index,
+                    problem.spec,
+                    crate::fluid::units::bar_to_pa(cell.pressure_bar),
+                    problem.spec.reservoir_temperature_k(),
+                    &cell.overall_composition(),
+                    None,
+                );
+            }
+            crate::fluid::flash::commit_flash_round_for_test();
+        }
+    }
     let mut current = state.clone();
     let mut current_bhp = starting_well_bhp(problem, &current, options.well_bhp_start);
 
@@ -503,6 +576,49 @@ pub(crate) fn solve_newton_observed(
         }
 
         if norm <= options.tolerance {
+            // A carried-K recovery is admissible only if a cold re-evaluation at the same
+            // primaries agrees. Otherwise the accepted state (and the inventory/reporting flash
+            // after it) would depend on the seed history and could not be reproduced from a
+            // restart. Test-only: seed recovery is off in production.
+            #[cfg(test)]
+            if crate::fluid::flash::seed_recovery_enabled_for_test() {
+                let cold = crate::fluid::flash::with_seed_recovery_for_test(false, || {
+                    assemble_at(problem, &current, &current_bhp)
+                });
+                match cold {
+                    Ok(cold) => {
+                        let cold_norm = cold.scaled_residual_norm(problem.layout);
+                        let Some(vector_difference) =
+                            scaled_residual_vector_difference(&assembled, &cold, problem.layout)
+                        else {
+                            // The active well-rate equations changed between warm and cold.
+                            // Matching rows by position would silently drop or mispair them.
+                            return (
+                                Err(NewtonError::NotConverged {
+                                    iterations: iteration,
+                                    scaled_residual: f64::INFINITY,
+                                }),
+                                report,
+                            );
+                        };
+                        if !cold_acceptance_ok(
+                            norm,
+                            cold_norm,
+                            vector_difference,
+                            options.tolerance,
+                        ) {
+                            return (
+                                Err(NewtonError::NotConverged {
+                                    iterations: iteration,
+                                    scaled_residual: cold_norm.max(vector_difference),
+                                }),
+                                report,
+                            );
+                        }
+                    }
+                    Err(error) => return (Err(NewtonError::Assembly(error)), report),
+                }
+            }
             report.accepted_well_rates = assembled.well_rates;
             report.accepted_well_bhp = assembled.well_bhp;
             return (Ok(current), report);

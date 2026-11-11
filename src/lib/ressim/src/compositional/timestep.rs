@@ -308,6 +308,10 @@ impl CompositionalRun {
             failure: None,
         };
 
+        // A failed attempt must not contribute a carried flash seed to the next step's accepted
+        // inventory. The accepted state is re-evaluated cold here; seed recovery is test-only.
+        #[cfg(test)]
+        crate::fluid::flash::reset_carried_k_for_test();
         // The previous inventory is evaluated once, from the accepted state, and reused across
         // every attempt. Recomputing it per attempt would make the balance reference the attempt
         // rather than the step.

@@ -191,6 +191,131 @@ pub(crate) fn reset_split_phase_decision_acceptances_for_test() {
     SPLIT_PHASE_DECISION_ACCEPTANCES.with(|c| c.set(0));
 }
 
+/// Whether a cell's previous flash `K` may be carried into the next flash at the current inputs as
+/// a direct two-phase seed (test-only seed-recovery experiment, #116). Off in every non-test build.
+#[cfg(not(test))]
+#[inline]
+fn seed_recovery_enabled() -> bool {
+    false
+}
+
+#[cfg(test)]
+thread_local! {
+    static SEED_RECOVERY: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+    static CARRIED_K: core::cell::RefCell<Vec<Option<Vec<f64>>>> =
+        const { core::cell::RefCell::new(Vec::new()) };
+    // Flash calls during one assembly write here; the cache is committed only at the assembly
+    // boundary, so repeated evaluations of the same input see one consistent hint.
+    static STAGED_K: core::cell::RefCell<Option<Vec<Option<Vec<f64>>>>> =
+        const { core::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn seed_recovery_enabled() -> bool {
+    SEED_RECOVERY.with(|cell| cell.get())
+}
+
+/// Test-only (#116): whether the carried-`K` experiment is active on this thread.
+#[cfg(test)]
+pub(crate) fn seed_recovery_enabled_for_test() -> bool {
+    seed_recovery_enabled()
+}
+
+/// Test-only (#116): run `f` with the carried-`K` seed recovery switched `on` or off on this
+/// thread.
+#[cfg(test)]
+pub(crate) fn with_seed_recovery_for_test<T>(on: bool, f: impl FnOnce() -> T) -> T {
+    let previous = SEED_RECOVERY.with(|cell| cell.replace(on));
+    let out = f();
+    SEED_RECOVERY.with(|cell| cell.set(previous));
+    out
+}
+
+/// Test-only (#116): forget every carried `K`. Called at the start of a Newton solve, so a rejected
+/// attempt and a restart begin with the standard cold path rather than a stale hint.
+#[cfg(test)]
+pub(crate) fn reset_carried_k_for_test() {
+    CARRIED_K.with(|cache| cache.borrow_mut().clear());
+    STAGED_K.with(|staged| *staged.borrow_mut() = None);
+}
+
+/// Test-only (#116): start collecting the `K` values returned during one assembly.
+#[cfg(test)]
+pub(crate) fn begin_flash_round_for_test() {
+    STAGED_K.with(|staged| *staged.borrow_mut() = Some(Vec::new()));
+}
+
+/// Test-only (#116): publish the values collected since [`begin_flash_round_for_test`].
+#[cfg(test)]
+pub(crate) fn commit_flash_round_for_test() {
+    let staged = STAGED_K.with(|staged| staged.borrow_mut().take());
+    if let Some(staged) = staged {
+        CARRIED_K.with(|cache| *cache.borrow_mut() = staged);
+    }
+}
+
+#[cfg(test)]
+fn carried_k(cell: usize) -> Option<Vec<f64>> {
+    CARRIED_K.with(|cache| cache.borrow().get(cell).cloned().flatten())
+}
+
+#[cfg(test)]
+fn stage_k(cell: usize, state: &FlashState) {
+    STAGED_K.with(|staged| {
+        if let Some(staged) = staged.borrow_mut().as_mut() {
+            if staged.len() <= cell {
+                staged.resize(cell + 1, None);
+            }
+            staged[cell] = Some(state.k.clone());
+        }
+    });
+}
+
+/// Test-only (#116): seed one cell's carried `K` explicitly, for a direct flash sequence.
+#[cfg(test)]
+pub(crate) fn remember_k_for_test(cell: usize, state: &FlashState) {
+    CARRIED_K.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.len() <= cell {
+            cache.resize(cell + 1, None);
+        }
+        cache[cell] = Some(state.k.clone());
+    });
+}
+
+/// Flash a cell and, in the test-only seed-recovery experiment, carry its previous `K` as a direct
+/// split seed. The hint is re-solved at the current `(p, T, z)` and still passes the ordinary
+/// physicality, equilibrium and Gibbs checks; it is not passed through the stability trial gate.
+pub(crate) fn flash_for_cell(
+    cell: usize,
+    spec: &FluidSpecification,
+    pressure_pa: f64,
+    temperature_k: f64,
+    z: &[f64],
+    k_seed: Option<&[f64]>,
+) -> Result<FlashState, FlashError> {
+    #[cfg(test)]
+    if seed_recovery_enabled() {
+        let hint = carried_k(cell);
+        let used_hint = hint.is_some();
+        let state = flash(
+            spec,
+            pressure_pa,
+            temperature_k,
+            z,
+            hint.as_deref().or(k_seed),
+        )?;
+        // A carried split is a re-solve of the existing hint, not a new seed. Publishing its K
+        // would make the next assembly at identical inputs use a different hint and change the
+        // residual; keep the established hint until a cold flash supplies a new one.
+        if !used_hint && state.phase_state == PhaseState::TwoPhase {
+            stage_k(cell, &state);
+        }
+        return Ok(state);
+    }
+    flash(spec, pressure_pa, temperature_k, z, k_seed)
+}
+
 /// Bracketing tolerance for the Rachford–Rice solve.
 const RACHFORD_RICE_TOLERANCE: f64 = 1e-14;
 
@@ -1335,9 +1460,21 @@ fn flash_unrefined(
         });
     }
 
-    let stability =
-        stability::test_stability_with_margin_seed(spec, pressure_pa, temperature_k, z, k_seed)
-            .map_err(FlashError::Stability)?;
+    // A carried K is a split hint, not a stability-trial seed: keep the verdict independent of
+    // the history so re-solving at identical inputs cannot change the label through this gate.
+    let stability_seed = if cfg!(test) && seed_recovery_enabled() {
+        None
+    } else {
+        k_seed
+    };
+    let stability = stability::test_stability_with_margin_seed(
+        spec,
+        pressure_pa,
+        temperature_k,
+        z,
+        stability_seed,
+    )
+    .map_err(FlashError::Stability)?;
 
     let k = match stability.verdict {
         StabilityVerdict::Unstable { k } => k,
@@ -1348,7 +1485,10 @@ fn flash_unrefined(
                 pressure_pa,
                 temperature_k,
                 z,
-                stability.margin_seed.as_deref(),
+                stability
+                    .margin_seed
+                    .as_deref()
+                    .or(seed_recovery_enabled().then_some(k_seed).flatten()),
             ) {
                 return Ok(state);
             }

@@ -1270,6 +1270,24 @@ Order of work, as agreed in the #116 review:
    probe now uses the same N1+refinement settings as the attempt. Details in
    [SPE5_N1_NEXT_BLOCKER_DIAGNOSIS_2026-11-09.md](SPE5_N1_NEXT_BLOCKER_DIAGNOSIS_2026-11-09.md).
 
+   **Carried-K seed recovery (experimental, test-only).** A per-cell previous-flash `K` is
+   re-solved at the current inputs as a direct split seed when the stability verdict is stable,
+   retaining physicality, equilibrium, non-triviality and Gibbs checks. At the adjacent switch
+   inputs it recovers `TwoPhase` (`beta 0.436209` same-z test; actual carried seed `beta 0.458176`,
+   `sum ln^2 K 1.64531e-5`), while the far liquid endpoint remains `SingleLiquid` (its candidate is
+   trivial, `4.3e-13`). Repeated upper flashes return the same `beta`/`K`, a cache reset starts
+   cold, three whole assemblies at identical inputs give the same residual while cold re-evaluation
+   differs by `4.94e-4`, and checkpoint restart reproduces the accepted inventory. Acceptance requires the cold
+   re-evaluation to be independently converged and the scaled residual-vector difference to be
+   `<= 1e-8`; the max-norm shortcut is not sufficient. Active well-rate equations are matched by
+   well, not position; a warm/cold control change rejects the comparison (committed cell-33 probe:
+   warm limit vector `[true,false,false,true]` / 1 elimination vs cold
+   `[true,false,false,false]` / 2). The full failing call is unchanged because its step jumps from `227.551` to
+   `228.156 bar` and never evaluates the switch; recovery plus fixed damping 0.5 fails with zero
+   accepted steps. The next change should pair carried `K` with a line search or short continuation
+   that evaluates intermediate inputs. Details in
+   [SPE5_SEED_RECOVERY_EXPERIMENT_2026-11-09.md](SPE5_SEED_RECOVERY_EXPERIMENT_2026-11-09.md).
+
 All thresholds above are **experimental candidates**, not validated values. They come from two
 traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of
 each report.

@@ -22,6 +22,8 @@
 //! | `SPE5_DT_MEMORY_GROWTH` | bounded timestep memory: after an accepted step `dt`, the next request is at most this factor times `dt` (a driver policy; the engine's own halving is unchanged) | none |
 //! | `SPE5_FLASH_REFINE` | `1`: the experimental difference-form flash refinement on (`fluid::flash`) | off |
 //! | `SPE5_N1` | `1`: the experimental split-based phase decision (N1) on (`fluid::flash`) | off |
+//! | `SPE5_SEED_RECOVERY` | `1`: carry each cell's previous flash `K` as a test-only split seed | off |
+//! | `SPE5_STEP_DAMPING` | extra Newton step multiplier for the test-only damping probe | 1 |
 //! | `SPE5_REPLAY_CHECKPOINT_OUT` | on a failed step, write the failing call's starting checkpoint here (a seed for `SPE5_REPLAY_SEED`) | none |
 //!
 //! Per month it records the snapshot (the format `tools/jutul/spe5_compare.py` reads), the calls,
@@ -36,9 +38,11 @@
 //! in the last bits from a loop that subtracts accepted steps, and at failure B's near-critical
 //! state an attempt's outcome changes with that difference (#116).
 use super::api::{Checkpoint, CompositionalCase};
+use super::newton::with_step_damping_for_test;
 use crate::fluid::flash::{
     reset_split_phase_decision_acceptances_for_test, split_phase_decision_acceptances_for_test,
-    with_difference_refinement_for_test, with_split_phase_decision_for_test,
+    with_difference_refinement_for_test, with_seed_recovery_for_test,
+    with_split_phase_decision_for_test,
 };
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -79,13 +83,19 @@ fn well_cumulative(case: &CompositionalCase) -> Vec<f64> {
 fn comp_spe5_replay_with_timestep_options() {
     let refine = std::env::var("SPE5_FLASH_REFINE").is_ok_and(|v| v == "1");
     let n1 = std::env::var("SPE5_N1").is_ok_and(|v| v == "1");
+    let recovery = std::env::var("SPE5_SEED_RECOVERY").is_ok_and(|v| v == "1");
+    let damping: f64 = env_or("SPE5_STEP_DAMPING").unwrap_or(1.0);
     reset_split_phase_decision_acceptances_for_test();
     with_difference_refinement_for_test(refine, || {
-        with_split_phase_decision_for_test(n1, || replay(refine, n1))
+        with_split_phase_decision_for_test(n1, || {
+            with_seed_recovery_for_test(recovery, || {
+                with_step_damping_for_test(damping, || replay(refine, n1, recovery, damping))
+            })
+        })
     });
 }
 
-fn replay(refine: bool, n1: bool) {
+fn replay(refine: bool, n1: bool, recovery: bool, damping: f64) {
     let out = PathBuf::from(std::env::var("SPE5_REPLAY_OUT").expect("set SPE5_REPLAY_OUT"));
     let seed = std::env::var("SPE5_REPLAY_SEED").unwrap_or_else(|_| "scratch".to_string());
     let cap: Option<f64> = env_or("SPE5_MAX_DT_DAYS");
@@ -118,7 +128,8 @@ fn replay(refine: bool, n1: bool) {
     let settings = json!({
         "seed": seed, "start_day": start_time, "max_dt_days": cap,
         "max_attempts": max_attempts, "last_month": last_month, "wall_budget_s": wall_budget,
-        "tolerance": 1e-8, "flash_refinement": refine, "n1": n1, "dt_memory_growth": growth,
+        "tolerance": 1e-8, "flash_refinement": refine, "n1": n1,
+        "seed_recovery": recovery, "step_damping": damping, "dt_memory_growth": growth,
         "request": "end - now from the snapshot time, or the cap",
     });
     let write = |months: &[Value], stopped: &Option<Value>| {
