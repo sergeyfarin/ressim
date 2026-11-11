@@ -1188,7 +1188,7 @@ fn comp_spe5_seed_recovery_well_control_change_is_rejected() {
 #[test]
 #[ignore = "#116 line search with and without carried K; about a minute"]
 fn comp_spe5_line_search_recovery_comparison() {
-    use super::newton::{solve_newton, with_line_search_for_test};
+    use super::newton::{NewtonError, solve_newton, with_line_search_for_test};
     use crate::fluid::flash::{
         with_difference_refinement_for_test, with_seed_recovery_for_test,
         with_split_phase_decision_for_test,
@@ -1211,6 +1211,13 @@ fn comp_spe5_line_search_recovery_comparison() {
                             })
                         });
                         let accepted = outcome.is_ok();
+                        let failure_residual =
+                            outcome.as_ref().err().and_then(|error| match error {
+                                NewtonError::NotConverged {
+                                    scaled_residual, ..
+                                } => Some(*scaled_residual),
+                                _ => None,
+                            });
                         let best = report
                             .residual_history
                             .iter()
@@ -1220,10 +1227,11 @@ fn comp_spe5_line_search_recovery_comparison() {
                         println!(
                             "line search {:<5} recovery {:<5}: accepted {accepted:<5} \
                              iterations {:>2}, best {best:.6e}, last {last:.6e}, \
-                             step scales {:?}",
+                             failure residual {:?}, step scales {:?}",
                             if line_search { "on" } else { "off" },
                             if recovery { "on" } else { "off" },
                             report.iterations,
+                            failure_residual,
                             report.step_scale_history,
                         );
                         for (iteration, trials) in report.line_search_history.iter().enumerate() {
@@ -1232,14 +1240,25 @@ fn comp_spe5_line_search_recovery_comparison() {
                             }
                             let evaluated: Vec<String> = trials
                                 .iter()
-                                .map(|trial| match trial.scaled_residual {
-                                    Some(norm) => format!(
-                                        "tau {:.3e} -> {:.6e}{}",
-                                        trial.tau,
-                                        norm,
-                                        if trial.accepted { "*" } else { "" }
-                                    ),
-                                    None => format!("tau {:.3e} -> assembly failed", trial.tau),
+                                .map(|trial| {
+                                    let changes = if trial.phase_changes.is_empty() {
+                                        String::new()
+                                    } else {
+                                        format!(" changes {:?}", trial.phase_changes)
+                                    };
+                                    match trial.scaled_residual {
+                                        Some(norm) => format!(
+                                            "tau {:.3e} -> {:.6e}{}{}",
+                                            trial.tau,
+                                            norm,
+                                            if trial.accepted { "*" } else { "" },
+                                            changes
+                                        ),
+                                        None => format!(
+                                            "tau {:.3e} -> assembly failed{}",
+                                            trial.tau, changes
+                                        ),
+                                    }
                                 })
                                 .collect();
                             println!(
@@ -1252,6 +1271,7 @@ fn comp_spe5_line_search_recovery_comparison() {
                             "line_search": line_search,
                             "recovery": recovery,
                             "accepted": accepted,
+                            "failure_residual": failure_residual,
                             "iterations": report.iterations,
                             "best": best,
                             "last": last,
@@ -1266,6 +1286,7 @@ fn comp_spe5_line_search_recovery_comparison() {
                                             serde_json::json!({
                                                 "tau": trial.tau,
                                                 "scaled_residual": trial.scaled_residual,
+                                                "phase_changes": trial.phase_changes,
                                                 "accepted": trial.accepted,
                                             })
                                         })
@@ -1321,6 +1342,12 @@ fn comp_spe5_line_search_recovery_comparison() {
             > on_off["iterations"].as_u64().expect("iterations")
     );
     for line_searched in [on_off, on_on] {
+        let last = line_searched["last"].as_f64().expect("last residual");
+        assert_eq!(
+            line_searched["failure_residual"].as_f64(),
+            Some(last),
+            "a failed line search must report the current iterate's residual"
+        );
         let history = line_searched["line_search_history"]
             .as_array()
             .expect("line-search history");
@@ -1329,6 +1356,31 @@ fn comp_spe5_line_search_recovery_comparison() {
                 .iter()
                 .any(|trials| trials.as_array().is_some_and(|t| t.len() > 1)),
             "the line search must have backtracked at least once"
+        );
+        let mut crossed = false;
+        for trials in history {
+            for trial in trials.as_array().expect("trials") {
+                let changes = trial["phase_changes"].as_array().expect("phase changes");
+                let has = |cell: u64| changes.iter().any(|value| value.as_u64() == Some(cell));
+                if has(33) && has(39) {
+                    crossed = true;
+                }
+            }
+        }
+        assert!(
+            crossed,
+            "the early full steps must cross cells 33/39: {history:?}"
+        );
+        let last_trials = history
+            .last()
+            .expect("a final line search")
+            .as_array()
+            .expect("trials");
+        assert!(
+            last_trials
+                .iter()
+                .all(|trial| trial["phase_changes"].as_array().is_some_and(Vec::is_empty)),
+            "the final failed iteration must not change a phase label: {last_trials:?}"
         );
         for (index, trials) in history.iter().enumerate() {
             let trials = trials.as_array().expect("trials");

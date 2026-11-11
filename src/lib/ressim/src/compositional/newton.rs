@@ -127,6 +127,8 @@ pub struct LineSearchTrial {
     pub tau: f64,
     /// Scaled residual at the trial, or `None` when the trial could not be assembled.
     pub scaled_residual: Option<f64>,
+    /// Cells whose flashed phase state differs from the current iterate's assembly.
+    pub phase_changes: Vec<usize>,
     /// Whether this trial met the decrease test and was taken.
     pub accepted: bool,
 }
@@ -420,9 +422,8 @@ fn line_search(
     initial_tau: f64,
     iteration: usize,
     trials: &mut Vec<LineSearchTrial>,
-) -> Result<(CompositionalState, Vec<f64>, f64, f64), NewtonError> {
+) -> Result<(CompositionalState, Vec<f64>, f64, f64, AssemblyResult), NewtonError> {
     let mut tau = initial_tau;
-    let mut best = f64::INFINITY;
     for _ in 0..=MAX_LINE_SEARCH_HALVINGS {
         let candidate = apply_step(problem.layout, current, direction, tau)
             .commit()
@@ -434,28 +435,37 @@ fn line_search(
                     bhp_updates,
                     tau,
                 );
-                assemble_at(problem, &state, &bhp)
-                    .ok()
-                    .map(|trial| (state, bhp, trial.scaled_residual_norm(problem.layout)))
+                assemble_at(problem, &state, &bhp).ok().map(|trial| {
+                    let norm = trial.scaled_residual_norm(problem.layout);
+                    (state, bhp, norm, trial)
+                })
             });
         match candidate {
-            Some((state, bhp, norm)) => {
+            Some((state, bhp, norm, trial)) => {
                 let accepted = norm <= current_norm * (1.0 - LINE_SEARCH_DECREASE * tau);
+                let phase_changes = trial
+                    .inventories
+                    .iter()
+                    .enumerate()
+                    .filter(|(cell, inventory)| {
+                        inventory.phase_state != assembled.inventories[*cell].phase_state
+                    })
+                    .map(|(cell, _)| cell)
+                    .collect();
                 trials.push(LineSearchTrial {
                     tau,
                     scaled_residual: Some(norm),
+                    phase_changes,
                     accepted,
                 });
                 if accepted {
-                    return Ok((state, bhp, norm, tau));
-                }
-                if norm.is_finite() {
-                    best = best.min(norm);
+                    return Ok((state, bhp, norm, tau, trial));
                 }
             }
             None => trials.push(LineSearchTrial {
                 tau,
                 scaled_residual: None,
+                phase_changes: Vec::new(),
                 accepted: false,
             }),
         }
@@ -463,7 +473,10 @@ fn line_search(
     }
     Err(NewtonError::NotConverged {
         iterations: iteration,
-        scaled_residual: best,
+        // The failed search did not move: the reported residual is the iterate's, not the best
+        // rejected trial's (which is necessarily above it and can be infinite if nothing
+        // assembled).
+        scaled_residual: current_norm,
     })
 }
 
@@ -686,15 +699,29 @@ pub(crate) fn solve_newton_observed(
     }
     let mut current = state.clone();
     let mut current_bhp = starting_well_bhp(problem, &current, options.well_bhp_start);
+    // Test-only (#116): the winning line-search trial was assembled before the step, so reuse
+    // that assembly at the next iteration instead of assembling the same state twice.
+    #[cfg(test)]
+    let mut pending_assembly: Option<(AssemblyResult, f64)> = None;
 
     for iteration in 1..=options.max_iterations {
         report.iterations = iteration;
 
-        let assembled = match assemble_at(problem, &current, &current_bhp) {
-            Ok(a) => a,
-            Err(e) => return (Err(NewtonError::Assembly(e)), report),
+        #[cfg(test)]
+        let pending = pending_assembly.take();
+        #[cfg(not(test))]
+        let pending: Option<(AssemblyResult, f64)> = None;
+        let (assembled, norm) = match pending {
+            Some((assembled, norm)) => (assembled, norm),
+            None => {
+                let assembled = match assemble_at(problem, &current, &current_bhp) {
+                    Ok(a) => a,
+                    Err(e) => return (Err(NewtonError::Assembly(e)), report),
+                };
+                let norm = assembled.scaled_residual_norm(problem.layout);
+                (assembled, norm)
+            }
         };
-        let norm = assembled.scaled_residual_norm(problem.layout);
         report.residual_history.push(norm);
         if let Some(observe) = observer.as_mut() {
             observe(&NewtonIterate {
@@ -820,6 +847,9 @@ pub(crate) fn solve_newton_observed(
             ))
             .min(1.0)
             * step_damping_for_test();
+        // Record the pre-line-search bound first: a failed step must still report the scale it
+        // attempted, as it did before the line-search experiment.
+        report.step_scale_history.push(tau_bound);
         if tau_bound <= 0.0 {
             return (
                 Err(NewtonError::Inadmissible {
@@ -845,7 +875,10 @@ pub(crate) fn solve_newton_observed(
                 iteration,
                 &mut line_search_trials,
             ) {
-                Ok((state, bhp, _trial_norm, tau)) => Some((state, bhp, tau)),
+                Ok((state, bhp, trial_norm, tau, trial_assembly)) => {
+                    pending_assembly = Some((trial_assembly, trial_norm));
+                    Some((state, bhp, tau))
+                }
                 Err(error) => {
                     report.line_search_history.push(line_search_trials);
                     return (Err(error), report);
@@ -873,7 +906,9 @@ pub(crate) fn solve_newton_observed(
                 }
             }
         };
-        report.step_scale_history.push(applied_tau);
+        if let Some(last) = report.step_scale_history.last_mut() {
+            *last = applied_tau;
+        }
         report.line_search_history.push(line_search_trials);
         current = next_state;
         current_bhp = next_bhp;

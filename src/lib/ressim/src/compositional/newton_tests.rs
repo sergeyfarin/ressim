@@ -613,7 +613,8 @@ fn comp_newton_line_search_backtracks_across_the_switch() {
     let (outcome, report) = with_line_search_for_test(true, || {
         solve_newton(&problem, &case.state, NewtonOptions::default())
     });
-    outcome.unwrap_or_else(|e| panic!("line-searched depletion failed: {e} ({report:?})"));
+    let accepted_state =
+        outcome.unwrap_or_else(|e| panic!("line-searched depletion failed: {e} ({report:?})"));
     let last = *report.residual_history.last().expect("residual history");
     assert!(last <= 1e-8, "final scaled residual {last:e}");
     assert!(
@@ -647,6 +648,31 @@ fn comp_newton_line_search_backtracks_across_the_switch() {
         report.step_scale_history.iter().any(|tau| *tau < 1.0),
         "the near-critical switch should force a backtrack: {:?}",
         report.step_scale_history
+    );
+    let initial = crate::fluid::flash::flash(
+        &case.spec,
+        p0 * 1e5,
+        case.spec.reservoir_temperature_k(),
+        &case.state.cell(0).overall_composition(),
+        None,
+    )
+    .expect("initial flash");
+    let final_state = crate::fluid::flash::flash(
+        &case.spec,
+        accepted_state.cell(0).pressure_bar * 1e5,
+        case.spec.reservoir_temperature_k(),
+        &accepted_state.cell(0).overall_composition(),
+        None,
+    )
+    .expect("final flash");
+    assert_eq!(
+        initial.phase_state,
+        crate::fluid::flash::PhaseState::SingleLiquid
+    );
+    assert_eq!(
+        final_state.phase_state,
+        crate::fluid::flash::PhaseState::TwoPhase,
+        "the backed-off step must cross into the two-phase branch"
     );
     println!(
         "line-searched near-critical depletion: iterations={}, step scales={:?}",
