@@ -1,9 +1,9 @@
 # SPE5 line search with and without carried K: accepted progress?
 
 **Status: diagnostic, test-only, not promoted. Production Newton behavior is unchanged.** Measured
-on `da98153c` (branch `exp/116-line-search`), release build. The four-mode comparison and the
-continuation table were rerun on that commit after the tree was cleaned; the comparison reproduced
-exactly, and the continuation is the clean-tree measurement below.
+on `ac248a64` (branch `exp/116-line-search`), release build. The four-mode comparison reproduces
+the earlier table exactly. The continuation is **INCONCLUSIVE** after review: the measured build
+assembled the winning trial twice, so its wall-budget comparison is not valid (see below).
 
 This is the experiment #134's conclusion asked for: pair carried-`K` seed recovery with a step that
 evaluates intermediate inputs, then test whether the recovered phase path turns into accepted
@@ -30,9 +30,12 @@ R(x + tau dx) <= R(x) (1 - 1e-4 tau).
 
 Every trial is assembled with the attempt's fixed carried-`K` hint, so evaluating a candidate
 cannot change the operator the next candidate sees. When recovery is off, the same trial states use
-the cold flash. The report gains `line_search_history` with each trial's `tau`, residual and
-accept/reject flag. The unit test `comp_newton_line_search_backtracks_across_the_switch` pins the
-mechanism on a one-cell near-critical depletion (full step `1.0`, then `0.5`, then `1.0`).
+the cold flash. The report gains `line_search_history` with each trial's `tau`, residual, the cells
+whose phase label differs from the current iterate, and the accept/reject flag. The winning trial's
+assembly is reused at the next iteration, so an accepted step is assembled once, not twice. The
+unit test `comp_newton_line_search_backtracks_across_the_switch` pins the mechanism on a one-cell
+near-critical depletion (full step `1.0`, then `0.5`, then `1.0`) and checks that the final state is
+on the two-phase branch.
 
 ## Result at the captured timestep
 
@@ -58,41 +61,60 @@ The line-search rows are different. Both accept many decreasing Newton steps (13
   `1.229775e-5`.
 
 So carrying `K` lowers the line-search barrier by about 1.5x and keeps the descent going for four
-more Newton steps, but the monotone search still stops at the phase-boundary residual jump. It does
-not produce an accepted timestep, and it does not reach the unchanged `1e-8` test. A 60-iteration
-cap reproduces the same 14/18 stops, so this is not an iteration-budget artifact.
+more Newton steps, but the monotone search still stops at a residual barrier. It does not produce an
+accepted timestep, and it does not reach the unchanged `1e-8` test. A 60-iteration cap reproduces
+the same 14/18 stops, so this is not an iteration-budget artifact.
 
-## Sequential continuation
+The per-trial phase trace separates two things the earlier summary conflated:
 
-A supporting run from the same seed, capped at the same `0.04402126141911289 d`, with N1 +
-refinement and a 600 s wall budget per mode. Measured on `da98153c` after the tree was cleaned.
-These are cost-normalized results, not a fixed-horizon comparison.
+- In iterations 1–9, the full-step trials change cells **33/39** from the current iterate's phase
+  labels. Those are the trials that cross the premature switch; most are rejected, and the accepted
+  half-step stays on the near side.
+- At the final failed iteration (14 with recovery off, 18 with recovery on) **no trial changes a
+  phase label**. The stop is therefore a residual barrier on the current branch, not a label switch
+  inside the trial. This experiment does not establish whether a root exists on either branch, or
+  which mechanism makes the residual rough there (the failure-B Taylor test already found
+  non-smooth face/well terms at cells 33/39).
 
-| Line search | Recovery | Accepted steps | Day reached | Failed attempts | Accepted Newton iterations |
-|---|---|---:|---:|---:|---:|
-| off | off | 15 | `6612.878674` | 92 | 200 |
-| off | on | 15 | `6612.878674` | 92 | 200 |
-| on | off | 8 | `6612.877212` | 36 | 74 |
-| on | on | 7 | `6612.877040` | 28 | 65 |
+## Sequential continuation — INCONCLUSIVE
 
-Without a line search, recovery on and off are identical on this capped continuation, consistent
-with #134's full-step skip. With the line search, recovery on reduces failed attempts and Newton
-work, but not the simulated distance reached. The line search reduces Newton iterations per
-accepted step (`74/8 = 9.25` versus `200/15 = 13.3`) but its trial assemblies cost more wall time,
-so it advances less simulated time inside the same budget. No line-search mode converts the barrier
-into sustained accepted progress on this horizon.
+The 600 s wall-budget continuation was measured before the accepted-trial reuse fix. The winning
+trial was assembled twice, so the line-search modes paid an artificial extra assembly per accepted
+step and the wall-budget table is not a valid comparison. It is withdrawn.
+
+The per-accepted-step work is unaffected by that duplicate assembly and still shows the line search
+doing less work:
+
+| Mode | Failed attempts / accepted step | Accepted Newton iterations / accepted step |
+|---|---:|---:|
+| no line search (recovery off/on) | `92/15 = 6.1` | `200/15 = 13.3` |
+| line search, recovery off | `36/8 = 4.5` | `74/8 = 9.3` |
+| line search, recovery on | `28/7 = 4.0` | `65/7 = 9.3` |
+
+So the earlier "no sustained accepted-progress advantage" reading is withdrawn with the table.
+Sustained progress needs a fair rerun after the reuse fix; it does not decide the direction of this
+PR.
 
 ## Verdict
 
 **DIAGNOSTIC — CARRYING K LOWERS THE MONOTONE LINE-SEARCH BARRIER BUT DOES NOT DELIVER AN ACCEPTED
-TIMESTEP AT `1e-8`; LINE SEARCH ALONE DOES NOT CROSS THE CUTOFF.**
+TIMESTEP AT `1e-8`. The final stop is a residual barrier with no trial phase-label change; line
+search alone neither crosses the cutoff nor establishes that a root exists.**
 
 The experiment answers the question as stated: at the same timestep and tolerance, carrying `K`
-contributes local residual reduction inside a failed attempt, not accepted progress. The mechanism
-that is still missing is a step that crosses the narrow cutoff band, not another evaluation of the
-near side. A bounded non-monotone step or a short continuation across the cutoff, and the separate
-N2/cutoff-rule work, are the next candidates; the `1e-8` acceptance test and the far liquid negative
-control stay unchanged.
+contributes local residual reduction inside a failed attempt, not accepted progress. The trial
+traces also show Newton converging onto the near side of a discontinuity: the full steps keep
+changing cells 33/39, while the accepted half-steps stay on the current branch and close half the
+remaining distance each time.
+
+**Next: check whether this timestep has a root at all before adding another step-control mechanism.**
+At the stall seed, freeze the cell 33/39 labels to two-phase (using the N1 split), solve, and check
+that the flash agrees at the solution; repeat with single-phase frozen. If neither branch agrees
+with itself, there is no root at this timestep under the current rules, and non-monotone steps or
+continuations cannot fix it. That result decides between making the model continuous (the cutoff
+rule for 33/39, N2 for 25/31 and 16, or near-critical relative permeability) and an explicit
+acceptance rule with a bounded signed mass imbalance. The `1e-8` acceptance test and the far liquid
+negative control stay unchanged until that decision.
 
 ## Reproduce
 
@@ -105,7 +127,7 @@ cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
     comp_newton_line_search_backtracks_across_the_switch -- --nocapture
 
-# Supporting continuation; run once with recovery off and once with `SPE5_SEED_RECOVERY=1`.
+# Continuation is INCONCLUSIVE until rerun after the accepted-trial reuse fix; not a gate.
 SPE5_REPLAY_OUT=DIR/ls.json SPE5_REPLAY_SEED=stall_n1_6612_836.json \
     SPE5_MAX_DT_DAYS=0.04402126141911289 SPE5_FLASH_REFINE=1 SPE5_N1=1 \
     SPE5_LINE_SEARCH=1 SPE5_LAST_MONTH=219 SPE5_WALL_BUDGET_S=600 \
@@ -113,5 +135,6 @@ SPE5_REPLAY_OUT=DIR/ls.json SPE5_REPLAY_SEED=stall_n1_6612_836.json \
     comp_spe5_replay_with_timestep_options -- --ignored --nocapture
 ```
 
-`SPE5_LINE_SEARCH` is a test-only replay-driver flag. It is absent from production builds, and the
-default Newton path is bit-identical to #134.
+`SPE5_LINE_SEARCH` is a test-only replay-driver flag. It is absent from production builds. The
+default Newton path's results and its `step_scale_history` on the failure exits are unchanged from
+#134; only test-only reporting fields and the line-search path changed.

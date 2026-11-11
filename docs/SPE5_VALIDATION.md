@@ -1293,13 +1293,17 @@ Order of work, as agreed in the #116 review:
    line search (Armijo decrease, 20 halvings, same attempt-owned hint) was compared with recovery on
    and off at the captured `0.04402126141911289 d` call and unchanged `1e-8`. Without a line
    search both rows are the #134 two-cycle at `3.328116e-3`/`5.041079e-3`. With the line search
-   both descend three orders of magnitude, then stop at the phase-boundary jump: recovery off
+   both descend three orders of magnitude, then stop at a residual barrier: recovery off
    `2.403354e-6` after 13 accepted Newton steps, recovery on `1.594464e-6` after 17. The final
    iteration has no decreasing trial in either mode, so this is a residual barrier, not an
-   iteration budget. Carrying `K` lowers the barrier by about 1.5x and extends the descent, but
-   neither mode reaches `1e-8`; a supporting continuation also shows no sustained accepted-progress
-   advantage. The next mechanism must cross the cutoff band (bounded non-monotone step or a short
-   continuation) or change the cutoff rule; N2 remains separate. Details in
+   iteration budget. The per-trial phase trace shows the full steps changing cells 33/39 through
+   iteration 9, while the final failed iteration changes no phase label; the stop is therefore on
+   the current branch, not a label switch inside the trial. Carrying `K` lowers the barrier by about
+   1.5x and extends the descent, but neither mode reaches `1e-8`. The pre-reuse continuation is
+   INCONCLUSIVE (the winning trial was assembled twice); per accepted step the line search did less
+   work. Before another step-control mechanism, freeze cells 33/39 on each phase branch and check
+   whether the timestep has a root at all; that decides between continuity work (cutoff rule, N2,
+   near-critical relative permeability) and an explicit acceptance rule. Details in
    [SPE5_LINE_SEARCH_EXPERIMENT_2026-11-11.md](SPE5_LINE_SEARCH_EXPERIMENT_2026-11-11.md).
 
 All thresholds above are **experimental candidates**, not validated values. They come from two
