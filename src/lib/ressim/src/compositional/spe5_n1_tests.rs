@@ -1184,3 +1184,221 @@ fn comp_spe5_seed_recovery_well_control_change_is_rejected() {
         "a changed active well-rate set must not be paired by position"
     );
 }
+
+#[test]
+#[ignore = "#116 line search with and without carried K; about a minute"]
+fn comp_spe5_line_search_recovery_comparison() {
+    use super::newton::{NewtonError, solve_newton, with_line_search_for_test};
+    use crate::fluid::flash::{
+        with_difference_refinement_for_test, with_seed_recovery_for_test,
+        with_split_phase_decision_for_test,
+    };
+    let case = restore("stall_n1_6612_836.json");
+    let dt = 0.04402126141911289;
+    let rows = with_difference_refinement_for_test(true, || {
+        with_split_phase_decision_for_test(true, || {
+            case.with_diagnostic_problem(dt, |problem, start, options| {
+                assert_eq!(
+                    options.tolerance, 1e-8,
+                    "the acceptance tolerance must not move"
+                );
+                let mut rows = Vec::new();
+                for line_search in [false, true] {
+                    for recovery in [false, true] {
+                        let (outcome, report) = with_line_search_for_test(line_search, || {
+                            with_seed_recovery_for_test(recovery, || {
+                                solve_newton(problem, start, options)
+                            })
+                        });
+                        let accepted = outcome.is_ok();
+                        let failure_residual =
+                            outcome.as_ref().err().and_then(|error| match error {
+                                NewtonError::NotConverged {
+                                    scaled_residual, ..
+                                } => Some(*scaled_residual),
+                                _ => None,
+                            });
+                        let best = report
+                            .residual_history
+                            .iter()
+                            .copied()
+                            .fold(f64::INFINITY, f64::min);
+                        let last = report.residual_history.last().copied().unwrap_or(f64::NAN);
+                        println!(
+                            "line search {:<5} recovery {:<5}: accepted {accepted:<5} \
+                             iterations {:>2}, best {best:.6e}, last {last:.6e}, \
+                             failure residual {:?}, step scales {:?}",
+                            if line_search { "on" } else { "off" },
+                            if recovery { "on" } else { "off" },
+                            report.iterations,
+                            failure_residual,
+                            report.step_scale_history,
+                        );
+                        for (iteration, trials) in report.line_search_history.iter().enumerate() {
+                            if trials.is_empty() {
+                                continue;
+                            }
+                            let evaluated: Vec<String> = trials
+                                .iter()
+                                .map(|trial| {
+                                    let changes = if trial.phase_changes.is_empty() {
+                                        String::new()
+                                    } else {
+                                        format!(" changes {:?}", trial.phase_changes)
+                                    };
+                                    match trial.scaled_residual {
+                                        Some(norm) => format!(
+                                            "tau {:.3e} -> {:.6e}{}{}",
+                                            trial.tau,
+                                            norm,
+                                            if trial.accepted { "*" } else { "" },
+                                            changes
+                                        ),
+                                        None => format!(
+                                            "tau {:.3e} -> assembly failed{}",
+                                            trial.tau, changes
+                                        ),
+                                    }
+                                })
+                                .collect();
+                            println!(
+                                "  iteration {}: tau/norm {}",
+                                iteration + 1,
+                                evaluated.join(" ")
+                            );
+                        }
+                        rows.push(serde_json::json!({
+                            "line_search": line_search,
+                            "recovery": recovery,
+                            "accepted": accepted,
+                            "failure_residual": failure_residual,
+                            "iterations": report.iterations,
+                            "best": best,
+                            "last": last,
+                            "step_scales": report.step_scale_history,
+                            "line_search_history": report
+                                .line_search_history
+                                .iter()
+                                .map(|trials| {
+                                    trials
+                                        .iter()
+                                        .map(|trial| {
+                                            serde_json::json!({
+                                                "tau": trial.tau,
+                                                "scaled_residual": trial.scaled_residual,
+                                                "phase_changes": trial.phase_changes,
+                                                "accepted": trial.accepted,
+                                            })
+                                        })
+                                        .collect::<Vec<_>>()
+                                })
+                                .collect::<Vec<_>>(),
+                        }));
+                    }
+                }
+                rows
+            })
+        })
+    });
+    assert_eq!(rows.len(), 4);
+    let row = |line_search: bool, recovery: bool| {
+        rows.iter()
+            .find(|row| {
+                row["line_search"].as_bool() == Some(line_search)
+                    && row["recovery"].as_bool() == Some(recovery)
+            })
+            .expect("mode row")
+    };
+    let off_off = row(false, false);
+    let off_on = row(false, true);
+    let on_off = row(true, false);
+    let on_on = row(true, true);
+
+    // The two controls without a line search are the committed #134 result: neither reaches the
+    // 1e-8 test and carrying K changes nothing.
+    for control in [off_off, off_on] {
+        assert!(!control["accepted"].as_bool().expect("accepted flag"));
+        assert_eq!(control["iterations"].as_u64(), Some(20));
+        assert!(control["best"].as_f64().expect("best") > 1e-3);
+    }
+    assert_eq!(off_off["best"], off_on["best"]);
+
+    // With a monotone line search both modes make many accepted Newton steps, then hit a state
+    // where no backtracked trial lowers the residual. Neither reaches 1e-8.
+    for line_searched in [on_off, on_on] {
+        assert!(!line_searched["accepted"].as_bool().expect("accepted flag"));
+        let best = line_searched["best"].as_f64().expect("best");
+        assert!((1e-7..5e-6).contains(&best), "line-search floor {best:e}");
+        assert!(line_searched["iterations"].as_u64().expect("iterations") < 20);
+    }
+    // Carrying K lowers the barrier and keeps the line search decreasing for more steps, but it
+    // does not turn the barrier into an accepted timestep.
+    assert!(
+        on_on["best"].as_f64().expect("best") < on_off["best"].as_f64().expect("best"),
+        "carried K must lower the line-search floor"
+    );
+    assert!(
+        on_on["iterations"].as_u64().expect("iterations")
+            > on_off["iterations"].as_u64().expect("iterations")
+    );
+    for line_searched in [on_off, on_on] {
+        let last = line_searched["last"].as_f64().expect("last residual");
+        assert_eq!(
+            line_searched["failure_residual"].as_f64(),
+            Some(last),
+            "a failed line search must report the current iterate's residual"
+        );
+        let history = line_searched["line_search_history"]
+            .as_array()
+            .expect("line-search history");
+        assert!(
+            history
+                .iter()
+                .any(|trials| trials.as_array().is_some_and(|t| t.len() > 1)),
+            "the line search must have backtracked at least once"
+        );
+        let mut crossed = false;
+        for trials in history {
+            for trial in trials.as_array().expect("trials") {
+                let changes = trial["phase_changes"].as_array().expect("phase changes");
+                let has = |cell: u64| changes.iter().any(|value| value.as_u64() == Some(cell));
+                if has(33) && has(39) {
+                    crossed = true;
+                }
+            }
+        }
+        assert!(
+            crossed,
+            "the early full steps must cross cells 33/39: {history:?}"
+        );
+        let last_trials = history
+            .last()
+            .expect("a final line search")
+            .as_array()
+            .expect("trials");
+        assert!(
+            last_trials
+                .iter()
+                .all(|trial| trial["phase_changes"].as_array().is_some_and(Vec::is_empty)),
+            "the final failed iteration must not change a phase label: {last_trials:?}"
+        );
+        for (index, trials) in history.iter().enumerate() {
+            let trials = trials.as_array().expect("trials");
+            assert!(!trials.is_empty());
+            let last = trials.last().expect("trial");
+            if index + 1 == history.len() {
+                assert_eq!(
+                    last["accepted"],
+                    Value::Bool(false),
+                    "the last line search failed"
+                );
+            } else {
+                assert_eq!(last["accepted"], Value::Bool(true));
+            }
+        }
+    }
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&rows).expect("serialize")
+    );
+}

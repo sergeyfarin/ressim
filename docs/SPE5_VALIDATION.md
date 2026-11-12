@@ -514,7 +514,8 @@ normalizations, with a signed and an absolute conservation account per iterate.
 | The same states solved in 50 digits, and by MultiComponentFlash | `tools/jutul/spe5_flash_mp.py`, `tools/jutul/spe5_flash_precision.jl` | `uv run --no-project --with mpmath python -I tools/jutul/spe5_flash_mp.py COND.json MP.json [STRIDE]`; `julia +1.12 --project=tools/jutul tools/jutul/spe5_flash_precision.jl COND.json OUT.json MP.json` |
 | Flash refinement on the captured states (cells 33/39/40; pressure-ulp, 0.01 Pa and composition sweeps; both modes) | `comp_spe5_flash_refinement_states` | `SPE5_TRACE_OUT=DIR cargo test --release --lib comp_spe5_flash_refinement_states -- --ignored` (seconds); 50 digits: `spe5_flash_mp.py STATES.json MP.json 1` (~2.5 min); table: `spe5_flash_refinement_compare.py STATES.json MP.json` |
 | Failure B with the refinement: last attempt, Taylor test, dt ladder, the failing call | `comp_spe5_failure_b_with_refinement` | `SPE5_TRACE_OUT=DIR cargo test --release --lib comp_spe5_failure_b_with_refinement -- --ignored --nocapture` (~3 min) |
-| Replays with a halving budget, a dt cap, timestep memory or the flash refinement, per-month work and balance; optionally the failing call's starting state | `comp_spe5_replay_with_timestep_options` | `SPE5_REPLAY_OUT=OUT.json [SPE5_REPLAY_SEED=stall_218_from_scratch.json] [SPE5_MAX_ATTEMPTS=N] [SPE5_MAX_DT_DAYS=D] [SPE5_DT_MEMORY_GROWTH=G] [SPE5_FLASH_REFINE=1] [SPE5_REPLAY_CHECKPOINT_OUT=SEED.json] cargo test --release --lib comp_spe5_replay_with_timestep_options -- --ignored --nocapture` (11 min to 2.5 h); table: `spe5_compare.py --timestep-convergence` |
+| Line search with recovery on/off at the captured #133 call | `comp_spe5_line_search_recovery_comparison` | `cargo test --release --lib comp_spe5_line_search_recovery_comparison -- --ignored --nocapture` (~1 min) |
+| Replays with a halving budget, a dt cap, timestep memory or the flash refinement, per-month work and balance; optionally the failing call's starting state | `comp_spe5_replay_with_timestep_options` | `SPE5_REPLAY_OUT=OUT.json [SPE5_REPLAY_SEED=stall_218_from_scratch.json] [SPE5_MAX_ATTEMPTS=N] [SPE5_MAX_DT_DAYS=D] [SPE5_DT_MEMORY_GROWTH=G] [SPE5_FLASH_REFINE=1] [SPE5_N1=1] [SPE5_SEED_RECOVERY=1] [SPE5_LINE_SEARCH=1] [SPE5_REPLAY_CHECKPOINT_OUT=SEED.json] cargo test --release --lib comp_spe5_replay_with_timestep_options -- --ignored --nocapture` (11 min to 2.5 h); table: `spe5_compare.py --timestep-convergence` |
 | One Newton solve per halving from any captured state, with per-iterate flips and residuals | `comp_spe5_trace_seed_ladder` | `SPE5_TRACE_OUT=DIR SPE5_TRACE_SEED=SEED.json [SPE5_TRACE_DT_DAYS=D] [SPE5_TRACE_HALVINGS=N] [SPE5_FLASH_REFINE=1] cargo test --release --lib comp_spe5_trace_seed_ladder -- --ignored --nocapture` (0.5–1.5 min) |
 
 Signed global imbalance is `Σ_cells R_c` per component (dt-integrated, moles) relative to that
@@ -1287,6 +1288,23 @@ Order of work, as agreed in the #116 review:
    accepted steps. The next change should pair carried `K` with a line search or short continuation
    that evaluates intermediate inputs. Details in
    [SPE5_SEED_RECOVERY_EXPERIMENT_2026-11-09.md](SPE5_SEED_RECOVERY_EXPERIMENT_2026-11-09.md).
+
+   **Line search with and without carried K (experimental, test-only).** A monotone backtracking
+   line search (Armijo decrease, 20 halvings, same attempt-owned hint) was compared with recovery on
+   and off at the captured `0.04402126141911289 d` call and unchanged `1e-8`. Without a line
+   search both rows are the #134 two-cycle at `3.328116e-3`/`5.041079e-3`. With the line search
+   both descend three orders of magnitude, then stop at a residual barrier: recovery off
+   `2.403354e-6` after 13 accepted Newton steps, recovery on `1.594464e-6` after 17. The final
+   iteration has no decreasing trial in either mode, so this is a residual barrier, not an
+   iteration budget. The per-trial phase trace shows the full steps changing cells 33/39 through
+   iteration 9, while the final failed iteration changes no phase label; the stop is therefore on
+   the current branch, not a label switch inside the trial. Carrying `K` lowers the barrier by about
+   1.5x and extends the descent, but neither mode reaches `1e-8`. The pre-reuse continuation is
+   INCONCLUSIVE (the winning trial was assembled twice); per accepted step the line search did less
+   work. Before another step-control mechanism, freeze cells 33/39 on each phase branch and check
+   whether the timestep has a root at all; that decides between continuity work (cutoff rule, N2,
+   near-critical relative permeability) and an explicit acceptance rule. Details in
+   [SPE5_LINE_SEARCH_EXPERIMENT_2026-11-11.md](SPE5_LINE_SEARCH_EXPERIMENT_2026-11-11.md).
 
 All thresholds above are **experimental candidates**, not validated values. They come from two
 traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of
