@@ -271,9 +271,18 @@ fn comp_api_surface_production_does_not_shrink_when_the_same_well_injects() {
     assert!((produced[1].liquid_m3 - 0.2).abs() < 1e-7);
     assert!(net[1].liquid_m3 < 0.0);
 
+    // Restore exactly at the reversal. Gross production cannot be recovered by clipping net
+    // volumes after injection, so both ledgers must survive and keep accruing independently.
+    let json = serde_json::to_string(&case.checkpoint()).unwrap();
+    let checkpoint: Checkpoint = serde_json::from_str(&json).unwrap();
+    let mut restored = CompositionalCase::restore(&checkpoint).unwrap();
+    assert_eq!(restored.snapshot(), case.snapshot());
+
     // The schedule event has now turned the producer into a liquid injector.
     assert!(case.step(0.02).succeeded());
+    assert!(restored.step(0.02).succeeded());
     let snapshot = case.snapshot();
+    assert_eq!(restored.snapshot(), snapshot);
     let rates = snapshot.well_surface_rates.as_ref().unwrap();
     assert!(
         rates[1].liquid_m3_per_day > 0.0,
@@ -951,12 +960,14 @@ fn comp_api_checkpoint_roundtrips_and_continues_identically() {
         "pressures did not survive the roundtrip"
     );
     assert_eq!(a.composition, b.composition, "compositions did not survive");
+    assert_eq!(a.cumulative_well_moles, b.cumulative_well_moles);
 
     // And it continues the same way, which a state that merely *looks* restored would not.
     assert!(original.step(0.02).succeeded());
     assert!(restored.step(0.02).succeeded());
     let a = original.snapshot();
     let b = restored.snapshot();
+    assert_eq!(a.cumulative_well_moles, b.cumulative_well_moles);
     for cell in 0..5 {
         assert!(
             (a.pressure[cell] - b.pressure[cell]).abs() < 1e-9,
@@ -965,6 +976,220 @@ fn comp_api_checkpoint_roundtrips_and_continues_identically() {
             b.pressure[cell]
         );
     }
+}
+
+/// #88: the public ledger has a stable shape before stepping, including cases without wells.
+#[test]
+fn comp_api_initial_component_ledgers_have_one_row_per_well() {
+    for well_count in [0, 2] {
+        let mut config = valid_config();
+        config.wells.truncate(well_count);
+        let mut case = CompositionalCase::new(config).unwrap();
+        let snapshot = case.snapshot();
+        assert_eq!(
+            snapshot.cumulative_well_moles,
+            vec![vec![0.0; 3]; well_count]
+        );
+        assert_eq!(
+            case.checkpoint().cumulative_source_moles,
+            Some(vec![0.0; 3])
+        );
+        let restored = CompositionalCase::restore(&case.checkpoint()).unwrap();
+        assert_eq!(restored.snapshot(), snapshot);
+        assert!(case.step(0.02).succeeded());
+        let restored = CompositionalCase::restore(&case.checkpoint()).unwrap();
+        assert_eq!(restored.snapshot(), case.snapshot());
+        assert!(restored.snapshot().well_surface_rates.is_none());
+    }
+}
+
+/// Saved source totals are reporting history, never new sources for the resumed solve.
+#[test]
+fn comp_api_checkpoint_source_totals_do_not_become_solver_input() {
+    let mut original = CompositionalCase::new(valid_config()).unwrap();
+    assert!(original.step(0.02).succeeded());
+    let mut checkpoint = original.checkpoint();
+    let source_totals = vec![123.0, -456.0, 789.0];
+    checkpoint.cumulative_source_moles = Some(source_totals.clone());
+    let json = serde_json::to_string(&checkpoint).unwrap();
+    let mut restored = CompositionalCase::restore(&serde_json::from_str(&json).unwrap()).unwrap();
+    assert_eq!(
+        restored.checkpoint().cumulative_source_moles,
+        Some(source_totals.clone())
+    );
+    assert!(original.step(0.02).succeeded());
+    assert!(restored.step(0.02).succeeded());
+    assert_eq!(restored.snapshot(), original.snapshot());
+    assert_eq!(
+        restored.checkpoint().cumulative_source_moles,
+        Some(source_totals)
+    );
+}
+
+/// Component and surface accounting include water through restore and the next accepted step.
+#[test]
+fn comp_api_checkpoint_preserves_water_and_surface_ledgers() {
+    let spe5: CaseConfig = serde_json::from_str(include_str!(
+        "../../../../../opm/compositional/spe5/case.json"
+    ))
+    .unwrap();
+    let mut config = surface_rate_config();
+    config.water = spe5.water;
+    config.relperm = spe5.relperm;
+    let mut original = CompositionalCase::new(config).unwrap();
+    assert_eq!(
+        original.snapshot().cumulative_well_moles,
+        vec![vec![0.0; 7]; 2]
+    );
+    assert!(original.step(0.02).succeeded());
+    let json = serde_json::to_string(&original.checkpoint()).unwrap();
+    let checkpoint: Checkpoint = serde_json::from_str(&json).unwrap();
+    let mut restored = CompositionalCase::restore(&checkpoint).unwrap();
+    assert_eq!(restored.snapshot(), original.snapshot());
+    assert!(original.step(0.02).succeeded());
+    assert!(restored.step(0.02).succeeded());
+    assert_eq!(restored.snapshot(), original.snapshot());
+    assert_eq!(
+        restored
+            .checkpoint()
+            .cumulative_source_moles
+            .as_ref()
+            .unwrap()
+            .len(),
+        7
+    );
+
+    let mut broken = checkpoint.clone();
+    broken.cumulative_well_moles.as_mut().unwrap()[0].pop();
+    assert!(
+        matches!(CompositionalCase::restore(&broken), Err(ConfigError::Rejected { field, .. }) if field == "checkpoint.cumulative_well_moles")
+    );
+    let mut broken = checkpoint.clone();
+    broken.well_surface_rates.as_mut().unwrap()[0].water_m3_per_day = None;
+    assert!(
+        matches!(CompositionalCase::restore(&broken), Err(ConfigError::Rejected { field, .. }) if field == "checkpoint.well_surface_rates")
+    );
+    let mut broken = checkpoint;
+    broken.cumulative_well_surface_volumes.as_mut().unwrap()[0].water_m3 = None;
+    assert!(
+        matches!(CompositionalCase::restore(&broken), Err(ConfigError::Rejected { field, .. }) if field == "checkpoint.cumulative_well_surface_volumes")
+    );
+}
+
+/// Old checkpoints restore with the historical zero-origin fallback, and can be saved again.
+#[test]
+fn comp_api_legacy_checkpoint_without_ledgers_still_continues() {
+    let mut original = CompositionalCase::new(surface_rate_config()).unwrap();
+    assert!(original.step(0.02).succeeded());
+    let mut value = serde_json::to_value(original.checkpoint()).unwrap();
+    for field in [
+        "cumulative_source_moles",
+        "cumulative_well_moles",
+        "well_surface_rates",
+        "cumulative_well_surface_volumes",
+        "cumulative_well_surface_production_volumes",
+    ] {
+        value.as_object_mut().unwrap().remove(field);
+    }
+    let legacy: Checkpoint = serde_json::from_value(value).unwrap();
+    let mut restored = CompositionalCase::restore(&legacy).unwrap();
+    assert_eq!(
+        restored.snapshot().cumulative_well_moles,
+        vec![vec![0.0; 6]; 2]
+    );
+    assert!(restored.snapshot().well_surface_rates.is_none());
+    assert!(
+        restored
+            .snapshot()
+            .cumulative_well_surface_volumes
+            .is_none()
+    );
+    assert!(
+        restored
+            .snapshot()
+            .cumulative_well_surface_production_volumes
+            .is_none()
+    );
+    let resaved = CompositionalCase::restore(&restored.checkpoint()).unwrap();
+    assert_eq!(resaved.snapshot(), restored.snapshot());
+    assert!(original.step(0.02).succeeded());
+    assert!(restored.step(0.02).succeeded());
+    assert_eq!(restored.snapshot().pressure, original.snapshot().pressure);
+    assert_eq!(
+        restored.snapshot().composition,
+        original.snapshot().composition
+    );
+    assert!(
+        restored
+            .snapshot()
+            .cumulative_well_surface_volumes
+            .is_some()
+    );
+}
+
+/// Reject malformed optional reporting fields before they can corrupt a resumed integral.
+#[test]
+fn comp_api_checkpoint_refuses_malformed_ledgers() {
+    let checkpoint = CompositionalCase::new(surface_rate_config())
+        .unwrap()
+        .checkpoint();
+    let rejected = |broken: Checkpoint, expected: &str| match CompositionalCase::restore(&broken) {
+        Err(ConfigError::Rejected { field, .. }) => {
+            assert_eq!(field, format!("checkpoint.{expected}"))
+        }
+        other => panic!("malformed {expected} was accepted: {:?}", other.err()),
+    };
+    for totals in [vec![0.0; 5], vec![f64::NAN; 6], vec![f64::INFINITY; 6]] {
+        let mut broken = checkpoint.clone();
+        broken.cumulative_source_moles = Some(totals);
+        rejected(broken, "cumulative_source_moles");
+    }
+    for totals in [
+        vec![],
+        vec![vec![0.0; 6]],
+        vec![vec![0.0; 5]; 2],
+        vec![vec![f64::NAN; 6]; 2],
+    ] {
+        let mut broken = checkpoint.clone();
+        broken.cumulative_well_moles = Some(totals);
+        rejected(broken, "cumulative_well_moles");
+    }
+    let mut broken = checkpoint.clone();
+    broken.well_surface_rates.as_mut().unwrap().pop();
+    rejected(broken, "well_surface_rates");
+    let mut broken = checkpoint.clone();
+    broken.well_surface_rates.as_mut().unwrap()[0].liquid_m3_per_day = f64::INFINITY;
+    rejected(broken, "well_surface_rates");
+    let mut broken = checkpoint.clone();
+    broken.well_surface_rates.as_mut().unwrap()[0].water_m3_per_day = Some(0.0);
+    rejected(broken, "well_surface_rates");
+    let mut broken = checkpoint.clone();
+    broken
+        .cumulative_well_surface_volumes
+        .as_mut()
+        .unwrap()
+        .pop();
+    rejected(broken, "cumulative_well_surface_volumes");
+    let mut broken = checkpoint.clone();
+    broken.cumulative_well_surface_volumes.as_mut().unwrap()[0].vapour_m3 = f64::NAN;
+    rejected(broken, "cumulative_well_surface_volumes");
+    let mut broken = checkpoint.clone();
+    broken.cumulative_well_surface_volumes.as_mut().unwrap()[0].water_m3 = Some(0.0);
+    rejected(broken, "cumulative_well_surface_volumes");
+    let mut broken = checkpoint.clone();
+    broken
+        .cumulative_well_surface_production_volumes
+        .as_mut()
+        .unwrap()[0]
+        .liquid_m3 = -1.0;
+    rejected(broken, "cumulative_well_surface_production_volumes");
+    let mut broken = checkpoint;
+    broken.config = valid_config();
+    broken.pressure = vec![75.0; 5];
+    broken.composition = vec![vec![0.1, 0.3, 0.6]; 5];
+    broken.cumulative_source_moles = None;
+    broken.cumulative_well_moles = None;
+    rejected(broken, "well_surface_rates");
 }
 
 /// A checkpoint from another schema is refused rather than reinterpreted.

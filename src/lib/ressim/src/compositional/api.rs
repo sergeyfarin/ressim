@@ -1140,6 +1140,8 @@ impl CompositionalCase {
             config,
         };
         case.run
+            .seed_component_reporting(case.wells.len(), case.relperm.water().is_some());
+        case.run
             .seed_surface_reporting(&case.spec, &case.relperm, case.wells.len());
         // A t = 0 event is the initial condition, not a step-1 surprise.
         case.apply_schedule_through(0.0);
@@ -1552,6 +1554,17 @@ impl CompositionalCase {
             well_bhp_bar: self.run.well_bhp_bar().to_vec(),
             schedule_position: Some(self.schedule_position),
             schedule_boundary_pending: Some(self.schedule_boundary_pending),
+            cumulative_source_moles: Some(self.run.cumulative_source_moles().to_vec()),
+            cumulative_well_moles: Some(self.run.cumulative_well_moles().to_vec()),
+            well_surface_rates: self.run.well_surface_rates().map(<[_]>::to_vec),
+            cumulative_well_surface_volumes: self
+                .run
+                .cumulative_well_surface_volumes()
+                .map(<[_]>::to_vec),
+            cumulative_well_surface_production_volumes: self
+                .run
+                .cumulative_well_surface_production_volumes()
+                .map(<[_]>::to_vec),
         }
     }
 
@@ -1616,6 +1629,22 @@ impl CompositionalCase {
                 reason: format!("{e:?}"),
             })?;
         case.run = CompositionalRun::new(state);
+        case.run
+            .seed_component_reporting(case.wells.len(), has_water);
+        checkpoint.validate_reporting(
+            n + usize::from(has_water),
+            has_water,
+            case.spec.surface().is_some(),
+        )?;
+        case.run.restore_reporting(
+            checkpoint.cumulative_source_moles.clone(),
+            checkpoint.cumulative_well_moles.clone(),
+            checkpoint.well_surface_rates.clone(),
+            checkpoint.cumulative_well_surface_volumes.clone(),
+            checkpoint
+                .cumulative_well_surface_production_volumes
+                .clone(),
+        );
         case.run.set_time_days(checkpoint.time_days);
         // Replay the schedule to the checkpoint's clock, then require the explicit position to
         // agree. Replaying is idempotent because events replace state; the comparison is what
@@ -1786,7 +1815,8 @@ pub struct Snapshot {
     /// Total moles per hydrocarbon component held by the grid. Water is in [`Self::water`].
     pub inventory: Vec<f64>,
     /// Per well, cumulative component moles. Positive into the reservoir. With water, each row
-    /// has one more entry, water last.
+    /// has one more entry, water last. A fresh case reports one zero row per well, or no rows if
+    /// it has no wells. A legacy checkpoint without totals starts accumulating from restore.
     pub cumulative_well_moles: Vec<Vec<f64>>,
     /// Per well, surface volumetric rates at the accepted state [m³/day], from the engine's own
     /// surface separation. Positive injects, negative produces.
@@ -1857,4 +1887,105 @@ pub struct Checkpoint {
     /// checkpoints, which are inferred from `event_at(checkpoint.time, last event)`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schedule_boundary_pending: Option<bool>,
+    /// Cumulative imposed-source moles [mol], water last when present. Reporting only.
+    /// Absent in legacy checkpoints, which accumulate from zero after restore.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cumulative_source_moles: Option<Vec<f64>>,
+    /// Cumulative component moles [mol], one row per well, water last when present.
+    /// Absent in legacy checkpoints, which accumulate from zero after restore.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cumulative_well_moles: Option<Vec<Vec<f64>>>,
+    /// Last accepted separator rates [m³/day]. Absent means unreported, as in [`Snapshot`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub well_surface_rates: Option<Vec<WellSurfaceRates>>,
+    /// Signed net separator volumes [m³], one per well. Absent means unreported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cumulative_well_surface_volumes: Option<Vec<WellSurfaceVolumes>>,
+    /// Gross separator production [m³], one per well. Absent means unreported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cumulative_well_surface_production_volumes: Option<Vec<WellSurfaceVolumes>>,
+}
+
+impl Checkpoint {
+    fn validate_reporting(
+        &self,
+        width: usize,
+        has_water: bool,
+        has_surface: bool,
+    ) -> Result<(), ConfigError> {
+        let reject = |field: &str, reason: &str| ConfigError::Rejected {
+            field: format!("checkpoint.{field}"),
+            reason: reason.to_string(),
+        };
+        let valid_moles =
+            |values: &[f64]| values.len() == width && values.iter().all(|value| value.is_finite());
+        if let Some(totals) = &self.cumulative_source_moles
+            && !valid_moles(totals)
+        {
+            return Err(reject(
+                "cumulative_source_moles",
+                "must contain one finite value per component, including water when present",
+            ));
+        }
+        if let Some(totals) = &self.cumulative_well_moles
+            && (totals.len() != self.config.wells.len()
+                || !totals.iter().all(|row| valid_moles(row)))
+        {
+            return Err(reject(
+                "cumulative_well_moles",
+                "must contain one row per well and one finite value per component, including water when present",
+            ));
+        }
+        // Signed rates and net volumes may be negative; gross production may not.
+        let valid_phases = |liquid: f64, vapour: f64, water: Option<f64>, gross: bool| {
+            water.is_some() == has_water
+                && [Some(liquid), Some(vapour), water]
+                    .into_iter()
+                    .flatten()
+                    .all(|value| value.is_finite() && (!gross || value >= 0.0))
+        };
+        if let Some(rates) = &self.well_surface_rates
+            && (!has_surface
+                || rates.len() != self.config.wells.len()
+                || !rates.iter().all(|rate| {
+                    valid_phases(
+                        rate.liquid_m3_per_day,
+                        rate.vapour_m3_per_day,
+                        rate.water_m3_per_day,
+                        false,
+                    )
+                }))
+        {
+            return Err(reject(
+                "well_surface_rates",
+                "requires pinned surface conditions, one finite rate per well and water exactly when the case has water",
+            ));
+        }
+        for (field, volumes, gross) in [
+            (
+                "cumulative_well_surface_volumes",
+                &self.cumulative_well_surface_volumes,
+                false,
+            ),
+            (
+                "cumulative_well_surface_production_volumes",
+                &self.cumulative_well_surface_production_volumes,
+                true,
+            ),
+        ] {
+            if let Some(volumes) = volumes
+                && (!has_surface
+                    || volumes.len() != self.config.wells.len()
+                    || !volumes.iter().all(|volume| {
+                        valid_phases(volume.liquid_m3, volume.vapour_m3, volume.water_m3, gross)
+                    }))
+            {
+                return Err(reject(
+                    field,
+                    "requires pinned surface conditions, one finite volume per well and water exactly when the case has water; gross production must be non-negative",
+                ));
+            }
+        }
+        Ok(())
+    }
 }
