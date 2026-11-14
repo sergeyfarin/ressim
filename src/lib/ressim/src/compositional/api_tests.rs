@@ -1127,6 +1127,52 @@ fn comp_api_legacy_checkpoint_without_ledgers_still_continues() {
     );
 }
 
+/// Surface reporting is one history: a partial payload must not reset an integral silently.
+#[test]
+fn comp_api_checkpoint_surface_fields_are_all_present_or_all_absent() {
+    let mut original = CompositionalCase::new(surface_rate_config()).unwrap();
+    assert!(original.step(0.02).succeeded());
+    let saved = serde_json::to_value(original.checkpoint()).unwrap();
+    let fields = [
+        "well_surface_rates",
+        "cumulative_well_surface_volumes",
+        "cumulative_well_surface_production_volumes",
+    ];
+    for present in 0..8 {
+        let mut value = saved.clone();
+        for (index, field) in fields.iter().enumerate() {
+            if present & (1 << index) == 0 {
+                value.as_object_mut().unwrap().remove(*field);
+            }
+        }
+        let checkpoint: Checkpoint = serde_json::from_value(value).unwrap();
+        match CompositionalCase::restore(&checkpoint) {
+            Ok(restored) if present == 7 => assert_eq!(restored.snapshot(), original.snapshot()),
+            Ok(restored) if present == 0 => {
+                let snapshot = restored.snapshot();
+                assert!(snapshot.well_surface_rates.is_none());
+                assert!(snapshot.cumulative_well_surface_volumes.is_none());
+                assert!(
+                    snapshot
+                        .cumulative_well_surface_production_volumes
+                        .is_none()
+                );
+                assert_eq!(
+                    snapshot.cumulative_well_moles,
+                    original.snapshot().cumulative_well_moles
+                );
+            }
+            Err(ConfigError::Rejected { field, .. }) if present != 0 && present != 7 => {
+                assert_eq!(field, "checkpoint.surface_reporting");
+            }
+            other => panic!(
+                "surface field mask {present:03b} had an unexpected result: {:?}",
+                other.err()
+            ),
+        }
+    }
+}
+
 /// Reject malformed optional reporting fields before they can corrupt a resumed integral.
 #[test]
 fn comp_api_checkpoint_refuses_malformed_ledgers() {

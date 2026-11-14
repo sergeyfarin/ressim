@@ -1896,6 +1896,7 @@ pub struct Checkpoint {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cumulative_well_moles: Option<Vec<Vec<f64>>>,
     /// Last accepted separator rates [m³/day]. Absent means unreported, as in [`Snapshot`].
+    /// These rates and both surface-volume fields must be all present or all absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub well_surface_rates: Option<Vec<WellSurfaceRates>>,
     /// Signed net separator volumes [m³], one per well. Absent means unreported.
@@ -1917,6 +1918,19 @@ impl Checkpoint {
             field: format!("checkpoint.{field}"),
             reason: reason.to_string(),
         };
+        if !matches!(
+            (
+                self.well_surface_rates.is_some(),
+                self.cumulative_well_surface_volumes.is_some(),
+                self.cumulative_well_surface_production_volumes.is_some(),
+            ),
+            (false, false, false) | (true, true, true)
+        ) {
+            return Err(reject(
+                "surface_reporting",
+                "well_surface_rates, cumulative_well_surface_volumes and cumulative_well_surface_production_volumes must be all present or all absent",
+            ));
+        }
         let valid_moles =
             |values: &[f64]| values.len() == width && values.iter().all(|value| value.is_finite());
         if let Some(totals) = &self.cumulative_source_moles

@@ -360,7 +360,10 @@ export interface CompositionalCheckpoint {
   cumulative_source_moles?: number[];
   /** Component totals [mol], one row per well, water last. Absent in legacy checkpoints. */
   cumulative_well_moles?: number[][];
-  /** Last accepted separator rates [m³/day]. Absent means unreported. */
+  /**
+   * Last accepted separator rates [m³/day]. Absent means unreported.
+   * These rates and both surface-volume fields must be all present or all absent.
+   */
   well_surface_rates?: CompositionalWellSurfaceRates[];
   /** Signed net separator volumes [m³], one per well. Absent means unreported. */
   cumulative_well_surface_volumes?: CompositionalWellSurfaceVolumes[];

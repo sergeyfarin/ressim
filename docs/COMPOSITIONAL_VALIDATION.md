@@ -756,12 +756,14 @@ validates finite values and per-well/component dimensions (water last when prese
 presence in the surface fields, and nonnegative gross production. A narrow run setter restores
 these reporting fields without feeding the totals into the solve. Fresh cases start with one
 zero component row per configured well, including water, and no rows when there are no wells.
+The surface rates, net volumes and gross production must be all present or all absent; restore
+rejects a partial group so that one integral cannot silently restart alongside preserved totals.
 
 Legacy checkpoints without these fields still restore. Their component totals start from zero
 at restore; missing surface history stays unreported until the next accepted step. Their lost
-history cannot be reconstructed from the grid. Resaving such a checkpoint is supported. The
-schema stays `/1` because all added fields are optional and affect accounting rather than the
-physical model.
+history cannot be reconstructed from the grid. Resaving such a checkpoint is supported and
+preserves this accounting without recording when its counters started. The schema stays `/1`
+because these optional fields affect accounting rather than the physical model.
 
 `comp_api_checkpoint_roundtrips_and_continues_identically` and
 `comp_schedule_checkpoint_carries_position_and_continues_identically` check ledger continuity

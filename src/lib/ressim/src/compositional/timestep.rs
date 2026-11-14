@@ -133,8 +133,9 @@ pub struct CompositionalRun {
     time_days: f64,
     cache: FlashCache,
     /// Cumulative moles produced (negative) or injected (positive) per component through imposed
-    /// **sources**, over accepted steps only. Grows to `N+1` entries, water last, once a step
-    /// with water sources is accepted.
+    /// **sources**, over accepted steps only. Water-enabled configured cases start with `N+1`
+    /// entries, water last. Low-level runs grow to that width on their first accepted
+    /// water-enabled step.
     cumulative_source_moles: Vec<f64>,
     /// The same, per well, from the rates the accepted solve actually ran at.
     cumulative_well_moles: Vec<Vec<f64>>,
