@@ -133,8 +133,9 @@ pub struct CompositionalRun {
     time_days: f64,
     cache: FlashCache,
     /// Cumulative moles produced (negative) or injected (positive) per component through imposed
-    /// **sources**, over accepted steps only. Grows to `N+1` entries, water last, once a step
-    /// with water sources is accepted.
+    /// **sources**, over accepted steps only. Water-enabled configured cases start with `N+1`
+    /// entries, water last. Low-level runs grow to that width on their first accepted
+    /// water-enabled step.
     cumulative_source_moles: Vec<f64>,
     /// The same, per well, from the rates the accepted solve actually ran at.
     cumulative_well_moles: Vec<Vec<f64>>,
@@ -196,7 +197,7 @@ impl CompositionalRun {
 
     /// Cumulative component moles per well [mol], from the rates the accepted solves ran at.
     ///
-    /// Positive means into the reservoir. Empty until a step with wells has been accepted.
+    /// Positive means into the reservoir. A configured case seeds one zero row per well.
     pub fn cumulative_well_moles(&self) -> &[Vec<f64>] {
         &self.cumulative_well_moles
     }
@@ -222,9 +223,8 @@ impl CompositionalRun {
     /// Seed the surface ledger at t = 0, before the first accepted step.
     ///
     /// A fresh case knows its wells and whether it has water, so its initial surface totals are
-    /// exactly zero. Restore deliberately does not call this: a checkpoint carries no surface
-    /// ledger (the same limitation as the component ledger, #88), and zeros there would claim a
-    /// history the restored run does not have.
+    /// exactly zero. Restore instead uses the checkpoint's reporting fields; a legacy checkpoint
+    /// without them must not invent a surface history.
     pub fn seed_surface_reporting(
         &mut self,
         spec: &FluidSpecification,
@@ -240,6 +240,37 @@ impl CompositionalRun {
             Some(vec![WellSurfaceVolumes::zero(has_water); well_count]);
         self.cumulative_well_surface_production_volumes =
             Some(vec![WellSurfaceVolumes::zero(has_water); well_count]);
+    }
+
+    /// Seed component totals for a configured case, including the optional water component.
+    pub(crate) fn seed_component_reporting(&mut self, well_count: usize, has_water: bool) {
+        let width = self.state.component_count() + usize::from(has_water);
+        self.cumulative_source_moles = vec![0.0; width];
+        self.cumulative_well_moles = vec![vec![0.0; width]; well_count];
+    }
+
+    /// Restore validated reporting totals and rates, without changing any solver input.
+    ///
+    /// Missing component totals retain the historical zero-origin fallback. Missing surface
+    /// fields stay unreported until the next accepted step, as with legacy checkpoints.
+    pub(crate) fn restore_reporting(
+        &mut self,
+        cumulative_source_moles: Option<Vec<f64>>,
+        cumulative_well_moles: Option<Vec<Vec<f64>>>,
+        well_surface_rates: Option<Vec<WellSurfaceRates>>,
+        cumulative_well_surface_volumes: Option<Vec<WellSurfaceVolumes>>,
+        cumulative_well_surface_production_volumes: Option<Vec<WellSurfaceVolumes>>,
+    ) {
+        if let Some(totals) = cumulative_source_moles {
+            self.cumulative_source_moles = totals;
+        }
+        if let Some(totals) = cumulative_well_moles {
+            self.cumulative_well_moles = totals;
+        }
+        self.well_surface_rates = well_surface_rates;
+        self.cumulative_well_surface_volumes = cumulative_well_surface_volumes;
+        self.cumulative_well_surface_production_volumes =
+            cumulative_well_surface_production_volumes;
     }
 
     /// Flowing BHP per well at the accepted state [bar]; empty until a well step is accepted.
@@ -388,7 +419,7 @@ impl CompositionalRun {
                         .map(|rate| surface_rates_from_components(spec, relperm, rate))
                         .collect::<Result<Vec<_>, _>>()
                     {
-                        Ok(rates) => {
+                        Ok(rates) if spec.surface().is_some() => {
                             let has_water = relperm.water().is_some();
                             match self.cumulative_well_surface_volumes.as_mut() {
                                 Some(cumulative) => {
@@ -435,7 +466,9 @@ impl CompositionalRun {
                             }
                             self.well_surface_rates = Some(rates);
                         }
-                        Err(_) => {
+                        // With no wells the collection succeeds without checking a stream; the
+                        // fluid must still pin surface conditions before reporting empty totals.
+                        Ok(_) | Err(_) => {
                             self.well_surface_rates = None;
                             self.cumulative_well_surface_volumes = None;
                             self.cumulative_well_surface_production_volumes = None;

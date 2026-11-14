@@ -496,6 +496,10 @@ fn comp_schedule_checkpoint_carries_position_and_continues_identically() {
     let mut config = wag_case();
     config.schedule = wag_schedule();
     let mut original = CompositionalCase::new(config).unwrap();
+    assert_eq!(
+        original.snapshot().cumulative_well_moles,
+        vec![vec![0.0; 3]; 2]
+    );
     assert!(original.step(1.0).succeeded());
     assert!(original.step(0.5).succeeded());
 
@@ -520,6 +524,14 @@ fn comp_schedule_checkpoint_carries_position_and_continues_identically() {
     let parsed: super::api::Checkpoint = serde_json::from_str(&json).unwrap();
     let mut restored = CompositionalCase::restore(&parsed).expect("the checkpoint must restore");
     assert_eq!(restored.time_days(), original.time_days());
+    assert_eq!(
+        restored.snapshot().cumulative_well_moles,
+        original.snapshot().cumulative_well_moles
+    );
+    assert_eq!(
+        restored.checkpoint().cumulative_source_moles,
+        original.checkpoint().cumulative_source_moles
+    );
     assert_eq!(restored.snapshot().pressure, original.snapshot().pressure);
     assert_eq!(
         restored.snapshot().composition,
@@ -543,6 +555,14 @@ fn comp_schedule_checkpoint_carries_position_and_continues_identically() {
             restored.checkpoint().schedule_position
         );
         assert_eq!(original.snapshot().pressure, restored.snapshot().pressure);
+        assert_eq!(
+            original.snapshot().cumulative_well_moles,
+            restored.snapshot().cumulative_well_moles
+        );
+        assert_eq!(
+            original.checkpoint().cumulative_source_moles,
+            restored.checkpoint().cumulative_source_moles
+        );
         assert_eq!(
             original.snapshot().composition,
             restored.snapshot().composition

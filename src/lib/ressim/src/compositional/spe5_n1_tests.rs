@@ -1127,6 +1127,22 @@ fn comp_spe5_seed_recovery_well_control_change_is_rejected() {
         inject_water: false,
     });
     checkpoint.well_bhp_bar.push(210.0);
+    // The synthetic probe is a new well; preserve the existing wells' history and append zeros.
+    if let Some(totals) = checkpoint.cumulative_well_moles.as_mut() {
+        totals.push(vec![0.0; base.snapshot().component_ids.len() + 1]);
+    }
+    if let Some(rates) = checkpoint.well_surface_rates.as_mut() {
+        rates.push(super::wells::WellSurfaceRates::zero(true));
+    }
+    for totals in [
+        &mut checkpoint.cumulative_well_surface_volumes,
+        &mut checkpoint.cumulative_well_surface_production_volumes,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        totals.push(super::wells::WellSurfaceVolumes::zero(true));
+    }
     let case = CompositionalCase::restore(&checkpoint).expect("restore probe case");
     let fixture: Value = serde_json::from_str(
         &std::fs::read_to_string(

@@ -3666,6 +3666,8 @@ fn run_quarter_five_spot(molar_rate: f64) -> super::api::CompositionalCase {
     );
     let mut checkpoint = case.checkpoint();
     checkpoint.config.wells = vec![injector, producer];
+    // These wells are newly introduced, so neither has an accounting history yet.
+    checkpoint.cumulative_well_moles = Some(vec![vec![0.0; 3]; 2]);
     CompositionalCase::restore(&checkpoint).expect("the 2-D case must restore with wells")
 }
 

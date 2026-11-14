@@ -10,6 +10,7 @@
 //! wasm-bindgen types on purpose: the black-oil path is validated against analytical solutions and
 //! OPM Flow, and C13's exit criterion is that it remains unchanged.
 
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 use super::api::{CaseConfig, Checkpoint, CompositionalCase, ConfigError};
@@ -87,7 +88,11 @@ impl CompositionalSimulator {
     /// A versioned checkpoint, as a plain object the worker can post.
     #[wasm_bindgen(js_name = checkpoint)]
     pub fn checkpoint(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.case.checkpoint())
+        // Flattened well controls serialize as maps. Keep those as plain objects too, so a
+        // checkpoint survives JSON export as well as structured cloning through the worker.
+        self.case
+            .checkpoint()
+            .serialize(&serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true))
             .unwrap_or_else(|e| JsValue::from_str(&format!("checkpoint: {e}")))
     }
 

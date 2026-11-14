@@ -302,7 +302,10 @@ export interface CompositionalSnapshot {
   vapour_saturation: number[];
   /** Total moles per hydrocarbon component held by the grid — the conservation diagnostic. */
   inventory: number[];
-  /** Per well, cumulative component moles. Positive into the reservoir. With water, water is last. */
+  /**
+   * Per well, cumulative component moles. Positive into the reservoir. With water, water is last.
+   * Fresh cases have one zero row per well. Legacy checkpoints accumulate from restore.
+   */
   cumulative_well_moles: number[][];
   /**
    * Per well, surface volumetric rates at the accepted state [m³/day], from the engine's own
@@ -353,6 +356,19 @@ export interface CompositionalCheckpoint {
    * restored run keeps the same timestep policy; absent checkpoints infer it from the clock.
    */
   schedule_boundary_pending?: boolean;
+  /** Imposed-source totals [mol], water last. Legacy checkpoints accumulate from zero after restore. */
+  cumulative_source_moles?: number[];
+  /** Component totals [mol], one row per well, water last. Absent in legacy checkpoints. */
+  cumulative_well_moles?: number[][];
+  /**
+   * Last accepted separator rates [m³/day]. Absent means unreported.
+   * These rates and both surface-volume fields must be all present or all absent.
+   */
+  well_surface_rates?: CompositionalWellSurfaceRates[];
+  /** Signed net separator volumes [m³], one per well. Absent means unreported. */
+  cumulative_well_surface_volumes?: CompositionalWellSurfaceVolumes[];
+  /** Gross separator production [m³], one per well. Absent means unreported. */
+  cumulative_well_surface_production_volumes?: CompositionalWellSurfaceVolumes[];
 }
 
 /** Turn an engine rejection into something a person can act on, without implementation jargon. */

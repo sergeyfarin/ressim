@@ -749,6 +749,33 @@ BHP before it steps, but the solve still does not read it back — reporting onl
 cannot move. `compositionalWellState(config, snapshot)` uses it for the 3D well state's
 `flowing_bhp`, keeping the configured `bhp` separate.
 
+**Follow-up #88 — checkpoint accounting.** The `/1` checkpoint envelope now also carries
+optional `cumulative_source_moles`, `cumulative_well_moles`, `well_surface_rates`,
+`cumulative_well_surface_volumes` and `cumulative_well_surface_production_volumes`. Restore
+validates finite values and per-well/component dimensions (water last when present), water-phase
+presence in the surface fields, and nonnegative gross production. A narrow run setter restores
+these reporting fields without feeding the totals into the solve. Fresh cases start with one
+zero component row per configured well, including water, and no rows when there are no wells.
+The surface rates, net volumes and gross production must be all present or all absent; restore
+rejects a partial group so that one integral cannot silently restart alongside preserved totals.
+
+Legacy checkpoints without these fields still restore. Their component totals start from zero
+at restore; missing surface history stays unreported until the next accepted step. Their lost
+history cannot be reconstructed from the grid. Resaving such a checkpoint is supported and
+preserves this accounting without recording when its counters started. The schema stays `/1`
+because these optional fields affect accounting rather than the physical model.
+
+`comp_api_checkpoint_roundtrips_and_continues_identically` and
+`comp_schedule_checkpoint_carries_position_and_continues_identically` check ledger continuity
+before and after accepted steps, including water and scheduled switches. The surface-production
+reversal test checkpoints at the production-to-injection boundary and checks that signed net
+volumes and gross production both continue identically. Additional `comp_api_*` tests cover
+initial dimensions, legacy restore/resave, malformed totals, and source history remaining separate
+from solver input. These are restart-accounting contracts, not new external physics evidence.
+The WASM shim serializes flattened well controls as plain objects, so JSON export retains the
+well configuration. `compositional/checkpoint.test.ts` exercises JSON export and structured-clone
+restore through the generated binding, then compares the complete snapshots after another step.
+
 ### C15 / V1b — immiscible water (#46, 2026-10-29)
 
 Measured on `0debc26a` with `bash scripts/validate-compositional.sh thermo` (`comp_water_`, 18
