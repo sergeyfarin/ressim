@@ -13,7 +13,7 @@ ResSim has several validation surfaces with different costs and different owners
 2. **Never change benchmark tolerances** (Buckley-Leverett tests, parity gates) without explicit written justification in the same commit.
 3. A change is not "done" until its GitHub Issue is updated or closed with the implementing commit
    or pull request, and the relevant gate below is green. If the work has no issue and discovers
-   actionable follow-up, open one rather than adding a checkbox to `TODO.md`.
+   actionable follow-up, open one (`docs/DEVELOPER_WORKFLOW.md` → Tracking).
 4. **Separate code validation from hypothesis validation.** Green unit/parity/control tests prove
    their stated contracts only. They do not establish OPM parity or validate an experimental
    verdict unless the measured observable is itself an OPM or backend-neutral oracle.
