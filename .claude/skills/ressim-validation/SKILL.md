@@ -24,8 +24,8 @@ ResSim has several validation surfaces with different costs and different owners
 
 ## Two tiers
 
-The vitest suite is not uniform. 14 files under `src/lib/catalog/scenarios/` drive full WASM
-simulations and dominate its cost; the other ~54 files are quick. Running the scenario
+The vitest suite is not uniform. The test files under `src/lib/catalog/scenarios/` (21 of them)
+drive full WASM simulations and dominate its cost; the other ~85 files are quick. Running the scenario
 simulations after a chart or store edit buys nothing — a UI change cannot move a simulation
 trajectory.
 
@@ -89,14 +89,15 @@ scenario tier through vitest file parallelism.
 Rust buckets (grouped, curated, safe to run — no hanging tests):
 
 ```bash
-bash scripts/validate-solver-coverage.sh shared   # both-solver parity contracts   17 gates,  ~11 s
-bash scripts/validate-solver-coverage.sh impes    # IMPES-owned tests               4 gates,   ~3 s
-bash scripts/validate-solver-coverage.sh fim      # FIM-owned fast tests           17 gates,  ~58 s
-bash scripts/validate-solver-coverage.sh all      #                                38 gates,  ~72 s
+bash scripts/validate-solver-coverage.sh shared   # both-solver parity contracts   20 gates,  ~11 s
+bash scripts/validate-solver-coverage.sh impes    # IMPES-owned tests               6 gates,   ~3 s
+bash scripts/validate-solver-coverage.sh fim      # FIM-owned fast tests           22 gates,  ~58 s
+bash scripts/validate-solver-coverage.sh all      #                                48 gates,  ~72 s
 ```
 
-Times are warm-cache wall clock on a single-core box, excluding the initial `cargo test --no-run`
-compile. They are still small enough that there is no reason to run a narrower bucket than the
+Gate counts are from `6b152c41` (2026-11-15). Times were measured in 2026-09, when the buckets
+held 38 gates, and have not been re-measured; they are warm-cache wall clock on a single-core box,
+excluding the initial `cargo test --no-run` compile. They are still small enough that there is no reason to run a narrower bucket than the
 decision table calls for.
 
 How the script counts a gate, why a filter that matches nothing is a failure, and what the FIM

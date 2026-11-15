@@ -109,7 +109,7 @@ a fix, not only for the target case.
 
 - `fim/newton.rs` (~3.4k lines) — damped Newton, Appleyard-style damping, hotspot streak tracking, direct-backend bypass logic.
 - `fim/timestep.rs` (~4.3k lines) — outer step / substep / retry ladder controller, hotspot-repeat cooldown memory, plateau-replay bookkeeping, gas outer-step carryover.
-- `fim/assembly_ad.rs` + `fim/ad.rs` + `*_ad.rs` — **the live assembly path** (AD-based). `fim/assembly.rs` is the legacy assembler, kept as the bit-parity reference. The alias is at the top of `timestep.rs`/`newton.rs`: `use crate::fim::assembly_ad::assemble_fim_system_ad as assemble_fim_system;`
+- `fim/assembly_ad.rs` + `*_ad.rs`, on the dual-number type in `ad.rs` at the crate root — **the live assembly path** (AD-based). `fim/assembly.rs` is the legacy assembler, kept as the bit-parity reference. The alias is at the top of `timestep.rs`/`newton.rs`: `use crate::fim::assembly_ad::assemble_fim_system_ad as assemble_fim_system;`
 - Parity gates live in `fim/assembly_ad.rs` tests (bit-identical residual + Jacobian occupancy vs legacy). Run them after touching assembly, properties, flux, flash, or wells:
   ```bash
   cargo test --manifest-path src/lib/ressim/Cargo.toml assembly_ad -- --nocapture
@@ -137,7 +137,7 @@ bash scripts/build-wasm.sh
 node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json
 ```
 
-- Presets: `water-pressure`, `water-rate`, `gas-pressure`, `gas-rate`, `sweep-areal` (`--list`).
+- Presets: `water-pressure`, `water-rate`, `gas-pressure`, `gas-rate`, `sweep-areal`, `wf-capillary`. `--list` prints the current set.
 - `--diagnostic` granularity: `summary` → `outer` → `step` (per-Newton and retry traces).
 - Checkpoints exist (`--checkpoint-*`) but **isolated checkpoint replays do not preserve cross-step carryover state** (e.g. gas outer-step trial caps). Validate cross-step behavior with full sequential `--diagnostic step` runs only.
 
