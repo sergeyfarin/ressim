@@ -1,6 +1,6 @@
 ---
 name: update-dependencies
-description: Maintenance procedure for ResSim's dependencies - survey Dependabot pull requests and GitHub security alerts, update pnpm packages, Rust crates, the Python and Julia tool environments and GitHub Actions in one branch, adopt what the new versions make possible, validate, and open one pull request. Use when asked to update, upgrade or bump dependencies, check security or vulnerability warnings, handle Dependabot, or modernize after an upgrade.
+description: Maintenance procedure for ResSim's dependencies - survey Dependabot pull requests and GitHub security alerts, update pnpm packages, Rust crates, the Python and Julia tool environments and GitHub Actions in one branch, adopt what the new versions make possible, validate, and open one pull request. A check request returns the survey only and updates nothing. Use when asked to update, upgrade or bump dependencies, check security or vulnerability warnings, handle Dependabot, or modernize after an upgrade.
 ---
 
 # Update Dependencies
@@ -9,23 +9,48 @@ One branch, one pull request, everything current. This task runs as a `work-issu
 from the canonical `master`, finish with an open pull request, fix small things, file issues for
 the rest.
 
+When the request is only to check (security warnings, what is outdated, what Dependabot has
+open), run section 1 and report in the session; update nothing, create no branch and write
+nothing to GitHub (`AGENTS.md` → Task modes). Section 1 only reads.
+
 A dependency update here is not automatically routine: several crates sit inside the numerical
 path, and a changed last bit is a changed answer. Section 3 lists them. Read it before updating.
 
 ## 1. Survey first
 
 ```sh
-gh pr list --author "app/dependabot" --state open
-gh api "repos/{owner}/{repo}/dependabot/alerts?state=open" --jq '.[] | "\(.security_advisory.severity) \(.dependency.package.ecosystem) \(.dependency.package.name) \(.html_url)"'
-gh api "repos/{owner}/{repo}/code-scanning/alerts?state=open&per_page=100" --jq '.[] | "\(.rule.severity) \(.rule.id) \(.most_recent_instance.location.path)"'
-gh api "repos/{owner}/{repo}/secret-scanning/alerts?state=open" --jq 'length'
-gh issue list --label blocked --state open
+survey() {  # survey <label> <command...>: print the rows, then "<label>: <count>" or UNCHECKED
+  local label=$1 out; shift
+  if out=$("$@"); then
+    printf '%s\n' "$out" | awk -v l="$label" 'NF { print; n++ } END { print l ": " n + 0 }'
+  else
+    echo "$label: UNCHECKED"
+  fi
+}
+survey "dependabot pull requests" gh pr list --author "app/dependabot" --state open --limit 200 --json number,title --jq '.[] | "#\(.number) \(.title)"'
+survey "dependabot alerts" gh api --paginate "repos/{owner}/{repo}/dependabot/alerts?state=open&per_page=100" --jq '.[] | "\(.security_advisory.severity) \(.dependency.package.ecosystem) \(.dependency.package.name) \(.security_advisory.ghsa_id)"'
+survey "code-scanning alerts" gh api --paginate "repos/{owner}/{repo}/code-scanning/alerts?state=open&per_page=100" --jq '.[] | "\(.rule.security_severity_level // "-") \(.rule.id) \(.most_recent_instance.location.path)"'
+survey "secret-scanning alerts" gh api --paginate "repos/{owner}/{repo}/secret-scanning/alerts?state=open&per_page=100" --jq '.[].number'
+survey "blocked issues" gh issue list --label blocked --state open --limit 500 --json number,title --jq '.[] | "#\(.number) \(.title)"'
 ```
 
+- Every `gh ... list` passes `--limit` and every `gh api` survey passes `--paginate`: a `gh` list
+  defaults to 30 results and an unpaginated call returns the first page only, and either way the
+  list silently looks complete. Compare each count with its limit.
+- A feed that answers with an error (403 or 404: not enabled, or the token lacks access), or
+  fails part-way through the pages, is **unchecked**, not empty. Say so in the report.
+- Judge a feed by the exit status of `gh` itself, as `survey` does. Never pipe a survey into
+  `wc` or `grep` and read the count: the pipeline reports the last command's status, and an
+  error body counts as lines. Count with `awk`, which exits 0 on an empty result; `grep -c`
+  exits 1 on zero matches and stops a `set -e` shell before the next survey.
+- The code-scanning and secret-scanning rows are for the session only (section 5); they are
+  never copied into a pull request, an issue or a commit message.
+
 There is no `.github/dependabot.yml`: Dependabot opens security updates only, so version
-updates happen only through this task. Note which `blocked` issues and which holds from the last
-dependency pull request are upgrades waiting on a peer range; this run is when they get
-rechecked.
+updates happen only through this task. `pnpm audit` reads the same public advisories for the
+lockfile and is a useful cross-check; `cargo audit` does the same for `Cargo.lock` where it is
+installed. Note which `blocked` issues and which holds from the last dependency pull request are
+upgrades waiting on a peer range; this run is when they get rechecked.
 
 ## 2. Update — the routine ecosystems
 
@@ -64,18 +89,32 @@ reason too large to fix here is held. Say which and why in the commit and in the
 under *Held back on purpose*, and record it on the issue that tracks it (create one when none
 exists, labelled `blocked` with the prerequisite named).
 
-## 5. Modernize, and close the alerts
+## 5. Modernize, and settle the alerts
 
 - Read the release notes of every major and notable minor bump. Look for an API that replaces a
   local helper or workaround, a deprecation the code now triggers, a default that changed, and a
   new lint. Small and local: do it in this pull request as its own commit. Anything else: an
   issue naming the new option and the code it would simplify.
-- Every open alert from step 1 ends in one of three states, listed in the pull request:
-  **fixed** by an update in this branch; **not fixable yet** (no patched release, or the patch is
-  held), with an issue carrying the advisory link, the affected path and whether the vulnerable
-  code is reachable in this app; or **believed not applicable**, with the reason. Dismissing an
-  alert on GitHub is the owner's call; never dismiss one yourself.
-- A secret-scanning alert is reported to the owner at once and never quoted.
+
+What may be said in public about an alert depends on whether the vulnerability is already
+public. `SECURITY.md` governs: nothing unpublished is disclosed before a fix.
+
+- **Published advisories** (Dependabot alerts, `pnpm audit` and `cargo audit` findings, which
+  come from public GHSA/CVE records) are tracked in the open **by advisory ID and dependency
+  only**. Each ends in one of three states, listed in the pull request: **fixed** by an update in
+  this branch; **not fixable yet** (no patched release, or the patch is held), with an issue
+  naming the advisory ID and the dependency; or **believed not applicable**, stated without the
+  reasoning.
+- Whether the vulnerable code is **reachable in this app**, and through which path, is not
+  published while the alert is open: it turns a public advisory into a map of how to attack
+  this deployment. Give that analysis to the owner in the session.
+- **First-party findings** (code-scanning alerts on this repository's own code, and anything you
+  notice yourself) are unpublished. Do not name, describe or link them in the pull request, a
+  commit message, an issue or a comment. Report them to the owner in the session, ranked, with
+  your recommendation; the owner chooses the private route in `SECURITY.md`. A code-scanning
+  rule that is about code quality and not security is ordinary work.
+- **Secret-scanning alerts** are reported to the owner at once and never quoted.
+- Dismissing any alert on GitHub is the owner's call; never dismiss one yourself.
 
 ## 6. Validate
 
@@ -98,6 +137,11 @@ dependency pull request.
 ## 7. Ship
 
 One pull request following `work-issue` step 6. Its body lists: what moved (majors called out),
-what is held and why, each alert's state, what was modernized, the gates run and not run, the
-follow-up issues, and the Dependabot pull requests it supersedes. Close those with a comment
-linking this pull request.
+what is held and why, the state of each published advisory by ID, what was modernized, the gates
+run and not run, the follow-up issues, and the Dependabot pull requests it covers
+(`Covers #73, #74`).
+
+Do not close those Dependabot pull requests. The owner may reject this pull request or drop an
+upgrade in review, and a closed Dependabot pull request would then claim an update that never
+landed. Dependabot closes its own pull request once `master` has the same or a newer version;
+after this one merges, list any that are still open for the owner.

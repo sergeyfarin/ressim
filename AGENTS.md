@@ -6,9 +6,10 @@ analytical or OPM Flow reference. `README.md` has the feature list, scenario inv
 layout and validate commands; `docs/DOCUMENTATION_INDEX.md` says which docs are authoritative.
 
 This file is the only repo-wide instruction file, loaded by every harness used here (Claude
-Code, Codex, OpenCode); `CLAUDE.md` only imports it. Do not add harness-specific copies. Keep it
-to rules that apply to most tasks and are costly to miss. Task detail belongs in a skill; product facts
-belong in `README.md` or `docs/`.
+Code, Codex, OpenCode). `CLAUDE.md` is the single line `@AGENTS.md`, so Claude Code loads this
+file whatever its version (`.claude/skills/README.md` names the one setting that skips it). Do
+not add harness-specific copies. Keep it to rules that apply to most tasks and are costly to
+miss. Task detail belongs in a skill; product facts belong in `README.md` or `docs/`.
 
 ## Task modes
 
@@ -39,6 +40,20 @@ Four recurring tasks have their own skill: `shape-issue` (no code, no branch), a
 request that fits none of these follows the owner's wording; it still ends in a pull request
 when it changes the repository. Rules: `docs/DEVELOPER_WORKFLOW.md`. Owner's guide:
 `docs/AGENT_TASK_PLAYBOOK.md`.
+
+Two rules bound every task:
+
+- **The requested outcome sets the side effects.** A request to check, find, list or assess
+  returns findings in the session and changes nothing: no branch, no edit to the checkout,
+  nothing written to GitHub. A request to draft or propose returns text. Only a request to fix,
+  build, update, sweep or file — or a task skill invoked by name — runs that skill's write
+  workflow (branch, commits, pull request, issues, labels, comments). A probe that needs code
+  changed runs in a scratch worktree under `.claude/worktrees/` and is never committed. When
+  the wording is unclear, report first and ask.
+- **A suspected security vulnerability is never made public before it is fixed.** Do not
+  describe it in an issue, a pull request, a commit message or a comment. Report it to the owner
+  in the session and follow `SECURITY.md` (GitHub private vulnerability reporting). An advisory
+  GitHub has already published may be tracked publicly by its ID.
 
 ## Skills — load the ones matching your task before working
 

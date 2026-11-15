@@ -7,8 +7,10 @@ skill is what the agent follows.
 
 ## Starting a task
 
-Every harness used here loads `AGENTS.md` and the same twelve skills. Start the prompt with the
-task skill and the issue or pull request number:
+Every harness used here loads `AGENTS.md` (Claude Code through the one-line `CLAUDE.md` that
+imports it) and the same twelve skills. How to check each harness is in
+`.claude/skills/README.md`. Start the prompt with the task skill and the issue or pull request
+number:
 
 | Harness | Prefix | Example |
 |---|---|---|
@@ -16,6 +18,11 @@ task skill and the issue or pull request number:
 | Codex | `$` | `$work-issue 104` |
 | OpenCode | `@` | `@work-issue 104` |
 
+- Your wording sets what the agent may change. "Check", "find", "list" or "assess" gets a
+  report and changes nothing. "Draft" gets text. "Fix", "build", "update", "sweep" or "file" —
+  or the skill invoked by name — runs the full workflow: branch, commits, pull request, issues.
+- Suspected security vulnerabilities come back to you in the session, never as a public issue,
+  pull request text, commit message or comment. You choose the private route in `SECURITY.md`.
 - One task per session. A session that implements should not also review.
 - Add a sentence after the number when the task needs steering: the slice to take, a
   constraint, a decision already made.
@@ -89,6 +96,7 @@ commits nothing, and files nothing.
 The agent searches for duplicates, checks the roadmap, the open-items list and (for FIM) the
 experiment registry, gathers evidence, bounds the work to one reviewable pull request or a
 parent with slices, and files the issue with measurable acceptance and a named validation gate.
+Ask for a *draft* to get the text back without anything being filed or commented on.
 A question whose answer depends on a hypothesis is filed as a scientific investigation with its
 oracle. It writes no code, sets no milestone and does not touch roadmap order; both are yours.
 
@@ -107,8 +115,14 @@ secret-scanning alerts, updates pnpm packages, Rust crates, the `uv` tool enviro
 Actions in one branch, runs the gates and opens one pull request.
 
 - Anything it cannot move is held with the reason and tracked on an issue.
-- Every alert ends as fixed, not fixable yet (with an issue) or believed not applicable. It does
+- Every published advisory ends as fixed, not fixable yet (with an issue naming the advisory ID)
+  or believed not applicable. Code-scanning findings on our own code, and whether a vulnerable
+  dependency is reachable here, come to you in the session, not into the pull request. It does
   not dismiss alerts; that is yours.
+- It links the Dependabot pull requests it covers (`Covers #n`) and leaves them open;
+  Dependabot closes each once its update is on `master`.
+- "Check the security warnings" gets the survey only, with no updates.
+- A feed it could not read is reported as unchecked, never as empty.
 - Not routine here, and treated accordingly:
   - `three` is pinned and stays pinned unless you ask.
   - `libm`, `faer`, `nalgebra`, `sprs` and `rand` sit in the numerical path. Moving one is an
@@ -125,7 +139,8 @@ Actions in one branch, runs the gates and opens one pull request.
 /drift-sweep docs tests
 ```
 
-Four scopes; name the ones you want or run all four.
+Four scopes; name the ones you want or run all four. "Check for drift" or "list what is stale"
+gets the report only: no branch, no label change, no comment.
 
 | Scope | Checks |
 |---|---|
@@ -144,7 +159,11 @@ records and are left alone.
 ```
 /sweep-bug-class the bug fixed in #136
 /sweep-bug-class platform math in the engine
+check whether the bug fixed in #136 exists anywhere else
 ```
+
+The first two run the full sweep. The third is a check: it reports every hit with a verdict and
+changes nothing; a probe test it needs is written in a scratch worktree and removed.
 
 Give it a pull request that just fixed something, a class from the table in
 `.claude/skills/sweep-bug-class/SKILL.md`, or a pattern in words. It searches the whole tree for
@@ -224,4 +243,5 @@ Agent guidance follows decisions; it does not anticipate them.
 
 - **A new harness or model is adopted.** Check that it loads `AGENTS.md` and one of
   `.claude/skills/` or `.agents/skills/`, and add it to the table in
-  `.claude/skills/README.md`. Do not add a harness-specific instruction file.
+  `.claude/skills/README.md` with how to verify it. Do not add a harness-specific instruction
+  file.

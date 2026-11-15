@@ -8,7 +8,14 @@ description: Maintenance sweep for things in ResSim that have gone stale - block
 Compare what the repository claims with what is true, and close the gap. Run the scopes named in
 the prompt (`blocked`, `roadmap`, `docs`, `tests`); with none named, run all four in that order.
 
-Two rules hold for every scope:
+The request decides how far this goes (`AGENTS.md` → Task modes). Asked only to check, list or
+report: make no changes anywhere — no branch, no edit to the checkout, no label change, no
+comment, no issue — and report what a full sweep would do. Any probe that needs code changed (a
+test broken on purpose, a behaviour disabled) runs in a scratch worktree under
+`.claude/worktrees/`, is never committed, and the worktree is removed afterwards. Invoked by
+name, or asked to sweep, fix or clean up: the full workflow below.
+
+Two rules hold for every scope of a full sweep:
 
 - **Correct facts, never decide.** A sweep fixes a status, a link, a path, a count. It does not
   reorder the roadmap, change scope, change a tolerance, or pick between a document and the code
@@ -16,13 +23,19 @@ Two rules hold for every scope:
   question.
 - **Small fixes go in one pull request; the rest become issues.** This is a `work-issue` task:
   branch from the canonical `master`, finish with an open pull request. A sweep that finds
-  nothing to change opens no pull request and says what it checked.
+  nothing to change opens no pull request and says what it checked. Something that looks like a
+  security vulnerability is neither fixed publicly nor filed; it goes to the owner in the
+  session under `SECURITY.md`.
 
 ## `blocked` — blocked issues
 
 ```sh
-gh issue list --label blocked --state open --json number,title,updatedAt
+gh issue list --label blocked --state open --limit 500 --json number,title,updatedAt
 ```
+
+Every `gh ... list` defaults to 30 results. Pass `--limit` (or `--paginate` for `gh api`) on
+every survey, compare the count you got with the limit, and judge the call by `gh`'s own exit
+status: a list that failed is unchecked, not empty.
 
 For each one, read the prerequisite it names and check it: did the issue it waits on close, did
 the enabler merge, has the evidence arrived, is the upstream release published?
@@ -83,11 +96,19 @@ only by a re-measurement on a committed tree (`AGENTS.md` → Evidence disciplin
 - Tests that cannot fail: an assertion that holds for an empty result, a tolerance wider than
   the effect, a check on a builder's output that never reaches the engine.
 - Tests that fail intermittently in CI:
-  `gh run list --workflow pr-tests.yml --status failure --limit 30`, then group by failing step.
+  `gh run list --workflow pr-tests.yml --status failure --limit 100`, then group by failing step.
 - Comments and test names that cite an issue as pending when it is closed.
 
 A test you believe is vacuous is proved so before you change it: break the behaviour it claims
-to cover and watch it still pass. A test whose fix would tighten or loosen a tolerance is an
+to cover and watch it still pass. Do that in a scratch worktree, never in the checkout, and
+remove it afterwards:
+
+```sh
+git worktree add --detach .claude/worktrees/probe-<name> HEAD
+# break the behaviour and run the test with `git -C` or absolute paths; commit nothing
+git worktree remove --force .claude/worktrees/probe-<name>
+```
+ A test whose fix would tighten or loosen a tolerance is an
 issue, not a sweep fix.
 
 ## Report

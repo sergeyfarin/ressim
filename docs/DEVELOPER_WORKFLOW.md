@@ -63,7 +63,7 @@ hypothesis/oracle rather than a predetermined implementation.
   `origin/master`.
 
   ```sh
-  base=$(git remote | grep -qx upstream && echo upstream || echo origin)
+  if git remote get-url upstream >/dev/null 2>&1; then base=upstream; else base=origin; fi
   git fetch "$base"
   git switch -c <type>/<issue>-<short-name> "$base/master"
   ```
@@ -97,6 +97,25 @@ fix(compositional): reject partial checkpoint surface reporting (#88)
 - Do not bundle unrelated changes. A fix found while doing something else is its own commit.
 - A changed benchmark tolerance carries its written justification in the same commit.
 
+## What a request may change
+
+- The requested outcome sets the side effects. "Check", "find", "list" or "assess" returns
+  findings and changes nothing. "Draft" or "propose" returns text. Only "fix", "build",
+  "update", "sweep" or "file", or a task skill invoked by name, runs a write workflow: branch,
+  commits, pull request, issues, labels, comments.
+- A probe that needs code changed to prove a finding runs in a scratch worktree under
+  `.claude/worktrees/` (git-ignored), is never committed, and is removed afterwards.
+
+## Security
+
+- A suspected vulnerability is never described publicly before it is fixed: not in an issue, a
+  pull request, a commit message or a comment. It is reported privately as `SECURITY.md` says
+  (GitHub private vulnerability reporting, which is enabled on this repository).
+- Advisories GitHub has already published (Dependabot alerts) are tracked publicly by advisory
+  ID and dependency only. Whether the vulnerable code is reachable here, and code-scanning
+  findings on this repository's own code, are discussed privately.
+- Dismissing an alert is the owner's decision.
+
 ## Review
 
 - A review reports a verdict and verified findings ranked `P0`–`P3` with `file:line` and a
@@ -108,9 +127,12 @@ fix(compositional): reject partial checkpoint surface reporting (#88)
 
 ## Agent guidance
 
-- `AGENTS.md` is the only repo-wide instruction file; every harness in use (Claude Code, Codex,
-  OpenCode) loads it. `CLAUDE.md` contains only `@AGENTS.md`: Claude Code reads `AGENTS.md`
-  directly only from v2.1.277, and the import works in every version.
+- `AGENTS.md` is the only repo-wide instruction file for every harness in use (Claude Code,
+  Codex, OpenCode). `CLAUDE.md` contains only `@AGENTS.md`. Claude Code reads `AGENTS.md` by
+  itself only from v2.1.277 and only while no `CLAUDE.md` or `CLAUDE.local.md` exists; the import
+  makes it load in every version, under the default *Project instructions* setting, under
+  `claude-md` and `claude-md-and-agents-md`, and beside a personal `CLAUDE.local.md`. The
+  `managed-only` setting skips every project instruction file, the import included.
 - Task and area skills live under `.claude/skills/`. `.agents/skills` is a symlink to that
   directory, because Codex scans only `.agents/skills`. `.claude/skills/README.md` is the
   maintenance guide.

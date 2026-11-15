@@ -13,6 +13,7 @@ under `.archive/`.
 | [GitHub Issues](https://github.com/sergeyfarin/ressim/issues) | Actionable work, priority, acceptance criteria, and status |
 | `ROADMAP.md` | Strategic priority order and links to active issues |
 | `TODO.md` | Landing page for older links; not a tracker and holds no rules |
+| [`SECURITY.md`](../SECURITY.md) | How to report a vulnerability privately; what may be said in public about one |
 | [Developer workflow](DEVELOPER_WORKFLOW.md) | Tracking rules, branches and pull requests, commits, review, where agent guidance lives; the 2026-11-15 owner decisions |
 | [Agent task playbook](AGENT_TASK_PLAYBOOK.md) | Owner's guide to directing coding agents: every skill, how to start it in each harness, what comes back |
 | `docs/DOCUMENTATION_INDEX.md` | This map |

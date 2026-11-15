@@ -36,11 +36,18 @@ Reference files today:
 
 ## How each harness finds them
 
-| Harness | Instructions | Skills | Force one |
-|---|---|---|---|
-| Claude Code | `AGENTS.md`, through the `CLAUDE.md` import | `.claude/skills/` | `/skill-name` |
-| Codex | `AGENTS.md` | `.agents/skills/` (the symlink) | `$skill-name` |
-| OpenCode | `AGENTS.md` | `.claude/skills/` | `@skill-name` |
+| Harness | Instructions | Skills | Force one | Verify |
+|---|---|---|---|---|
+| Claude Code | `CLAUDE.md`, which imports `AGENTS.md` | `.claude/skills/` | `/skill-name` | `/memory` lists `AGENTS.md`; `/skills` lists the skills |
+| Codex | `AGENTS.md` | `.agents/skills/` (the symlink) | `$skill-name` | `codex debug prompt-input "hello"` shows both |
+| OpenCode | `AGENTS.md` (it prefers it over `CLAUDE.md`) | `.claude/skills/` | `@skill-name` | not yet verified here |
+
+Claude Code reads `AGENTS.md` by itself only from v2.1.277, and only while no `CLAUDE.md` or
+`CLAUDE.local.md` exists in the directory or above it. The one-line `CLAUDE.md` (`@AGENTS.md`)
+makes it load in every version, under the default *Project instructions* setting, under
+`claude-md` and `claude-md-and-agents-md`, and when someone adds a personal `CLAUDE.local.md`.
+The `managed-only` setting skips every project instruction file, this import included; a
+session under it has no repository guidance.
 
 All three load only each skill's `name` and `description` up front, the `SKILL.md` body when the
 skill is used, and a reference file only when the body tells the agent to read it. Three
@@ -52,7 +59,8 @@ consequences:
 - A reference file nobody is told to read is never read. `SKILL.md` names each one and the work
   that needs it.
 - When a session should not depend on automatic selection, start the prompt with the task skill:
-  `/work-issue 104`, `$work-issue 104` or `@work-issue 104`.
+  `/work-issue 104`, `$work-issue 104` or `@work-issue 104`. Invoking a task skill by name runs
+  its write workflow; a plain "check" or "draft" request does not (`AGENTS.md` → Task modes).
 
 Check discovery after adding or renaming a skill: `codex debug prompt-input "hello"` prints the
 prompt Codex would send, including the skills it lists.
@@ -104,7 +112,26 @@ With smaller models, or for long tasks:
 - Skills state current facts (counts, live or legacy status, known gaps). When one drifts from
   reality, fix it in the same pull request that moved reality. The `docs` scope of `drift-sweep`
   checks every cited path and name mechanically.
-- `AGENTS.md` is the only repo-wide instruction file. Do not add harness-specific copies
-  (Copilot, Cursor or OpenCode instruction files); they drift from it. `CLAUDE.md` stays a
-  one-line `@AGENTS.md` import: Claude Code reads `AGENTS.md` directly only from v2.1.277, and
-  the import works in every version.
+- `AGENTS.md` is the only repo-wide instruction file. `CLAUDE.md` stays the single line
+  `@AGENTS.md` (see the note under the harness table for exactly when Claude Code loads it). Do
+  not add harness-specific copies or content, in `CLAUDE.md` or in Copilot, Cursor or OpenCode
+  instruction files; they drift from it.
+- **Every command is run before it goes into a skill**, extracted from the file exactly as
+  written, under `bash -euo pipefail`, in three cases: success, an empty result, and failure (a
+  nonexistent endpoint, a wrong SHA). A command that only ran on the happy path is not verified.
+- Every `gh ... list` in a skill passes `--limit` and every `gh api` survey passes `--paginate`.
+  Every `--json` field must exist in the oldest `gh` in use (2.46 here; it has no
+  `closingIssuesReferences` on `gh pr view`). In that version a plain `gh issue view <n>` or
+  `gh pr view <n>` fails outright (a retired Projects field); always pass `--json` with the
+  fields you need.
+- A command's result is judged by that command's own exit status. Never pipe a survey into `wc`
+  or `grep` and read the count; count with `awk`. A guard written as `test … || echo "stop"`
+  does not stop the next line: put what must not run inside the `if`.
+- Each task skill that can write states its check-only or draft form, and that form is
+  write-free in every step it runs, not only in its summary. A probe that needs code changed
+  goes in a scratch worktree under `.claude/worktrees/` (git-ignored; never `/tmp`, which a
+  reboot clears), is never committed, and is removed afterwards.
+- No skill tells an agent to describe a suspected security vulnerability in an issue, a pull
+  request, a commit message or a comment. `SECURITY.md` governs.
+- After fixing a defect in one skill, search every skill, `AGENTS.md` and the docs for the same
+  pattern before calling it done.

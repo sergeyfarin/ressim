@@ -13,8 +13,10 @@ never enable auto-merge; the owner merges. Governing rule: *Branches and pull re
 
 ## 1. Understand before changing
 
-- Read the issue with its comments (`gh issue view <n> --comments`), the plan or validation
-  document it links, and where it sits in `ROADMAP.md`.
+- Read the issue with its comments
+  (`gh issue view <n> --json number,title,state,labels,body,comments`; a plain `gh issue view`
+  fails in the `gh` installed here), the plan or validation document it links, and where it sits
+  in `ROADMAP.md`.
 - Implementation needs an outcome, bounded scope, measurable acceptance and a named validation
   gate (the fields of `.github/ISSUE_TEMPLATE/work-item.yml`). A `research` issue also needs its
   oracle and verdict criteria (`scientific-investigation.yml`). Stop and ask one question, with
@@ -27,7 +29,7 @@ never enable auto-merge; the owner merges. Governing rule: *Branches and pull re
 ## 2. Branch
 
 ```sh
-base=$(git remote | grep -qx upstream && echo upstream || echo origin)
+if git remote get-url upstream >/dev/null 2>&1; then base=upstream; else base=origin; fi
 git fetch "$base"
 git switch -c <type>/<issue>-<short-name> "$base/master"
 ```
@@ -70,8 +72,8 @@ list it under *Also fixed* in the pull request.
 
 **File a GitHub issue** for everything else:
 
-- Search first (`gh issue list --search "<terms>" --state all`). Add new evidence to an existing
-  issue as a comment; do not open a duplicate.
+- Search first (`gh issue list --search "<terms>" --state all --limit 100`). Add new evidence
+  to an existing issue as a comment; do not open a duplicate.
 - Write it with the fields of `.github/ISSUE_TEMPLATE/work-item.yml`: outcome, current behavior
   and evidence (`file:line`, revision, reproduction), scope, acceptance, validation gate. A
   finding whose outcome depends on a hypothesis uses `scientific-investigation.yml` and the
@@ -79,6 +81,10 @@ list it under *Also fixed* in the pull request.
 - Label it with one `priority:P0`–`priority:P3` and at least one `area:*`. Do not set a
   milestone and do not edit the order in `ROADMAP.md`.
 - Link it under *Follow-up issues* in the pull request.
+
+A suspected security vulnerability is the exception to both outcomes: do not fix it in a public
+pull request and do not file it. Do not describe it in a commit message or a comment either.
+Report it to the owner in the session and follow `SECURITY.md`.
 
 A finding that changes a simulated or analytical result, solver convergence behaviour, a
 tolerance, a benchmark record or a scientific claim in a scenario **always gets an issue, even

@@ -1,6 +1,6 @@
 ---
 name: sweep-bug-class
-description: Hunt for every remaining instance of one known bug class across the whole ResSim tree - search for the pattern rather than the copies a ticket named, count and classify every hit, prove the real ones with a failing test, and add a guard so it cannot return. Use when asked to sweep, hunt, audit or grep for a bug class or pattern, or to check whether a bug that was just fixed exists elsewhere.
+description: Hunt for every remaining instance of one known bug class across the whole ResSim tree - search for the pattern rather than the copies a ticket named, count and classify every hit, and prove the real ones with a failing test. A check returns the findings only; a sweep also fixes, files issues, adds a guard and opens a pull request. Use when asked to sweep, hunt, audit or grep for a bug class or pattern, or to check whether a bug that was just fixed exists elsewhere.
 ---
 
 # Sweep One Bug Class
@@ -10,8 +10,21 @@ primary sitting exactly on a clamp), and Rust tests in modules that no gate sele
 failures more than once (#13). This task takes one class and
 finds all of it.
 
-It runs as a `work-issue` task: branch from the canonical `master`, finish with an open pull
-request, fix small instances, file issues for the rest.
+## Outcome
+
+The request decides how far this goes (`AGENTS.md` → Task modes):
+
+- **Check** ("does this exist elsewhere?", "find", "audit", "list"): steps 1–4 and the report.
+  No branch, no edits to the checkout, nothing written to GitHub. Any probe that needs code
+  changed (a failing test, a broken behaviour) runs in a scratch worktree under
+  `.claude/worktrees/`, is never committed, and the worktree is removed afterwards. End by
+  asking whether to fix and file.
+- **Sweep** (invoked by name, or asked to sweep, fix or clean up): all steps, run as a
+  `work-issue` task — branch from the canonical `master`, fix small instances, file issues for
+  the rest, finish with an open pull request.
+
+An instance that could be a security vulnerability is never filed or described publicly; it goes
+to the owner in the session under `SECURITY.md`.
 
 ## 1. Pick the class and learn its shape
 
@@ -46,7 +59,14 @@ State the total. A sweep that reports "a few" has not counted.
 ## 4. Prove each instance
 
 A named test that fails, or a reproduction with the input and the wrong result. An instance you
-cannot make fail is "unsure", not "instance".
+cannot make fail is "unsure", not "instance". In a check, write that test in a scratch worktree
+and remove it afterwards:
+
+```sh
+git worktree add --detach .claude/worktrees/probe-<name> HEAD
+# write and run the probe with `git -C` or absolute paths; commit nothing
+git worktree remove --force .claude/worktrees/probe-<name>
+```
 
 ## 5. Fix or file
 

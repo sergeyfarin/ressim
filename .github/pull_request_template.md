@@ -1,3 +1,5 @@
+<!-- Do not describe a suspected security vulnerability here or in a commit message. See SECURITY.md. -->
+
 ## Summary
 
 - **What changed?**

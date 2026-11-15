@@ -1,6 +1,6 @@
 ---
 name: shape-issue
-description: Turn a rough idea, bug report, benchmark signal or review finding into an implementation-ready GitHub issue for ResSim - evidence, bounded scope, measurable acceptance, the validation gate, real blockers, and the decisions the owner must make. Use when asked to shape, draft, write up, refine, split or groom an issue, or to make an existing issue ready for work. Writes no code; use work-issue to implement.
+description: Turn a rough idea, bug report, benchmark signal or review finding into an implementation-ready GitHub issue for ResSim - evidence, bounded scope, measurable acceptance, the validation gate, real blockers, and the decisions the owner must make. A draft request returns the issue text; a request to shape, file or create it publishes it. Use when asked to shape, draft, write up, refine, split or groom an issue, or to make an existing issue ready for work. Writes no code; use work-issue to implement.
 ---
 
 # Shape An Issue
@@ -9,10 +9,22 @@ The output is one GitHub issue (or a parent with slices) that another agent coul
 the `work-issue` skill without asking a question. You write no code, create no branch and open
 no pull request. Tracking rules: `docs/DEVELOPER_WORKFLOW.md` → Tracking.
 
+The request decides whether anything is published (`AGENTS.md` → Task modes):
+
+- **Draft** ("draft", "propose", "what would the issue say"): steps 1–5, then return the issue
+  text in the session. Nothing is written to GitHub: no issue created or edited, no comment, no
+  label. A duplicate found in step 1 comes back as its link and the comment you would add.
+- **Shape and file** (invoked by name, or asked to shape, file, create or make an issue ready):
+  all steps, including step 6.
+
+A suspected security vulnerability is never written up as a public issue or comment. It goes to
+the owner in the session under `SECURITY.md`, whatever the request says.
+
 ## 1. Find out what already exists
 
-- Search open and closed issues: `gh issue list --search "<terms>" --state all`. A duplicate
-  gets a comment with the new evidence, not a second issue.
+- Search open and closed issues: `gh issue list --search "<terms>" --state all --limit 100`.
+  When one already covers it, the outcome is a comment with the new evidence on that issue, not
+  a second issue. Write that comment in step 6, not here.
 - Check whether it already ships (`README.md` → Implemented Capabilities and Scenario
   Inventory), where it sits in `ROADMAP.md` and `docs/CASE_LIBRARY_ROADMAP.md`, and whether it
   was deliberately not done (`docs/OPEN_ITEMS_2026-09-21.md`).
@@ -68,9 +80,11 @@ For a work item, the template's fields:
 
 Add **Decisions for the owner** when step 4 found any.
 
-## 6. File it
+## 6. File it (not for a draft)
 
-- `gh issue create` with one `priority:P0`–`priority:P3` label and at least one `area:*` label
+- A duplicate from step 1: add the evidence as a comment on that issue and stop; do not create a
+  second one.
+- Otherwise `gh issue create` with one `priority:P0`–`priority:P3` label and at least one `area:*` label
   (`area:engine`, `area:frontend`, `area:scenario`, `area:validation`, `area:docs`,
   `area:release`); add `bug`, `enhancement`, `research` or `blocked` when they apply.
 - No milestone, and no edit to the order in `ROADMAP.md`: creating an issue never changes

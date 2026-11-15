@@ -15,18 +15,46 @@ reach `master` unreviewed.
 
 ## Prepare
 
-- Read the pull request and what it claims:
-  `gh pr view <n> --json title,body,commits,files,closingIssuesReferences`, `gh pr diff <n>`,
-  `gh pr checks <n>`.
+- Read the pull request and what it claims, and record the head commit you are reviewing:
+  ```sh
+  gh pr view <n> --json title,body,baseRefName,commits,files
+  sha=$(gh pr view <n> --json headRefOid --jq .headRefOid)
+  gh pr diff <n>
+  gh pr checks <n> || echo "checks: failing, pending or none (exit $?)"
+  ```
+  Everything below reviews `$sha`. If the pull request moves on during the review, say so and
+  start again from this step.
+- Find the issues it closes. `closingIssuesReferences` is not a `gh pr view` field in the `gh`
+  installed here (2.46), so ask GraphQL:
+  ```sh
+  gh api graphql -F owner='{owner}' -F name='{repo}' -F n=<n> -f query='
+    query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){
+      pullRequest(number:$n){closingIssuesReferences(first:50){nodes{number title state}}}}}' \
+    --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[]'
+  ```
+  Also read the `Closes` / `Refs` lines in the body; they can disagree.
 - Read the linked issue with its acceptance, the plan or validation document it cites, and where
   the work sits in `ROADMAP.md`.
-- Get the code without disturbing the working tree:
+- Get the code without disturbing the working tree. Fetch from the repository that owns the pull
+  request — the one `gh` resolved above, not whatever `origin` is — and check that you got the
+  commit GitHub reports:
   ```sh
-  git fetch origin pull/<n>/head
-  git worktree add --detach <scratch-dir> FETCH_HEAD
+  repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+  if git fetch "https://github.com/$repo.git" "pull/<n>/head" \
+     && [ "$(git rev-parse FETCH_HEAD)" = "$sha" ]; then
+    git worktree add --detach .claude/worktrees/review-<n> "$sha"
+  else
+    echo "fetch failed or wrong commit: do not review" >&2; false
+  fi
   ```
-  Run tests and builds there. A throwaway probe test that confirms a suspected bug is allowed
-  there and is never committed. Remove the worktree when done.
+  The worktree is created only when the fetch succeeded and returned `$sha`. In a fork, `origin`
+  is the fork and its pull request `<n>` is a different pull request. Never review a commit
+  other than `$sha`.
+- Use `.claude/worktrees/` (git-ignored); a worktree under `/tmp` disappears on reboot. Run
+  every command there with `git -C` or an absolute path, so a failed `cd` cannot run it in the
+  main checkout. Run tests and builds there. A throwaway probe test that confirms a suspected
+  bug is allowed there and is never committed. Remove the worktree when done:
+  `git worktree remove --force .claude/worktrees/review-<n>`.
 - Read the whole changed files and their callers, not just the hunks. Review the entire pull
   request, every commit, not only the latest push.
 - On a re-review, first check each earlier finding against the new commits (fixed, not fixed,
@@ -83,7 +111,9 @@ reach `master` unreviewed.
 
 ## Report
 
-In the session, unless the owner asks for it to be posted:
+In the session, unless the owner asks for it to be posted. A suspected security vulnerability is
+never posted, whatever the request says: not in a review, a comment or an issue. It goes to the
+owner in the session, who chooses the private route in `SECURITY.md`.
 
 1. **Verdict** — one of *merge*, *merge after fixes* (name the priorities), *rework*,
    *do not build* — with the reason in a sentence or two.
