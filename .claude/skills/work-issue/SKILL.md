@@ -14,9 +14,9 @@ never enable auto-merge; the owner merges. Governing rule: *Branches and pull re
 ## 1. Understand before changing
 
 - Read the issue with its comments
-  (`gh issue view <n> --json number,title,state,labels,body,comments`; a plain `gh issue view`
-  fails in the `gh` installed here), the plan or validation document it links, and where it sits
-  in `ROADMAP.md`.
+  (`gh issue view <n> -R "$repo" --json number,title,state,labels,body,comments`, with `repo`
+  set as in step 2; a plain `gh issue view` fails in the `gh` installed here), the plan or
+  validation document it links, and where it sits in `ROADMAP.md`.
 - Implementation needs an outcome, bounded scope, measurable acceptance and a named validation
   gate (the fields of `.github/ISSUE_TEMPLATE/work-item.yml`). A `research` issue also needs its
   oracle and verdict criteria (`scientific-investigation.yml`). Stop and ask one question, with
@@ -30,9 +30,15 @@ never enable auto-merge; the owner merges. Governing rule: *Branches and pull re
 
 ```sh
 if git remote get-url upstream >/dev/null 2>&1; then base=upstream; else base=origin; fi
+repo=$(git remote get-url "$base" | sed -E 's#^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)##; s#\.git$##')
+gh repo view "$repo" --json nameWithOwner --jq .nameWithOwner
 git fetch "$base"
 git switch -c <type>/<issue>-<short-name> "$base/master"
 ```
+
+The first three lines set `repo`, the canonical repository every `gh` call in this task names
+(`-R "$repo"`); the third fails when the remote does not resolve to a GitHub repository. Never
+rely on `gh`'s default repository: in a fork clone it is often the fork.
 
 Always cut from the latest canonical `master`. In a fork that is `upstream/master`, because the
 fork's own `master` can be behind; in a direct clone it is `origin/master`. Never cut from another
@@ -72,7 +78,7 @@ list it under *Also fixed* in the pull request.
 
 **File a GitHub issue** for everything else:
 
-- Search first (`gh issue list --search "<terms>" --state all --limit 100`). Add new evidence
+- Search first (`gh issue list -R "$repo" --search "<terms>" --state all --limit 100`). Add new evidence
   to an existing issue as a comment; do not open a duplicate.
 - Write it with the fields of `.github/ISSUE_TEMPLATE/work-item.yml`: outcome, current behavior
   and evidence (`file:line`, revision, reproduction), scope, acceptance, validation gate. A
@@ -111,11 +117,21 @@ reason. Do not start a second feature or a broad refactor.
 
 ## 6. Ship
 
-- Commit with Conventional Commits (`docs/DEVELOPER_WORKFLOW.md` → Commits), then
-  `git push -u origin <branch>`. In a fork, `origin` is the fork and the pull request targets
-  the canonical repository; issues are read and filed there too.
-- `gh pr create --base master`, ready for review, following
-  `.github/pull_request_template.md`. The body states:
+- Commit with Conventional Commits (`docs/DEVELOPER_WORKFLOW.md` → Commits), then push and open
+  the pull request against the canonical repository, with `repo` from step 2:
+
+  ```sh
+  branch=$(git branch --show-current)
+  head_owner=$(git remote get-url origin | sed -E 's#^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)##; s#\.git$##' | cut -d/ -f1)
+  git push -u origin "$branch"
+  gh pr create -R "$repo" --base master --head "$head_owner:$branch" \
+    --title "<title>" --body-file <file>
+  ```
+
+  In a fork, `origin` is the fork, so the branch is pushed there and the pull request is opened
+  on `$repo`; issues are read and filed on `$repo` too (`gh issue create -R "$repo"`).
+- The pull request is ready for review and follows `.github/pull_request_template.md`. The body
+  states:
   - what changed and why;
   - `Closes #<n>` only when every acceptance item is met, otherwise `Refs #<n>` with what
     remains;

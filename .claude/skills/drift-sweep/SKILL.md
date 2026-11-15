@@ -13,7 +13,8 @@ report: make no changes anywhere — no branch, no edit to the checkout, no labe
 comment, no issue — and report what a full sweep would do. Any probe that needs code changed (a
 test broken on purpose, a behaviour disabled) runs in a scratch worktree under
 `.claude/worktrees/`, is never committed, and the worktree is removed afterwards. Invoked by
-name, or asked to sweep, fix or clean up: the full workflow below.
+name, or asked to sweep, fix or clean up: the full workflow below. An explicit limit wins over
+the invocation: `$drift-sweep check docs` is a check.
 
 Two rules hold for every scope of a full sweep:
 
@@ -21,16 +22,21 @@ Two rules hold for every scope of a full sweep:
   reorder the roadmap, change scope, change a tolerance, or pick between a document and the code
   when they disagree about behaviour or about a number. Those go to the owner as an issue or a
   question.
-- **Small fixes go in one pull request; the rest become issues.** This is a `work-issue` task:
-  branch from the canonical `master`, finish with an open pull request. A sweep that finds
-  nothing to change opens no pull request and says what it checked. Something that looks like a
+- **Changes to tracked files go in one pull request; the rest become issues.** A sweep that
+  changes files is a `work-issue` task: branch from the canonical `master` and finish with an
+  open pull request. A sweep whose only changes are on GitHub (the `blocked` scope's comments
+  and label removals, issues it filed) opens no branch and no pull request, and finishes with
+  the link to each comment, label change and issue. A sweep that changes nothing says what it
+  checked. Something that looks like a
   security vulnerability is neither fixed publicly nor filed; it goes to the owner in the
   session under `SECURITY.md`.
 
 ## `blocked` — blocked issues
 
 ```sh
-gh issue list --label blocked --state open --limit 500 --json number,title,updatedAt
+if git remote get-url upstream >/dev/null 2>&1; then base=upstream; else base=origin; fi
+repo=$(git remote get-url "$base" | sed -E 's#^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)##; s#\.git$##')
+gh issue list -R "$repo" --label blocked --state open --limit 500 --json number,title,updatedAt
 ```
 
 Every `gh ... list` defaults to 30 results. Pass `--limit` (or `--paginate` for `gh api`) on
@@ -96,7 +102,7 @@ only by a re-measurement on a committed tree (`AGENTS.md` → Evidence disciplin
 - Tests that cannot fail: an assertion that holds for an empty result, a tolerance wider than
   the effect, a check on a builder's output that never reaches the engine.
 - Tests that fail intermittently in CI:
-  `gh run list --workflow pr-tests.yml --status failure --limit 100`, then group by failing step.
+  `gh run list -R "$repo" --workflow pr-tests.yml --status failure --limit 100`, then group by failing step.
 - Comments and test names that cite an issue as pending when it is closed.
 
 A test you believe is vacuous is proved so before you change it: break the behaviour it claims

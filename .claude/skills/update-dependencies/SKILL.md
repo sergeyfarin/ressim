@@ -19,6 +19,8 @@ path, and a changed last bit is a changed answer. Section 3 lists them. Read it 
 ## 1. Survey first
 
 ```sh
+if git remote get-url upstream >/dev/null 2>&1; then base=upstream; else base=origin; fi
+repo=$(git remote get-url "$base" | sed -E 's#^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)##; s#\.git$##')
 survey() {  # survey <label> <command...>: print the rows, then "<label>: <count>" or UNCHECKED
   local label=$1 out; shift
   if out=$("$@"); then
@@ -27,13 +29,16 @@ survey() {  # survey <label> <command...>: print the rows, then "<label>: <count
     echo "$label: UNCHECKED"
   fi
 }
-survey "dependabot pull requests" gh pr list --author "app/dependabot" --state open --limit 200 --json number,title --jq '.[] | "#\(.number) \(.title)"'
-survey "dependabot alerts" gh api --paginate "repos/{owner}/{repo}/dependabot/alerts?state=open&per_page=100" --jq '.[] | "\(.security_advisory.severity) \(.dependency.package.ecosystem) \(.dependency.package.name) \(.security_advisory.ghsa_id)"'
-survey "code-scanning alerts" gh api --paginate "repos/{owner}/{repo}/code-scanning/alerts?state=open&per_page=100" --jq '.[] | "\(.rule.security_severity_level // "-") \(.rule.id) \(.most_recent_instance.location.path)"'
-survey "secret-scanning alerts" gh api --paginate "repos/{owner}/{repo}/secret-scanning/alerts?state=open&per_page=100" --jq '.[].number'
-survey "blocked issues" gh issue list --label blocked --state open --limit 500 --json number,title --jq '.[] | "#\(.number) \(.title)"'
+survey "dependabot pull requests" gh pr list -R "$repo" --author "app/dependabot" --state open --limit 200 --json number,title --jq '.[] | "#\(.number) \(.title)"'
+survey "dependabot alerts" gh api --paginate "repos/$repo/dependabot/alerts?state=open&per_page=100" --jq '.[] | "\(.security_advisory.severity) \(.dependency.package.ecosystem) \(.dependency.package.name) \(.security_advisory.ghsa_id)"'
+survey "code-scanning alerts" gh api --paginate "repos/$repo/code-scanning/alerts?state=open&per_page=100" --jq '.[] | "\(.rule.security_severity_level // "-") \(.rule.id) \(.most_recent_instance.location.path)"'
+survey "secret-scanning alerts" gh api --paginate "repos/$repo/secret-scanning/alerts?state=open&per_page=100" --jq '.[].number'
+survey "blocked issues" gh issue list -R "$repo" --label blocked --state open --limit 500 --json number,title --jq '.[] | "#\(.number) \(.title)"'
 ```
 
+- `repo` is the canonical repository (`upstream` when that remote exists, otherwise `origin`).
+  In a fork clone `gh`'s default repository is the fork, whose alert feeds are disabled or
+  empty; a survey of it says nothing about this project.
 - Every `gh ... list` passes `--limit` and every `gh api` survey passes `--paginate`: a `gh` list
   defaults to 30 results and an unpaginated call returns the first page only, and either way the
   list silently looks complete. Compare each count with its limit.
@@ -118,21 +123,43 @@ public. `SECURITY.md` governs: nothing unpublished is disclosed before a fix.
 
 ## 6. Validate
 
+Commit the updates first: the packaged-build smoke checks that the bundle was built from the
+commit it is packaged as. Then, following the local sequence in `docs/DEPLOYMENT.md`:
+
 ```sh
+RESIM_BUILD_SHA=$(git rev-parse HEAD); export RESIM_BUILD_SHA
+RESIM_BUILD_REF=$(git branch --show-current); export RESIM_BUILD_REF
+export RESIM_EXPECTED_SHA=$RESIM_BUILD_SHA RESIM_BASE_PATH=/
 RESSIM_FORCE_WASM_BUILD=1 pnpm run validate:full
 cargo clippy --workspace --all-targets
 bash scripts/validate-compositional.sh thermo
 bash scripts/validate-native-binding.sh
 bash scripts/benchmarks.sh check --tier fast
 (cd tools/opm_flow && uv run pytest -q)
-pnpm run package:dist && bash scripts/smoke-preview.sh
+pnpm run package:dist
+bash scripts/smoke-preview.sh
 ```
 
-When any crate the engine links moved by more than a lockfile patch bump, or any crate in
-section 3 moved at all, also run `bash scripts/validate-cross-solver.sh` and
-`bash scripts/benchmarks.sh check` (they need OPM Flow). When they could not run, say so in the
-pull request and name the crates that moved. No tolerance, band or benchmark record changes in a
-dependency pull request.
+`validate:full` ends with the production build, which records `RESIM_BUILD_SHA` and the base
+path; `package:dist` refuses a bundle whose commit or base path differs, and fails outright when
+no SHA is set.
+
+**Can it move an answer?** Before updating, record the engine's resolved dependency tree; after,
+compare:
+
+```sh
+mkdir -p target
+cargo tree -p simulator -e normal --target all --prefix none --no-dedupe | sort -u > target/engine-deps-before.txt
+# ... update ...
+cargo tree -p simulator -e normal --target all --prefix none --no-dedupe | sort -u > target/engine-deps-after.txt
+diff target/engine-deps-before.txt target/engine-deps-after.txt && echo "engine dependencies unchanged"
+```
+
+Any difference, direct or transitive, at any version increment (a patch to `faer-traits` or
+`gemm-f64` can change arithmetic while `faer` itself stays put), means the update can move an
+answer: also run `bash scripts/validate-cross-solver.sh` and `bash scripts/benchmarks.sh check`
+(they need OPM Flow). When they could not run, say so in the pull request and name the crates
+that moved. No tolerance, band or benchmark record changes in a dependency pull request.
 
 ## 7. Ship
 

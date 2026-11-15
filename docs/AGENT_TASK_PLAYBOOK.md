@@ -21,6 +21,8 @@ number:
 - Your wording sets what the agent may change. "Check", "find", "list" or "assess" gets a
   report and changes nothing. "Draft" gets text. "Fix", "build", "update", "sweep" or "file" —
   or the skill invoked by name — runs the full workflow: branch, commits, pull request, issues.
+  A limiting word wins over the skill name: `/drift-sweep check docs` and
+  `/shape-issue draft …` change nothing.
 - Suspected security vulnerabilities come back to you in the session, never as a public issue,
   pull request text, commit message or comment. You choose the private route in `SECURITY.md`.
 - One task per session. A session that implements should not also review.
@@ -71,6 +73,7 @@ even when the fix is one line.
 
 ```
 /review-pr 136
+/review-pr https://github.com/sergeyfarin/ressim/pull/136
 ```
 
 The agent reviews direction, your own decisions, approach, implementation, tests and evidence,
@@ -139,8 +142,10 @@ Actions in one branch, runs the gates and opens one pull request.
 /drift-sweep docs tests
 ```
 
-Four scopes; name the ones you want or run all four. "Check for drift" or "list what is stale"
-gets the report only: no branch, no label change, no comment.
+Four scopes; name the ones you want or run all four. "Check for drift", "list what is stale" or
+`/drift-sweep check …` gets the report only: no branch, no label change, no comment. A
+`blocked`-only sweep changes nothing but issue labels and comments, so it opens no pull request
+and returns the links instead.
 
 | Scope | Checks |
 |---|---|

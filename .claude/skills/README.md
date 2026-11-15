@@ -60,7 +60,8 @@ consequences:
   that needs it.
 - When a session should not depend on automatic selection, start the prompt with the task skill:
   `/work-issue 104`, `$work-issue 104` or `@work-issue 104`. Invoking a task skill by name runs
-  its write workflow; a plain "check" or "draft" request does not (`AGENTS.md` → Task modes).
+  its write workflow unless the request carries an explicit limit ("check", "list", "draft",
+  "read-only"); the limit always wins (`AGENTS.md` → Task modes).
 
 Check discovery after adding or renaming a skill: `codex debug prompt-input "hello"` prints the
 prompt Codex would send, including the skills it lists.
@@ -124,6 +125,9 @@ With smaller models, or for long tasks:
   `closingIssuesReferences` on `gh pr view`). In that version a plain `gh issue view <n>` or
   `gh pr view <n>` fails outright (a retired Projects field); always pass `--json` with the
   fields you need.
+- Every `gh` call names its repository (`-R "$repo"`, `repos/$repo/…`, or a pull request URL),
+  with `repo` resolved from `upstream` when it exists, otherwise `origin`. Test a new command in
+  a fork clone whose `gh` default is the fork as well as in a direct clone.
 - A command's result is judged by that command's own exit status. Never pipe a survey into `wc`
   or `grep` and read the count; count with `awk`. A guard written as `test … || echo "stop"`
   does not stop the next line: put what must not run inside the `if`.

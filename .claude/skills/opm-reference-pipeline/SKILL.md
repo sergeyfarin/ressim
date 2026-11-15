@@ -62,8 +62,10 @@ validation, are in `deck-pitfalls.md` beside this file.
 
 - `COMPDAT` item 9 is the wellbore **diameter** and items 7-8 are defaulted (`2*`). A radius in
   item 8 is read as the connection factor.
-- A rate-controlled well must hold its target rate. Wells pinned at their BHP limits from day 1
-  mean the deck is wrong.
+- A rate-controlled well at its BHP limit from the first step is a signal, not proof of a
+  defect: Flow switches to BHP control when the target exceeds what the well can deliver. Check
+  that the target is feasible for the reservoir and the connection factors (`COMPDAT` items
+  8-9). When the target is feasible and rate control is active, the well must hold it.
 - `PVDO` Bo values must be monotonic; Flow rejects a flat table.
 - `TABDIMS` must match the number of tables the PVT and SCAL keywords supply.
 - Depth datums agree across `TOPS`, `EQUIL`, `RSVD` and `WELSPECS`; SPE1 Case 1 needs `DRSDT 0`.

@@ -15,19 +15,30 @@ reach `master` unreviewed.
 
 ## Prepare
 
-- Read the pull request and what it claims, and record the head commit you are reviewing:
+- Resolve the pull request's repository first, then read it and record the head commit you are
+  reviewing. Given a URL, the repository comes from the URL. Given a bare number, it is the
+  canonical repository (`upstream` when that remote exists, otherwise `origin`), never `gh`'s
+  default, which in a fork clone is the fork:
   ```sh
-  gh pr view <n> --json title,body,baseRefName,commits,files
-  sha=$(gh pr view <n> --json headRefOid --jq .headRefOid)
-  gh pr diff <n>
-  gh pr checks <n> || echo "checks: failing, pending or none (exit $?)"
+  pr=<number or pull request URL>
+  if [[ $pr == https://github.com/*/pull/* ]]; then
+    repo=$(cut -d/ -f4,5 <<<"$pr"); n=$(cut -d/ -f7 <<<"$pr"); n=${n%%[!0-9]*}
+  else
+    if git remote get-url upstream >/dev/null 2>&1; then base=upstream; else base=origin; fi
+    repo=$(git remote get-url "$base" | sed -E 's#^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)##; s#\.git$##')
+    n=$pr
+  fi
+  gh pr view "$n" -R "$repo" --json title,body,baseRefName,commits,files
+  sha=$(gh pr view "$n" -R "$repo" --json headRefOid --jq .headRefOid)
+  gh pr diff "$n" -R "$repo"
+  gh pr checks "$n" -R "$repo" || echo "checks: failing, pending or none (exit $?)"
   ```
-  Everything below reviews `$sha`. If the pull request moves on during the review, say so and
-  start again from this step.
+  Every later command uses this `repo`, `n` and `sha`. Everything below reviews `$sha`. If the
+  pull request moves on during the review, say so and start again from this step.
 - Find the issues it closes. `closingIssuesReferences` is not a `gh pr view` field in the `gh`
-  installed here (2.46), so ask GraphQL:
+  installed here (2.46), so ask GraphQL, on the same repository:
   ```sh
-  gh api graphql -F owner='{owner}' -F name='{repo}' -F n=<n> -f query='
+  gh api graphql -F owner="${repo%/*}" -F name="${repo#*/}" -F n="$n" -f query='
     query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){
       pullRequest(number:$n){closingIssuesReferences(first:50){nodes{number title state}}}}}' \
     --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[]'
@@ -35,26 +46,24 @@ reach `master` unreviewed.
   Also read the `Closes` / `Refs` lines in the body; they can disagree.
 - Read the linked issue with its acceptance, the plan or validation document it cites, and where
   the work sits in `ROADMAP.md`.
-- Get the code without disturbing the working tree. Fetch from the repository that owns the pull
-  request — the one `gh` resolved above, not whatever `origin` is — and check that you got the
-  commit GitHub reports:
+- Get the code without disturbing the working tree. Fetch from that same repository, not from
+  `origin`, and check that you got the commit GitHub reports:
   ```sh
-  repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
-  if git fetch "https://github.com/$repo.git" "pull/<n>/head" \
+  if git fetch "https://github.com/$repo.git" "pull/$n/head" \
      && [ "$(git rev-parse FETCH_HEAD)" = "$sha" ]; then
-    git worktree add --detach .claude/worktrees/review-<n> "$sha"
+    git worktree add --detach ".claude/worktrees/review-$n" "$sha"
   else
     echo "fetch failed or wrong commit: do not review" >&2; false
   fi
   ```
   The worktree is created only when the fetch succeeded and returned `$sha`. In a fork, `origin`
-  is the fork and its pull request `<n>` is a different pull request. Never review a commit
-  other than `$sha`.
+  is the fork and its pull request with the same number is a different pull request. Never
+  review a commit other than `$sha`.
 - Use `.claude/worktrees/` (git-ignored); a worktree under `/tmp` disappears on reboot. Run
   every command there with `git -C` or an absolute path, so a failed `cd` cannot run it in the
   main checkout. Run tests and builds there. A throwaway probe test that confirms a suspected
   bug is allowed there and is never committed. Remove the worktree when done:
-  `git worktree remove --force .claude/worktrees/review-<n>`.
+  `git worktree remove --force ".claude/worktrees/review-$n"`.
 - Read the whole changed files and their callers, not just the hunks. Review the entire pull
   request, every commit, not only the latest push.
 - On a re-review, first check each earlier finding against the new commits (fixed, not fixed,

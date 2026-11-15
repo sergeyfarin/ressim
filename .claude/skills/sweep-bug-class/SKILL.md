@@ -21,7 +21,12 @@ The request decides how far this goes (`AGENTS.md` → Task modes):
   asking whether to fix and file.
 - **Sweep** (invoked by name, or asked to sweep, fix or clean up): all steps, run as a
   `work-issue` task — branch from the canonical `master`, fix small instances, file issues for
-  the rest, finish with an open pull request.
+  the rest, and finish with an open pull request when files changed (fixes, tests, a guard).
+  When every instance was filed and no guard is possible, no branch is needed: finish with the
+  issue links.
+
+An explicit limit wins over the invocation: `/sweep-bug-class check …` or "list every
+instance" is a check.
 
 An instance that could be a security vulnerability is never filed or described publicly; it goes
 to the owner in the session under `SECURITY.md`.
