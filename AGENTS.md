@@ -5,22 +5,64 @@ black-oil, plus a compositional engine) under a Svelte 5 UI, with every result d
 analytical or OPM Flow reference. `README.md` has the feature list, scenario inventory, project
 layout and validate commands; `docs/DOCUMENTATION_INDEX.md` says which docs are authoritative.
 
-This file is the only always-loaded instruction file (`CLAUDE.md` imports it). Keep it to rules
-that apply to most tasks and are costly to miss. Task detail belongs in a skill; product facts
+This file is the only repo-wide instruction file, loaded by every harness used here (Claude
+Code, Codex, OpenCode); `CLAUDE.md` only imports it. Do not add harness-specific copies. Keep it
+to rules that apply to most tasks and are costly to miss. Task detail belongs in a skill; product facts
 belong in `README.md` or `docs/`.
 
-## Skills — read the one matching your task before working
+## Task modes
 
-Claude Code discovers these automatically; other agents should open the file.
+Most requests are one of two modes. Decide which before you start, and do not mix them.
 
-| Skill (`.claude/skills/<name>/SKILL.md`) | Use for |
+**Work an issue** (implement an issue, bug fix, feature or experiment) — `work-issue` skill:
+
+- Branch from the latest canonical `master` (`upstream/master` when an `upstream` remote exists,
+  otherwise `origin/master`), build the change, validate it.
+- Finish with a pushed branch and an open, ready-for-review pull request. Do this without asking;
+  it overrides any machine-wide default to wait for a request. Never merge.
+- While in the code, look for bugs, weak tests, code smells and improvement opportunities beyond
+  the task. A finding that is small, local and cannot move a number is fixed in the same pull
+  request as its own commit. Anything else becomes a GitHub issue, and so does anything that
+  changes a simulated or analytical result, solver convergence, a tolerance or a benchmark
+  record, however short the fix. Nothing is left only in the conversation.
+
+**Review a pull request** (review, re-review, assess) — `review-pr` skill:
+
+- Review everything: direction, owner decisions, approach, implementation, bugs, tests and
+  evidence, docs. An owner decision that looks wrong is a finding like any other.
+- Review only. No edits, commits, pushes, pull request comments or new issues unless the owner
+  asks for that specific thing. Describe a fix; do not make it.
+- Report a verdict, then verified findings ranked `P0`–`P3` with `file:line`.
+
+Four recurring tasks have their own skill: `shape-issue` (no code, no branch), and
+`update-dependencies`, `drift-sweep` and `sweep-bug-class`, which run as *work an issue*. A
+request that fits none of these follows the owner's wording; it still ends in a pull request
+when it changes the repository. Rules: `docs/DEVELOPER_WORKFLOW.md`. Owner's guide:
+`docs/AGENT_TASK_PLAYBOOK.md`.
+
+## Skills — load the ones matching your task before working
+
+Twelve skills live in `.claude/skills/<name>/SKILL.md`. Claude Code and OpenCode find them there;
+Codex finds the same files through `.agents/skills`, a symlink. If your harness did not list
+them, open the file. A `SKILL.md` names the reference files beside it; read the ones for the area
+you are changing, because they are not loaded automatically.
+
+| Work | Skill |
 |---|---|
-| `ressim-validation` | Which gate to run for which change. **Every task.** |
-| `engine-physics-change` | Any change under `src/lib/ressim/src/` |
-| `fim-solver-debug` | FIM convergence, Newton, timestep or linear-solver work |
-| `frontend-architecture` | Any Svelte/TS change: stores, workers, charts, 3D view |
-| `add-scenario` | Catalog cases, sensitivities, analytical overlays |
-| `opm-reference-pipeline` | OPM Flow decks, artifacts and comparisons |
+| Implementing an issue, bug fix, feature or experiment | `work-issue` |
+| Reviewing a pull request, branch or diff | `review-pr` |
+| Turning an idea or finding into a ready issue | `shape-issue` |
+| Dependencies, Dependabot, security alerts | `update-dependencies` |
+| Stale docs, roadmap, tests, blocked issues | `drift-sweep` |
+| Finding every instance of one bug pattern | `sweep-bug-class` |
+| Which gate to run for which change. **Every task.** | `ressim-validation` |
+| Any change under `src/lib/ressim/src/`, including the compositional engine | `engine-physics-change` |
+| FIM convergence, Newton, timestep or linear-solver work | `fim-solver-debug` |
+| Any Svelte/TS change: stores, workers, charts, 3D view | `frontend-architecture` |
+| Catalog cases, sensitivities, analytical overlays | `add-scenario` |
+| OPM Flow decks, artifacts and comparisons | `opm-reference-pipeline` |
+
+A typical task uses one task skill, `ressim-validation` and one area skill.
 
 ## Tooling
 
@@ -50,7 +92,7 @@ Claude Code discovers these automatically; other agents should open the file.
 - **No `cfg(target_arch)` in solver routing, and no platform math in the engine.** Native and
   wasm agree bit for bit on the parity matrix. Engine code calls `crate::math`, never
   `f64::powf`/`exp`/`ln`/trig/`hypot` (glibc and wasm's libm differ in the last bit; #62), and
-  `clippy.toml` plus `validate-native-binding.sh` enforce it. See the `fim-solver-debug` skill
+  `src/lib/ressim/clippy.toml` plus `validate-native-binding.sh` enforce it. See the `fim-solver-debug` skill
   before touching the linear route.
 - **Worker messages are structured-cloneable.** Svelte `$state` values are Proxies and fail to
   clone; all sends go through `RuntimeStoreImpl.#post()` (applies `$state.snapshot()`), never
@@ -60,6 +102,22 @@ Claude Code discovers these automatically; other agents should open the file.
   `pnpm run check:cycles`.
 - **No scenario-key branching** (`if (scenario.key === …)`) outside `src/lib/catalog/scenarios/`.
 - Minimal, root-cause changes. No new dependencies unless essential. No speculative abstraction.
+
+## Validation and commits
+
+- Frontend: `pnpm run validate` while iterating, `pnpm run validate:product` before committing.
+- Rust engine: `bash scripts/validate-solver-coverage.sh {shared|fim|impes|all}`, plus
+  `cargo test --manifest-path src/lib/ressim/Cargo.toml benchmark_buckley` for shared physics.
+  Compositional: `bash scripts/validate-compositional.sh thermo`.
+- Payload boundary or bindings: `bash scripts/validate-native-binding.sh`.
+- Anything that can move an answer: `bash scripts/validate-cross-solver.sh` and
+  `bash scripts/benchmarks.sh check`.
+- The full decision table is the `ressim-validation` skill. Report the command output, not
+  "tests pass", and say which gates you did not run.
+- Conventional Commits with the smallest honest scope and the issue number, for example
+  `fix(compositional): reject partial checkpoint surface reporting (#88)`. Unrelated changes go
+  in separate commits. Implementation work lands through a branch and a pull request; a direct
+  commit to `master` needs the owner's say-so.
 
 ## Evidence discipline
 
@@ -76,9 +134,9 @@ Claude Code discovers these automatically; other agents should open the file.
 
 ## Tracking
 
-- GitHub Issues is the source of truth for actionable work; the rules are in `TODO.md`. Update the
-  issue with in-scope discoveries, open a new one for anything separate, and close only with the
-  gate green and the commit or PR linked.
+- GitHub Issues is the source of truth for actionable work; the rules are in
+  `docs/DEVELOPER_WORKFLOW.md`. Update the issue with in-scope discoveries, open a new one for
+  anything separate, and close only with the gate green and the commit or PR linked.
 - A deliberate "not doing this" goes in `docs/OPEN_ITEMS_2026-09-21.md` with the reason.
 - Stable scientific evidence goes in its owning validation doc; FIM experiments go in
   `docs/FIM_EXPERIMENT_REGISTRY.md` and `docs/FIM_CONVERGENCE_WORKLOG.md`.

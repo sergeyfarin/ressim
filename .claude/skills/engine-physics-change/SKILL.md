@@ -1,6 +1,6 @@
 ---
 name: engine-physics-change
-description: Safely modify the Rust/WASM reservoir simulation core (relperm, PVT, capillary, wells, IMPES/FIM solvers, grid, reporting). Use when adding or changing physics, editing anything under src/lib/ressim/src/, or exposing new simulator API to the frontend.
+description: Safely modify the Rust/WASM reservoir simulation core (relperm, PVT, capillary, wells, IMPES/FIM solvers, the compositional engine and its EOS/flash, grid, reporting). Use when adding or changing physics, editing anything under src/lib/ressim/src/, or exposing new simulator API to the frontend.
 ---
 
 # Changing the Rust Engine Safely

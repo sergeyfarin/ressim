@@ -1,22 +1,67 @@
 # ResSim Skill Library
 
-Task playbooks for how this project is debugged, extended and validated. The list of skills and
-when to use each is in the root [`AGENTS.md`](../../AGENTS.md), which every agent loads; this
-file only covers how to use them and how to keep them honest.
+Twelve skills that let any agent work on this project at the standard it was built to:
 
-## Using them
+- Six **task skills** say how a session runs from start to finish. The two everyday modes are
+  `work-issue` (implement, then open a pull request) and `review-pr` (review only, change
+  nothing). Four cover recurring work: `shape-issue`, `update-dependencies`, `drift-sweep`,
+  `sweep-bug-class`.
+- Six **area skills** hold the rules for a part of the codebase: `ressim-validation`,
+  `engine-physics-change`, `fim-solver-debug`, `frontend-architecture`, `add-scenario`,
+  `opm-reference-pipeline`.
 
-Claude Code discovers `.claude/skills/*/SKILL.md` automatically and loads one when the task
-matches its description. Other agents (Codex, Cursor) read `AGENTS.md`, which tells them
-to open the matching file.
+Which skill covers which work is in `AGENTS.md` → Task modes and Skills, because every harness
+loads that file. `docs/AGENT_TASK_PLAYBOOK.md` is the owner's guide to starting each one. This
+file is for maintaining the library.
 
-With smaller models, or for long tasks, be explicit:
+## Layout
 
-1. Name the skill in the prompt: "Using the fim-solver-debug skill, reproduce the 20x20x3 water
-   baseline."
-2. One skill-sized task per session. Don't mix an engine change and a frontend change.
-3. Ask for the validation command output verbatim at the end — not "tests pass".
-4. For convergence experiments, require the agent to name its oracle and to classify missing or
+```
+.claude/skills/<name>/SKILL.md      rules for every use of the skill
+.claude/skills/<name>/<topic>.md    reference file, read when SKILL.md says so
+.agents/skills -> ../.claude/skills symlink, so Codex finds the same files
+```
+
+Reference files today:
+
+| Skill | Reference file | Read it for |
+|---|---|---|
+| `ressim-validation` | `rust-gates.md` | Changing a bucket filter or a test one selects |
+| `ressim-validation` | `benchmarks.md` | Re-baselining, adding a benchmark, a failing cross-solver or benchmark check |
+| `ressim-validation` | `ci.md` | Editing a workflow or `scripts/build-wasm.sh` |
+| `engine-physics-change` | `compositional.md` | Anything under `compositional/`, `fluid/` or `tools/jutul/` |
+| `fim-solver-debug` | `lever-history.md` | The full entry behind each lever in the checklist |
+| `opm-reference-pipeline` | `internals.md` | Editing the pipeline's Python, a curve or an x-axis mapping |
+| `opm-reference-pipeline` | `deck-pitfalls.md` | The full entry behind each deck pitfall |
+
+## How each harness finds them
+
+| Harness | Instructions | Skills | Force one |
+|---|---|---|---|
+| Claude Code | `AGENTS.md`, through the `CLAUDE.md` import | `.claude/skills/` | `/skill-name` |
+| Codex | `AGENTS.md` | `.agents/skills/` (the symlink) | `$skill-name` |
+| OpenCode | `AGENTS.md` | `.claude/skills/` | `@skill-name` |
+
+All three load only each skill's `name` and `description` up front, the `SKILL.md` body when the
+skill is used, and a reference file only when the body tells the agent to read it. Three
+consequences:
+
+- The description decides whether a skill is used at all. It says what the skill covers and when
+  to use it, in words a task prompt would contain. Codex gives the whole list of descriptions a
+  small budget, so keep each one to two or three sentences.
+- A reference file nobody is told to read is never read. `SKILL.md` names each one and the work
+  that needs it.
+- When a session should not depend on automatic selection, start the prompt with the task skill:
+  `/work-issue 104`, `$work-issue 104` or `@work-issue 104`.
+
+Check discovery after adding or renaming a skill: `codex debug prompt-input "hello"` prints the
+prompt Codex would send, including the skills it lists.
+
+With smaller models, or for long tasks:
+
+1. One skill-sized task per session. Do not mix an engine change and a frontend change.
+2. Ask for the validation command output verbatim at the end, not "tests pass".
+3. For convergence experiments, require the agent to name its oracle and to classify missing or
    incomparable diagnostics as `INCONCLUSIVE`, never `REFUTED`.
 
 ## Where things go
@@ -27,8 +72,39 @@ With smaller models, or for long tasks, be explicit:
 - `README.md` / `docs/` — product facts, measurements and history. A skill links to them rather
   than restating them.
 
-## Maintenance rule
+## Rules for maintaining this library
 
-Skills state current facts (file sizes, live/legacy status, known gaps). When one drifts from
-reality, fix it in the same PR that moved reality — the rule `docs/DOCUMENTATION_INDEX.md` applies
-to docs. Don't add a skill for a one-off task; extend an existing one or write a doc.
+- Keep it small. A new skill must earn its place: a recurring task shape, real failure modes,
+  not derivable from a quick read of the code. Do not add one for a one-off task.
+- A task skill is a procedure and an area skill is a rule set. Keep them apart: a task skill
+  points at area skills and restates no area rule. The three maintenance skills reuse
+  `work-issue` for branching, triage and the pull request instead of repeating it.
+- Adding, renaming or removing a skill updates the routing table in `AGENTS.md`, the list in
+  `docs/AGENT_TASK_PLAYBOOK.md` and the tables above in the same change.
+- Keep `SKILL.md` lean, about 250 lines at most, and watch its size in bytes as well: long lines
+  cost a small-context model as much as many lines. It holds what applies to every use of the
+  skill. Detail for one area or one family goes in a reference file.
+- A skill that grows by one appended paragraph per issue is turning into a changelog. Write the
+  rule, then the named test or gate that guards it. The issue number points at the story; the
+  story itself belongs in the issue, the registry or the owning validation document.
+- When a skill holds a list of things this repo got wrong (the FIM lever checklist, the deck
+  pitfalls, the bug classes in `sweep-bug-class`), `SKILL.md` keeps one line per entry and the
+  full entry goes in a reference file. FIM lever IDs are the registry's and are never
+  renumbered.
+- **Adding a bug class:** in the same pull request as the fix, add a row to the table in
+  `sweep-bug-class/SKILL.md` naming the pattern and the test or gate that now guards it. If no
+  guard is possible, say "None" and why.
+- Move text verbatim when splitting a file, and check that nothing was lost by comparing the
+  tokens of the old file with the new files.
+- Frontmatter is `name` and `description` only, and `name` equals the directory name. That
+  subset is what all three harnesses read.
+- Refer to files in another skill by their path from the repo root.
+- Guidance follows decisions and does not anticipate them. Lines that planned work will make
+  wrong are listed on issue #137 and are changed in the pull request that delivers that work.
+- Skills state current facts (counts, live or legacy status, known gaps). When one drifts from
+  reality, fix it in the same pull request that moved reality. The `docs` scope of `drift-sweep`
+  checks every cited path and name mechanically.
+- `AGENTS.md` is the only repo-wide instruction file. Do not add harness-specific copies
+  (Copilot, Cursor or OpenCode instruction files); they drift from it. `CLAUDE.md` stays a
+  one-line `@AGENTS.md` import: Claude Code reads `AGENTS.md` directly only from v2.1.277, and
+  the import works in every version.

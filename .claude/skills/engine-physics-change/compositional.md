@@ -54,8 +54,9 @@ Tests sit beside the code as `*_tests.rs` and are named `comp_<area>_*` (`comp_f
 ## Gates
 
 ```bash
-bash scripts/validate-compositional.sh thermo     # standalone thermodynamics, ~20 s; what PR CI runs
-bash scripts/validate-compositional.sh records    # record comparison against committed fixtures; no OPM needed
+bash scripts/validate-compositional.sh thermo     # standalone thermodynamics, ~20 s; a PR CI step
+bash scripts/validate-compositional.sh records    # record comparison against committed fixtures; no OPM needed;
+                                                  # PR CI runs it inside `benchmarks.sh check --tier fast`
 bash scripts/validate-compositional.sh native     # thermo + fixture + reference; needs OPM headers and flowexp_comp
 bash scripts/validate-compositional.sh all        # native + wasm compile check
 bash scripts/validate-compositional.sh refinement # C12 timestep and grid refinement, release, ~3 min

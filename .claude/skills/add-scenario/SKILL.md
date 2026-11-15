@@ -15,6 +15,11 @@ Scenarios are the product's core content unit: a self-describing definition that
   time-varying well schedule. The worker can apply each well's initial control, target, limit, and
   enabled state; it is not a full deck scheduler. Don't define a scenario the engine can't
   honestly run. Read `docs/THREE_PHASE_VALIDATION.md` before extending the three-phase envelope.
+- Those limits are the black-oil engine's. A compositional scenario is built through
+  `buildCompositionalCase` (`src/lib/compositional/createPayload.ts`); `comp_co2_1d.ts` is the
+  exemplar, well schedules exist there (`schedule.rs`), and the validated envelope is
+  `docs/COMPOSITIONAL_VALIDATION.md`. Read
+  `.claude/skills/engine-physics-change/compositional.md` first.
 - Read one exemplar end-to-end: `src/lib/catalog/scenarios/wf_bl1d.ts` (simple) or `spe1_gas_injection.ts` (black-oil, per-layer dz, PVT table, published references).
 
 ## Checklist
