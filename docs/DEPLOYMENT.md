@@ -34,8 +34,8 @@ same SHA.
 From a clean, committed revision, using Node 24 and pnpm:
 
 ```bash
-export RESIM_BUILD_SHA=$(git rev-parse HEAD)
-export RESIM_BUILD_REF=$(git branch --show-current)
+RESIM_BUILD_SHA=$(git rev-parse HEAD); export RESIM_BUILD_SHA
+RESIM_BUILD_REF=$(git branch --show-current); export RESIM_BUILD_REF
 export RESIM_EXPECTED_SHA=$RESIM_BUILD_SHA
 
 # Production root layout; includes the full Vitest suite and Rust IMPES gate.
