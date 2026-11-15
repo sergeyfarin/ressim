@@ -18,15 +18,16 @@ The request decides whether anything is published (`AGENTS.md` → Task modes):
   all steps, including step 6. An explicit limit wins over the invocation:
   `/shape-issue draft …` is a draft.
 
-Every `gh` call names the canonical repository, `-R "$repo"`, set as in `work-issue` step 2
-(its first three lines); `gh`'s default repository in a fork clone is the fork.
+Every `gh` call names the canonical repository in the same command,
+`repo=$(bash scripts/canonical-repo.sh) && gh … -R "$repo"`: `gh`'s default repository in a fork
+clone is the fork, and each tool call starts a new shell.
 
 A suspected security vulnerability is never written up as a public issue or comment. It goes to
 the owner in the session under `SECURITY.md`, whatever the request says.
 
 ## 1. Find out what already exists
 
-- Search open and closed issues: `gh issue list -R "$repo" --search "<terms>" --state all --limit 100`.
+- Search open and closed issues: `repo=$(bash scripts/canonical-repo.sh) && gh issue list -R "$repo" --search "<terms>" --state all --limit 100`.
   When one already covers it, the outcome is a comment with the new evidence on that issue, not
   a second issue. Write that comment in step 6, not here.
 - Check whether it already ships (`README.md` → Implemented Capabilities and Scenario
@@ -88,13 +89,13 @@ Add **Decisions for the owner** when step 4 found any.
 
 - A duplicate from step 1: add the evidence as a comment on that issue and stop; do not create a
   second one.
-- Otherwise `gh issue create -R "$repo"` with one `priority:P0`–`priority:P3` label and at least one `area:*` label
+- Otherwise `repo=$(bash scripts/canonical-repo.sh) && gh issue create -R "$repo" …` with one `priority:P0`–`priority:P3` label and at least one `area:*` label
   (`area:engine`, `area:frontend`, `area:scenario`, `area:validation`, `area:docs`,
   `area:release`); add `bug`, `enhancement`, `research` or `blocked` when they apply.
 - No milestone, and no edit to the order in `ROADMAP.md`: creating an issue never changes
   release scope or sequence. Both are the owner's.
 - To make an existing brief issue ready, rewrite its body with
-  `gh api -X PATCH "repos/$repo/issues/<n>" -F body=@<file>` and add a comment saying
+  `repo=$(bash scripts/canonical-repo.sh) && gh api -X PATCH "repos/$repo/issues/<n>" -F body=@<file>` and add a comment saying
   what changed. Keep the original problem statement.
 - Report the issue URL, the decisions waiting on the owner, and whether the issue is ready for
   `work-issue` now or only after those decisions.

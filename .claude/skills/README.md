@@ -60,8 +60,10 @@ consequences:
   that needs it.
 - When a session should not depend on automatic selection, start the prompt with the task skill:
   `/work-issue 104`, `$work-issue 104` or `@work-issue 104`. Invoking a task skill by name runs
-  its write workflow unless the request carries an explicit limit ("check", "list", "draft",
-  "read-only"); the limit always wins (`AGENTS.md` → Task modes).
+  its write workflow unless the request carries an explicit scope limit (`/drift-sweep check
+  docs`, `/shape-issue draft …`, "read-only"). A word limits the request when it scopes it, not
+  when it names a deliverable of an authorized write ("fix #104 and report the results")
+  (`AGENTS.md` → Task modes).
 
 Check discovery after adding or renaming a skill: `codex debug prompt-input "hello"` prints the
 prompt Codex would send, including the skills it lists.
@@ -125,9 +127,16 @@ With smaller models, or for long tasks:
   `closingIssuesReferences` on `gh pr view`). In that version a plain `gh issue view <n>` or
   `gh pr view <n>` fails outright (a retired Projects field); always pass `--json` with the
   fields you need.
-- Every `gh` call names its repository (`-R "$repo"`, `repos/$repo/…`, or a pull request URL),
-  with `repo` resolved from `upstream` when it exists, otherwise `origin`. Test a new command in
-  a fork clone whose `gh` default is the fork as well as in a direct clone.
+- Every `gh` call names its repository in the same command, from `scripts/canonical-repo.sh`
+  (tested in `scripts/canonical-repo.test.ts`) or a pull request URL:
+  `repo=$(bash scripts/canonical-repo.sh) && gh … -R "$repo"`. An empty `-R ""` silently falls
+  back to `gh`'s default, which in a fork clone is the fork. Test a new command in a fork clone
+  whose `gh` default is the fork as well as in a direct clone.
+- **Each fenced block is self-contained.** Every agent tool call starts a new shell, so a block
+  never relies on a variable set by another block or by prose; a value one step reports is
+  written literally into the next command. A block whose later lines depend on earlier ones
+  stops at the first failure in any shell: join it with `&&`, or wrap it in
+  `( set -euo pipefail … )`. Run it in plain `bash` as well as `bash -euo pipefail`.
 - A command's result is judged by that command's own exit status. Never pipe a survey into `wc`
   or `grep` and read the count; count with `awk`. A guard written as `test … || echo "stop"`
   does not stop the next line: put what must not run inside the `if`.

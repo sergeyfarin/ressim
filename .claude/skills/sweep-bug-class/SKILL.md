@@ -69,9 +69,12 @@ and remove it afterwards:
 
 ```sh
 git worktree add --detach .claude/worktrees/probe-<name> HEAD
-# write and run the probe with `git -C` or absolute paths; commit nothing
-git worktree remove --force .claude/worktrees/probe-<name>
 ```
+
+Work only inside that worktree, with `git -C` or absolute paths, and commit nothing. When you
+are done, and only if the `add` above succeeded, remove it:
+`git worktree remove --force .claude/worktrees/probe-<name>`. If the `add` failed because the
+path exists, pick another name; never remove a worktree you did not create.
 
 ## 5. Fix or file
 

@@ -31,24 +31,34 @@ same SHA.
 
 ## Local and CI validation before deployment
 
-From a clean, committed revision, using Node 24 and pnpm:
+From a clean, committed revision, using Node 24 and pnpm. Each block runs in a strict subshell,
+so it stops at the first failing step in any shell; packaging without a SHA, for example, never
+reaches the browser smoke.
 
 ```bash
-RESIM_BUILD_SHA=$(git rev-parse HEAD); export RESIM_BUILD_SHA
-RESIM_BUILD_REF=$(git branch --show-current); export RESIM_BUILD_REF
-export RESIM_EXPECTED_SHA=$RESIM_BUILD_SHA
-
 # Production root layout; includes the full Vitest suite and Rust IMPES gate.
-export RESIM_BASE_PATH=/
-pnpm run validate:product
-pnpm run package:dist
-bash scripts/smoke-preview.sh
+(
+  set -euo pipefail
+  RESIM_BUILD_SHA=$(git rev-parse HEAD); export RESIM_BUILD_SHA
+  RESIM_BUILD_REF=$(git branch --show-current); export RESIM_BUILD_REF
+  export RESIM_EXPECTED_SHA=$RESIM_BUILD_SHA RESIM_BASE_PATH=/
+  pnpm run validate:product
+  pnpm run package:dist
+  bash scripts/smoke-preview.sh
+)
+```
 
+```bash
 # Optional legacy layout; reuses the same validated numerical engine.
-export RESIM_BASE_PATH=/ressim/
-pnpm run build
-pnpm run package:dist
-bash scripts/smoke-preview.sh
+(
+  set -euo pipefail
+  RESIM_BUILD_SHA=$(git rev-parse HEAD); export RESIM_BUILD_SHA
+  RESIM_BUILD_REF=$(git branch --show-current); export RESIM_BUILD_REF
+  export RESIM_EXPECTED_SHA=$RESIM_BUILD_SHA RESIM_BASE_PATH=/ressim/
+  pnpm run build
+  pnpm run package:dist
+  bash scripts/smoke-preview.sh
+)
 ```
 
 `smoke-preview.sh` starts and stops a loopback Vite preview and runs the existing Playwright

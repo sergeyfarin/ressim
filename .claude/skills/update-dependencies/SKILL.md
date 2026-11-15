@@ -19,8 +19,9 @@ path, and a changed last bit is a changed answer. Section 3 lists them. Read it 
 ## 1. Survey first
 
 ```sh
-if git remote get-url upstream >/dev/null 2>&1; then base=upstream; else base=origin; fi
-repo=$(git remote get-url "$base" | sed -E 's#^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)##; s#\.git$##')
+(
+set -euo pipefail
+repo=$(bash scripts/canonical-repo.sh)
 survey() {  # survey <label> <command...>: print the rows, then "<label>: <count>" or UNCHECKED
   local label=$1 out; shift
   if out=$("$@"); then
@@ -34,11 +35,13 @@ survey "dependabot alerts" gh api --paginate "repos/$repo/dependabot/alerts?stat
 survey "code-scanning alerts" gh api --paginate "repos/$repo/code-scanning/alerts?state=open&per_page=100" --jq '.[] | "\(.rule.security_severity_level // "-") \(.rule.id) \(.most_recent_instance.location.path)"'
 survey "secret-scanning alerts" gh api --paginate "repos/$repo/secret-scanning/alerts?state=open&per_page=100" --jq '.[].number'
 survey "blocked issues" gh issue list -R "$repo" --label blocked --state open --limit 500 --json number,title --jq '.[] | "#\(.number) \(.title)"'
+)
 ```
 
-- `repo` is the canonical repository (`upstream` when that remote exists, otherwise `origin`).
-  In a fork clone `gh`'s default repository is the fork, whose alert feeds are disabled or
-  empty; a survey of it says nothing about this project.
+- `repo` is the canonical repository from `scripts/canonical-repo.sh` (`upstream` when that
+  remote exists, otherwise `origin`). In a fork clone `gh`'s default repository is the fork,
+  whose alert feeds are disabled or empty; a survey of it says nothing about this project. The
+  block runs in a strict subshell, so a missing remote stops it before any survey.
 - Every `gh ... list` passes `--limit` and every `gh api` survey passes `--paginate`: a `gh` list
   defaults to 30 results and an unpaginated call returns the first page only, and either way the
   list silently looks complete. Compare each count with its limit.
@@ -124,42 +127,55 @@ public. `SECURITY.md` governs: nothing unpublished is disclosed before a fix.
 ## 6. Validate
 
 Commit the updates first: the packaged-build smoke checks that the bundle was built from the
-commit it is packaged as. Then, following the local sequence in `docs/DEPLOYMENT.md`:
+commit it is packaged as. Then run, as one command, the local sequence from `docs/DEPLOYMENT.md`
+with the dependency gates added. The strict subshell stops at the first failure in any shell:
 
 ```sh
-RESIM_BUILD_SHA=$(git rev-parse HEAD); export RESIM_BUILD_SHA
-RESIM_BUILD_REF=$(git branch --show-current); export RESIM_BUILD_REF
-export RESIM_EXPECTED_SHA=$RESIM_BUILD_SHA RESIM_BASE_PATH=/
-RESSIM_FORCE_WASM_BUILD=1 pnpm run validate:full
-cargo clippy --workspace --all-targets
-bash scripts/validate-compositional.sh thermo
-bash scripts/validate-native-binding.sh
-bash scripts/benchmarks.sh check --tier fast
-(cd tools/opm_flow && uv run pytest -q)
-pnpm run package:dist
-bash scripts/smoke-preview.sh
+(
+  set -euo pipefail
+  RESIM_BUILD_SHA=$(git rev-parse HEAD); export RESIM_BUILD_SHA
+  RESIM_BUILD_REF=$(git branch --show-current); export RESIM_BUILD_REF
+  export RESIM_EXPECTED_SHA=$RESIM_BUILD_SHA RESIM_BASE_PATH=/
+  RESSIM_FORCE_WASM_BUILD=1 pnpm run validate:full
+  cargo clippy --workspace --all-targets
+  bash scripts/validate-compositional.sh thermo
+  bash scripts/validate-native-binding.sh
+  bash scripts/benchmarks.sh check --tier fast
+  (cd tools/opm_flow && uv run pytest -q)
+  pnpm run package:dist
+  bash scripts/smoke-preview.sh
+)
 ```
 
 `validate:full` ends with the production build, which records `RESIM_BUILD_SHA` and the base
 path; `package:dist` refuses a bundle whose commit or base path differs, and fails outright when
 no SHA is set.
 
-**Can it move an answer?** Before updating, record the engine's resolved dependency tree; after,
-compare:
+**Can it move an answer?** Treat any change to the Rust dependency configuration as able to,
+whatever the version increment and whether the crate is direct, transitive or a build
+dependency: `faer` reaches the engine through transitive crates (`faer-traits`, `gemm-f64`) and
+through build dependencies that generate its floating-point kernels (`nano-gemm-codegen`), so
+no dependency-tree comparison is a safe filter. Check against the commit this branch was cut
+from:
 
 ```sh
-mkdir -p target
-cargo tree -p simulator -e normal --target all --prefix none --no-dedupe | sort -u > target/engine-deps-before.txt
-# ... update ...
-cargo tree -p simulator -e normal --target all --prefix none --no-dedupe | sort -u > target/engine-deps-after.txt
-diff target/engine-deps-before.txt target/engine-deps-after.txt && echo "engine dependencies unchanged"
+(
+  set -euo pipefail
+  base=$(bash scripts/canonical-repo.sh --remote)
+  mb=$(git merge-base "$base/master" HEAD)
+  if git diff --quiet "$mb" -- Cargo.lock '*Cargo.toml' '.cargo/*' 'rust-toolchain*'; then
+    echo "Rust dependency configuration unchanged"
+  else
+    echo "Rust dependency configuration changed: run the cross-solver gate and benchmarks.sh check"
+  fi
+)
 ```
 
-Any difference, direct or transitive, at any version increment (a patch to `faer-traits` or
-`gemm-f64` can change arithmetic while `faer` itself stays put), means the update can move an
-answer: also run `bash scripts/validate-cross-solver.sh` and `bash scripts/benchmarks.sh check`
-(they need OPM Flow). When they could not run, say so in the pull request and name the crates
-that moved. No tolerance, band or benchmark record changes in a dependency pull request.
+A `git diff` that fails is reported as "changed", so an error runs the gates rather than
+skipping them. When the configuration changed, also run `bash scripts/validate-cross-solver.sh`
+and `bash scripts/benchmarks.sh check` (they need OPM Flow). When they could not run, say so in
+the pull request and name the crates that moved. No tolerance, band or benchmark record changes
+in a dependency pull request.
 
 ## 7. Ship
 

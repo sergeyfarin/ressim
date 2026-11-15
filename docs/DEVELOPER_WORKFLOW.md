@@ -63,15 +63,15 @@ hypothesis/oracle rather than a predetermined implementation.
   `origin/master`.
 
   ```sh
-  if git remote get-url upstream >/dev/null 2>&1; then base=upstream; else base=origin; fi
-  repo=$(git remote get-url "$base" | sed -E 's#^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)##; s#\.git$##')
-  gh repo view "$repo" --json nameWithOwner --jq .nameWithOwner
-  git fetch "$base"
+  base=$(bash scripts/canonical-repo.sh --remote) &&
+  git fetch "$base" &&
   git switch -c <type>/<issue>-<short-name> "$base/master"
   ```
 
-- Every `gh` call names that canonical repository (`-R "$repo"`). `gh`'s default repository
-  in a fork clone is usually the fork, where pull request and issue numbers mean something else.
+- Every `gh` call names that canonical repository in the same command
+  (`repo=$(bash scripts/canonical-repo.sh) && gh … -R "$repo"`). `gh`'s default repository in a
+  fork clone is usually the fork, where pull request and issue numbers mean something else, and
+  an empty `-R ""` falls back to it.
 - One outcome per branch. Never branch from another feature branch, and never add unrelated
   work to a branch that has an open pull request.
 - Push the branch and open a ready-for-review pull request against `master`, following
@@ -107,8 +107,9 @@ fix(compositional): reject partial checkpoint surface reporting (#88)
   findings and changes nothing. "Draft" or "propose" returns text. Only "fix", "build",
   "update", "sweep" or "file", or a task skill invoked by name with no limiting word, runs a
   write workflow: branch, commits, pull request, issues, labels, comments.
-- An explicit limit ("check", "list", "report", "draft", "propose", "read-only", "dry run")
-  always wins, including over a skill invoked by name.
+- An explicit scope limit wins over a skill invoked by name. A word limits the request when it
+  scopes it ("check docs", "draft an issue", "report only", "read-only", "dry run"), not when it
+  names something to deliver with an authorized write ("fix #104 and report the results").
 - A probe that needs code changed to prove a finding runs in a scratch worktree under
   `.claude/worktrees/` (git-ignored), is never committed, and is removed afterwards.
 

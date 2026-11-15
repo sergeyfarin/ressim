@@ -34,12 +34,12 @@ Two rules hold for every scope of a full sweep:
 ## `blocked` — blocked issues
 
 ```sh
-if git remote get-url upstream >/dev/null 2>&1; then base=upstream; else base=origin; fi
-repo=$(git remote get-url "$base" | sed -E 's#^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)##; s#\.git$##')
-gh issue list -R "$repo" --label blocked --state open --limit 500 --json number,title,updatedAt
+repo=$(bash scripts/canonical-repo.sh) && gh issue list -R "$repo" --label blocked --state open --limit 500 --json number,title,updatedAt
 ```
 
-Every `gh ... list` defaults to 30 results. Pass `--limit` (or `--paginate` for `gh api`) on
+Every `gh` command in this skill is one self-contained line that resolves the canonical
+repository first (`scripts/canonical-repo.sh`), so each scope can run on its own, in a new
+shell. Every `gh ... list` defaults to 30 results. Pass `--limit` (or `--paginate` for `gh api`) on
 every survey, compare the count you got with the limit, and judge the call by `gh`'s own exit
 status: a list that failed is unchecked, not empty.
 
@@ -102,7 +102,8 @@ only by a re-measurement on a committed tree (`AGENTS.md` → Evidence disciplin
 - Tests that cannot fail: an assertion that holds for an empty result, a tolerance wider than
   the effect, a check on a builder's output that never reaches the engine.
 - Tests that fail intermittently in CI:
-  `gh run list -R "$repo" --workflow pr-tests.yml --status failure --limit 100`, then group by failing step.
+  `repo=$(bash scripts/canonical-repo.sh) && gh run list -R "$repo" --workflow pr-tests.yml --status failure --limit 100`,
+  then group by failing step.
 - Comments and test names that cite an issue as pending when it is closed.
 
 A test you believe is vacuous is proved so before you change it: break the behaviour it claims
@@ -111,9 +112,12 @@ remove it afterwards:
 
 ```sh
 git worktree add --detach .claude/worktrees/probe-<name> HEAD
-# break the behaviour and run the test with `git -C` or absolute paths; commit nothing
-git worktree remove --force .claude/worktrees/probe-<name>
 ```
+
+Work only inside that worktree, with `git -C` or absolute paths, and commit nothing. When you
+are done, and only if the `add` above succeeded, remove it:
+`git worktree remove --force .claude/worktrees/probe-<name>`. If the `add` failed because the
+path exists, pick another name; never remove a worktree you did not create.
  A test whose fix would tighten or loosen a tolerance is an
 issue, not a sweep fix.
 

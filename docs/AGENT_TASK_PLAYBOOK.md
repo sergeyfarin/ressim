@@ -21,8 +21,9 @@ number:
 - Your wording sets what the agent may change. "Check", "find", "list" or "assess" gets a
   report and changes nothing. "Draft" gets text. "Fix", "build", "update", "sweep" or "file" —
   or the skill invoked by name — runs the full workflow: branch, commits, pull request, issues.
-  A limiting word wins over the skill name: `/drift-sweep check docs` and
-  `/shape-issue draft …` change nothing.
+  A word that scopes the request wins over the skill name: `/drift-sweep check docs` and
+  `/shape-issue draft …` change nothing. A word that names something to deliver does not:
+  "fix #104 and report the validation results" is a fix.
 - Suspected security vulnerabilities come back to you in the session, never as a public issue,
   pull request text, commit message or comment. You choose the private route in `SECURITY.md`.
 - One task per session. A session that implements should not also review.
