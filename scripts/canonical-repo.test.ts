@@ -97,6 +97,37 @@ describe('canonical-repo.sh', () => {
         expect(run('--push', 'origin')).toMatchObject({ status: 0, out: 'Rekenraam-AI/ressim\n' });
     });
 
+    it('--push fails when git push would write to more than one repository', () => {
+        git('remote', 'add', 'origin', 'https://github.com/sergeyfarin/ressim.git');
+        git('remote', 'set-url', '--add', '--push', 'origin', 'https://github.com/Rekenraam-AI/ressim.git');
+        git('remote', 'set-url', '--add', '--push', 'origin', `https://u:${SECRET}@mirror.example/r.git`);
+        const r = run('--push', 'origin');
+        expect(r).toMatchObject({ status: 1, out: '' });
+        expect(r.err).toContain('push URL 2');
+        expect(r.err).not.toContain(SECRET);
+    });
+
+    it('--push fails for two GitHub push destinations, and for two plain URLs', () => {
+        git('remote', 'add', 'origin', 'https://github.com/sergeyfarin/ressim.git');
+        git('remote', 'set-url', '--add', '--push', 'origin', 'https://github.com/Rekenraam-AI/ressim.git');
+        git('remote', 'set-url', '--add', '--push', 'origin', 'https://github.com/sergeyfarin/other.git');
+        expect(run('--push', 'origin')).toMatchObject({ status: 1, out: '' });
+        expect(run('--push', 'origin').err).toContain('pushes to 2 repositories');
+        git('remote', 'remove', 'origin');
+        git('remote', 'add', 'origin', 'https://github.com/sergeyfarin/ressim.git');
+        git('remote', 'set-url', '--add', 'origin', 'https://github.com/Rekenraam-AI/ressim.git');
+        expect(run('--push', 'origin')).toMatchObject({ status: 1, out: '' });
+        // `git fetch` uses the first URL only, so the fetch lookup still answers.
+        expect(run('origin')).toMatchObject({ status: 0, out: 'sergeyfarin/ressim\n' });
+    });
+
+    it('--push accepts two push URLs that name the same repository', () => {
+        git('remote', 'add', 'origin', 'https://github.com/sergeyfarin/ressim.git');
+        git('remote', 'set-url', '--add', '--push', 'origin', 'https://github.com/Rekenraam-AI/ressim.git');
+        git('remote', 'set-url', '--add', '--push', 'origin', 'git@github.com:Rekenraam-AI/ressim.git');
+        expect(run('--push', 'origin')).toMatchObject({ status: 0, out: 'Rekenraam-AI/ressim\n', err: '' });
+    });
+
     it('--push honours pushInsteadOf', () => {
         git('remote', 'add', 'origin', 'https://github.com/sergeyfarin/ressim.git');
         git('config', 'url.git@github.com:Rekenraam-AI/.pushInsteadOf', 'https://github.com/sergeyfarin/');

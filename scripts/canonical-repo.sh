@@ -5,7 +5,8 @@
 #   bash scripts/canonical-repo.sh --remote       # the remote name that rule picks
 #   bash scripts/canonical-repo.sh REMOTE         # OWNER/NAME that REMOTE fetches from
 #   bash scripts/canonical-repo.sh --push REMOTE  # OWNER/NAME that `git push REMOTE` writes to
-#                                                 # (honours remote.REMOTE.pushurl and pushInsteadOf)
+#                                                 # (honours remote.REMOTE.pushurl and pushInsteadOf;
+#                                                 # fails when the push goes to more than one repository)
 #
 # Every `gh` call in the agent skills names its repository with this, as a one-line prefix:
 #
@@ -67,17 +68,36 @@ if [ "$mode" = name ]; then
     exit 0
 fi
 
-if [ "$mode" = push ]; then
-    url=$(git remote get-url --push "$remote")
-    what="push URL"
-else
-    url=$(git remote get-url "$remote")
-    what="URL"
-fi
-
-if ! parse "$url"; then
-    echo "canonical-repo: the $what of remote '$remote' is not a GitHub repository URL" \
+reject() {
+    echo "canonical-repo: $1 of remote '$remote' is not a GitHub repository URL" \
          "(https://github.com/OWNER/NAME, git@github.com:OWNER/NAME or" \
          "ssh://git@[ssh.]github.com[:PORT]/OWNER/NAME)" >&2
     exit 1
+}
+
+if [ "$mode" = fetch ]; then
+    # `git fetch REMOTE` uses the first URL only.
+    url=$(git remote get-url "$remote")
+    parse "$url" || reject "the URL"
+    exit 0
 fi
+
+# `git push REMOTE` writes to every push URL (or, without one, every URL). Each must be a GitHub
+# repository, and together they must name exactly one, or the pull request head cannot match
+# where the branch went.
+urls=$(git remote get-url --push --all "$remote")
+dests=
+n=0
+while IFS= read -r url; do
+    [ -n "$url" ] || continue
+    n=$((n + 1))
+    dest=$(parse "$url") || reject "push URL $n"
+    dests=$(printf '%s\n%s' "$dests" "$dest")
+done <<<"$urls"
+count=$(printf '%s\n' "$dests" | awk 'NF' | sort -u | awk 'END { print NR }')
+if [ "$count" -ne 1 ]; then
+    echo "canonical-repo: remote '$remote' pushes to $count repositories; configure one push" \
+         "destination before pushing" >&2
+    exit 1
+fi
+printf '%s\n' "$dests" | awk 'NF' | head -n 1
