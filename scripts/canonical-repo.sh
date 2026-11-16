@@ -84,7 +84,8 @@ fi
 
 # `git push REMOTE` writes to every push URL (or, without one, every URL). Each must be a GitHub
 # repository, and together they must name exactly one, or the pull request head cannot match
-# where the branch went.
+# where the branch went. GitHub owner and repository names are case-insensitive, so
+# OWNER/NAME and owner/name are one destination.
 urls=$(git remote get-url --push --all "$remote")
 dests=
 n=0
@@ -94,7 +95,7 @@ while IFS= read -r url; do
     dest=$(parse "$url") || reject "push URL $n"
     dests=$(printf '%s\n%s' "$dests" "$dest")
 done <<<"$urls"
-count=$(printf '%s\n' "$dests" | awk 'NF' | sort -u | awk 'END { print NR }')
+count=$(printf '%s\n' "$dests" | awk 'NF { print tolower($0) }' | sort -u | awk 'END { print NR }')
 if [ "$count" -ne 1 ]; then
     echo "canonical-repo: remote '$remote' pushes to $count repositories; configure one push" \
          "destination before pushing" >&2

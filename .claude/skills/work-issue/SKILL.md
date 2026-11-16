@@ -125,27 +125,33 @@ reason. Do not start a second feature or a broad refactor.
     set -euo pipefail
     repo=$(bash scripts/canonical-repo.sh)
     dest=$(bash scripts/canonical-repo.sh --push origin)
-    network=$(gh api "repos/$repo" --jq '.source.full_name // .full_name')
-    dest_network=$(gh api "repos/$dest" --jq '.source.full_name // .full_name')
-    if [ "$dest_network" != "$network" ]; then
+    ids='[.id, .owner.id, (.source.id // .id), .owner.login] | @tsv'
+    r=$(gh api "repos/$repo" --jq "$ids")
+    d=$(gh api "repos/$dest" --jq "$ids")
+    read -r repo_id repo_owner repo_network _ <<<"$r"
+    read -r dest_id dest_owner dest_network dest_login <<<"$d"
+    if [ "$dest_network" != "$repo_network" ]; then
       echo "not pushing: $dest is neither $repo nor a fork of it" >&2; exit 1
     fi
-    if [ "$dest" != "$repo" ] && [ "${dest%%/*}" = "${repo%%/*}" ]; then
-      echo "not pushing: $dest is a fork owned by ${repo%%/*}; ask the owner" >&2; exit 1
+    if [ "$dest_id" != "$repo_id" ] && [ "$dest_owner" = "$repo_owner" ]; then
+      echo "not pushing: $dest is a fork owned by $dest_login; ask the owner" >&2; exit 1
     fi
     branch=$(git branch --show-current); [ -n "$branch" ]
     git push -u origin "$branch"
-    gh pr create -R "$repo" --base master --head "${dest%%/*}:$branch" \
+    gh pr create -R "$repo" --base master --head "$dest_login:$branch" \
       --title "<title>" --body-file <file>
   )
   ```
 
   Everything is checked before the push. `dest` is the one repository `git push origin`
   writes to: it honours `remote.origin.pushurl` and `pushInsteadOf`, and the helper fails when
-  there are several push URLs naming different repositories. `dest` must be the canonical
-  repository or a fork in its network (same `source`), because a pull request can only come from
-  there. A fork owned by the canonical repository's owner is refused: GitHub then needs the head
-  repository by name, which `gh pr create` cannot pass. In a fork, `origin` is the fork; the
+  there are several push URLs naming different repositories. The checks compare GitHub's
+  numeric IDs, never names, because GitHub names are case-insensitive (`sergeyfarin/ResSim` is
+  `sergeyfarin/ressim`). `dest` must be the canonical repository or a fork in its network (same
+  `source` ID), because a pull request can only come from there. A different repository owned
+  by the canonical repository's owner (same owner ID) is refused: GitHub then needs the head
+  repository by name, which `gh pr create` cannot pass. The head owner is the login GitHub
+  reports, in GitHub's own spelling. In a fork, `origin` is the fork; the
   branch goes there and the pull request is opened on the canonical repository, from
   `<fork-owner>:<branch>`. Issues are read and filed there too
   (`repo=$(bash scripts/canonical-repo.sh) && gh issue create -R "$repo" …`).

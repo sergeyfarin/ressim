@@ -128,6 +128,15 @@ describe('canonical-repo.sh', () => {
         expect(run('--push', 'origin')).toMatchObject({ status: 0, out: 'Rekenraam-AI/ressim\n', err: '' });
     });
 
+    it('--push treats owner and repository names case-insensitively, as GitHub does', () => {
+        git('remote', 'add', 'origin', 'https://github.com/sergeyfarin/ressim.git');
+        git('remote', 'set-url', '--add', '--push', 'origin', 'https://github.com/sergeyfarin/ressim.git');
+        git('remote', 'set-url', '--add', '--push', 'origin', 'git@github.com:SergeyFarin/ResSim.git');
+        expect(run('--push', 'origin')).toMatchObject({ status: 0, out: 'sergeyfarin/ressim\n', err: '' });
+        git('remote', 'set-url', '--add', '--push', 'origin', 'https://github.com/sergeyfarin/ResSim-2.git');
+        expect(run('--push', 'origin')).toMatchObject({ status: 1, out: '' });
+    });
+
     it('--push honours pushInsteadOf', () => {
         git('remote', 'add', 'origin', 'https://github.com/sergeyfarin/ressim.git');
         git('config', 'url.git@github.com:Rekenraam-AI/.pushInsteadOf', 'https://github.com/sergeyfarin/');
