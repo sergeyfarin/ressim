@@ -1,47 +1,21 @@
 # ResSim work tracker
 
-GitHub Issues is the source of truth for actionable work:
+This file is a landing page for older links: code comments and documents written before the
+tracker moved to GitHub Issues say "see `TODO.md`". It is not a tracker and holds no rules.
 
-- [Open issues](https://github.com/sergeyfarin/ressim/issues)
-- [Limited public release milestone](https://github.com/sergeyfarin/ressim/milestone/1)
-- [Prioritized roadmap](ROADMAP.md)
+- Actionable work, priority and status: [GitHub Issues](https://github.com/sergeyfarin/ressim/issues)
+- Strategic order: [ROADMAP.md](ROADMAP.md)
+- Tracking rules, branches, pull requests and commits: [docs/DEVELOPER_WORKFLOW.md](docs/DEVELOPER_WORKFLOW.md)
+- Deliberate deferrals and known gaps: [docs/OPEN_ITEMS_2026-09-21.md](docs/OPEN_ITEMS_2026-09-21.md)
 
-This file remains as a stable landing page for older links. It is deliberately not a second
-checkbox tracker. Do not add task narratives or completed-work history here.
-
-## Now
-
-The limited public release ([#8](https://github.com/sergeyfarin/ressim/issues/8)) is deployed and
-its milestone is closed. See [ROADMAP.md](ROADMAP.md) for the current order.
-
-### Next
-
-- [#52 — Run SPE5, then SPE3, after their enablers](https://github.com/sergeyfarin/ressim/issues/52)
-- [#56 — Benchmark signals (nightly)](https://github.com/sergeyfarin/ressim/issues/56)
-
-#12's remaining second black-oil envelope case is blocked on #16/#17. The roadmap owns the full
-order; this list is a dashboard, not a second execution tracker.
-
-## Tracking rules
-
-1. Create or update a GitHub Issue for an actionable bug, feature, validation gap, or maintenance
-   task. Give it an outcome, acceptance criteria, priority, and area label.
-2. Put stable scientific evidence and replay commands in the owning validation document. Put FIM
-   experiments and negative results in `docs/FIM_EXPERIMENT_REGISTRY.md` and
-   `docs/FIM_CONVERGENCE_WORKLOG.md`.
-3. Keep strategic sequencing in `ROADMAP.md` and detailed case sourcing in
-   `docs/CASE_LIBRARY_ROADMAP.md`. Do not duplicate those narratives in issue bodies.
-4. Close the issue when its acceptance criteria and required validation gate are complete. Link the
-   implementing commit or pull request.
-5. Discoveries made while working belong in the current issue when in scope; otherwise open a new
-   issue before declaring the work complete.
-
-Use the repository issue forms for implementation work and scientific investigations. Apply one
-priority label and at least one area label; use `research` only when the outcome depends on a
-hypothesis/oracle rather than a predetermined implementation.
+Do not add tasks, a "next" list or completed-work history here.
 
 ## Migration record
 
 The former 1,294-line tracker is preserved in Git history at commit `991b19d`. The issue mapping and
 the reason for the change are recorded in
 `.archive/docs/TRACKER_MIGRATION_2026-08-02.md`.
+
+On 2026-11-15 (owner decision) the tracking rules that lived here moved to
+`docs/DEVELOPER_WORKFLOW.md`, and the "Now / Next" list was removed because `ROADMAP.md` owns
+the order.

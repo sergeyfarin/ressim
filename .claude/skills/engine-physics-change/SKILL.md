@@ -1,6 +1,6 @@
 ---
 name: engine-physics-change
-description: Safely modify the Rust/WASM reservoir simulation core (relperm, PVT, capillary, wells, IMPES/FIM solvers, grid, reporting). Use when adding or changing physics, editing anything under src/lib/ressim/src/, or exposing new simulator API to the frontend.
+description: Safely modify the Rust/WASM reservoir simulation core (relperm, PVT, capillary, wells, IMPES/FIM solvers, the compositional engine and its EOS/flash, grid, reporting). Use when adding or changing physics, editing anything under src/lib/ressim/src/, or exposing new simulator API to the frontend.
 ---
 
 # Changing the Rust Engine Safely
@@ -29,7 +29,8 @@ Transmissibility: `T = 8.5269888e-3 × k[mD] × A[m²] × λ[1/cP] / L[m]` in m�
 - `step.rs` — thin dispatcher (IMPES vs FIM) + shared gas-split helpers. Keep it thin.
 - `impes/` — IMPES solver: `pressure.rs` (PCG), `transport.rs` (explicit saturation), `closure.rs` (component flash), `timestep.rs`.
 - `fim/` — fully implicit solver; ships in the gas, black-oil and capillary scenarios (read the `fim-solver-debug` skill before touching).
-- `compositional/` — separate Peng–Robinson engine; gated by `scripts/validate-compositional.sh`.
+- `compositional/` + `fluid/` — separate Peng–Robinson compositional engine and its thermodynamics; gated by `scripts/validate-compositional.sh`. **Read `compositional.md` beside this file before changing either, or `tools/jutul/`.**
+- `ad.rs` (dual numbers for the AD assembly), `math.rs` (the only place engine code gets `pow`/`exp`/`ln`/trig), `solvers/` (sparse LU, BiCGSTAB), `schedule.rs` (well-event envelope shared by both engines), `timing.rs`.
 - `api.rs` — the payload boundary: plain Rust types a consumer reads and supplies, over serde. **No target types** (`JsValue`, `PyObject`) here or anywhere else in the engine.
 - `frontend.rs` — wasm-bindgen shim converting `api.rs` types to `JsValue`, consumed by `src/lib/workers/sim.worker.ts`. `crates/ressim-py` is the Python shim over the same API. Neither shim holds a decision (`docs/ENGINE_PAYLOAD_BOUNDARY_DESIGN_2026-09-21.md`).
 
@@ -67,7 +68,7 @@ Naming: cross-solver contracts are `*_on_both_solvers`; physics regressions are 
 - **Do not weaken benchmark tolerances** (`benchmark_buckley_*` in `src/tests/buckley.rs`, methodology in `docs/P4_TWO_PHASE_BENCHMARKS.md`) without written justification.
 - No `unwrap()` in library code; explicit error handling.
 - `///` doc comments on public API; `cargo fmt` before committing.
-- New physics needs an oracle: an analytical solution, a conservation/invariant check, or a finite-difference Jacobian check — not just "runs without crashing". Existing patterns: FD Jacobian acceptance tests in `fim/assembly.rs`, Peaceman connection-law oracle in `tests/physics/wells_sources.rs`, closed-system inventory checks.
+- New physics needs an oracle: an analytical solution, a conservation/invariant check, or a finite-difference Jacobian check — not just "runs without crashing". Existing patterns: FD Jacobian acceptance tests in `fim/assembly_tests.rs`, Peaceman connection-law oracle in `tests/physics/wells_sources.rs`, closed-system inventory checks.
 - Both IMPES modes transport surface water and oil and flash their pressure-dependent volumes (#63); three-phase also transports gas (#37). FIM solves component equations. Check independent final inventory plus accepted-substep production minus injection, not just the engine's own material-balance report. The cross-solver gate enforces this for every IMPES deck.
 
 ## Exposing new API to the frontend

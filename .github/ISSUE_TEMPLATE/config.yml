@@ -1,7 +1,10 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Roadmap and tracker guide
-    url: https://github.com/sergeyfarin/ressim/blob/master/TODO.md
+  - name: Report a security vulnerability
+    url: https://github.com/sergeyfarin/ressim/security/advisories/new
+    about: Report it privately. Do not open a public issue for a suspected vulnerability.
+  - name: Tracking rules and workflow
+    url: https://github.com/sergeyfarin/ressim/blob/master/docs/DEVELOPER_WORKFLOW.md
     about: Read the ownership and tracking rules before opening an issue.
   - name: Scientific limitations
     url: https://github.com/sergeyfarin/ressim/blob/master/docs/SCIENTIFIC_LIMITATIONS.md

@@ -24,7 +24,7 @@ ScenarioPicker → parameterStore → buildCreatePayload → sim.worker.ts → W
 | Layer | Files | Role |
 |---|---|---|
 | Scenario-first routing shell | `ScenarioChart.svelte`, `scenarioChartModel.ts` | Builds a `BenchmarkFamily`-shaped comparison spec from a `Scenario` (`buildScenarioComparisonFamily`) and routes every scenario chart through `ReferenceComparisonChart`, for zero-run previews, single runs, and sensitivity comparisons. |
-| Comparison renderer | `ReferenceComparisonChart.svelte` (~480 ln), `buildChartData.ts` (~890 ln, one cohesive `buildReferenceComparisonModel()` orchestrator) | Assembles the panel/curve model for the comparison view. Fully scenario-data-driven — the `BenchmarkFamily`/`BenchmarkVariant` types it consumes live in `src/lib/scenario/referenceTypes.ts` (dependency-free), not in legacy runtime data. Simulation quantities and curve placement are declared in `runQuantities.ts` and `simulationCurves.ts`. |
+| Comparison renderer | `ReferenceComparisonChart.svelte`, `buildChartData.ts` (one cohesive `buildReferenceComparisonModel()` orchestrator) | Assembles the panel/curve model for the comparison view. Fully scenario-data-driven — the `BenchmarkFamily`/`BenchmarkVariant` types it consumes live in `src/lib/scenario/referenceTypes.ts` (dependency-free), not in legacy runtime data. Simulation quantities and curve placement are declared in `runQuantities.ts` and `simulationCurves.ts`. |
 | Analytical-method registry | `analyticalMethodRegistry.ts` | **The routing table.** One `AnalyticalMethodDescriptor` per `AnalyticalMethod`: curve slots (panel + curve key + per-context label), `fromResult` / `fromParams` overlay builders, overlay-mode rule, native x-axis, panel presentation, disclosure label. `buildChartData.ts`, `ReferenceComparisonChart.svelte`, `benchmarkDisclosure.ts` and `axisAdapters.ts` all read it instead of branching on the method name. |
 | Per-family builder modules | `referenceOverlayBuilders.ts` (BL/depletion/gas-oil/well-test analytical overlays), `sweepPanelBuilder.ts` (sweep panels), `axisAdapters.ts` (x-axis mapping), `analyticalParamAdapters.ts` (per-method param derivation), `referenceChartTypes.ts` (shared panel/color types) | Each analytical family's physics/overlay logic lives here and is named by a registry entry — extend these when adding a new analytical method or overlay, don't inline more into the orchestrator. |
 
@@ -32,7 +32,7 @@ The legacy benchmark-family system (`bl_case_a_refined`, `dietz_sq_*`, `fetkovic
 
 Rules:
 
-- **Consumers are scenario-key agnostic.** Catalog placement, picker copy, solver policy/rationale, analytical selection, reference sources, chart preset/patch, live panels, sensitivities, termination and history-window behavior are declared in the individual scenario module. Never add `if (scenario.key === ...)` or its family/case-key equivalent outside scenario definitions. Shared analytical-method and chart-preset registries remain the reusable implementation boundary. See `docs/SCENARIO_CATALOG_ARCHITECTURE.md`.
+- **Consumers are scenario-key agnostic.** Catalog placement, picker copy, solver policy/rationale, analytical selection, reference sources, chart preset/patch, sensitivities, termination and history-window behavior are declared in the individual scenario module. Never add `if (scenario.key === ...)` or its family/case-key equivalent outside scenario definitions. Shared analytical-method and chart-preset registries remain the reusable implementation boundary. See `docs/SCENARIO_CATALOG_ARCHITECTURE.md`.
 
 - **Adding an analytical method is a registry edit, not an orchestrator edit.** Write the overlay builder in `referenceOverlayBuilders.ts` / `analyticalParamAdapters.ts`, then add one `AnalyticalMethodDescriptor` to `analyticalMethodRegistry.ts`. Do not add an `if (analyticalMethod === …)` branch anywhere — if the behavior you need isn't expressible as a descriptor field, add the field. `analyticalMethodRegistry.test.ts` asserts a descriptor exists for every method and that native-axis declarations agree with `ANALYTICAL_OUTPUT_CONTRACTS`.
 - A method with no reference solution (`'none'`, `'digitized-reference'`, `'sweep'`) has no curve slots and emits nothing. It must never fall through to another method's overlay path — that bug shipped for a while and is now pinned by a regression test in `referenceComparisonModel.test.ts`.
@@ -58,7 +58,7 @@ Rules:
 - Tailwind utilities, no custom CSS unless unavoidable.
 - Single-purpose components; state as high as needed, no higher.
 - No new dependencies without strong justification.
-- Architecture-shaped tests exist and will fail on violations (e.g. `no-direct-chart-datasets-access.test.ts`, `ratechart-usage.test.ts`). Treat them as the spec.
+- Architecture-shaped tests exist and will fail on violations (`no-direct-chart-datasets-access.test.ts`, `no-literal-border-dash.test.ts`, `chartAgnosticArchitecture.test.ts`, `scenarioAgnosticArchitecture.test.ts`, `packageBoundaries.test.ts`). Treat them as the spec.
 
 ## Validation
 

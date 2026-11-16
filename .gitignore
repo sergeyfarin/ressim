@@ -52,3 +52,6 @@ tools/opm_flow/tmp/
 crates/ressim-py/parity/ressim.so
 crates/ressim-py/parity/reference_wasm.json
 crates/ressim-py/parity/reference_catalog_wasm.json
+
+# Agent scratch worktrees (review-pr, sweep and drift probes)
+.claude/worktrees/

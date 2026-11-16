@@ -25,46 +25,50 @@ uv run --directory tools/opm_flow python -m opm_flow_tool.cli build-artifacts al
 
 ## How the pieces connect
 
-- `tools/opm_flow/opm_flow_tool/cases.py` — `OpmCase` definitions. Nineteen cases as of 2026-09-26: `wf_bl1d`, `spe1_gas_injection`, `gas_drive`, `wf_gravity`, `wf_numerics` / `wf_numerics_fine`, `dep_gas_pz` / `dep_gas_pz_geopressured`, `gas_injection`, the four `dep_pvt` rungs (`dep_pvt_correlation` / `_lab_report` / `_petrosky_farshad` / `_al_marhoun`, each scoped to its ladder with `dimensionKeys`), and the six two-phase waterfloods `sweep_areal`, `sweep_vertical`, `sweep_crossflow`, `sweep_combined`, `wf_capillary`, `wf_gravity_stability` (`_catalog_waterflood_case`). A pair drawn on one chart needs distinct `curveKey`s (`opm-fine-`, `opm-geo-`, `opm-lab-`, `opm-pf-`, `opm-am-` prefixes) and says its rung in every label.
-  - **Inline vs committed decks.** Most decks are text in `cases.py`. `gas_drive`, `gas_injection`, the `dep_pvt` pair and the six waterfloods read a committed deck (`deck_source`) that `src/lib/ressim/src/tests/opm_small_direct.rs` generates from the same ResSim simulator the scenario configures — prefer this for a new case: relperm and PVT are sampled from ResSim's own functions, so the deck cannot disagree with the engine about inputs, and `compare_small_direct.py` grades ResSim cell by cell against the same Flow run. `flow_args` carries options the deck must run with (`--enable-gravity=false` for a gravity-off small-direct deck). The writer handles gravity (real `TOPS`, explicit well datum), layered grids, multi-completion wells (one `WELSPECS`, a `COMPDAT` row per completion; gravity-on wells must have one), two-phase Brooks-Corey P_c in `SWOF` and reservoir-volume water-injection targets (written as the surface `RATE` at the completion cell's initial pressure: JutulDarcy 0.3.7 cannot run `RESV` injectors). It refuses (panics) on three-phase P_c and reservoir-volume gas targets rather than writing them wrong.
-  - **Grading the scenario, not just the engine.** `src/lib/catalog/opmFlowTwin.ts` runs a scenario variant through `buildCreatePayloadForRun` + `configureReservoirSimulator` and compares it with its artifact (cumulative oil and injection, breakthrough, final water cut); each waterflood's `<key>.test.ts` states its bands. This is what catches a scenario edit the Rust builder does not mirror.
-  - `curve_display` maps a summary vector (mnemonic, or `"MNEMONIC:NAME"` for well vectors) to `{panelKey, curveKey, label}`.
-- **The vector contract** — `tools/opm_flow/opm_flow_tool/vectors.py` (#20). Each mnemonic has the METRIC unit Flow prints for it, the panels it may be drawn on, and a token (`oil`, `water`, `gas`, `injection`, `pressure`, …) its curve key *and* label must contain. `build_artifact()` checks the `.RSM` unit row against it: a non-METRIC deck, a TIME column not in DAYS, a unit mismatch, or a mapped mnemonic with no contract makes the artifact `status: "error"` and `build-artifacts` exits 1. Adding a vector means adding its row here first. (Before the contract, four waterflood cases declared `m3/day` while Flow wrote `SM3/DAY`, and `wf_bl1d` drew Sm³/day rates on the water-cut panel.)
-- **x-axis mapping.** Three independent mappings, each from a declared vector:
-  - `cumulative_injection_curve` (FVIT, **reservoir** RM3) + `pore_volume_m3` -> `xAxis.pvi` / `cumulativeInjectionM3`. PVI only. Flow's reservoir-volume vectors convert at the field-average pressure (RESV convention; FVIT = ∫ FGIR·Bg(FPR) dt to 5e-5 on `gas_injection`), and so does the simulation's PVI since #43 (`total_injection_resv`). The engine's `total_injection_reservoir` converts at the injector cell instead and is **not** comparable to FVIT for gas.
-  - `cumulative_surface_injection_curve` (FWIT/FGIT, **surface** SM3) -> `xAxis.cumulativeInjectionSm3`, the only source for the cumulative-injection axis, because ResSim's cum-injection is surface volume. For gas the two bases differ by Bg; never feed one axis from the other.
-  - `cumulative_gas_curve` (FGPT) -> `xAxis.cumulativeGasSm3`, for p/z charts.
-  The frontend's `mapReferenceTimesToXAxis` returns `null` — the series is **dropped**, not misplaced — on any axis the artifact publishes no mapping for.
-- `tools/opm_flow/opm_flow_tool/summary.py` — hand-rolled `.RSM` text-summary parser (records the TIME unit too). Fixed-width columns, uniform gap derived from the mnemonic row's own token spacing (not from dividing separator width evenly — that fails when there's non-column margin). Header/data separator is found by scanning *forward* from the `TIME` row, not by taking the first dashed line in the page. See the module docstring for the full validated layout.
-- `tools/opm_flow/opm_flow_tool/artifacts.py::build_artifact()` — writes `src/lib/catalog/opm-flow-results/<case>.json`, **schema 2**: each series carries `mnemonic` and verified `unit`; `provenance` records `deckSource`, `flowArgs`, the `replay` command and `origin` (where the model inputs come from and their licence — record this *before* bundling any third-party-derived deck). `deckHash` is the SHA-256 of the deck text. Never raises; a failure degrades to `status: "error"` with the reason in `notes`.
-- Frontend: `src/lib/catalog/opmFlowArtifacts.ts::resolveScenarioReferenceSeries()` renders series only when `status === 'parsed'`. Scenarios opt in with `referenceSources: [{ kind: 'opm-flow', artifactKeys: [...] }]` — no implicit scenarioKey match.
+| File | Role |
+|---|---|
+| `tools/opm_flow/opm_flow_tool/cases.py` | `OpmCase` definitions: the deck (inline text or a committed `deck_source`), `flow_args`, `curve_display` |
+| `tools/opm_flow/opm_flow_tool/vectors.py` | The vector contract: unit, allowed panels and naming token for each summary mnemonic |
+| `tools/opm_flow/opm_flow_tool/summary.py` | `.RSM` text-summary parser |
+| `tools/opm_flow/opm_flow_tool/artifacts.py` | `build_artifact()` writes `src/lib/catalog/opm-flow-results/<case>.json` with units, provenance and `deckHash` |
+| `src/lib/ressim/src/tests/opm_small_direct.rs` | Writes the committed decks from ResSim's own simulator setup |
+| `src/lib/catalog/opmFlowArtifacts.ts` | `resolveScenarioReferenceSeries()` renders the `status === 'parsed'` series a scenario declares |
+| `src/lib/catalog/opmFlowTwin.ts` | Grades a scenario variant against its artifact |
+
+Rules that hold for every use:
+
+- An artifact is drawn only when a scenario lists it in `referenceSources`. Nothing is matched
+  implicitly.
+- Adding a summary vector means adding its row to `vectors.py` first. A unit mismatch makes the
+  artifact `status: "error"` and `build-artifacts` exits 1.
+- Surface volumes (SM3) and reservoir volumes (RM3) never feed the same axis.
+- For a new case, prefer a committed deck generated by `opm_small_direct.rs` over inline deck
+  text: its inputs cannot disagree with the engine.
+
+The full description of each piece is in `internals.md` beside this file. Read it before editing
+`cases.py`, `vectors.py`, `summary.py` or `artifacts.py`, before adding a curve or an x-axis
+mapping, and before writing a deck feature (gravity, layered grids, multi-completion wells,
+capillary pressure, reservoir-volume targets).
 
 ### Gates
 
 - `tools/opm_flow/tests` (pytest; PR CI step "Run OPM artifact pipeline tests"): the unit contract, every case's mappings against it, every committed artifact `parsed`, schema-current, attributed, and generated from the deck its case holds now (deck edited without a Flow re-run fails).
 - `src/lib/catalog/opmReferenceWiring.test.ts` (Vitest, also on master): every artifact is declared by its scenario, lands on a panel that scenario draws, can be placed on the axis its chart opens on, and has one unit per panel; committed-deck artifacts re-hash their deck file.
 
-## Deck-physics caveat — RESOLVED 2026-07-24 (COMPDAT item shift)
+## Deck pitfalls this repo has shipped
 
-Both decks put the wellbore *radius* in `COMPDAT` **item 8** (connection transmissibility factor)
-instead of item 9 (wellbore *diameter*). Flow then used that number as the CF verbatim, choking every
-connection by ~2 orders of magnitude. Symptoms: `wf_bl1d` FOPR ~1e-4 sm3/day with FWPR tracking FWIR
-from the first timestep; `spe1_gas_injection` FOPR ~24 sm3/day with **both** wells pinned to their
-BHP limits from day 1. Fixed by defaulting items 7-8 (`2*`) and passing the diameter in item 9
-(`0.2` m for `wf_bl1d`, `0.1524` m for SPE1). **When adding a deck, remember COMPDAT item 9 is a
-diameter, and sanity-check that a rate-controlled well actually holds its target rate.**
+Check a new or edited deck against each one. The full entries, with symptoms and the post-fix
+validation, are in `deck-pitfalls.md` beside this file.
 
-Fixed in the same pass for SPE1 (it was depth-degenerate and Case-2-flavoured): `TOPS` 0 → 2537.46 m
-with matching `EQUIL`/`RSVD`/`WELSPECS` datum depths, added `EQLDIMS`, and added `DRSDT 0` (Case 1
-has no re-dissolution, matching the scenario's `gasRedissolutionEnabled: false`).
-
-Post-fix validation — the generated deck now tracks the canonical `OPM/opm-common/tests/SPE1CASE1.DATA`
-(run with `flow SPE1CASE1.DATA --output-dir=.`, WELLDIMS raised to 4 so the RFT wells load) within
-~4 % on FOPR and ~8 % on late-time GOR, with the same ~day-1000 BHP-floor decline onset. `wf_bl1d`
-now shows a proper Buckley-Leverett front: FOPR flat ~70 sm3/day to breakthrough at ~14.5 d
-(≈0.55 PV, as expected for a 1920 m³ PV at ~70 m³/day), then declining as FWPR rises.
-
-Also fixed in the 2026-07-16 pass in the same pass, two pre-existing deck bugs unrelated to parsing that were silently blocking any real `flow` run of these two cases: `wf_bl1d`'s `PVDO` table had non-monotonic (flat) Bo values, which Flow rejects — now uses `c_o = 1e-5/bar` matching the ResSim `wf_bl1d` scenario's own declared compressibility; `spe1_gas_injection`'s `TABDIMS` declared `NTSFUN=2, NTPVT=15` while every PVT/SCAL keyword only supplied one region's table — corrected to `1 1`.
+- `COMPDAT` item 9 is the wellbore **diameter** and items 7-8 are defaulted (`2*`). A radius in
+  item 8 is read as the connection factor.
+- A rate-controlled well at its BHP limit from the first step is a signal, not proof of a
+  defect: Flow switches to BHP control when the target exceeds what the well can deliver. Check
+  that the target is feasible for the reservoir and the connection factors (`COMPDAT` items
+  8-9). When the target is feasible and rate control is active, the well must hold it.
+- `PVDO` Bo values must be monotonic; Flow rejects a flat table.
+- `TABDIMS` must match the number of tables the PVT and SCAL keywords supply.
+- Depth datums agree across `TOPS`, `EQUIL`, `RSVD` and `WELSPECS`; SPE1 Case 1 needs `DRSDT 0`.
 
 ## Adding a case
 

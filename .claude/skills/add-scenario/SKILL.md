@@ -15,13 +15,18 @@ Scenarios are the product's core content unit: a self-describing definition that
   time-varying well schedule. The worker can apply each well's initial control, target, limit, and
   enabled state; it is not a full deck scheduler. Don't define a scenario the engine can't
   honestly run. Read `docs/THREE_PHASE_VALIDATION.md` before extending the three-phase envelope.
+- Those limits are the black-oil engine's. A compositional scenario is built through
+  `buildCompositionalCase` (`src/lib/compositional/createPayload.ts`); `comp_co2_1d.ts` is the
+  exemplar, well schedules exist there (`schedule.rs`), and the validated envelope is
+  `docs/COMPOSITIONAL_VALIDATION.md`. Read
+  `.claude/skills/engine-physics-change/compositional.md` first.
 - Read one exemplar end-to-end: `src/lib/catalog/scenarios/wf_bl1d.ts` (simple) or `spe1_gas_injection.ts` (black-oil, per-layer dz, PVT table, published references).
 
 ## Checklist
 
 1. **Create** `src/lib/catalog/scenarios/<key>.ts` exporting a `Scenario`.
    - Key convention: `{domain}_{physics_descriptor}` (`wf_bl1d`, `dep_pss`, `gas_injection`).
-   - Required: `key`, `label`, `catalog` (explicit group, role, case mode, picker summary), `description`, `analyticalMethodSummary`, `analyticalMethodReference` (cite the actual literature), `chartLayoutKey`, `capabilities`, scenario-owned `solverPolicy`, `params`, `analyticalDef`, `liveChartPanels`, `sensitivities`, `defaultSensitivityDimensionKey`.
+   - Required: `key`, `label`, `catalog` (explicit group, role, case mode, picker summary), `description`, `analyticalMethodSummary`, `analyticalMethodReference` (cite the actual literature), `chartLayoutKey`, `capabilities`, scenario-owned `solverPolicy`, `params`, `sensitivities`. Usual: `analyticalDef` (absent only for the `'none'` and `'digitized-reference'` methods), `defaultSensitivityDimensionKey`, `chartLayoutPatch`. The `Scenario` type in `src/lib/catalog/scenarios.ts` is the authority.
    - `capabilities` routes everything: `analyticalMethod`, `hasInjector`, `default3DScalar`, `requiresThreePhaseMode`. It is a **discriminated union on `analyticalMethod`**, so the compiler enforces the method's own rules: `primaryRateCurve` is narrowed to that method's `supportedRateCurves`, and `sweepGeometry` (plus optional `sweepMethods`) is required on `'sweep'` and rejected on every other method (there is no `showSweepPanel` flag). If an editor rejects your capabilities object, the scenario is wrong — don't cast around it.
 2. **Register** it in `src/lib/catalog/scenarios.ts` (import + registry entry). That file is the single source of truth.
 3. **Analytical wiring**: reuse an existing `analyticalDef` from `src/lib/catalog/analyticalAdapters.ts` if the method exists. A genuinely new method needs, in order — this is a bigger change; keep it a separate commit:
@@ -31,7 +36,7 @@ Scenarios are the product's core content unit: a self-describing definition that
    - **one `AnalyticalMethodDescriptor` in `charts/analyticalMethodRegistry.ts`** — curve slots, overlay builders, overlay-mode rule, native x-axis, panel presentation, disclosure label.
 
    That last entry is the whole comparison-chart wiring. Do **not** add an `if (analyticalMethod === …)` branch to `buildChartData.ts`, `ReferenceComparisonChart.svelte` or `benchmarkDisclosure.ts` — they are registry-driven. See the `frontend-architecture` skill.
-4. **Charts**: pick or compose `liveChartPanels` from `src/lib/catalog/chartPanels/`; pick `chartLayoutKey` from `chartLayouts.ts`. Follow the `CurveConfig[]` / `toggleGroupKey` / `legendSection` pattern — never bypass `ChartSubPanel`.
+4. **Charts**: pick `chartLayoutKey` from `src/lib/catalog/chartLayouts.ts`; a scenario does not list its own panels. Follow the `CurveConfig[]` / `toggleGroupKey` / `legendSection` pattern — never bypass `ChartSubPanel`.
    - All case-specific panel choices, curve selections, expansion state, labels and formatting overrides belong in the scenario's `chartLayoutPatch`; renderers must not branch on the scenario key.
 5. **Sweep scenarios**: list selectable correlations in `capabilities.sweepMethods`, most-preferred first (first = default). Labels, claims and citations come from `src/lib/analytical/sweepMethods.ts` — never restate them in the scenario file, and never add a `Scenario.analyticalOptions` array (the field is gone). Only declare two or more methods where the choice actually changes the curves: at `sweepGeometry: 'areal'` the correlations are numerically identical, so a toggle there would do nothing. Measure before offering one.
 6. **Sensitivities**: dimension keys are `lower_snake`; variant keys are `{dim_abbrev}_{value_tag}` (`mob_favorable`, `sor_low`). Every variant needs a `paramPatch` and an honest `affectsAnalytical` flag.

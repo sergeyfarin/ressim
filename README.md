@@ -329,6 +329,8 @@ page" is demonstrated rather than asserted; see `docs/ARCHITECTURE_SPLIT_PLAN_20
 | `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase implementation details and parameter reference |
 | `docs/UNIT_SYSTEM.md` | Unit conventions, equations, and PVT / solver notes |
 | `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
+| `docs/DEVELOPER_WORKFLOW.md` | Tracking rules, branches and pull requests, commits, review |
+| `docs/AGENT_TASK_PLAYBOOK.md` | How to direct coding agents: the task and area skills and what each returns |
 | `docs/DOCUMENTATION_INDEX.md` | Which documents are authoritative vs historical |
 
 ## Near-Term Focus
