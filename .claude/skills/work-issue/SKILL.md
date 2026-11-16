@@ -118,24 +118,37 @@ reason. Do not start a second feature or a broad refactor.
 ## 6. Ship
 
 - Commit with Conventional Commits (`docs/DEVELOPER_WORKFLOW.md` → Commits), then push and open
-  the pull request against the canonical repository:
+  the pull request against the canonical repository, in one strict subshell:
 
   ```sh
-  repo=$(bash scripts/canonical-repo.sh) &&
-  dest=$(bash scripts/canonical-repo.sh --push origin) &&
-  branch=$(git branch --show-current) && [ -n "$branch" ] &&
-  git push -u origin "$branch" &&
-  gh pr create -R "$repo" --base master --head "${dest%%/*}:$branch" \
-    --title "<title>" --body-file <file>
+  (
+    set -euo pipefail
+    repo=$(bash scripts/canonical-repo.sh)
+    dest=$(bash scripts/canonical-repo.sh --push origin)
+    network=$(gh api "repos/$repo" --jq '.source.full_name // .full_name')
+    dest_network=$(gh api "repos/$dest" --jq '.source.full_name // .full_name')
+    if [ "$dest_network" != "$network" ]; then
+      echo "not pushing: $dest is neither $repo nor a fork of it" >&2; exit 1
+    fi
+    if [ "$dest" != "$repo" ] && [ "${dest%%/*}" = "${repo%%/*}" ]; then
+      echo "not pushing: $dest is a fork owned by ${repo%%/*}; ask the owner" >&2; exit 1
+    fi
+    branch=$(git branch --show-current); [ -n "$branch" ]
+    git push -u origin "$branch"
+    gh pr create -R "$repo" --base master --head "${dest%%/*}:$branch" \
+      --title "<title>" --body-file <file>
+  )
   ```
 
-  `dest` is the repository `git push origin` writes to (it honours `remote.origin.pushurl` and
-  `pushInsteadOf`), resolved and validated before anything is pushed; its owner is the pull
-  request's head. In a fork that is the fork, and the pull request is opened on the canonical
-  repository; issues are read and filed there too
-  (`repo=$(bash scripts/canonical-repo.sh) && gh issue create -R "$repo" …`). The chain stops
-  before the push when the push destination is not a GitHub repository, and before
-  `gh pr create` when the push fails.
+  Everything is checked before the push. `dest` is the one repository `git push origin`
+  writes to: it honours `remote.origin.pushurl` and `pushInsteadOf`, and the helper fails when
+  there are several push URLs naming different repositories. `dest` must be the canonical
+  repository or a fork in its network (same `source`), because a pull request can only come from
+  there. A fork owned by the canonical repository's owner is refused: GitHub then needs the head
+  repository by name, which `gh pr create` cannot pass. In a fork, `origin` is the fork; the
+  branch goes there and the pull request is opened on the canonical repository, from
+  `<fork-owner>:<branch>`. Issues are read and filed there too
+  (`repo=$(bash scripts/canonical-repo.sh) && gh issue create -R "$repo" …`).
 - The pull request is ready for review and follows `.github/pull_request_template.md`. The body
   states:
   - what changed and why;

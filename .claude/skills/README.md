@@ -132,8 +132,9 @@ With smaller models, or for long tasks:
   `repo=$(bash scripts/canonical-repo.sh) && gh … -R "$repo"`. An empty `-R ""` silently falls
   back to `gh`'s default, which in a fork clone is the fork. Test a new command in a fork clone
   whose `gh` default is the fork as well as in a direct clone. Where a command pushes, the pull
-  request head comes from where the push writes (`canonical-repo.sh --push origin`), not from
-  the fetch URL.
+  request head comes from where the push writes (`canonical-repo.sh --push origin`, which also
+  refuses several push destinations), not from the fetch URL, and that destination is checked
+  against the canonical repository's fork network before anything is pushed.
 - No skill command or script prints a remote URL, in output or in an error: a remote URL can
   carry a credential. Name the remote instead (`git remote -v` is never part of a report).
 - **Each fenced block is self-contained.** Every agent tool call starts a new shell, so a block
