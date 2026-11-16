@@ -122,17 +122,20 @@ reason. Do not start a second feature or a broad refactor.
 
   ```sh
   repo=$(bash scripts/canonical-repo.sh) &&
-  fork=$(bash scripts/canonical-repo.sh origin) &&
+  dest=$(bash scripts/canonical-repo.sh --push origin) &&
   branch=$(git branch --show-current) && [ -n "$branch" ] &&
   git push -u origin "$branch" &&
-  gh pr create -R "$repo" --base master --head "${fork%%/*}:$branch" \
+  gh pr create -R "$repo" --base master --head "${dest%%/*}:$branch" \
     --title "<title>" --body-file <file>
   ```
 
-  In a fork, `origin` is the fork, so the branch is pushed there and the pull request is opened
-  on the canonical repository; issues are read and filed there too
+  `dest` is the repository `git push origin` writes to (it honours `remote.origin.pushurl` and
+  `pushInsteadOf`), resolved and validated before anything is pushed; its owner is the pull
+  request's head. In a fork that is the fork, and the pull request is opened on the canonical
+  repository; issues are read and filed there too
   (`repo=$(bash scripts/canonical-repo.sh) && gh issue create -R "$repo" …`). The chain stops
-  before `gh pr create` when the push fails.
+  before the push when the push destination is not a GitHub repository, and before
+  `gh pr create` when the push fails.
 - The pull request is ready for review and follows `.github/pull_request_template.md`. The body
   states:
   - what changed and why;
