@@ -104,15 +104,16 @@ and C13's product integration is complete (#29). Next:
   [#45](https://github.com/sergeyfarin/ressim/issues/45)–[#51](https://github.com/sergeyfarin/ressim/issues/51)
   (components, immiscible water, 3-D and gravity, rate control, a sparse linear route, schedules,
   SPE3 characterization), are closed, and both payloads are authored but withheld from the picker.
-  SPE5 is no longer solver-blocked: the near-critical flash stalls (#93, #99, #102) are fixed and
-  the 16-year from-scratch run and the month-192 → 240 replay complete (`docs/SPE5_VALIDATION.md`).
+  The current from-scratch SPE5 run completes month 217 and stalls in month 218
+  ([#116](https://github.com/sergeyfarin/ressim/issues/116), `docs/SPE5_VALIDATION.md`).
   SPE5 order from here:
-  1. [#95 — Compositional well surface volumes](https://github.com/sergeyfarin/ressim/issues/95)
-     (oil rate, gas rate, GOR and water cut to chart and score)
+  1. [#95 — Compositional well surface volumes](https://github.com/sergeyfarin/ressim/issues/95) is complete.
   2. [#98 — Termination policies in the compositional run loop](https://github.com/sergeyfarin/ressim/issues/98)
-     (SPE5's GOR 10 Mscf/STB and WOR 5 shut-in; needs #95)
-  3. The JutulDarcy SPE5 reference and its scorecard row (no `opm/compositional/spe5/reference.json`
-     yet; can start alongside #95/#98)
+     is implemented. The monthly ResSim run still needs to demonstrate the GOR 10 Mscf/STB or
+     WOR 5 shut-in.
+  3. The committed `opm/compositional/spe5/reference.json` records JutulDarcy's month-207 shut-in.
+     The shared comparator covers the trajectory through that report. The scorecard row still
+     needs agreed coverage and bands.
   4. Published Killough–Kossack curves and oil-rate/GOR/pressure bands against both references
   5. Remove `comp_spe5_wag` from `WITHHELD_SCENARIOS`, with the browser/memory check
 

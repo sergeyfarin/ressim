@@ -13,8 +13,8 @@ order (read the file when the exact order matters):
 3. `validate-solver-coverage.sh all`, then the Buckley-Leverett benchmarks.
 4. `validate-compositional.sh thermo`, `validate-native-binding.sh`,
    `benchmarks.sh check --tier fast` (benchmark records and the generated page).
-5. The OPM artifact pipeline pytest (`tools/opm_flow`) and the SPE5 tool tests
-   (`python3 -I -m unittest discover -s tools/jutul/tests`).
+5. The OPM artifact pipeline and shared comparator pytest (`tools/opm_flow`, with NumPy), and the
+   SPE5 tool tests (`python3 -I -m unittest discover -s tools/jutul/tests`).
 6. The full vitest suite via `pnpm run test:coverage`, then `pnpm run build`.
 7. Two packaged-build browser smokes, each `pnpm run package:dist` then
    `bash scripts/smoke-preview.sh` (`test:deployed` against `vite preview`): the legacy layout

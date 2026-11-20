@@ -10,6 +10,7 @@ import os
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 TOOLS = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, TOOLS)
@@ -80,13 +81,16 @@ def snapshot(month):
     return {
         "time_days": 30.4375 * month,
         "pressure": [200.0 + month] * cells,
+        "component_ids": ["c1", "c2"],
+        "composition": [[0.25] * cells, [0.75] * cells],
         "well_surface_rates": [{"liquid_m3_per_day": -10.0 - month, "vapour_m3_per_day": -50.0,
                                 "water_m3_per_day": -1.0}],
         "water": {"saturation": [0.2] * cells},
         "vapour_saturation": [0.01 * month] * cells,
         "well_bhp_bar": [100.0],
         "cumulative_well_surface_production_volumes": [{"liquid_m3": 100.0 * month,
-                                                        "vapour_m3": 500.0 * month}],
+                                                        "vapour_m3": 500.0 * month,
+                                                        "water_m3": 2.0 * month}],
     }
 
 
@@ -110,6 +114,53 @@ WALL_BUDGET = {"reason": "wall budget", "month": 3, "day": 70.0,
 FAILED = {"reason": "step failed", "month": 218, "day": 6612.703, "attempts": 10,
           "failure": 'Some(StepFailure { kind: "Budget", message: "last failure was Nonlinear: '
                      'Newton did not converge in 20 iterations (scaled residual 6.39e-8)" })'}
+
+
+class Spe5RecordTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        self.input = self.dir / "replay.json"
+
+    def write_record(self, months, **settings):
+        data = replay(months, None)
+        data["settings"].update({
+            "seed": "scratch", "start_day": 0.0, "max_dt_days": None, "max_attempts": 10,
+            "wall_budget_s": None, "tolerance": 1e-8, "dt_memory_growth": None,
+            "flash_refinement": False, "n1": False, "seed_recovery": False,
+            "line_search": False, "step_damping": 1.0,
+            "request": "end - now from the snapshot time, or the cap",
+        })
+        data["settings"].update(settings)
+        self.input.write_text(json.dumps(data))
+        spe5_compare.write_comp_record(self.input, self.dir)
+        return json.loads((self.dir / "spe5.comp.json").read_text())
+
+    def test_exports_monthly_grid_and_positive_producer_rates(self):
+        record = self.write_record([1, 2])
+        self.assertNotIn("injected", record)
+        self.assertEqual(record["wall_ms"], 2000.0)
+        first = record["reports"][0]
+        self.assertEqual(first["sw"], [0.2] * 147)
+        self.assertEqual(first["t"], 30.4375)
+        self.assertEqual(first["average_pressure_bar"], 201.0)
+        self.assertEqual(first["z"][0], [0.25] * 147)
+        self.assertEqual(first["surface"]["liquid_rate_m3_per_day"], 11.0)
+        self.assertAlmostEqual(first["surface"]["gas_liquid_ratio"], 50 / 11)
+        self.assertAlmostEqual(first["surface"]["water_cut"], 1 / 12)
+        self.assertEqual(first["surface"]["cumulative_water_m3"], 2.0)
+        self.assertEqual(first["newton"], 8)
+
+    def test_refuses_a_checkpoint_missing_report_or_experimental_settings(self):
+        with self.assertRaisesRegex(SystemExit, "contiguous"):
+            self.write_record([1, 3])
+        for key, value in (("seed", "checkpoint.json"), ("n1", True), ("flash_refinement", True),
+                           ("line_search", True), ("step_damping", 0.5), ("max_dt_days", 0.5),
+                           ("max_attempts", 12), ("dt_memory_growth", 2.0), ("seed_recovery", True)):
+            with self.subTest(key=key), self.assertRaisesRegex(SystemExit, f"default.*{key}"):
+                self.write_record([1, 2], **{key: value})
+        self.assertFalse((self.dir / "spe5.comp.json").exists())
 
 
 class M1PointLookupTests(unittest.TestCase):

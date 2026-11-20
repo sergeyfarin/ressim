@@ -91,6 +91,10 @@ oracle; the scorecard is a regression ratchet, and these fixtures are not timest
 (see [`reference_convergence.json`](reference_convergence.json)), so a band is not an accuracy
 claim.
 
+The manifest also lists the opt-in [`spe5` JutulDarcy diagnostic](../../docs/SPE5_VALIDATION.md#reproducer-and-gates).
+Run it with `--case spe5` to compare through the first shut-in. Its report includes producer water
+cut and the cutoff coverage. The six cases above are the scorecard inventory.
+
 The compositional half needs neither `flowexp_comp` nor the OPM Python bindings: the fixture is
 committed and `opm.io` is imported only for live Flow output. Re-baseline deliberately, on a
 committed tree:
