@@ -374,7 +374,7 @@ def write_comp_record(path, output_dir):
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
     record = {
-        "case": "spe5", "solver": "compositional", "backend": "", "run": "comp", "injected": "gas",
+        "case": "spe5", "solver": "compositional", "backend": "", "run": "comp",
         "component_ids": months[0]["snapshot"]["component_ids"], "warnings": [],
         "history_columns": [], "history": [], "reports": reports,
         "wall_ms": sum(report["wall_ms"] for report in reports),

@@ -139,6 +139,7 @@ class Spe5RecordTests(unittest.TestCase):
 
     def test_exports_monthly_grid_and_positive_producer_rates(self):
         record = self.write_record([1, 2])
+        self.assertNotIn("injected", record)
         self.assertEqual(record["wall_ms"], 2000.0)
         first = record["reports"][0]
         self.assertEqual(first["sw"], [0.2] * 147)

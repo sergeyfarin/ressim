@@ -228,12 +228,14 @@ class Spe5DiagnosticTests(unittest.TestCase):
         })
 
     def test_spe5_stops_earlier_if_ressim_reaches_a_limit_first(self):
-        self.record["reports"][0]["surface"]["gas_liquid_ratio"] = 300.0
         self.record["reports"] = self.record["reports"][:1]
-        self.run_cli("--case", "spe5")
-        scope = json.loads(self.out.read_text())["spe5"]["comparison_scope"]
-        self.assertEqual(scope["reports"], 1)
-        self.assertEqual(scope["ressim_stop"], {"report": 1, "day": 30.4375, "reason": "gor"})
+        surface = self.record["reports"][0]["surface"]
+        for field, limit, reason in (("gas_liquid_ratio", 300.0, "gor"), ("water_cut", 0.8, "watercut")):
+            with self.subTest(reason=reason), patch.dict(surface, {field: limit}):
+                self.run_cli("--case", "spe5")
+                scope = json.loads(self.out.read_text())["spe5"]["comparison_scope"]
+                self.assertEqual(scope["reports"], 1)
+                self.assertEqual(scope["ressim_stop"], {"report": 1, "day": 30.4375, "reason": reason})
 
     def test_spe5_requires_the_entire_window_and_matching_times(self):
         self.record["reports"][1]["t"] = 4 * 30.4375
