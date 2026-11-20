@@ -287,7 +287,7 @@ pub(crate) fn remember_k_for_test(cell: usize, state: &FlashState) {
 /// split seed. The hint is re-solved at the current `(p, T, z)` and still passes the ordinary
 /// physicality, equilibrium and Gibbs checks; it is not passed through the stability trial gate.
 pub(crate) fn flash_for_cell(
-    cell: usize,
+    #[cfg_attr(not(test), allow(unused_variables))] cell: usize,
     spec: &FluidSpecification,
     pressure_pa: f64,
     temperature_k: f64,
