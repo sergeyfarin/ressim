@@ -70,6 +70,11 @@ class CompositionalRecordTests(unittest.TestCase):
         worst = self.compare()["runs"]["comp"]["vs_flow"]["worst"]
         self.assertEqual(worst, {"p": 0.0, "sg": 0.0, "z": 0.0})
 
+    def test_nonfinite_report_time_is_rejected(self):
+        self.record["reports"][0]["t"] = float("nan")
+        with self.assertRaisesRegex(SystemExit, r"non-finite report time"):
+            self.compare()
+
     def test_null_final_saturation_is_rejected(self):
         self.record["reports"][0]["sg"] = [None]
         with self.assertRaisesRegex(SystemExit, r"non-finite"):

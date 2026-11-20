@@ -383,6 +383,19 @@ def comp_record_cumulatives(run: dict) -> dict[str, float]:
     return cumulatives
 
 
+def check_comp_report_times(case: str, reports: list[dict], times: list[float]) -> None:
+    if len(reports) != len(times):
+        raise SystemExit(f"{case}: {len(reports)} ResSim reports vs {len(times)} reference")
+    for index, (report, expected) in enumerate(zip(reports, times)):
+        actual = report["t"]
+        if not isinstance(actual, (int, float)) or not (np.isfinite(actual) and np.isfinite(expected)):
+            raise SystemExit(f"{case}: non-finite report time at report {index}")
+        if abs(actual - expected) > 1e-6 * max(1.0, abs(expected)):
+            raise SystemExit(
+                f"{case}: report {index} is at {actual} d, the reference says {expected} d"
+            )
+
+
 def compare_comp_case(case: str, reference_path: Path, args: argparse.Namespace) -> dict:
     run_path = args.ressim_dir / f"{case}.comp.json"
     if not run_path.exists():
@@ -390,13 +403,7 @@ def compare_comp_case(case: str, reference_path: Path, args: argparse.Namespace)
     run = json.loads(run_path.read_text())
     reference, times, reference_cumulatives = comp_reference_fields(reference_path)
     reports = run["reports"]
-    if len(reports) != len(reference):
-        raise SystemExit(f"{case}: {len(reports)} ResSim reports vs {len(reference)} reference")
-    for index, (report, expected) in enumerate(zip(reports, times)):
-        if abs(report["t"] - expected) > 1e-6 * max(1.0, abs(expected)):
-            raise SystemExit(
-                f"{case}: report {index} is at {report['t']} d, the reference says {expected} d"
-            )
+    check_comp_report_times(case, reports, times)
     fields = checked_fields(
         [
             {
