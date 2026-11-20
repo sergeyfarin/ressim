@@ -168,6 +168,9 @@ class Spe5DiagnosticTests(unittest.TestCase):
         reference.write_text(json.dumps({
             "schema": "ressim-spe5-reference/1",
             "completed": True,
+            "watercut_limit": 0.8,
+            "gor_limit_m3_m3": 300.0,
+            "stopped": {"day": 2 * 30.4375, "reason": "watercut"},
             "reports": [{
                 "day": month * 30.4375,
                 "cell33_p_bar": 100.0,
@@ -176,11 +179,12 @@ class Spe5DiagnosticTests(unittest.TestCase):
                 "mean_p_bar": 100.0,
                 "producer_oil_m3_day": 30.0,
                 "producer_gor_m3_m3": 200.0,
+                "producer_watercut": 0.25 if month == 1 else 0.875,
             } for month in range(1, 241)],
         }))
         (self.dir / "trajectory_cases.json").write_text(json.dumps({
             "cases": [],
-            "diagnostics": [{"case": "spe5", "reference": str(reference), "report_count": 2}],
+            "diagnostics": [{"case": "spe5", "reference": str(reference), "format": "spe5-summary-v1"}],
         }))
         self.record = {
             "case": "spe5",
@@ -192,9 +196,11 @@ class Spe5DiagnosticTests(unittest.TestCase):
                 "p": [101.0] * 147,
                 "sw": [0.0] * 33 + [0.325] + [0.0] * 113,
                 "sg": [0.3] * 147,
-                "producer_oil_m3_day": 20.0,
-                "producer_gor_m3_m3": 250.0,
-            } for month in (1, 2)],
+                "average_pressure_bar": 90.0 if month == 3 else 101.0,
+                "surface": {"liquid_rate_m3_per_day": 20.0, "gas_liquid_ratio": 250.0,
+                            "water_cut": {1: 0.125, 2: 0.75, 3: 0.99}[month]},
+                "wall_ms": 1.0,
+            } for month in (1, 2, 3)],
         }
 
     def run_cli(self, *options):
@@ -211,23 +217,43 @@ class Spe5DiagnosticTests(unittest.TestCase):
         self.assertIn("JutulDarcy", output)
         self.assertIn("2 of 240", output)
         self.assertIn("cell 33", output)
+        self.assertIn("ResSim 0.750000", output)
+        self.assertIn("JutulDarcy 0.875000", output)
+        self.assertIsNone(entry["comparison_scope"]["ressim_stop"])
         run = entry["runs"]["comp"]
         self.assertEqual(run["vs_flow"]["worst"], {"p": 1.0, "sw": 0.125, "sg": 0.0})
         self.assertEqual(run["summary_errors"]["worst"], {
             "mean_p_bar": 1.0, "producer_oil_relative": 1 / 3, "producer_gor_relative": 0.2,
+            "producer_water_cut": 0.125,
         })
 
+    def test_spe5_stops_earlier_if_ressim_reaches_a_limit_first(self):
+        self.record["reports"][0]["surface"]["gas_liquid_ratio"] = 300.0
+        self.record["reports"] = self.record["reports"][:1]
+        self.run_cli("--case", "spe5")
+        scope = json.loads(self.out.read_text())["spe5"]["comparison_scope"]
+        self.assertEqual(scope["reports"], 1)
+        self.assertEqual(scope["ressim_stop"], {"report": 1, "day": 30.4375, "reason": "gor"})
+
     def test_spe5_requires_the_entire_window_and_matching_times(self):
-        self.record["reports"][1]["t"] = 3 * 30.4375
+        self.record["reports"][1]["t"] = 4 * 30.4375
         with self.assertRaisesRegex(SystemExit, r"report 1 is at"):
             self.run_cli("--case", "spe5")
-        self.record["reports"].pop()
-        with self.assertRaisesRegex(SystemExit, r"1 ResSim reports vs 2 reference"):
+        self.record["reports"] = self.record["reports"][:1]
+        with self.assertRaisesRegex(SystemExit, r"ends before the reference shut-in"):
             self.run_cli("--case", "spe5")
 
     def test_diagnostic_is_excluded_from_the_default_coverage(self):
         with self.assertRaisesRegex(SystemExit, r"no compositional cases"):
             self.run_cli()
+
+    def test_diagnostic_rejects_an_unknown_reference_format(self):
+        path = self.dir / "trajectory_cases.json"
+        manifest = json.loads(path.read_text())
+        manifest["diagnostics"][0]["format"] = "unsupported"
+        path.write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(SystemExit, r"unsupported diagnostic format"):
+            self.run_cli("--case", "spe5")
 
     def test_diagnostic_cannot_check_or_write_a_scorecard(self):
         for flag in ("--check", "--write-scorecard"):

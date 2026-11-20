@@ -465,28 +465,45 @@ def compare_comp_case(case: str, reference_path: Path, args: argparse.Namespace)
 
 
 def compare_spe5_diagnostic(entry: dict, ressim_dir: Path) -> dict:
-    """Compare the committed JutulDarcy summary at the predeclared SPE5 report times."""
+    """Compare the SPE5 Case 1 report times through the first declared shut-in."""
     case = entry["case"]
     path = REPO / entry["reference"]
     reference = json.loads(path.read_text())
     reference_reports = reference["reports"]
-    count = entry["report_count"]
     if (reference.get("schema") != "ressim-spe5-reference/1"
             or reference.get("completed") is not True or reference.get("failed_at") is not None
             or len(reference_reports) != 240):
         raise SystemExit(f"{path}: expected a completed 240-report SPE5 reference")
-    if not 0 < count <= len(reference_reports):
-        raise SystemExit(f"{case}: invalid diagnostic report count {count}")
     reference_times = [report["day"] for report in reference_reports]
     if reference_times != [month * 30.4375 for month in range(1, len(reference_reports) + 1)]:
         raise SystemExit(f"{path}: reference times do not match the SPE5 monthly schedule")
-    window = reference_reports[:count]
-    times = reference_times[:count]
+    stop = reference.get("stopped") or {}
+    if stop.get("day") not in reference_times or stop.get("reason") not in ("gor", "watercut"):
+        raise SystemExit(f"{path}: expected a recorded SPE5 shut-in at a monthly report")
+    reference_count = reference_times.index(stop["day"]) + 1
+    limits = {"gor": reference["gor_limit_m3_m3"], "watercut": reference["watercut_limit"]}
 
     run = read_comp_record(case, ressim_dir)
     if run.get("case") != case or run.get("run") != "comp":
         raise SystemExit(f"{case}: expected a {case} compositional run record")
-    reports = run["reports"]
+    ressim_stop = None
+    for index, report in enumerate(run["reports"][:reference_count]):
+        surface = report["surface"]
+        gor = surface["gas_liquid_ratio"]
+        water_cut = surface["water_cut"]
+        gor_hit = gor is not None and gor >= limits["gor"]
+        water_cut_hit = water_cut is not None and water_cut >= limits["watercut"]
+        if gor_hit or water_cut_hit:
+            ressim_stop = {"report": index + 1, "day": reference_times[index],
+                           "reason": "gor" if gor_hit else "watercut"}
+            break
+
+    count = ressim_stop["report"] if ressim_stop else reference_count
+    reports = run["reports"][:count]
+    if len(reports) < count:
+        raise SystemExit(f"{case}: ResSim replay ends before the reference shut-in")
+    window = reference_reports[:count]
+    times = reference_times[:count]
     check_comp_report_times(case, reports, times)
     samples = {"p": "cell33_p_bar", "sw": "cell33_sw", "sg": "cell33_sg"}
     fields = checked_fields([{k: report[k] for k in samples} for report in reports], f"{case}/comp")
@@ -498,14 +515,18 @@ def compare_spe5_diagnostic(entry: dict, ressim_dir: Path) -> dict:
     )
 
     summary = {
-        "mean_p_bar": [float(np.mean(report["p"])) for report in fields],
-        "producer_oil_m3_day": [report["producer_oil_m3_day"] for report in reports],
-        "producer_gor_m3_m3": [report["producer_gor_m3_m3"] for report in reports],
+        "mean_p_bar": [report["average_pressure_bar"] for report in reports],
+        "producer_oil_m3_day": [report["surface"]["liquid_rate_m3_per_day"] for report in reports],
+        "producer_gor_m3_m3": [report["surface"]["gas_liquid_ratio"] for report in reports],
+        "producer_watercut": [report["surface"]["water_cut"] for report in reports],
     }
     actual, expected = checked_fields(
         [summary, {k: [report[k] for report in window] for k in summary}], f"{case} summary"
     )
-    differences = {"mean_p_bar": np.abs(actual["mean_p_bar"] - expected["mean_p_bar"])}
+    differences = {
+        "mean_p_bar": np.abs(actual["mean_p_bar"] - expected["mean_p_bar"]),
+        "producer_water_cut": np.abs(actual["producer_watercut"] - expected["producer_watercut"]),
+    }
     for key, metric in (("producer_oil_m3_day", "producer_oil_relative"),
                         ("producer_gor_m3_m3", "producer_gor_relative")):
         a, b = actual[key], expected[key]
@@ -513,8 +534,14 @@ def compare_spe5_diagnostic(entry: dict, ressim_dir: Path) -> dict:
         differences[metric] = np.divide(np.abs(a - b), scale, out=np.zeros_like(scale), where=scale > 0)
 
     return {
-        "comparison_scope": {"reports": count, "reference_reports": len(reference_reports),
-                             "through_day": times[-1], "cell": SPE5_CELL},
+        "comparison_scope": {
+            "reports": count, "reference_reports": len(reference_reports),
+            "through_day": times[-1], "cell": SPE5_CELL, "stop_limits": limits,
+            "reference_stop": {"report": reference_count, "day": stop["day"], "reason": stop["reason"]},
+            "ressim_stop": ressim_stop,
+            "water_cut_at_cutoff": {"ressim": float(actual["producer_watercut"][-1]),
+                                    "reference": float(expected["producer_watercut"][-1])},
+        },
         "flow": {
             "source": "fixture",
             "name": "JutulDarcy",
@@ -524,8 +551,8 @@ def compare_spe5_diagnostic(entry: dict, ressim_dir: Path) -> dict:
         "runs": {
             "comp": {
                 "solver": "compositional",
-                "conv": ressim_convergence(run),
-                "wall_ms": run["wall_ms"],
+                "conv": ressim_convergence({"reports": reports}),
+                "wall_ms": sum(report["wall_ms"] for report in reports),
                 "warnings": [],
                 "vs_flow": field_error(cells, ref_cells, tuple(samples)),
                 "cum_rel_vs_flow": {},
@@ -784,11 +811,21 @@ def print_diagnostic_scope(case: str, entry: dict) -> None:
     if scope is None:
         return
     worst = entry["runs"]["comp"]["summary_errors"]["worst"]
+    water_cut = scope["water_cut_at_cutoff"]
+    reference_stop = scope["reference_stop"]
+    ressim_stop = scope["ressim_stop"]
+    labels = {"gor": "GOR", "watercut": "water-cut"}
+    ressim_status = (f"reaches {labels[ressim_stop['reason']]} shut-in at month {ressim_stop['report']}"
+                     if ressim_stop else "reaches neither shut-in limit by the cutoff")
     print(f"{case} diagnostic over {scope['reports']} of {scope['reference_reports']} reports "
-          f"through day {scope['through_day']:.3f}. Field differences are for cell {scope['cell']} "
+          f"through day {scope['through_day']:.4f}. Field differences are for cell {scope['cell']} "
           "(zero-based).")
+    print(f"JutulDarcy reaches {labels[reference_stop['reason']]} shut-in at month {reference_stop['report']}. "
+          f"ResSim {ressim_status}. At the cutoff, water cut is ResSim {water_cut['ressim']:.6f} "
+          f"and JutulDarcy {water_cut['reference']:.6f} (limit {scope['stop_limits']['watercut']:.6f}).")
     print(f"Worst differences vs {entry['flow']['name']}: mean pressure {worst['mean_p_bar']:.4g} bar, "
-          f"producer oil rate {worst['producer_oil_relative']:.2%}, GOR {worst['producer_gor_relative']:.2%}.\n")
+          f"producer oil rate {worst['producer_oil_relative']:.2%}, GOR {worst['producer_gor_relative']:.2%}, "
+          f"water cut {worst['producer_water_cut']:.5f} absolute.\n")
 
 
 def print_text(report: dict) -> None:
@@ -918,11 +955,14 @@ def main() -> int:
         }
 
     if args.comp_reference_dir:
-        report = {
-            case: (compare_spe5_diagnostic(diagnostics[case], args.ressim_dir) if case in diagnostics
-                   else compare_comp_case(case, manifest[case], args))
-            for case in cases
-        }
+        if len(cases) == 1 and cases[0] in diagnostics:
+            case = cases[0]
+            entry = diagnostics[case]
+            if entry.get("format") != "spe5-summary-v1":
+                raise SystemExit(f"{case}: unsupported diagnostic format {entry.get('format')!r}")
+            report = {case: compare_spe5_diagnostic(entry, args.ressim_dir)}
+        else:
+            report = {case: compare_comp_case(case, manifest[case], args) for case in cases}
     else:
         report = {case: compare_case(case, args) for case in cases}
 

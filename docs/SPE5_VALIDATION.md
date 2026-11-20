@@ -87,21 +87,17 @@ producer curves are unchanged, but injection and pressure history stop at that r
 
 **ResSim has not reached the stop on a monthly report; the independent reference has.** The
 from-scratch ResSim replay reaches month 217 at **6604.938 d** and fails month 218 at
-**6612.703 d** (`scaled residual 1.36e-7`, #116). The last peaks before the stall are month-207
-GOR **924.0 m³/m³** (5.19 Mscf/STB) and month-208 water cut **0.830951** (WOR 4.91), both below
-the thresholds. The frozen month-192 checkpoint with the scenario's monthly steps follows the same
-path and fails at month 218 (`1.86e-8`). The existing 5-day-step workaround crosses the water cut
-at **6304.25 d** (0.866442, WOR 6.49), but that is not a report step: the monthly reports around it
-are 0.827546 at 6300.5625 d and 0.830951 at 6331 d, both below `5/6`.
+**6612.703 d** (`scaled residual 1.36e-7`, #116). The frozen month-192 checkpoint with the scenario's
+monthly steps follows the same path and fails at month 218 (`1.86e-8`). The existing 5-day-step
+workaround crosses the water-cut limit between reports at **6304.25 d** (0.866442, WOR 6.49).
+The adjacent monthly values are 0.827546 at 6300.5625 d and 0.830951 at 6331 d, both below `5/6`.
 
-The JutulDarcy reference crosses the same stop at month 207 (**6300.5625 d**) by water cut:
-**0.854810** (WOR 5.89), GOR **1066.1 m³/m³**; its month-208 report is **0.873085**. ResSim
-reports 0.827546 and 0.830951 at those two reports. The two simulators are therefore on opposite sides of
-`5/6` at the same report, separated by 0.027 and 0.042 water cut — inside the late-window spread
-recorded below (worst 0.0615). #98's threshold is physically reachable on this case; whether a
-given monthly ResSim path fires it is a late-time trajectory question, not a case-definition
-defect. The policy is still not demonstrated end-to-end on a ResSim monthly run, so #98 remains
-open under #116.
+JutulDarcy first crosses the water-cut limit at month 207 (**6300.5625 d**) with water cut
+**0.839027** and GOR **973.06 m³/m³**. ResSim reports water cut **0.827546** and reaches neither
+limit by that report. The shared Case 1 comparison ends at month 207. In the unrestricted stall
+replays, the month-208 water cuts are **0.848665** in JutulDarcy and **0.830951** in ResSim.
+The monthly ResSim trajectory still needs an end-to-end shut-in check for #98, tracked with the
+solver stall in #116.
 
 The stop is scenario metadata, not part of `case.json`, so the native replays and the committed
 JutulDarcy reference run without it. A comparison must either apply the same stop or truncate both
@@ -376,10 +372,11 @@ mole-balance target; the fixture records them as such. The generator runs with
 `error_on_incomplete = true`, and the wrapper validates `completed`, the 240 reports and the
 7305 d horizon before it replaces either `reference.json` or `manifest.json`.
 
-### Comparison with ResSim
+### ResSim comparison for the late-time stall
 
-The from-scratch ResSim probe has 217 monthly reports before the month-218 stall, so the comparison
-covers months 1–217. Every number in this section is printed by
+These tables compare unrestricted trajectories for the stall investigation. They include months
+208–217 after JutulDarcy's shut-in, and the shared Case 1 comparator uses only months 1–207.
+Every number in this section is printed by
 `python3 -I tools/jutul/spe5_compare.py RESSIM_MONTHS` (its docstring has the command that dumps
 the ResSim months); none is typed by hand. At **730.5 d** (month 24) the two runs agree on
 pressure and the rate split:
@@ -1327,12 +1324,14 @@ Before any of these is proposed for approval, the evaluation must include:
   and surface-condition corrections, its producer was BHP-controlled from 730.5 d at an oil rate of
   2.9 m³/day, and its water cut at 4017.75 d was 0.49 against ResSim's 0.0002. The committed run
   completes 240 reports through 7305 d and records per-report Newton/timestep diagnostics.
-2. The shared `compare_small_direct.py --comp-reference-dir` comparator now has a SPE5 diagnostic
-  covering months 1–217 of the 240-report JutulDarcy reference. It checks matching report times
-  and reports differences in cell-33 pressure, water saturation and gas saturation, arithmetic
-  mean pressure, producer oil rate and GOR. Rate and GOR differences use the larger magnitude of
-  the two results as denominator. The table uses the reference's cell-33 samples. The shared
-  scorecard row still needs a completed ResSim trajectory and agreed coverage and bands.
+2. The shared `compare_small_direct.py --comp-reference-dir` comparator compares Case 1 through
+  the first reported shut-in on either side. The committed JutulDarcy fixture crosses the water-cut
+  limit at month 207. The diagnostic checks matching report times and reports cell-33 pressure,
+  water and gas saturation, arithmetic mean pressure, producer oil rate, GOR and water cut. Oil
+  rate and GOR differences use the larger magnitude of the two results as denominator. The scorecard
+  excludes this diagnostic until the reference coverage, pressure averaging convention, shut-in
+  agreement and acceptance bands are settled. The fixture supplies spatial samples for cell 33,
+  so it supports a local comparison. Whole-grid scoring would need a per-cell reference export.
 3. State the oil-rate, GOR and average-pressure bands against JutulDarcy and the published
   **compositional** participants' curves. Digitize those curves under the SPE1 precedent
   (`publishedReferenceSeries`); do not hand-copy a number from prose.
@@ -1340,12 +1339,12 @@ Before any of these is proposed for approval, the evaluation must include:
 
 ## Reproducer and gates
 
-Run the shared diagnostic with the default replay settings to write the 217 completed monthly
-reports. The comparison uses NumPy.
+Run the shared diagnostic with the default replay settings through the reference shut-in in month
+207. The exporter checks the replay settings and the comparator uses NumPy.
 
 ```bash
 spe5_work=$(mktemp -d)
-SPE5_REPLAY_OUT="$spe5_work/replay.json" SPE5_REPLAY_SEED=scratch SPE5_LAST_MONTH=217 \
+SPE5_REPLAY_OUT="$spe5_work/replay.json" SPE5_REPLAY_SEED=scratch SPE5_LAST_MONTH=207 \
   cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
   comp_spe5_replay_with_timestep_options -- --ignored --nocapture
 uv run --no-project python tools/jutul/spe5_compare.py \
@@ -1355,9 +1354,9 @@ uv run --no-project --with numpy python tools/opm_flow/compare_small_direct.py \
   --json "$spe5_work/comparison.json"
 ```
 
-`--markdown` prints the same comparison as a table. The JSON includes the final and worst
-differences and the report coverage. These comparisons describe the two runs over the fixed
-report window. Acceptance bands require the convergence and published-curve work above.
+`--markdown` prints the same comparison as a table. The JSON includes the shut-in limits, the
+water cuts at the cutoff, and the final and worst differences over the comparison window. The
+separate late-time stall replay keeps reports 208–217 for solver analysis.
 
 ```bash
 # Payload, EOS gradient and closed-well equilibrium; part of the compositional gate.

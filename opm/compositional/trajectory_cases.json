@@ -1,6 +1,6 @@
 {
   "schema": "ressim-compositional-trajectory-cases/1",
-  "note": "The compositional cases that produce <case>.comp.json records for tools/opm_flow/compare_small_direct.py. Scored cases use extracted flowexp_comp trajectories. Diagnostics use an explicit --case and a fixed comparison window.",
+  "note": "The compositional cases that produce <case>.comp.json records for tools/opm_flow/compare_small_direct.py. Scored cases use extracted flowexp_comp trajectories. Diagnostics require an explicit --case and declare their reference format. Refinement ladders are a separate study and are excluded from the scorecard.",
   "cases": [
     {"case": "1d_comp", "reference": "opm/compositional/1d_comp/reference.json"},
     {"case": "1d_comp_skin", "reference": "opm/compositional/1d_comp/skin/reference.json"},
@@ -10,6 +10,6 @@
     {"case": "quarter_five_spot", "reference": "opm/compositional/quarter_five_spot/reference.json"}
   ],
   "diagnostics": [
-    {"case": "spe5", "reference": "opm/compositional/spe5/reference.json", "report_count": 217}
+    {"case": "spe5", "reference": "opm/compositional/spe5/reference.json", "format": "spe5-summary-v1"}
   ]
 }

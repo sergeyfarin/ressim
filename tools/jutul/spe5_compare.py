@@ -37,8 +37,9 @@ RESSIM_STATES is the output of the ignored test `comp_spe5_dump_report_states` r
         cargo test --release --lib comp_spe5_dump_report_states -- --ignored
 
 REFERENCE defaults to opm/compositional/spe5/reference.json. The script prints the markdown used in
-docs/SPE5_VALIDATION.md "Comparison with ResSim": the month-24 table, the worst differences over
-the shared months, and the monthly table. Nothing in that section is typed by hand.
+docs/SPE5_VALIDATION.md "ResSim comparison for the late-time stall": the month-24 table, the worst
+differences over the unrestricted shared months, and the monthly table. The shared Case 1 comparator
+in tools/opm_flow/compare_small_direct.py applies the shut-in cutoff instead.
 
 Conventions, matching tools/jutul/spe5_reference.jl: mean pressure is the arithmetic cell mean;
 cell 33 is zero-based; GOR and water cut are at surface conditions from the producer's separator
@@ -324,32 +325,60 @@ def replay_reports(path):
 
 
 def write_comp_record(path, output_dir):
-    """Export a from-scratch replay for the shared SPE5 diagnostic comparator."""
+    """Export the default from-scratch replay in the shared compositional record format."""
     surface, replay = replay_reports(path)
+    settings = replay["settings"]
+    defaults = {
+        "seed": "scratch", "start_day": 0.0, "max_dt_days": None, "max_attempts": 10,
+        "wall_budget_s": None, "tolerance": 1e-8, "dt_memory_growth": None,
+        "flash_refinement": False, "n1": False, "seed_recovery": False,
+        "line_search": False, "step_damping": 1.0,
+        "request": "end - now from the snapshot time, or the cap",
+    }
+    changed = set(settings) - defaults.keys() - {"last_month"}
+    changed.update(key for key, default in defaults.items() if key not in settings or settings[key] != default)
+    if changed:
+        sys.exit(f"{path}: use default SPE5 replay settings (different or missing: {', '.join(sorted(changed))})")
     months = replay["months"]
-    if (replay["settings"].get("seed") != "scratch" or not months
-            or [report["month"] for report in months] != list(range(1, len(months) + 1))):
+    if not months or [report["month"] for report in months] != list(range(1, len(months) + 1)):
         sys.exit(f"{path}: expected contiguous reports from a from-scratch SPE5 replay")
 
     reports = []
     for month in months:
         snapshot = month["snapshot"]
         producer = surface[month["month"]]
+        cumulative = producer["cumulative"]
         reports.append({
             "t": snapshot["time_days"],
             "p": snapshot["pressure"],
             "sw": snapshot["water"]["saturation"],
             "sg": snapshot["vapour_saturation"],
-            "producer_oil_m3_day": producer["producer_oil_m3_day"],
-            "producer_gor_m3_m3": producer["producer_gor_m3_m3"],
+            "z": snapshot["composition"],
+            "average_pressure_bar": producer["mean_p_bar"],
+            "surface": {
+                "liquid_rate_m3_per_day": producer["producer_oil_m3_day"],
+                "vapour_rate_m3_per_day": producer["producer_gas_m3_day"],
+                "water_rate_m3_per_day": producer["producer_water_m3_day"],
+                "cumulative_liquid_m3": cumulative["liquid_m3"],
+                "cumulative_vapour_m3": cumulative["vapour_m3"],
+                "cumulative_water_m3": cumulative["water_m3"],
+                "gas_liquid_ratio": producer["producer_gor_m3_m3"],
+                "water_cut": producer["producer_watercut"],
+            },
             "substeps": month["accepted_steps"],
             "newton": month["accepted_newton"],
             "retries": month["failed_attempts"],
+            "retry_newton": None,
+            "wall_ms": 1000 * month["wall_s"],
         })
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
-    record = {"case": "spe5", "solver": "compositional", "run": "comp", "reports": reports,
-              "wall_ms": 1000 * sum(month["wall_s"] for month in months)}
+    record = {
+        "case": "spe5", "solver": "compositional", "backend": "", "run": "comp", "injected": "gas",
+        "component_ids": months[0]["snapshot"]["component_ids"], "warnings": [],
+        "history_columns": [], "history": [], "reports": reports,
+        "wall_ms": sum(report["wall_ms"] for report in reports),
+    }
     (directory / "spe5.comp.json").write_text(json.dumps(record, allow_nan=False) + "\n")
 
 
