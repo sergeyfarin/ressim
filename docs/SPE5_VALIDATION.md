@@ -1327,15 +1327,37 @@ Before any of these is proposed for approval, the evaluation must include:
   and surface-condition corrections, its producer was BHP-controlled from 730.5 d at an oil rate of
   2.9 m³/day, and its water cut at 4017.75 d was 0.49 against ResSim's 0.0002. The committed run
   completes 240 reports through 7305 d and records per-report Newton/timestep diagnostics.
-2. Put the run through `compare_small_direct.py --comp-reference-dir` and the shared scorecard,
-  including water saturation (the existing compositional comparator compares `p`, `sg` and `z`; it
-  needs the `sw` column the SPE5 fixture carries).
+2. The shared `compare_small_direct.py --comp-reference-dir` comparator now has a SPE5 diagnostic
+  covering months 1–217 of the 240-report JutulDarcy reference. It checks matching report times
+  and reports differences in cell-33 pressure, water saturation and gas saturation, arithmetic
+  mean pressure, producer oil rate and GOR. Rate and GOR differences use the larger magnitude of
+  the two results as denominator. The table uses the reference's cell-33 samples. The shared
+  scorecard row still needs a completed ResSim trajectory and agreed coverage and bands.
 3. State the oil-rate, GOR and average-pressure bands against JutulDarcy and the published
   **compositional** participants' curves. Digitize those curves under the SPE1 precedent
   (`publishedReferenceSeries`); do not hand-copy a number from prose.
 4. Only then move `comp_spe5_wag` out of `WITHHELD_SCENARIOS`.
 
 ## Reproducer and gates
+
+Run the shared diagnostic with the default replay settings to write the 217 completed monthly
+reports. The comparison uses NumPy.
+
+```bash
+spe5_work=$(mktemp -d)
+SPE5_REPLAY_OUT="$spe5_work/replay.json" SPE5_REPLAY_SEED=scratch SPE5_LAST_MONTH=217 \
+  cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+  comp_spe5_replay_with_timestep_options -- --ignored --nocapture
+uv run --no-project python tools/jutul/spe5_compare.py \
+  --write-comp-record "$spe5_work/replay.json" "$spe5_work"
+uv run --no-project --with numpy python tools/opm_flow/compare_small_direct.py \
+  --ressim-dir "$spe5_work" --comp-reference-dir opm/compositional --case spe5 \
+  --json "$spe5_work/comparison.json"
+```
+
+`--markdown` prints the same comparison as a table. The JSON includes the final and worst
+differences and the report coverage. These comparisons describe the two runs over the fixed
+report window. Acceptance bands require the convergence and published-curve work above.
 
 ```bash
 # Payload, EOS gradient and closed-well equilibrium; part of the compositional gate.

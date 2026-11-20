@@ -112,13 +112,13 @@ jobs:
       - name: Check benchmark records and the generated benchmark page (fast tier)
         run: bash scripts/benchmarks.sh check --tier fast
 
-      # The OPM artifact pipeline's unit contract, provenance and deck-hash checks (#20). Flow is
-      # not needed: the tests read the committed artifacts and trimmed real summaries.
+      # The OPM artifact pipeline and shared comparator contracts. NumPy runs the comparator tests
+      # against committed or synthetic fixtures without installing Flow.
       - name: Run OPM artifact pipeline tests
         working-directory: tools/opm_flow
         run: |
           python3 -m venv "$RUNNER_TEMP/opm-venv"
-          "$RUNNER_TEMP/opm-venv/bin/pip" install --quiet pytest
+          "$RUNNER_TEMP/opm-venv/bin/pip" install --quiet pytest numpy
           "$RUNNER_TEMP/opm-venv/bin/python" -m pytest -q
 
       # The SPE5 #116 tools' regression contracts: the cross-flash fixture's exact point matrix and

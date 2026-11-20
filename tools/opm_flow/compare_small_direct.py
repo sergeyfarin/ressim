@@ -15,12 +15,14 @@ Flow, which is why it runs with `python3` rather than inside the uv project), an
     python3 tools/opm_flow/compare_small_direct.py --ressim-dir /tmp/small-direct \\
         --flow-dir /tmp/small-direct-flow [--case bo-1d-10] [--json out.json] [--markdown]
 
-The same record and the same scorecard also carry compositional trajectories. They are graded
-against the committed `flowexp_comp` fixtures in `opm/compositional/` rather than a live Flow
-restart, so `--comp-reference-dir` replaces `--flow-dir` and `opm.io` is not imported:
+The same record and scorecard also carry compositional trajectories graded against committed
+`flowexp_comp` fixtures. `--comp-reference-dir` replaces `--flow-dir` and `opm.io` is not imported:
 
     python3 tools/opm_flow/compare_small_direct.py --ressim-dir /tmp/comp-records \\
         --comp-reference-dir opm/compositional [--case 1d_comp] [--json out.json] [--markdown]
+
+For the diagnostic comparison with the committed SPE5 JutulDarcy fixture, select `--case spe5`
+with `--comp-reference-dir`. See docs/SPE5_VALIDATION.md for replay and record export commands.
 
 A committed scorecard turns both families into one ratchet:
 
@@ -65,9 +67,9 @@ LABELS = {"sparse": "FIM sparse", "dense": "FIM dense", "impes": "IMPES", "comp"
 # agreement; the others show a physical gap and are reported, not gated.
 PAIRS = (("sparse", "dense", True), ("sparse", "impes", False))
 CUM_KEYS = ("FOPT", "FWPT", "FWIT", "FGPT", "FGIT")
-# Fields a case's reference can carry, in table order. A compositional fixture has no water, so
-# it carries `z` (overall composition) where a black-oil restart carries `sw`.
+# Fields a case's reference can carry, in table order.
 FIELD_KEYS = ("p", "sw", "sg", "z")
+SPE5_CELL = 33  # zero-based in both simulators' case ordering
 
 # Regression bands for `--check`: a metric fails when `new > base * (1 + rel) + abs`, and counts
 # as an improvement when `new < base * (1 - rel) - abs`. The absolute floor keeps a near-zero
@@ -347,14 +349,15 @@ def comp_reference_fields(path: Path) -> tuple[list[dict], list[float], dict[str
     return checked_fields(fields, str(path), {"p": 1, "sg": 1, "z": 2}), times, cumulatives
 
 
-def comp_manifest(comp_dir: Path) -> dict[str, Path]:
-    """`trajectory_cases.json` as case -> reference fixture path."""
+def comp_manifest(comp_dir: Path) -> tuple[dict[str, Path], dict[str, dict]]:
+    """Return the graded fixture paths and the explicitly selected diagnostic entries."""
     manifest = json.loads((comp_dir / "trajectory_cases.json").read_text())
     cases = {}
     for entry in manifest["cases"]:
         reference = Path(entry["reference"])
         cases[entry["case"]] = reference if reference.is_absolute() else REPO / reference
-    return cases
+    diagnostics = {entry["case"]: entry for entry in manifest.get("diagnostics", [])}
+    return cases, diagnostics
 
 
 def comp_record_cumulatives(run: dict) -> dict[str, float]:
@@ -396,11 +399,15 @@ def check_comp_report_times(case: str, reports: list[dict], times: list[float]) 
             )
 
 
-def compare_comp_case(case: str, reference_path: Path, args: argparse.Namespace) -> dict:
-    run_path = args.ressim_dir / f"{case}.comp.json"
+def read_comp_record(case: str, ressim_dir: Path) -> dict:
+    run_path = ressim_dir / f"{case}.comp.json"
     if not run_path.exists():
-        raise SystemExit(f"{case}: no {run_path.name} in {args.ressim_dir} (set COMP_REFERENCE_OUT)")
-    run = json.loads(run_path.read_text())
+        raise SystemExit(f"{case}: no {run_path.name} in {ressim_dir}")
+    return json.loads(run_path.read_text())
+
+
+def compare_comp_case(case: str, reference_path: Path, args: argparse.Namespace) -> dict:
+    run = read_comp_record(case, args.ressim_dir)
     reference, times, reference_cumulatives = comp_reference_fields(reference_path)
     reports = run["reports"]
     check_comp_report_times(case, reports, times)
@@ -451,6 +458,81 @@ def compare_comp_case(case: str, reference_path: Path, args: argparse.Namespace)
                 "inventory_relative_error": None,
                 "vs_flow": field_error(fields, reference, ("p", "sg", "z")),
                 "cum_rel_vs_flow": compared,
+            }
+        },
+        "pairs": {},
+    }
+
+
+def compare_spe5_diagnostic(entry: dict, ressim_dir: Path) -> dict:
+    """Compare the committed JutulDarcy summary at the predeclared SPE5 report times."""
+    case = entry["case"]
+    path = REPO / entry["reference"]
+    reference = json.loads(path.read_text())
+    reference_reports = reference["reports"]
+    count = entry["report_count"]
+    if (reference.get("schema") != "ressim-spe5-reference/1"
+            or reference.get("completed") is not True or reference.get("failed_at") is not None
+            or len(reference_reports) != 240):
+        raise SystemExit(f"{path}: expected a completed 240-report SPE5 reference")
+    if not 0 < count <= len(reference_reports):
+        raise SystemExit(f"{case}: invalid diagnostic report count {count}")
+    reference_times = [report["day"] for report in reference_reports]
+    if reference_times != [month * 30.4375 for month in range(1, len(reference_reports) + 1)]:
+        raise SystemExit(f"{path}: reference times do not match the SPE5 monthly schedule")
+    window = reference_reports[:count]
+    times = reference_times[:count]
+
+    run = read_comp_record(case, ressim_dir)
+    if run.get("case") != case or run.get("run") != "comp":
+        raise SystemExit(f"{case}: expected a {case} compositional run record")
+    reports = run["reports"]
+    check_comp_report_times(case, reports, times)
+    samples = {"p": "cell33_p_bar", "sw": "cell33_sw", "sg": "cell33_sg"}
+    fields = checked_fields([{k: report[k] for k in samples} for report in reports], f"{case}/comp")
+    if any(len(report["p"]) != 147 for report in fields):
+        raise SystemExit(f"{case}: expected 147 cells in each report")
+    cells = [{k: report[k][SPE5_CELL:SPE5_CELL + 1] for k in samples} for report in fields]
+    ref_cells = checked_fields(
+        [{k: [report[name]] for k, name in samples.items()} for report in window], str(path)
+    )
+
+    summary = {
+        "mean_p_bar": [float(np.mean(report["p"])) for report in fields],
+        "producer_oil_m3_day": [report["producer_oil_m3_day"] for report in reports],
+        "producer_gor_m3_m3": [report["producer_gor_m3_m3"] for report in reports],
+    }
+    actual, expected = checked_fields(
+        [summary, {k: [report[k] for report in window] for k in summary}], f"{case} summary"
+    )
+    differences = {"mean_p_bar": np.abs(actual["mean_p_bar"] - expected["mean_p_bar"])}
+    for key, metric in (("producer_oil_m3_day", "producer_oil_relative"),
+                        ("producer_gor_m3_m3", "producer_gor_relative")):
+        a, b = actual[key], expected[key]
+        scale = np.maximum(np.abs(a), np.abs(b))
+        differences[metric] = np.divide(np.abs(a - b), scale, out=np.zeros_like(scale), where=scale > 0)
+
+    return {
+        "comparison_scope": {"reports": count, "reference_reports": len(reference_reports),
+                             "through_day": times[-1], "cell": SPE5_CELL},
+        "flow": {
+            "source": "fixture",
+            "name": "JutulDarcy",
+            "conv": {"substeps": None, "newton": None, "retries": None},
+            "wall_ms": None,
+        },
+        "runs": {
+            "comp": {
+                "solver": "compositional",
+                "conv": ressim_convergence(run),
+                "wall_ms": run["wall_ms"],
+                "warnings": [],
+                "vs_flow": field_error(cells, ref_cells, tuple(samples)),
+                "cum_rel_vs_flow": {},
+                "summary_errors": {
+                    "worst": {k: float(np.max(v)) for k, v in differences.items()},
+                    "final": {k: float(v[-1]) for k, v in differences.items()},
+                },
             }
         },
         "pairs": {},
@@ -697,15 +779,29 @@ def wall_text(entry: dict) -> str:
     return "(cached)" if wall is None else f"{wall:.1f}"
 
 
+def print_diagnostic_scope(case: str, entry: dict) -> None:
+    scope = entry.get("comparison_scope")
+    if scope is None:
+        return
+    worst = entry["runs"]["comp"]["summary_errors"]["worst"]
+    print(f"{case} diagnostic over {scope['reports']} of {scope['reference_reports']} reports "
+          f"through day {scope['through_day']:.3f}. Field differences are for cell {scope['cell']} "
+          "(zero-based).")
+    print(f"Worst differences vs {entry['flow']['name']}: mean pressure {worst['mean_p_bar']:.4g} bar, "
+          f"producer oil rate {worst['producer_oil_relative']:.2%}, GOR {worst['producer_gor_relative']:.2%}.\n")
+
+
 def print_text(report: dict) -> None:
     for case, e in report.items():
         f = e["flow"]["conv"]
         fields = case_fields(e)
         field_header = " ".join(f"{FIELD_LABEL[k]:>{FIELD_WIDTH[k]}}" for k in fields)
         print(f"\n{case}")
+        print_diagnostic_scope(case, e)
+        name = e["flow"].get("name", "Flow")
         print(f"  {'':11} {'substeps':>9} {'newton':>8} {'cuts/retries':>13} {'wall ms':>9}"
-              f" {field_header}  cumulative rel. diff vs Flow")
-        print(f"  {'Flow':11} {dash(f['substeps']):>9} {dash(f['newton']):>8} {dash(f['retries']):>13} "
+              f" {field_header}  cumulative rel. diff vs {name}")
+        print(f"  {name:11} {dash(f['substeps']):>9} {dash(f['newton']):>8} {dash(f['retries']):>13} "
               f"{wall_text(e):>9}")
         for run_id, b in e["runs"].items():
             w = b["vs_flow"]["worst"]
@@ -728,15 +824,19 @@ def markdown_field(key: str) -> str:
 
 
 def print_markdown(report: dict) -> None:
+    reference = next(iter(report.values()))["flow"].get("name", "Flow")
     fields = next((case_fields(e) for e in report.values() if e["runs"]), [])
+    for case, entry in report.items():
+        print_diagnostic_scope(case, entry)
     print("| Case | Simulator | Substeps | Newton | Retries / cuts | Wall ms | "
-          + " | ".join(markdown_field(k) for k in fields) + " | Cumulatives vs Flow |")
+          + " | ".join(markdown_field(k) for k in fields) + f" | Cumulatives vs {reference} |")
     print("|---|---|---|---|---|---|" + "---|" * len(fields) + "---|")
     for case, e in report.items():
         f = e["flow"]["conv"]
         wall = e["flow"]["wall_ms"]
         empty = " | ".join("" for _ in fields)
-        print(f"| {case} | Flow | {dash(f['substeps'])} | {dash(f['newton'])} | {dash(f['retries'])} | "
+        name = e["flow"].get("name", "Flow")
+        print(f"| {case} | {name} | {dash(f['substeps'])} | {dash(f['newton'])} | {dash(f['retries'])} | "
               f"{'' if wall is None else f'{wall:.0f}'} | {empty} | |")
         for run_id, b in e["runs"].items():
             w = b["vs_flow"]["worst"]
@@ -792,12 +892,14 @@ def main() -> int:
 
     if args.comp_reference_dir:
         family = "compositional"
-        manifest = comp_manifest(args.comp_reference_dir)
+        manifest, diagnostics = comp_manifest(args.comp_reference_dir)
         candidates = set(manifest)
         cases = args.case or list(manifest)
-        unknown = sorted(set(cases) - candidates)
+        unknown = sorted(set(cases) - candidates - diagnostics.keys())
         if unknown:
             parser.error(f"not in trajectory_cases.json: {', '.join(unknown)}")
+        if set(cases) & diagnostics.keys() and (len(cases) != 1 or args.check or args.write_scorecard):
+            raise SystemExit("a compositional diagnostic must be selected alone, without scorecard grading")
     else:
         family = "black-oil"
         args.deck_dir = args.deck_dir or list(DECK_ROOTS)
@@ -816,7 +918,11 @@ def main() -> int:
         }
 
     if args.comp_reference_dir:
-        report = {case: compare_comp_case(case, manifest[case], args) for case in cases}
+        report = {
+            case: (compare_spe5_diagnostic(diagnostics[case], args.ressim_dir) if case in diagnostics
+                   else compare_comp_case(case, manifest[case], args))
+            for case in cases
+        }
     else:
         report = {case: compare_case(case, args) for case in cases}
 

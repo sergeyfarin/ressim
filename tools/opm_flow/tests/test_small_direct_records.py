@@ -6,8 +6,11 @@ skip there, like the inventory-accounting tests.
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 try:
     from compare_small_direct import (
@@ -16,6 +19,7 @@ try:
         comp_record_cumulatives,
         coverage_error,
         merge_scorecard,
+        main,
         scorecard_metrics,
     )
 except ModuleNotFoundError:
@@ -23,6 +27,7 @@ except ModuleNotFoundError:
     compare_comp_case = None
     comp_record_cumulatives = None
     coverage_error = None
+    main = None
     merge_scorecard = None
     scorecard_metrics = None
 
@@ -150,6 +155,85 @@ class CompositionalRecordTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(SystemExit, r"not finite"):
             self.compare()
+
+
+@unittest.skipIf(main is None, "requires Flow's numpy environment")
+class Spe5DiagnosticTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        self.out = self.dir / "comparison.json"
+        reference = self.dir / "reference.json"
+        reference.write_text(json.dumps({
+            "schema": "ressim-spe5-reference/1",
+            "completed": True,
+            "reports": [{
+                "day": month * 30.4375,
+                "cell33_p_bar": 100.0,
+                "cell33_sw": 0.2,
+                "cell33_sg": 0.3,
+                "mean_p_bar": 100.0,
+                "producer_oil_m3_day": 30.0,
+                "producer_gor_m3_m3": 200.0,
+            } for month in range(1, 241)],
+        }))
+        (self.dir / "trajectory_cases.json").write_text(json.dumps({
+            "cases": [],
+            "diagnostics": [{"case": "spe5", "reference": str(reference), "report_count": 2}],
+        }))
+        self.record = {
+            "case": "spe5",
+            "solver": "compositional",
+            "run": "comp",
+            "wall_ms": 1.0,
+            "reports": [{
+                "t": month * 30.4375,
+                "p": [101.0] * 147,
+                "sw": [0.0] * 33 + [0.325] + [0.0] * 113,
+                "sg": [0.3] * 147,
+                "producer_oil_m3_day": 20.0,
+                "producer_gor_m3_m3": 250.0,
+            } for month in (1, 2)],
+        }
+
+    def run_cli(self, *options):
+        (self.dir / "spe5.comp.json").write_text(json.dumps(self.record))
+        argv = ["compare_small_direct.py", "--ressim-dir", str(self.dir),
+                "--comp-reference-dir", str(self.dir), "--json", str(self.out), *options]
+        with patch("sys.argv", argv), redirect_stdout(StringIO()) as output:
+            self.assertEqual(main(), 0)
+        return output.getvalue()
+
+    def test_spe5_compares_cell_33_and_summary_over_the_declared_window(self):
+        output = self.run_cli("--case", "spe5", "--markdown")
+        entry = json.loads(self.out.read_text())["spe5"]
+        self.assertIn("JutulDarcy", output)
+        self.assertIn("2 of 240", output)
+        self.assertIn("cell 33", output)
+        run = entry["runs"]["comp"]
+        self.assertEqual(run["vs_flow"]["worst"], {"p": 1.0, "sw": 0.125, "sg": 0.0})
+        self.assertEqual(run["summary_errors"]["worst"], {
+            "mean_p_bar": 1.0, "producer_oil_relative": 1 / 3, "producer_gor_relative": 0.2,
+        })
+
+    def test_spe5_requires_the_entire_window_and_matching_times(self):
+        self.record["reports"][1]["t"] = 3 * 30.4375
+        with self.assertRaisesRegex(SystemExit, r"report 1 is at"):
+            self.run_cli("--case", "spe5")
+        self.record["reports"].pop()
+        with self.assertRaisesRegex(SystemExit, r"1 ResSim reports vs 2 reference"):
+            self.run_cli("--case", "spe5")
+
+    def test_diagnostic_is_excluded_from_the_default_coverage(self):
+        with self.assertRaisesRegex(SystemExit, r"no compositional cases"):
+            self.run_cli()
+
+    def test_diagnostic_cannot_check_or_write_a_scorecard(self):
+        for flag in ("--check", "--write-scorecard"):
+            with self.subTest(flag=flag), self.assertRaisesRegex(SystemExit, r"diagnostic"):
+                self.run_cli("--case", "spe5", "--scorecard", str(self.dir / "card.json"), flag)
+        self.assertFalse(self.out.exists())
 
 
 @unittest.skipIf(comp_record_cumulatives is None, "requires Flow's numpy environment")

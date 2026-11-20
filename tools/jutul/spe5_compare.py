@@ -5,6 +5,7 @@
     python3 -I tools/jutul/spe5_compare.py --references LABEL=REFERENCE LABEL=REFERENCE ...
     python3 -I tools/jutul/spe5_compare.py --validate-run REFERENCE VOLUME MAX_DT [NOT_BEFORE]
     python3 -I tools/jutul/spe5_compare.py --timestep-convergence R_REPORT R_5 R_05 J_REPORT J_5 J_05 [LAST]
+    python3 -I tools/jutul/spe5_compare.py --write-comp-record REPLAY OUTPUT_DIR
 
 The third form is the JutulDarcy well-volume/timestep sensitivity (tools/jutul/run-spe5-sensitivity.sh):
 each reference's work, and its worst differences from the first one over months 1-217 and over all
@@ -46,6 +47,7 @@ rates; relative rate differences are |R - J| / max(|R|, |J|).
 import json
 import statistics
 import sys
+from pathlib import Path
 
 CELL = 33
 BHP_LIMIT_BAR = 68.9476
@@ -321,6 +323,36 @@ def replay_reports(path):
     return reports, data
 
 
+def write_comp_record(path, output_dir):
+    """Export a from-scratch replay for the shared SPE5 diagnostic comparator."""
+    surface, replay = replay_reports(path)
+    months = replay["months"]
+    if (replay["settings"].get("seed") != "scratch" or not months
+            or [report["month"] for report in months] != list(range(1, len(months) + 1))):
+        sys.exit(f"{path}: expected contiguous reports from a from-scratch SPE5 replay")
+
+    reports = []
+    for month in months:
+        snapshot = month["snapshot"]
+        producer = surface[month["month"]]
+        reports.append({
+            "t": snapshot["time_days"],
+            "p": snapshot["pressure"],
+            "sw": snapshot["water"]["saturation"],
+            "sg": snapshot["vapour_saturation"],
+            "producer_oil_m3_day": producer["producer_oil_m3_day"],
+            "producer_gor_m3_m3": producer["producer_gor_m3_m3"],
+            "substeps": month["accepted_steps"],
+            "newton": month["accepted_newton"],
+            "retries": month["failed_attempts"],
+        })
+    directory = Path(output_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    record = {"case": "spe5", "solver": "compositional", "run": "comp", "reports": reports,
+              "wall_ms": 1000 * sum(month["wall_s"] for month in months)}
+    (directory / "spe5.comp.json").write_text(json.dumps(record, allow_nan=False) + "\n")
+
+
 def format_stop(stop):
     """A replay's `stopped` record in one cell; a wall-budget stop has no `failure` field."""
     if not stop:
@@ -438,5 +470,7 @@ if __name__ == "__main__":
         timestep_convergence(sys.argv[2:8], int(sys.argv[8]) if len(sys.argv) > 8 else None)
     elif sys.argv[1] == "--ministeps":
         ministeps(sys.argv[2])
+    elif sys.argv[1] == "--write-comp-record":
+        write_comp_record(*sys.argv[2:4])
     else:
         main(*sys.argv[1:3])

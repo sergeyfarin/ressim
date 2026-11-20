@@ -10,6 +10,7 @@ import os
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 TOOLS = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, TOOLS)
@@ -110,6 +111,36 @@ WALL_BUDGET = {"reason": "wall budget", "month": 3, "day": 70.0,
 FAILED = {"reason": "step failed", "month": 218, "day": 6612.703, "attempts": 10,
           "failure": 'Some(StepFailure { kind: "Budget", message: "last failure was Nonlinear: '
                      'Newton did not converge in 20 iterations (scaled residual 6.39e-8)" })'}
+
+
+class Spe5RecordTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        self.input = self.dir / "replay.json"
+
+    def write_record(self, months, seed):
+        data = replay(months, None)
+        data["settings"]["seed"] = seed
+        self.input.write_text(json.dumps(data))
+        spe5_compare.write_comp_record(self.input, self.dir)
+        return json.loads((self.dir / "spe5.comp.json").read_text())
+
+    def test_exports_monthly_grid_and_positive_producer_rates(self):
+        record = self.write_record([1, 2], "scratch")
+        self.assertEqual(record["wall_ms"], 2000.0)
+        first = record["reports"][0]
+        self.assertEqual(first["sw"], [0.2] * 147)
+        self.assertEqual(first["t"], 30.4375)
+        self.assertEqual(first["producer_oil_m3_day"], 11.0)
+        self.assertAlmostEqual(first["producer_gor_m3_m3"], 50 / 11)
+        self.assertEqual(first["newton"], 8)
+
+    def test_refuses_a_checkpoint_or_missing_report(self):
+        for months, seed in (([1, 2], "checkpoint.json"), ([1, 3], "scratch")):
+            with self.subTest(months=months, seed=seed), self.assertRaisesRegex(SystemExit, "contiguous"):
+                self.write_record(months, seed)
 
 
 class M1PointLookupTests(unittest.TestCase):
