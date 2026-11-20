@@ -133,6 +133,26 @@ pub struct LineSearchTrial {
     pub accepted: bool,
 }
 
+/// The current iterate and direction when the experimental line search runs out of trials.
+#[cfg(test)]
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct FailedLineSearch {
+    pub(super) current: CompositionalState,
+    direction: Vec<f64>,
+    tau_bound: f64,
+}
+
+#[cfg(test)]
+impl FailedLineSearch {
+    /// Reconstruct a diagnostic trial from the same iterate and direction as the search.
+    pub(super) fn trial_at(&self, layout: &CompositionalLayout, tau: f64) -> CompositionalState {
+        assert!((0.0..=self.tau_bound).contains(&tau));
+        apply_step(layout, &self.current, &self.direction, tau)
+            .commit()
+            .expect("admissible line-search diagnostic trial")
+    }
+}
+
 /// What a Newton solve did, whether or not it succeeded.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NewtonReport {
@@ -146,6 +166,8 @@ pub struct NewtonReport {
     /// One entry per iteration that evaluated a step: the test-only line search's trials, in
     /// order. Empty in production builds and when the line search is off.
     pub line_search_history: Vec<Vec<LineSearchTrial>>,
+    #[cfg(test)]
+    pub(super) failed_line_search: Option<FailedLineSearch>,
     /// Smallest linear pivot seen, across iterations. Only the dense route exposes its pivots;
     /// on the others this stays infinite.
     pub min_pivot: f64,
@@ -670,6 +692,8 @@ pub(crate) fn solve_newton_observed(
         residual_history: Vec::new(),
         step_scale_history: Vec::new(),
         line_search_history: Vec::new(),
+        #[cfg(test)]
+        failed_line_search: None,
         min_pivot: f64::INFINITY,
         linear_history: Vec::new(),
         accepted_well_rates: Vec::new(),
@@ -881,6 +905,11 @@ pub(crate) fn solve_newton_observed(
                 }
                 Err(error) => {
                     report.line_search_history.push(line_search_trials);
+                    report.failed_line_search = Some(FailedLineSearch {
+                        current,
+                        direction: rhs,
+                        tau_bound,
+                    });
                     return (Err(error), report);
                 }
             }
