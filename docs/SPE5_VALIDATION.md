@@ -1298,10 +1298,13 @@ Order of work, as agreed in the #116 review:
    the current branch, not a label switch inside the trial. Carrying `K` lowers the barrier by about
    1.5x and extends the descent, but neither mode reaches `1e-8`. The pre-reuse continuation is
    INCONCLUSIVE (the winning trial was assembled twice); per accepted step the line search did less
-   work. Before another step-control mechanism, freeze cells 33/39 on each phase branch and check
-   whether the timestep has a root at all; that decides between continuity work (cutoff rule, N2,
-   near-critical relative permeability) and an explicit acceptance rule. Details in
-   [SPE5_LINE_SEARCH_EXPERIMENT_2026-11-11.md](SPE5_LINE_SEARCH_EXPERIMENT_2026-11-11.md).
+   work. At the final iterate and the nearby `tau = 1e-6` trial, the 50-digit equilibrium
+   change in `beta` is below `6.3e-10` in all four cell/recovery pairs. The test-only refinement
+   cap discards one or both refinements in all three pairs with large float64 jumps. Raising the
+   cap in fixed-input reflashes reduces the largest change from `3.59e-3` to `4.45e-6`. The
+   next experiment is to rerun the captured call with that cap and both carried-K modes at the
+   same Newton tolerance before considering a flux change. See the
+   [line-search precision measurement](SPE5_LINE_SEARCH_EXPERIMENT_2026-11-11.md#vapour-fraction-precision-at-the-final-search).
 
 All thresholds above are **experimental candidates**, not validated values. They come from two
 traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of

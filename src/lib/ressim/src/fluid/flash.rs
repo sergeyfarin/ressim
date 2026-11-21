@@ -287,7 +287,7 @@ pub(crate) fn remember_k_for_test(cell: usize, state: &FlashState) {
 /// split seed. The hint is re-solved at the current `(p, T, z)` and still passes the ordinary
 /// physicality, equilibrium and Gibbs checks; it is not passed through the stability trial gate.
 pub(crate) fn flash_for_cell(
-    cell: usize,
+    #[cfg_attr(not(test), allow(unused_variables))] cell: usize,
     spec: &FluidSpecification,
     pressure_pa: f64,
     temperature_k: f64,
@@ -1788,6 +1788,42 @@ const MAX_REFINEMENT_ITERATIONS: usize = 8;
 /// Largest change of `beta` or of any `ln K_i` a refinement may make.
 const REFINEMENT_MAX_MOVE: f64 = 1e-3;
 
+/// Outcome of the difference-form refinement when a test observes one flash.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RefinementOutcome {
+    Unchanged,
+    MoveCap,
+    Kept,
+}
+
+#[cfg(test)]
+thread_local! {
+    static REFINEMENT_OUTCOME: core::cell::Cell<RefinementOutcome> =
+        const { core::cell::Cell::new(RefinementOutcome::Unchanged) };
+    static REFINEMENT_MOVE_LIMIT: core::cell::Cell<f64> =
+        const { core::cell::Cell::new(REFINEMENT_MAX_MOVE) };
+}
+
+/// Run a single diagnostic flash and capture whether its final refinement was kept.
+#[cfg(test)]
+pub(crate) fn observe_refinement_for_test<T>(f: impl FnOnce() -> T) -> (T, RefinementOutcome) {
+    let previous = REFINEMENT_OUTCOME.with(|slot| slot.replace(RefinementOutcome::Unchanged));
+    let result = f();
+    let outcome = REFINEMENT_OUTCOME.with(|slot| slot.replace(previous));
+    (result, outcome)
+}
+
+/// Change only the experimental refinement move cap on the calling thread.
+#[cfg(test)]
+pub(crate) fn with_refinement_move_limit_for_test<T>(limit: f64, f: impl FnOnce() -> T) -> T {
+    let previous = REFINEMENT_MOVE_LIMIT.with(|slot| slot.replace(limit));
+    let result = f();
+    REFINEMENT_MOVE_LIMIT.with(|slot| slot.set(previous));
+    result
+}
+
 /// The AD equilibrium system for this component count.
 fn newton_system_for(
     spec: &FluidSpecification,
@@ -1973,11 +2009,17 @@ fn refine_two_phase(
             *ui += step[0];
         }
     }
+    #[cfg(test)]
+    let max_move = REFINEMENT_MOVE_LIMIT.with(|slot| slot.get());
+    #[cfg(not(test))]
+    let max_move = REFINEMENT_MAX_MOVE;
     if best
         .iter()
         .zip(&start)
-        .any(|(a, b)| !((a - b).abs() <= REFINEMENT_MAX_MOVE))
+        .any(|(a, b)| !((a - b).abs() <= max_move))
     {
+        #[cfg(test)]
+        REFINEMENT_OUTCOME.with(|slot| slot.set(RefinementOutcome::MoveCap));
         return state;
     }
     let k: Vec<f64> = best[..n].iter().map(|&v| math::exp(v)).collect();
@@ -1994,6 +2036,8 @@ fn refine_two_phase(
             if refined.phase_state == PhaseState::TwoPhase
                 && refined.equilibrium_residual <= equilibrium_tolerance() =>
         {
+            #[cfg(test)]
+            REFINEMENT_OUTCOME.with(|slot| slot.set(RefinementOutcome::Kept));
             refined
         }
         _ => state,

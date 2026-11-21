@@ -1201,16 +1201,55 @@ fn comp_spe5_seed_recovery_well_control_change_is_rejected() {
     );
 }
 
+const WIDE_REFINEMENT_MOVE: f64 = 1e-1;
+
+fn line_search_flash_sample(
+    problem: &super::newton::NewtonProblem<'_>,
+    state: &super::state::CompositionalState,
+    cell: usize,
+) -> serde_json::Value {
+    use crate::fluid::flash::{
+        PhaseState, flash_for_cell, observe_refinement_for_test,
+        with_difference_refinement_for_test, with_refinement_move_limit_for_test,
+    };
+    let state = state.cell(cell);
+    let p = crate::fluid::units::bar_to_pa(state.pressure_bar);
+    let z = state.overall_composition();
+    let temperature = problem.spec.reservoir_temperature_k();
+    let evaluate =
+        || flash_for_cell(cell, problem.spec, p, temperature, &z, None).expect("cell flash");
+    let (flash, outcome) = observe_refinement_for_test(evaluate);
+    let unrefined = with_difference_refinement_for_test(false, evaluate);
+    let (wide, wide_outcome) = with_refinement_move_limit_for_test(WIDE_REFINEMENT_MOVE, || {
+        observe_refinement_for_test(evaluate)
+    });
+    for split in [&flash, &unrefined, &wide] {
+        assert_eq!(split.phase_state, PhaseState::TwoPhase, "cell {cell}");
+    }
+    serde_json::json!({
+        "p_pa": p, "z": z, "beta": flash.beta, "k": flash.k,
+        "x": flash.x, "y": flash.y, "iterations": flash.iterations,
+        "equilibrium_residual": flash.equilibrium_residual,
+        "refinement_outcome": outcome,
+        "unrefined_beta": unrefined.beta,
+        "wide_cap_beta": wide.beta,
+        "wide_cap_outcome": wide_outcome,
+    })
+}
+
 #[test]
 #[ignore = "#116 line search with and without carried K; about a minute"]
 fn comp_spe5_line_search_recovery_comparison() {
     use super::newton::{NewtonError, solve_newton, with_line_search_for_test};
+    use super::spe5_flash_refinement_tests::{fluid_json, write};
     use crate::fluid::flash::{
         with_difference_refinement_for_test, with_seed_recovery_for_test,
         with_split_phase_decision_for_test,
     };
     let case = restore("stall_n1_6612_836.json");
     let dt = 0.04402126141911289;
+    let tau = 1e-6;
+    let export = std::env::var_os("SPE5_TRACE_OUT").is_some();
     let rows = with_difference_refinement_for_test(true, || {
         with_split_phase_decision_for_test(true, || {
             case.with_diagnostic_problem(dt, |problem, start, options| {
@@ -1219,11 +1258,27 @@ fn comp_spe5_line_search_recovery_comparison() {
                     "the acceptance tolerance must not move"
                 );
                 let mut rows = Vec::new();
+                let mut flash_pairs = Vec::new();
                 for line_search in [false, true] {
                     for recovery in [false, true] {
                         let (outcome, report) = with_line_search_for_test(line_search, || {
                             with_seed_recovery_for_test(recovery, || {
-                                solve_newton(problem, start, options)
+                                let (outcome, report) = solve_newton(problem, start, options);
+                                if export && line_search {
+                                    let failure = report.failed_line_search.as_ref()
+                                        .expect("the paired flash probe needs the failed line search");
+                                    let trial = failure.trial_at(problem.layout, tau);
+                                    // Re-evaluate while the attempt's carried K is still in scope.
+                                    for cell in [33, 39] {
+                                        flash_pairs.push(serde_json::json!({
+                                            "cell": cell, "recovery": recovery,
+                                            "temperature_k": problem.spec.reservoir_temperature_k(),
+                                            "current": line_search_flash_sample(problem, &failure.current, cell),
+                                            "trial": line_search_flash_sample(problem, &trial, cell),
+                                        }));
+                                    }
+                                }
+                                (outcome, report)
                             })
                         });
                         let accepted = outcome.is_ok();
@@ -1311,6 +1366,16 @@ fn comp_spe5_line_search_recovery_comparison() {
                                 .collect::<Vec<_>>(),
                         }));
                     }
+                }
+                if export {
+                    assert_eq!(flash_pairs.len(), 4);
+                    write("spe5_line_search_flash.json", &serde_json::json!({
+                            "schema": "ressim-spe5-line-search-flash/2",
+                        "dt_days": dt, "tau": tau,
+                            "wide_refinement_move": WIDE_REFINEMENT_MOVE,
+                        "fluid": fluid_json(problem),
+                        "pairs": flash_pairs,
+                    }));
                 }
                 rows
             })
