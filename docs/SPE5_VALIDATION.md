@@ -1303,8 +1303,10 @@ Order of work, as agreed in the #116 review:
    cap discards one or both refinements in all three pairs with large float64 jumps. Raising the
    cap in fixed-input reflashes reduces the largest change from `3.59e-3` to `4.45e-6`. With the
    wider test-only cap, the captured call converges in 16 Newton iterations with carried K at
-   `3.761912642e-9` and passes the cold re-evaluation. With carried K off it still stalls at
-   `1.466996040e-6`. Both bounded continuations accept three steps and stop within month 218.
+   `3.761912642e-9`. The accepted state also satisfies the wider-cap residual to tolerance
+   with carried K disabled. Starting the solve cold still stalls at `1.466996040e-6`. Most
+   of the wider-cap continuation's distance gain comes from that first call. Both runs stop
+   within month 218 after three accepted steps.
    The default solver's frozen from-scratch checkpoint still reproduces the month-218 failure
    after 10 attempts. See the
    [captured-call and continuation results](SPE5_LINE_SEARCH_EXPERIMENT_2026-11-11.md#wider-refinement-cap-at-the-captured-call).

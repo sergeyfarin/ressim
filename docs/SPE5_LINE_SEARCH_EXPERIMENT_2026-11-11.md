@@ -172,7 +172,19 @@ and to evaluate the Newton residual. The Newton tolerance stays at `1e-8`.
 All trials assembled, and the last search in each row evaluated the same phase labels as its
 current iterate. The accepted solve also passed the cold re-evaluation with the same cap and
 carried K disabled. The guard requires cold convergence, the same active well-rate equations and
-a scaled residual-vector difference within tolerance.
+a scaled residual-vector difference within tolerance. This establishes that the captured timestep
+has a solution to `1e-8` under the wider-cap residual with carried K disabled. The direct
+cold-start Newton solve with that cap still stalls.
+
+A scratch replay of the converged solve on `91abaf92` kept 1,699 refinements. Of those, 72
+exceeded the default `1e-3` move limit, the largest move in any `ln K` or β was
+`5.445e-3`, and no `ln K` crossed zero. The run used a `1e-1` cap with considerable
+headroom. A cap around `1e-2` is a candidate for a separate test.
+
+The refinement accepts a physical two-phase split that satisfies the fugacity tolerance. A
+production design also needs to reject trivial or wrong-Gibbs roots explicitly. The move cap
+alone does not rule out reversal of the liquid and vapour compositions when all `ln K` values
+are small.
 
 ### Bounded continuation
 
@@ -186,13 +198,27 @@ host with other validation jobs.
 | `1e-3` | 3 | 7 | 16 | `6612.869130099479` | Wall budget | 208 s |
 | `1e-1` | 3 | 6 | 28 | `6612.893892059027` | Wall budget | 433 s |
 
-**DIAGNOSTIC result for the captured call.** The wider cap and carried K together produce an accepted
-solution at the existing tolerance. With three calls in each continuation, the wider cap
-advances about `0.0248 d` farther. **INCONCLUSIVE for sustained advancement and cost.** Both
-runs use timestep cuts and stop within month 218, and the budget does not bound time spent in a
-single call. Capture the retry rungs and residuals at a fixed number of subsequent calls before
-choosing another flash or flux change. The production from-scratch replay and real-case shut-in
-remain open under #116 and #98.
+The review replay on `91abaf92` printed the accepted timestep and attempt count after each
+`case.step` and stopped after three calls.
+
+| Call | Default cap accepted dt (d) | Default cap failed attempts | Wider cap accepted dt (d) | Wider cap failed attempts |
+|---:|---:|---:|---:|---:|
+| 1 | `0.022010630710` | 1 | `0.044021261419` | 0 |
+| 2 | `0.005502657677` | 3 | `0.011005315355` | 2 |
+| 3 | `0.005502657677` | 3 | `0.002751328839` | 4 |
+
+The captured first call contributes `0.02201 d` of the `0.02476 d` difference in total
+advance. The wider cap gains only `0.00275 d` across calls 2 and 3 combined, then finishes
+with half the default cap's accepted timestep and one additional failed attempt on call 3.
+In the scratch replay, the first wider-cap call took 30 s and calls 2 and 3 took 371 s
+combined. These times include shared-host load.
+
+**INCONCLUSIVE for sustained advancement and cost.** Both runs use timestep cuts and stop
+within month 218, and the budget does not bound time spent in a single call. Capture the third
+call's failed retry rungs from its starting checkpoint (day `6612.891140730188` with the wider
+cap) and record each call's accepted timestep and attempts in that probe. Then test whether making
+the near-critical flux continuous improves the residual and timestep acceptance. The production
+from-scratch replay and real-case shut-in remain open under #116 and #98.
 
 ## Reproduce
 
