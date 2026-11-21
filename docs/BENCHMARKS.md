@@ -58,10 +58,17 @@ commit, so it is not on this page: `python3 tools/benchmarks/benchmarks.py signa
 together with everything below, and `benchmarks.sh check` warns about it.
 
 **Nightly signals.** On the development machine, a user crontab entry runs
-`scripts/benchmarks-nightly.sh` every night. It runs the full tier on `origin/master` in its own
-worktree (`~/.cache/ressim-nightly`) and rewrites one pinned issue, "Benchmark signals (nightly)",
-with the drift check and the signals. It comments there only when the state changes, and it never
-commits. `NIGHTLY_DRY_RUN=1` prints the issue body instead.
+`scripts/benchmarks-nightly.sh` from the main checkout. The script runs the full tier on canonical
+`master` in its own worktree (`~/.cache/ressim-nightly`) and publishes the drift check and signals to
+the pinned issue [#56, "Benchmark signals (nightly)"](https://github.com/sergeyfarin/ressim/issues/56).
+On a state change, it posts a comment before recording the new state. A failed comment leaves the
+published state available for comparison on the next run. A failed edit after a successful comment
+can lead to a repeat notification.
+`NIGHTLY_DRY_RUN=1` prints the issue body without posting it.
+
+The script exits with an error if #56 is missing, closed, or renamed, or if a GitHub command fails.
+Cron sends these errors only to `~/.cache/ressim-nightly/cron.log`. The issue's **Last run** field
+shows when its report was last refreshed.
 
 <!-- GENERATED:signals -->
 **Same-model gaps** — the reference solves the same discrete model, so a difference over 1 % (or 0.5 bar) is a finding until explained. 0 unexplained and untracked, 2 tracked, 24 explained.
