@@ -88,22 +88,20 @@ if [ -n "${NIGHTLY_DRY_RUN:-}" ]; then
     exit 0
 fi
 
-number="$(gh issue list --repo "$(git -C "$repo" remote get-url origin)" --state open --search "in:title \"$title\"" \
-    --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)"
-remote="$(git -C "$repo" remote get-url origin)"
-if [ -z "$number" ]; then
-    url="$(gh issue create --repo "$remote" --title "$title" --label "area:validation" --body "$body")"
-    number="${url##*/}"
-    gh issue pin "$number" --repo "$remote" >/dev/null 2>&1 || true
-    echo "created and pinned #$number"
+remote="$(cd "$repo" && bash scripts/canonical-repo.sh)" || exit $?
+number="$(gh issue list --repo "$remote" --state open --search "in:title \"$title\"" \
+    --json number,title --jq ".[] | select(.title == \"$title\") | .number")" || exit $?
+if [ "$number" != 56 ]; then
+    echo "benchmarks-nightly: expected open issue #56 as the only exact match for '$title' in $remote" >&2
+    exit 1
+fi
+
+previous="$(gh issue view "$number" --repo "$remote" --json body --jq .body | sed -n 's/^<!-- nightly-state: \(.*\) -->$/\1/p')" || exit $?
+gh issue edit "$number" --repo "$remote" --body "$body" >/dev/null || exit $?
+if [ "$previous" != "$state" ]; then
+    gh issue comment "$number" --repo "$remote" \
+        --body "State changed on \`$commit\`: \`${previous:-none}\` → \`$state\`. See the updated body." >/dev/null || exit $?
+    echo "updated #$number; state changed: ${previous:-none} -> $state"
 else
-    previous="$(gh issue view "$number" --repo "$remote" --json body --jq .body | sed -n 's/^<!-- nightly-state: \(.*\) -->$/\1/p')"
-    gh issue edit "$number" --repo "$remote" --body "$body" >/dev/null
-    if [ "$previous" != "$state" ]; then
-        gh issue comment "$number" --repo "$remote" \
-            --body "State changed on \`$commit\`: \`${previous:-none}\` → \`$state\`. See the updated body." >/dev/null
-        echo "updated #$number; state changed: ${previous:-none} -> $state"
-    else
-        echo "updated #$number; state unchanged: $state"
-    fi
+    echo "updated #$number; state unchanged: $state"
 fi
