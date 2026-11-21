@@ -8,7 +8,7 @@ set -uo pipefail
 # notification means something moved.
 #
 #   bash scripts/benchmarks-nightly.sh              # what cron runs
-#   NIGHTLY_DRY_RUN=1 bash scripts/benchmarks-nightly.sh   # print the issue body, touch nothing
+#   NIGHTLY_DRY_RUN=1 bash scripts/benchmarks-nightly.sh   # print the issue body without posting it
 #
 # It needs what the full tier needs (Rust, wasm-pack, Node, OPM Flow, Julia 1.12, flowexp_comp)
 # plus an authenticated `gh`. It never commits: re-recording stays a deliberate `update` in a commit.
