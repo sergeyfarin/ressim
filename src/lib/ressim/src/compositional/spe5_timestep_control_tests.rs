@@ -21,7 +21,7 @@
 //! | `SPE5_WALL_BUDGET_S` | stop, recording why, once this much wall time is spent | none |
 //! | `SPE5_DT_MEMORY_GROWTH` | bounded timestep memory: after an accepted step `dt`, the next request is at most this factor times `dt` (a driver policy; the engine's own halving is unchanged) | none |
 //! | `SPE5_FLASH_REFINE` | `1`: the experimental difference-form flash refinement on (`fluid::flash`) | off |
-//! | `SPE5_FLASH_REFINEMENT_MOVE_LIMIT` | experimental limit on the refinement change in β or any ln K | 1e-3 |
+//! | `SPE5_FLASH_REFINEMENT_MOVE_LIMIT` | experimental limit on the change in β or any ln K, requires `SPE5_FLASH_REFINE=1` | 1e-3 when enabled |
 //! | `SPE5_N1` | `1`: the experimental split-based phase decision (N1) on (`fluid::flash`) | off |
 //! | `SPE5_SEED_RECOVERY` | `1`: carry each cell's previous flash `K` as a test-only split seed | off |
 //! | `SPE5_LINE_SEARCH` | `1`: backtrack the Newton step until the assembled residual decreases (test-only) | off |
@@ -42,9 +42,10 @@
 use super::api::{Checkpoint, CompositionalCase};
 use super::newton::{with_line_search_for_test, with_step_damping_for_test};
 use crate::fluid::flash::{
-    reset_split_phase_decision_acceptances_for_test, split_phase_decision_acceptances_for_test,
-    with_difference_refinement_for_test, with_refinement_move_limit_for_test,
-    with_seed_recovery_for_test, with_split_phase_decision_for_test,
+    refinement_move_limit_for_test, reset_split_phase_decision_acceptances_for_test,
+    split_phase_decision_acceptances_for_test, with_difference_refinement_for_test,
+    with_refinement_move_limit_for_test, with_seed_recovery_for_test,
+    with_split_phase_decision_for_test,
 };
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -89,6 +90,10 @@ fn comp_spe5_replay_with_timestep_options() {
     let line_search = std::env::var("SPE5_LINE_SEARCH").is_ok_and(|v| v == "1");
     let damping: f64 = env_or("SPE5_STEP_DAMPING").unwrap_or(1.0);
     let refinement_move_limit = std::env::var_os("SPE5_FLASH_REFINEMENT_MOVE_LIMIT").map(|value| {
+        assert!(
+            refine,
+            "SPE5_FLASH_REFINEMENT_MOVE_LIMIT requires SPE5_FLASH_REFINE=1"
+        );
         let limit: f64 = value
             .to_str()
             .expect("UTF-8 refinement move limit")
@@ -101,40 +106,26 @@ fn comp_spe5_replay_with_timestep_options() {
         limit
     });
     reset_split_phase_decision_acceptances_for_test();
-    with_difference_refinement_for_test(refine, || {
-        with_split_phase_decision_for_test(n1, || {
-            with_seed_recovery_for_test(recovery, || {
-                with_line_search_for_test(line_search, || {
-                    with_step_damping_for_test(damping, || {
-                        let run = || {
-                            replay(
-                                refine,
-                                n1,
-                                recovery,
-                                line_search,
-                                damping,
-                                refinement_move_limit,
-                            )
-                        };
-                        match refinement_move_limit {
-                            Some(limit) => with_refinement_move_limit_for_test(limit, run),
-                            None => run(),
-                        }
+    let run = || {
+        with_difference_refinement_for_test(refine, || {
+            with_split_phase_decision_for_test(n1, || {
+                with_seed_recovery_for_test(recovery, || {
+                    with_line_search_for_test(line_search, || {
+                        with_step_damping_for_test(damping, || {
+                            replay(refine, n1, recovery, line_search, damping)
+                        })
                     })
                 })
             })
         })
-    });
+    };
+    match refinement_move_limit {
+        Some(limit) => with_refinement_move_limit_for_test(limit, run),
+        None => run(),
+    }
 }
 
-fn replay(
-    refine: bool,
-    n1: bool,
-    recovery: bool,
-    line_search: bool,
-    damping: f64,
-    refinement_move_limit: Option<f64>,
-) {
+fn replay(refine: bool, n1: bool, recovery: bool, line_search: bool, damping: f64) {
     let out = PathBuf::from(std::env::var("SPE5_REPLAY_OUT").expect("set SPE5_REPLAY_OUT"));
     let seed = std::env::var("SPE5_REPLAY_SEED").unwrap_or_else(|_| "scratch".to_string());
     let cap: Option<f64> = env_or("SPE5_MAX_DT_DAYS");
@@ -168,7 +159,7 @@ fn replay(
         "seed": seed, "start_day": start_time, "max_dt_days": cap,
         "max_attempts": max_attempts, "last_month": last_month, "wall_budget_s": wall_budget,
         "tolerance": 1e-8, "flash_refinement": refine, "n1": n1,
-        "flash_refinement_move_limit": refinement_move_limit,
+        "flash_refinement_move_limit": refine.then(refinement_move_limit_for_test),
         "seed_recovery": recovery, "line_search": line_search, "step_damping": damping,
         "dt_memory_growth": growth,
         "request": "end - now from the snapshot time, or the cap",

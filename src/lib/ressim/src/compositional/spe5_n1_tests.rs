@@ -1228,54 +1228,44 @@ fn comp_spe5_line_search_refinement_cap_comparison() {
                                     with_seed_recovery_for_test(recovery, || {
                                         solve_newton(problem, start, options)
                                     });
+                                let mode = format!("cap {cap:e}, carried K {recovery}");
                                 let &last = report.residual_history.last().expect("residual");
-                                let trials = report.line_search_history.iter().flatten();
-                                let accepted_trials = trials.clone().filter(|t| t.accepted).count();
-                                let failed_trials = trials
-                                    .clone()
-                                    .filter(|t| t.scaled_residual.is_none())
-                                    .count();
-                                let best_trial = trials
-                                    .filter_map(|t| t.scaled_residual)
-                                    .min_by(f64::total_cmp);
-                                let final_phase_changes =
-                                    report.line_search_history.last().map_or(0, |trials| {
-                                        trials
-                                            .iter()
-                                            .filter(|t| !t.phase_changes.is_empty())
-                                            .count()
-                                    });
-                                let stop = match &outcome {
-                                    Ok(_) => {
-                                        assert!(last <= options.tolerance);
-                                        "converged"
-                                    }
-                                    Err(NewtonError::NotConverged { .. })
-                                        if report.failed_line_search.is_some() =>
-                                    {
-                                        "line search exhausted"
-                                    }
-                                    Err(NewtonError::NotConverged { .. })
-                                        if recovery && last <= options.tolerance =>
-                                    {
-                                        "cold acceptance failed"
-                                    }
-                                    Err(NewtonError::NotConverged { .. }) => {
-                                        assert_eq!(report.iterations, options.max_iterations);
-                                        "iteration budget"
-                                    }
-                                    Err(error) => {
-                                        panic!("cap {cap:e}, carried K {recovery}: {error}")
-                                    }
+                                let failure = outcome.as_ref().err();
+                                let stop = if cap == WIDE_REFINEMENT_MOVE && recovery {
+                                    assert!(
+                                        outcome.is_ok(),
+                                        "{mode}: expected convergence, got {failure:?}"
+                                    );
+                                    assert!(last <= options.tolerance, "{mode}: residual {last:e}");
+                                    "converged"
+                                } else {
+                                    assert!(
+                                        matches!(failure, Some(NewtonError::NotConverged { .. }))
+                                            && report.failed_line_search.is_some(),
+                                        "{mode}: expected line-search exhaustion, got {failure:?}",
+                                    );
+                                    "line search exhausted"
                                 };
+                                assert!(
+                                    report.line_search_history.iter().flatten().all(|trial| {
+                                        trial.scaled_residual.is_some_and(f64::is_finite)
+                                    }),
+                                    "{mode}: a trial failed to produce a finite residual",
+                                );
+                                let final_search = report
+                                    .line_search_history
+                                    .last()
+                                    .filter(|trials| !trials.is_empty())
+                                    .expect("final line search");
+                                assert!(
+                                    final_search
+                                        .iter()
+                                        .all(|trial| trial.phase_changes.is_empty()),
+                                    "{mode}: phase label changed in the final search",
+                                );
                                 println!(
-                                    "cap {cap:e}, carried K {recovery}: {stop}, \
-                                     iterations {}, accepted trials {accepted_trials}, \
-                                     failed trials {failed_trials}, last {last:.9e}, \
-                                     best trial {best_trial:?}, final trials with phase changes \
-                                     {final_phase_changes}, error {:?}",
+                                    "{mode}: {stop}, iterations {}, last {last:.9e}",
                                     report.iterations,
-                                    outcome.err(),
                                 );
                             }
                         });
