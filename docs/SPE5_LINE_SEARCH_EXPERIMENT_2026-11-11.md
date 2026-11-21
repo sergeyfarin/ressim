@@ -54,10 +54,10 @@ The line-search rows are different. Both accept many decreasing Newton steps (13
 `1e-8`. The final iteration is a failed line search, not an iteration-budget stop:
 
 - **Recovery off, iteration 14** (current residual `2.403354e-6`): all 20 halvings are above the
-  current residual. The closest candidate is `4.147286e-6` at `tau = 3.906e-3`; the full step is
+  current residual. The closest candidate is `4.147286e-6` at `tau = 7.8125e-3`; the full step is
   `1.087134e-5`.
 - **Recovery on, iteration 18** (current residual `1.594464e-6`): all 20 halvings are above the
-  current residual. The closest candidate is `5.687248e-6` at `tau = 3.815e-6`; the full step is
+  current residual. The closest candidate is `4.154718e-6` at `tau = 0.125`; the full step is
   `1.229775e-5`.
 
 So carrying `K` lowers the line-search barrier by about 1.5x and keeps the descent going for four
@@ -155,17 +155,66 @@ with the wider cap. The high-precision change has the opposite sign. The reporte
 maximum of `Δln K` across components cannot separate errors in `K` from their propagation into β
 through the ill-conditioned Rachford–Rice equation.
 
-First rerun the whole captured `0.04402126141911289 d` call with the test-only `1e-1` cap, line
-search, both carried-K modes and Newton tolerance `1e-8`. That will test whether the fixed-input
-improvement carries over to the trajectory before considering a relative-permeability blend.
-The 20-year replay and real-case shut-in remain open under #116 and #98.
+## Wider refinement cap at the captured call
+
+Measured on clean `9720a869` in release using the commands below. All four solves use the same
+`stall_n1_6612_836.json` checkpoint and `0.04402126141911289 d` timestep. N1, difference-form
+refinement and backtracking are on. Each cap is used both to reconstruct the previous inventory
+and to evaluate the Newton residual. The Newton tolerance stays at `1e-8`.
+
+| Move cap | Carried K | Newton iterations | Final scaled residual | Result |
+|---|---|---:|---:|---|
+| `1e-3` | off | 14 | `2.403353750e-6` | Line search exhausted |
+| `1e-3` | on | 18 | `1.594464017e-6` | Line search exhausted |
+| `1e-1` | off | 14 | `1.466996040e-6` | Line search exhausted |
+| `1e-1` | on | 16 | `3.761912642e-9` | Converged |
+
+All trials assembled, and the last search in each row evaluated the same phase labels as its
+current iterate. The accepted solve also passed the cold re-evaluation with the same cap and
+carried K disabled. The guard requires cold convergence, the same active well-rate equations and
+a scaled residual-vector difference within tolerance.
+
+### Bounded continuation
+
+Both runs start at day `6612.836114153414`, use carried K, and request at most
+`0.04402126141911289 d` per call with up to ten timestep attempts. The wall budget is checked
+between calls, so the last completed call can finish after the 180 s budget. The runs shared the
+host with other validation jobs.
+
+| Move cap | Accepted steps | Failed attempts | Newton iterations in accepted attempts | Last accepted day | Stop | Elapsed |
+|---|---:|---:|---:|---:|---|---:|
+| `1e-3` | 3 | 7 | 16 | `6612.869130099479` | Wall budget | 208 s |
+| `1e-1` | 3 | 6 | 28 | `6612.893892059027` | Wall budget | 433 s |
+
+**DIAGNOSTIC result for the captured call.** The wider cap and carried K together produce an accepted
+solution at the existing tolerance. With three calls in each continuation, the wider cap
+advances about `0.0248 d` farther. **INCONCLUSIVE for sustained advancement and cost.** Both
+runs use timestep cuts and stop within month 218, and the budget does not bound time spent in a
+single call. Capture the retry rungs and residuals at a fixed number of subsequent calls before
+choosing another flash or flux change. The production from-scratch replay and real-case shut-in
+remain open under #116 and #98.
 
 ## Reproduce
 
 ```bash
-# Four-mode comparison at the captured timestep: the table above.
+# Original four-mode comparison with the default move cap.
 cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
     comp_spe5_line_search_recovery_comparison -- --ignored --nocapture
+
+# Captured call with both move caps and both carried-K modes.
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+    comp_spe5_line_search_refinement_cap_comparison -- --ignored --nocapture
+
+# Bounded continuation with each cap from the same checkpoint.
+spe5_replay=$(mktemp -d)
+for spe5_cap in 1e-3 1e-1; do
+    SPE5_REPLAY_OUT="$spe5_replay/cap-$spe5_cap.json" SPE5_REPLAY_SEED=stall_n1_6612_836.json \
+        SPE5_MAX_DT_DAYS=0.04402126141911289 SPE5_FLASH_REFINE=1 SPE5_N1=1 \
+        SPE5_LINE_SEARCH=1 SPE5_SEED_RECOVERY=1 SPE5_FLASH_REFINEMENT_MOVE_LIMIT="$spe5_cap" \
+        SPE5_LAST_MONTH=218 SPE5_WALL_BUDGET_S=180 \
+        cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+        comp_spe5_replay_with_timestep_options -- --ignored --nocapture
+done
 
 # Paired flash precision measurement.
 spe5_trace=$(mktemp -d)

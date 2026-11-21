@@ -1301,10 +1301,13 @@ Order of work, as agreed in the #116 review:
    work. At the final iterate and the nearby `tau = 1e-6` trial, the 50-digit equilibrium
    change in `beta` is below `6.3e-10` in all four cell/recovery pairs. The test-only refinement
    cap discards one or both refinements in all three pairs with large float64 jumps. Raising the
-   cap in fixed-input reflashes reduces the largest change from `3.59e-3` to `4.45e-6`. The
-   next experiment is to rerun the captured call with that cap and both carried-K modes at the
-   same Newton tolerance before considering a flux change. See the
-   [line-search precision measurement](SPE5_LINE_SEARCH_EXPERIMENT_2026-11-11.md#vapour-fraction-precision-at-the-final-search).
+   cap in fixed-input reflashes reduces the largest change from `3.59e-3` to `4.45e-6`. With the
+   wider test-only cap, the captured call converges in 16 Newton iterations with carried K at
+   `3.761912642e-9` and passes the cold re-evaluation. With carried K off it still stalls at
+   `1.466996040e-6`. Both bounded continuations accept three steps and stop within month 218.
+   The default solver's frozen from-scratch checkpoint still reproduces the month-218 failure
+   after 10 attempts. See the
+   [captured-call and continuation results](SPE5_LINE_SEARCH_EXPERIMENT_2026-11-11.md#wider-refinement-cap-at-the-captured-call).
 
 All thresholds above are **experimental candidates**, not validated values. They come from two
 traces of one case, and the Jutul fixture's per-report numbers cover only the final ministep of

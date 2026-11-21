@@ -1203,6 +1203,89 @@ fn comp_spe5_seed_recovery_well_control_change_is_rejected() {
 
 const WIDE_REFINEMENT_MOVE: f64 = 1e-1;
 
+#[test]
+#[ignore = "#116 flash refinement move cap at the captured Newton call; run in release"]
+fn comp_spe5_line_search_refinement_cap_comparison() {
+    use super::newton::{NewtonError, solve_newton, with_line_search_for_test};
+    use crate::fluid::flash::{
+        with_difference_refinement_for_test, with_refinement_move_limit_for_test,
+        with_seed_recovery_for_test, with_split_phase_decision_for_test,
+    };
+
+    let case = restore("stall_n1_6612_836.json");
+    let dt = 0.04402126141911289;
+    with_difference_refinement_for_test(true, || {
+        with_split_phase_decision_for_test(true, || {
+            with_line_search_for_test(true, || {
+                for cap in [1e-3, WIDE_REFINEMENT_MOVE] {
+                    with_refinement_move_limit_for_test(cap, || {
+                        // Use the same refinement cap for old inventory and every Newton flash.
+                        // Build the inventory cold before switching on the attempt's carried K.
+                        case.with_diagnostic_problem(dt, |problem, start, options| {
+                            assert_eq!(options.tolerance, 1e-8);
+                            for recovery in [false, true] {
+                                let (outcome, report) =
+                                    with_seed_recovery_for_test(recovery, || {
+                                        solve_newton(problem, start, options)
+                                    });
+                                let &last = report.residual_history.last().expect("residual");
+                                let trials = report.line_search_history.iter().flatten();
+                                let accepted_trials = trials.clone().filter(|t| t.accepted).count();
+                                let failed_trials = trials
+                                    .clone()
+                                    .filter(|t| t.scaled_residual.is_none())
+                                    .count();
+                                let best_trial = trials
+                                    .filter_map(|t| t.scaled_residual)
+                                    .min_by(f64::total_cmp);
+                                let final_phase_changes =
+                                    report.line_search_history.last().map_or(0, |trials| {
+                                        trials
+                                            .iter()
+                                            .filter(|t| !t.phase_changes.is_empty())
+                                            .count()
+                                    });
+                                let stop = match &outcome {
+                                    Ok(_) => {
+                                        assert!(last <= options.tolerance);
+                                        "converged"
+                                    }
+                                    Err(NewtonError::NotConverged { .. })
+                                        if report.failed_line_search.is_some() =>
+                                    {
+                                        "line search exhausted"
+                                    }
+                                    Err(NewtonError::NotConverged { .. })
+                                        if recovery && last <= options.tolerance =>
+                                    {
+                                        "cold acceptance failed"
+                                    }
+                                    Err(NewtonError::NotConverged { .. }) => {
+                                        assert_eq!(report.iterations, options.max_iterations);
+                                        "iteration budget"
+                                    }
+                                    Err(error) => {
+                                        panic!("cap {cap:e}, carried K {recovery}: {error}")
+                                    }
+                                };
+                                println!(
+                                    "cap {cap:e}, carried K {recovery}: {stop}, \
+                                     iterations {}, accepted trials {accepted_trials}, \
+                                     failed trials {failed_trials}, last {last:.9e}, \
+                                     best trial {best_trial:?}, final trials with phase changes \
+                                     {final_phase_changes}, error {:?}",
+                                    report.iterations,
+                                    outcome.err(),
+                                );
+                            }
+                        });
+                    });
+                }
+            });
+        });
+    });
+}
+
 fn line_search_flash_sample(
     problem: &super::newton::NewtonProblem<'_>,
     state: &super::state::CompositionalState,
