@@ -54,10 +54,10 @@ The line-search rows are different. Both accept many decreasing Newton steps (13
 `1e-8`. The final iteration is a failed line search, not an iteration-budget stop:
 
 - **Recovery off, iteration 14** (current residual `2.403354e-6`): all 20 halvings are above the
-  current residual. The closest candidate is `4.147286e-6` at `tau = 3.906e-3`; the full step is
+  current residual. The closest candidate is `4.147286e-6` at `tau = 7.8125e-3`; the full step is
   `1.087134e-5`.
 - **Recovery on, iteration 18** (current residual `1.594464e-6`): all 20 halvings are above the
-  current residual. The closest candidate is `5.687248e-6` at `tau = 3.815e-6`; the full step is
+  current residual. The closest candidate is `4.154718e-6` at `tau = 0.125`; the full step is
   `1.229775e-5`.
 
 So carrying `K` lowers the line-search barrier by about 1.5x and keeps the descent going for four
