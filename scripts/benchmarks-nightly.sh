@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-# Nightly benchmark signals (#54 phase 3). Runs the full benchmark tier on origin/master in its own
+# Nightly benchmark signals (#54 phase 3). Runs the full benchmark tier on canonical master in its own
 # worktree, then rewrites one pinned GitHub issue, "Benchmark signals (nightly)", with the result:
 # drift against the committed records, same-model gaps, near-band criteria and stale sections.
 # It comments on the issue only when the state changes (check result or attention count), so a
@@ -14,11 +14,10 @@ set -uo pipefail
 # plus an authenticated `gh`. It never commits: re-recording stays a deliberate `update` in a commit.
 # Installed as a user crontab entry; see docs/BENCHMARKS.md ("Nightly signals").
 
-repo="${RESSIM_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
+repo="$(cd "${RESSIM_REPO:-$(dirname "$0")/..}" && pwd)" || exit $?
 home_dir="${RESSIM_NIGHTLY_HOME:-$HOME/.cache/ressim-nightly}"
 worktree="$home_dir/worktree"
 logs="$home_dir/logs"
-title="Benchmark signals (nightly)"
 mkdir -p "$logs"
 
 # cron's PATH is minimal: the toolchains live in the user's home.
@@ -29,16 +28,22 @@ export FLOWEXP_COMP="${FLOWEXP_COMP:-$(cd "$repo/.." && pwd)/ressim-opm-build/op
 exec 9> "$home_dir/lock"
 flock -n 9 || { echo "another nightly run holds $home_dir/lock"; exit 0; }
 
+git_remote="$(cd "$repo" && bash scripts/canonical-repo.sh --remote)" || exit $?
+if [ -z "${NIGHTLY_DRY_RUN:-}" ]; then
+    remote="$(cd "$repo" && bash scripts/canonical-repo.sh "$git_remote")" || exit $?
+fi
+master="refs/remotes/$git_remote/master"
+
 stamp="$(date -u +%Y-%m-%dT%H%MZ)"
 log="$logs/$stamp.log"
 ls -1t "$logs"/*.log 2>/dev/null | tail -n +15 | xargs -r rm -f
 
-git -C "$repo" fetch --quiet origin master || { echo "fetch failed" >&2; exit 1; }
+git -C "$repo" fetch --quiet "$git_remote" "+refs/heads/master:$master" || { echo "fetch failed" >&2; exit 1; }
 if [ ! -d "$worktree/.git" ] && [ ! -f "$worktree/.git" ]; then
-    git -C "$repo" worktree add --detach "$worktree" origin/master >/dev/null
+    git -C "$repo" worktree add --detach "$worktree" "$master" >/dev/null
 fi
-git -C "$worktree" checkout --quiet --detach origin/master
-git -C "$worktree" reset --quiet --hard origin/master
+git -C "$worktree" checkout --quiet --detach "$master"
+git -C "$worktree" reset --quiet --hard "$master"
 commit="$(git -C "$worktree" rev-parse --short HEAD)"
 
 cd "$worktree"
@@ -64,7 +69,7 @@ state="check=$check_state attention=${attention:-?}"
 
 body="$(cat <<EOF
 <!-- nightly-state: $state -->
-Rewritten every night by \`scripts/benchmarks-nightly.sh\` (#54): the full benchmark tier on \`origin/master\`, compared with the committed records in \`docs/benchmarks/benchmarks.json\`. It comments below only when the state changes.
+Rewritten every night by \`scripts/benchmarks-nightly.sh\` (#54): the full benchmark tier on \`$git_remote/master\`, compared with the committed records in \`docs/benchmarks/benchmarks.json\`. It comments below only when the state changes.
 
 **Last run:** $stamp on \`$commit\`, $minutes min. **Check:** $check_state. **Needing attention:** ${attention:-unknown}.
 
@@ -88,20 +93,23 @@ if [ -n "${NIGHTLY_DRY_RUN:-}" ]; then
     exit 0
 fi
 
-remote="$(cd "$repo" && bash scripts/canonical-repo.sh)" || exit $?
-number="$(gh issue list --repo "$remote" --state open --search "in:title \"$title\"" \
-    --json number,title --jq ".[] | select(.title == \"$title\") | .number")" || exit $?
-if [ "$number" != 56 ]; then
-    echo "benchmarks-nightly: expected open issue #56 as the only exact match for '$title' in $remote" >&2
+number=56
+title="Benchmark signals (nightly)"
+issue="$(gh issue view "$number" --repo "$remote" --json title,state,body \
+    --jq '[.state, .title, .body] | join("\n")')" || exit $?
+header="OPEN"$'\n'"$title"
+if [[ "$issue" != "$header" && "$issue" != "$header"$'\n'* ]]; then
+    echo "benchmarks-nightly: expected open issue #$number titled '$title' in $remote" >&2
     exit 1
 fi
 
-previous="$(gh issue view "$number" --repo "$remote" --json body --jq .body | sed -n 's/^<!-- nightly-state: \(.*\) -->$/\1/p')" || exit $?
-gh issue edit "$number" --repo "$remote" --body "$body" >/dev/null || exit $?
+previous="$(sed -n 's/^<!-- nightly-state: \(.*\) -->$/\1/p' <<< "${issue#"$header"}")" || exit $?
+message="state unchanged: $state"
 if [ "$previous" != "$state" ]; then
+    # Keep the old marker if the comment fails so the next run compares against the published state.
     gh issue comment "$number" --repo "$remote" \
-        --body "State changed on \`$commit\`: \`${previous:-none}\` → \`$state\`. See the updated body." >/dev/null || exit $?
-    echo "updated #$number; state changed: ${previous:-none} -> $state"
-else
-    echo "updated #$number; state unchanged: $state"
+        --body "State changed on \`$commit\`: \`${previous:-none}\` → \`$state\`." >/dev/null || exit $?
+    message="state changed: ${previous:-none} -> $state"
 fi
+gh issue edit "$number" --repo "$remote" --body "$body" >/dev/null || exit $?
+echo "updated #$number; $message"
