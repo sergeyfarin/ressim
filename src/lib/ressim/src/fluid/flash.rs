@@ -1815,6 +1815,12 @@ pub(crate) fn observe_refinement_for_test<T>(f: impl FnOnce() -> T) -> (T, Refin
     (result, outcome)
 }
 
+/// Read the experimental refinement move cap on the calling thread.
+#[cfg(test)]
+pub(crate) fn refinement_move_limit_for_test() -> f64 {
+    REFINEMENT_MOVE_LIMIT.with(|slot| slot.get())
+}
+
 /// Change only the experimental refinement move cap on the calling thread.
 #[cfg(test)]
 pub(crate) fn with_refinement_move_limit_for_test<T>(limit: f64, f: impl FnOnce() -> T) -> T {
@@ -2010,7 +2016,7 @@ fn refine_two_phase(
         }
     }
     #[cfg(test)]
-    let max_move = REFINEMENT_MOVE_LIMIT.with(|slot| slot.get());
+    let max_move = refinement_move_limit_for_test();
     #[cfg(not(test))]
     let max_move = REFINEMENT_MAX_MOVE;
     if best
