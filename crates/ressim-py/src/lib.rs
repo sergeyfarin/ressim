@@ -538,12 +538,9 @@ impl PySimulator {
     }
 }
 
+/// Native bindings to the ResSim reservoir simulator.
 #[pymodule]
-fn ressim(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<PySimulator>()?;
-    m.add(
-        "__doc__",
-        "Native bindings to the ResSim reservoir simulator.",
-    )?;
-    Ok(())
+mod ressim {
+    #[pymodule_export]
+    use super::PySimulator;
 }
