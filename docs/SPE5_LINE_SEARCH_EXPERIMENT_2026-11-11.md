@@ -174,12 +174,15 @@ current iterate. The accepted solve also passed the cold re-evaluation with the 
 carried K disabled. The guard requires cold convergence, the same active well-rate equations and
 a scaled residual-vector difference within tolerance. This establishes that the captured timestep
 has a solution to `1e-8` under the wider-cap residual with carried K disabled. The direct
-cold-start Newton solve with that cap still stalls.
+cold-start Newton solve with that cap still stalls. Root existence under the default cap remains
+untested.
 
-A scratch replay of the converged solve on `91abaf92` kept 1,699 refinements. Of those, 72
-exceeded the default `1e-3` move limit, the largest move in any `ln K` or β was
-`5.445e-3`, and no `ln K` crossed zero. The run used a `1e-1` cap with considerable
-headroom. A cap around `1e-2` is a candidate for a separate test.
+**Provisional refinement statistics.** A scratch replay during the review update used uncommitted
+instrumentation on `91abaf92` to measure the converged solve. It kept 1,699 refinements. Of
+those, 72 exceeded the default `1e-3` move limit. The largest kept move in any `ln K` or β
+was `5.445e-3`, and no `ln K` crossed zero. The committed test reproduces the solve.
+Reproducing these statistics requires the scratch instrumentation. A cap around `1e-2` is a
+candidate for a separate test.
 
 The refinement accepts a physical two-phase split that satisfies the fugacity tolerance. A
 production design also needs to reject trivial or wrong-Gibbs roots explicitly. The move cap
@@ -198,8 +201,11 @@ host with other validation jobs.
 | `1e-3` | 3 | 7 | 16 | `6612.869130099479` | Wall budget | 208 s |
 | `1e-1` | 3 | 6 | 28 | `6612.893892059027` | Wall budget | 433 s |
 
-The review replay on `91abaf92` printed the accepted timestep and attempt count after each
-`case.step` and stopped after three calls.
+**Provisional per-call trace.** A scratch replay during the review update used uncommitted
+instrumentation on `91abaf92` to print the accepted timestep and attempt count after each
+`case.step` and stop after three calls. Wall-budget stops with the committed driver at
+`a6facf6c` independently confirmed the first default-cap call and the first two wider-cap calls.
+The next retry capture will add committed per-call records for direct reproduction of the table.
 
 | Call | Default cap accepted dt (d) | Default cap failed attempts | Wider cap accepted dt (d) | Wider cap failed attempts |
 |---:|---:|---:|---:|---:|
@@ -210,8 +216,8 @@ The review replay on `91abaf92` printed the accepted timestep and attempt count 
 The captured first call contributes `0.02201 d` of the `0.02476 d` difference in total
 advance. The wider cap gains only `0.00275 d` across calls 2 and 3 combined, then finishes
 with half the default cap's accepted timestep and one additional failed attempt on call 3.
-In the scratch replay, the first wider-cap call took 30 s and calls 2 and 3 took 371 s
-combined. These times include shared-host load.
+In the scratch replay, the first wider-cap call took 30 s and calls 2 and 3 took 371 s combined.
+These provisional timings include shared-host load.
 
 **INCONCLUSIVE for sustained advancement and cost.** Both runs use timestep cuts and stop
 within month 218, and the budget does not bound time spent in a single call. Capture the third
