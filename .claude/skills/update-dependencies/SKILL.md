@@ -71,7 +71,9 @@ upgrades waiting on a peer range; this run is when they get rechecked.
   floating `stable` toolchain, so run `cargo clippy --workspace --all-targets` with the current
   stable: a new release can add a deny-by-default lint.
 - **Python**: `uv lock --upgrade` in `tools/opm_flow` (always `uv`, never `pip`).
-- **GitHub Actions**: bump action versions in both files under `.github/workflows/`. The Node
+- **GitHub Actions**: review action versions in both files under `.github/workflows/`. Use floating
+  major tags so patch and minor fixes arrive between manual dependency reviews. Update the tag
+  only when moving to a new major, and keep the Rust toolchain action on `@stable`. The Node
   version is stated in both workflows; change it everywhere or nowhere. Pushing a workflow file
   needs the `workflow` scope on the `gh` token.
 

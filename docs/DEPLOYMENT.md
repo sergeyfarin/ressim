@@ -31,7 +31,7 @@ same SHA.
 
 ## Local and CI validation before deployment
 
-From a clean, committed revision, using Node 24 and pnpm. Each block runs in a strict subshell,
+From a clean, committed revision, using Node 26 and pnpm. Each block runs in a strict subshell,
 so it stops at the first failing step in any shell; packaging without a SHA, for example, never
 reaches the browser smoke.
 

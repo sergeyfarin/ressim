@@ -1,12 +1,10 @@
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
-import { promises as fs } from 'fs'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import { promises as fs } from 'node:fs'
+import path from 'node:path'
 import { buildLayout } from './scripts/build-layout.ts'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+const configDir = import.meta.dirname
 
 const buildSha = process.env.RESIM_BUILD_SHA ?? process.env.GITHUB_SHA ?? 'local'
 const buildRef = process.env.RESIM_BUILD_REF ?? process.env.GITHUB_REF_NAME ?? 'local'
@@ -21,7 +19,7 @@ export default defineConfig({
       apply: 'build',
       async closeBundle() {
         if (layout.basePath === '/') return
-        const outDir = path.resolve(__dirname, layout.outDir, '..')
+        const outDir = path.resolve(configDir, layout.outDir, '..')
         const target = layout.basePath
         const html = `<!doctype html><html><head><meta charset="utf-8"/><meta http-equiv="refresh" content="0;url=${target}"><meta name="robots" content="noindex"><title>Redirecting...</title><script>location.replace('${target}')</script></head><body>Redirecting to <a href="${target}">${target}</a></body></html>`
         await fs.mkdir(outDir, { recursive: true })
@@ -48,22 +46,20 @@ export default defineConfig({
     chunkSizeWarningLimit: 600,
     outDir: layout.outDir,
     emptyOutDir: true,
-    rollupOptions: {
+    rolldownOptions: {
       // Multi-page. `index.html` is the application; `fractional-flow.html` is a second entry
       // point built only from workspace packages, which is what makes "the frontend can be
       // composed into more than one page" checkable rather than asserted.
       input: {
-        index: path.resolve(__dirname, 'index.html'),
-        'fractional-flow': path.resolve(__dirname, 'fractional-flow.html'),
+        index: path.resolve(configDir, 'index.html'),
+        'fractional-flow': path.resolve(configDir, 'fractional-flow.html'),
       },
       output: {
-        manualChunks(id: string) {
-          if (id.includes('node_modules/three')) {
-            return 'vendor-three'
-          }
-          if (id.includes('node_modules/chart.js')) {
-            return 'vendor-chartjs'
-          }
+        codeSplitting: {
+          groups: [
+            { name: 'vendor-three', test: (id) => id.includes('node_modules/three') },
+            { name: 'vendor-chartjs', test: (id) => id.includes('node_modules/chart.js') },
+          ],
         },
       },
     },

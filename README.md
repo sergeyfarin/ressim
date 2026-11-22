@@ -103,7 +103,7 @@ What each reference is entitled to claim, and where it stops.
 
 ### Prerequisites
 
-- Node.js 24 (the CI version) with `pnpm`
+- Node.js 26 (the CI version) with `pnpm`
 - Rust toolchain
 - `wasm-pack`
 - `wasm32-unknown-unknown` target
