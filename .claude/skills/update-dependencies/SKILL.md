@@ -66,8 +66,9 @@ upgrades waiting on a peer range; this run is when they get rechecked.
   package back with `'!<name>'`. Recheck every entry under `overrides` in
   `pnpm-workspace.yaml`; each carries the condition for dropping it. After a Playwright bump run
   `pnpm exec playwright install chromium`. A pnpm bump through either `update --latest` or
-  `self-update` writes `packageManager` without its `+sha512.` hash; put it back, as hex:
-  `i=$(pnpm view pnpm@<v> dist.integrity); echo "${i#sha512-}" | base64 -d | xxd -p -c 256`.
+  `self-update` writes `packageManager` without its `+sha512.` hash. Put it back from what this
+  prints, in hex. It prints nothing and exits non-zero unless the lookup returns a SHA-512 digest:
+  `i=$(pnpm view pnpm@<v> dist.integrity) && printf '%s' "${i#sha512-}" | base64 -d | xxd -p -c 256 | grep -Ex '[0-9a-f]{128}'`.
 - **Rust**: raise direct versions in `src/lib/ressim/Cargo.toml` and
   `crates/ressim-py/Cargo.toml`, then `cargo update` (one `Cargo.lock` at the root). CI uses the
   floating `stable` toolchain, so run `cargo clippy --workspace --all-targets` with the current
